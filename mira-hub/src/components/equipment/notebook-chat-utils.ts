@@ -470,3 +470,27 @@ export function retainedSafetyStreamFailure(
       }
     : null;
 }
+
+/** Project a stream that ended without `status`. `done:true` alone cannot say
+ *  why it ended, so the caller's AbortSignal distinguishes technician Stop
+ *  from a transport truncation. Safety remains sticky in either case. */
+export function turnFromIncompleteStream<T extends { content: string }>(
+  turn: T,
+  result: Pick<StreamResult, "content" | "safetyNotice">,
+  technicianStopped: boolean,
+) {
+  const interrupted = stoppedTurn(turn, result.content, technicianStopped ? "stopped" : "truncated");
+  return result.safetyNotice ? { ...interrupted, safetyNotice: result.safetyNotice } : interrupted;
+}
+
+/** A retained safety failure remains visible until Retry. At that point remove
+ *  its optimistic question/answer pair before the byte-identical send appends
+ *  the replacement, preventing a duplicated user question. */
+export function turnsWithoutRetriedExchange<T extends { id: string }>(
+  turns: readonly T[],
+  retainedTurnIds?: readonly string[],
+): T[] {
+  if (!retainedTurnIds?.length) return [...turns];
+  const removed = new Set(retainedTurnIds);
+  return turns.filter((turn) => !removed.has(turn.id));
+}

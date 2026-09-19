@@ -22,6 +22,8 @@ import {
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
+  turnFromIncompleteStream,
+  turnsWithoutRetriedExchange,
   visualObservationCaption,
   type ChatBody,
 } from "./notebook-chat-utils";
@@ -289,6 +291,11 @@ export function Bubble({
  *  one basis label ("General guidance", amber, no citations). With sources the
  *  body is byte-identical to buildChatBody — Retry re-posts either as-is. */
 export type SendBody = ChatBody & { mode?: "general" };
+type FailedSend = {
+  readonly body: SendBody;
+  /** Optimistic exchange retained only because it contains a Safety STOP. */
+  readonly retainedTurnIds?: readonly [string, string];
+};
 export function chatBodyFor(message: string, enabledDocIds: string[], turns: ChatTurn[]): SendBody {
   const body = buildChatBody(message, enabledDocIds, turns);
   return enabledDocIds.length === 0 ? { ...body, mode: "general" } : body;
@@ -309,7 +316,7 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
-  const [failed, setFailed] = useState<SendBody | null>(null);
+  const [failed, setFailed] = useState<FailedSend | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -373,14 +380,7 @@ export function NotebookChat({
         setTurns((prev) =>
           prev.map((x) =>
             x.id === aId
-              ? {
-                  ...stoppedTurn(x, content, "truncated"),
-                  // A `safety` frame that DID arrive is a determination the
-                  // server actually made and sent. Suppressing a LOTO/arc-flash
-                  // warning because the tail was lost is the unsafe direction,
-                  // so it is the one marker that survives a truncation.
-                  ...(safetyNotice ? { safetyNotice } : {}),
-                }
+              ? turnFromIncompleteStream(x, { content, safetyNotice }, controller.signal.aborted)
               : x,
           ),
         );
@@ -426,7 +426,7 @@ export function NotebookChat({
                 : x,
             ),
           );
-          setFailed(body);
+          setFailed({ body, retainedTurnIds: [userTurn.id, aId] });
           return;
         }
         // Failure keeps the question (CMPS-2): roll back the optimistic
@@ -434,7 +434,7 @@ export function NotebookChat({
         // identical body. Nothing is fabricated in the transcript.
         setTurns((prev) => prev.filter((x) => x.id !== aId && x.id !== userTurn.id));
         setInput((cur) => restoreComposer(cur, body.message));
-        setFailed(body);
+        setFailed({ body });
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -455,8 +455,9 @@ export function NotebookChat({
 
   const retry = useCallback(() => {
     if (!failed || busy) return;
-    setInput((cur) => (cur === failed.message ? "" : cur));
-    void post(failed);
+    setTurns((prev) => turnsWithoutRetriedExchange(prev, failed.retainedTurnIds));
+    setInput((cur) => (cur === failed.body.message ? "" : cur));
+    void post(failed.body);
   }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
@@ -514,7 +515,11 @@ export function NotebookChat({
         )}
         {failed && !busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }} data-testid="send-failed">
-            <span>Couldn&apos;t send — your question is still in the box.</span>
+            <span>
+              {failed.retainedTurnIds
+                ? "Connection interrupted after a safety warning."
+                : "Couldn’t send — your question is still in the box."}
+            </span>
             <button
               type="button"
               onClick={retry}

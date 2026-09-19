@@ -17,6 +17,8 @@ import {
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
+  turnFromIncompleteStream,
+  turnsWithoutRetriedExchange,
 } from "./notebook-chat-utils";
 
 import { visualObservationCaption } from "./notebook-chat-utils";
@@ -675,6 +677,50 @@ describe("stoppedTurnFromAbort — preserve safety, discard unsupported evidence
 
   it("does not retain an ordinary non-abort failure without a safety warning", () => {
     expect(retainedSafetyStreamFailure(Object.assign(new TypeError("network reset"), { partial: "maybe" }))).toBeNull();
+  });
+});
+
+describe("turnFromIncompleteStream — silent close uses the controller's truth", () => {
+  const result = {
+    content: "SAFETY STOP",
+    citations: [],
+    status: "error" as const,
+    statusMessage: null,
+    basis: null,
+    followups: [],
+    machineEvidence: null,
+    visualEvidence: null,
+    safetyNotice: { kind: "safety_notice" as const, trigger: "smoke coming" },
+    sawStatus: false,
+  };
+
+  it("maps a done:true close caused by the technician's signal to Stopped", () => {
+    expect(turnFromIncompleteStream({ content: "" }, result, true)).toMatchObject({
+      content: "SAFETY STOP",
+      stopped: true,
+      truncated: false,
+      safetyNotice: result.safetyNotice,
+    });
+  });
+
+  it("maps the same close without an aborted signal to transport truncation", () => {
+    expect(turnFromIncompleteStream({ content: "" }, result, false)).toMatchObject({
+      stopped: true,
+      truncated: true,
+      safetyNotice: result.safetyNotice,
+    });
+  });
+});
+
+describe("turnsWithoutRetriedExchange", () => {
+  it("replaces the retained failed exchange before Retry appends it again", () => {
+    const turns = [{ id: "older" }, { id: "u-failed" }, { id: "a-failed" }];
+    expect(turnsWithoutRetriedExchange(turns, ["u-failed", "a-failed"])).toEqual([{ id: "older" }]);
+  });
+
+  it("leaves ordinary retry state alone because that exchange already rolled back", () => {
+    const turns = [{ id: "older" }];
+    expect(turnsWithoutRetriedExchange(turns)).toEqual(turns);
   });
 });
 
