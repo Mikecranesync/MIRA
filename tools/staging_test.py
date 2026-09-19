@@ -84,6 +84,19 @@ CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "gpt-oss-120b")
 CEREBRAS_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
 GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+# Together is the prod engine cascade's third provider (router.py); the judge
+# cascade gets the same fallback so one billing/quota event (Cerebras HTTP 402,
+# 2026-09-07 — #3711) cannot leave the gate with a single live judge.
+TOGETHER_JUDGE_MODEL = os.getenv(
+    "STAGING_JUDGE_TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+)
+TOGETHER_BASE = os.getenv("TOGETHERAI_API_BASE", "https://api.together.xyz/v1")
+# A judge that is unreachable on every provider is an INCONCLUSIVE grade, not a
+# failed reply: the question is redrawn once after this pause, then marked
+# skipped (excluded from the mean / hard-fail math, counted toward the
+# MAX_SKIP_FRACTION harness-degraded guard, which still fails a run whose judge
+# is dead). #3711.
+JUDGE_REDRAW_SLEEP_S = float(os.getenv("STAGING_JUDGE_REDRAW_SLEEP_S", "5"))
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +333,7 @@ def _judge_providers() -> list[JudgeProvider]:
     candidates = [
         JudgeProvider("groq", GROQ_BASE, GROQ_JUDGE_MODEL, "GROQ_API_KEY"),
         JudgeProvider("cerebras", CEREBRAS_BASE, CEREBRAS_JUDGE_MODEL, "CEREBRAS_API_KEY"),
+        JudgeProvider("together", TOGETHER_BASE, TOGETHER_JUDGE_MODEL, "TOGETHERAI_API_KEY"),
         JudgeProvider("gemini", GEMINI_BASE, GEMINI_JUDGE_MODEL, "GEMINI_API_KEY"),
     ]
     return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
@@ -334,7 +348,7 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
     if not providers:
         raise RuntimeError(
             "no judge providers configured — set at least one of "
-            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
+            "GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHERAI_API_KEY / GEMINI_API_KEY"
         )
 
     base_body = {
@@ -396,6 +410,23 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
                 "judge %s HTTP %s — trying next", provider.name, resp.status_code
             )
             continue
+        if resp.status_code == 400 and "json_validate_failed" in resp.text and "response_format" in body:
+            # Groq rejects its OWN empty generation: gpt-oss-120b sometimes emits
+            # no JSON content under response_format=json_object, and Groq turns
+            # that into a 400 (`failed_generation: ""`). Measured 2026-09-09
+            # (#3711): the same request without response_format returns a
+            # parseable JSON object. Retry this provider once in plain mode
+            # before falling through to the next one.
+            logger.warning("judge %s json_validate_failed — retrying once without response_format", provider.name)
+            plain = {k: v for k, v in body.items() if k != "response_format"}
+            try:
+                resp = await client.post(
+                    f"{provider.api_base}/chat/completions", json=plain, headers=headers
+                )
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+                attempts.append(f"{provider.name}={type(exc).__name__}")
+                logger.warning("judge %s transport error on plain retry: %s — trying next", provider.name, exc)
+                continue
         try:
             resp.raise_for_status()
             data = resp.json()
@@ -509,6 +540,56 @@ async def judge_with_confirmation(
 # ---------------------------------------------------------------------------
 
 
+class JudgeUnavailable(RuntimeError):
+    """Every judge provider failed on the draw AND on the single redraw."""
+
+
+async def judge_or_redraw(
+    draw: "Callable[[], Awaitable[tuple[Score, list[str]]]]",
+    question_id: str,
+    *,
+    sleep: "Callable[[float], Awaitable[None]]" = asyncio.sleep,
+    sleep_s: float = JUDGE_REDRAW_SLEEP_S,
+) -> tuple[Score, list[str]]:
+    """Run one confirmed judgement; if the judge itself is unreachable, redraw once.
+
+    `judge_reply` raises RuntimeError when ALL providers failed (transport, 4xx/5xx,
+    unparseable output). That is a fact about the judge, not about the reply, so it
+    must not become `passed=False` for a question the diff may not even touch
+    (#3711: a Cerebras 402 + Groq 400 on the retry killed a required check on a
+    one-line front-end PR). One redraw after a pause absorbs a transient; a second
+    failure raises JudgeUnavailable and the caller records the question as
+    inconclusive (skipped). Scores are never shopped: a draw that RETURNS is final.
+    """
+    try:
+        return await draw()
+    except RuntimeError as exc:
+        logger.warning(
+            "%s: judge unavailable (%s) — redrawing once after %.0fs", question_id, exc, sleep_s
+        )
+        await sleep(sleep_s)
+    try:
+        return await draw()
+    except RuntimeError as exc:
+        raise JudgeUnavailable(str(exc)) from exc
+
+
+def inconclusive_result(
+    question: Question, reply: str, elapsed_s: float, exc: Exception
+) -> QuestionResult:
+    """The judge could not grade this reply — inconclusive, not failed, not passed."""
+    reason = f"judge_unavailable: {exc}"
+    return QuestionResult(
+        question=question,
+        reply=reply,
+        elapsed_s=elapsed_s,
+        score=Score(judge_reason=f"inconclusive: {exc}"),
+        passed=False,
+        skipped=True,
+        skip_reason=reason,
+    )
+
+
 async def run_question(
     supervisor: Supervisor,
     judge_client: httpx.AsyncClient,
@@ -573,9 +654,16 @@ async def run_question(
                 skip_reason=embed_signal.pattern_hit,
             )
 
-        score, fail_reasons = await judge_with_confirmation(
-            lambda: judge_reply(judge_client, question, reply), question.id
-        )
+        try:
+            score, fail_reasons = await judge_or_redraw(
+                lambda: judge_with_confirmation(
+                    lambda: judge_reply(judge_client, question, reply), question.id
+                ),
+                question.id,
+            )
+        except JudgeUnavailable as exc:
+            logger.error("%s: inconclusive — %s", question.id, exc)
+            return inconclusive_result(question, reply, elapsed, exc)
         return QuestionResult(
             question=question,
             reply=reply,
