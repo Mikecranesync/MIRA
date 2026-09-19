@@ -27,10 +27,13 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
-  claimNotebookTurnRequest: vi.fn(async () => ({
-    status: "claimed" as const,
-    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-  })),
+  claimNotebookTurnRequest: vi.fn(
+    async (): Promise<import("@/lib/equipment-notebooks").NotebookTurnRequestClaim> => ({
+      status: "claimed",
+      claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    }),
+  ),
+  abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => undefined),
   // I3: the route resolves the notebook's bound asset; unbound keeps the
   // pre-081 behaviour these suites assert.
@@ -161,7 +164,10 @@ describe("notebook chat safety hard-stop", () => {
       expect.objectContaining({
         answerStatus: "answered",
         answerText: SAFETY_STOP,
-        evidence: [{ kind: "safety_notice", trigger: expect.any(String) }],
+        evidence: expect.arrayContaining([
+          { kind: "safety_notice", trigger: expect.any(String) },
+          { kind: "safety_stop", trigger: expect.any(String) },
+        ]),
         model: null,
         clientRequestId,
       }),
@@ -183,6 +189,10 @@ describe("notebook chat safety hard-stop", () => {
         basis: null,
       },
     });
+    // Replay is terminal truth owned by the request id. A source can be
+    // detached or lose approval after the first send; current source state
+    // must not suppress the already-persisted Safety STOP.
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_approved" });
 
     const res = await POST(
       chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }),
@@ -199,6 +209,7 @@ describe("notebook chat safety hard-stop", () => {
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    expect(domainMock.validateChatSources).not.toHaveBeenCalled();
   });
 
   it("refuses a concurrent duplicate while the first request owns the key", async () => {
@@ -218,6 +229,26 @@ describe("notebook chat safety hard-stop", () => {
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("releases its lease token when pre-stream setup throws", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.resolveBoundAsset.mockRejectedValueOnce(new Error("asset lookup unavailable"));
+
+    await expect(
+      POST(
+        chatReq({ message: "how do I inspect this drive?", sourceDocIds: [DOC_A], clientRequestId }),
+        params,
+      ),
+    ).rejects.toThrow("asset lookup unavailable");
+
+    expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      NB,
+      "u1",
+      clientRequestId,
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    );
   });
 
   it("safety_notice trigger matches the X-Safety-Stop header", async () => {

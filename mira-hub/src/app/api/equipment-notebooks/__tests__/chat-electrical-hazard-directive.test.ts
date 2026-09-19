@@ -19,6 +19,8 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  claimNotebookTurnRequest: vi.fn(),
+  abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => undefined),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({ id: NB, displayName: "MCC Feeder" })),
@@ -120,6 +122,49 @@ describe("energized-electrical hazard directive (#3763)", () => {
         ]),
       }),
     );
+  });
+
+  it("replays an electrical directive as an ordinary grounded answer, not a terminal Safety STOP", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-directive",
+        question: SAFETY_03,
+        answerStatus: "answered",
+        answerText: "De-energize first [1].",
+        enabledSourceDocIds: [DOC_A],
+        evidence: [
+          { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD },
+          {
+            citationId: "1",
+            docId: DOC_A,
+            sourceTitle: "mcc.pdf",
+            page: 4,
+            fileId: null,
+            quote: "Feeder hum can indicate loose laminations.",
+          },
+        ],
+        model: "Groq:test",
+        basis: "oem_documentation",
+      },
+    });
+
+    const res = await POST(
+      chatReq({
+        message: SAFETY_03,
+        sourceDocIds: [DOC_A],
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+    const text = await res.text();
+
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(text).not.toContain('"kind":"safety"');
+    expect(text).toContain('"citations":[{"citationId":"1"');
+    expect(text).toContain('"basis":"oem_documentation"');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps Tier-1 immediate precedence: an active incident still hard-stops", async () => {

@@ -107,6 +107,7 @@ import type {
   NotebookStatusFrame,
   NotebookChatFrame,
   SafetyNoticeEntry,
+  SafetyStopEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -114,6 +115,7 @@ import type {
 import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
+  isSafetyStopEntry,
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
@@ -512,7 +514,17 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     (entry): entry is EvidenceCitation =>
       typeof entry === "object" && entry !== null && typeof (entry as { docId?: unknown }).docId === "string",
   );
-  const safetyNotice = turn.evidence.find(isSafetyNoticeEntry) ?? null;
+  const explicitSafetyStop = turn.evidence.find(isSafetyStopEntry) ?? null;
+  const safetyNotices = turn.evidence.filter(isSafetyNoticeEntry);
+  const safetyNotice = explicitSafetyStop
+    ? (safetyNotices.find((entry) => entry.trigger === explicitSafetyStop.trigger) ?? safetyNotices.at(-1) ?? null)
+    : (safetyNotices[0] ?? null);
+  // Compatibility for terminal rows written before the explicit marker
+  // shipped: directive answers have a basis; hard stops are answered with no
+  // basis. New rows always carry `safety_stop` so this inference can sunset.
+  const terminalSafetyNotice = safetyNotice && (
+    explicitSafetyStop !== null || (turn.answerStatus === "answered" && turn.basis === null)
+  ) ? safetyNotice : null;
   const machineEvidence = turn.evidence.find(isMachineEvidenceEntry) ?? null;
   const visualEvidence = turn.evidence.find(isVisualObservationEntry) ?? null;
   const identityDisputed = turn.evidence.some(
@@ -527,12 +539,12 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
 
       const sources: NotebookSourcesFrame = {
         kind: "sources",
-        citations: safetyNotice ? [] : citations,
+        citations: terminalSafetyNotice ? [] : citations,
         sourceSnapshot: turn.enabledSourceDocIds,
       };
-      if (safetyNotice) {
+      if (terminalSafetyNotice) {
         emit(sources);
-        emit({ kind: "safety", trigger: safetyNotice.trigger });
+        emit({ kind: "safety", trigger: terminalSafetyNotice.trigger });
         if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
         if (turn.answerText) {
           for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
@@ -581,7 +593,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
       "X-Idempotent-Replay": "true",
-      ...(safetyNotice ? { "X-Safety-Stop": safetyNotice.trigger } : {}),
+      ...(terminalSafetyNotice ? { "X-Safety-Stop": terminalSafetyNotice.trigger } : {}),
     },
   });
 }
@@ -706,9 +718,69 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // trigger keeps the terminal SAFETY_STOP exactly as before.
   const electricalHazardDirective = safetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
 
+  // Own/replay the idempotency key before consulting mutable source approval
+  // or membership. The key is bound to the full original request payload, so
+  // a completed turn remains replayable even if a source is later detached;
+  // a changed payload fails closed instead of inheriting that terminal truth.
+  let requestClaimToken: string | null = null;
+  if (clientRequestId) {
+    try {
+      const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
+        ownerUserId: ctx.userId,
+        clientRequestId,
+        question: message,
+        threadId,
+        requestPayload: body,
+      });
+      if (claim.status === "replay") return replayNotebookTurnResponse(claim.turn);
+      if (claim.status === "in_progress") {
+        return NextResponse.json(
+          { error: "request_in_progress", message: "This request is still being completed." },
+          { status: 409, headers: { "Retry-After": "2" } },
+        );
+      }
+      if (claim.status === "mismatch") {
+        return NextResponse.json(
+          { error: "client_request_id_reused", message: "That request id belongs to a different chat request." },
+          { status: 409 },
+        );
+      }
+      requestClaimToken = claim.claimToken;
+    } catch (err) {
+      if (err instanceof NotebookNotFoundError) {
+        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+      }
+      throw err;
+    }
+  }
+  const abandonRequestClaim = () => clientRequestId && requestClaimToken
+    ? abandonNotebookTurnRequest(
+        ctx.tenantId,
+        notebookId,
+        ctx.userId,
+        clientRequestId,
+        requestClaimToken,
+      )
+    : Promise.resolve();
+  const releaseClaimOnFailure = async <T>(operation: () => Promise<T>): Promise<T> => {
+    try {
+      return await operation();
+    } catch (err) {
+      await abandonRequestClaim().catch((releaseErr) => {
+        console.error(
+          "[notebook-chat] request claim release failed:",
+          releaseErr instanceof Error ? releaseErr.message : releaseErr,
+        );
+      });
+      throw err;
+    }
+  };
+
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
-  const validated = await validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []);
+  const validated = await releaseClaimOnFailure(() =>
+    validateChatSources(ctx.tenantId, notebookId, body.sourceDocIds ?? []),
+  );
   if (!validated.ok) {
     // 086 / private conversations §2: `no_sources_selected` is returned from an
     // early `requestedDocIds.length === 0` check that never touches the
@@ -719,7 +791,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // nonexistent id is a 404 with nothing spent and nothing written. The
     // grounded path needs no extra query — validateChatSources already proved
     // membership for every id in docIds.
-    if (validated.error === "no_sources_selected" && !(await getNotebook(ctx.tenantId, notebookId))) {
+    if (
+      validated.error === "no_sources_selected" &&
+      !(await releaseClaimOnFailure(() => getNotebook(ctx.tenantId, notebookId)))
+    ) {
+      await abandonRequestClaim();
       return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
     }
     // "Smoke is coming from the panel" in a notebook with nothing attached must
@@ -752,6 +828,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : validated.error === "no_sources_selected"
             ? 422
             : 403;
+      await abandonRequestClaim();
       return NextResponse.json({ error: validated.error }, { status });
     }
   }
@@ -761,52 +838,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
-  // Own the idempotency key BEFORE any photo/machine reads, retrieval, or
-  // provider work. A completed duplicate replays the immutable stored turn;
-  // a concurrent duplicate cannot start a second nondeterministic execution.
-  let requestClaimToken: string | null = null;
-  if (clientRequestId) {
-    try {
-      const claim = await claimNotebookTurnRequest(ctx.tenantId, notebookId, {
-        ownerUserId: ctx.userId,
-        clientRequestId,
-        question: message,
-        threadId,
-        requestPayload: body,
-      });
-      if (claim.status === "replay") return replayNotebookTurnResponse(claim.turn);
-      if (claim.status === "in_progress") {
-        return NextResponse.json(
-          { error: "request_in_progress", message: "This request is still being completed." },
-          { status: 409, headers: { "Retry-After": "2" } },
-        );
-      }
-      if (claim.status === "mismatch") {
-        return NextResponse.json(
-          { error: "client_request_id_reused", message: "That request id belongs to a different chat request." },
-          { status: 409 },
-        );
-      }
-      requestClaimToken = claim.claimToken;
-    } catch (err) {
-      if (err instanceof NotebookNotFoundError) {
-        return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
-      }
-      throw err;
-    }
-  }
-  const abandonRequestClaim = () => clientRequestId
-    ? abandonNotebookTurnRequest(ctx.tenantId, notebookId, ctx.userId, clientRequestId)
-    : Promise.resolve();
-
   // Verify the claimed photo before any terminal refusal. This bounded,
   // tenant-scoped lookup does not make the photo grounding and never delays a
   // stop on provider/RAG work; it only preserves the attachment on the record.
-  const visualEntry = await verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId);
+  const visualEntry = await releaseClaimOnFailure(() =>
+    verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
+  );
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
-  const boundAsset: ResolvedAsset = await resolveBoundAsset(ctx.tenantId, notebookId);
+  const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
+    resolveBoundAsset(ctx.tenantId, notebookId),
+  );
   // Private conversations §3: a client-supplied asset id is a REQUEST, not
   // truth. Machine history / live evidence is served only for the notebook's
   // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
@@ -860,7 +903,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger && !electricalHazardDirective) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
-    await recordTurn(ctx.tenantId, notebookId, {
+    const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
+    await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
@@ -870,10 +914,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [safetyEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+      evidence: [safetyEntry, safetyStopEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
       model: null,
       ...assetSnapshot,
-    });
+    }));
     return safetyStopResponse(safetyTrigger, docIds, identityDisputed, visualEntry);
   }
   // Evaluated AFTER the safety stop, deliberately: a hazard report is never
@@ -1030,27 +1074,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // General mode reads nothing at all: no retrieval SQL, no doc scope. The
   // `nodeId === null` arm is the same case — only the general path can reach
   // here without `validated.ok`, since every other branch returned above.
-  const chunks: ManualChunk[] = general || nodeId === null ? [] : await withTenantContext(ctx.tenantId, (client) =>
-    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
-      nodeId,
-      unsPath: null, // notebook nodes are standalone; scope is the doc set
-      topK: 6,
-      docIds,
-      rawQuery: message,
-      // validateChatSources() has already proven tenant + notebook membership
-      // for every id in docIds — the validated doc set is the boundary, so a
-      // document linked from another notebook's node stays retrievable here.
-      validatedDocScope: true,
-      // Workstream A (#3437/#3468): the SAME server-derived set is the
-      // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
-      // validateChatSources derives it (tenant-owned, notebook-linked,
-      // enabled, user_confirmed/verified, not superseded); the client's
-      // `body.sourceDocIds` was only an intersection request. Tenant-private
-      // chunks of these docs are admitted without ever being marked globally
-      // verified — confirmation is admission, not corpus promotion.
-      approvedSourceDocIds: docIds,
-    }),
-  );
+  const chunks: ManualChunk[] = general || nodeId === null
+    ? []
+    : await releaseClaimOnFailure(() =>
+        withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
+            nodeId,
+            unsPath: null, // notebook nodes are standalone; scope is the doc set
+            topK: 6,
+            docIds,
+            rawQuery: message,
+            // validateChatSources() has already proven tenant + notebook membership
+            // for every id in docIds — the validated doc set is the boundary, so a
+            // document linked from another notebook's node stays retrievable here.
+            validatedDocScope: true,
+            // Workstream A (#3437/#3468): the SAME server-derived set is the
+            // retrieval-admission authority under MIRA_ENFORCE_APPROVED_RETRIEVAL.
+            // validateChatSources derives it (tenant-owned, notebook-linked,
+            // enabled, user_confirmed/verified, not superseded); the client's
+            // `body.sourceDocIds` was only an intersection request. Tenant-private
+            // chunks of these docs are admitted without ever being marked globally
+            // verified — confirmation is admission, not corpus promotion.
+            approvedSourceDocIds: docIds,
+          }),
+        ),
+      );
 
   const enc = new TextEncoder();
 
@@ -1077,7 +1125,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // behaviour byte-identical.
   if (chunks.length === 0 && !general && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
-    await recordTurn(ctx.tenantId, notebookId, {
+    await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
@@ -1097,7 +1145,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // machine — omitting the snapshot here would make "what has MIRA been
       // asked about this conveyor" silently under-count refusals.
       ...assetSnapshot,
-    });
+    }));
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const sources: NotebookSourcesFrame = {
@@ -1136,7 +1184,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
+  const citations = await releaseClaimOnFailure(() =>
+    buildCitations(ctx.tenantId, notebookId, chunks, message),
+  );
 
   // Approved-context gate — for MACHINE evidence only (D3). Mirrors the asset
   // chat route's summary: live real signals count as approved context; the
@@ -1317,6 +1367,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       clientAbort.abort();
     },
     async start(controller) {
+      try {
       // 086 §3: the dispute marker goes out before the first content byte, so
       // a Stop mid-answer (persisted WITH the dispute) has already shown it.
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
@@ -1673,48 +1724,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "insufficient_evidence"
           : "answered";
 
-      // An unsafe replacement is already a terminal Safety STOP. Emit its
-      // warning before the first stoppable content byte so an interruption can
-      // never erase the server's authoritative safety determination.
-      if (outputRejected?.kind === "unsafe_answer") {
-        controller.enqueue(
-          enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
-        );
-      }
-
-      // B2: release the ACCEPTED answer. Content precedes sources/basis/status
-      // for ordinary answers; chunked on whitespace so
-      // clients keep their incremental-render path. Time-to-first-accepted-
-      // content is logged — the gate trades first-token latency for the
-      // guarantee that no unvalidated byte is ever displayed.
-      if (gate && served && answerText) {
-        for (const piece of chunkForRelease(answerText)) {
-          controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
-        }
-        console.log(
-          `[notebook-chat] gate released ${answerText.length} chars at +${Date.now() - turnStartedAt}ms` +
-            (outputRejected ? ` (replacement for ${outputRejected.violation})` : ""),
-        );
-      }
-
       const sourcesFrame: NotebookSourcesFrame = {
         kind: "sources",
         citations: emittedCitations,
         sourceSnapshot: docIds,
       };
-      controller.enqueue(enc.encode(sse(sourcesFrame)));
-
-      // Evidence basis (spec §1.3) — emitted before `status` so a client that
-      // stops at `status` has still received it, same discipline as `usage`.
-      // Says out loud what the answer rests on, so general reasoning can never
-      // be mistaken for a manual.
-      // With machine evidence (§4.4): `live_machine_evidence` only when the
-      // asset's CURRENT signals roll up fresh; anything else is
-      // `machine_history` — a replay is never labelled live (contract §2.8).
-      // An empty or unavailable window claims NO machine basis (see
-      // `machineGrounded` above): the turn keeps the basis it would have had
-      // without the selection, and the entry rides along additively so the
-      // client can render the honest caption.
       const evidenceFrame: NotebookBasisEvidenceFrame = groundedMachineEntry
         ? groundedMachineEntry.freshness === "live"
           ? {
@@ -1742,11 +1756,90 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               basis: "oem_documentation",
               label: "Grounded in this notebook's sources.",
             };
-      // The machine entry and the verified visual observation ride on the SAME
-      // frame, additively — the basis and label above are untouched by them.
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
+
+      // Complete the durable turn before touching the response controller.
+      // Cancellation during the semantic judge closes that controller; a
+      // later enqueue may throw, but terminal truth must already be replayable.
+      try {
+        await recordTurn(ctx.tenantId, notebookId, {
+          ownerUserId: ctx.userId,
+          threadId,
+          clientRequestId,
+          claimToken: requestClaimToken,
+          question: message,
+          answerStatus,
+          answerText: served ? answerText : null,
+          enabledSourceDocIds: docIds,
+          evidence: served
+            ? outputRejected?.kind === "unsafe_answer"
+              ? [
+                  ...hazardEntries,
+                  { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
+                  { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
+                  ...disputeEntries,
+                  ...(visualEntry ? [visualEntry] : []),
+                ]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
+          model: servedModel,
+          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
+          ...assetSnapshot,
+        });
+      } catch (err) {
+        console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
+        if (clientRequestId) {
+          await abandonRequestClaim().catch(() => undefined);
+          try {
+            controller.error(err);
+          } catch {
+            // The cancelled client already owns the transport failure.
+          }
+          return;
+        }
+      }
+
+      // An unsafe replacement is already a terminal Safety STOP. Emit its
+      // warning before the first stoppable content byte so an interruption can
+      // never erase the server's authoritative safety determination.
+      if (outputRejected?.kind === "unsafe_answer") {
+        controller.enqueue(
+          enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
+        );
+      }
+
+      // B2: release the ACCEPTED answer. Content precedes sources/basis/status
+      // for ordinary answers; chunked on whitespace so
+      // clients keep their incremental-render path. Time-to-first-accepted-
+      // content is logged — the gate trades first-token latency for the
+      // guarantee that no unvalidated byte is ever displayed.
+      if (gate && served && answerText) {
+        for (const piece of chunkForRelease(answerText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
+        }
+        console.log(
+          `[notebook-chat] gate released ${answerText.length} chars at +${Date.now() - turnStartedAt}ms` +
+            (outputRejected ? ` (replacement for ${outputRejected.violation})` : ""),
+        );
+      }
+
+      controller.enqueue(enc.encode(sse(sourcesFrame)));
+
+      // Evidence basis (spec §1.3) — emitted before `status` so a client that
+      // stops at `status` has still received it, same discipline as `usage`.
+      // Says out loud what the answer rests on, so general reasoning can never
+      // be mistaken for a manual.
+      // With machine evidence (§4.4): `live_machine_evidence` only when the
+      // asset's CURRENT signals roll up fresh; anything else is
+      // `machine_history` — a replay is never labelled live (contract §2.8).
+      // An empty or unavailable window claims NO machine basis (see
+      // `machineGrounded` above): the turn keeps the basis it would have had
+      // without the selection, and the entry rides along additively so the
+      // client can render the honest caption.
+      // The machine entry and the verified visual observation ride on the SAME
+      // frame, additively — the basis and label above are untouched by them.
       if (outputRejected?.kind === "unsafe_answer") {
         // The replacement IS the safety stop: same grammar as the input-side
         // stop — no basis-bearing evidence frame. The rejected candidate's
@@ -1806,49 +1899,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
 
-      try {
-        await recordTurn(ctx.tenantId, notebookId, {
-          // 086: the owner is the authenticated technician (session), never the body.
-          ownerUserId: ctx.userId,
-          threadId,
-          clientRequestId,
-          claimToken: requestClaimToken,
-          question: message,
-          answerStatus,
-          answerText: served ? answerText : null,
-          enabledSourceDocIds: docIds,
-          // D5: the machine window rides INSIDE evidence[] next to the
-          // citations, discriminated by `kind`. Never in `citations` or
-          // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
-          // B2: an unsafe-rejected turn persists like an input-side safety stop
-          // — a safety_notice entry, no citations or machine entry, and NO
-          // basis claim. A verified photo is retained as non-grounding turn
-          // context, matching the input-side stop; the rejected draft itself
-          // is never stored.
-          evidence: served
-            ? outputRejected?.kind === "unsafe_answer"
-              ? [
-                  ...hazardEntries,
-                  { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
-                  ...disputeEntries,
-                  ...(visualEntry ? [visualEntry] : []),
-                ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
-          model: servedModel,
-          // 084 (#3387): persist EXACTLY what the evidence frame streamed —
-          // and only for a served answer. A failed turn makes no basis claim,
-          // and an unsafe-rejected turn makes none either (its evidence frame
-          // was replaced by the safety frame above).
-          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
-          ...assetSnapshot,
-        });
-      } catch (err) {
-        // persistence failure must not break the stream already delivered —
-        // but it must not be invisible either.
-        console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
-      }
-
       // Durable spend ledger (migration 080). Deliberately LAST and non-fatal:
       // the answer is already streamed and already persisted as conversation
       // history, so a telemetry outage must not retroactively destroy a correct,
@@ -1856,17 +1906,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // logs a distinct `turn.usage.persist_failed` event, so a spend gap stays
       // diagnosable without becoming a chat outage.
       if (pendingUsage) {
-        await persistTurnUsage(
-          {
-            tenantId: ctx.tenantId,
-            notebookId,
-            question: message,
-            answerText: served ? answerText : null,
-            citationsPresent: emittedCitations.length > 0,
-            latencyMs: Date.now() - turnStartedAt,
-          },
-          pendingUsage,
-        );
+        // Yield once after close so the consumer observes its terminal body
+        // before telemetry starts. A ledger exception is non-fatal and must
+        // never turn an already-closed, valid answer into a transport error.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        try {
+          await persistTurnUsage(
+            {
+              tenantId: ctx.tenantId,
+              notebookId,
+              question: message,
+              answerText: served ? answerText : null,
+              citationsPresent: emittedCitations.length > 0,
+              latencyMs: Date.now() - turnStartedAt,
+            },
+            pendingUsage,
+          );
+        } catch (err) {
+          console.error("[notebook-chat] usage persistence failed:", err instanceof Error ? err.message : err);
+        }
+      }
+      } catch (err) {
+        req.signal?.removeEventListener("abort", onClientGone);
+        await abandonRequestClaim().catch((releaseErr) => {
+          console.error(
+            "[notebook-chat] request claim release failed:",
+            releaseErr instanceof Error ? releaseErr.message : releaseErr,
+          );
+        });
+        try {
+          controller.error(err);
+        } catch {
+          // A cancelled response controller is already terminal.
+        }
       }
     },
   });

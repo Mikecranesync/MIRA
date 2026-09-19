@@ -76,7 +76,11 @@ const PERSISTED_SAFETY = {
   question: "can I change the belt while it's running?",
   answerStatus: "answered",
   answerText: "Do not work on this equipment while energized. Apply LOTO first.",
-  evidence: [{ kind: "safety_notice", trigger: "loto" }, CITATION],
+  evidence: [
+    { kind: "safety_notice", trigger: "loto" },
+    { kind: "safety_stop", trigger: "loto" },
+    CITATION,
+  ],
   basis: "general_reasoning",
 };
 
@@ -162,7 +166,11 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "answered",
           answerText: "Do not work on this equipment while energized.",
-          evidence: [{ kind: "safety_notice", trigger: null }, CITATION],
+          evidence: [
+            { kind: "safety_notice", trigger: null },
+            { kind: "safety_stop", trigger: "loto" },
+            CITATION,
+          ],
           basis: "general_reasoning",
         },
       ]),
@@ -205,7 +213,10 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "error",
           answerText: "Do not work on this equipment while ener",
-          evidence: [{ kind: "safety_notice", trigger: "loto" }],
+          evidence: [
+            { kind: "safety_notice", trigger: "loto" },
+            { kind: "safety_stop", trigger: "loto" },
+          ],
           basis: null,
         },
       ]),

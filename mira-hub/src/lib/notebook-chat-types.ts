@@ -298,12 +298,30 @@ export type SafetyNoticeEntry = {
   trigger: string;
 };
 
+/** Durable discriminator for a terminal Safety STOP. `safety_notice` is also
+ * used by non-terminal safety directives, so idempotent replay must not infer
+ * a hard stop from that display marker alone. Persist both entries for a stop:
+ * existing clients render `safety_notice`; the server owns `safety_stop`. */
+export type SafetyStopEntry = {
+  kind: "safety_stop";
+  trigger: string;
+};
+
 /** Type guard: an `evidence[]` entry that is a safety-stop marker. */
 export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
   return (
     typeof e === "object" &&
     e !== null &&
     (e as { kind?: unknown }).kind === "safety_notice" &&
+    typeof (e as { trigger?: unknown }).trigger === "string"
+  );
+}
+
+export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "safety_stop" &&
     typeof (e as { trigger?: unknown }).trigger === "string"
   );
 }

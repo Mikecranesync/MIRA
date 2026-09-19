@@ -64,7 +64,7 @@ import { SafetyNotice } from "./SafetyNotice";
 import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
@@ -938,12 +938,12 @@ export function NotebookScreen({
               </>
             )}
             {turns.map((t) => {
-              // FLEET-003: the persisted safety marker is READ from the row
-              // (`{kind:"safety_notice"}` in evidence[], written by FLEET-001),
+              // FLEET-003: terminal safety is READ from the persisted row's
+              // `safety_stop` discriminator (with a narrow legacy fallback),
               // exactly as `basis` is. Before this, the classic screen dropped
               // it on the floor and a LOTO refusal reloaded here wearing full
               // answer chrome — citations, basis, evidence cards.
-              const safety = safetyNoticeEntry(t.evidence);
+              const safety = terminalSafetyNotice(t);
               return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the

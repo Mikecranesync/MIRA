@@ -1306,7 +1306,7 @@ export async function claimNotebookTurnRequest(
          DO UPDATE SET
            client_request_state = CASE WHEN
              t.question = $5
-             AND (t.client_request_payload IS NULL OR t.client_request_payload = $7::jsonb)
+             AND t.client_request_payload = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
@@ -1315,12 +1315,12 @@ export async function claimNotebookTurnRequest(
                  AND t.answer_status = 'error'
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_notice'
+                    WHERE e->>'kind' = 'safety_stop'
                  ))
              ) THEN 'pending' ELSE t.client_request_state END,
            client_request_started_at = CASE WHEN
              t.question = $5
-             AND (t.client_request_payload IS NULL OR t.client_request_payload = $7::jsonb)
+             AND t.client_request_payload = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
@@ -1329,12 +1329,12 @@ export async function claimNotebookTurnRequest(
                  AND t.answer_status = 'error'
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_notice'
+                    WHERE e->>'kind' = 'safety_stop'
                  ))
              ) THEN now() ELSE t.client_request_started_at END,
            client_request_claim_token = CASE WHEN
              t.question = $5
-             AND (t.client_request_payload IS NULL OR t.client_request_payload = $7::jsonb)
+             AND t.client_request_payload = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
@@ -1343,12 +1343,12 @@ export async function claimNotebookTurnRequest(
                  AND t.answer_status = 'error'
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_notice'
+                    WHERE e->>'kind' = 'safety_stop'
                  ))
              ) THEN (SELECT token FROM candidate) ELSE t.client_request_claim_token END,
            client_request_payload = CASE WHEN
              t.question = $5
-             AND (t.client_request_payload IS NULL OR t.client_request_payload = $7::jsonb)
+             AND t.client_request_payload = $7::jsonb
              AND (
                (t.client_request_state = 'pending'
                  AND t.client_request_started_at < now() - interval '10 minutes')
@@ -1357,9 +1357,9 @@ export async function claimNotebookTurnRequest(
                  AND t.answer_status = 'error'
                  AND NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
-                    WHERE e->>'kind' = 'safety_notice'
+                    WHERE e->>'kind' = 'safety_stop'
                  ))
-             ) THEN COALESCE(t.client_request_payload, $7::jsonb) ELSE t.client_request_payload END
+             ) THEN $7::jsonb ELSE t.client_request_payload END
          RETURNING t.client_request_claim_token::text AS claim_token,
                    t.client_request_state, t.client_request_payload,
                    t.id::text, t.question, t.answer_status, t.answer_text,
@@ -1367,8 +1367,8 @@ export async function claimNotebookTurnRequest(
        )
        SELECT CASE
                 WHEN claimed.question <> $5
-                  OR (claimed.client_request_payload IS NOT NULL
-                    AND claimed.client_request_payload <> $7::jsonb)
+                  OR claimed.client_request_payload IS NULL
+                  OR claimed.client_request_payload <> $7::jsonb
                   THEN 'mismatch'
                 WHEN claimed.claim_token = candidate.token::text THEN 'claimed'
                 WHEN claimed.client_request_state = 'complete' THEN 'replay'
@@ -1405,15 +1405,17 @@ export async function abandonNotebookTurnRequest(
   notebookId: string,
   ownerUserId: string,
   clientRequestId: string | null,
+  claimToken: string | null,
 ): Promise<void> {
-  if (!clientRequestId) return;
+  if (!clientRequestId || !claimToken) return;
   await withTenantContext(tenantId, async (c) => {
     await c.query(
       `DELETE FROM equipment_notebook_turns
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND owner_user_id = $3 AND client_request_id = $4::uuid
-          AND client_request_state = 'pending'`,
-      [tenantId, notebookId, ownerUserId, clientRequestId],
+          AND client_request_state = 'pending'
+          AND client_request_claim_token = $5::uuid`,
+      [tenantId, notebookId, ownerUserId, clientRequestId, claimToken],
     );
   });
 }

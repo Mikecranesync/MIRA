@@ -355,6 +355,41 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(hydrated.parts.some((p) => p.type === "observation")).toBe(true);
   });
 
+  it("keeps a non-terminal electrical directive as a cited, basis-bearing answer", () => {
+    const a = hydrateMessages([
+      {
+        ...PERSISTED[0],
+        evidence: [
+          ...CITATIONS,
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+        ],
+      },
+    ])[1];
+
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(false);
+    expect(citationsOf(a)).toHaveLength(2);
+    expect(a.parts.some((p) => p.type === "basis" && p.basis === "oem_documentation")).toBe(true);
+  });
+
+  it("recognizes safety_stop as a terminal discriminator, not unknown evidence", () => {
+    const a = hydrateMessages([
+      {
+        id: "t-stop",
+        question: "can I open it live?",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
+        basis: null,
+      },
+    ])[1];
+
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(a.parts.some((p) => p.type === "unknown")).toBe(false);
+  });
+
   it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
     const live = liveTurnMessages(
       "q",
@@ -372,7 +407,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
         question: "q",
         answerStatus: "answered",
         answerText: "STOP.",
-        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
         basis: null,
       },
     ])[1];
@@ -507,7 +545,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
         question: "q",
         answerStatus: "error",
         answerText: "STOP. Lock out fir",
-        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
         basis: null,
       },
     ])[1];
@@ -555,7 +596,11 @@ describe("live ≡ hydrated parity (the invariant)", () => {
           question: "can I open it live?",
           answerStatus: "answered",
           answerText: "Do not work on this equipment while energized.",
-          evidence: [marker, { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" }],
+          evidence: [
+            marker,
+            { kind: "safety_stop", trigger: "loto" },
+            { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" },
+          ],
           basis: "general_reasoning",
         } as never,
       ])[1];

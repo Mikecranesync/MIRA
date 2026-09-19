@@ -21,6 +21,7 @@ vi.mock("@/lib/tenant-context", () => tenantMock);
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
 
 import {
+  abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
   listThreads,
   listTurns,
@@ -94,6 +95,8 @@ describe("claimNotebookTurnRequest — atomic execution ownership and replay", (
     expect(calls[0].sql).toMatch(/'pending'/i);
     expect(calls[0].sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO UPDATE/i);
     expect(calls[0].sql).toMatch(/candidate\.token/i);
+    expect(calls[0].sql).toMatch(/client_request_payload IS NULL[\s\S]+THEN 'mismatch'/i);
+    expect(calls[0].sql).not.toMatch(/client_request_payload IS NULL OR/i);
     expect(calls[0].sql).toMatch(/FROM\s+equipment_notebooks/i);
     expect(calls[0].values).toEqual(expect.arrayContaining([NB, TENANT, USER_A, clientRequestId, "q", "thrd_a"]));
   });
@@ -149,6 +152,17 @@ describe("claimNotebookTurnRequest — atomic execution ownership and replay", (
         threadId: null,
       }),
     ).resolves.toEqual({ status: "mismatch" });
+  });
+
+  it("abandons only the caller's current lease token", async () => {
+    const calls = wireClaim([]);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const claimToken = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    await abandonNotebookTurnRequest(TENANT, NB, USER_A, clientRequestId, claimToken);
+
+    expect(calls[0].sql).toMatch(/client_request_claim_token\s*=\s*\$5::uuid/i);
+    expect(calls[0].values).toEqual([TENANT, NB, USER_A, clientRequestId, claimToken]);
   });
 });
 

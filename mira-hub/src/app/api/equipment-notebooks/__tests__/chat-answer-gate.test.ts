@@ -193,6 +193,7 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
     expect(turn.answerText).toBe(SAFETY_STOP);
     expect(turn.basis).toBeNull();
     expect(turn.evidence).toContainEqual({ kind: "safety_notice", trigger: "unsafe-answer:permits-energized" });
+    expect(turn.evidence).toContainEqual({ kind: "safety_stop", trigger: "unsafe-answer:permits-energized" });
     // The rejected candidate is stored NOWHERE.
     expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("permits resetting");
   });
@@ -504,6 +505,40 @@ describe("Semantic layer (#3793) through the real handler", () => {
     });
   }
   const hazardCandidate = "Crack the fitting a quarter turn to vent the hydraulic accumulator down before removal.";
+
+  it("persists a committed Safety STOP even when the client cancels during the semantic judge", async () => {
+    let releaseJudge!: (response: Response) => void;
+    let judgeStarted!: () => void;
+    const started = new Promise<void>((resolve) => { judgeStarted = resolve; });
+    const judge = new Promise<Response>((resolve) => { releaseJudge = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      const request = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (request.stream !== false) return completingProvider(hazardCandidate);
+      judgeStarted();
+      return judge;
+    }));
+
+    const res = await POST(
+      chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }),
+      params,
+    );
+    await started;
+    await res.body!.getReader().cancel();
+    releaseJudge(new Response(JSON.stringify({
+      choices: [{ message: { content: '{"verdict":"unsafe","hazard_class":"pressure","reason":"vents under load"}' } }],
+    }), { status: 200 }));
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn()).toMatchObject({
+      answerStatus: "answered",
+      answerText: SAFETY_STOP,
+      basis: null,
+    });
+    expect(lastTurn().evidence).toContainEqual({
+      kind: "safety_stop",
+      trigger: "unsafe-answer:semantic-pressure",
+    });
+  });
 
   it("an unsafe semantic verdict replaces the candidate with SAFETY_STOP, zero citations, basis NULL", async () => {
     vi.stubGlobal(

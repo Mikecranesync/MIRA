@@ -27,6 +27,7 @@ const { pool } = await vi.hoisted(async () => {
 vi.mock("@/lib/db", () => ({ default: pool }));
 
 import {
+  abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
   listTurns,
   NotebookNotFoundError,
@@ -142,7 +143,10 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
       answerStatus: "answered" as const,
       answerText: "SAFETY STOP",
       enabledSourceDocIds: [] as string[],
-      evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+      evidence: [
+        { kind: "safety_notice", trigger: "smoke" },
+        { kind: "safety_stop", trigger: "smoke" },
+      ],
       model: null,
       ownerUserId: USER_A,
       clientRequestId,
@@ -163,7 +167,10 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
         answerStatus: "answered",
         answerText: "SAFETY STOP",
         enabledSourceDocIds: [],
-        evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+        evidence: [
+          { kind: "safety_notice", trigger: "smoke" },
+          { kind: "safety_stop", trigger: "smoke" },
+        ],
         model: null,
         basis: null,
       },
@@ -175,5 +182,75 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
       [TENANT_A, nbA, USER_A, clientRequestId],
     );
     expect(landed.rows[0].n).toBe(1);
+  });
+
+  it("does not let a stale claimant abandon a successor's recovered lease", async () => {
+    const clientRequestId = "dddddddd-0000-4000-8000-00000000000d";
+    const requestPayload = { message: "lease takeover", sourceDocIds: [] };
+    const first = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "lease takeover",
+      requestPayload,
+    });
+    if (first.status !== "claimed") throw new Error("expected the first lease");
+
+    await q(
+      `UPDATE equipment_notebook_turns
+          SET client_request_started_at = now() - interval '11 minutes'
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+
+    const successor = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "lease takeover",
+      requestPayload,
+    });
+    if (successor.status !== "claimed") throw new Error("expected the stale lease to be recovered");
+    expect(successor.claimToken).not.toBe(first.claimToken);
+
+    await abandonNotebookTurnRequest(TENANT_A, nbA, USER_A, clientRequestId, first.claimToken);
+    await expect(
+      claimNotebookTurnRequest(TENANT_A, nbA, {
+        ownerUserId: USER_A,
+        clientRequestId,
+        question: "lease takeover",
+        requestPayload,
+      }),
+    ).resolves.toEqual({ status: "in_progress" });
+
+    const row = await q(
+      `SELECT client_request_claim_token::text AS claim_token
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    expect(row.rows[0].claim_token).toBe(successor.claimToken);
+  });
+
+  it("fails closed on a keyed 088 row whose request payload was never backfilled", async () => {
+    const clientRequestId = "eeeeeeee-0000-4000-8000-00000000000e";
+    await q(
+      `INSERT INTO equipment_notebook_turns
+        (notebook_id, tenant_id, question, answer_status, answer_text,
+         enabled_source_doc_ids, evidence, owner_user_id, client_request_id,
+         client_request_state, client_request_payload)
+       VALUES ($1::uuid, $2::uuid, 'legacy keyed request', 'answered', 'old answer',
+               '[]'::jsonb, '[]'::jsonb, $3, $4::uuid, 'complete', NULL)`,
+      [nbA, TENANT_A, USER_A, clientRequestId],
+    );
+
+    await expect(
+      claimNotebookTurnRequest(TENANT_A, nbA, {
+        ownerUserId: USER_A,
+        clientRequestId,
+        question: "legacy keyed request",
+        requestPayload: { message: "legacy keyed request", sourceDocIds: ["changed"] },
+      }),
+    ).resolves.toEqual({ status: "mismatch" });
   });
 });

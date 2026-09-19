@@ -5,6 +5,7 @@
 import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
+  isSafetyStopEntry,
   isVisualObservationEntry,
   parseFrame,
   type EvidenceBasis,
@@ -12,6 +13,7 @@ import {
   type MachineEvidenceEntry,
   type NotebookChatFrame,
   type SafetyNoticeEntry,
+  type SafetyStopEntry,
   type VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 
@@ -365,10 +367,12 @@ export type PersistedTurn = {
   question: string;
   answerStatus: string;
   answerText: string | null;
-  /** Citations, plus (D5) any `{kind:"machine_evidence"}` entries and (safety)
-   *  any `{kind:"safety_notice"}` entries riding in the same JSONB.
+  /** Citations, plus typed machine/visual evidence and the persisted safety
+   *  pair (`safety_notice` display data + `safety_stop` terminal identity).
    *  Non-document entries are split out, never rendered as citations. */
-  evidence: Array<EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry>;
+  evidence: Array<
+    EvidenceCitation | MachineEvidenceEntry | VisualObservationEntry | SafetyNoticeEntry | SafetyStopEntry
+  >;
   basis?: string | null;
 };
 
@@ -392,20 +396,23 @@ export function splitEvidence(evidence: unknown[]): {
   machineEvidence: MachineEvidenceEntry[];
   visualEvidence: VisualObservationEntry[];
   safetyNotice: SafetyNoticeEntry | null;
+  safetyStop: SafetyStopEntry | null;
 } {
   const citations: EvidenceCitation[] = [];
   const machineEvidence: MachineEvidenceEntry[] = [];
   const visualEvidence: VisualObservationEntry[] = [];
   let safetyNotice: SafetyNoticeEntry | null = null;
+  let safetyStop: SafetyStopEntry | null = null;
   for (const e of Array.isArray(evidence) ? evidence : []) {
     if (isMachineEvidenceEntry(e)) machineEvidence.push(e);
     else if (isVisualObservationEntry(e)) visualEvidence.push(e);
     else if (isSafetyNoticeEntry(e)) safetyNotice = e;
+    else if (isSafetyStopEntry(e)) safetyStop = e;
     else if (typeof e === "object" && e !== null && typeof (e as { docId?: unknown }).docId === "string") {
       citations.push(e as EvidenceCitation);
     }
   }
-  return { citations, machineEvidence, visualEvidence, safetyNotice };
+  return { citations, machineEvidence, visualEvidence, safetyNotice, safetyStop };
 }
 
 /** Hydration mapping (reload). STOPPED-TURN CONTRACT (STRM-2, no schema
@@ -418,7 +425,14 @@ export function splitEvidence(evidence: unknown[]): {
 export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
   return rows.flatMap((t) => {
     const stopped = t.answerStatus === "error" && !!t.answerText;
-    const { citations, machineEvidence, visualEvidence, safetyNotice } = splitEvidence(t.evidence);
+    const { citations, machineEvidence, visualEvidence, safetyNotice, safetyStop } = splitEvidence(t.evidence);
+    // `safety_notice` is also used by the non-terminal energized-electrical
+    // directive. New terminal rows carry `safety_stop`; the answer/basis shape
+    // is the narrow compatibility rule for stops written before that marker.
+    const terminalSafetyNotice =
+      safetyNotice && (safetyStop || (t.answerStatus === "answered" && t.basis == null))
+        ? safetyNotice
+        : null;
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -439,7 +453,7 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
         // Safety marker — a reloaded safety turn is distinguishable from a
         // normal `answered` turn: the `safetyNotice` field carries the trigger.
-        ...(!stopped && safetyNotice ? { safetyNotice } : {}),
+        ...(!stopped && terminalSafetyNotice ? { safetyNotice: terminalSafetyNotice } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

@@ -41,7 +41,11 @@ const SAFETY_TURN: NotebookServerTurn = {
   question: "How do I bypass the interlock?",
   answerStatus: "answered",
   answerText: "Stop.",
-  evidence: [CITATION, { kind: "safety_notice", trigger: "bypass the interlock" }],
+  evidence: [
+    CITATION,
+    { kind: "safety_notice", trigger: "bypass the interlock" },
+    { kind: "safety_stop", trigger: "bypass the interlock" },
+  ],
   basis: "documents",
 };
 

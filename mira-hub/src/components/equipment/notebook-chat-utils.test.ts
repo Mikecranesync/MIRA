@@ -453,6 +453,7 @@ describe("persistedTurns tolerates non-document evidence entries (D5)", () => {
       machineEvidence: [machine],
       visualEvidence: [],
       safetyNotice: null,
+      safetyStop: null,
     });
   });
 });
@@ -514,6 +515,7 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
       machineEvidence: [],
       visualEvidence: [],
       safetyNotice: null,
+      safetyStop: null,
     });
   });
 
@@ -802,6 +804,7 @@ describe("safety_notice round-trip (FLEET-001)", () => {
     expect(result.citations).toHaveLength(0);
     expect(result.machineEvidence).toHaveLength(0);
     expect(result.visualEvidence).toHaveLength(0);
+    expect(result.safetyStop).toBeNull();
   });
 
   it("persistedTurns restores safetyNotice on a reloaded safety turn", () => {
@@ -854,5 +857,26 @@ describe("safety_notice round-trip (FLEET-001)", () => {
     const assistant = turns.find((t: { role: string }) => t.role === "assistant");
     expect(assistant!.safetyNotice).toBeUndefined();
     expect(assistant!.citations).toHaveLength(1);
+  });
+
+  it("keeps a non-terminal electrical directive as a cited, basis-bearing answer", () => {
+    const rows: PersistedTurn[] = [
+      {
+        id: "t-directive",
+        question: "Can I measure this energized feeder?",
+        answerStatus: "answered",
+        answerText: "De-energize first [1].",
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { citationId: "1", docId: "doc-a", sourceTitle: "Manual", page: 14, fileId: null, quote: null },
+        ],
+        basis: "oem_documentation",
+      },
+    ];
+
+    const assistant = persistedTurns(rows).find((turn) => turn.role === "assistant")!;
+    expect(assistant.safetyNotice).toBeUndefined();
+    expect(assistant.citations).toHaveLength(1);
+    expect(assistant.basis).toBe("oem_documentation");
   });
 });
