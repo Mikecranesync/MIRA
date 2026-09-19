@@ -25,12 +25,13 @@ if (!("scrollTo" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
 }
 
-const { nativePlatform, askNotebook, getNotebookDetail, lookAtPhoto, pickPhoto } = vi.hoisted(() => ({
+const { nativePlatform, askNotebook, getNotebookDetail, lookAtPhoto, pickPhoto, capturePhoto } = vi.hoisted(() => ({
   nativePlatform: { value: false },
   askNotebook: vi.fn(),
   getNotebookDetail: vi.fn(),
   lookAtPhoto: vi.fn(),
   pickPhoto: vi.fn(),
+  capturePhoto: vi.fn(),
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -54,7 +55,7 @@ vi.mock("../../api/resources", async (importOriginal) => {
 
 vi.mock("../../lib/native-pick", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/native-pick")>();
-  return { ...real, pickPhoto };
+  return { ...real, pickPhoto, capturePhoto };
 });
 
 import { NotebookScreen } from "../NotebookScreen";
@@ -104,6 +105,7 @@ beforeEach(() => {
   getNotebookDetail.mockReset();
   lookAtPhoto.mockReset();
   pickPhoto.mockReset();
+  capturePhoto.mockReset();
   getNotebookDetail.mockResolvedValue(detail());
   Element.prototype.scrollTo = vi.fn();
 });
@@ -261,12 +263,16 @@ describe("ChatV2 (default surface)", () => {
     expect(menu.textContent).toMatch(/Document/);
   });
 
-  it("sends the visible composer draft as the photo question", async () => {
+  it("grounds a picked-photo question in the LOOK observation before asking", async () => {
     const file = new File(["photo"], "motor.jpg", { type: "image/jpeg" });
     pickPhoto.mockResolvedValue(file);
     lookAtPhoto.mockResolvedValue({
       fileId: "photo-1",
-      observation: { capturedAt: "2026-08-31T12:00:00.000Z" },
+      observation: {
+        text: "A cardboard box filled with sealed bearing packages.",
+        capturedAt: "2026-08-31T12:00:00",
+        provenance: "phone_photo",
+      },
     });
     askNotebook.mockResolvedValue({ answer: "Bearing housing.", citations: [], status: "answered" });
     mount();
@@ -276,7 +282,73 @@ describe("ChatV2 (default surface)", () => {
     await waitFor(() => expect(lookAtPhoto).toHaveBeenCalledTimes(1));
     expect(lookAtPhoto.mock.calls[0][3]).toBe("Is this bearing housing damaged?");
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
-    expect(askNotebook.mock.calls[0][1]).toBe("Is this bearing housing damaged?");
+    expect(askNotebook.mock.calls[0][1]).toBe(
+      "Visual observation (12:00:00, phone photo): A cardboard box filled with sealed bearing packages.\n\nIs this bearing housing damaged?",
+    );
+    expect(askNotebook.mock.calls[0][3].visualEvidence).toEqual({
+      fileId: "photo-1",
+      capturedAt: "2026-08-31T12:00:00",
+    });
+  });
+
+  it("grounds a native-camera question in the LOOK observation before asking", async () => {
+    const file = new File(["camera"], "photo.jpg", { type: "image/jpeg" });
+    capturePhoto.mockResolvedValue(file);
+    lookAtPhoto.mockResolvedValue({
+      fileId: "camera-1",
+      observation: {
+        text: "A carton containing individually boxed ball bearings.",
+        capturedAt: "2026-09-17T21:17:20",
+        provenance: "phone_photo",
+      },
+    });
+    askNotebook.mockResolvedValue({ answer: "Those are packaged bearings.", citations: [], status: "answered" });
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={backRef}
+        onExit={() => {}}
+        chromeless
+        unifiedShell={{ projects: [], machines: [], onOpenItem: () => {} }}
+      />,
+    );
+
+    const box = await screen.findByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.input(box, { target: { value: "What is in this box?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Camera" }));
+
+    await waitFor(() => expect(capturePhoto).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    expect(askNotebook.mock.calls[0][1]).toBe(
+      "Visual observation (21:17:20, phone photo): A carton containing individually boxed ball bearings.\n\nWhat am I looking at, and what should I check?",
+    );
+    expect(askNotebook.mock.calls[0][3].visualEvidence).toEqual({
+      fileId: "camera-1",
+      capturedAt: "2026-09-17T21:17:20",
+    });
+  });
+
+  it("fails closed when a saved photo has no LOOK observation", async () => {
+    const file = new File(["photo"], "motor.jpg", { type: "image/jpeg" });
+    pickPhoto.mockResolvedValue(file);
+    lookAtPhoto.mockResolvedValue({
+      fileId: "photo-1",
+      observation: null,
+      reason: "provider_error",
+      message: "Could not describe the photo. The photo has been saved to this notebook.",
+    });
+    askNotebook.mockResolvedValue({ answer: "Unrelated manual answer.", citations: [], status: "answered" });
+    mount();
+    await type("What is in this box?");
+    fireEvent.click(await screen.findByTestId("v2-attach"));
+    fireEvent.click(await screen.findByRole("button", { name: /Photo/ }));
+
+    await waitFor(() => expect(lookAtPhoto).toHaveBeenCalledTimes(1));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/photo was saved, but MIRA couldn't analyze it/i);
+    expect(askNotebook).not.toHaveBeenCalled();
+    expect((await composer()).value).toBe("What is in this box?");
   });
 
   it("offers a message-level Copy action for a completed answer", async () => {

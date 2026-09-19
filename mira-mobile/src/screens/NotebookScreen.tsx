@@ -42,6 +42,7 @@ import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { isTruncatedTurn, normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import {
+  lookQuestion,
   photoCapturedLabel,
   visualCardTitle,
   visualObservationEntries,
@@ -79,6 +80,9 @@ const QUICK_STARTS = [
   "Look up a spec or part",
   "Show the safety steps",
 ];
+
+const PHOTO_ANALYSIS_UNAVAILABLE =
+  "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
 
 /** Persisted-evidence rows are the live citation shape stored as JSON — so
  *  they go through the SAME normalizer as a live `sources` frame. One mapping
@@ -388,9 +392,11 @@ export function NotebookScreen({
   /**
    * ChatV2 attachment: photograph → the EXISTING LOOK path (parked + linked
    * server-side before vision, SHA-256 deduped by `clientKey`), then the same
-   * `visualEvidence` rider Sensor uses. No second attachment system: the
-   * bytes travel the one upload door, and the server re-derives the evidence
-   * entry it echoes back — the client never asserts an observation.
+   * `visualEvidence` rider Sensor uses. The server-produced LOOK observation
+   * is also prefixed into the question, so chat cannot silently ignore the
+   * photo and answer from an unrelated manual. No second attachment system:
+   * the bytes travel the one upload door, and the server re-derives the
+   * evidence entry it echoes back.
    */
   const attachPhotoAndAsk = async () => {
     if (busy) return;
@@ -409,12 +415,21 @@ export function NotebookScreen({
         setChatError("The photo didn't upload — try again.");
         return;
       }
-      await sendQuestion(question, undefined, {
-        visualEvidence: {
-          fileId: look.fileId,
-          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+      if (!look.observation) {
+        setQ(question);
+        setChatError(PHOTO_ANALYSIS_UNAVAILABLE);
+        return;
+      }
+      await sendQuestion(
+        lookQuestion(look.observation.text, look.observation.capturedAt, question),
+        undefined,
+        {
+          visualEvidence: {
+            fileId: look.fileId,
+            capturedAt: look.observation.capturedAt,
+          },
         },
-      });
+      );
     } catch (e) {
       setBusy(false);
       setPending(null);
@@ -445,12 +460,21 @@ export function NotebookScreen({
         setChatError("The photo didn't upload — try again.");
         return;
       }
-      await sendQuestion(question, undefined, {
-        visualEvidence: {
-          fileId: look.fileId,
-          capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+      if (!look.observation) {
+        setQ(question);
+        setChatError(PHOTO_ANALYSIS_UNAVAILABLE);
+        return;
+      }
+      await sendQuestion(
+        lookQuestion(look.observation.text, look.observation.capturedAt, question),
+        undefined,
+        {
+          visualEvidence: {
+            fileId: look.fileId,
+            capturedAt: look.observation.capturedAt,
+          },
         },
-      });
+      );
     } catch (e) {
       setBusy(false);
       setPending(null);
