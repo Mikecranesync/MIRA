@@ -133,6 +133,8 @@ export type StreamResult = {
   content: string;
   citations: EvidenceCitation[];
   status: "answered" | "insufficient_evidence" | "error";
+  /** Optional technician-facing sentence supplied by the terminal frame. */
+  statusMessage: string | null;
   basis: string | null;
   followups: string[];
   /** Sensor REPLAY (D5): the machine window the turn was grounded on, if any. */
@@ -151,6 +153,24 @@ export type StreamResult = {
    *  partial text, claim nothing. */
   sawStatus: boolean;
 };
+
+export const PHOTO_ABSTENTION_COPY =
+  "I saw your photo, but I couldn't find anything about it in the selected sources.";
+
+/** Technician-visible terminal copy shared by the live and hydrated Hub paths. */
+export function answerContentFor(
+  content: string | null | undefined,
+  status: string,
+  statusMessage: string | null | undefined,
+  visualEvidence: VisualObservationEntry | null | undefined,
+): string {
+  if (content?.trim()) return content;
+  if (status === "insufficient_evidence") {
+    if (statusMessage?.trim()) return statusMessage;
+    return visualEvidence ? PHOTO_ABSTENTION_COPY : "I couldn't find that in the selected sources.";
+  }
+  return "No answer provider was available.";
+}
 
 /** Consume the notebook SSE body frame by frame. `onContent` fires after every
  *  `content` frame with the accumulated text so far (live rendering). Frames
@@ -179,6 +199,7 @@ export async function readNotebookStream(
     // ADR-0038 rule 6: seed the terminal state as NOT-an-answer. A stream that
     // ends without a `status` frame must never resolve as `answered`.
     status: "error",
+    statusMessage: null,
     basis: null,
     followups: [],
     machineEvidence: null,
@@ -202,9 +223,9 @@ export async function readNotebookStream(
         if (!frame) continue;
         if (frame.kind === "sources") out.citations = frame.citations;
         else if (frame.kind === "evidence") {
-          out.basis = frame.basis;
-          out.machineEvidence = isMachineEvidenceEntry(frame.machineEvidence) ? frame.machineEvidence : null;
-          out.visualEvidence = isVisualObservationEntry(frame.visualEvidence) ? frame.visualEvidence : null;
+          if (frame.basis) out.basis = frame.basis;
+          if (isMachineEvidenceEntry(frame.machineEvidence)) out.machineEvidence = frame.machineEvidence;
+          if (isVisualObservationEntry(frame.visualEvidence)) out.visualEvidence = frame.visualEvidence;
         }
         else if (frame.kind === "safety") {
           out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
@@ -215,6 +236,7 @@ export async function readNotebookStream(
           onContent(out.content, out.citations);
         } else if (frame.kind === "status") {
           out.status = frame.status;
+          out.statusMessage = frame.message?.trim() || null;
           out.sawStatus = true;
         }
       }
@@ -357,7 +379,11 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
       {
         id: `${t.id}-a`,
         role: "assistant" as const,
-        content: t.answerText ?? "I couldn't find that in the selected sources.",
+        content:
+          t.answerText ??
+          (t.answerStatus === "insufficient_evidence" && visualEvidence.length > 0
+            ? PHOTO_ABSTENTION_COPY
+            : "I couldn't find that in the selected sources."),
         status: t.answerStatus as HydratedTurn["status"],
         citations: stopped ? [] : citations,
         // 084 (#3387): the persisted basis — the badge survives reload.

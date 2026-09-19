@@ -150,6 +150,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
   return rows.flatMap((t): AdapterMessage[] => {
     const user = userMessage(`${t.id}-q`, t.question);
     const safetyNotice = safetyNoticeEntry(t.evidence);
+    const visualEvidence = visualObservationEntries(t.evidence ?? []);
     if (isStoppedTurn(t)) {
       return [
         user,
@@ -186,10 +187,10 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
         id: `${t.id}-a`,
         role: "assistant",
         parts: assistantParts({
-          text: answerBody(t.answerText, t.answerStatus),
+          text: answerBody(t.answerText, t.answerStatus, null, visualEvidence.length > 0),
           citations: normalizeCitations(t.evidence),
           machine: machineEvidenceEntries(t.evidence ?? []),
-          visual: visualObservationEntries(t.evidence ?? []),
+          visual: visualEvidence,
           basis: t.basis,
           safetyTrigger: safetyNotice?.trigger,
           identityDisputed: hasIdentityDispute(t.evidence),
@@ -267,7 +268,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
       id: `live-${idx}-a`,
       role: "assistant",
       parts: assistantParts({
-        text: answerBody(a.answer, a.status),
+        text: answerBody(a.answer, a.status, a.statusMessage, (a.visualEvidence?.length ?? 0) > 0),
         citations: a.citations,
         machine: a.machineEvidence ?? [],
         visual: a.visualEvidence ?? [],

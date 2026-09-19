@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  answerContentFor,
   buildChatBody,
   historyFromTurns,
   isAbortError,
@@ -60,6 +61,7 @@ describe("readNotebookStream", () => {
     expect(seen).toEqual(["F004 ", "F004 is undervoltage. [1]"]);
     expect(out.content).toBe("F004 is undervoltage. [1]");
     expect(out.status).toBe("answered");
+    expect(out.statusMessage).toBeNull();
     expect(out.basis).toBe("oem_documentation");
     expect(out.citations).toHaveLength(1);
     expect(out.followups).toEqual(["Next?"]);
@@ -456,6 +458,21 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
     expect(a).not.toHaveProperty("visualEvidence");
   });
 
+  it("a verified-photo abstention names the photo and keeps the card after reload", () => {
+    const [, a] = persistedTurns([
+      {
+        id: "t13-photo",
+        question: "what am I looking at?",
+        answerStatus: "insufficient_evidence",
+        answerText: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        evidence: [visual],
+        basis: null,
+      },
+    ]);
+    expect(a.content).toBe("I saw your photo, but I couldn't find anything about it in the selected sources.");
+    expect(a.visualEvidence).toEqual([visual]);
+  });
+
   it("a stopped turn drops the photo along with citations and basis", () => {
     const [, a] = persistedTurns([
       { id: "t14", question: "q", answerStatus: "error", answerText: "partial", evidence: [cite, visual], basis: "oem_documentation" },
@@ -490,6 +507,27 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
       () => {},
     );
     expect(without.visualEvidence).toBeNull();
+  });
+
+  it("the live Gate G projection names a verified photo instead of discarding the status context", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "sources", citations: [], sourceSnapshot: ["d"] }),
+        frame({ kind: "evidence", visualEvidence: visual }),
+        frame({
+          kind: "status",
+          status: "insufficient_evidence",
+          message: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.visualEvidence).toEqual(visual);
+    expect(out.statusMessage).toBe("I saw your photo, but I couldn't find anything about it in the selected sources.");
+    expect(answerContentFor(out.content, out.status, out.statusMessage, out.visualEvidence)).toBe(
+      "I saw your photo, but I couldn't find anything about it in the selected sources.",
+    );
   });
 
   it("visualObservationCaption is the contract string", () => {

@@ -10,6 +10,7 @@ import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
 import { AnswerMarkdown } from "./notebook-markdown";
 import {
+  answerContentFor,
   basisLabel,
   buildChatBody,
   growTextarea,
@@ -351,7 +352,7 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
+      const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
@@ -388,18 +389,14 @@ export function NotebookChat({
           x.id === aId
             ? {
                 ...x,
-                content:
-                  content ||
-                  (status === "insufficient_evidence"
-                    ? "I couldn't find that in the selected sources."
-                    : "No answer provider was available."),
+                content: answerContentFor(content, status, statusMessage, visualEvidence),
                 citations,
                 status,
                 // Only a served answer carries a basis claim — mirrors what
                 // the server persists (084).
                 basis: status === "answered" ? basis : null,
                 ...(status === "answered" && machineEvidence ? { machineEvidence: [machineEvidence] } : {}),
-                ...(status === "answered" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
+                ...(status !== "error" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
                 followups,
                 // Safety marker rides on answered turns — the server emits
                 // status:"answered" even for a hard-stop. Store it so the

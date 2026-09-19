@@ -241,6 +241,27 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       },
     },
     {
+      name: "verified-photo abstention",
+      live: parseChatSse(
+        frame({ kind: "sources", citations: [] }) +
+          frame({ kind: "evidence", visualEvidence: VISUAL }) +
+          frame({
+            kind: "status",
+            status: "insufficient_evidence",
+            message: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+          }) +
+          DONE,
+      ),
+      row: {
+        id: "t4-photo",
+        question: "what am I looking at?",
+        answerStatus: "insufficient_evidence",
+        answerText: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        evidence: [VISUAL],
+        basis: null,
+      },
+    },
+    {
       name: "machine evidence (REPLAY)",
       live: parseChatSse(
         frame({ kind: "content", content: "Around 14:03 the bus dipped [1]." }) +
@@ -321,6 +342,18 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
     });
   }
+
+  it("verified-photo abstention is technician-visible live and after reload", () => {
+    const c = cases.find((candidate) => candidate.name === "verified-photo abstention")!;
+    const live = liveTurnMessages(c.row.question, c.live, 0)[1];
+    const hydrated = hydrateMessages([c.row])[1];
+    const copy = "I saw your photo, but I couldn't find anything about it in the selected sources.";
+    expect(c.live.statusMessage).toBe(copy);
+    expect(textOf(live)).toBe(copy);
+    expect(textOf(hydrated)).toBe(copy);
+    expect(live.parts.some((p) => p.type === "observation")).toBe(true);
+    expect(hydrated.parts.some((p) => p.type === "observation")).toBe(true);
+  });
 
   it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
     const live = liveTurnMessages(

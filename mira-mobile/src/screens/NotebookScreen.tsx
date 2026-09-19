@@ -918,7 +918,12 @@ export function NotebookScreen({
                 <div className="msg-user">{t.question}</div>
                 {safety && <SafetyNotice />}
                 <AnswerMarkdown
-                  text={answerBody(t.answerText, t.answerStatus)}
+                  text={answerBody(
+                    t.answerText,
+                    t.answerStatus,
+                    null,
+                    visualObservationEntries(t.evidence).length > 0,
+                  )}
                   citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
@@ -993,7 +998,12 @@ export function NotebookScreen({
                   </>
                 ) : (
                   <AnswerMarkdown
-                    text={answerBody(t.a.answer, t.a.status)}
+                    text={answerBody(
+                      t.a.answer,
+                      t.a.status,
+                      t.a.statusMessage,
+                      (t.a.visualEvidence?.length ?? 0) > 0,
+                    )}
                     citations={safety ? [] : t.a.citations}
                     onCitation={setViewCitation}
                   />
@@ -1567,7 +1577,7 @@ function StudioPanel({
         const out: StudioOutput = {
           tile: tile.t,
           generatedAt: new Date().toISOString(),
-          answer: answerBody(a.answer, a.status),
+          answer: answerBody(a.answer, a.status, a.statusMessage, (a.visualEvidence?.length ?? 0) > 0),
           citations: a.citations,
         };
         const next = { ...outputs, [tile.t]: out };

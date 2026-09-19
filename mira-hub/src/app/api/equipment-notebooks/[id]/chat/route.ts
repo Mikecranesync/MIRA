@@ -95,7 +95,8 @@ import type {
   EvidenceCitation,
   MachineEvidenceEntry,
   NotebookContentFrame,
-  NotebookEvidenceFrame,
+  NotebookBasisEvidenceFrame,
+  NotebookEvidenceMarkerFrame,
   NotebookFollowupsFrame,
   NotebookSafetyFrame,
   NotebookSourcesFrame,
@@ -414,14 +415,23 @@ function sse(obj: unknown): string {
  *  which persist `basis: null` — project the same basis (none) as their
  *  persisted row. The answered path's final evidence frame still carries the
  *  basis + the marker. Older clients ignore unknown fields on a known kind;
- *  the Hub's stream reader tolerates a basis-less frame (`out.basis =
- *  undefined`, restored by the final frame where there is one). */
-const IDENTITY_DISPUTE_FRAME = { kind: "evidence", identityDisputed: true } as const satisfies Pick<
-  NotebookEvidenceFrame,
-  "kind" | "identityDisputed"
->;
+ *  current readers accumulate only fields actually present, so an early
+ *  marker cannot erase a later or earlier basis-bearing frame. */
+const IDENTITY_DISPUTE_FRAME = {
+  kind: "evidence",
+  identityDisputed: true,
+} as const satisfies NotebookEvidenceMarkerFrame;
 
-function safetyStopResponse(trigger: string, docIds: string[], identityDisputed = false): Response {
+function visualEvidenceMarker(visualEvidence: VisualObservationEntry): NotebookEvidenceMarkerFrame {
+  return { kind: "evidence", visualEvidence };
+}
+
+function safetyStopResponse(
+  trigger: string,
+  docIds: string[],
+  identityDisputed = false,
+  visualEntry: VisualObservationEntry | null = null,
+): Response {
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -434,6 +444,7 @@ function safetyStopResponse(trigger: string, docIds: string[], identityDisputed 
       }
       const safety: NotebookSafetyFrame = { kind: "safety", trigger };
       controller.enqueue(enc.encode(sse(safety)));
+      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       const status: NotebookStatusFrame = { kind: "status", status: "answered" };
       controller.enqueue(enc.encode(sse(status)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -449,6 +460,30 @@ function safetyStopResponse(trigger: string, docIds: string[], identityDisputed 
       "X-Safety-Stop": trigger,
     },
   });
+}
+
+async function verifyVisualEntry(
+  tenantId: string,
+  notebookId: string,
+  visualClaimFileId: string | null,
+): Promise<VisualObservationEntry | null> {
+  if (!visualClaimFileId) return null;
+  try {
+    const photo = await photoLinkedToTarget(tenantId, visualClaimFileId, "equipment_notebook", notebookId);
+    if (!photo) {
+      console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
+      return null;
+    }
+    return {
+      kind: "visual_observation",
+      fileId: photo.fileId,
+      capturedAt: photo.capturedAt,
+      provenance: "phone_photo",
+    };
+  } catch (err) {
+    console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
+    return null;
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -593,6 +628,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
+  // Verify the claimed photo before any terminal refusal. This bounded,
+  // tenant-scoped lookup does not make the photo grounding and never delays a
+  // stop on provider/RAG work; it only preserves the attachment on the record.
+  const visualEntry = await verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId);
+
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
   const boundAsset: ResolvedAsset = await resolveBoundAsset(ctx.tenantId, notebookId);
@@ -657,11 +697,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       answerStatus: "answered",
       answerText: SAFETY_STOP,
       enabledSourceDocIds: docIds,
-      evidence: [safetyEntry, ...disputeEntries],
+      evidence: [safetyEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
       model: null,
       ...assetSnapshot,
     });
-    return safetyStopResponse(safetyTrigger, docIds, identityDisputed);
+    return safetyStopResponse(safetyTrigger, docIds, identityDisputed, visualEntry);
   }
   // Evaluated AFTER the safety stop, deliberately: a hazard report is never
   // answered with "re-select the machine". The stop above persisted about no
@@ -837,41 +877,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const enc = new TextEncoder();
 
-  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
-  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
-  // raster MIME), then re-derive the WHOLE entry server-side — including
-  // `capturedAt`, which comes from the stored file row, never from the client.
-  // Anything else (a manual PDF that merely happens to be linked, a foreign
-  // file, a stored-only type) → ignored, logged; the turn still answers.
-  // Never a citation, never in sourceSnapshot, never moves `basis`.
-  //
-  // #3788: this runs BEFORE the Gate G abstain below, not after it. Until
-  // 2026-09-19 a phone-photo question whose retrieval came back empty was
-  // refused before the photo was ever looked at, so the abstain carried no
-  // evidence frame, persisted no visual entry, and logged nothing — on the
-  // Pixel the photo simply vanished from the turn. Verification is cheap
-  // (one tenant-scoped row), and ordering it first means an abstain can still
-  // tell the technician "I saw your photo" and keep it on the record.
-  let visualEntry: VisualObservationEntry | null = null;
-  if (visualClaimFileId) {
-    try {
-      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
-      if (photo) {
-        visualEntry = {
-          kind: "visual_observation",
-          fileId: photo.fileId,
-          capturedAt: photo.capturedAt,
-          provenance: "phone_photo",
-        };
-      } else {
-        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
-      }
-    } catch (err) {
-      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
-      visualEntry = null;
-    }
-  }
-
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
   // with sources selected and nothing retrieved and nothing else grounding the
@@ -901,7 +906,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       threadId,
       question: message,
       answerStatus: "insufficient_evidence",
-      answerText: null,
+      answerText: visualEntry
+        ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+        : null,
       enabledSourceDocIds: docIds,
       // #3788: the verified photo is part of the record of this refusal, so a
       // history read renders the same card the live turn showed.
@@ -934,11 +941,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // grounded an answer; the frame only says "this photo was verified for
         // this turn", which is exactly what the persisted `evidence[]` says.
         if (visualEntry) {
-          const visualMarker = { kind: "evidence", visualEvidence: visualEntry } as const satisfies Pick<
-            NotebookEvidenceFrame,
-            "kind" | "visualEvidence"
-          >;
-          controller.enqueue(enc.encode(sse(visualMarker)));
+          controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -1521,7 +1524,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // `machineGrounded` above): the turn keeps the basis it would have had
       // without the selection, and the entry rides along additively so the
       // client can render the honest caption.
-      const evidenceFrame: NotebookEvidenceFrame = groundedMachineEntry
+      const evidenceFrame: NotebookBasisEvidenceFrame = groundedMachineEntry
         ? groundedMachineEntry.freshness === "live"
           ? {
               kind: "evidence",

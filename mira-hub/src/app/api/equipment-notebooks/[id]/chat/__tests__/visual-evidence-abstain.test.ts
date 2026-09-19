@@ -152,9 +152,11 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as {
       answerStatus: string;
+      answerText: string | null;
       evidence: Record<string, unknown>[];
     };
     expect(persisted.answerStatus).toBe("insufficient_evidence");
+    expect(persisted.answerText).toBe("I saw your photo, but I couldn't find anything about it in the selected sources.");
     expect(persisted.evidence).toContainEqual({
       kind: "visual_observation",
       fileId: PHOTO,
@@ -183,6 +185,49 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
 
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as { evidence: unknown[] };
     expect(persisted.evidence).toEqual([]);
+  });
+
+  it("a safety stop verifies and retains the attached photo without weakening the stop", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+
+    const res = await POST(
+      req({
+        message: "there is smoke coming from the drive panel",
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBe("smoke coming");
+    expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT, PHOTO, "equipment_notebook", NB);
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+
+    const out = await frames(res);
+    expect(out.some((f) => f.kind === "safety")).toBe(true);
+    expect(out).toContainEqual({
+      kind: "evidence",
+      visualEvidence: {
+        kind: "visual_observation",
+        fileId: PHOTO,
+        capturedAt: CAPTURED_AT,
+        provenance: "phone_photo",
+      },
+    });
+
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as {
+      answerStatus: string;
+      evidence: Record<string, unknown>[];
+    };
+    expect(persisted.answerStatus).toBe("answered");
+    expect(persisted.evidence).toContainEqual(expect.objectContaining({ kind: "safety_notice" }));
+    expect(persisted.evidence).toContainEqual({
+      kind: "visual_observation",
+      fileId: PHOTO,
+      capturedAt: CAPTURED_AT,
+      provenance: "phone_photo",
+    });
   });
 
   it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {
