@@ -8,24 +8,35 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // Pin the Turbopack / file-tracing root to this app. The monorepo has
-  // lockfiles above mira-hub, so Next 16 otherwise infers the tracing root as
-  // the monorepo and pulls sibling packages — notably mira-bridge and its
-  // multi-hundred-MB SQLite WAL — into the standalone trace (#3762). Pinning the
-  // root here keeps the trace inside this self-contained app (prod code imports
-  // nothing above its own dir), and makes local builds match the Docker build,
-  // whose context is only mira-hub. That mismatch is why the earlier
-  // out-of-root `../mira-bridge/**` exclude compiled locally yet crashed the
-  // prod Turbopack build ("glob '../mira-bridge/**' is invalid, it has a prefix
-  // that navigates out of the project root") — see below.
+  // Compiler / file-tracing root. The monorepo has lockfiles above mira-hub, so
+  // Next 16 otherwise infers the tracing root as the monorepo and pulls sibling
+  // packages — notably mira-bridge and its multi-hundred-MB SQLite WAL — into the
+  // standalone trace (#3762). An out-of-root `../mira-bridge/**` exclude compiled
+  // locally yet crashed the prod Turbopack build ("glob '../mira-bridge/**' is
+  // invalid, it has a prefix that navigates out of the project root"), so the
+  // trace is bounded by an in-root glob instead — see outputFileTracingExcludes.
+  //
   // Hub mount PR 1 (#3839): the shared FactoryLM shell lives in ../packages/factorylm-*,
-  // outside this app. The compiler root is the repo root so those sources compile, and
-  // tsconfig `paths` pin react / react-dom / @assistant-ui/react to THIS app's copies so
-  // the shell never resolves a second React (the mobile lane's useMemoCache trap).
-  // NOTE: outputFileTracingRoot must NOT be pinned back to this dir — in Next 16 it is the
-  // same knob as the Turbopack root, and pinning it makes ../packages unresolvable again.
+  // OUTSIDE this app, so the compiler root is the REPO ROOT (`turbopack.root` below),
+  // not this dir. That is what lets ../packages compile into the Hub bundle. In Next 16
+  // `outputFileTracingRoot` is the same knob as the Turbopack root, so it must NOT be
+  // pinned back to this dir — doing so makes ../packages unresolvable again.
   // Consequence: .next/standalone mirrors the repo layout (server.js under mira-hub/);
   // the Dockerfile copies it accordingly.
+  //
+  // One React (#3839 follow-up): Turbopack bundles Next's own vendored React
+  // (next/dist/compiled/react*) for every app-dir module, the ../packages shell
+  // sources included, so a second React cannot reach the bundle from
+  // <repo>/node_modules or anywhere else. A `turbopack.resolveAlias` pin of the
+  // react specifiers was tried and refuted with instrumented builds: it changed
+  // nothing about what is bundled, and the react/jsx-runtime entry actually
+  // redirected the app-wide client JSX runtime to the installed copy (harmless only
+  // while byte-identical), so it was dropped. What IS load-bearing is the
+  // build-time symlink `packages/node_modules -> ../mira-hub/node_modules`: tsc has
+  // no resolveAlias and walks up from ../packages, so without it the type-check
+  // cannot find react / @assistant-ui types for the shared packages. The Dockerfile
+  // builder stage and every CI install step create it (locally:
+  // `ln -sfn ../mira-hub/node_modules packages/node_modules`).
   turbopack: { root: path.join(import.meta.dirname, "..") },
   basePath,
   assetPrefix: basePath,
@@ -73,13 +84,13 @@ const nextConfig: NextConfig = {
   // /hub/ → /hub, producing an infinite redirect loop on the basePath root.
   // Forcing trailingSlash: true keeps Next.js consistent with nginx.
   trailingSlash: true,
-  // Belt-and-suspenders for #3762: never bake a SQLite database (or its WAL/SHM
-  // sidecars) into the standalone output. With the tracing root pinned to
-  // mira-hub above, the sibling mira-bridge data directory is already outside
-  // the trace; this in-root `**/*.db*` glob additionally drops any DB file that
-  // ever lands under the app root. The former `../mira-bridge/**` entry was
-  // removed: an exclude glob may not navigate out of the (now pinned) project
-  // root — Turbopack rejects it, which broke every production deploy.
+  // #3762: never bake a SQLite database (or its WAL/SHM sidecars) into the
+  // standalone output. The compiler root is the REPO ROOT (see turbopack.root
+  // above), so the sibling mira-bridge data directory IS inside the tracing root;
+  // this `**/*.db*` glob is what keeps every DB file — mira-bridge's WAL included —
+  // out of the trace. It is an in-root glob on purpose: the former
+  // `../mira-bridge/**` entry navigated out of the (then mira-hub) project root,
+  // which Turbopack rejects and which broke every production deploy.
   outputFileTracingExcludes: {
     "*": ["**/*.db*"],
   },
