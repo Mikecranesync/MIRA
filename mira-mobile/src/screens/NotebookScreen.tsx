@@ -64,7 +64,7 @@ import { SafetyNotice } from "./SafetyNotice";
 import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { hasIdentityDispute, safetyNoticeEntry } from "../chat-adapter/turns-to-parts";
+import { hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
@@ -340,11 +340,23 @@ export function NotebookScreen({
         turns,
         liveTurns.filter((t) => t.a.status !== "stopped"),
       ),
+      clientRequestId: crypto.randomUUID(),
       // Sensor REPLAY (§4.4) / LOOK (S5 D3): the selected window and the
       // parked photo ride on the body so a Retry re-sends them byte-identically.
       ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
       ...(sensor?.visualEvidence ? { visualEvidence: sensor.visualEvidence } : {}),
     };
+    // A clean transport truncation stays visible until Retry. Replace that
+    // local partial when replay begins; the server owns the same request id,
+    // so the UI must not show two exchanges for one logical send.
+    if (replay) {
+      setLiveTurns((current) => {
+        const last = current.at(-1);
+        return last?.q === question && isTruncatedTurn(last.a) && last.a.safetyTrigger === undefined
+          ? current.slice(0, -1)
+          : current;
+      });
+    }
     const ctl = new AbortController();
     abortRef.current = ctl;
     setQ("");
@@ -357,18 +369,53 @@ export function NotebookScreen({
         threadId,
         mode: body.mode,
         history: body.history,
+        clientRequestId: body.clientRequestId,
         machineEvidence: body.machineEvidence,
         visualEvidence: body.visualEvidence,
         signal: ctl.signal,
         onUpdate: (partial) => setPending({ q: question, a: partial }),
       });
-      setLiveTurns((t) => [...t, { q: question, a }]);
+      if (isTruncatedTurn(a)) {
+        const interrupted: ChatTurn = {
+          answer: a.answer,
+          citations: [],
+          status: "",
+          sawStatus: false,
+          ...(a.safetyTrigger !== undefined ? { safetyTrigger: a.safetyTrigger } : {}),
+          ...(a.identityDisputed ? { identityDisputed: true as const } : {}),
+        };
+        setLiveTurns((t) => [...t, { q: question, a: interrupted }]);
+        if (a.safetyTrigger === undefined) {
+          setFailedSend(body);
+          setChatError("The answer was interrupted — retry the same request.");
+        }
+      } else {
+        setLiveTurns((t) => [...t, { q: question, a }]);
+      }
     } catch (e) {
+      const partial = pendingRef.current?.a ?? EMPTY_TURN;
       if (ctl.signal.aborted) {
-        const partial = pendingRef.current?.a ?? EMPTY_TURN;
         setLiveTurns((t) => [
           ...t,
           { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
+        ]);
+      } else if (partial.safetyTrigger !== undefined) {
+        // A validated Safety STOP is terminal and may already be durable on the
+        // server. Preserve only its warning + partial text; never restore the
+        // composer or offer Retry, which could duplicate the persisted turn.
+        setLiveTurns((t) => [
+          ...t,
+          {
+            q: question,
+            a: {
+              answer: partial.answer,
+              citations: [],
+              status: "error",
+              sawStatus: false,
+              safetyTrigger: partial.safetyTrigger,
+              ...(partial.identityDisputed ? { identityDisputed: true as const } : {}),
+            },
+          },
         ]);
       } else {
         setQ(question);
@@ -827,7 +874,11 @@ export function NotebookScreen({
           canRetry={Boolean(failedSend) && !busy}
           chatError={chatError}
           handlers={{
-            onSend: (text) => void sendQuestion(text),
+            // The unified shell composes attachment evidence and hands it back
+            // as the SAME rider Sensor already uses, so it rides this one send
+            // path instead of a second one. Attachment picking/holding/upload
+            // lives in the canonical adapter tree (src/unified/attachments.ts).
+            onSend: (text, evidence) => void sendQuestion(text, undefined, evidence),
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
@@ -891,12 +942,12 @@ export function NotebookScreen({
               </>
             )}
             {turns.map((t) => {
-              // FLEET-003: the persisted safety marker is READ from the row
-              // (`{kind:"safety_notice"}` in evidence[], written by FLEET-001),
+              // FLEET-003: terminal safety is READ from the persisted row's
+              // `safety_stop` discriminator (with a narrow legacy fallback),
               // exactly as `basis` is. Before this, the classic screen dropped
               // it on the floor and a LOTO refusal reloaded here wearing full
               // answer chrome — citations, basis, evidence cards.
-              const safety = safetyNoticeEntry(t.evidence);
+              const safety = terminalSafetyNotice(t);
               return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the
@@ -918,7 +969,12 @@ export function NotebookScreen({
                 <div className="msg-user">{t.question}</div>
                 {safety && <SafetyNotice />}
                 <AnswerMarkdown
-                  text={answerBody(t.answerText, t.answerStatus)}
+                  text={answerBody(
+                    t.answerText,
+                    t.answerStatus,
+                    null,
+                    visualObservationEntries(t.evidence).length > 0,
+                  )}
                   citations={safety ? [] : citationsFromEvidence(t.evidence)}
                   onCitation={setViewCitation}
                 />
@@ -987,13 +1043,20 @@ export function NotebookScreen({
                         hides that content may be missing. */}
                     <div className="meta answer-stopped">
                       {truncated
-                        ? "Incomplete — the connection ended before the answer finished. Ask again to retry."
+                        ? safety
+                          ? "Safety stop retained — isolate the machine before proceeding."
+                          : "Incomplete — the connection ended before the answer finished. Ask again to retry."
                         : "Stopped"}
                     </div>
                   </>
                 ) : (
                   <AnswerMarkdown
-                    text={answerBody(t.a.answer, t.a.status)}
+                    text={answerBody(
+                      t.a.answer,
+                      t.a.status,
+                      t.a.statusMessage,
+                      (t.a.visualEvidence?.length ?? 0) > 0,
+                    )}
                     citations={safety ? [] : t.a.citations}
                     onCitation={setViewCitation}
                   />
@@ -1054,9 +1117,8 @@ export function NotebookScreen({
             {pending && (
               <div aria-live="polite" aria-busy="true">
                 <div className="msg-user">{pending.q}</div>
-                {/* The safety frame can land BEFORE the terminal status frame
-                    (wire order: content* → safety → status), so the in-flight
-                    turn must be able to show the banner too. */}
+                {/* A hard-stop safety frame lands before its first content byte,
+                    so the in-flight turn must show the banner immediately. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
                 {/* 086 §3: the dispute marker is the FIRST frame on a disputed
                     wire — it must show while the answer is still streaming,
@@ -1567,7 +1629,7 @@ function StudioPanel({
         const out: StudioOutput = {
           tile: tile.t,
           generatedAt: new Date().toISOString(),
-          answer: answerBody(a.answer, a.status),
+          answer: answerBody(a.answer, a.status, a.statusMessage, (a.visualEvidence?.length ?? 0) > 0),
           citations: a.citations,
         };
         const next = { ...outputs, [tile.t]: out };

@@ -20,6 +20,8 @@ import type {
   ConfirmComponentStatus,
   ConfirmedManual,
   ManualCandidateView,
+  PersistedVisualObservation,
+  VisualCorrection,
 } from "../api/resources";
 import { EMPTY_COMPONENT_IDENTITY, confirmYieldedCitableSource } from "../api/resources";
 
@@ -45,6 +47,11 @@ export type NameplateErrorReason =
   | "download_rejected"
   | "upload_failed"
   | "confirm_failed"
+  // Slice 3 (Codex round 2 F1): the confirm succeeded but the technician's
+  // edits to the vision readings did not all land (server could not apply
+  // them, or a value contradicted the identity confirmed alongside it). The
+  // misread stays active, so this is NOT complete — it is a retry.
+  | "corrections_not_saved"
   // Intake failures the server names precisely — never collapsed into
   // "couldn't read the nameplate" (that sentence is reserved for a photo the
   // recognizer actually looked at and couldn't read).
@@ -131,7 +138,14 @@ export type NameplateEvent =
   | { type: "identity_edited"; identity: ComponentIdentity }
   | { type: "confirm_submitted" }
   | { type: "stage"; stage: "downloading" | "indexing" }
-  | { type: "confirm_result"; result: ConfirmComponentResult }
+  | {
+      type: "confirm_result";
+      result: ConfirmComponentResult;
+      /** How many Slice 3 corrections this confirm asked the server to apply
+       *  (the length of `partitionVisualObservations(...).corrections`). The
+       *  reducer refuses to claim `complete` unless the server applied them all. */
+      correctionsRequested?: number;
+    }
   | { type: "confirm_failed"; reason?: NameplateErrorReason }
   | { type: "candidate_accepted" }
   | { type: "candidate_rejected" }
@@ -218,6 +232,19 @@ export function nameplateReducer(state: NameplateState, event: NameplateEvent): 
         };
       if (event.type === "confirm_result") {
         const r = event.result;
+        // Honesty gate for the technician's EDITS (Codex round 2 F1): if the
+        // server could not apply every requested correction, the misread
+        // reading is still the active one. No outcome below may read as
+        // success — surface a retry instead. Checked before the status switch
+        // because the server's confirm status is about the nameplate document,
+        // not about the corrections.
+        if (correctionsNotSaved(event.correctionsRequested ?? 0, r))
+          return {
+            name: "error",
+            reason: "corrections_not_saved",
+            fileId: state.fileId,
+            identity: state.identity,
+          };
         if (r.status === "candidate_review")
           return {
             name: "candidate_review",
@@ -337,6 +364,8 @@ export function nameplateErrorCopy(reason: NameplateErrorReason): string {
       return "Couldn't read the nameplate";
     case "confirm_failed":
       return "File retained even though later processing failed";
+    case "corrections_not_saved":
+      return "Your edits to the nameplate readings weren't saved — check them and try again";
     case "unsupported_image_type":
       return "That image format isn't supported — use a JPEG or PNG photo";
     case "image_too_large":
@@ -373,6 +402,55 @@ export function canSubmitIdentity(identity: ComponentIdentity): boolean {
     identity.manufacturer.trim() &&
       (identity.model.trim() || identity.catalogNumber.trim()),
   );
+}
+
+/**
+ * Split this capture's persisted vision readings by what the technician is
+ * actually asserting at confirm (Slices 2 + 3). Pure, so it is testable without
+ * the screen:
+ *
+ *  - value UNCHANGED  → `observationIds` — confirm that exact reading (Slice 2).
+ *  - value EDITED     → `corrections`    — supersede that exact reading with the
+ *                       technician's value (Slice 3). The pre-edit reading is
+ *                       never confirmed.
+ *  - value EMPTIED    → neither. Clearing a field is not a confirmation and not
+ *                       a correction; the candidate is left untouched (an
+ *                       explicit "reject" action is a later slice).
+ *  - field not on the identity form (e.g. `certification`) → neither.
+ *
+ * The two outputs are disjoint by construction, so the server can never be
+ * asked to both promote and supersede the same observation.
+ */
+export function partitionVisualObservations(
+  identity: ComponentIdentity,
+  observations: readonly PersistedVisualObservation[],
+): { observationIds: string[]; corrections: VisualCorrection[] } {
+  const fields = identity as unknown as Record<string, string | undefined>;
+  const observationIds: string[] = [];
+  const corrections: VisualCorrection[] = [];
+  for (const o of observations) {
+    const submitted = fields[o.field];
+    if (typeof submitted !== "string") continue;
+    const value = submitted.trim();
+    if (value === o.value) observationIds.push(o.observationId);
+    else if (value !== "") corrections.push({ observationId: o.observationId, value });
+  }
+  return { observationIds, corrections };
+}
+
+/**
+ * Did every requested Slice 3 correction land? Pure. The server reports the
+ * corrections it APPLIED (`visualCorrectedCount`), the ones it REFUSED for
+ * contradicting the confirmed identity (`visualCorrectionMismatches`), and
+ * whether it could not apply them at all (`visualCorrectionFailed`). Anything
+ * short of "all applied" means the vision misread is still the active reading,
+ * so the flow must not claim `complete`. Zero requested → nothing to save.
+ */
+export function correctionsNotSaved(requested: number, r: ConfirmComponentResult): boolean {
+  if (requested <= 0) return false;
+  if (r.visualCorrectionFailed === true) return true;
+  const applied = r.visualCorrectedCount ?? 0;
+  return applied < requested;
 }
 
 /**
