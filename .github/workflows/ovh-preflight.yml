@@ -1,0 +1,110 @@
+name: OVH Production Preflight (read-only)
+
+# #3800 OVH cutover — a manually-invoked, READ-ONLY preflight that proves the
+# OVH production host is reachable and healthy and that the merged Compose model
+# is valid, WITHOUT mutating anything. It runs no git reset/checkout/pull, no
+# build, no compose up, no restart/recreate/rm, no migration, no nginx/DNS/Neon
+# change. It exists so the real deploy (deploy-vps.yml, workflow_dispatch-only)
+# is only ever run after this passes and Mike explicitly authorizes it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      emit_deploy_pubkey:
+        description: "Print the CI deploy PUBLIC key (safe) so it can be authorized on OVH ubuntu"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ovh-preflight
+  cancel-in-progress: true
+
+jobs:
+  # Runner-only: validate the merged Compose model from THIS revision. No host contact.
+  validate-config:
+    name: Validate merged Compose (runner only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Overlay + minimal targets present
+        run: |
+          test -f docker-compose.production.yml || { echo "::error::docker-compose.production.yml missing"; exit 1; }
+          grep -q 'TARGETS="${SERVICES:-mira-hub mira-web}"' .github/workflows/deploy-vps.yml \
+            || { echo "::error::deploy-vps.yml TARGETS is not the minimal Hub+web set"; exit 1; }
+          grep -q 'docker-compose.production.yml' .github/workflows/deploy-vps.yml \
+            || { echo "::error::deploy-vps.yml does not reference the production overlay"; exit 1; }
+      - name: Merged compose config validates
+        run: |
+          touch .env  # some base services declare env_file: .env — empty is fine for `config`
+          if docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config -q; then
+            echo "merged compose (saas + production): VALID"
+          else
+            echo "::error::merged compose config is invalid"; exit 1
+          fi
+      - name: Hub overlay proves localhost bind + mira-net only (no cmms-ext)
+        run: |
+          docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
+          python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; p=str(h.get('ports')); n=list(h.get('networks') or []); assert '127.0.0.1:3101' in p, 'hub not localhost-bound: '+p; assert n==['mira-net'], 'hub networks != [mira-net]: '+str(n); print('hub bind OK', p, '| networks OK', n)"
+
+  # Safe: derive the deploy PUBLIC key from the secret (public material only).
+  emit-deploy-pubkey:
+    name: Emit CI deploy public key (safe)
+    if: ${{ inputs.emit_deploy_pubkey }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Derive public key from VPS_SSH_KEY
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          umask 077; printf '%s\n' "$VPS_SSH_KEY" > k
+          echo "Authorize THIS public key on OVH: ubuntu@40.160.141.61  ~/.ssh/authorized_keys"
+          echo "----- BEGIN CI DEPLOY PUBLIC KEY -----"
+          ssh-keygen -y -f k
+          echo "----- END CI DEPLOY PUBLIC KEY -----"
+          ssh-keygen -yl -f k
+          shred -u k 2>/dev/null || rm -f k
+
+  # Read-only host inspection. Requires the CI deploy key to be authorized on
+  # OVH ubuntu first (see emit-deploy-pubkey). SSH connects AS ubuntu; sudo is
+  # used only for read-only docker/git inspection.
+  preflight:
+    name: OVH read-only preflight
+    needs: [validate-config]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Read-only inspection of OVH production
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          umask 077; mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key; chmod 600 ~/.ssh/vps_deploy_key
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+          SSH="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o ConnectTimeout=15 ubuntu@40.160.141.61"
+          $SSH 'bash -s' <<'EOS'
+          set -uo pipefail
+          echo "1_login_user=$(whoami)"                      # expect: ubuntu
+          echo "2_hostname=$(hostname)"                       # expect: vps-2d884531
+          echo "3_os=$(. /etc/os-release; echo "$PRETTY_NAME")"
+          test -d /opt/mira && echo "4_opt_mira=present" || echo "4_opt_mira=MISSING"
+          echo "5_git_head=$(sudo git -C /opt/mira rev-parse HEAD 2>/dev/null || echo unknown)"
+          echo "6_containers:"; sudo docker ps --format '   {{.Names}} | {{.Status}} | {{.Ports}}'
+          echo "7_hub_health=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3101/api/health/)"
+          echo "8_web_health=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3200/)"
+          NEON=$(sudo docker inspect mira-hub --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+            | sed -n 's/^NEON_DATABASE_URL=//p' | sed -E 's#^[a-z]+://[^@]*@([^/]+)/.*#\1#')
+          case "$NEON" in
+            ep-purple-hall-ahimeyn0*) echo "9_neon=PRODUCTION_MATCH ($NEON)";;
+            *) echo "9_neon=MISMATCH ($NEON)"; exit 1;;
+          esac
+          EOS
+      - name: Public production endpoints (from runner)
+        run: |
+          curl -s -o /dev/null -w "app.factorylm.com/api/health/ -> %{http_code} ip=%{remote_ip}\n" \
+            --max-time 15 https://app.factorylm.com/api/health/
