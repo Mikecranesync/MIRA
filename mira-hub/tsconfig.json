@@ -19,7 +19,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@factorylm/interaction": ["../packages/factorylm-interaction/src/index.ts"],
+      "@factorylm/ui": ["../packages/factorylm-ui/src/index.ts"],
+      "@factorylm/ui/*": ["../packages/factorylm-ui/src/*"],
+      "@factorylm/theme/*": ["../packages/factorylm-theme/src/*"]
     }
   },
   "include": [

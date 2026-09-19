@@ -1,6 +1,5 @@
 package com.factorylm.mira;
 
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -44,7 +43,7 @@ public class MainActivity extends BridgeActivity {
     private static final long PROBE_TIMEOUT_MS = 2500;
     private static final long PAINT_RECHECK_MS = 700;
     /** Repaint rungs tried before reload(): each is non-destructive to page state. */
-    private static final int PAINT_KICKS = 5;
+    private static final int PAINT_KICKS = 4;
     private static final long RECOVER_COOLDOWN_MS = 6000;
 
     private static final String PROBE_JS =
@@ -200,7 +199,7 @@ public class MainActivity extends BridgeActivity {
                         return;
                     }
                     probing = true;
-                    if (attempt < PAINT_KICKS) {
+                    if (shouldKickSurface(attempt)) {
                         Log.w(TAG, "DOM ok but nothing painted after resume; repaint rung " + attempt);
                         kickSurface(wv, attempt);
                         handler.postDelayed(
@@ -238,6 +237,10 @@ public class MainActivity extends BridgeActivity {
         return Math.max(dr, Math.max(dg, db));
     }
 
+    static boolean shouldKickSurface(int attempt) {
+        return attempt >= 0 && attempt < PAINT_KICKS;
+    }
+
     /**
      * Repaint rungs, weakest first. None of them reloads the page or drops JS state.
      *  0: WebView's own pause/resume + visibility toggle (compositor re-sync).
@@ -246,9 +249,9 @@ public class MainActivity extends BridgeActivity {
      *     HOME + relaunch repainted the measured blank.
      *  2: bump the window pixel format (forces the window surface to be recreated).
      *  3: hardware→software→hardware layer type (drops the compositor layer tree).
-     *  4: bounce the task (moveTaskToBack + reorder-to-front) — the automated form of
-     *     the HOME + relaunch that measurably repainted; same Activity, same WebView,
-     *     no reload. Visible as a ~300 ms flicker; strictly before reload().
+     * If all four foreground-safe rungs fail, probePaint reloads the WebView. Never
+     * background the task here: Android 15 can block the attempted foreground return,
+     * which strands the user on the launcher and looks exactly like an app crash.
      */
     private void kickSurface(final WebView wv, final int rung) {
         switch (rung) {
@@ -291,18 +294,8 @@ public class MainActivity extends BridgeActivity {
                     wv.invalidate();
                 });
                 break;
-            default: {
-                Log.w(TAG, "bouncing task to rebuild the window surface");
-                moveTaskToBack(true);
-                handler.postDelayed(
-                    () -> {
-                        Intent i = new Intent(MainActivity.this, MainActivity.class);
-                        i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                        startActivity(i);
-                    },
-                    250
-                );
-            }
+            default:
+                Log.w(TAG, "ignoring invalid repaint rung " + rung);
         }
     }
 
