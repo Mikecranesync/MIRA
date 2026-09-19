@@ -20,7 +20,7 @@ The three environments below are not aspirational — they are how every code ch
 
 | | **DEV** | **STAGING** | **PRODUCTION** |
 |---|---|---|---|
-| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (`165.245.138.91`) |
+| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (OVH `40.160.141.61`) |
 | **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) · **`docker-compose.staging-vps.yml`** (the deployed VPS stack, project `mira-staging`) | `docker-compose.saas.yml` |
 | **Doppler config** | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
 | **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) — `br-small-term-ahtkz61d` | main branch — `br-lively-bread-ahoa86se` |

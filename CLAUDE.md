@@ -42,7 +42,7 @@
 
 | | DEV | STAGING | PROD |
 |---|---|---|---|
-| Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
+| Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (OVH `40.160.141.61`) |
 | Compose | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) + `docker-compose.staging-vps.yml` (VPS) | `docker-compose.saas.yml` |
 | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
 | Telegram | `@MiraDevBot` or none | `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`) | `@FactoryLM_Diagnose` |
