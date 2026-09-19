@@ -88,7 +88,12 @@ import {
 } from "@/lib/machine-context-packet";
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
-import { loadVisualEvidenceForAsset, renderVisualEvidenceSection } from "@/lib/visual-evidence-context";
+import {
+  loadVisualEvidenceForAsset,
+  renderVisualEvidenceSection,
+  loadVisualEvidenceForPhoto,
+  renderLookObservationSection,
+} from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
@@ -1247,6 +1252,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // #3788 — the LOOK observation for the photo attached THIS turn. Keyed ONLY on
+  // the SERVER-VERIFIED file id (`visualEntry.fileId`, already checked by
+  // `photoLinkedToTarget` in verifyVisualEntry), so a client string can never
+  // reach it and it works on an UNBOUND notebook (keyed by file id, not asset).
+  // It rides in the injection-hardened user-data channel (buildManualUserContent
+  // below), NEVER the system prompt. Fail-open: a load failure must not drop the
+  // turn. No stored observation → "" → no block, the turn still answers.
+  let lookContext = "";
+  if (visualEntry) {
+    try {
+      const lookRow = await withTenantContext(ctx.tenantId, (c) =>
+        loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
+      );
+      lookContext = renderLookObservationSection(lookRow);
+    } catch (err) {
+      console.error("[notebook-chat] look observation load failed (continuing without it):", err);
+    }
+  }
+
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers
   // from notebook facts (identity + coverage) instead of the first excerpt, and
@@ -1340,7 +1364,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
   );
 
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
