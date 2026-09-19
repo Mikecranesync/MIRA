@@ -3,7 +3,8 @@
     "mira-bots/shared",
     "mira-core/mira-ingest",
     "mira-mcp",
-    "factorylm_ai"
+    "factorylm_ai",
+    "fleet-gateway/fleet_gateway"
   ],
   "exclude": [
     "mira-bots-phase1",
