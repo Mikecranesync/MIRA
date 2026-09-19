@@ -27,6 +27,13 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  claimNotebookTurnRequest: vi.fn(
+    async (): Promise<import("@/lib/equipment-notebooks").NotebookTurnRequestClaim> => ({
+      status: "claimed",
+      claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    }),
+  ),
+  abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => undefined),
   // I3: the route resolves the notebook's bound asset; unbound keeps the
   // pre-081 behaviour these suites assert.
@@ -95,9 +102,23 @@ beforeEach(() => {
   // Any provider call during a safety stop is a failure of the whole slice.
   vi.stubGlobal("fetch", vi.fn());
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+  domainMock.claimNotebookTurnRequest.mockResolvedValue({
+    status: "claimed",
+    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  });
 });
 
 describe("notebook chat safety hard-stop", () => {
+  it("rejects a malformed client request id before any turn can be written", async () => {
+    const res = await POST(
+      chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A], clientRequestId: "not-a-uuid" }),
+      params,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_client_request_id" });
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
   it("stops an active hazard report before retrieval and before any provider call", async () => {
     const res = await POST(
       chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A] }),
@@ -113,6 +134,9 @@ describe("notebook chat safety hard-stop", () => {
     expect(answerText(frames)).toContain("SAFETY STOP");
     expect(answerText(frames)).toContain("lockout/tagout");
     expect(frames.some((f) => f.includes('"kind":"safety"'))).toBe(true);
+    expect(frames.findIndex((f) => f.includes('"kind":"safety"'))).toBeLessThan(
+      frames.findIndex((f) => f.includes('"kind":"content"')),
+    );
     expect(frames.at(-1)).toBe("[DONE]");
   });
 
@@ -132,16 +156,127 @@ describe("notebook chat safety hard-stop", () => {
   });
 
   it("persists the stop with a safety_notice entry so hydration can restore it", async () => {
-    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }), params);
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),
       NB,
       expect.objectContaining({
         answerStatus: "answered",
         answerText: SAFETY_STOP,
-        evidence: [{ kind: "safety_notice", trigger: expect.any(String) }],
+        evidence: expect.arrayContaining([
+          { kind: "safety_notice", trigger: expect.any(String) },
+          { kind: "safety_stop", trigger: expect.any(String) },
+        ]),
         model: null,
+        clientRequestId,
       }),
+    );
+  });
+
+  it("replays the first persisted Safety STOP for the same client request without rerunning work", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-1",
+        question: "which cable to pull to stop it",
+        answerStatus: "answered",
+        answerText: SAFETY_STOP,
+        enabledSourceDocIds: [DOC_A],
+        evidence: [{ kind: "safety_notice", trigger: "exposed wire" }],
+        model: null,
+        basis: null,
+      },
+    });
+    // Replay is terminal truth owned by the request id. A source can be
+    // detached or lose approval after the first send; current source state
+    // must not suppress the already-persisted Safety STOP.
+    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "source_not_approved" });
+
+    const res = await POST(
+      chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const replayed = await readFrames(res);
+
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    expect(res.headers.get("X-Safety-Stop")).toBe("exposed wire");
+    expect(answerText(replayed).trim()).toBe(SAFETY_STOP);
+    expect(replayed.findIndex((f) => f.includes('"kind":"safety"'))).toBeLessThan(
+      replayed.findIndex((f) => f.includes('"kind":"content"')),
+    );
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+    expect(domainMock.validateChatSources).not.toHaveBeenCalled();
+  });
+
+  it("uses the terminal notice from a legacy two-notice Safety STOP", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-legacy-two-notice",
+        question: "can I open this energized panel?",
+        answerStatus: "answered",
+        answerText: SAFETY_STOP,
+        enabledSourceDocIds: [DOC_A],
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { kind: "safety_notice", trigger: "exposed conductor" },
+        ],
+        model: null,
+        basis: null,
+      },
+    });
+
+    const res = await POST(
+      chatReq({ message: "can I open this energized panel?", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const replayed = await readFrames(res);
+
+    expect(res.headers.get("X-Safety-Stop")).toBe("exposed conductor");
+    expect(replayed.some((frame) => frame.includes('"kind":"safety","trigger":"exposed conductor"'))).toBe(true);
+  });
+
+  it("refuses a concurrent duplicate while the first request owns the key", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({ status: "in_progress" });
+
+    const res = await POST(
+      chatReq({
+        message: "which cable to pull to stop it",
+        sourceDocIds: [DOC_A],
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "request_in_progress" });
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("releases its lease token when pre-stream setup throws", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.resolveBoundAsset.mockRejectedValueOnce(new Error("asset lookup unavailable"));
+
+    await expect(
+      POST(
+        chatReq({ message: "how do I inspect this drive?", sourceDocIds: [DOC_A], clientRequestId }),
+        params,
+      ),
+    ).rejects.toThrow("asset lookup unavailable");
+
+    expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      NB,
+      "u1",
+      clientRequestId,
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     );
   });
 
@@ -199,10 +334,6 @@ describe("notebook chat safety hard-stop", () => {
       })
       .filter((k, i, a) => k !== "content" || a[i - 1] !== "content");
 
-    expect(kinds[0]).toBe("sources");
-    expect(kinds).toContain("content");
-    expect(kinds.at(-3)).toBe("safety");
-    expect(kinds.at(-2)).toBe("status");
-    expect(kinds.at(-1)).toBe("[DONE]");
+    expect(kinds).toEqual(["sources", "safety", "content", "status", "[DONE]"]);
   });
 });

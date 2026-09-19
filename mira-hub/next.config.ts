@@ -59,6 +59,13 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: "55mb",
     externalDir: true,
+    // Next 16.3 (#3870 bump) switched the build type-check to the project-local
+    // `tsc` CLI by default, which checks the COMPLETE tsconfig project — test
+    // files included — with no Next-side filtering. The 16.2 compiler-API path
+    // skips `__tests__/`, `*.test.*` and `*.spec.*` diagnostics, which is what
+    // let `next build` pass with the known test-only type errors. Keep the API
+    // checker so a security bump does not change which files gate the build.
+    useTypeScriptCli: false,
   },
   // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
   // Under `output: "standalone"`, @vercel/nft does not trace that dynamic
