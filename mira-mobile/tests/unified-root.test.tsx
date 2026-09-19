@@ -26,14 +26,19 @@ const scanApi = vi.hoisted(() => ({
   getAssetByTag: vi.fn(),
   openAssetNotebook: vi.fn(),
 }));
+const nativePick = vi.hoisted(() => ({
+  pickPhoto: vi.fn(),
+  capturePhoto: vi.fn(),
+  pickDocument: vi.fn(),
+}));
 
-vi.mock("../../api/client", async () => {
-  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+vi.mock("../src/api/client", async () => {
+  const actual = await vi.importActual<typeof import("../src/api/client")>("../src/api/client");
   return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
 });
 
-vi.mock("../../api/resources", async () => {
-  const actual = await vi.importActual<typeof import("../../api/resources")>("../../api/resources");
+vi.mock("../src/api/resources", async () => {
+  const actual = await vi.importActual<typeof import("../src/api/resources")>("../src/api/resources");
   return {
     ...actual,
     getAssetByTag: scanApi.getAssetByTag,
@@ -49,8 +54,12 @@ vi.mock("../../api/resources", async () => {
     ]),
   };
 });
+vi.mock("../src/lib/native-pick", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/native-pick")>("../src/lib/native-pick");
+  return { ...actual, pickPhoto: nativePick.pickPhoto, capturePhoto: nativePick.capturePhoto, pickDocument: nativePick.pickDocument };
+});
 vi.mock("@capacitor/share", () => ({ Share: { share: vi.fn(async () => ({})) } }));
-vi.mock("../NotebookScreen", () => ({
+vi.mock("../src/screens/NotebookScreen", () => ({
   NotebookScreen: (props: {
     id: string;
     threadId?: string | null;
@@ -85,8 +94,8 @@ vi.mock("../NotebookScreen", () => ({
 // preferencesStore is the real @capacitor/preferences web path; under some
 // jsdom builds localStorage is not a full Storage and the root's load() throws,
 // which the catch turns into the error state. Mock it like everything else.
-vi.mock("../../lib/offline-queue", async () => {
-  const actual = await vi.importActual<typeof import("../../lib/offline-queue")>("../../lib/offline-queue");
+vi.mock("../src/lib/offline-queue", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/offline-queue")>("../src/lib/offline-queue");
   return {
     ...actual,
     preferencesStore: {
@@ -97,7 +106,7 @@ vi.mock("../../lib/offline-queue", async () => {
     },
   };
 });
-vi.mock("../../unified/UnifiedAboutUpdates", () => ({
+vi.mock("../src/unified/UnifiedAboutUpdates", () => ({
   UnifiedAboutUpdates: (p: { onBack: () => void; pendingOfflineWork: () => Promise<boolean> }) => (
     <div data-testid="about">
       <button onClick={p.onBack}>back</button>
@@ -108,11 +117,14 @@ vi.mock("../../unified/UnifiedAboutUpdates", () => ({
   ),
 }));
 
-import { UnifiedRoot } from "../UnifiedRoot";
+import { UnifiedRoot } from "../src/screens/UnifiedRoot";
+import { claimAttachments, clearAttachments } from "../src/unified/attachment-handoff";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
 
 afterEach(() => {
+  // The handoff is module state; a leftover stash would leak between tests.
+  clearAttachments();
   cleanup();
   prefStore.mem.clear();
   otaProbe.value = null;
@@ -183,15 +195,103 @@ describe("UnifiedRoot", () => {
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
   });
 
-  it("home Add Photo opens a fresh thread with the existing add-sources sheet entry", async () => {
+  // These three replace a test that asserted `data-open-add-sources === "true"`
+  // after tapping Photo — it encoded the defect as the contract, which is why
+  // the composer's "+" menu shipped routing into source management.
+  it("home Photo opens the native picker and never routes through Add Sources", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
     fireEvent.click(screen.getByRole("button", { name: "Photo" }));
 
+    await waitFor(() => expect(nativePick.pickPhoto).toHaveBeenCalledTimes(1));
+    // Still on home: picking a photo must not create a thread or open a sheet.
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+    // The chip proves the attachment came back to the COMPOSER, not to a sheet.
+    expect(await screen.findByText(/bearing\.jpg/)).toBeTruthy();
+  });
+
+  it("home Camera opens the native camera, and File the native document picker", async () => {
+    nativePick.capturePhoto.mockResolvedValue(new File(["x"], "shot.jpg", { type: "image/jpeg" }));
+    nativePick.pickDocument.mockResolvedValue(new File(["x"], "notes.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Camera" }));
+    await waitFor(() => expect(nativePick.capturePhoto).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "File" }));
+    await waitFor(() => expect(nativePick.pickDocument).toHaveBeenCalledTimes(1));
+
+    // A general document, not a PDF gate — and it is NOT the PDF-source door.
+    expect(await screen.findByText(/notes\.docx/)).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+  });
+
+  it("carries a home attachment into the thread the first send creates", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(/bearing\.jpg/);
+
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "what is leaking here" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
     const nb = await waitFor(() => screen.getByTestId("nb"));
-    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+    expect(nb.getAttribute("data-initial-question")).toBe("what is leaking here");
+    expect(nb.getAttribute("data-open-add-sources")).toBe("false");
+    // The bytes reached the handoff the notebook's composer claims. Without
+    // this the photo is dropped on the floor between home and the thread and
+    // the technician is never told.
+    const handed = claimAttachments();
+    expect(handed.map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
+  it("turns an attachment-only HOME send into a real first question", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(/bearing\.jpg/);
+
+    // The composer intentionally permits a photo with no typed text. HOME must
+    // queue the honest default question, or the notebook rejects the blank
+    // initial question and leaves the photo armed for some later message.
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What am I looking at, and what should I check?");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
+  it("gives source management its own drawer entry, separate from the composer", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    // Drive A has sourceCount 2. Without this entry the Sources panel is
+    // unreachable in the unified shell: the notebook appbar overflow that
+    // normally holds it is gated behind !chromeless, so the ONLY previous route
+    // was the composer's attach handlers setting openAddSources.
+    // The row's accessible name is label + kind meta (threads read "...Chat"),
+    // so match the label rather than an exact string.
+    fireEvent.click(await screen.findByRole("button", { name: /^Sources \(2\)/ }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
     expect(nb.getAttribute("data-open-add-sources")).toBe("true");
   });
 
