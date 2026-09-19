@@ -60,6 +60,34 @@ export function initialSelection(notebooks: readonly HubNotebook[]): HubSelectio
   return { notebookId: nb.id, threadId: threads[0]?.id ?? LEGACY_THREAD_ID };
 }
 
+/**
+ * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
+ * stranger walk recorded "cold launch drops into the last thread" as a failure;
+ * the ChatGPT-first lock's L0 is a composer home that answers immediately.
+ * `initialSelection` remains the deep-link / project-click entry.
+ */
+export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
+  void notebooks; // HOME regardless of how many projects exist
+  return null;
+}
+
+export type HomeSendPlan =
+  | { kind: "existing"; notebookId: string }
+  | { kind: "create"; body: { displayName: string; identitySourceType: "user" } };
+
+/**
+ * A HOME send is a new thread in the PREFERRED notebook — the first one, the
+ * same rule mobile's `preferredNotebookId` applies — so the conversation lives
+ * on the ONE canonical backend (persisted, streamed, listed under Recent).
+ * With no notebook at all it creates one, using the exact body the legacy
+ * "New notebook" button posts: a stranger must always be able to ask.
+ */
+export function homeSendPlan(notebooks: readonly HubNotebook[]): HomeSendPlan {
+  const first = notebooks[0];
+  if (first) return { kind: "existing", notebookId: first.id };
+  return { kind: "create", body: { displayName: "General", identitySourceType: "user" } };
+}
+
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
@@ -124,14 +152,14 @@ export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "a
 
 /** The first-run line under the greeting: claims only what this notebook can do. */
 export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number): string | undefined {
-  if (!nb) return "Pick a project to ask about its manuals.";
+  if (!nb) return "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.";
   const label = nb.asset ? machineNameFor(nb) : notebookLabel(nb);
   if (enabledCount === 0) return `${label} has no selected sources yet — general help only, nothing is cited.`;
   return `Answers cite ${enabledCount} selected source${enabledCount === 1 ? "" : "s"} for ${label}.`;
 }
 
 /** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
-export const NO_PROJECT_ERROR = "Pick a project first — answers come from a notebook's selected sources.";
+export const NO_PROJECT_ERROR = "That project is still loading — try again in a moment.";
 
 /**
  * The canonical route's request body for one send. With no enabled sources the

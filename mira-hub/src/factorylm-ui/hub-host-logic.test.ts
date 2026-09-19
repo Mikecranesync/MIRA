@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
+  homeSendPlan,
+  landingSelection,
   NO_PROJECT_ERROR,
   chatBodyFor,
   detailQueryFor,
@@ -80,8 +82,9 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "legacy" }).threadId).toBeNull();
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "abc" }).threadId).toBe("abc");
   });
-  it("the no-project error is the text the Composer shows when the hook throws", () => {
-    expect(NO_PROJECT_ERROR).toMatch(/Pick a project first/);
+  it("the loading-project error is the text the Composer shows when the hook throws (HOME never throws — it sends)", () => {
+    expect(NO_PROJECT_ERROR).toMatch(/still loading/);
+    expect(NO_PROJECT_ERROR).not.toMatch(/Pick a project first/);
   });
 });
 
@@ -244,5 +247,28 @@ describe("fixtureFor / newThreadId", () => {
     const id = newThreadId(() => "3f2a-UUID-like:ok");
     expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/);
     expect(newThreadId(() => "")).toMatch(/^t\d+$/);
+  });
+});
+
+describe("HOME (no notebook selected) — L0 unbound Ask on the Hub host", () => {
+  const nb = (id: string, updatedAt = "2026-09-01T00:00:00.000Z"): HubNotebook =>
+    ({ id, displayName: id, manufacturer: null, model: null, threads: [], updatedAt } as unknown as HubNotebook);
+
+  it("a fresh mount lands on HOME, not in the first notebook's latest thread (09-07 cold-launch failure)", () => {
+    expect(landingSelection([nb("a"), nb("b")])).toBeNull();
+  });
+
+  it("a HOME send goes to the preferred notebook — the first one, as mobile's preferredNotebookId does", () => {
+    expect(homeSendPlan([nb("a"), nb("b")])).toEqual({ kind: "existing", notebookId: "a" });
+  });
+
+  it("a HOME send with no notebooks at all must CREATE one — a stranger can always ask", () => {
+    expect(homeSendPlan([])).toEqual({ kind: "create", body: { displayName: "General", identitySourceType: "user" } });
+  });
+
+  it("the created project is the same contract the legacy New-notebook button posts", () => {
+    const plan = homeSendPlan([]);
+    expect(plan.kind).toBe("create");
+    if (plan.kind === "create") expect(Object.keys(plan.body)).toEqual(["displayName", "identitySourceType"]);
   });
 });
