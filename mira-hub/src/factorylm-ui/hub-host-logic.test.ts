@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
+  NO_PROJECT_ERROR,
+  chatBodyFor,
   detailQueryFor,
   enabledDocIds,
+  errorMessageFor,
   fixtureFor,
   groundingLineFor,
   historyRows,
@@ -13,6 +16,53 @@ import {
   newThreadId,
   shellThreadId,
 } from "./hub-host-logic";
+
+describe("chatBodyFor — general help is always available (Codex #3839 Spec P1, PRD law 6)", () => {
+  const sel = { notebookId: "nb-1", threadId: "t1" };
+  const history = historyRows([{ id: "1", question: "q1", answerStatus: "answered", answerText: "a1", evidence: [] }]);
+  it("with no enabled sources the turn is sent in general mode, the only mode the route serves zero sources in", () => {
+    const body = chatBodyFor("what is a VFD", [], history, sel);
+    expect(body).toMatchObject({ message: "what is a VFD", sourceDocIds: [], mode: "general", threadId: "t1" });
+    expect(body.history).toHaveLength(2);
+  });
+  it("with sources it is the ordinary cited turn — no mode key at all", () => {
+    const body = chatBodyFor("q", ["doc-a"], history, sel);
+    expect(body.sourceDocIds).toEqual(["doc-a"]);
+    expect("mode" in body).toBe(false);
+  });
+  it("the legacy selection posts threadId null, a named thread posts its id", () => {
+    expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "legacy" }).threadId).toBeNull();
+    expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "abc" }).threadId).toBe("abc");
+  });
+  it("the no-project error is the text the Composer shows when the hook throws", () => {
+    expect(NO_PROJECT_ERROR).toMatch(/Pick a project first/);
+  });
+});
+
+describe("errorMessageFor — every route error code in plain language (Codex #3839 Spec P2)", () => {
+  it("maps each code the route can return", () => {
+    for (const code of [
+      "no_sources_selected",
+      "approved_context",
+      "notebook_not_found",
+      "message_too_long",
+      "message_required",
+      "invalid_thread_id",
+      "machine_evidence_invalid",
+      "invalid_json",
+    ]) {
+      const text = errorMessageFor(code, 400);
+      expect(text).not.toBe("MIRA couldn't answer that just now.");
+      expect(text).not.toMatch(/\b[45]\d\d\b/);
+      expect(text).not.toMatch(/_/);
+    }
+    expect(errorMessageFor("message_too_long", 400)).toMatch(/too long/);
+  });
+  it("412 without a code is the approved-context line; anything else unknown is the generic line", () => {
+    expect(errorMessageFor("", 412)).toMatch(/approved context/);
+    expect(errorMessageFor("something_new", 500)).toBe("MIRA couldn't answer that just now.");
+  });
+});
 
 describe("detailQueryFor — every detail load names its thread (Codex #3839 review: legacy must not hydrate every thread)", () => {
   it("the legacy selection asks for ?threadId=legacy explicitly — never an omitted parameter", () => {
@@ -127,7 +177,7 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
   });
   it("grounding line never over-claims", () => {
     expect(groundingLineFor(null, 0)).toMatch(/Pick a project/);
-    expect(groundingLineFor(nb(), 0)).toMatch(/no selected sources yet — answers will abstain/);
+    expect(groundingLineFor(nb(), 0)).toMatch(/no selected sources yet — general help only, nothing is cited/);
     expect(groundingLineFor(nb(), 1)).toBe("Answers cite 1 selected source for Conveyor CV-101.");
     expect(groundingLineFor(nb({ asset: { entityId: "a", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
   });

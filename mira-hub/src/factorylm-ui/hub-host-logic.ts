@@ -6,7 +6,7 @@
  */
 import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
-import type { PersistedTurn } from "@/components/equipment/notebook-chat-utils";
+import { buildChatBody, type ChatBody, type PersistedTurn } from "@/components/equipment/notebook-chat-utils";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
@@ -90,8 +90,60 @@ export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "a
 export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number): string | undefined {
   if (!nb) return "Pick a project to ask about its manuals.";
   const label = nb.asset ? machineNameFor(nb) : notebookLabel(nb);
-  if (enabledCount === 0) return `${label} has no selected sources yet — answers will abstain rather than guess.`;
+  if (enabledCount === 0) return `${label} has no selected sources yet — general help only, nothing is cited.`;
   return `Answers cite ${enabledCount} selected source${enabledCount === 1 ? "" : "s"} for ${label}.`;
+}
+
+/** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
+export const NO_PROJECT_ERROR = "Pick a project first — answers come from a notebook's selected sources.";
+
+/**
+ * The canonical route's request body for one send. With no enabled sources the
+ * turn is sent in `mode: "general"` — the only mode in which the route serves a
+ * zero-source question (PRD law 6: general help is always available; Codex
+ * #3839 Spec P1). With sources it is the ordinary cited turn.
+ */
+export function chatBodyFor(
+  question: string,
+  docIds: readonly string[],
+  history: ReturnType<typeof historyRows>,
+  sel: HubSelection,
+): ChatBody & { threadId: string | null; mode?: "general" } {
+  const base = buildChatBody(question, [...docIds], history);
+  return {
+    ...base,
+    threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
+    ...(docIds.length === 0 ? { mode: "general" as const } : {}),
+  };
+}
+
+/**
+ * The route's error codes in plain language — every code the route can return
+ * (`chat/route.ts`), never a bare status. Unknown codes get the generic line.
+ */
+export function errorMessageFor(code: string, status: number): string {
+  switch (code) {
+    case "no_sources_selected":
+      return "This notebook has no selected sources yet. Add a manual to it, then ask.";
+    case "approved_context":
+      return "MIRA needs approved context for this machine before it will answer.";
+    case "notebook_not_found":
+      return "That notebook is gone. Pick another project.";
+    case "message_too_long":
+      return "That question is too long. Shorten it and ask again.";
+    case "message_required":
+      return "Type a question before sending.";
+    case "invalid_thread_id":
+      return "This conversation can't be reached. Start a new chat and ask again.";
+    case "machine_evidence_invalid":
+      return "The machine evidence attached to this question was not valid. Ask again without it.";
+    case "invalid_json":
+      return "The question could not be sent. Try again.";
+    default:
+      return status === 412
+        ? "MIRA needs approved context for this machine before it will answer."
+        : "MIRA couldn't answer that just now.";
+  }
 }
 
 /** The initial shell fixture for a hydrated notebook. */

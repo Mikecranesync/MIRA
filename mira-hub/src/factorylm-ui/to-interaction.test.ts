@@ -192,6 +192,23 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.context).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
 
+  it("a persisted turn keeps the machine context it was SERVED with, not the current binding (Codex #3839 Spec P1)", () => {
+    const served = { kind: "machine_evidence", assetId: "asset-uuid-1", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown" } as const;
+    // Served with evidence for the notebook's current confirmed asset → confirmed.
+    const [q1, a1] = turnsFromPersisted(row({ evidence: [citation, served] }), meta);
+    expect(a1.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+    expect(q1.context).toMatchObject({ machineId: "asset-uuid-1" });
+    // No machine evidence on the row → the turn was served without machine context; it is NOT
+    // rewritten to the notebook's current asset.
+    const [q2, a2] = turnsFromPersisted(row(), meta);
+    expect(a2.context.machineIdentity).toBe("not_applicable");
+    expect("machineId" in a2.context).toBe(false);
+    expect(q2.context.machineIdentity).toBe("not_applicable");
+    // Served against an asset the notebook has since been rebound away from → shown, never re-authorized.
+    const [, a3] = turnsFromPersisted(row({ evidence: [citation, { ...served, assetId: "asset-uuid-OLD" }] }), meta);
+    expect(a3.context).toMatchObject({ machineId: "asset-uuid-OLD", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
   it("a persisted safety refusal hydrates as safety_stop, not completed (Codex #3839 F2)", () => {
     const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
     expect(a.lifecycle).toBe("safety_stop");

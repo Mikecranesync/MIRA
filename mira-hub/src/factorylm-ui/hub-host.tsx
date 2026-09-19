@@ -41,8 +41,11 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
+  NO_PROJECT_ERROR,
+  chatBodyFor,
   detailQueryFor,
   enabledDocIds,
+  errorMessageFor,
   fixtureFor,
   groundingLineFor,
   historyRows,
@@ -253,12 +256,7 @@ export function HubShellHost() {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
-        const message =
-          code === "no_sources_selected" ? "This notebook has no selected sources yet. Add a manual to it, then ask."
-          : code === "approved_context" || res.status === 412 ? "MIRA needs approved context for this machine before it will answer."
-          : code === "notebook_not_found" ? "That notebook is gone. Pick another project."
-          : "MIRA couldn't answer that just now.";
-        throw new Error(message);
+        throw new Error(errorMessageFor(code, res.status));
       }
       const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
@@ -288,14 +286,12 @@ export function HubShellHost() {
   const onSend = useCallback((text: string) => {
     const q = text.trim();
     if (!q || busy) return;
-    if (!selection || !detail) {
-      dispatch({ type: "set-send-error", error: "Pick a project first — answers come from a notebook's selected sources." });
-      dispatch({ type: "set-draft", draft: q });
-      return;
-    }
-    const history = historyRows(detail.turns);
-    const body = { ...buildChatBody(q, docIds, history), threadId: selection.threadId === LEGACY_THREAD_ID ? null : selection.threadId };
-    void send(body, q);
+    // Codex #3839 Spec P1: the Composer clears the draft after a hook that
+    // RETURNS, so a no-project send used to discard the technician's question.
+    // Throwing is the Composer's documented contract for "keep the draft, show
+    // this plain-language error".
+    if (!selection || !detail) throw new Error(NO_PROJECT_ERROR);
+    void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [busy, selection, detail, docIds, send]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
@@ -371,7 +367,7 @@ export function HubShellHost() {
 
   if (signedOut) {
     return (
-      <main style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+      <main style={{ padding: "var(--fl-space-8)", fontFamily: "var(--fl-font)" }}>
         <p>Sign in to ask MIRA.</p>
         <a href={`${API_BASE}/login`}><button type="button">Sign in</button></a>
       </main>

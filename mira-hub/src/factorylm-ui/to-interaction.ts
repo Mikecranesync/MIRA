@@ -243,6 +243,30 @@ export function lifecycleFromStream(result: StreamResult, opts: { stopped?: bool
   return result.safetyNotice && isTerminalSafetyNotice(result.safetyNotice) ? "safety_stop" : "completed";
 }
 
+/**
+ * A persisted turn keeps the machine context it was SERVED with, not the
+ * notebook's current binding (Codex #3839 Spec P1: rebinding a notebook must
+ * not make old turns appear to concern the new machine). The only durable
+ * record of that context is the row's own `machine_evidence` (086): its
+ * `assetId` names the machine the answer was grounded in. A row with none was
+ * served without machine context and stays `not_applicable`. The binding is
+ * called confirmed only when it is the notebook's CURRENT confirmed asset —
+ * a row from a since-rebound machine is shown, never re-authorized.
+ */
+export function persistedMeta(
+  meta: HubNotebookMeta,
+  machineEvidence: readonly Pick<MachineEvidenceEntry, "assetId">[],
+): HubNotebookMeta {
+  const servedAssetId = machineEvidence[0]?.assetId ?? null;
+  if (!servedAssetId) return { ...meta, asset: null, identityConfirmed: false };
+  const current = meta.asset && meta.asset.id === servedAssetId ? meta.asset : null;
+  return {
+    ...meta,
+    asset: current ?? { id: servedAssetId, name: servedAssetId },
+    identityConfirmed: current !== null && meta.identityConfirmed,
+  };
+}
+
 /** A persisted GET row → its two turns (question, answer). STOPPED-TURN CONTRACT
  *  (STRM-2): `answerStatus==="error"` with text is a stopped turn (partial shown,
  *  no citations/basis/evidence); with null text it is the provider-failure copy. */
@@ -250,9 +274,9 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   const at = row.createdAt ?? meta.capturedAt;
   const stopped = row.answerStatus === "error" && !!row.answerText;
   const disputed = hasIdentityDispute(row.evidence);
-  const context = contextFor(meta, disputed);
   const threadId = threadIdFor(meta);
   const { citations, machineEvidence, visualEvidence } = splitEvidence(row.evidence);
+  const context = contextFor(persistedMeta(meta, machineEvidence), disputed);
   // All safety entries, not `splitEvidence`'s single slot: a rejected unsafe
   // answer persists the directive AND the violation, and the violation decides.
   const notices = safetyNoticesOf(row.evidence);
