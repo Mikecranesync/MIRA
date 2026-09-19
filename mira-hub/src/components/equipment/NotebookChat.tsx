@@ -290,8 +290,13 @@ export function Bubble({
  *  one basis label ("General guidance", amber, no citations). With sources the
  *  body is byte-identical to buildChatBody — Retry re-posts either as-is. */
 export type SendBody = ChatBody & { mode?: "general" };
-export function chatBodyFor(message: string, enabledDocIds: string[], turns: ChatTurn[]): SendBody {
-  const body = buildChatBody(message, enabledDocIds, turns);
+export function chatBodyFor(
+  message: string,
+  enabledDocIds: string[],
+  turns: ChatTurn[],
+  clientRequestId = crypto.randomUUID(),
+): SendBody {
+  const body = buildChatBody(message, enabledDocIds, turns, clientRequestId);
   return enabledDocIds.length === 0 ? { ...body, mode: "general" } : body;
 }
 

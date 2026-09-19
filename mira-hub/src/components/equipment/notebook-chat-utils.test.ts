@@ -275,11 +275,13 @@ describe("historyFromTurns (stopped turns never reach the model)", () => {
     expect(historyFromTurns(many)).toHaveLength(12);
     expect(historyFromTurns(many)[0].content).toBe("q8");
   });
-  it("buildChatBody carries the exact {message, sourceDocIds, history} shape", () => {
-    expect(buildChatBody("q", ["d1"], turns)).toEqual({
+  it("buildChatBody carries one client request id with the retry-stable body", () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    expect(buildChatBody("q", ["d1"], turns, clientRequestId)).toEqual({
       message: "q",
       sourceDocIds: ["d1"],
       history: historyFromTurns(turns),
+      clientRequestId,
     });
   });
 });
@@ -299,6 +301,17 @@ describe("CMPS-2 — failure keeps the question, Retry re-posts the identical bo
     expect(restoreComposer("", body.message)).toBe("What does F004 mean?");
     // …but a new draft the technician already started is never clobbered.
     expect(restoreComposer("new draft", body.message)).toBe("new draft");
+  });
+
+  it("carries an authoritative safety response header when the body is unavailable", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(null, { status: 200, headers: { "X-Safety-Stop": "exposed-conductor" } }),
+    );
+    await expect(
+      postNotebookChat("/chat", body, new AbortController().signal, () => {}, fetchImpl as unknown as typeof fetch),
+    ).rejects.toMatchObject({
+      safetyNotice: { kind: "safety_notice", trigger: "exposed-conductor" },
+    });
   });
 
   it("retry posts a JSON-identical body to the same URL", async () => {
@@ -322,6 +335,7 @@ describe("CMPS-2 — failure keeps the question, Retry re-posts the identical bo
     expect(JSON.parse(calls[1])).toEqual({
       message: "What does F004 mean?",
       sourceDocIds: ["d1"],
+      clientRequestId: body.clientRequestId,
       history: [
         { role: "user", content: "earlier" },
         { role: "assistant", content: "earlier answer" },
@@ -713,11 +727,12 @@ describe("turnFromIncompleteStream — silent close uses the controller's truth"
 
 describe("buildChatBody — the web body carries no window selection", () => {
   // The web notebook renders machine evidence; it never selects a window (the
-  // mobile lane owns REPLAY selection). The body stays exactly three keys.
-  it("is the three-key body, with no machineEvidence key", () => {
-    const body = buildChatBody("q", ["d"], []);
-    expect(body).toEqual({ message: "q", sourceDocIds: ["d"], history: [] });
-    expect(Object.keys(body)).toEqual(["message", "sourceDocIds", "history"]);
+  // mobile lane owns REPLAY selection). Idempotency is the only fourth key.
+  it("has the retry-stable client id, with no machineEvidence key", () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const body = buildChatBody("q", ["d"], [], clientRequestId);
+    expect(body).toEqual({ message: "q", sourceDocIds: ["d"], history: [], clientRequestId });
+    expect(Object.keys(body)).toEqual(["message", "sourceDocIds", "history", "clientRequestId"]);
   });
 });
 

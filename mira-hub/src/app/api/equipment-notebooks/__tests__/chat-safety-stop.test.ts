@@ -98,6 +98,16 @@ beforeEach(() => {
 });
 
 describe("notebook chat safety hard-stop", () => {
+  it("rejects a malformed client request id before any turn can be written", async () => {
+    const res = await POST(
+      chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A], clientRequestId: "not-a-uuid" }),
+      params,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_client_request_id" });
+    expect(domainMock.recordTurn).not.toHaveBeenCalled();
+  });
+
   it("stops an active hazard report before retrieval and before any provider call", async () => {
     const res = await POST(
       chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A] }),
@@ -135,7 +145,8 @@ describe("notebook chat safety hard-stop", () => {
   });
 
   it("persists the stop with a safety_notice entry so hydration can restore it", async () => {
-    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }), params);
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),
       NB,
@@ -144,6 +155,7 @@ describe("notebook chat safety hard-stop", () => {
         answerText: SAFETY_STOP,
         evidence: [{ kind: "safety_notice", trigger: expect.any(String) }],
         model: null,
+        clientRequestId,
       }),
     );
   });

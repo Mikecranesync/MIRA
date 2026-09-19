@@ -500,6 +500,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     history?: unknown;
     mode?: string;
     threadId?: unknown;
+    clientRequestId?: unknown;
     /** Sensor REPLAY (contract §4.4): the fault window the technician selected.
      *  Only the SELECTION is trusted — the server re-fetches the rows itself. */
     machineEvidence?: { assetId?: unknown; anchorAt?: unknown; pre?: unknown; post?: unknown };
@@ -555,6 +556,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const threadId = body.threadId == null ? null : normalizeNotebookThreadId(body.threadId);
   if (body.threadId != null && !threadId) {
     return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  }
+  const clientRequestId = body.clientRequestId == null
+    ? null
+    : typeof body.clientRequestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientRequestId)
+      ? body.clientRequestId
+      : null;
+  if (body.clientRequestId != null && !clientRequestId) {
+    return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
   }
   // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
   // pass it to the model for continuity, and use it to rewrite the retrieval
@@ -696,6 +705,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
+      clientRequestId,
       question: message,
       answerStatus: "answered",
       answerText: SAFETY_STOP,
@@ -907,6 +917,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
       threadId,
+      clientRequestId,
       question: message,
       answerStatus: "insufficient_evidence",
       answerText: visualEntry
@@ -1364,6 +1375,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // 086: the owner is the authenticated technician (session), never the body.
             ownerUserId: ctx.userId,
             threadId,
+            clientRequestId,
             question: message,
             answerStatus: "error",
             answerText: partialText,
@@ -1632,6 +1644,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // 086: the owner is the authenticated technician (session), never the body.
           ownerUserId: ctx.userId,
           threadId,
+          clientRequestId,
           question: message,
           answerStatus,
           answerText: served ? answerText : null,

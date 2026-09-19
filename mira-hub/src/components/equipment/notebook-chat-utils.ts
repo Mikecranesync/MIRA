@@ -262,6 +262,8 @@ export type ChatBody = {
   message: string;
   sourceDocIds: string[];
   history: { role: "user" | "assistant"; content: string }[];
+  /** Stable across Retry; the server deduplicates durable turn writes on it. */
+  clientRequestId: string;
 };
 
 type HistoryTurn = {
@@ -287,11 +289,17 @@ export function historyFromTurns(turns: HistoryTurn[]): ChatBody["history"] {
 // parameter here had no caller and was pinned only by its own test, so it is
 // gone: the mobile lane owns the selection, and the route's own parser is the
 // contract for the wire shape.
-export function buildChatBody(message: string, sourceDocIds: string[], turns: HistoryTurn[]): ChatBody {
+export function buildChatBody(
+  message: string,
+  sourceDocIds: string[],
+  turns: HistoryTurn[],
+  clientRequestId = crypto.randomUUID(),
+): ChatBody {
   return {
     message,
     sourceDocIds,
     history: historyFromTurns(turns),
+    clientRequestId,
   };
 }
 
@@ -318,8 +326,24 @@ export async function postNotebookChat(
     signal,
   });
   if (!res.ok) throw new Error(`http_${res.status}`);
-  if (!res.body) throw new Error("no_stream");
-  return readNotebookStream(res.body.getReader(), onContent);
+  // Input-side hard stops also carry an authoritative response header. Use it
+  // as the safety identity before reading the body so an empty/broken stream
+  // cannot fall back to the ordinary Retry path after the turn was persisted.
+  const safetyHeader = res.headers.get("X-Safety-Stop");
+  const carryHeaderSafety = (err: unknown): unknown => {
+    if (safetyHeader === null || !err || typeof err !== "object") return err;
+    const interrupted = err as Record<string, unknown>;
+    if (!isSafetyNoticeEntry(interrupted.safetyNotice)) {
+      interrupted.safetyNotice = { kind: "safety_notice", trigger: safetyHeader } satisfies SafetyNoticeEntry;
+    }
+    return err;
+  };
+  if (!res.body) throw carryHeaderSafety(new Error("no_stream"));
+  try {
+    return await readNotebookStream(res.body.getReader(), onContent);
+  } catch (err) {
+    throw carryHeaderSafety(err);
+  }
 }
 
 /** One persisted turn row as the GET route returns it. */

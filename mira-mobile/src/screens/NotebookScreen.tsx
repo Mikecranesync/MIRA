@@ -340,6 +340,7 @@ export function NotebookScreen({
         turns,
         liveTurns.filter((t) => t.a.status !== "stopped"),
       ),
+      clientRequestId: crypto.randomUUID(),
       // Sensor REPLAY (§4.4) / LOOK (S5 D3): the selected window and the
       // parked photo ride on the body so a Retry re-sends them byte-identically.
       ...(sensor?.machineEvidence ? { machineEvidence: sensor.machineEvidence } : {}),
@@ -357,6 +358,7 @@ export function NotebookScreen({
         threadId,
         mode: body.mode,
         history: body.history,
+        clientRequestId: body.clientRequestId,
         machineEvidence: body.machineEvidence,
         visualEvidence: body.visualEvidence,
         signal: ctl.signal,
@@ -364,11 +366,29 @@ export function NotebookScreen({
       });
       setLiveTurns((t) => [...t, { q: question, a }]);
     } catch (e) {
+      const partial = pendingRef.current?.a ?? EMPTY_TURN;
       if (ctl.signal.aborted) {
-        const partial = pendingRef.current?.a ?? EMPTY_TURN;
         setLiveTurns((t) => [
           ...t,
           { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
+        ]);
+      } else if (partial.safetyTrigger !== undefined) {
+        // A validated Safety STOP is terminal and may already be durable on the
+        // server. Preserve only its warning + partial text; never restore the
+        // composer or offer Retry, which could duplicate the persisted turn.
+        setLiveTurns((t) => [
+          ...t,
+          {
+            q: question,
+            a: {
+              answer: partial.answer,
+              citations: [],
+              status: "error",
+              sawStatus: false,
+              safetyTrigger: partial.safetyTrigger,
+              ...(partial.identityDisputed ? { identityDisputed: true as const } : {}),
+            },
+          },
         ]);
       } else {
         setQ(question);
@@ -1064,9 +1084,8 @@ export function NotebookScreen({
             {pending && (
               <div aria-live="polite" aria-busy="true">
                 <div className="msg-user">{pending.q}</div>
-                {/* The safety frame can land BEFORE the terminal status frame
-                    (wire order: content* → safety → status), so the in-flight
-                    turn must be able to show the banner too. */}
+                {/* A hard-stop safety frame lands before its first content byte,
+                    so the in-flight turn must show the banner immediately. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
                 {/* 086 §3: the dispute marker is the FIRST frame on a disputed
                     wire — it must show while the answer is still streaming,

@@ -1,5 +1,5 @@
 // Pure SSE frame parser for the Hub chat endpoints. Actual wire order:
-// content* → sources → evidence → [usage] → status → [followups] → [DONE].
+// [safety] → content* → sources → evidence → [usage] → status → [followups] → [DONE].
 // One incremental parser (`createChatSseParser`) owns the frame semantics;
 // `parseChatSse` is the one-shot convenience over it, so a streamed turn
 // (STRM-1) and a buffered turn are byte-identical by construction.

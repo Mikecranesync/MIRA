@@ -298,10 +298,9 @@ export function pendingMessages(q: string, a: ChatTurn): AdapterMessage[] {
       parts: [
         // "DURING the live response" is part of the invariant, not just after
         // it. The parser surfaces `safetyTrigger` the moment the frame lands
-        // (lib/sse.ts `turn()`), and the wire order is content* → safety →
-        // status — so there IS a window, however brief, where the refusal text
-        // is on screen and the turn has not completed. It must not read as an
-        // ordinary answer in that window either.
+        // (lib/sse.ts `turn()`), and a hard-stop safety marker now precedes its
+        // first content byte. The warning must render in that pre-content window
+        // too, never briefly as an ordinary answer.
         ...(a.safetyTrigger !== undefined
           ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null }]
           : []),

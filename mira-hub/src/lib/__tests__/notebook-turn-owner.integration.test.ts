@@ -108,4 +108,27 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
     const landed = await q(`SELECT count(*)::int AS n FROM equipment_notebook_turns WHERE question = 'cross-tenant write'`);
     expect(landed.rows[0].n).toBe(0);
   });
+
+  it("a retried client request id leaves exactly one durable turn", async () => {
+    const clientRequestId = "cccccccc-0000-4000-8000-00000000000c";
+    const turn = {
+      question: "idempotent safety question",
+      answerStatus: "answered" as const,
+      answerText: "SAFETY STOP",
+      enabledSourceDocIds: [] as string[],
+      evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+      model: null,
+      ownerUserId: USER_A,
+      clientRequestId,
+    };
+    await recordTurn(TENANT_A, nbA, turn);
+    await recordTurn(TENANT_A, nbA, turn);
+    const landed = await q(
+      `SELECT count(*)::int AS n FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    expect(landed.rows[0].n).toBe(1);
+  });
 });

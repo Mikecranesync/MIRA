@@ -1242,6 +1242,8 @@ export async function recordTurn(
      *  Required so no code path can persist an ownerless turn by omission;
      *  ownerless rows exist only as pre-086 legacy history. */
     ownerUserId: string;
+    /** Client-minted UUID. Retries reuse it so one logical send writes one row. */
+    clientRequestId?: string | null;
     /** 087 / THRD-0: conversation identity inside this notebook/project.
      *  Omitted/null/legacy preserves the pre-thread default conversation. */
     threadId?: string | null;
@@ -1265,14 +1267,34 @@ export async function recordTurn(
     // instead of a turn carrying the caller's tenant_id landing in a foreign
     // notebook (the hole the zero-source safety-stop path used to have).
     const res = await c.query(
-      `INSERT INTO equipment_notebook_turns
+      `WITH owned_notebook AS (
+         SELECT id, tenant_id
+           FROM equipment_notebooks
+          WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), inserted AS (
+       INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id)
-       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13
-         FROM equipment_notebooks nb
-        WHERE nb.id = $1::uuid AND nb.tenant_id = $2::uuid
-       RETURNING id`,
+          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id,
+          client_request_id)
+       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8,
+              $9, $10, $11, $12, $13, $14::uuid
+         FROM owned_notebook nb
+       ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
+         WHERE client_request_id IS NOT NULL
+       DO NOTHING
+       RETURNING id
+       )
+       SELECT id FROM inserted
+       UNION ALL
+       SELECT t.id
+         FROM equipment_notebook_turns t
+         JOIN owned_notebook nb
+           ON nb.id = t.notebook_id AND nb.tenant_id = t.tenant_id
+        WHERE $14::uuid IS NOT NULL
+          AND t.owner_user_id = $12
+          AND t.client_request_id = $14::uuid
+       LIMIT 1`,
       [
         notebookId,
         tenantId,
@@ -1287,6 +1309,7 @@ export async function recordTurn(
         turn.basis ?? null,
         owner,
         storedThreadId(turn.threadId),
+        turn.clientRequestId ?? null,
       ],
     );
     if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
