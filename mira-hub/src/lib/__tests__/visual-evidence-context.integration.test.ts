@@ -35,6 +35,7 @@ vi.mock("@/lib/db", () => ({ default: pool }));
 vi.mock("@/lib/workspace-files", () => ({ sha256Hex: (b: Buffer) => `sha:${b.length}` }));
 
 import {
+  correctVisualObservations,
   loadVisualEvidenceForAsset,
   promoteVisualObservations,
   recordNameplateObservations,
@@ -355,6 +356,153 @@ run("visual-evidence-context (integration)", () => {
       const rows = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A2));
       const found = rows.find((r) => r.observationId === written?.observations[0].observationId);
       expect(found).toMatchObject({ text: "voltage: 480V", trust: "candidate", photoHash: "roundtrip-hash" });
+    });
+  });
+
+  // ── Slice 3: a technician CORRECTION supersedes the exact vision reading it
+  //    replaces — never destroys evidence, changes which observation is active.
+  //    Real schema (063 + 069: TEXT tenant_id), real RLS, real transaction.
+  describe("correctVisualObservations — correction supersedes the exact reading, preserves the trail", () => {
+    let misread: SeededObservation; // "model: GS1O" — OCR misread on photo 1 of asset A1
+    let siblingOk: SeededObservation; // "frequency: 60Hz" — same photo, untouched
+    const readA1 = () => withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1, 100));
+    const ownerRow = async (id: string) =>
+      (await q(
+        `SELECT raw_value, normalized_value, evidence_state, review_state, superseded_by::text AS superseded_by,
+                extractor, session_id::text AS session_id, evidence_id::text AS evidence_id, metadata
+           FROM observation WHERE observation_id = $1::uuid`,
+        [id],
+      )).rows[0];
+
+    beforeAll(async () => {
+      misread = await insertObservation(sessionA1, TENANT_A, evidenceA1Photo1, "model: GS1O");
+      siblingOk = await insertObservation(sessionA1, TENANT_A, evidenceA1Photo1, "frequency: 60Hz");
+    });
+
+    it("C2–C7: another photo / another asset / another tenant / already-confirmed / nonexistent / foreign bound asset correct NOTHING", async () => {
+      const base = { tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1, correctedBy: "it-tech" };
+      for (const target of [obsA1P2_serial.id, obsA2.id, obsB.id, obsAlreadyConfirmed.id, "deadbeef-0000-4000-8000-000000000000"]) {
+        const out = await correctVisualObservations({ ...base, corrections: [{ observationId: target, value: "X" }] });
+        expect(out, target).toEqual({ corrected: [], mismatched: [] });
+      }
+      const foreign = await correctVisualObservations({
+        ...base,
+        boundEntityId: "deadbeef-0000-4000-8000-000000000000",
+        corrections: [{ observationId: misread.id, value: "GS10" }],
+      });
+      expect(foreign).toEqual({ corrected: [], mismatched: [] });
+      // Nothing was superseded anywhere and no replacement row appeared.
+      const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id IN ($1,$2)`, [TENANT_A, TENANT_B]);
+      expect(n.rows[0].n).toBe(0);
+      expect((await ownerRow(misread.id)).evidence_state).toBe("VISIBLE");
+    });
+
+    it("C1 + C9: correcting 'model: GS1O' → 'GS10' inserts a technician/corrected replacement on the SAME photo, supersedes the misread with a pointer, and the chat read flips", async () => {
+      // BEFORE: the misread is an active candidate in chat context.
+      const before = await readA1();
+      expect(before.find((r) => r.observationId === misread.id)).toMatchObject({ text: "model: GS1O", trust: "candidate" });
+
+      const out = await correctVisualObservations({
+        tenantId: TENANT_A,
+        boundEntityId: ASSET_A1,
+        fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: " GS10 " }], // trimmed
+        correctedBy: "it-tech",
+      });
+      expect(out.corrected).toHaveLength(1);
+      expect(out.corrected[0].supersededId).toBe(misread.id);
+      const replacementId = out.corrected[0].replacementId;
+
+      // Replacement: human reading, verified trust, same session + evidence (photo), reverse pointer.
+      const rep = await ownerRow(replacementId);
+      expect(rep).toMatchObject({
+        normalized_value: "model: GS10",
+        raw_value: null,
+        extractor: "technician",
+        review_state: "corrected",
+        evidence_state: "VISIBLE",
+        superseded_by: null,
+        session_id: misread.sessionId,
+        evidence_id: misread.evidenceId,
+      });
+      expect(rep.metadata).toMatchObject({ corrected_from: misread.id, corrected_by: "it-tech", field: "model" });
+
+      // Trail: the misread still exists, its own values untouched, pointing at the replacement.
+      const old = await ownerRow(misread.id);
+      expect(old).toMatchObject({
+        raw_value: "model: GS1O",
+        normalized_value: "model: GS1O",
+        review_state: "unreviewed",
+        evidence_state: "SUPERSEDED",
+        superseded_by: replacementId,
+      });
+
+      // Sibling on the same photo untouched.
+      expect(await ownerRow(siblingOk.id)).toMatchObject({ evidence_state: "VISIBLE", review_state: "unreviewed", superseded_by: null });
+
+      // AFTER (the UNMODIFIED Slice 1 read): misread gone from context, correction present as verified.
+      const after = await readA1();
+      expect(after.find((r) => r.observationId === misread.id)).toBeUndefined();
+      expect(after.find((r) => r.observationId === replacementId)).toMatchObject({ text: "model: GS10", trust: "verified" });
+      expect(after.find((r) => r.observationId === siblingOk.id)).toMatchObject({ text: "frequency: 60Hz", trust: "candidate" });
+    });
+
+    it("C8 (Codex round 3 F1): a retry with the same correction writes nothing and is reported SATISFIED with the existing pair — never as lost", async () => {
+      const ptr = await q(`SELECT superseded_by::text AS rep FROM observation WHERE observation_id = $1::uuid`, [misread.id]);
+      const replacementId = ptr.rows[0].rep as string;
+      const again = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+      });
+      expect(again).toEqual({ corrected: [{ supersededId: misread.id, replacementId }], mismatched: [] });
+      const reps = await q(`SELECT count(*)::int AS n FROM observation WHERE metadata->>'corrected_from' = $1`, [misread.id]);
+      expect(reps.rows[0].n).toBe(1);
+    });
+
+    it("C8b: a retry with a DIFFERENT value for the already-corrected reading is not satisfied and writes nothing", async () => {
+      const again = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS20" }], correctedBy: "it-tech",
+      });
+      expect(again).toEqual({ corrected: [], mismatched: [] });
+      const reps = await q(`SELECT count(*)::int AS n FROM observation WHERE metadata->>'corrected_from' = $1`, [misread.id]);
+      expect(reps.rows[0].n).toBe(1);
+    });
+
+    it("same-value 'correction' is a no-op (that is a confirm, not a correction)", async () => {
+      const out = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: siblingOk.id, value: "60Hz" }], correctedBy: "it-tech",
+      });
+      expect(out).toEqual({ corrected: [], mismatched: [] });
+      expect((await ownerRow(siblingOk.id)).evidence_state).toBe("VISIBLE");
+    });
+
+    it("C10: no row was ever deleted — the correction added exactly one observation", async () => {
+      const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id = $1`, [TENANT_A]);
+      expect(n.rows[0].n).toBe(1);
+    });
+
+    it("C8d (Codex F1): a replay that contradicts the identity confirmed by the same request is a mismatch, never satisfied", async () => {
+      const out = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+        expected: { model: "GS20" },
+      });
+      expect(out).toEqual({ corrected: [], mismatched: [{ observationId: misread.id, field: "model" }] });
+    });
+
+    it("C8c (Codex F3): once the replacement is itself superseded, the replay is no longer satisfied and still writes nothing (run last: mutates the replacement)", async () => {
+      const ptr = await q(`SELECT superseded_by::text AS rep FROM observation WHERE observation_id = $1::uuid`, [misread.id]);
+      const replacementId = ptr.rows[0].rep as string;
+      await q(`UPDATE observation SET evidence_state = 'SUPERSEDED' WHERE observation_id = $1::uuid`, [replacementId]);
+      const again = await correctVisualObservations({
+        tenantId: TENANT_A, boundEntityId: ASSET_A1, fileId: FILE_1,
+        corrections: [{ observationId: misread.id, value: "GS10" }], correctedBy: "it-tech",
+      });
+      expect(again).toEqual({ corrected: [], mismatched: [] });
+      const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id = $1`, [TENANT_A]);
+      expect(n.rows[0].n).toBe(1);
     });
   });
 });
