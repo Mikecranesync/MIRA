@@ -68,6 +68,7 @@ import {
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { splitLookMessage } from "@/lib/util/look-message-split";
 import {
   sanitizeHistory,
   buildRetrievalQuery,
@@ -531,7 +532,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // reuses their classifier rather than adding a second policy, which keeps the
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
-  const safetyTrigger = matchSafetyStop(message);
+  //
+  // Issue #3852: Split LOOK messages (Visual observation format) BEFORE
+  // classification so negated observations (e.g. "no burn marks") don't trigger
+  // false-positive SAFETY_STOP on immediate-tier keywords. Store the observation
+  // separately so it reaches the model via a dedicated VISUAL CONTEXT block.
+  const { observation: visualObservationText, question: classifyQuestion } = splitLookMessage(message);
+  const safetyTrigger = matchSafetyStop(classifyQuestion);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1074,11 +1081,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  const topicHint = buildTopicHint(classifyQuestion, history);
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
+    buildManualUserContent(
+      topicHint ? `${classifyQuestion}\n\n${topicHint}` : classifyQuestion,
+      chunks,
+      visualObservationText,
+    ),
   );
 
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
