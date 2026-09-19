@@ -4319,3 +4319,449 @@ def test_a_valid_label_act_is_unaffected_by_the_fix(tmp_path):
     return cannot be shadowing real attestations."""
     approval = load_exception_approval(*_write_exception_approval_files(tmp_path))
     assert approval.valid is True
+
+
+# ---------------------------------------------------------------------------
+# Independent-review route — the Codex adversarial-review ledger is the exact-
+# head attestation for Category 2 (migration / removal / adapter) legacy
+# touches. Spec: FactoryLM Legacy UI Gate — Agent-Autonomous Governance
+# Update (2026-09-18), scenarios A–D. The maintainer label route is unchanged
+# and remains the only route for a true architectural exception (Codex reports
+# expansion of frozen legacy UI as a BLOCKER, never GREEN).
+# ---------------------------------------------------------------------------
+
+load_codex_attestation = _guard.load_codex_attestation
+CodexAttestation = _guard.CodexAttestation
+
+_HEAD_A = "a" * 40
+_HEAD_B = "b" * 40
+_OWNER = "repo-owner"
+
+
+def _ledger_comment(sha: str, status: str, iteration: int = 1) -> str:
+    return (
+        "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
+        f"reviewed_sha: {sha}\nbase_sha: {'c' * 40}\nstatus: {status}\n"
+        f"review_iteration: {iteration}\nreview_scope: full\n```\n\n"
+        f"ADVERSARIAL GATE: {status}\n"
+    )
+
+
+def _write_codex_ledger(
+    tmp_path: Path,
+    comments: list[dict],
+    *,
+    head: str = _HEAD_A,
+    owner: str = _OWNER,
+) -> tuple[Path, Path]:
+    comments_path = tmp_path / "review-comments.jsonl"
+    pull_path = tmp_path / "current-pr.json"
+    comments_path.write_text("\n".join(json.dumps(c) for c in comments) + "\n")
+    pull_path.write_text(
+        json.dumps(
+            {
+                "number": 123,
+                "body": _VALID_BODY,
+                "head": {"sha": head},
+                "base": {"repo": {"full_name": f"{owner}/MIRA", "owner": {"login": owner}}},
+                "labels": [],
+            }
+        )
+    )
+    return comments_path, pull_path
+
+
+def _owner_comment(comment_id: int, body: str, *, login: str = _OWNER, type_: str = "User") -> dict:
+    return {"id": comment_id, "body": body, "user": {"login": login, "type": type_}}
+
+
+def test_scenario_a_category_1_no_guarded_touch_passes_without_any_attestation():
+    changes = [ChangedFile(status="modified", path="packages/factorylm-ui/src/x.tsx")]
+    result = evaluate(changes, labels=set(), pr_body="", policy=_POLICY, codex_attestation=None)
+    assert result.allowed is True
+    assert result.guarded_paths == ()
+
+
+def test_scenario_b_codex_green_at_exact_head_passes_guarded_touch_without_label(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is True
+    assert attestation.reviewed_sha == _HEAD_A
+
+    result = evaluate(
+        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+    )
+    assert result.allowed is True
+    assert result.message.startswith("INDEPENDENT REVIEW:")
+    assert "legacy/tree/a.ts" in result.message
+
+
+def test_codex_green_never_waives_the_substantive_exception_body(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    result = evaluate(
+        _TOUCH,
+        labels=set(),
+        pr_body="no section here",
+        policy=_POLICY,
+        codex_attestation=attestation,
+    )
+    assert result.allowed is False
+    assert any(field.startswith("body:") for field in result.missing_fields)
+
+
+def test_scenario_d_green_at_old_head_is_stale_and_names_both_shas(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))], head=_HEAD_B
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is False
+    assert attestation.reviewed_sha == _HEAD_A
+    assert _HEAD_B in attestation.reason
+
+    result = evaluate(
+        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+    )
+    assert result.allowed is False
+    assert result.message.startswith("REVIEW STALE")
+    assert _HEAD_A in result.message
+    assert "no label action is needed" in result.message
+
+
+def test_scenario_d_fresh_green_at_the_new_head_restores_the_gate(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [
+            _owner_comment(1, _ledger_comment(_HEAD_A, "GREEN")),
+            _owner_comment(2, _ledger_comment(_HEAD_B, "GREEN", iteration=2)),
+        ],
+        head=_HEAD_B,
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is True
+    assert attestation.reviewed_sha == _HEAD_B
+
+
+def test_newer_issues_found_at_the_same_head_withdraws_an_older_green(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [
+            _owner_comment(1, _ledger_comment(_HEAD_A, "GREEN")),
+            _owner_comment(2, _ledger_comment(_HEAD_A, "ISSUES_FOUND", iteration=2)),
+        ],
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is False
+    assert attestation.status == "ISSUES_FOUND"
+
+    result = evaluate(
+        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+    )
+    assert result.allowed is False
+    assert result.message.startswith("INDEPENDENT REVIEW FOUND ISSUES")
+
+
+def test_newer_green_after_issues_found_at_the_same_head_is_valid(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [
+            _owner_comment(5, _ledger_comment(_HEAD_A, "ISSUES_FOUND")),
+            _owner_comment(9, _ledger_comment(_HEAD_A, "GREEN", iteration=2)),
+        ],
+    )
+    assert load_codex_attestation(comments_path, pull_path).valid is True
+
+
+def test_comment_order_is_by_numeric_id_not_file_order(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [
+            _owner_comment(9, _ledger_comment(_HEAD_A, "ISSUES_FOUND", iteration=2)),
+            _owner_comment(5, _ledger_comment(_HEAD_A, "GREEN")),
+        ],
+    )
+    assert load_codex_attestation(comments_path, pull_path).valid is False
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        _owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"), login="someone-else"),
+        _owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"), type_="Bot"),
+        _owner_comment(1, "Looks good.\n" + _ledger_comment(_HEAD_A, "GREEN")),
+        _owner_comment(1, "[CODEX-ADVERSARIAL-REVIEW]\n\nADVERSARIAL GATE: GREEN\n"),
+        _owner_comment(1, _ledger_comment(_HEAD_A[:39] + "g", "GREEN")),
+        _owner_comment(1, _ledger_comment(_HEAD_A, "green")),
+        {"id": 1, "body": None, "user": {"login": _OWNER, "type": "User"}},
+        {"id": 1, "body": _ledger_comment(_HEAD_A, "GREEN"), "user": None},
+    ],
+    ids=[
+        "foreign-account",
+        "bot-account",
+        "marker-not-first",
+        "envelope-missing",
+        "sha-not-hex",
+        "status-lowercase",
+        "body-null",
+        "user-null",
+    ],
+)
+def test_scenario_c_forged_or_foreign_ledger_comments_are_ignored(tmp_path, comment):
+    comments_path, pull_path = _write_codex_ledger(tmp_path, [comment])
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is False
+    assert attestation.reviewed_sha is None
+
+    result = evaluate(
+        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+    )
+    assert result.allowed is False
+    assert result.message.startswith("INDEPENDENT REVIEW REQUIRED")
+
+
+def test_ignored_comments_cannot_revoke_a_real_green_either(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [
+            _owner_comment(1, _ledger_comment(_HEAD_A, "GREEN")),
+            _owner_comment(2, _ledger_comment(_HEAD_A, "ISSUES_FOUND"), login="someone-else"),
+            _owner_comment(3, _ledger_comment(_HEAD_A, "ISSUES_FOUND"), type_="Bot"),
+        ],
+    )
+    assert load_codex_attestation(comments_path, pull_path).valid is True
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "not json",
+        "[1, 2]",
+        json.dumps({"id": "7", "body": "x", "user": {"login": _OWNER, "type": "User"}}),
+        json.dumps({"id": True, "body": "x", "user": {"login": _OWNER, "type": "User"}}),
+        json.dumps({"body": "x", "user": {"login": _OWNER, "type": "User"}}),
+    ],
+    ids=["not-json", "not-object", "string-id", "bool-id", "missing-id"],
+)
+def test_malformed_ledger_records_raise_rather_than_degrade(tmp_path, line):
+    _, pull_path = _write_codex_ledger(tmp_path, [])
+    comments_path = tmp_path / "review-comments.jsonl"
+    comments_path.write_text(line + "\n")
+    with pytest.raises(GuardPolicyError):
+        load_codex_attestation(comments_path, pull_path)
+
+
+def test_empty_ledger_is_a_plain_non_attestation(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(tmp_path, [])
+    attestation = load_codex_attestation(comments_path, pull_path)
+    assert attestation.valid is False
+    assert attestation.reviewed_sha is None
+
+
+@pytest.mark.parametrize(
+    "current",
+    [
+        {"number": 1, "head": {"sha": _HEAD_A}, "base": {"repo": {"full_name": "x/y"}}},
+        {"number": 1, "head": {"sha": _HEAD_A}, "base": {"repo": {"owner": {}}}},
+        {"number": 1, "head": {"sha": "short"}, "base": {"repo": {"owner": {"login": _OWNER}}}},
+        {"number": 1, "base": {"repo": {"owner": {"login": _OWNER}}}},
+    ],
+    ids=["no-owner", "empty-owner", "bad-head", "no-head"],
+)
+def test_ledger_binding_fails_closed_without_owner_or_head(tmp_path, current):
+    comments_path = tmp_path / "review-comments.jsonl"
+    comments_path.write_text(
+        json.dumps(_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))) + "\n"
+    )
+    pull_path = tmp_path / "current-pr.json"
+    pull_path.write_text(json.dumps(current))
+    with pytest.raises(GuardPolicyError):
+        load_codex_attestation(comments_path, pull_path)
+
+
+def test_maintainer_label_route_is_unchanged_by_the_review_route():
+    """Positive control: the label route still passes exactly as before with
+    no ledger at all, and still fails without the fresh event."""
+    ok = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=_VALID_BODY,
+        policy=_POLICY,
+        exception_approval_valid=True,
+        codex_attestation=None,
+    )
+    assert ok.allowed is True
+    assert ok.message.startswith("Audited legacy-ui-exception approved")
+    stale = evaluate(
+        _TOUCH,
+        labels={"legacy-ui-exception"},
+        pr_body=_VALID_BODY,
+        policy=_POLICY,
+        exception_approval_valid=False,
+        codex_attestation=None,
+    )
+    assert stale.allowed is False
+    assert "approval:fresh legacy-ui-exception label bound to current head/body" in (
+        stale.missing_fields
+    )
+
+
+def test_cli_review_comments_file_requires_current_pull_file(tmp_path):
+    comments_path = tmp_path / "review-comments.jsonl"
+    comments_path.write_text("")
+    rc = main(
+        [
+            "--base",
+            "HEAD~1",
+            "--head",
+            "HEAD",
+            "--review-comments-json-file",
+            str(comments_path),
+        ]
+    )
+    assert rc == 2
+
+
+def test_cli_end_to_end_codex_green_passes_guarded_change_without_label(tmp_path, capsys):
+    registry = tmp_path / "REGISTRY.yaml"
+    registry.write_text(
+        "legacy-fixture:\n"
+        "  status: LEGACY\n"
+        "  change_policy: exception_only\n"
+        "  deletion_safe: false\n"
+        "  canonical_replacement: packages/factorylm-ui/\n"
+        "  guarded_paths:\n"
+        "    - legacy/tree/**\n"
+    )
+    changes = tmp_path / "changes.jsonl"
+    changes.write_text(
+        json.dumps(
+            {"filename": "legacy/tree/a.ts", "status": "modified", "previous_filename": None}
+        )
+        + "\n"
+    )
+    (tmp_path / "count.txt").write_text("1\n")
+    tree = {
+        "truncated": False,
+        "tree": [{"path": "legacy/tree/a.ts", "mode": "100644", "type": "blob"}],
+    }
+    (tmp_path / "base-tree.json").write_text(json.dumps(tree))
+    (tmp_path / "head-tree.json").write_text(json.dumps(tree))
+    (tmp_path / "labels.txt").write_text("")
+    (tmp_path / "body.md").write_text(_VALID_BODY)
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    args = [
+        "--registry",
+        str(registry),
+        "--changes-json-file",
+        str(changes),
+        "--expected-change-count-file",
+        str(tmp_path / "count.txt"),
+        "--base-tree-json-file",
+        str(tmp_path / "base-tree.json"),
+        "--head-tree-json-file",
+        str(tmp_path / "head-tree.json"),
+        "--labels-file",
+        str(tmp_path / "labels.txt"),
+        "--pr-body-file",
+        str(tmp_path / "body.md"),
+        "--current-pull-json-file",
+        str(pull_path),
+        "--review-comments-json-file",
+        str(comments_path),
+    ]
+    assert main(args) == 0
+    assert capsys.readouterr().out.startswith("INDEPENDENT REVIEW:")
+    # Negative control: the same PR at a moved head fails.
+    pull_path.write_text(
+        json.dumps(
+            {
+                "number": 123,
+                "body": _VALID_BODY,
+                "head": {"sha": _HEAD_B},
+                "base": {"repo": {"full_name": f"{_OWNER}/MIRA", "owner": {"login": _OWNER}}},
+                "labels": [],
+            }
+        )
+    )
+    assert main(args) == 1
+    assert "REVIEW STALE" in capsys.readouterr().out
+
+
+# Workflow contract for the review-ledger route.
+
+
+def test_workflow_fetches_review_ledger_as_data_before_checkout_in_its_own_step():
+    doc = _workflow_doc()
+    steps = doc["jobs"]["guard"]["steps"]
+    ledger_steps = [
+        s
+        for s in steps
+        if "review-comments.jsonl" in s.get("run", "") and "gh api" in s.get("run", "")
+    ]
+    assert len(ledger_steps) == 1
+    ledger_step = ledger_steps[0]
+    assert "GH_TOKEN" in (ledger_step.get("env") or {})
+    assert "issues/$PR_NUMBER/comments" in ledger_step["run"]
+    assert "{id, body, user: {login: .user.login, type: .user.type}}" in ledger_step["run"]
+    ledger_idx = steps.index(ledger_step)
+    checkout_idx = next(
+        i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout")
+    )
+    assert ledger_idx < checkout_idx
+    # The current-pull snapshot step stays the single source for labels/body/head.
+    pull_step = next(
+        s for s in steps if "current-pull.json" in s.get("run", "") and "gh api" in s.get("run", "")
+    )
+    assert "review-comments" not in pull_step["run"]
+
+
+def test_workflow_passes_the_review_ledger_to_the_guard_with_the_current_pull_snapshot():
+    doc = _workflow_doc()
+    steps = doc["jobs"]["guard"]["steps"]
+    eval_step = next(s for s in steps if "tools/ui_surface_lifecycle_guard.py" in s.get("run", ""))
+    assert '--review-comments-json-file "$RUNNER_TEMP/review-comments.jsonl"' in eval_step["run"]
+    assert '--current-pull-json-file "$RUNNER_TEMP/current-pull.json"' in eval_step["run"]
+
+
+def test_codex_prompt_makes_legacy_expansion_a_blocker_and_names_the_guard():
+    prompt = (REPO_ROOT / "scripts" / "adversarial-review-prompt.md").read_text(encoding="utf-8")
+    assert "tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD" in prompt
+    assert "introduces or expands" in prompt
+    assert "BLOCKER" in prompt
+    assert ".claude/rules/factorylm-unified-ui-cutover.md" in prompt
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--event-json-file", "e.json"],
+        ["--approver-permission-json-file", "p.json"],
+        ["--event-json-file", "e.json", "--approver-permission-json-file", "p.json"],
+    ],
+    ids=["event-alone", "permission-alone", "event+permission-without-pull"],
+)
+def test_cli_label_event_trio_still_all_or_nothing(extra):
+    assert main(["--base", "HEAD~1", "--head", "HEAD", *extra]) == 2
+
+
+def test_cli_current_pull_snapshot_may_stand_alone_for_the_review_route(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(tmp_path, [])
+    rc = main(
+        [
+            "--base",
+            "HEAD~1",
+            "--head",
+            "HEAD",
+            "--current-pull-json-file",
+            str(pull_path),
+            "--review-comments-json-file",
+            str(comments_path),
+        ]
+    )
+    assert rc in (0, 1)  # parsed and evaluated — never a usage error

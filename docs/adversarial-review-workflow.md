@@ -118,6 +118,17 @@ BLOCKER: n / HIGH: n / MEDIUM: n / LOW: n / FALSE_POSITIVE: n
 A GREEN review additionally contains the literal block
 `ADVERSARIAL GATE: GREEN` + `reviewed_sha: <SHA>`.
 
+**The GREEN is also the Legacy UI lifecycle attestation.** The
+`Legacy UI Lifecycle Guard` (`tools/ui_surface_lifecycle_guard.py`) reads this
+ledger from the PR's comments and, for a PR that touches a guarded legacy path
+and carries a substantive `## Legacy UI exception` body, accepts the newest
+well-formed owner-account envelope with `reviewed_sha == head` and
+`status: GREEN` in place of a maintainer `legacy-ui-exception` label. The
+review prompt makes any expansion of frozen legacy UI a BLOCKER, so a GREEN
+means "migration / removal / adapter only". Because a comment is not a
+`pull_request_target` event, `final_green_gate` re-runs the latest guard run
+for the head after a GREEN (best effort; `gh run rerun` by hand otherwise).
+
 Claude's disposition comment starts with `[CLAUDE-REMEDIATION]` and lists one
 line per finding id with its classification. Escalations start with
 `[ADVERSARIAL-ESCALATION]`.
