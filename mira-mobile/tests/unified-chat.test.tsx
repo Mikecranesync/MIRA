@@ -225,7 +225,7 @@ describe("UnifiedChat", () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     resources.lookAtPhoto.mockResolvedValue({
       fileId: "file-home-9",
-      observation: { text: "A bearing box.", capturedAt: "2026-09-16T00:00:00" },
+      observation: { text: "No visible damage, burn marks, or corrosion.", capturedAt: "2026-09-16T00:00:00" },
     });
 
     // Stash exactly as the HOME shell does before it opens the new notebook.
@@ -243,7 +243,7 @@ describe("UnifiedChat", () => {
 
     await waitFor(() => expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(
-      "Visual observation (00:00:00, phone photo): A bearing box.\n\nwhat is this",
+      "what is this",
       expect.objectContaining({ visualEvidence: expect.objectContaining({ fileId: "file-home-9" }) }),
     ));
   });

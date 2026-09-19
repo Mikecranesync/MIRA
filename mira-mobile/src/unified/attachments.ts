@@ -25,7 +25,6 @@ import {
 } from "../api/resources";
 import { uploadSourceWarningCopy } from "../lib/resource-copy";
 import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
-import { lookQuestion } from "../lib/sensor";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "./attachment-handoff";
 
 const PHOTO_ANALYSIS_UNAVAILABLE =
@@ -147,8 +146,6 @@ export function useUnifiedAttachments(notebookId: string | null) {
     const documents = items.filter((x) => x.attachment.kind !== "photo");
     // An attachment with no typed question still deserves a question.
     const question = questionForAttachments(text, items.map((item) => item.attachment));
-    let composedQuestion = question;
-
     // A failure must leave the bytes armed for another attempt. `held` still
     // has them (they are dropped only on success, below), but `carried` was
     // cleared above and the composer has already released its chip — so a retry
@@ -187,11 +184,11 @@ export function useUnifiedAttachments(notebookId: string | null) {
           retain();
           return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
         }
-        composedQuestion = lookQuestion(
-          look.observation.text,
-          look.observation.capturedAt,
-          question,
-        );
+        // Keep model-generated LOOK prose out of the technician's question.
+        // The engine classifies that string as operator-authored input, so a
+        // negated observation such as "no burn marks" would otherwise trip an
+        // immediate safety stop (#3852). The structured rider carries the
+        // visual context without changing the text being classified.
         rider = {
           visualEvidence: {
             fileId: look.fileId,
@@ -201,7 +198,7 @@ export function useUnifiedAttachments(notebookId: string | null) {
       }
 
       for (const item of items) held.current.delete(item.attachment.id);
-      return { question: composedQuestion, rider, warning };
+      return { question, rider, warning };
     } catch (error) {
       retain();
       throw error;

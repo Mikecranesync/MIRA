@@ -63,12 +63,12 @@ describe("unified attachments controller", () => {
     expect(api.uploadSourceToNotebook).not.toHaveBeenCalled();
   });
 
-  it("uploads the photo through the LOOK door and returns the visual-evidence rider", async () => {
+  it("keeps generated LOOK text out of the classified question and returns the visual-evidence rider", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockResolvedValue({
       fileId: "file-9",
       observation: {
-        text: "A carton containing individually boxed ball bearings.",
+        text: "No visible damage, burn marks, or corrosion.",
         capturedAt: "2026-09-16T21:17:20",
       },
     });
@@ -81,7 +81,7 @@ describe("unified attachments controller", () => {
 
     expect(api.lookAtPhoto).toHaveBeenCalledTimes(1);
     expect(composed).toEqual({
-      question: "Visual observation (21:17:20, phone photo): A carton containing individually boxed ball bearings.\n\nwhy is it leaking",
+      question: "why is it leaking",
       rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T21:17:20" } },
       warning: undefined,
     });
