@@ -4114,10 +4114,16 @@ def test_production_ssh_uses_committed_host_identity(workflow_name):
 
 def test_factorylm_prod_host_identity_is_committed_and_guarded():
     host_key = (REPO_ROOT / "deployment" / "known_hosts.factorylm-prod").read_text(encoding="utf-8")
-    assert host_key == (
+    # Must contain both DigitalOcean (legacy) and OVH production keys for rollback independence
+    expected = (
+        "# DigitalOcean production host key (legacy). SHA256:R6kD/zI16xOLqNFNYGw67lIwPFWdIlsqgGTyg6NWEpM\n"
         "165.245.138.91 ssh-ed25519 "
         "AAAAC3NzaC1lZDI1NTE5AAAAIOx9AwtJJMamqcrrAyrea9+7Hmqo4o9IO3QZHI50EUqR\n"
+        "# OVH production host key pin (#3800). SHA256:yslCH8KRVJu0281ztiTXYxD9o8Ogg32OQ2rZ5pn8FrY\n"
+        "40.160.141.61 ssh-ed25519 "
+        "AAAAC3NzaC1lZDI1NTE5AAAAIHFI2GfClRE3Nlpi7EfqH56rSawold8FozJbIORHP04o\n"
     )
+    assert host_key == expected
     policy = load_guard_policy(REAL_REGISTRY)
     assert path_is_guarded("deployment/known_hosts.factorylm-prod", policy)
     assert path_is_guarded("tools/migration_drift.py", policy)

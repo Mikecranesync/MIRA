@@ -37,7 +37,9 @@ vi.mock("@/lib/workspace-files", () => ({ sha256Hex: (b: Buffer) => `sha:${b.len
 import {
   correctVisualObservations,
   loadVisualEvidenceForAsset,
+  loadVisualEvidenceForPhoto,
   promoteVisualObservations,
+  recordLookObservation,
   recordNameplateObservations,
 } from "../visual-evidence-context";
 import { withTenantContext } from "../tenant-context";
@@ -504,5 +506,54 @@ run("visual-evidence-context (integration)", () => {
       const n = await q(`SELECT count(*)::int AS n FROM observation WHERE extractor = 'technician' AND tenant_id = $1`, [TENANT_A]);
       expect(n.rows[0].n).toBe(1);
     });
+  });
+
+  // ── #3788 — a Sensor LOOK observation persisted by `recordLookObservation`
+  //    round-trips through `loadVisualEvidenceForPhoto`, keyed on the SERVER-VERIFIED
+  //    file id, on an UNBOUND session (asset_id NULL). Isolates by tenant AND by
+  //    file id, and stays INVISIBLE to the asset-keyed loader (no double-surfacing).
+  //    Real schema (063 + 069 TEXT tenant), real RLS — the write goes through
+  //    withTenantContext → SET LOCAL ROLE factorylm_app, not the owner seed helper.
+  //    Nested inside this run() so it shares the pool (the shared afterAll ends it).
+  describe("recordLookObservation / loadVisualEvidenceForPhoto — LOOK round-trips by file id, isolates by tenant", () => {
+  const LOOK_FILE = "10041000-0000-4000-8000-0000000000f1";
+  const OTHER_FILE = "10041000-0000-4000-8000-0000000000f2";
+  const OBS_TEXT = "green indicator lit; no burn marks; terminal cover seated";
+
+  beforeAll(async () => {
+    const w = await recordLookObservation({
+      tenantId: TENANT_A,
+      fileId: LOOK_FILE,
+      photoHash: "look-roundtrip-hash",
+      text: OBS_TEXT,
+      model: "together/vision-it",
+      capturedAt: "2026-09-19T12:00:00.000Z",
+      createdBy: "it-look",
+    });
+    expect(w).not.toBeNull();
+  });
+
+  it("L1: the observation is readable by its file id, marked candidate, on an unbound session", async () => {
+    const row = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForPhoto(c, TENANT_A, LOOK_FILE));
+    expect(row).not.toBeNull();
+    expect(row).toMatchObject({
+      text: OBS_TEXT,
+      trust: "candidate",
+      fileId: LOOK_FILE,
+      photoHash: "look-roundtrip-hash",
+    });
+  });
+
+  it("L2 (isolation CONTROL — must go red if tenant/file scoping breaks): a foreign tenant and a wrong file id both read NOTHING", async () => {
+    const foreignTenant = await withTenantContext(TENANT_B, (c) => loadVisualEvidenceForPhoto(c, TENANT_B, LOOK_FILE));
+    expect(foreignTenant).toBeNull();
+    const wrongFile = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForPhoto(c, TENANT_A, OTHER_FILE));
+    expect(wrongFile).toBeNull();
+  });
+
+  it("L3: the LOOK observation (asset_id NULL) is INVISIBLE to the asset-keyed loader — no double-surfacing", async () => {
+    const byAsset = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1, 100));
+    expect(byAsset.some((r) => r.text === OBS_TEXT)).toBe(false);
+  });
   });
 });
