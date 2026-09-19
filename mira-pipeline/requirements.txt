@@ -1,5 +1,6 @@
 # OpenAI-compatible API server
 fastapi==0.115.*
+pydantic>=2.0,<2.12  # <2.12: fastapi pulls pydantic unbounded; 2.12+ breaks the RAG worker structured-output build (unable to infer type for attribute "description"; engine.py:5686). mira-pipeline-saas is the live VPS chat path and copies mira-bots/shared/.
 uvicorn[standard]==0.34.*
 
 # Supervisor dependencies (match mira-bots/telegram/requirements.txt)
