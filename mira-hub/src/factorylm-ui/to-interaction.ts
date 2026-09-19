@@ -36,6 +36,12 @@ import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
+type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
+
+const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
+const PHOTO_ABSTENTION_COPY =
+  "I saw your photo, but I couldn't find anything about it in the selected sources.";
+
 /** What the host knows about the notebook it is rendering; the server owns every field. */
 export interface HubNotebookMeta {
   readonly notebookId: string;
@@ -195,13 +201,18 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
  *  - `status === "error"` with text is a stop; without text a provider failure.
  *  - `status === "insufficient_evidence"` renders the abstention text only.
  */
-export function partsFromStream(result: StreamResult, opts: { stopped?: boolean; turnId: string }): InteractionPart[] {
+export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string }): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
   const stopped = opts.stopped === true;
   const nonAnswer = truncated || stopped || result.status === "error";
+  const text =
+    result.content ||
+    (!nonAnswer && result.status === "insufficient_evidence"
+      ? result.statusMessage?.trim() || (result.visualEvidence ? PHOTO_ABSTENTION_COPY : GENERIC_ABSTENTION_COPY)
+      : "");
 
-  if (result.content) parts.push({ type: "text", text: result.content });
+  if (text) parts.push({ type: "text", text });
 
   if (!nonAnswer) {
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
@@ -295,7 +306,13 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
 
   const answerId = answerTurnId(row.id);
   const parts: InteractionPart[] = [];
-  const text = row.answerText ?? (row.answerStatus === "error" ? "" : "I couldn't find that in the selected sources.");
+  const text =
+    row.answerText ??
+    (row.answerStatus === "error"
+      ? ""
+      : row.answerStatus === "insufficient_evidence" && visualEvidence.length > 0
+        ? PHOTO_ABSTENTION_COPY
+        : GENERIC_ABSTENTION_COPY);
   if (text) parts.push({ type: "text", text });
   if (disputed) parts.push({ type: "identity_dispute" });
   if (!stopped && row.answerStatus !== "error") {

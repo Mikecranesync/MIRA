@@ -19,6 +19,8 @@ import {
   type HubNotebookMeta,
 } from "./to-interaction";
 
+type StreamResultWithStatusMessage = StreamResult & { statusMessage?: string | null };
+
 const LIVE = { turnId: "live-1-a" };
 
 const AT = "2026-09-17T12:00:00.000Z";
@@ -42,7 +44,14 @@ const citation: EvidenceCitation = {
   quote: "Set P9.01 to 2 for Modbus control.",
 };
 
-function stream(over: Partial<StreamResult> = {}): StreamResult {
+const visual = {
+  kind: "visual_observation" as const,
+  fileId: "f9fdad9c",
+  capturedAt: AT,
+  provenance: "phone_photo" as const,
+};
+
+function stream(over: Partial<StreamResultWithStatusMessage> = {}): StreamResultWithStatusMessage {
   return {
     content: "Check the Modbus link first.",
     citations: [citation],
@@ -151,6 +160,33 @@ describe("partsFromStream", () => {
     const parts = partsFromStream(stream({ content: "I couldn't find that in the selected sources.", citations: [], basis: null, followups: [], status: "insufficient_evidence" }), LIVE);
     expect(parts).toEqual([{ type: "text", text: "I couldn't find that in the selected sources." }]);
     expect(lifecycleFromStream(stream({ status: "insufficient_evidence" }))).toBe("completed");
+  });
+
+  it("a verified-photo abstention renders the server sentence and observation card", () => {
+    const copy = "I saw your photo, but I couldn't find anything about it in the selected sources.";
+    const parts = partsFromStream(stream({
+      content: "",
+      citations: [],
+      basis: null,
+      followups: [],
+      status: "insufficient_evidence",
+      statusMessage: copy,
+      visualEvidence: visual,
+    }), LIVE);
+    expect(parts).toEqual([
+      { type: "text", text: copy },
+      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false } },
+    ]);
+  });
+
+  it("an empty ordinary abstention keeps the generic fallback", () => {
+    expect(partsFromStream(stream({
+      content: "",
+      citations: [],
+      basis: null,
+      followups: [],
+      status: "insufficient_evidence",
+    }), LIVE)).toEqual([{ type: "text", text: "I couldn't find that in the selected sources." }]);
   });
 });
 
@@ -265,6 +301,19 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
   it("insufficient_evidence with null text renders the abstention copy", () => {
     const [, a] = turnsFromPersisted(row({ answerStatus: "insufficient_evidence", answerText: null, evidence: [], basis: null }), meta);
     expect(a.parts).toEqual([{ type: "text", text: "I couldn't find that in the selected sources." }]);
+  });
+
+  it("a persisted verified-photo abstention matches the live sentence and card", () => {
+    const [, a] = turnsFromPersisted(row({
+      answerStatus: "insufficient_evidence",
+      answerText: null,
+      evidence: [visual],
+      basis: null,
+    }), meta);
+    expect(a.parts).toEqual([
+      { type: "text", text: "I saw your photo, but I couldn't find anything about it in the selected sources." },
+      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false } },
+    ]);
   });
 });
 
