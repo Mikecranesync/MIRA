@@ -37,18 +37,24 @@ from typing import Optional
 
 logger = logging.getLogger("simlab.approval")
 
-# -- Import asset_agent_transition via sys.path (not as a package) ----------
+# -- Lazy access to asset_agent_transition (lives in mira-bots/shared) ------
+# Imported on demand rather than at module load so the public-only demo image
+# can import this module and construct an ApprovalStore without the grader
+# dependency present. The demo image 404s every grader route and deliberately
+# omits mira-bots/ from the container (see simlab/Dockerfile: "the simulator
+# package only ... the rest of the monorepo stays out of the image"). Only the
+# grader methods transition()/gate() -- never reachable under
+# SIMLAB_PUBLIC_ONLY=1 -- trigger the import, and only in the full deployment
+# where mira-bots/ is on the path.
 _REPO_ROOT = Path(__file__).parent.parent
 _MIRA_BOTS = str(_REPO_ROOT / "mira-bots")
-if _MIRA_BOTS not in sys.path:
-    sys.path.insert(0, _MIRA_BOTS)
 
-from shared.asset_agent_transition import (  # noqa: E402
-    GATE_REFUSAL_MESSAGE,
-    GateDecision,
-    gate_decision,
-    validate_transition,
-)
+
+def _ensure_mira_bots_on_path() -> None:
+    """Put mira-bots/ on sys.path so ``import shared.…`` resolves (full deploy)."""
+    if _MIRA_BOTS not in sys.path:
+        sys.path.insert(0, _MIRA_BOTS)
+
 
 # Valid verdict values (mirror asset_validation_qa.reviewer_verdict CHECK constraint)
 VALID_VERDICTS = frozenset({"good", "bad", "needs_review"})
@@ -148,9 +154,7 @@ class ApprovalStore:
             Human reviewer identifier (required for ``good`` verdicts).
         """
         if verdict not in VALID_VERDICTS:
-            raise ValueError(
-                f"verdict must be one of {sorted(VALID_VERDICTS)}, got {verdict!r}"
-            )
+            raise ValueError(f"verdict must be one of {sorted(VALID_VERDICTS)}, got {verdict!r}")
         rows = self._conn.execute(
             "UPDATE asset_validation_qa "
             "SET reviewer_verdict=?, reviewed_by=?, reviewed_at=datetime('now') "
@@ -197,6 +201,9 @@ class ApprovalStore:
         ``shared.asset_agent_transition``; raises ``IllegalTransition`` on
         illegal moves.
         """
+        _ensure_mira_bots_on_path()
+        from shared.asset_agent_transition import validate_transition  # noqa: E402
+
         current = self.agent_state(asset_uns_path)
         validate_transition(current, target, actor=actor)  # raises on illegal
         self._conn.execute(
@@ -220,6 +227,13 @@ class ApprovalStore:
         Returns a dict with ``allow: bool``, ``reason: str``, and (if refused)
         ``message: str`` (the technician-facing refusal text).
         """
+        _ensure_mira_bots_on_path()
+        from shared.asset_agent_transition import (  # noqa: E402
+            GATE_REFUSAL_MESSAGE,
+            GateDecision,
+            gate_decision,
+        )
+
         state = self.agent_state(asset_uns_path)
         decision: GateDecision = gate_decision(state, enforce=True, auto_deploy=False)
         result: dict = {"allow": decision.allow, "reason": decision.reason}
