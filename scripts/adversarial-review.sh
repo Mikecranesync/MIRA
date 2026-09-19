@@ -146,6 +146,19 @@ final_green_gate() {
     echo "STALE: PR head advanced to ${cur:0:12} — this GREEN applies only to the reviewed ${HEAD_SHA:0:12}." >&2
     exit 4
   fi
+  # The Legacy UI Lifecycle Guard reads this ledger but only re-evaluates on a
+  # pull_request_target event, which a new comment is not. Re-run its latest
+  # run for this head so the status reflects the GREEN without a label click.
+  # Best effort: a failure here never changes the review verdict.
+  local run_id
+  run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
+    --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
+    2>/dev/null || echo "")"
+  if [ -n "$run_id" ]; then
+    gh run rerun "$run_id" >/dev/null 2>&1 \
+      && echo "Re-ran Legacy UI Lifecycle Guard run $run_id for $HEAD_SHA." \
+      || echo "NOTE: could not re-run Legacy UI Lifecycle Guard run $run_id (re-run it by hand)." >&2
+  fi
   exit 0
 }
 
