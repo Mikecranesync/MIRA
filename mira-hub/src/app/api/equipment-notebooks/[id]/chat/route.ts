@@ -837,10 +837,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const enc = new TextEncoder();
 
+  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
+  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
+  // raster MIME), then re-derive the WHOLE entry server-side — including
+  // `capturedAt`, which comes from the stored file row, never from the client.
+  // Anything else (a manual PDF that merely happens to be linked, a foreign
+  // file, a stored-only type) → ignored, logged; the turn still answers.
+  // Never a citation, never in sourceSnapshot, never moves `basis`.
+  //
+  // #3788: this runs BEFORE the Gate G abstain below, not after it. Until
+  // 2026-09-19 a phone-photo question whose retrieval came back empty was
+  // refused before the photo was ever looked at, so the abstain carried no
+  // evidence frame, persisted no visual entry, and logged nothing — on the
+  // Pixel the photo simply vanished from the turn. Verification is cheap
+  // (one tenant-scoped row), and ordering it first means an abstain can still
+  // tell the technician "I saw your photo" and keep it on the record.
+  let visualEntry: VisualObservationEntry | null = null;
+  if (visualClaimFileId) {
+    try {
+      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
+      if (photo) {
+        visualEntry = {
+          kind: "visual_observation",
+          fileId: photo.fileId,
+          capturedAt: photo.capturedAt,
+          provenance: "phone_photo",
+        };
+      } else {
+        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
+      }
+    } catch (err) {
+      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
+      visualEntry = null;
+    }
+  }
+
   // Grounded mode abstains here; general mode is EXPECTED to have no chunks and
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
   // with sources selected and nothing retrieved and nothing else grounding the
-  // turn, MIRA still refuses without calling a provider.
+  // turn, MIRA still refuses without calling a provider. A verified photo does
+  // NOT open the gate (#3788): the route cannot read the photo's observation
+  // text (LOOK returns it to the phone and does not persist it), so answering
+  // from zero chunks would be model reasoning dressed as a photo answer. The
+  // photo rides the abstain instead — persisted, streamed, and named in the
+  // status message — so nothing the technician captured is lost.
   //
   // The third clause is the Sensor REPLAY correction. A served, non-empty
   // machine window IS grounding — it is recorded observation, re-fetched by the
@@ -863,7 +903,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       answerStatus: "insufficient_evidence",
       answerText: null,
       enabledSourceDocIds: docIds,
-      evidence: [...disputeEntries],
+      // #3788: the verified photo is part of the record of this refusal, so a
+      // history read renders the same card the live turn showed.
+      evidence: [...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
@@ -880,10 +922,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const status: NotebookStatusFrame = {
           kind: "status",
           status: "insufficient_evidence",
-          message: "I couldn't find that in the selected sources.",
+          message: visualEntry
+            ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+            : "I couldn't find that in the selected sources.",
         };
         if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
         controller.enqueue(enc.encode(sse(sources)));
+        // #3788: the verified photo rides the abstain as a basis-less evidence
+        // MARKER frame — the same grammar as `IDENTITY_DISPUTE_FRAME` (readers
+        // treat `basis`/`label` as absent). No basis is claimed because nothing
+        // grounded an answer; the frame only says "this photo was verified for
+        // this turn", which is exactly what the persisted `evidence[]` says.
+        if (visualEntry) {
+          const visualMarker = { kind: "evidence", visualEvidence: visualEntry } as const satisfies Pick<
+            NotebookEvidenceFrame,
+            "kind" | "visualEvidence"
+          >;
+          controller.enqueue(enc.encode(sse(visualMarker)));
+        }
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
@@ -899,33 +955,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const citations = await buildCitations(ctx.tenantId, notebookId, chunks, message);
-
-  // Sensor LOOK (S5 D3): verify the claimed photo is a workspace file linked
-  // to THIS notebook in THIS tenant AS A PHOTO (role='photo' + a viewable
-  // raster MIME), then re-derive the WHOLE entry server-side — including
-  // `capturedAt`, which comes from the stored file row, never from the client.
-  // Anything else (a manual PDF that merely happens to be linked, a foreign
-  // file, a stored-only type) → ignored silently; the turn still answers.
-  // Never a citation, never in sourceSnapshot, never moves `basis`.
-  let visualEntry: VisualObservationEntry | null = null;
-  if (visualClaimFileId) {
-    try {
-      const photo = await photoLinkedToTarget(ctx.tenantId, visualClaimFileId, "equipment_notebook", notebookId);
-      if (photo) {
-        visualEntry = {
-          kind: "visual_observation",
-          fileId: photo.fileId,
-          capturedAt: photo.capturedAt,
-          provenance: "phone_photo",
-        };
-      } else {
-        console.warn("[notebook-chat] visualEvidence ignored: no photo link for this file on this notebook");
-      }
-    } catch (err) {
-      console.error("[notebook-chat] visualEvidence verification failed (continuing without it):", err);
-      visualEntry = null;
-    }
-  }
 
   // Approved-context gate — for MACHINE evidence only (D3). Mirrors the asset
   // chat route's summary: live real signals count as approved context; the
