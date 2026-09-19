@@ -392,13 +392,13 @@ jobs:
 
   # ── Workstream B: deterministic admission regression (no secrets) ─────────
   # Visual-evidence trust loop (PR #3832 IR §8): the real-schema proof for the
-  # 069 TEXT-tenant_id defect used to run only when a human typed the command in
-  # the test's docstring — the unit config excludes *.integration.test.ts, so a
-  # green `mira-hub-unit` never executed it. This job applies the REAL migration
-  # files (setup-integration-db.mjs default list, which includes 063 + 069) to a
-  # disposable Postgres and runs the suite. No secrets. It must fail LOUD if the
-  # suite skips: the file `describe.skip`s when TEST_DATABASE_URL is unset, and a
-  # skipped suite would otherwise read as green.
+  # Integration regressions used to run only when a human typed commands from
+  # their docstrings — the unit config excludes *.integration.test.ts, so a
+  # green `mira-hub-unit` never executed them. This job applies the REAL default
+  # migration list (including 063/069 and 086–089) to disposable Postgres and
+  # runs both named suites. No secrets. It must fail LOUD if either suite skips:
+  # the files `describe.skip` when TEST_DATABASE_URL is unset, and a skipped
+  # suite would otherwise read as green.
   visual-evidence-regression:
     name: Visual-evidence isolation (disposable Postgres, migrations 063+069)
     runs-on: ubuntu-latest
@@ -483,6 +483,24 @@ jobs:
           n=$(grep -oE "Tests +[0-9]+ passed" /tmp/visual-it.out | grep -oE "[0-9]+" | head -1)
           echo "executed passing cases: ${n:-0}"
           [ "${n:-0}" -ge 14 ] || { echo "::error::expected ≥14 passing cases, saw ${n:-0}"; exit 1; }
+
+      - name: Notebook request ownership suite (RED if idempotency tests skip)
+        working-directory: mira-hub
+        env:
+          NO_COLOR: "1"
+          FORCE_COLOR: "0"
+          CI: "true"
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts \
+            src/lib/__tests__/notebook-turn-owner.integration 2>&1 | tee /tmp/notebook-turn-owner-it.raw
+          sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' /tmp/notebook-turn-owner-it.raw > /tmp/notebook-turn-owner-it.out
+          if grep -qE "^ *(Test Files|Tests) +.*[0-9]+ skipped|^ *No test files found|^ *Tests +0 passed" /tmp/notebook-turn-owner-it.out; then
+            echo "::error::notebook request ownership integration suite skipped or empty — the gate proved nothing"; exit 1
+          fi
+          n=$(grep -oE "Tests +[0-9]+ passed" /tmp/notebook-turn-owner-it.out | grep -oE "[0-9]+" | head -1)
+          echo "executed passing cases: ${n:-0}"
+          [ "${n:-0}" -ge 7 ] || { echo "::error::expected ≥7 passing cases, saw ${n:-0}"; exit 1; }
 
   admission-regression:
     name: Admission fix present (disposable Postgres, gate ON)

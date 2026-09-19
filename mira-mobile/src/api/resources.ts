@@ -1394,6 +1394,8 @@ export async function askNotebook(
     mode?: "general";
     /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
     history?: ChatHistoryTurn[];
+    /** Stable across Retry; scopes server-side turn-write idempotency. */
+    clientRequestId?: string;
     /** STRM-1: called with the turn-so-far after every completed frame, so
      *  the transcript can paint tokens as they arrive. The resolved value is
      *  the SAME object the last update produced (one parser, one truth). */
@@ -1421,15 +1423,28 @@ export async function askNotebook(
         ...(opts.threadId ? { threadId: opts.threadId } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
+        ...(opts.clientRequestId ? { clientRequestId: opts.clientRequestId } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
+      },
+      onResponseHeaders: (headers) => {
+        const safetyTrigger = headers.get("X-Safety-Stop");
+        if (safetyTrigger === null) return;
+        parser.push(`data: ${JSON.stringify({ kind: "safety", trigger: safetyTrigger })}\n\n`);
+        opts.onUpdate?.(parser.turn());
       },
       onChunk: (chunk) => {
         const before = parser.turn();
         const partial = parser.push(chunk);
-        // Text growth, or the identity-dispute marker landing (086 §3 — it
-        // precedes content on the wire and must show at once).
-        if (partial.answer !== before.answer || partial.identityDisputed !== before.identityDisputed) {
+        // Text growth, or an authoritative marker landing before content. Both
+        // identity dispute and Safety STOP must reach screen state immediately;
+        // otherwise a transport failure before the first content byte can erase
+        // a warning the server has already committed.
+        if (
+          partial.answer !== before.answer ||
+          partial.identityDisputed !== before.identityDisputed ||
+          partial.safetyTrigger !== before.safetyTrigger
+        ) {
           opts.onUpdate?.(partial);
         }
       },
