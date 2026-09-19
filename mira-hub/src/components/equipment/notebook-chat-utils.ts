@@ -179,7 +179,8 @@ export function answerContentFor(
  *
  *  If the reader throws (an abort, a dropped connection) the partial `content`
  *  accumulated so far is attached to the error as `partial` so the caller can
- *  keep what streamed (STRM-2).
+ *  keep what streamed (STRM-2). An authoritative safety frame that arrived
+ *  before the interruption is carried too; ordinary evidence is not.
  *
  *  If the reader does NOT throw but the stream ended without a terminal
  *  `status` frame, the result carries `sawStatus:false` (ADR-0038 rule 6) and
@@ -242,7 +243,10 @@ export async function readNotebookStream(
       }
     }
   } catch (err) {
-    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { partial: out.content });
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
+      partial: out.content,
+      ...(out.safetyNotice ? { safetyNotice: out.safetyNotice } : {}),
+    });
   }
   return out;
 }
@@ -435,4 +439,15 @@ export function stoppedTurn<T extends { content: string }>(
     basis: null,
     followups: [],
   };
+}
+
+/** Map a throwing reader abort to the same fail-closed stopped-turn contract as
+ *  a non-throwing truncation. The one server determination that survives is a
+ *  validated safety hard-stop; citations, basis and follow-ups never do. */
+export function stoppedTurnFromAbort<T extends { content: string }>(turn: T, err: unknown) {
+  const interrupted = err && typeof err === "object" ? (err as Record<string, unknown>) : {};
+  const stopped = stoppedTurn(turn, typeof interrupted.partial === "string" ? interrupted.partial : "");
+  return isSafetyNoticeEntry(interrupted.safetyNotice)
+    ? { ...stopped, safetyNotice: interrupted.safetyNotice }
+    : stopped;
 }

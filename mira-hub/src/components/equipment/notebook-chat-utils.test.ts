@@ -15,6 +15,7 @@ import {
   readNotebookStream,
   restoreComposer,
   stoppedTurn,
+  stoppedTurnFromAbort,
 } from "./notebook-chat-utils";
 
 import { visualObservationCaption } from "./notebook-chat-utils";
@@ -587,6 +588,50 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
       () => {},
     );
     expect(out.safetyNotice).toBeNull();
+  });
+
+  it("carries an authoritative safety notice when the technician aborts after its frame", async () => {
+    const result = readNotebookStream(
+      streamOf(
+        [
+          frame({ kind: "content", content: "SAFETY STOP: isolate the machine immediately." }),
+          frame({ kind: "safety", trigger: "smoke coming" }),
+        ],
+        { abortAfter: 2 },
+      ),
+      () => {},
+    );
+
+    await expect(result).rejects.toMatchObject({
+      name: "AbortError",
+      partial: "SAFETY STOP: isolate the machine immediately.",
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    });
+  });
+});
+
+describe("stoppedTurnFromAbort — preserve safety, discard unsupported evidence", () => {
+  it("keeps only the streamed partial and a validated safety notice", () => {
+    const turn = { id: "a1", content: "", citations: [{ citationId: "1" }], basis: "oem_documentation" };
+    const stopped = stoppedTurnFromAbort(turn, {
+      partial: "SAFETY STOP: isolate now.",
+      safetyNotice: { kind: "safety_notice", trigger: "exposed wire" },
+    });
+
+    expect(stopped).toMatchObject({
+      content: "SAFETY STOP: isolate now.",
+      status: "error",
+      stopped: true,
+      citations: [],
+      basis: null,
+      safetyNotice: { kind: "safety_notice", trigger: "exposed wire" },
+    });
+  });
+
+  it("drops an unvalidated marker supplied by an arbitrary abort error", () => {
+    expect(stoppedTurnFromAbort({ content: "" }, { partial: "partial", safetyNotice: { kind: "safety_notice" } })).not.toHaveProperty(
+      "safetyNotice",
+    );
   });
 });
 

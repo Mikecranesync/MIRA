@@ -20,6 +20,7 @@ import {
   postNotebookChat,
   restoreComposer,
   stoppedTurn,
+  stoppedTurnFromAbort,
   visualObservationCaption,
   type ChatBody,
 } from "./notebook-chat-utils";
@@ -409,9 +410,9 @@ export function NotebookChat({
     } catch (err) {
       if (isAbortError(err)) {
         // Stopped by the technician: keep the partial text, mark it as not an
-        // answer (STRM-2). No retry, no provider call.
-        const partial = (err as { partial?: string }).partial ?? "";
-        setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurn(x, partial) : x)));
+        // answer (STRM-2). Preserve an authoritative safety frame if it already
+        // arrived; no other evidence survives. No retry, no provider call.
+        setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurnFromAbort(x, err) : x)));
       } else {
         // Failure keeps the question (CMPS-2): roll back the optimistic
         // exchange, put the text back in the composer, offer Retry with the
