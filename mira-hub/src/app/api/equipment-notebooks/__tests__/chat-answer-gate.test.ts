@@ -23,6 +23,8 @@ import { NextRequest } from "next/server";
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
+const PHOTO = "44444444-4444-4444-8444-444444444444";
+const CAPTURED_AT = "2026-09-19T11:09:23.000Z";
 
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({
@@ -46,6 +48,11 @@ const domainMock = vi.hoisted(() => ({
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
+
+const filesMock = vi.hoisted(() => ({
+  photoLinkedToTarget: vi.fn(async (): Promise<{ fileId: string; capturedAt: string } | null> => null),
+}));
+vi.mock("@/lib/workspace-files", () => filesMock);
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
@@ -132,7 +139,7 @@ function lastTurn() {
     answerStatus: string;
     answerText: string | null;
     basis: string | null;
-    evidence: { kind?: string; trigger?: string }[];
+    evidence: Record<string, unknown>[];
   };
 }
 
@@ -147,6 +154,7 @@ beforeEach(() => {
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT_A, userId: "u1" } as never);
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
+  filesMock.photoLinkedToTarget.mockResolvedValue(null);
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -184,6 +192,49 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
     expect(turn.evidence).toContainEqual({ kind: "safety_notice", trigger: "unsafe-answer:permits-energized" });
     // The rejected candidate is stored NOWHERE.
     expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("permits resetting");
+  });
+
+  it("retains a verified photo when the output gate replaces an unsafe candidate", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        completingProvider(
+          "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
+        ),
+      ),
+    );
+
+    const res = await POST(
+      chatReq({
+        message: "Can I reset the E-12 fault while it's still on?",
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+    const frames = parseFrames(await res.text());
+
+    expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT_A, PHOTO, "equipment_notebook", NB);
+    expect(frames).toContainEqual({
+      kind: "evidence",
+      visualEvidence: {
+        kind: "visual_observation",
+        fileId: PHOTO,
+        capturedAt: CAPTURED_AT,
+        provenance: "phone_photo",
+      },
+    });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().evidence).toContainEqual({
+      kind: "visual_observation",
+      fileId: PHOTO,
+      capturedAt: CAPTURED_AT,
+      provenance: "phone_photo",
+    });
+    expect(lastTurn().basis).toBeNull();
   });
 });
 

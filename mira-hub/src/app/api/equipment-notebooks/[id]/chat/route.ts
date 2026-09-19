@@ -1563,6 +1563,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         controller.enqueue(
           enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
         );
+        if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       } else {
         controller.enqueue(enc.encode(sse(evidenceFrame)));
       }
@@ -1629,14 +1630,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // citations, discriminated by `kind`. Never in `citations` or
           // `sourceSnapshot`. Persisted only for a served turn, like `basis`.
           // B2: an unsafe-rejected turn persists like an input-side safety stop
-          // — a safety_notice entry, no citations, no machine/visual entries,
-          // and NO basis claim. The rejected draft itself is never stored.
+          // — a safety_notice entry, no citations or machine entry, and NO
+          // basis claim. A verified photo is retained as non-grounding turn
+          // context, matching the input-side stop; the rejected draft itself
+          // is never stored.
           evidence: served
             ? outputRejected?.kind === "unsafe_answer"
               ? [
                   ...hazardEntries,
                   { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
                   ...disputeEntries,
+                  ...(visualEntry ? [visualEntry] : []),
                 ]
               : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
