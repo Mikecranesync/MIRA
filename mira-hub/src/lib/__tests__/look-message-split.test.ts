@@ -1,43 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { matchSafetyStop } from "../safety-classifier";
-
-/**
- * splitLookMessage helper — extract observation text from the composed
- * "Visual observation (HH:MM:SS, phone photo): <obs>\n\n<question>" format
- * (mira-mobile/src/lib/sensor.ts::lookQuestion).
- *
- * Returns {observation: string | null, question: string} where:
- * - observation = the <obs> part (null if format doesn't match)
- * - question = either <question> (if format matched) or the full message (fallback)
- *
- * This is a pure, deterministic helper with no dependencies — testable standalone.
- */
-function splitLookMessage(fullMessage: string): { observation: string | null; question: string } {
-  // Match the prefix up to and including the colon. Use [ \t]* to match only horizontal whitespace,
-  // not vertical (no newlines).
-  const PREFIX_PATTERN = /^Visual observation \(\d{2}:\d{2}:\d{2}, phone photo\):[ \t]*/;
-  const SEPARATOR = "\n\n";
-
-  const match = fullMessage.match(PREFIX_PATTERN);
-  if (!match) {
-    // Format doesn't match; return as a single question, no observation
-    return { observation: null, question: fullMessage };
-  }
-
-  const prefixEnd = match[0].length;
-  const rest = fullMessage.slice(prefixEnd);
-  const separatorIndex = rest.indexOf(SEPARATOR);
-
-  if (separatorIndex === -1) {
-    // No separator found; treat everything as observation
-    return { observation: rest.trim(), question: "" };
-  }
-
-  const observation = rest.slice(0, separatorIndex);
-  const question = rest.slice(separatorIndex + SEPARATOR.length).trim();
-
-  return { observation, question };
-}
+// Import the REAL production helper — do not re-implement it here. A local copy
+// would make these tests validate the copy, not the shipped code (the exact
+// "passing test that proves nothing" failure `.claude/rules/prove-the-test-fails.md`
+// exists to stop). Mutating ../util/look-message-split must be able to turn a
+// test in this file red.
+import { splitLookMessage } from "../util/look-message-split";
 
 describe("splitLookMessage", () => {
   it("parses the standard LOOK format correctly", () => {
@@ -64,6 +32,20 @@ describe("splitLookMessage", () => {
     // first separator check finds "\n\n" at index 1. So observation is " ".trim() = "".
     expect(result.observation).toBe(""); // After trim(), a single space becomes empty
     expect(result.question).toBe("what should I do?");
+  });
+
+  it("fails SAFE on a prefix with no separator — classifies the whole remainder", () => {
+    // Malformed/spoofed: the LOOK prefix is present but there is no "\n\n"
+    // separator (real lookQuestion always emits one). We must NOT exempt the
+    // remainder from safety classification — question carries the whole rest so
+    // matchSafetyStop still sees it. The old branch returned {question: ""},
+    // which fails OPEN (matchSafetyStop("") === null exempts everything).
+    const fullMessage = "Visual observation (14:32:10, phone photo): exposed live wire and burn marks";
+    const result = splitLookMessage(fullMessage);
+    expect(result.observation).toBeNull();
+    expect(result.question).toBe("exposed live wire and burn marks");
+    // The safety hazard in a malformed message is still caught (fails safe).
+    expect(matchSafetyStop(result.question)).not.toBeNull();
   });
 });
 

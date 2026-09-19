@@ -45,8 +45,16 @@ export function splitLookMessage(fullMessage: string): {
   const separatorIndex = rest.indexOf(SEPARATOR);
 
   if (separatorIndex === -1) {
-    // No separator found; treat everything as observation
-    return { observation: rest.trim(), question: "" };
+    // Prefix matched but there is NO blank-line separator. A well-formed LOOK
+    // message from sensor.ts::lookQuestion ALWAYS emits "\n\n" between the
+    // observation and a (default-filled, never-empty) question, so this branch
+    // only fires on malformed or spoofed input. In that case we cannot reliably
+    // isolate a technician question, so we must NOT grant the observation the
+    // classification exemption — classify the WHOLE remainder. This fails toward
+    // over-classification (a spurious SAFETY_STOP), the safe direction for a
+    // safety hard-stop. The previous {observation: rest, question: ""} branch
+    // failed OPEN — matchSafetyStop("") returns null, exempting everything.
+    return { observation: null, question: rest.trim() };
   }
 
   const observation = rest.slice(0, separatorIndex);
