@@ -180,6 +180,9 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
 
     const safety = frames.find((f) => f.kind === "safety");
     expect(safety).toMatchObject({ trigger: "unsafe-answer:permits-energized" });
+    expect(frames.findIndex((f) => f.kind === "safety")).toBeLessThan(
+      frames.findIndex((f) => f.kind === "content"),
+    );
     expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
     expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
     expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });

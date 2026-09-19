@@ -19,13 +19,10 @@ import {
   machineReplayCaption,
   postNotebookChat,
   retainedSafetyStreamFailure,
-  retainedTurnsForRetry,
-  restoreRetriedExchange,
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
   turnFromIncompleteStream,
-  turnsWithoutRetriedExchange,
   visualObservationCaption,
   type ChatBody,
 } from "./notebook-chat-utils";
@@ -293,11 +290,6 @@ export function Bubble({
  *  one basis label ("General guidance", amber, no citations). With sources the
  *  body is byte-identical to buildChatBody — Retry re-posts either as-is. */
 export type SendBody = ChatBody & { mode?: "general" };
-type FailedSend = {
-  readonly body: SendBody;
-  /** Optimistic exchange retained only because it contains a Safety STOP. */
-  readonly retainedTurnIds?: readonly [string, string];
-};
 export function chatBodyFor(message: string, enabledDocIds: string[], turns: ChatTurn[]): SendBody {
   const body = buildChatBody(message, enabledDocIds, turns);
   return enabledDocIds.length === 0 ? { ...body, mode: "general" } : body;
@@ -318,7 +310,7 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
-  const [failed, setFailed] = useState<FailedSend | null>(null);
+  const [failed, setFailed] = useState<SendBody | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -353,7 +345,7 @@ export function NotebookChat({
 
   // Post one body and stream the answer. Shared by a fresh send and Retry so
   // the retried request is byte-identical to the one that failed.
-  const post = useCallback(async (body: SendBody, retryFallback: readonly [ChatTurn, ChatTurn] | null = null) => {
+  const post = useCallback(async (body: SendBody) => {
     setFailed(null);
     setBusy(true);
     const controller = new AbortController();
@@ -361,13 +353,6 @@ export function NotebookChat({
     const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: body.message };
     const aId = `a${Date.now()}`;
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
-
-    const restoreSafetyFallback = () => {
-      if (!retryFallback) return false;
-      setTurns((prev) => restoreRetriedExchange(prev, [userTurn.id, aId], retryFallback));
-      setFailed({ body, retainedTurnIds: [retryFallback[0].id, retryFallback[1].id] });
-      return true;
-    };
 
     try {
       const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
@@ -386,9 +371,6 @@ export function NotebookChat({
       // follow-ups, all of which would present a cut-off stream as a complete,
       // cited answer.
       if (!sawStatus) {
-        // A retry must never erase the earlier authoritative STOP unless this
-        // attempt produced an equally authoritative replacement warning.
-        if (!safetyNotice && restoreSafetyFallback()) return;
         setTurns((prev) =>
           prev.map((x) =>
             x.id === aId
@@ -422,7 +404,6 @@ export function NotebookChat({
       );
     } catch (err) {
       if (isAbortError(err)) {
-        if (!retainedSafetyStreamFailure(err) && restoreSafetyFallback()) return;
         // Stopped by the technician: keep the partial text, mark it as not an
         // answer (STRM-2). Preserve an authoritative safety frame if it already
         // arrived; no other evidence survives. No retry, no provider call.
@@ -430,8 +411,9 @@ export function NotebookChat({
       } else {
         const retained = retainedSafetyStreamFailure(err);
         if (retained) {
-          // A transport failure remains an interrupted/retryable turn, not a
-          // technician Stop, but it cannot erase a safety frame already sent.
+          // A validated Safety STOP is terminal and the server may already
+          // have persisted it. Keep it visible, but never offer Retry: reposting
+          // the same question could duplicate that durable safety exchange.
           setTurns((prev) =>
             prev.map((x) =>
               x.id === aId
@@ -439,16 +421,14 @@ export function NotebookChat({
                 : x,
             ),
           );
-          setFailed({ body, retainedTurnIds: [userTurn.id, aId] });
           return;
         }
-        if (restoreSafetyFallback()) return;
         // Failure keeps the question (CMPS-2): roll back the optimistic
         // exchange, put the text back in the composer, offer Retry with the
         // identical body. Nothing is fabricated in the transcript.
         setTurns((prev) => prev.filter((x) => x.id !== aId && x.id !== userTurn.id));
         setInput((cur) => restoreComposer(cur, body.message));
-        setFailed({ body });
+        setFailed(body);
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -469,13 +449,8 @@ export function NotebookChat({
 
   const retry = useCallback(() => {
     if (!failed || busy) return;
-    const retryFallback = retainedTurnsForRetry(turnsRef.current, failed.retainedTurnIds);
-    // If the retained authoritative pair is unexpectedly absent, do not start
-    // a retry that cannot restore it on failure.
-    if (failed.retainedTurnIds && !retryFallback) return;
-    setTurns((prev) => turnsWithoutRetriedExchange(prev, failed.retainedTurnIds));
-    setInput((cur) => (cur === failed.body.message ? "" : cur));
-    void post(failed.body, retryFallback);
+    setInput((cur) => (cur === failed.message ? "" : cur));
+    void post(failed);
   }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
@@ -533,11 +508,7 @@ export function NotebookChat({
         )}
         {failed && !busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }} data-testid="send-failed">
-            <span>
-              {failed.retainedTurnIds
-                ? "Connection interrupted after a safety warning."
-                : "Couldn’t send — your question is still in the box."}
-            </span>
+            <span>Couldn’t send — your question is still in the box.</span>
             <button
               type="button"
               onClick={retry}

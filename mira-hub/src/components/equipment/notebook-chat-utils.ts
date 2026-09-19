@@ -482,39 +482,3 @@ export function turnFromIncompleteStream<T extends { content: string }>(
   const interrupted = stoppedTurn(turn, result.content, technicianStopped ? "stopped" : "truncated");
   return result.safetyNotice ? { ...interrupted, safetyNotice: result.safetyNotice } : interrupted;
 }
-
-/** A retained safety failure remains visible until Retry. At that point remove
- *  its optimistic question/answer pair before the byte-identical send appends
- *  the replacement, preventing a duplicated user question. */
-export function turnsWithoutRetriedExchange<T extends { id: string }>(
-  turns: readonly T[],
-  retainedTurnIds?: readonly string[],
-): T[] {
-  if (!retainedTurnIds?.length) return [...turns];
-  const removed = new Set(retainedTurnIds);
-  return turns.filter((turn) => !removed.has(turn.id));
-}
-
-/** Snapshot the authoritative pair before a retained-safety Retry replaces it,
- *  so every retry outcome that lacks a new safety marker can restore it. */
-export function retainedTurnsForRetry<T extends { id: string }>(
-  turns: readonly T[],
-  retainedTurnIds?: readonly [string, string],
-): readonly [T, T] | null {
-  if (!retainedTurnIds) return null;
-  const user = turns.find((turn) => turn.id === retainedTurnIds[0]);
-  const assistant = turns.find((turn) => turn.id === retainedTurnIds[1]);
-  return user && assistant ? [user, assistant] : null;
-}
-
-/** Roll back a retry that did not produce an equally authoritative safety
- *  marker. The replacement pair is removed and the original warning restored. */
-export function restoreRetriedExchange<T extends { id: string }>(
-  turns: readonly T[],
-  replacementTurnIds: readonly string[],
-  fallback: readonly [T, T],
-): T[] {
-  const withoutReplacement = turnsWithoutRetriedExchange(turns, replacementTurnIds);
-  const fallbackIds = new Set(fallback.map((turn) => turn.id));
-  return [...withoutReplacement.filter((turn) => !fallbackIds.has(turn.id)), ...fallback];
-}

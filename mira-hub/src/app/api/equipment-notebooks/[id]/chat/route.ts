@@ -438,13 +438,16 @@ function safetyStopResponse(
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
       const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
       controller.enqueue(enc.encode(sse(sources)));
+      // The warning must arrive before any content byte so a Stop, proxy cut,
+      // or network failure can never strand the technician with an unmarked
+      // partial hard-stop.
+      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
+      controller.enqueue(enc.encode(sse(safety)));
+      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       for (const word of SAFETY_STOP.split(" ")) {
         const frame: NotebookContentFrame = { kind: "content", content: word + " " };
         controller.enqueue(enc.encode(sse(frame)));
       }
-      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
-      controller.enqueue(enc.encode(sse(safety)));
-      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       const status: NotebookStatusFrame = { kind: "status", status: "answered" };
       controller.enqueue(enc.encode(sse(status)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -1491,8 +1494,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "insufficient_evidence"
           : "answered";
 
-      // B2: release the ACCEPTED answer. Content precedes sources/evidence/
-      // status exactly as in the unbuffered grammar; chunked on whitespace so
+      // An unsafe replacement is already a terminal Safety STOP. Emit its
+      // warning before the first stoppable content byte so an interruption can
+      // never erase the server's authoritative safety determination.
+      if (outputRejected?.kind === "unsafe_answer") {
+        controller.enqueue(
+          enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
+        );
+      }
+
+      // B2: release the ACCEPTED answer. Content precedes sources/basis/status
+      // for ordinary answers; chunked on whitespace so
       // clients keep their incremental-render path. Time-to-first-accepted-
       // content is logged — the gate trades first-token latency for the
       // guarantee that no unvalidated byte is ever displayed.
@@ -1558,11 +1570,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (identityDisputed) evidenceFrame.identityDisputed = true;
       if (outputRejected?.kind === "unsafe_answer") {
         // The replacement IS the safety stop: same grammar as the input-side
-        // stop — a `safety` frame, no basis-bearing evidence frame. The
-        // rejected candidate's lane must not certify the replacement.
-        controller.enqueue(
-          enc.encode(sse({ kind: "safety", trigger: outputRejected.violation } as NotebookSafetyFrame)),
-        );
+        // stop — no basis-bearing evidence frame. The rejected candidate's
+        // lane must not certify the replacement. Its safety frame was emitted
+        // before content above; only the verified-photo marker remains here.
         if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
       } else {
         controller.enqueue(enc.encode(sse(evidenceFrame)));

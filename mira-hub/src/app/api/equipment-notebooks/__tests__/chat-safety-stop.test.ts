@@ -113,6 +113,9 @@ describe("notebook chat safety hard-stop", () => {
     expect(answerText(frames)).toContain("SAFETY STOP");
     expect(answerText(frames)).toContain("lockout/tagout");
     expect(frames.some((f) => f.includes('"kind":"safety"'))).toBe(true);
+    expect(frames.findIndex((f) => f.includes('"kind":"safety"'))).toBeLessThan(
+      frames.findIndex((f) => f.includes('"kind":"content"')),
+    );
     expect(frames.at(-1)).toBe("[DONE]");
   });
 
@@ -199,10 +202,6 @@ describe("notebook chat safety hard-stop", () => {
       })
       .filter((k, i, a) => k !== "content" || a[i - 1] !== "content");
 
-    expect(kinds[0]).toBe("sources");
-    expect(kinds).toContain("content");
-    expect(kinds.at(-3)).toBe("safety");
-    expect(kinds.at(-2)).toBe("status");
-    expect(kinds.at(-1)).toBe("[DONE]");
+    expect(kinds).toEqual(["sources", "safety", "content", "status", "[DONE]"]);
   });
 });
