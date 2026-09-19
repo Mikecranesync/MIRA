@@ -317,6 +317,8 @@ export function uploadMultipart(
 
 export interface StreamOpts {
   json: unknown;
+  /** Called after successful response headers arrive, before body reads. */
+  onResponseHeaders?: (headers: Headers) => void;
   /** Called with each raw body chunk as it arrives, in order. */
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;
@@ -343,8 +345,9 @@ export interface StreamOpts {
  *  origin and the session cookie to live in the WebView store — the Hub-side
  *  CORS + cookie prerequisite tracked in #3453 (hub-streaming lane). Until
  *  that lands, the UI must not advertise Stop on device: aborting the local
- *  read cannot cancel server work or truthfully persist a stopped turn. NOT
- *  retried — a chat turn is not idempotent. */
+ *  read cannot cancel server work or truthfully persist a stopped turn. The
+ *  transport does not auto-retry; UI Retry reuses the server-deduped client
+ *  request id. */
 async function requestStreamRequest(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
   const requestEpoch = localSessionEpoch;
@@ -393,6 +396,7 @@ async function requestStreamRequest(path: string, opts: StreamOpts): Promise<Api
       }
       throw errorFromStatus(status, data);
     }
+    opts.onResponseHeaders?.(res.headers);
     const reader = res.body?.getReader();
     if (!reader) {
       // No stream support (old WebView): degrade to one chunk, same contract.

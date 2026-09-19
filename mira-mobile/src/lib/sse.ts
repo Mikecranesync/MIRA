@@ -1,5 +1,5 @@
 // Pure SSE frame parser for the Hub chat endpoints. Actual wire order:
-// content* → sources → evidence → [usage] → status → [followups] → [DONE].
+// [safety] → content* → sources → evidence → [usage] → status → [followups] → [DONE].
 // One incremental parser (`createChatSseParser`) owns the frame semantics;
 // `parseChatSse` is the one-shot convenience over it, so a streamed turn
 // (STRM-1) and a buffered turn are byte-identical by construction.
@@ -30,6 +30,8 @@ export interface ChatTurn {
   answer: string;
   citations: ChatCitation[];
   status: string;
+  /** Optional technician-facing sentence supplied by the terminal frame. */
+  statusMessage?: string;
   /** Evidence basis (spec 1.3). Absent on older servers -> render nothing
    *  rather than guessing; an unlabelled answer must never be presented as
    *  grounded. */
@@ -137,6 +139,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let answer = "";
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
+  let statusMessage: string | undefined;
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
@@ -160,6 +163,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         citations = normalizeCitations(frame.citations);
       else if (frame.kind === "status") {
         status = String(frame.status ?? "");
+        statusMessage = typeof frame.message === "string" && frame.message.trim() ? frame.message : undefined;
         sawStatus = true;
       }
       else if (frame.kind === "followups") {
@@ -203,6 +207,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     answer,
     citations,
     status,
+    ...(statusMessage ? { statusMessage } : {}),
     evidenceBasis,
     evidenceLabel,
     followups,

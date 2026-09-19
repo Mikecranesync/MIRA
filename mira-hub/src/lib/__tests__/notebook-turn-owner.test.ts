@@ -20,7 +20,14 @@ const tenantMock = vi.hoisted(() => ({
 vi.mock("@/lib/tenant-context", () => tenantMock);
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
 
-import { listThreads, listTurns, NotebookNotFoundError, recordTurn } from "../equipment-notebooks";
+import {
+  abandonNotebookTurnRequest,
+  claimNotebookTurnRequest,
+  listThreads,
+  listTurns,
+  NotebookNotFoundError,
+  recordTurn,
+} from "../equipment-notebooks";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -57,6 +64,108 @@ const baseTurn = {
 
 beforeEach(() => vi.clearAllMocks());
 
+describe("claimNotebookTurnRequest — atomic execution ownership and replay", () => {
+  function wireClaim(rows: unknown[]) {
+    const calls: Call[] = [];
+    const client = {
+      query: vi.fn(async (sql: string, values: unknown[] = []) => {
+        calls.push({ sql, values });
+        return { rows, rowCount: rows.length };
+      }),
+    };
+    tenantMock.withTenantContext.mockImplementation(async (_t: string, fn: (c: unknown) => unknown) => fn(client));
+    return calls;
+  }
+
+  it("atomically inserts a hidden pending claim scoped to tenant, notebook, and owner", async () => {
+    const calls = wireClaim([{ claim_status: "claimed", claim_token: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }]);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    await expect(
+      claimNotebookTurnRequest(TENANT, NB, {
+        ownerUserId: USER_A,
+        clientRequestId,
+        question: "q",
+        threadId: "thrd_a",
+      }),
+    ).resolves.toEqual({ status: "claimed", claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+
+    expect(calls[0].sql).toMatch(/INSERT INTO equipment_notebook_turns/i);
+    expect(calls[0].sql).toMatch(/client_request_state/i);
+    expect(calls[0].sql).toMatch(/'pending'/i);
+    expect(calls[0].sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO UPDATE/i);
+    expect(calls[0].sql).toMatch(/candidate\.token/i);
+    expect(calls[0].sql).toMatch(/client_request_payload IS NULL[\s\S]+THEN 'mismatch'/i);
+    expect(calls[0].sql).not.toMatch(/client_request_payload IS NULL OR/i);
+    expect(calls[0].sql).toMatch(/FROM\s+equipment_notebooks/i);
+    expect(calls[0].values).toEqual(expect.arrayContaining([NB, TENANT, USER_A, clientRequestId, "q", "thrd_a"]));
+  });
+
+  it("returns the first completed terminal turn for replay", async () => {
+    wireClaim([{
+      claim_status: "replay",
+      id: "turn-1",
+      question: "q",
+      answer_status: "answered",
+      answer_text: "SAFETY STOP",
+      enabled_source_doc_ids: [],
+      evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+      model: null,
+      basis: null,
+    }]);
+
+    const out = await claimNotebookTurnRequest(TENANT, NB, {
+      ownerUserId: USER_A,
+      clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      question: "q",
+      threadId: null,
+    });
+
+    expect(out).toEqual({
+      status: "replay",
+      turn: expect.objectContaining({
+        id: "turn-1",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP",
+        evidence: [{ kind: "safety_notice", trigger: "smoke" }],
+      }),
+    });
+  });
+
+  it("does not let a concurrent caller or a changed payload own the same key", async () => {
+    wireClaim([{ claim_status: "in_progress" }]);
+    await expect(
+      claimNotebookTurnRequest(TENANT, NB, {
+        ownerUserId: USER_A,
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        question: "q",
+        threadId: null,
+      }),
+    ).resolves.toEqual({ status: "in_progress" });
+
+    wireClaim([{ claim_status: "mismatch" }]);
+    await expect(
+      claimNotebookTurnRequest(TENANT, NB, {
+        ownerUserId: USER_A,
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        question: "different question",
+        threadId: null,
+      }),
+    ).resolves.toEqual({ status: "mismatch" });
+  });
+
+  it("abandons only the caller's current lease token", async () => {
+    const calls = wireClaim([]);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const claimToken = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    await abandonNotebookTurnRequest(TENANT, NB, USER_A, clientRequestId, claimToken);
+
+    expect(calls[0].sql).toMatch(/client_request_claim_token\s*=\s*\$5::uuid/i);
+    expect(calls[0].values).toEqual([TENANT, NB, USER_A, clientRequestId, claimToken]);
+  });
+});
+
 describe("recordTurn — owner from the session, atomic tenant ownership", () => {
   it("persists owner_user_id and inserts THROUGH the notebook's tenant row", async () => {
     const calls = wire([]);
@@ -78,6 +187,38 @@ describe("recordTurn — owner from the session, atomic tenant ownership", () =>
     const ins = calls.find((c) => /INSERT INTO equipment_notebook_turns/.test(c.sql))!;
     expect(ins.sql).toMatch(/FROM\s+equipment_notebooks/i);
     expect(ins.values).toContain("thrd_a");
+  });
+
+  it("deduplicates a client request id inside the authenticated owner/notebook scope", async () => {
+    const calls = wire([]);
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    await recordTurn(TENANT, NB, { ...baseTurn, ownerUserId: USER_A, clientRequestId });
+    const ins = calls.find((c) => /INSERT INTO equipment_notebook_turns/.test(c.sql))!;
+    expect(ins.sql).toMatch(/client_request_id/);
+    expect(ins.sql).toMatch(/ON CONFLICT[\s\S]+client_request_id[\s\S]+DO NOTHING/i);
+    expect(ins.sql).toMatch(/client_request_claim_token\s*=\s*\$\d+::uuid/i);
+    expect(ins.values).toContain(clientRequestId);
+  });
+
+  it("never lets a leased writer accept another worker's completed row", async () => {
+    const calls = wire([]);
+    await recordTurn(TENANT, NB, {
+      ...baseTurn,
+      ownerUserId: USER_A,
+      clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    });
+    const ins = calls.find((c) => /INSERT INTO equipment_notebook_turns/.test(c.sql))!;
+
+    expect(ins.sql).toMatch(
+      /t\.client_request_state\s*=\s*'complete'[\s\S]+\$15::uuid\s+IS\s+NULL/i,
+    );
+    expect(ins.sql).toMatch(
+      /completed_claim AS \([\s\S]+UPDATE equipment_notebook_turns t[\s\S]+WHERE \$15::uuid IS NOT NULL[\s\S]+t\.client_request_claim_token = \$15::uuid[\s\S]+RETURNING t\.id/i,
+    );
+    expect(ins.sql).toMatch(
+      /inserted AS \([\s\S]+INSERT INTO equipment_notebook_turns[\s\S]+FROM owned_notebook nb[\s\S]+WHERE \$15::uuid IS NULL[\s\S]+ON CONFLICT[\s\S]+DO NOTHING/i,
+    );
   });
 
   it("fails closed when the notebook is not this tenant's (zero rows inserted)", async () => {

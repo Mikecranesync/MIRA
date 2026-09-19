@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  answerContentFor,
   buildChatBody,
   historyFromTurns,
   isAbortError,
@@ -12,8 +13,11 @@ import {
   persistedTurns,
   postNotebookChat,
   readNotebookStream,
+  retainedSafetyStreamFailure,
   restoreComposer,
   stoppedTurn,
+  stoppedTurnFromAbort,
+  turnFromIncompleteStream,
 } from "./notebook-chat-utils";
 
 import { visualObservationCaption } from "./notebook-chat-utils";
@@ -60,6 +64,7 @@ describe("readNotebookStream", () => {
     expect(seen).toEqual(["F004 ", "F004 is undervoltage. [1]"]);
     expect(out.content).toBe("F004 is undervoltage. [1]");
     expect(out.status).toBe("answered");
+    expect(out.statusMessage).toBeNull();
     expect(out.basis).toBe("oem_documentation");
     expect(out.citations).toHaveLength(1);
     expect(out.followups).toEqual(["Next?"]);
@@ -270,11 +275,13 @@ describe("historyFromTurns (stopped turns never reach the model)", () => {
     expect(historyFromTurns(many)).toHaveLength(12);
     expect(historyFromTurns(many)[0].content).toBe("q8");
   });
-  it("buildChatBody carries the exact {message, sourceDocIds, history} shape", () => {
-    expect(buildChatBody("q", ["d1"], turns)).toEqual({
+  it("buildChatBody carries one client request id with the retry-stable body", () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    expect(buildChatBody("q", ["d1"], turns, clientRequestId)).toEqual({
       message: "q",
       sourceDocIds: ["d1"],
       history: historyFromTurns(turns),
+      clientRequestId,
     });
   });
 });
@@ -294,6 +301,28 @@ describe("CMPS-2 — failure keeps the question, Retry re-posts the identical bo
     expect(restoreComposer("", body.message)).toBe("What does F004 mean?");
     // …but a new draft the technician already started is never clobbered.
     expect(restoreComposer("new draft", body.message)).toBe("new draft");
+  });
+
+  it("carries an authoritative safety response header when the body is unavailable", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(null, { status: 200, headers: { "X-Safety-Stop": "exposed-conductor" } }),
+    );
+    const updates: Array<{ content: string; safetyNotice: unknown }> = [];
+    await expect(
+      postNotebookChat(
+        "/chat",
+        body,
+        new AbortController().signal,
+        (content, _citations, safetyNotice) => updates.push({ content, safetyNotice }),
+        fetchImpl as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({
+      safetyNotice: { kind: "safety_notice", trigger: "exposed-conductor" },
+    });
+    expect(updates[0]).toEqual({
+      content: "",
+      safetyNotice: { kind: "safety_notice", trigger: "exposed-conductor" },
+    });
   });
 
   it("retry posts a JSON-identical body to the same URL", async () => {
@@ -317,6 +346,7 @@ describe("CMPS-2 — failure keeps the question, Retry re-posts the identical bo
     expect(JSON.parse(calls[1])).toEqual({
       message: "What does F004 mean?",
       sourceDocIds: ["d1"],
+      clientRequestId: body.clientRequestId,
       history: [
         { role: "user", content: "earlier" },
         { role: "assistant", content: "earlier answer" },
@@ -423,6 +453,7 @@ describe("persistedTurns tolerates non-document evidence entries (D5)", () => {
       machineEvidence: [machine],
       visualEvidence: [],
       safetyNotice: null,
+      safetyStop: null,
     });
   });
 });
@@ -456,6 +487,21 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
     expect(a).not.toHaveProperty("visualEvidence");
   });
 
+  it("a verified-photo abstention names the photo and keeps the card after reload", () => {
+    const [, a] = persistedTurns([
+      {
+        id: "t13-photo",
+        question: "what am I looking at?",
+        answerStatus: "insufficient_evidence",
+        answerText: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        evidence: [visual],
+        basis: null,
+      },
+    ]);
+    expect(a.content).toBe("I saw your photo, but I couldn't find anything about it in the selected sources.");
+    expect(a.visualEvidence).toEqual([visual]);
+  });
+
   it("a stopped turn drops the photo along with citations and basis", () => {
     const [, a] = persistedTurns([
       { id: "t14", question: "q", answerStatus: "error", answerText: "partial", evidence: [cite, visual], basis: "oem_documentation" },
@@ -469,6 +515,7 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
       machineEvidence: [],
       visualEvidence: [],
       safetyNotice: null,
+      safetyStop: null,
     });
   });
 
@@ -490,6 +537,27 @@ describe("persistedTurns / splitEvidence with a visual observation (S5 D3)", () 
       () => {},
     );
     expect(without.visualEvidence).toBeNull();
+  });
+
+  it("the live Gate G projection names a verified photo instead of discarding the status context", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "sources", citations: [], sourceSnapshot: ["d"] }),
+        frame({ kind: "evidence", visualEvidence: visual }),
+        frame({
+          kind: "status",
+          status: "insufficient_evidence",
+          message: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.visualEvidence).toEqual(visual);
+    expect(out.statusMessage).toBe("I saw your photo, but I couldn't find anything about it in the selected sources.");
+    expect(answerContentFor(out.content, out.status, out.statusMessage, out.visualEvidence)).toBe(
+      "I saw your photo, but I couldn't find anything about it in the selected sources.",
+    );
   });
 
   it("visualObservationCaption is the contract string", () => {
@@ -521,6 +589,23 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
 });
 
 describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", () => {
+  it("publishes safety before content and keeps it on later live updates", async () => {
+    const updates: Array<{ content: string; safetyNotice: unknown }> = [];
+    await readNotebookStream(
+      streamOf([
+        frame({ kind: "safety", trigger: "arc flash" }),
+        frame({ kind: "content", content: "Do not approach." }),
+        frame({ kind: "status", status: "answered" }),
+      ]),
+      (content, _citations, safetyNotice) => updates.push({ content, safetyNotice }),
+    );
+
+    expect(updates).toEqual([
+      { content: "", safetyNotice: { kind: "safety_notice", trigger: "arc flash" } },
+      { content: "Do not approach.", safetyNotice: { kind: "safety_notice", trigger: "arc flash" } },
+    ]);
+  });
+
   it("picks up the safety frame and exposes it as safetyNotice on the result", async () => {
     const out = await readNotebookStream(
       streamOf([
@@ -550,15 +635,134 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
     );
     expect(out.safetyNotice).toBeNull();
   });
+
+  it("carries an authoritative safety notice when the technician aborts after its frame", async () => {
+    const result = readNotebookStream(
+      streamOf(
+        [
+          frame({ kind: "content", content: "SAFETY STOP: isolate the machine immediately." }),
+          frame({ kind: "safety", trigger: "smoke coming" }),
+        ],
+        { abortAfter: 2 },
+      ),
+      () => {},
+    );
+
+    await expect(result).rejects.toMatchObject({
+      name: "AbortError",
+      partial: "SAFETY STOP: isolate the machine immediately.",
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    });
+  });
+
+  it("returns terminal truth when the reader aborts after the status frame", async () => {
+    const out = await readNotebookStream(
+      streamOf(
+        [
+          frame({ kind: "content", content: "P042 sets decel time." }),
+          frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+          frame({ kind: "evidence", basis: "oem_documentation" }),
+          frame({ kind: "status", status: "answered" }),
+          frame({ kind: "followups", suggestions: ["Never reached"] }),
+        ],
+        { abortAfter: 4 },
+      ),
+      () => {},
+    );
+
+    expect(out).toMatchObject({
+      content: "P042 sets decel time.",
+      status: "answered",
+      basis: "oem_documentation",
+      sawStatus: true,
+    });
+    expect(out.followups).toEqual([]);
+  });
+});
+
+describe("stoppedTurnFromAbort — preserve safety, discard unsupported evidence", () => {
+  it("keeps only the streamed partial and a validated safety notice", () => {
+    const turn = { id: "a1", content: "", citations: [{ citationId: "1" }], basis: "oem_documentation" };
+    const stopped = stoppedTurnFromAbort(turn, {
+      partial: "SAFETY STOP: isolate now.",
+      safetyNotice: { kind: "safety_notice", trigger: "exposed wire" },
+    });
+
+    expect(stopped).toMatchObject({
+      content: "SAFETY STOP: isolate now.",
+      status: "error",
+      stopped: true,
+      citations: [],
+      basis: null,
+      safetyNotice: { kind: "safety_notice", trigger: "exposed wire" },
+    });
+  });
+
+  it("drops an unvalidated marker supplied by an arbitrary abort error", () => {
+    expect(stoppedTurnFromAbort({ content: "" }, { partial: "partial", safetyNotice: { kind: "safety_notice" } })).not.toHaveProperty(
+      "safetyNotice",
+    );
+  });
+
+  it("retains a validated safety warning from a non-abort reader failure", () => {
+    expect(
+      retainedSafetyStreamFailure(
+        Object.assign(new TypeError("network reset"), {
+          partial: "SAFETY STOP",
+          safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+        }),
+      ),
+    ).toEqual({
+      partial: "SAFETY STOP",
+      safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+    });
+  });
+
+  it("does not retain an ordinary non-abort failure without a safety warning", () => {
+    expect(retainedSafetyStreamFailure(Object.assign(new TypeError("network reset"), { partial: "maybe" }))).toBeNull();
+  });
+});
+
+describe("turnFromIncompleteStream — silent close uses the controller's truth", () => {
+  const result = {
+    content: "SAFETY STOP",
+    citations: [],
+    status: "error" as const,
+    statusMessage: null,
+    basis: null,
+    followups: [],
+    machineEvidence: null,
+    visualEvidence: null,
+    safetyNotice: { kind: "safety_notice" as const, trigger: "smoke coming" },
+    sawStatus: false,
+  };
+
+  it("maps a done:true close caused by the technician's signal to Stopped", () => {
+    expect(turnFromIncompleteStream({ content: "" }, result, true)).toMatchObject({
+      content: "SAFETY STOP",
+      stopped: true,
+      truncated: false,
+      safetyNotice: result.safetyNotice,
+    });
+  });
+
+  it("maps the same close without an aborted signal to transport truncation", () => {
+    expect(turnFromIncompleteStream({ content: "" }, result, false)).toMatchObject({
+      stopped: true,
+      truncated: true,
+      safetyNotice: result.safetyNotice,
+    });
+  });
 });
 
 describe("buildChatBody — the web body carries no window selection", () => {
   // The web notebook renders machine evidence; it never selects a window (the
-  // mobile lane owns REPLAY selection). The body stays exactly three keys.
-  it("is the three-key body, with no machineEvidence key", () => {
-    const body = buildChatBody("q", ["d"], []);
-    expect(body).toEqual({ message: "q", sourceDocIds: ["d"], history: [] });
-    expect(Object.keys(body)).toEqual(["message", "sourceDocIds", "history"]);
+  // mobile lane owns REPLAY selection). Idempotency is the only fourth key.
+  it("has the retry-stable client id, with no machineEvidence key", () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const body = buildChatBody("q", ["d"], [], clientRequestId);
+    expect(body).toEqual({ message: "q", sourceDocIds: ["d"], history: [], clientRequestId });
+    expect(Object.keys(body)).toEqual(["message", "sourceDocIds", "history", "clientRequestId"]);
   });
 });
 
@@ -600,6 +804,7 @@ describe("safety_notice round-trip (FLEET-001)", () => {
     expect(result.citations).toHaveLength(0);
     expect(result.machineEvidence).toHaveLength(0);
     expect(result.visualEvidence).toHaveLength(0);
+    expect(result.safetyStop).toBeNull();
   });
 
   it("persistedTurns restores safetyNotice on a reloaded safety turn", () => {
@@ -652,5 +857,26 @@ describe("safety_notice round-trip (FLEET-001)", () => {
     const assistant = turns.find((t: { role: string }) => t.role === "assistant");
     expect(assistant!.safetyNotice).toBeUndefined();
     expect(assistant!.citations).toHaveLength(1);
+  });
+
+  it("keeps a non-terminal electrical directive as a cited, basis-bearing answer", () => {
+    const rows: PersistedTurn[] = [
+      {
+        id: "t-directive",
+        question: "Can I measure this energized feeder?",
+        answerStatus: "answered",
+        answerText: "De-energize first [1].",
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { citationId: "1", docId: "doc-a", sourceTitle: "Manual", page: 14, fileId: null, quote: null },
+        ],
+        basis: "oem_documentation",
+      },
+    ];
+
+    const assistant = persistedTurns(rows).find((turn) => turn.role === "assistant")!;
+    expect(assistant.safetyNotice).toBeUndefined();
+    expect(assistant.citations).toHaveLength(1);
+    expect(assistant.basis).toBe("oem_documentation");
   });
 });
