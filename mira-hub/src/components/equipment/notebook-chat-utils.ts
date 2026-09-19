@@ -220,7 +220,14 @@ export async function readNotebookStream(
       }
     }
   } catch (err) {
-    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { partial: out.content });
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
+      partial: out.content,
+      // Safety is an authoritative server determination, not an evidence
+      // claim. Carry only this marker through a throwing abort; consumers must
+      // continue to discard citations, basis, machine/visual evidence, and
+      // follow-ups from the interrupted result.
+      safetyNotice: out.safetyNotice,
+    });
   }
   return out;
 }

@@ -33,7 +33,6 @@ import {
   isAbortError,
   readNotebookStream,
   type PersistedTurn,
-  type StreamResult,
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
@@ -53,6 +52,8 @@ import {
   metaFor,
   newThreadId,
   shellThreadId,
+  stoppedStreamResult,
+  type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
 
@@ -64,7 +65,7 @@ type Live = {
   readonly question: string;
   readonly content: string;
   readonly citations: EvidenceCitation[];
-  readonly result: StreamResult | null;
+  readonly result: CompatibleStreamResult | null;
   readonly stopped: boolean;
   readonly startedAt: string;
 };
@@ -268,8 +269,8 @@ export function HubShellHost() {
       setLive((cur) => (cur && cur.id === id ? null : cur));
     } catch (err) {
       if (isAbortError(err)) {
-        const partial = (err as { partial?: string }).partial ?? "";
-        setLive((cur) => (cur && cur.id === id ? { ...cur, content: partial, stopped: true, result: null } : cur));
+        const result = stoppedStreamResult(err);
+        setLive((cur) => (cur && cur.id === id ? { ...cur, content: result.content, stopped: true, result } : cur));
         return;
       }
       const message = err instanceof Error ? err.message : String(err);

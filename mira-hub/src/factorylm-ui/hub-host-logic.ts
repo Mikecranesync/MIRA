@@ -6,7 +6,8 @@
  */
 import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
-import { buildChatBody, type ChatBody, type PersistedTurn } from "@/components/equipment/notebook-chat-utils";
+import { buildChatBody, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
+import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
@@ -14,6 +15,30 @@ export interface HubSelection {
   readonly notebookId: string;
   /** Server thread id, or `legacy` for the shared pre-THRD-0 conversation. */
   readonly threadId: string;
+}
+
+/** StreamResult before/after #3854 (which makes statusMessage explicit). */
+export type CompatibleStreamResult = StreamResult & { statusMessage?: string | null };
+
+/**
+ * Sanitize a throwing stream abort into the only state a stopped shell turn
+ * may retain: partial text plus an already-received authoritative Safety STOP.
+ * Every evidence claim is reset explicitly.
+ */
+export function stoppedStreamResult(err: unknown): CompatibleStreamResult {
+  const interrupted = err && typeof err === "object" ? err as Record<string, unknown> : {};
+  return {
+    content: typeof interrupted.partial === "string" ? interrupted.partial : "",
+    citations: [],
+    status: "error",
+    statusMessage: null,
+    basis: null,
+    followups: [],
+    machineEvidence: null,
+    visualEvidence: null,
+    safetyNotice: isSafetyNoticeEntry(interrupted.safetyNotice) ? interrupted.safetyNotice : null,
+    sawStatus: false,
+  };
 }
 
 /** First notebook, its most recently updated thread (or the legacy one). */

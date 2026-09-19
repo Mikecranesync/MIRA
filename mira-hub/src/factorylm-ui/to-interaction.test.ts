@@ -170,6 +170,16 @@ describe("partsFromStream", () => {
     expect(lifecycleFromStream(stream(), { stopped: true })).toBe("stopped");
   });
 
+  it("a stopped turn preserves an already-received Safety STOP and no evidence claims", () => {
+    const parts = partsFromStream(stream({
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+      visualEvidence: visual,
+    }), { stopped: true, ...LIVE });
+    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
+    expect(parts[1]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
+    expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
+  });
+
   it("provider failure with no text yields only the error part", () => {
     expect(partsFromStream(stream({ content: "", citations: [], status: "error" }), LIVE)).toEqual([
       { type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } },

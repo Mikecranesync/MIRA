@@ -15,7 +15,28 @@ import {
   metaFor,
   newThreadId,
   shellThreadId,
+  stoppedStreamResult,
 } from "./hub-host-logic";
+
+describe("stoppedStreamResult", () => {
+  it("keeps only partial text and an authoritative safety notice from an abort", () => {
+    const result = stoppedStreamResult(Object.assign(new DOMException("aborted", "AbortError"), {
+      partial: "SAFETY STOP",
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    }));
+    expect(result).toMatchObject({
+      content: "SAFETY STOP",
+      citations: [],
+      status: "error",
+      statusMessage: null,
+      basis: null,
+      machineEvidence: null,
+      visualEvidence: null,
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+      sawStatus: false,
+    });
+  });
+});
 
 describe("chatBodyFor — general help is always available (Codex #3839 Spec P1, PRD law 6)", () => {
   const sel = { notebookId: "nb-1", threadId: "t1" };

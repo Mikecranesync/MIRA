@@ -550,6 +550,22 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
     );
     expect(out.safetyNotice).toBeNull();
   });
+
+  it("carries an already-received Safety STOP on a throwing abort", async () => {
+    const p = readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "SAFETY STOP: isolate now." }),
+        frame({ kind: "safety", trigger: "smoke coming" }),
+        frame({ kind: "status", status: "answered" }),
+      ], { abortAfter: 2 }),
+      () => {},
+    );
+    await expect(p).rejects.toMatchObject({
+      name: "AbortError",
+      partial: "SAFETY STOP: isolate now.",
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    });
+  });
 });
 
 describe("buildChatBody — the web body carries no window selection", () => {
