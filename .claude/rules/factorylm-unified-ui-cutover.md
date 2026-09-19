@@ -105,10 +105,24 @@ a substantive `## Legacy UI exception` section with `Reason:`,
 `Canonical replacement impact:`, and `Rollback:` — see the charter §3 for the
 exact format and what the guard rejects (blank values, `N/A`, placeholders,
 fenced code blocks, HTML comments, or fewer than three alphanumeric tokens and
-twelve alphanumeric characters per field). Approval passes only on the fresh
-GitHub `User` label-application event whose head SHA and body still exactly
-match the current PR. A later push/body edit invalidates it; review and
-reapply the label.
+twelve alphanumeric characters per field). Two exact-head attestations
+satisfy the gate on top of that body:
+
+- **Independent review (Category 2 — migration, removal, adapter, narrow
+  correction toward the canonical shell):** the newest well-formed
+  `[CODEX-ADVERSARIAL-REVIEW]` ledger comment by the owner account with
+  `reviewed_sha` equal to the current head and `status: GREEN`. Run
+  `scripts/adversarial-review.sh <PR>` from the PR worktree; the Codex
+  contract reports any expansion of frozen legacy UI as a BLOCKER, so a
+  GREEN is the classification. A push makes it stale; re-review restores it.
+  No label click is involved.
+- **Maintainer label (Category 3 — a true architectural exception):** the
+  fresh GitHub `User` label-application event whose head SHA and body still
+  exactly match the current PR. A later push/body edit invalidates it;
+  review and reapply the label.
+
+Agents never apply the label. An expansion of frozen legacy UI is a human
+decision; do not re-prompt Codex until it stops reporting one.
 
 ## Do not
 

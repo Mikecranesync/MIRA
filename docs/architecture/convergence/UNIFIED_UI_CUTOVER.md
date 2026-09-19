@@ -249,7 +249,11 @@ anywhere in the PR body invalidate the exception. Strictly valid standalone
 HTML comments remain allowed but cannot supply field text. Each value must
 contain at least three alphanumeric tokens and at least twelve alphanumeric
 characters; one-character or long single-token filler is not approval evidence.
-A passing exception run must be triggered by a GitHub `User` whose separately
+The substantive exception body is required on both routes below; it is the
+human-readable audit record of why the frozen path was touched.
+
+**Route 1 — maintainer label (a true architectural exception).** A passing
+exception run must be triggered by a GitHub `User` whose separately
 fetched collaborator record proves predefined Maintain (`permission: write`,
 `role_name: maintain`) or Admin (`permission: admin`) applying the exact
 `legacy-ui-exception` label, and the event-time head SHA and PR body must still
@@ -260,6 +264,29 @@ exact head and text. GitHub identifies the authorized account but does not
 prove whether that account used the web UI or a CLI/token, so repository policy
 must prohibit automation from applying this label; the guard does not claim a
 physical human-input guarantee the platform cannot expose.
+
+**Route 2 — independent exact-head review (migration, removal, adapter, or a
+narrow correction toward the canonical shell).** Independent exact-tip review
+is the safety property; a label click is not. The guard therefore also
+accepts the repository's existing Codex adversarial-review ledger
+(`scripts/adversarial-review.sh`, `docs/adversarial-review-workflow.md`): the
+newest well-formed `[CODEX-ADVERSARIAL-REVIEW]` comment posted by the
+repository owner account counts, and it satisfies the gate only when its
+`reviewed_sha` is the current PR head and its `status` is `GREEN`. The Codex
+review contract classifies every guarded path the guard flags and reports any
+introduction or expansion of frozen legacy presentation — a new surface, new
+user-facing behavior inside a frozen implementation, a new dependency on the
+frozen tree, a bypass of the canonical shell, or a change to the guard's own
+control plane — as a BLOCKER, so such a change can only pass through Route 1.
+Any head movement makes the GREEN stale by construction; a fresh review at the
+new head restores the gate with no label action, and a newer `ISSUES_FOUND`
+at the same head withdraws an earlier GREEN. Malformed, bot-authored, or
+foreign-account comments are ignored and can neither grant nor revoke. This
+route shares the ledger's trust model — one owner account, policy-protected
+against forgery rather than platform-protected — which is the same level of
+assurance Route 1 already has, not less. Rerunning the guard after a new
+GREEN is the review script's job (`gh run rerun` of the latest guard run for
+that head), since a comment is not a `pull_request_target` event.
 
 ### 3.1 Trusted enforcement boundary
 

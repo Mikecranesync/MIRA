@@ -159,6 +159,21 @@ jobs:
               "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
           fi
 
+      # The Codex adversarial-review ledger lives in the PR's issue comments
+      # (scripts/adversarial-review.sh posts it). Fetched as DATA ONLY, one
+      # JSON line per comment, before any checked-out code runs. The guard
+      # binds it to the current head from current-pull.json and accepts a
+      # GREEN only from the owner account's well-formed ledger comment.
+      - name: Fetch review ledger comments (data only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --jq '.[] | {id, body, user: {login: .user.login, type: .user.type}}' \
+            > "$RUNNER_TEMP/review-comments.jsonl"
+
       # Trusted base ONLY. Never the head ref, never a merge ref, never PR
       # code. persist-credentials: false so no later step in this job can use
       # a lingering git credential to push or fetch as the Actions bot.
@@ -195,7 +210,8 @@ jobs:
             --pr-body-file "$RUNNER_TEMP/pr-body.md" \
             --event-json-file "$GITHUB_EVENT_PATH" \
             --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
-            --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"
+            --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json" \
+            --review-comments-json-file "$RUNNER_TEMP/review-comments.jsonl"
 
       # Runs the guard's OWN test suite only after the policy decision. Isolated
       # mode, null config, disabled conftest loading, disabled third-party
@@ -230,10 +246,10 @@ jobs:
         run: |
           if [ "$GUARD_RESULT" = "success" ]; then
             STATE=success
-            DESC="No unguarded legacy presentation or control-plane change, or an audited legacy-ui-exception is present."
+            DESC="No unguarded legacy change, or an exact-head attestation (Codex ledger GREEN or fresh maintainer label) is present."
           else
             STATE=failure
-            DESC="Guarded legacy presentation or control-plane path touched without an audited legacy-ui-exception (or a guard step failed)."
+            DESC="Guarded path touched without an exact-head attestation: Codex ledger GREEN at this head, or a fresh maintainer legacy-ui-exception label (or a guard step failed)."
           fi
           gh api "repos/$REPO/statuses/$HEAD_SHA" \
             -f "state=$STATE" \
