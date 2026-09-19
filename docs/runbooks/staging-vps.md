@@ -122,7 +122,7 @@ useful preview the following should be set on `factorylm/stg`:
 - `NEON_DATABASE_URL` — staging branch (`ep-polished-hall-ahcqtcxe-pooler`)
 - `AUTH_SECRET`, `OAUTH_TOKEN_ENC_KEY` — separate from prod
 - `ATLAS_DB_PASSWORD`, `ATLAS_JWT_SECRET`, `ATLAS_MINIO_PASSWORD`
-- `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` — same as prod is fine
+- `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` — same as prod is fine (Gemini is banned from the product cascade)
 - `MCP_REST_API_KEY`, `PIPELINE_API_KEY` — separate from prod
 - `HUB_AUTH_GOOGLE_CLIENT_ID/_SECRET` — only if you've registered a staging
   OAuth client; otherwise leave blank and sign-in won't work in staging

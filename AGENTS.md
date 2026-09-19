@@ -1,148 +1,141 @@
-# MIRA — Build State
+# FactoryLM / MIRA — Project Map (provider-neutral)
 
-**Version:** v3.4.0 | **Updated:** 2026-04-17
-**One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+This is the root bootloader for **every** coding agent — Claude, Codex, or a future provider.
+It is a map, not an encyclopedia: each line points at the canonical document; nothing here is
+the only copy of anything. Claude loads it through root `CLAUDE.md` (`@AGENTS.md`); Codex reads
+it directly. Provider files may add behavior; they may not redefine what is written here.
 
----
+## What this is
 
-## Coding Principles → `wiki/references/coding-principles.md`
-## KANBAN Board → `wiki/references/kanban.md`
+**FactoryLM** is the maintenance-context layer that makes messy factory data trustworthy for AI
+on any Unified Namespace. **MIRA** is the grounded diagnostic agent that proves it — every answer
+cites the customer's own manuals, tags, and work orders. Lead with the context platform; the
+copilot is the proof. Not a generic chatbot, not a SCADA or CMMS replacement, **read-only toward
+plant equipment**. Version = the latest `v*` git tag (`docs/versioning.md`); there is no VERSION file.
 
----
+## Start here (read in this order, then stop reading)
 
-## Hard Constraints (PRD §4)
+1. `NORTH_STAR.md` — canonical wedge, commercial flywheel, the ProveIt 2027 demo runbook.
+2. `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Primary doctrine.
+3. `docs/agent-standard/FLEET_STANDARD.md` — how agents work here (boot sequence, ownership,
+   worktrees, evidence, stop conditions). Then your provider adapter under
+   `docs/agent-standard/providers/` and your node overlay under `docs/agent-standard/nodes/`.
+4. `wiki/hot.md` — where to resume; current cross-project state. **Update it at session end.**
+5. The active task contract (issue, PR, or `docs/plans/…`) and only the ADRs it references.
 
-1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only.
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Codex API call.
-4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
-5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
-6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
+Do not read six months of history "just in case." Deeper context is listed at the bottom.
 
----
+## Product state and direction
 
-## Repo Map
+- **Beta gate** — "a stranger uploads their own manual and gets a cited answer with no manual
+  fix." Retrieval path: MET, CI-enforced (`.github/workflows/beta-gate.yml`). Product surface:
+  see `docs/known-issues.md` § Beta Gate and `wiki/hot.md` for the live status.
+- **Train before deploy** — the Command Center (`mira-hub`) builds and validates; Ignition/HMI
+  consumes approved intelligence only. `.claude/rules/train-before-deploy.md`,
+  `docs/specs/asset-agent-validation-spec.md`.
+- **Master plan** — `docs/plans/2026-06-01-mira-master-architecture-plan.md` governs all current
+  development. Unified UI cutover: `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`.
 
-```
-MIRA/
-├── mira-core/       # Open WebUI + MCPO proxy + ingest service
-├── mira-bots/       # Telegram, Slack adapters + shared diagnostic engine
-├── mira-bridge/     # Node-RED orchestration, SQLite WAL shared state
-├── mira-mcp/        # FastMCP server, NeonDB recall, equipment diagnostic tools
-├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
-├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
-├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
-├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
-├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); sunset pending OEM migration
-├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
-├── wiki/            # LLM-maintained ops wiki (Karpathy pattern) — Obsidian vault
-├── tests/           # 5-regime testing framework (76 offline tests, 39 golden cases)
-├── docs/            # PRD, ADRs, C4 diagrams, runbooks, CHANGELOG, env-vars, known-issues
-├── tools/           # Photo pipeline, Google Drive ingest, migration scripts
-└── plc/             # PLC program files
-```
+## Architecture (authoritative pointers)
 
-See local AGENTS.md in each module for deep context.
+- Layer map and dependency rules: `docs/ARCHITECTURE.md`. Per-module contexts: `CONTEXT-MAP.md`
+  (each module has its own `CLAUDE.md` — read it as the module map regardless of provider).
+- Modules: `mira-bots/` (adapters + the Supervisor engine, `shared/engine.py`), `mira-hub/`
+  (Command Center, Next.js), `mira-pipeline/` (chat API), `mira-mcp/`, `mira-crawler/` (KB
+  ingest), `mira-relay/` (factory→cloud tags), `mira-web/`, `mira-cmms/`, `mira-bridge/`,
+  `simlab/`, `plc/`, `wiki/`, `docs/`, `tests/`, `tools/`. Deferred/archived modules and how to
+  restore them: `docs/known-issues.md`.
+- Decisions: `docs/adr/`. Specs: `docs/specs/`. Convergence registry and change gates:
+  `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md` + `convergence/REGISTRY.yaml`.
+- Containers, ports, networks: `docs/environments.md § Container Map` — generated from the compose
+  files by `tools/gen_container_map.py` and drift-locked in CI; never hand-edit. Nodes and IPs:
+  `deployment/network.yml`.
 
-## Container Map
+## Hard constraints (PRD §4 — non-negotiable)
 
-| Container | Port(s) | Network(s) |
-|-----------|---------|------------|
-| mira-core | 3000→8080 | core-net, bot-net |
-| mira-pipeline | 9099 | core-net |
-| mira-ingest | 8002→8001 | core-net |
-| mira-mcp | 8000, 8001 | core-net |
-| mira-docling | 5001 | core-net |
-| mira-bridge | 1880 | core-net |
-| mira-bot-telegram | — | bot-net, core-net |
-| mira-bot-slack | — | bot-net, core-net |
-| atlas-api | 8088→8080 | cmms-net, core-net |
-| atlas-db | 5433 | cmms-net |
-| mira-web | 3200→3000 | core-net, cmms-net |
+1. Licenses: Apache 2.0 or MIT only.
+2. Cloud LLMs: **Groq → Cerebras → Together** cascade, free-tier, OpenAI-compatible. NeonDB for
+   persistence. **No Anthropic in the diagnostic cascade** (removed #610; sole carve-out is
+   PrintSynth print-vision, #2661). Gemini is banned.
+3. No LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
+4. Secrets only via Doppler, env-scoped `factorylm/{dev,stg,prd}`. Never commit `.env`; never
+   paste prod values into a dev shell.
+5. One container per service, `restart: unless-stopped`, healthcheck, pinned images.
+6. Conventional Commits — the merge title drives the auto-tag (`docs/versioning.md`).
+7. UNS compliance: every asset row carries a `uns_path` or entity FK. `.claude/rules/uns-compliance.md`.
+8. Environments are separated and promoted dev → staging → prod. Doctrine: `docs/environments.md`.
 
-## Node Map
+## Environment and deployment safety
 
-| Node | Hostname | User | Role | Tailscale IP | LAN IP | Subnet |
-|------|----------|------|------|-------------|--------|--------|
-| Alpha | Michaels-Mac-mini-2 | factorylm | Orchestrator (Celery) | 100.107.140.12 | 192.168.4.28 | 192.168.4.x |
-| Bravo | FactoryLM-Bravo | bravonode | Compute (Ollama) | 100.86.236.11 | 192.168.1.11 | 192.168.1.x |
-| Charlie | CharlieNodes-Mac-mini | charlienode | KB Host (MIRA) | 100.70.49.126 | 192.168.1.12 | 192.168.1.x |
+`docs/environments.md` is the law. The three hard NEVERs, enforced by `tools/hooks/prod-guard.sh`:
+no raw SQL against prod NeonDB from a session; no direct `docker compose`/restart on the VPS
+(use `deploy-vps.yml`); no feature-branch traffic to the prod Telegram bot. Migrations go
+dev → staging → prod via `apply-migrations.yml`; engine/RAG/classifier changes pass the staging
+gate first. Plant equipment is read-only: `.claude/rules/fieldbus-readonly.md`.
 
-**Connectivity:** Alpha↔Bravo/Charlie via Tailscale only (different subnets). Bravo↔Charlie via LAN (same subnet) with Tailscale fallback.
-**SSH keys:** stored in Doppler `factorylm/prd` as `SSH_{NODE}_{PRIVATE_KEY,PUBLIC_KEY,CONFIG,AUTHORIZED_KEYS}`.
-**Canonical source:** `deployment/network.yml`
+## Code navigation: CodeGraph is the sole authority
 
----
+Run `tools/codegraph-preflight.sh` before non-doc code work; trust call-graph results only on a
+READY index. Symbol-shaped questions go to CodeGraph before grep. Rules and blind spots:
+`.claude/rules/codegraph-usage.md`; reference `wiki/references/codegraph.md`. Graphify is
+excluded from code navigation (`.claude/rules/graphify-excluded.md`).
 
-## Start / Stop
+## Durable memory: the Obsidian wiki
 
-```bash
-doppler run --project factorylm --config prd -- docker compose up -d
-docker compose down
-docker compose logs -f <service>
-bash install/smoke_test.sh
-```
+`wiki/` is project memory — runbooks, gotchas (`wiki/gotchas/`), node notes (`wiki/nodes/`),
+references, lessons. Schema `wiki/SCHEMA.md`. Chat history is context, never project state: a
+discovery that lives only in a transcript is not recorded.
 
----
+## Task workflow and ownership
 
-## Key Env Vars → `docs/env-vars.md` (25 vars, all Doppler `factorylm/prd`)
+- Claim before building; one task = one worktree = one branch = one writer; never touch another
+  session's branch, worktree, stash, or dirty checkout. `.claude/rules/multi-session-protocol.md`.
+- Write in an owned worktree, never the shared canonical checkout; whoever creates a worktree
+  removes it. `.claude/rules/subagent-worktree-isolation.md`.
+- Merge and deploy are human gates. Independent exact-SHA review before merge; a verdict on a
+  previous head is stale. Max three autonomous review rounds, then escalate.
+- Architecture-affecting work needs an R0 rollback point and the convergence gates
+  (`docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`).
+- Issues: GitHub `Mikecranesync/MIRA` (`docs/agents/issue-tracker.md`); triage labels
+  `docs/agents/triage-labels.md`; defect workflow `docs/agents/subagent-development-handbook.md`.
 
----
+## Verification and evidence
 
-## Where to Resume → `wiki/hot.md`
-## Offline Testing → `tests/eval/README.md`
+- Done = deterministic proof: the test ran, the endpoint answered, the screenshot exists. Never
+  claim fixed/tested/green/merged/deployed without it; a green badge on a stale SHA is not green.
+- A capability is done only when connected, tested by a named CI job, enabled somewhere real, and
+  proven — or explicitly closed in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`.
+- Tests: `tests/` five-regime framework, golden cases `tests/golden_*.csv`, eval `tests/eval/README.md`.
+  Mobile: `tools/mobile-e2e/` on an emulator by default. Smoke after deploy: `install/smoke_test.sh`.
+- UI changes ship screenshots to `docs/promo-screenshots/` (`YYYY-MM-DD_feature_viewport.png`,
+  desktop 1440×900 + mobile 412×915; append-only). UI style: `.claude/rules/ui-style.md`.
+- Automated PR review: `.github/workflows/code-review.yml` + `.ast-grep-rules/`; pre-commit gate
+  `.githooks/pre-commit` (`git config core.hooksPath .githooks` is per-clone — verify it, it fails open).
+- Closeout uses the schema in `docs/agent-standard/FLEET_STANDARD.md` §10.
 
----
+## Stop conditions (report instead of improvising)
 
-## Gotchas
+Another worker owns the worktree or session · the change would touch production, deploy, OTA,
+or a version file · a secret would enter Git or cross machines · a PLC/VFD write, forced I/O, or
+motion command · required authority is unclear · canonical sources materially disagree · a
+review, CI run, or tool is missing or broken (fail closed, report PARTIAL/BLOCKED) · a
+destructive command whose resolved target you have not printed and confirmed
+(`.claude/rules/dangerous-commands-safety.md`).
 
-- **macOS keychain over SSH** — `docker build`/`doppler` fail on Bravo/Charlie. Workaround: `docker cp` + restart. Bravo fixed with `doppler configure set token-storage file`.
-- **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
-- **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
-- **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Codex.
+## Where to obtain deeper context
 
----
+- Agent standard, node overlays, provider adapters: `docs/agent-standard/` (rollout: `rollout.md`).
+- The detailed rule corpus: `.claude/rules/` — Claude loads it automatically; other providers read
+  the rule a task touches. A rule that exists only there is provider drift to report, not to copy.
+- Skills: `.agents/skills/` (neutral), `.claude/skills/` (Claude). Env vars: `docs/env-vars.md`.
+- Quality and tech debt: `docs/QUALITY_SCORE.md`, `docs/tech-debt/`. Observability: `docs/observability/`.
+- Programs in flight (read only when your task names them): unification/"one technician brain"
+  `docs/prd/2026-07-30-mira-unification-program.md` (ADR-0033, not yet ratified); materialized
+  evidence `docs/architecture/materialized-evidence.md` (ADR-0029); zero-token spend law
+  `.claude/rules/zero-token-architecture.md`; SimLab `docs/simlab/README.md`; kiosk/AskMira
+  `docs/runbooks/kiosk-askmira-deploy-and-verify.md`; Ignition module
+  `docs/RESUME_2026-06-14_maintenance-intelligence-module.md`.
+- History: `docs/CHANGELOG.md` (frozen archive), GitHub Releases, `git log`.
 
-## Pointers
-
-- **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
-- **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
-- **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
-- **Release notes:** `docs/CHANGELOG.md`
-- **All env vars:** `docs/env-vars.md`
-- **Known issues / deferred / abandoned:** `docs/known-issues.md`
-- **ADRs:** `docs/adr/`
-- **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
-- **Wiki schema:** `wiki/SCHEMA.md`
-- **Skills:** `.Codex/skills/`
-- **Sprint state:** `.planning/STATE.md`
-- **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
-- **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
-- **FactoryLM Unified UI Cutover (new UI work goes to the shared shell, not the legacy public/Hub/mobile trees):** `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md` (charter) + `.claude/rules/factorylm-unified-ui-cutover.md` — mission `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination issue [#3626](https://github.com/Mikecranesync/MIRA/issues/3626)
-
----
-
-## Deferred / Archived Modules
-
-| Module | Status | Why | Where to find it |
-|---|---|---|---|
-| `mira-hud` | **Archived 2026-04-19** | AR HMI demo, hardware-gated (Ignition + MCI badge reader), not in any compose, not customer-shippable in MVP window | branch `archive/mira-hud-2026-04` |
-| `mira-prototype` | **Archived 2026-04-19** | Pre-VIM Flask MJPEG prototype, replaced by mira-pipeline + qwen2.5vl | branch `archive/mira-prototype-2026-04` |
-| `mira-sidecar` | **Sunset pending** | ChromaDB RAG; awaiting OEM migration to Open WebUI KB before stop. Tracked in `docs/known-issues.md`. | still in repo |
-| `mira-connect` | **Deferred to "Config 4"** (post-MVP) | Modbus TCP / PLC drivers; not in MVP critical path | still in repo, dormant |
-| `mira-relay` | **Active SaaS infrastructure** (NOT deferred) | Cloud endpoint for Ignition factory→cloud tag streaming; powers MIRA Connect activation flow on `factorylm.com`. Lives in `docker-compose.saas.yml` only. | still in repo + saas.yml |
-
-To restore an archived module: `git checkout archive/<branch> -- <module-dir>` then commit on a new branch.
-
----
-
-## AGENTS.md Maintenance
-
-This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.
-- If you repeat an instruction in chat >2x, add it here.
-- Delete rules Codex follows naturally. Audit monthly.
-- Deep content lives in: `docs/`, `wiki/references/`, `tests/eval/`.
-- Line count as of last audit: see `wc -l AGENTS.md`
+This file targets 100–150 lines. If a fact needs more than a line, it belongs in the document
+the line points at. Audit it when `docs/agent-standard/` changes.

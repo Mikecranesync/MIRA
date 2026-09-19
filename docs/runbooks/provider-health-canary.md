@@ -61,7 +61,7 @@ updates one issue instead of spawning one every 6h.
    `*_MODEL` env, then ship + deploy (`mira-pipeline mira-bot-telegram mira-bot-slack`).
 3. **Revoked / 403 key** (`auth`): rotate the key in Doppler `factorylm/prd`
    (and `stg`), redeploy. If the provider is permanently dead, replace it in the
-   cascade (as Gemini → Together).
+   cascade — precedent: Gemini was replaced by Together, and Gemini is now banned.
 4. **Empty content only** (reasoning model): not a death — the cascade skips it
    (logged as `EMPTY_RESPONSE` in `router.py`). If it's frequent, raise the
    provider's effective token budget or reconsider the model.

@@ -76,7 +76,7 @@ The loop is asynchronous. A technician's photo today may become a confirmed comp
 │  • Dialogue State Tracker (FSM)                                 │
 │  • UNS Location-Confirmation Gate  ← NON-NEGOTIABLE             │
 │  • Intent / specificity / quality / citation gates              │
-│  • InferenceRouter cascade (Groq → Cerebras → Gemini)           │
+│  • InferenceRouter cascade (Groq → Cerebras → Together)         │
 ├─────────────────────────────────────────────────────────────────┤
 │  LIVE CONTEXT  (read-only, no writes)                           │
 │  • Ignition tag streams (mira-relay)                            │
@@ -199,7 +199,7 @@ MIRA will not:
 - Auto-verify proposed KG edges. Every promotion to `verified` is a human action.
 - Provide live troubleshooting before the UNS Location-Confirmation Gate succeeds.
 - Become a generic chatbot, marketing chatbot, or homepage assistant.
-- Reintroduce Anthropic as an inference provider (removed PR #610; cascade is Groq → Cerebras → Gemini).
+- Reintroduce Anthropic as an inference provider (removed PR #610; cascade is Groq → Cerebras → Together; Gemini is banned).
 - Add a LangChain / n8n / framework abstraction over the LLM call (PRD §4).
 - Bypass safety-critical confirmation flows because they are "annoying."
 
@@ -229,7 +229,7 @@ Status badges follow NORTH_STAR.md convention: ✅ built · ⚠️ partial · �
 | Ignition Java/Kotlin SDK module | 🔲 | Phase 6. |
 | Manual scoring scorecard (`factorylm.com/assess`) | ✅ | 20 questions / 6 dimensions. Sells the $500 assessment. |
 | Citation compliance (observational) | ⚠️ | `citation_compliance.py` logs; does not enforce. TOO doc calls for enforcement where appropriate. |
-| InferenceRouter cascade (Groq → Cerebras → Gemini) | ✅ | No Anthropic. PII sanitization on. |
+| InferenceRouter cascade (Groq → Cerebras → Together; Gemini banned) | ✅ | No Anthropic. PII sanitization on. |
 | CMMS tools (Atlas / MaintainX) | ✅ | `cmms_list_work_orders`, `cmms_create_work_order`, etc. |
 | MQTT / Sparkplug B export | 🔲 | Post-MVP. |
 
@@ -270,7 +270,7 @@ CLAUDE.md files (root + `.claude/CLAUDE.md`) point at this doc as the primary No
 - **Scope classifier:** `.claude/skills/mira-saas-scope-guard/SKILL.md`
 - **UNS gate UX:** `.claude/skills/uns-location-gate-designer/SKILL.md`, `.claude/skills/slack-technician-ux-writer/SKILL.md`
 - **Layer rules:** `docs/ARCHITECTURE.md`
-- **Container map + env vars:** root `CLAUDE.md`
+- **Container map:** `docs/environments.md` § Container Map (generated) · **env vars:** `docs/env-vars.md` · **project map:** `AGENTS.md`
 
 ## Change Log
 

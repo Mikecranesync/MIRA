@@ -1,6 +1,6 @@
 # MIRA — Product & Architecture Operating Guide
 
-> Companion to root `CLAUDE.md` (which is the **build-state + repo map**). This file is the **product rules** Claude Code must honor while editing this codebase.
+> Companion to root `AGENTS.md` (the **provider-neutral project map**; root `CLAUDE.md` is a thin adapter that imports it). This file is the **product rules** Claude Code must honor while editing this codebase.
 >
 > **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
@@ -133,7 +133,7 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 ## Environment boundaries (Dev / Staging / Prod)
 
-**Doctrine:** `docs/environments.md`. Three environments, promoted in order. Root `CLAUDE.md` § **Environments** is the rule card. Product-side implications:
+**Doctrine:** `docs/environments.md`. Three environments, promoted in order. `AGENTS.md` § **Environment and deployment safety** is the rule card. Product-side implications:
 
 - **Never** test bot changes against the production Telegram bot (`@FactoryLM_Diagnose`). The UNS gate, citation compliance, and groundedness scorers log episodes — a feature-branch reply on the prod bot contaminates the truth set.
 - **Never** point a feature-branch engine build at the prod NeonDB. `kg_entities` / `kg_relationships` writes are append-only-with-status; a misfire pollutes the verified set and forces a manual cleanup.
@@ -162,7 +162,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
-- **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
+- **No LangChain, TensorFlow, n8n** — see `AGENTS.md` § Hard constraints (PRD §4).
 - **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
@@ -176,6 +176,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
 - **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
+- **Fleet standard** — see `.claude/rules/fleet-standard.md` (`.claude/` is an adapter under the provider-neutral `docs/agent-standard/FLEET_STANDARD.md`; §2 precedence decides disagreements, reported as `PROVIDER DRIFT`; `tools/fleet-parity-check.sh` is the read-only check).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Commodity before custom** — see `.claude/rules/commodity-before-custom.md` (mobile/web commodity infrastructure — gestures, viewers, modals, BACK, file opening — uses platform/mature-library primitives; custom requires the escalation note; PRD `docs/prd/2026-08-26-commodity-first-mobile-prd.md`, audit `docs/architecture/mobile-commodity-convergence.md`).
 - **FactoryLM UI style** — every front end (mira-contextualizer, mira-plc-parser `gui/`, mira-hub, mira-web, Ignition Perspective) uses the shared design tokens (`docs/design/factorylm-tokens.css`): flat/modern, muted-normal + color-for-state, never hardcode a hex. See `.claude/rules/ui-style.md` + skill `factorylm-ui-style` + runbook `docs/design/factorylm-style.md`.
@@ -210,7 +211,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 
 ## Cross-references
 
-- Root `CLAUDE.md` — build state, ports, env vars, repo map
+- `docs/agent-standard/FLEET_STANDARD.md` + `providers/claude.md` — provider-neutral fleet standard; this file is a Claude adapter under it (`.claude/rules/fleet-standard.md`)
+- Root `AGENTS.md` — the provider-neutral project map (root `CLAUDE.md` is a thin adapter that imports it); ports/containers → compose files, nodes → `deployment/network.yml`, env vars → `docs/env-vars.md`, system-wide references → `CONTEXT-MAP.md`
 - `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)

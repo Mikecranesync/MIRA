@@ -17,7 +17,7 @@ This is the **master plan that ties the existing specs and execution plans toget
 
 1. Postgres-first. No Neo4j, no Memgraph, no TerminusDB until Phase 13 and only if proven necessary.
 2. No LangChain, no TensorFlow, no n8n. PRD §4.
-3. Inference cascade: Groq → Cerebras → Gemini. **Never Anthropic** (removed PR #610).
+3. Inference cascade: Groq → Cerebras → Together (Gemini banned). **Never Anthropic** (removed PR #610).
 4. UNS compliance: ISA-95 ltree paths via `mira-crawler/ingest/uns.py` builders. No hand-formatted paths.
 5. Ignition-first for PLC data. **No customer-shipped MIRA container opens a Modbus / OPC-UA / EtherNet-IP socket** to the plant. `plc/live_monitor.py` and `plc/live-plc-bridge/bridge.py` are bench-only. See `docs/mira-ignition-secure-architecture.md` §8 and `.claude/rules/fieldbus-readonly.md`.
 6. UNS Location-Confirmation Gate is non-negotiable on chat surfaces (Slack, Telegram, email, generic web). Direct connections (Ignition cloud-chat, MQTT/Sparkplug, PLC bridge, Hub display, QR deep-link) skip the gate but MUST reject turns missing a UNS identifier. See `.claude/rules/direct-connection-uns-certified.md`.
@@ -41,7 +41,7 @@ Status badges: ✅ shipped · ⚠️ partial · 🔲 not built · 🟦 bench-onl
 | UNS confirmation gate (vendor/model/fault scope) | ✅ | Merged via PRs #1220, #1280, #1295, #1314 |
 | Direct-connection UNS bypass (`source="direct_connection"`) | ⚠️ | Rule documented in `.claude/rules/direct-connection-uns-certified.md`. `ignition_chat.py` sets per-asset `chat_id` but does **not** explicitly set `source="direct_connection"` on `state["uns_context"]` yet. **Gap: Phase 6 must close this.** |
 | Citation compliance hook (observational) | ⚠️ | `mira-bots/shared/citation_compliance.py` logs; does not yet enforce |
-| Inference cascade Gemini → Groq → Cerebras (+ legacy Claude tail) | ✅ | `mira-bots/shared/inference/router.py` — `sanitize_context()` PII strip default-on |
+| Inference cascade Groq → Cerebras → Together (Gemini and the legacy Claude tail removed) | ✅ | `mira-bots/shared/inference/router.py` — `sanitize_context()` PII strip default-on |
 | KB retrieval (BM25 + pgvector) | ✅ | `mira-bots/shared/neon_recall.py` — `recall_knowledge`, `recall_fault_code`, `kb_has_coverage`. Recently fixed in PR #1385 (embedding-gate killed BM25). |
 | RAG worker (chunk retrieve → prompt → LLM) | ✅ | `mira-bots/shared/workers/rag_worker.py` — `kb_status` property for KB-gap scoring |
 | LLM-based conversation router (intent) | ✅ | `mira-bots/shared/conversation_router.py` |

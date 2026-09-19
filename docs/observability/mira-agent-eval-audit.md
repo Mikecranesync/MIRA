@@ -133,4 +133,4 @@ Neither variable is set in CI or prod by default, so behavior there is unchanged
 
 - Audit basis: `mira-bots/shared/{engine.py,decision_trace.py,live_snapshot.py,telemetry.py,benchmark_db.py}`, `tests/eval/`, `evals/`, `docker-compose.observability.yml`
 - ADR-0011 (no LangGraph), ADR-0010 (Karpathy eval alignment), ADR-0022 (decision-trace & tag-stream storage)
-- Constraints: root `CLAUDE.md` PRD §4 (Apache-2.0/MIT, no LLM-abstraction framework, no Anthropic), `docs/environments.md`
+- Constraints: `AGENTS.md` § Hard constraints (PRD §4) (Apache-2.0/MIT, no LLM-abstraction framework, no Anthropic), `docs/environments.md`

@@ -86,7 +86,7 @@ CLAUDE_CODE_EFFORT_LEVEL=xhigh          # default effort if no /effort interacti
 
 Two paths now exist:
 1. **Native** — `/autofix-pr` from terminal turns it on per-branch
-2. **MIRA cascade** — `scripts/pr_self_fix.sh <PR>` (existing; uses Groq → Cerebras → Gemini)
+2. **MIRA cascade** — uses Groq → Cerebras → Gemini (via `scripts/pr_self_fix.sh <PR>`)
 
 Use the native option for speed; fall back to the cascade script if the native path is rate-limited or you want the LLM-provider trail in logs.
 
@@ -94,7 +94,7 @@ The GitHub Actions workflow (`.github/workflows/code-review.yml`) accepts an `au
 
 ## What's NOT changed
 
-- Inference cascade (Groq → Cerebras → Gemini) — still the production path for MIRA bot replies. Anthropic stays removed (PR #610). Claude Code is for *engineering*, not for production diagnostic responses.
+- Inference cascade (Groq → Cerebras → Together; Gemini banned) — still the production path for MIRA bot replies. Anthropic stays removed (PR #610). Claude Code is for *engineering*, not for production diagnostic responses.
 - PLAN.md / HANDOFF.md discipline — still required for autonomous runs (see `autonomous-run` skill).
 - Pre-commit gates (shellcheck, gitleaks, debug-artifact scan) — unchanged.
 

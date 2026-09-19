@@ -362,8 +362,8 @@ Response:
 
 Streaming variant returns `text/event-stream` SSE compatible with OpenAI
 chat-completions clients. Backs onto `mira-pipeline:9099/v1/chat/completions`
-(which already cascades Groq → Cerebras → Gemini → Open WebUI; never
-Anthropic per CLAUDE.md §3).
+(the diagnostic cascade — Groq → Cerebras → Together, never Anthropic, per
+`AGENTS.md` § Hard constraints; Gemini is banned).
 
 ---
 

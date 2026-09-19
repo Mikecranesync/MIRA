@@ -1053,21 +1053,22 @@ def test_tag_regex_extractor_catches_desync():
 
 
 # ---------------------------------------------------------------------------
-# Contract 12: the CLAUDE.md Container Map matches the compose files
+# Contract 12: the docs/environments.md Container Map matches the compose files
 # ---------------------------------------------------------------------------
 # Drift finding D-2 (CU-02): the hand-kept container map rotted (phantom
 # mira-docling, wrong mira-mcp ports) and agents planned against it. CU-02 made
 # the map GENERATED (tools/gen_container_map.py, doctrine section 11 — prefer
 # machine-validated facts); this contract is the permanent re-drift fence CU-06
 # wires into CI: any compose change that is not re-rendered into CLAUDE.md
-# fails here. Runs the script's --check mode via subprocess (sys.executable,
+# fails here. (The map lived in root CLAUDE.md until 2026-09-13, when CLAUDE.md became a
+# thin adapter over AGENTS.md; it now renders into docs/environments.md.) Runs the script's --check mode via subprocess (sys.executable,
 # the repo's established cross-platform shape — see tests/test_machine_print_pack.py).
 
 _GEN_CONTAINER_MAP = "tools/gen_container_map.py"
 
 
 def test_container_map_matches_compose():
-    """CLAUDE.md's generated Container Map is byte-identical to regeneration."""
+    """docs/environments.md's generated Container Map is byte-identical to regeneration."""
     result = subprocess.run(
         [sys.executable, str(_ROOT / _GEN_CONTAINER_MAP), "--check"],
         capture_output=True,
@@ -1076,9 +1077,356 @@ def test_container_map_matches_compose():
         cwd=str(_ROOT),
     )
     assert result.returncode == 0, (
-        "The root CLAUDE.md Container Map disagrees with the compose files. "
+        "The docs/environments.md Container Map disagrees with the compose files. "
         "Regenerate it (never hand-edit): python3 tools/gen_container_map.py --write\n\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def test_cu02_record_names_current_map_home():
+    """The CU-02 convergence record must name where the generated map actually lives.
+
+    #3761 round-4 review: the map moved to docs/environments.md while CU-02 still declared
+    root CLAUDE.md as canonical, so an agent repairing CU-02 from its record would operate on
+    the wrong file. The record's amendment and its active invariant must both name the real
+    destination, and the invariant must not present root CLAUDE.md as the current one.
+    """
+    record = (_ROOT / "docs/architecture/convergence/units/CU-02.md").read_text(encoding="utf-8")
+    assert "Amendment 2026-09-13" in record, "CU-02 lacks the amendment recording the map's move"
+    invariant = record.split("## Contracts/invariants", 1)[1].split("\n## ", 1)[0]
+    assert "docs/environments.md" in invariant, "CU-02 invariant does not name docs/environments.md"
+    assert "until 2026-09-13" in invariant, (
+        "CU-02 invariant must mark the CLAUDE.md destination as historical"
+    )
+    # And the record must agree with the generator it describes.
+    mod = _load_gen_container_map()
+    assert mod.CLAUDE_MD == "docs/environments.md"
+
+
+# Contract 12c: no ACTIVE document sends a reader to a root CLAUDE.md section that no longer
+# exists. Root CLAUDE.md became a thin adapter over AGENTS.md on 2026-09-13 (#3761); its
+# Environments / Hard Constraints / Container Map / Security / Verification sections moved to
+# docs/environments.md, AGENTS.md, and .claude/rules/. A guide that still cites the old anchor
+# reads as authoritative and points at nothing (found by the #3761 round-5 review).
+_REMOVED_ROOT_SECTIONS = r"(Environments|Hard Constraints|Security|Container Map|Verification Workflow|Deferred / Archived Modules|Node Map|Pointers|Gotchas)"
+_REMOVED_ROOT_SECTION_PATTERNS = (
+    re.compile(r"root CLAUDE\.md ?§", re.I),
+    re.compile(r"CLAUDE\.md ?§ ?" + _REMOVED_ROOT_SECTIONS, re.I),
+    # any section of the ROOT file: "CLAUDE.md §" not preceded by a path character, so
+    # `.claude/CLAUDE.md § …` and `mira-hub/CLAUDE.md § …` (files that still have sections) pass
+    re.compile(r"(?<![\w/.-])CLAUDE\.md ?§", re.I),
+    re.compile(r"PRD §4 in root", re.I),
+    re.compile(
+        r"root CLAUDE\.md[^\n]*(Container Map|Hard Constraints|Environments hard rule|env vars)",
+        re.I,
+    ),
+)
+
+
+def _normalize_md(line: str) -> str:
+    """Strip Markdown emphasis/code markers so `CLAUDE.md` § **Environments** matches
+    the same as CLAUDE.md § Environments (the #3761 round-6 miss)."""
+    return line.replace("`", "").replace("**", "").replace("__", "").replace("*", "")
+
+
+_ROOT_ADAPTER_ALLOWED = (
+    "thin adapter",
+    "imports it",
+    "imports `agents.md`",
+    "imports agents.md",
+    "@agents.md",
+)
+
+
+def _cites_removed_root_section(line: str) -> bool:
+    """True when an active line cites root CLAUDE.md as an authority for anything.
+
+    Root CLAUDE.md is a thin adapter since 2026-09-13; every fact and rule it held moved
+    (AGENTS.md, docs/environments.md, docs/known-issues.md, .claude/rules/). The only
+    legitimate statements about it are that it is the adapter that imports AGENTS.md
+    (#3761 round-7 review: section-anchor matching alone let generic "per root
+    CLAUDE.md, …" citations through)."""
+    norm = _normalize_md(line)
+    low = norm.lower()
+    if any(a in low for a in _ROOT_ADAPTER_ALLOWED):
+        return False
+    if any(p.search(norm) for p in _REMOVED_ROOT_SECTION_PATTERNS):
+        return True
+    return "root claude.md" in low
+
+
+# Historical records keep their pre-change wording on purpose; product source comments are
+# out of this docs/control-plane contract's scope (tracked separately).
+_REMOVED_ROOT_SECTION_HISTORICAL = {
+    "docs/architecture/convergence/units/CU-02.md",  # amended; pre-change section retained as history
+    "docs/architecture/convergence/units/CU-06.md",  # DONE record
+    "docs/architecture/convergence/BACKLOG.md",
+    "docs/architecture/convergence/DRIFT_REPORT.md",  # Gate 0 record (2026-08), pre-change by definition
+    "docs/architecture/convergence/GATE0_SUMMARY.md",  # Gate 0 record
+    "docs/CHANGELOG.md",  # frozen archive
+    "docs/agents/subagent-development-handbook.md",  # describes CLAUDE.md files as artifacts to author, not as authority
+    "docs/sales-github-issues-2026-04-26.md",  # dated sales draft (2026-04)
+    "wiki/hot.md",
+}
+_REMOVED_ROOT_SECTION_SKIP_DIRS = (
+    # dated corpora — plans, audits, evaluations, ideation, superpowers specs/plans, DONE
+    # convergence units, histories — describe the state at their date; not operating instructions
+    "docs/tech-debt/",
+    "docs/xprize/",
+    "docs/proofs/",
+    "docs/audits/",
+    "docs/plans/",
+    "docs/discovery/",
+    "docs/evaluations/",
+    "docs/ideation/",
+    "docs/superpowers/",
+    "docs/architecture/convergence/units/",
+    "wiki/hot.d/",
+    "wiki/reviews/",
+    "wiki/orchestrator/",
+    "mira-hub/src/",
+    ".claude/worktrees/",
+    "node_modules/",
+)
+
+
+def test_removed_root_section_matcher_catches_markdown_formatted_links():
+    """Negative fixtures for the matcher itself — including the exact line the #3761
+    round-6 review found slipping through (bold markers between § and the section name)."""
+    for line in (
+        "- `CLAUDE.md` § **Environments** — short rule card every session loads",
+        "Root `CLAUDE.md` § **Environments** is the rule card.",
+        "see PRD §4 in root CLAUDE.md",
+        "(root CLAUDE.md Environments hard rule #1)",
+        "per root `CLAUDE.md` § Deferred / Archived Modules",
+        "(see root CLAUDE.md Container Map)",
+        'root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)"',
+        "root CLAUDE.md: sunset pending",
+        "per root CLAUDE.md, NEVER docker compose the VPS directly",
+        "root CLAUDE.md Screenshot Rule",
+        '`CLAUDE.md` § "Unification Program"',
+    ):
+        assert _cites_removed_root_section(line), line
+    for line in (
+        "root `CLAUDE.md` is a thin adapter that imports it",
+        "Root `CLAUDE.md` becomes a thin Claude adapter that imports `@AGENTS.md`.",
+        "`docs/environments.md` § Container Map (generated)",
+        '`.claude/CLAUDE.md` § "Do not do" — no engine forks',
+        "`mira-hub/CLAUDE.md` § Auth",
+        "`AGENTS.md` § Hard constraints (PRD §4)",
+    ):
+        assert not _cites_removed_root_section(line), line
+
+
+def test_no_active_reference_to_removed_root_claude_sections():
+    hits = []
+    # Universe = TRACKED Markdown. Untracked scratch (.adversarial-review/, worktrees,
+    # node_modules) is neither active doctrine nor ours to police; git decides what counts.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.md"],
+        capture_output=True,
+        cwd=str(_ROOT),
+        check=True,
+    ).stdout.decode("utf-8", "replace")
+    for rel in sorted(r for r in tracked.split("\0") if r):
+        path = _ROOT / rel
+        if rel in _REMOVED_ROOT_SECTION_HISTORICAL or rel.startswith(
+            _REMOVED_ROOT_SECTION_SKIP_DIRS
+        ):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for n, line in enumerate(text.splitlines(), 1):
+            if (
+                "is a thin adapter" in line
+            ):  # the one sentence that legitimately names root CLAUDE.md
+                continue
+            if _cites_removed_root_section(line):
+                hits.append(f"{rel}:{n}: {line.strip()[:110]}")
+    assert not hits, "active documents still cite removed root CLAUDE.md sections:\n" + "\n".join(
+        hits
+    )
+
+
+# Contract 12d: no active instruction document states Gemini (or any banned provider) as a
+# member of the product diagnostic cascade. AGENTS.md § Hard constraints is canonical
+# (Groq → Cerebras → Together; Gemini banned; no Anthropic — #610). docs/context/RULES.md
+# still said "Groq + Cerebras + Gemini" months after the ban (#3761 round-9 review).
+# CI review/judge workflows legitimately keep Gemini as a *tooling* fallback, so lines that
+# describe a workflow, review, or judge are not cascade statements and are skipped.
+_ACTIVE_INSTRUCTION_DOCS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/CLAUDE.md",
+    "docs/context/RULES.md",
+    "docs/environments.md",
+)
+# CONTRACT — read this before "improving" it. This fence is SYNTACTIC, deliberately.
+#
+# It catches the three forms in which a banned provider has actually re-entered this
+# repository's instructions (#3761 rounds 9–17: RULES.md, THEORY_OF_OPERATIONS.md,
+# ARCHITECTURE.md, the master plan, the mira-platform skill, six docs/context files, four
+# runbooks — every one of them was one of these):
+#   (1) a PROVIDER LIST — two or more provider names joined by → -> + , / or "then" — that
+#       contains Gemini, Anthropic, or Claude, e.g. "Groq → Cerebras → Gemini",
+#       "cascade: Gemini→Groq→Cerebras→Claude", "Groq + Cerebras + Gemini";
+#   (2) a PROVISIONING instruction that puts GEMINI_API_KEY in prod or in the cascade;
+#   (3) a SENTENCE-FORM membership statement using a bounded, enumerated set of verb patterns:
+#       falls-back-to, use-X-as, routes-to — e.g. "the cascade falls back to Gemini",
+#       "use Gemini as the fallback", "route the cascade to Claude".
+#       This is NOT general English parsing. Only these three verb forms are caught;
+#       any novel phrasing outside the enumerated set is out of scope by design.
+# ALL three forms use the same CLAUSE-SCOPED exemption: when the provider name sits in a
+# clause that also contains a NAMED CI instrument (code-review.yml / staging-gate /
+# pr_self_fix / adversarial-review) or a generic CI phrase ("judge cascade", "review
+# cascade"), that clause is exempted — because those instruments legitimately keep Gemini as
+# a tooling fallback. A CI name in a DIFFERENT clause (separated by . ; |) does NOT exempt
+# the clause that contains the product diagnostic statement.
+_PROVIDER_NAME = r"(?<![./\w-])(?:groq|cerebras|together|gemini|anthropic|claude(?!\s+code\b)|openai|ollama|open webui)(?![\w./-])"
+_LIST_JOIN = r"\s*(?:→|->|⇒|\+|,|\bthen\b)\s*"  # no "/" — it is a path separator far more often than a list joiner
+_PROVIDER_LIST = re.compile(rf"{_PROVIDER_NAME}(?:{_LIST_JOIN}{_PROVIDER_NAME})+", re.I)
+_BANNED_IN_LIST = re.compile(r"\b(?:gemini|anthropic|claude)\b", re.I)
+# A NAMED instrument file/script anywhere on the line qualifies the list (it is what the line
+# is about); a generic phrase ("judge cascade") must sit in the list's own clause.
+_CI_NAMED_INSTRUMENT = re.compile(
+    r"code-review\.yml|staging-gate|pr_self_fix|gh secret set|adversarial-review", re.I
+)
+_CI_PHRASE_IN_CLAUSE = re.compile(
+    r"(?:cascade|judge|review)\s+(?:review|judge|cascade)|judge fallback|ci (?:judge|review)", re.I
+)
+# Provisioning a Gemini key "for prod" / "the cascade" is an operational instruction to
+# configure a banned provider (run-eval-suite.md and known-issues.md did exactly that —
+# #3761 round-10 review). A CI secret (gh secret set …, staging-gate) is tooling.
+_BANNED_PROVISION = re.compile(
+    r"GEMINI_API_KEY[^\n]*(factorylm/prd|cascade|same as prod)"
+    r"|(factorylm/prd|cascade)[^\n]*GEMINI_API_KEY",
+    re.I,
+)
+# Sentence-form membership (form 3). Bounded enumeration: falls-back-to / use-X-as /
+# routes-to. Exemption is identical to the list form — clause-scoped CI instrument check.
+_BANNED_FALLBACK_SENTENCE = re.compile(
+    r"falls?\s+back\s+to\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))"
+    r"|use\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))\s+as"
+    r"|route(?:s|d)?\s+(?:[a-z]+\s+){0,4}to\s+(?:gemini|anthropic|claude(?!\s+(?:code|api)\b))",
+    re.I,
+)
+
+
+def _states_banned_cascade(line: str) -> bool:
+    norm = _normalize_md(line)
+    low = norm.lower()
+    if _BANNED_PROVISION.search(norm):
+        return not any(k in low for k in ("gh secret set", "staging-gate", ".yml"))
+    for m in _PROVIDER_LIST.finditer(norm):
+        if not _BANNED_IN_LIST.search(m.group(0)):
+            continue
+        # the clause the list sits in: back to the previous . ; | and forward to the next
+        start = max(norm.rfind(c, 0, m.start()) for c in ".;|") + 1
+        end_candidates = [norm.find(c, m.end()) for c in ".;|"]
+        end = min([x for x in end_candidates if x != -1] or [len(norm)])
+        clause = norm[start:end]
+        if _CI_NAMED_INSTRUMENT.search(clause) or _CI_PHRASE_IN_CLAUSE.search(clause):
+            continue
+        return True
+    for m in _BANNED_FALLBACK_SENTENCE.finditer(norm):
+        start = max(norm.rfind(c, 0, m.start()) for c in ".;|") + 1
+        end_candidates = [norm.find(c, m.end()) for c in ".;|"]
+        end = min([x for x in end_candidates if x != -1] or [len(norm)])
+        clause = norm[start:end]
+        if _CI_NAMED_INSTRUMENT.search(clause) or _CI_PHRASE_IN_CLAUSE.search(clause):
+            continue
+        return True
+    return False
+
+
+def test_active_instruction_docs_do_not_put_gemini_in_the_cascade():
+    # (1) provider lists containing a banned member — any position, any joiner
+    for line in (
+        "2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade only.",
+        "Always Groq → Cerebras → Gemini cascade for any LLM call",
+        "| Inference | InferenceRouter (cascade: Gemini→Groq→Cerebras→Claude) |",
+        "cascade Groq → Gemini → Cerebras",
+        "Inference cascade Gemini → Groq → Cerebras (+ legacy Claude tail)",
+        "cascade: groq, cerebras, gemini",
+        "After review, the diagnostic cascade is Gemini then Groq",
+        "Read config.yml before setting the diagnostic cascade to Groq -> Gemini",
+        "Gemini is banned. The diagnostic cascade is Groq → Gemini",
+    ):
+        assert _states_banned_cascade(line), line
+    # (2) provisioning a Gemini key for prod / the cascade
+    for line in (
+        "- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` in Doppler `factorylm/prd`",
+        "`GEMINI_API_KEY` — same as prod is fine",
+    ):
+        assert _states_banned_cascade(line), line
+    # (3) sentence-form membership — falls-back/use/route verb forms; exemption is clause-scoped
+    # so a CI name in an UNRELATED clause does NOT exempt the product diagnostic statement
+    for line in (
+        "The diagnostic cascade falls back to Gemini",
+        "The diagnostic cascade falls back to Claude when Together is unavailable",
+        "Use Gemini as the final diagnostic fallback",
+        "Update code-review.yml; set the product diagnostic cascade to Groq -> Gemini",
+        "Route the diagnostic cascade to Gemini when Together fails",
+    ):
+        assert _states_banned_cascade(line), line
+    # negatives: no list, or a list/sentence whose CI-instrument exemption sits in the SAME
+    # clause as the provider name; a CI name in a different clause does NOT exempt (see (3) above)
+    for line in (
+        "Groq → Cerebras → Together cascade; Gemini is banned",
+        "cascade: Groq → Cerebras → Together — Gemini and Anthropic banned",
+        "No Anthropic in the diagnostic cascade (removed #610)",
+        "- Anthropic stays out of the diagnostic cascade (PRD §4 carve-outs unchanged).",
+        "cascade review (Groq → Cerebras → Gemini) in code-review.yml",
+        "the staging-gate judge cascade falls back to Gemini (STAGING_GEMINI_API_KEY)",
+        'gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"',
+        "- `.claude/rules/...` / memory `feedback_llm_cascade_default.md`",
+        "`ANTHROPIC_API_KEY` | Print-vision ONLY — the retained Claude path of PrintSense. NOT in the cascade",
+        "Claude Code is for engineering, not for production diagnostic responses",
+    ):
+        assert not _states_banned_cascade(line), line
+    globs = (
+        ".claude/rules/*.md",
+        ".claude/skills/**/*.md",
+        ".claude/commands/*.md",
+        ".claude/agents/*.md",
+        ".agents/skills/**/*.md",
+        "docs/agent-standard/**/*.md",
+        "docs/agents/*.md",
+        "docs/context/*.md",
+        "docs/runbooks/*.md",
+        "wiki/references/*.md",
+        "wiki/gotchas/*.md",
+        "docs/env-vars.md",
+        "docs/known-issues.md",
+    )
+    docs = list(_ACTIVE_INSTRUCTION_DOCS)
+    for g in globs:
+        docs += sorted(p.relative_to(_ROOT).as_posix() for p in _ROOT.glob(g))
+    # Everything the bootloader points at is, by definition, active doctrine — derive it so a
+    # newly required document cannot escape the guard (#3761 round-12 review).
+    bootloader = (_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    docs += sorted(
+        p
+        for p in set(re.findall(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*\.md)`", bootloader))
+        if (_ROOT / p).is_file()
+    )
+    historical = {
+        "docs/CHANGELOG.md",  # frozen archive
+        "wiki/hot.md",  # running session log
+        "docs/runbooks/2026-04-11-inference-router-deploy.md",  # dated deploy record of the pre-Together cascade
+    }
+    docs = [d for d in dict.fromkeys(docs) if d not in historical]
+    hits = []
+    for rel in docs:
+        path = _ROOT / rel
+        if not path.exists():
+            continue
+        for n, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
+            if _states_banned_cascade(line):
+                hits.append(f"{rel}:{n}: {line.strip()[:100]}")
+    assert not hits, "active instruction docs state a banned diagnostic cascade:\n" + "\n".join(
+        hits
     )
 
 
@@ -1094,10 +1442,10 @@ def _load_gen_container_map():
 def test_container_map_checker_catches_drift():
     """The Contract 12 comparison must FAIL on a mutated map (red-first proof)."""
     mod = _load_gen_container_map()
-    text = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    text = (_ROOT / "docs/environments.md").read_text(encoding="utf-8")
     section = mod.generate_section()
     parts = mod._split_claude_md(text)
-    assert parts is not None, "CLAUDE.md lost its Container Map section/markers"
+    assert parts is not None, "docs/environments.md lost its Container Map section/markers"
     _, current, _ = parts
     # The committed section matches regeneration (same equality --check uses)...
     assert current.strip("\n") == section.strip("\n")

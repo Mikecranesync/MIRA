@@ -84,7 +84,7 @@ gh pr checks <PR#> --watch
 - **All green** → proceed to merge.
 - **Red** → triage before touching anything: is it a real failure your rebase
   introduced, or pre-existing/flaky on `main`? Compare against `origin/main`'s
-  latest run (`gh run list --branch main`). Per root CLAUDE.md's CI & Merge
+  latest run (`gh run list --branch main`). Per the node-global `~/.claude/CLAUDE.md`'s CI & Merge
   Policy: if the failing checks are pre-existing on `main` and unrelated,
   **confirm with the user before merging** — never merge through new red
   checks you haven't explained.
@@ -154,4 +154,4 @@ checkpoint are confirmed to exist **at the merge commit**.
 - `docs/versioning.md` — tag-derived versioning (no VERSION file), version-tag.yml
 - `.claude/rules/session-discipline.md` — regression recheck, scoped commits
 - `tools/hooks/git-state-guard.sh` — the P0 preflight guard reused in §0
-- root `CLAUDE.md` § "CI & Merge Policy" — pre-existing-vs-new-red confirmation rule
+- `~/.claude/CLAUDE.md` § "CI & Merge Policy" (the node-global instruction file, not the repo root) — pre-existing-vs-new-red confirmation rule

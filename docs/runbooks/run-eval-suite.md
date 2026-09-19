@@ -43,9 +43,9 @@ for the eval tier architecture.
 - `NEON_DATABASE_URL` in Doppler `factorylm/prd` (NeonDB recall is live during
   the offline run — it is NOT fully offline; only the UNS resolver has an
   offline floor per `.claude/rules/uns-compliance.md` rule #8)
-- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` in
-  Doppler `factorylm/prd` (Groq → Cerebras → Gemini; **never Anthropic** —
-  removed PR #610)
+- Inference cascade `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` in
+  Doppler `factorylm/prd` (Groq → Cerebras → Together; **never Anthropic** —
+  removed PR #610; **Gemini is banned** — `AGENTS.md` § Hard constraints)
 - Do NOT set `ANTHROPIC_API_KEY` — any value will be rejected by the cascade
   and the PR #610 rule forbids Anthropic as a provider in any config
 
@@ -173,7 +173,7 @@ Golden fixture files: `tests/golden_factorylm.csv`, `tests/golden_hybrid.csv`.
 
 ## Staging gate (before merging engine / RAG / classifier changes)
 
-From `docs/environments.md` and root `CLAUDE.md`:
+From `docs/environments.md` and `AGENTS.md` § Environment and deployment safety:
 
 ALL engine / RAG / retrieval / classifier changes MUST pass the staging gate:
 
@@ -190,7 +190,7 @@ Then confirm the relevant `tests/eval/` regime passes before merging to `main`.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `KeyError: 'GROQ_API_KEY'` | Doppler config not loaded | Prefix command with `doppler run --project factorylm --config prd --` |
-| All fixtures fail with `No5xx=FAIL` | Cascade providers all down | Check Groq/Cerebras/Gemini status; `GROQ_API_KEY` in Doppler valid? |
+| All fixtures fail with `No5xx=FAIL` | Cascade providers all down | Check Groq/Cerebras/Together status (`docs/known-issues.md`, provider-health canary); `GROQ_API_KEY` in Doppler valid? |
 | `CitGrond=FAIL` across many fixtures | `knowledge_entries` empty or recall broken | Run `SELECT count(*) FROM knowledge_entries WHERE tenant_id='<id>'` against NeonDB; see `docs/runbooks/upload-manual-verify-citable.md` |
 | `FSM=FAIL` on fixtures that were passing | Engine state machine regression | Check recent commits to `mira-bots/shared/engine.py`; run `codegraph_impact` on changed symbols |
 | NeonDB connection error | `NEON_DATABASE_URL` not in prd Doppler config | `doppler secrets --project factorylm --config prd | grep NEON` |

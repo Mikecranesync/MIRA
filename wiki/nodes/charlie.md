@@ -46,3 +46,31 @@ tags: [charlie, bots, paperclip, qdrant, vision-zta]
 ## Latest Inventory Evidence
 
 - `docs/ops/vision-zta-fleet-inventory-2026-07-18.md`
+
+## Fleet-standard audit (2026-09-13, `docs/agent-standard/nodes/charlie.md` runbook)
+
+Evidence recorded at PR #3755 head `e852f1229` by Claude `mira-23`; re-run
+`tools/fleet-parity-check.sh --node charlie` to refresh.
+
+- **Wiring checker:** `WIRING-OK` on the Phase-2 branch (adapter wiring only — one §11 input, not the
+  §11 verdict; this node is **not** §11-STANDARD while the drift below is open). CodeGraph preflight `READY`
+  (CLI 0.9.5, 55,038 nodes / 112,103 edges, canary healthy). `AGENTS.md` present, `wiki/hot.md`
+  readable, `gh auth` PASS.
+- **Disk headroom is the live constraint, not RAM.** `/` had **29 GiB** free on 2026-07-18,
+  **10 GiB** on 2026-09-12, and **3.4 GiB** on 2026-09-13 while ~35 git worktrees and 19 `cao-*`
+  tmux sessions were resident. Memory was 51 % free. Before `git worktree add`, run `df -h /`
+  (a worktree is ~600 MB; a full disk cascades into the shared checkout — see
+  `docs/tech-debt/2026-07-27-worktree-clutter-rca.md`).
+- **`UNIVERSAL DRIFT` (fix centrally, recorded here so nobody re-derives it):**
+  1. `~/MIRA` is the shared canonical checkout and has been used for direct feature development
+     while parked on a feature branch that other sessions read (§7). Do not "fix" this by
+     switching its branch — that is the same violation. Task work goes in an owned worktree.
+  2. `~/MIRA`'s git identity is checkout-local (`MIRA Beta Orchestrator`) and inherited by every
+     worktree, so commits are unattributable to a session (§6). Commit with
+     `-c user.name="<provider>-<session>@charlie"` until a canonical identity rule lands.
+- **`NODE OVERLAY` (valid, keep):** Qdrant :8000, Vision ZTA lane, Colima runtime, jarvis_node
+  :8765, the resource guards above. None of these are parity defects.
+- **`BLOCKER` (not fixable by an agent without ownership):** two `wiki/hot.d/2026-09-09-charlie-*`
+  lane notes were found uncommitted in the shared checkout; their contents were preserved
+  verbatim on PR #3755 (comment 5647149283). The owning lane should land them via the normal
+  wiki path.

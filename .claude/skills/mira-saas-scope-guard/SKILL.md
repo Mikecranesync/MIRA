@@ -88,4 +88,4 @@ When invoked on a request:
 - `.claude/CLAUDE.md` — product rules
 - `.claude/skills/mira-architecture-guardian/SKILL.md` — architecture-level pushback
 - `.claude/skills/uns-location-gate-designer/SKILL.md` — gate that anchors the wedge
-- Root `CLAUDE.md` — current modules + deferred ones (mira-hud, mira-prototype archived; mira-connect deferred)
+- `CONTEXT-MAP.md` + `docs/known-issues.md` § Deferred / Archived Modules — current modules + deferred ones (mira-hud, mira-prototype archived; mira-connect deferred)

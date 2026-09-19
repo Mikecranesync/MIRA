@@ -16,7 +16,7 @@ MIRA/
 │   │   ├── engine.py               # Supervisor — entry point
 │   │   ├── workers/                # vision_worker, rag_worker, print_worker, plc_worker (stub)
 │   │   ├── guardrails.py           # intent classification, safety, abbreviations
-│   │   ├── inference/router.py     # Cascade Groq → Cerebras → Gemini, sanitizer
+│   │   ├── inference/router.py     # Cascade Groq → Cerebras → Together (Gemini banned), sanitizer
 │   │   ├── recall.py               # NeonDB recall paths
 │   │   └── agents/infra_guardian.py
 │   ├── prompts/                    # Active prompt registry (active.yaml hot-swap)
