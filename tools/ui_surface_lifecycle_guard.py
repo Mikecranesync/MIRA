@@ -10,10 +10,20 @@ Task 2.
 Fails closed by default on ANY addition, modification, deletion, rename-in,
 or rename-out of a guarded legacy presentation path (from
 docs/architecture/convergence/REGISTRY.yaml) or a hardcoded CONTROL_PATTERNS
-control-plane file — unless the PR carries the `legacy-ui-exception` label, a
-single substantive `## Legacy UI exception` PR-body section (Reason /
-Canonical replacement impact / Rollback), and a fresh user label event bound
-to the current PR head/body snapshot.
+control-plane file — unless the PR carries a single substantive
+`## Legacy UI exception` PR-body section (Reason / Canonical replacement
+impact / Rollback) AND one of two exact-head attestations:
+
+* the maintainer route — the `legacy-ui-exception` label plus a fresh user
+  label event bound to the current PR head/body snapshot (a true
+  architectural exception, decided by a human); or
+* the independent-review route — a `[CODEX-ADVERSARIAL-REVIEW]` comment
+  (the repository's existing Codex review ledger, `scripts/adversarial-review.sh`)
+  whose `reviewed_sha` is the current PR head and whose `status` is `GREEN`.
+  The Codex contract treats any expansion of frozen legacy presentation as
+  a finding, so a GREEN at the exact head is the independent classification
+  that the touch is migration / removal / adapter work. Any head movement
+  makes it stale; a fresh review restores it without a label action.
 
 This module does no network access and reads no GitHub token — it is pure
 policy + text analysis, designed to run from the TRUSTED BASE revision of the
@@ -30,7 +40,8 @@ bottom.
         --pr-body-file pr-body.md \\
         --event-json-file "$GITHUB_EVENT_PATH" \\
         --current-pull-json-file current-pull.json \\
-        --approver-permission-json-file approver-permission.json
+        --approver-permission-json-file approver-permission.json \\
+        --review-comments-json-file review-comments.jsonl
 """
 
 from __future__ import annotations
@@ -610,6 +621,18 @@ _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+# The Codex review ledger's comment envelope, byte-for-byte the shape
+# `scripts/adversarial-review-ledger.mjs` (REVIEW_RE) accepts. Anything that
+# does not match from the first character is not an attestation — it cannot
+# be a stale one, a forged one, or a partial one; it is simply ignored.
+_CODEX_REVIEW_MARKER = "[CODEX-ADVERSARIAL-REVIEW]"
+_CODEX_REVIEW_RE = re.compile(
+    r"^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\n"
+    r"reviewed_sha: (?P<sha>[0-9a-f]{40})\r?\n"
+    r"base_sha: [^\r\n]+\r?\n"
+    r"status: (?P<status>GREEN|ISSUES_FOUND)\r?\n"
+    r"review_iteration: (?P<iteration>[0-9]+)\r?\n"
+)
 
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
@@ -691,6 +714,22 @@ class ExceptionApproval:
 
     valid: bool
     approver: Optional[str]
+    reason: str
+
+
+@dataclass(frozen=True)
+class CodexAttestation:
+    """Latest Codex adversarial-review verdict, bound to one exact PR head.
+
+    `valid` is True only when the newest well-formed ledger comment for the
+    CURRENT head reports `GREEN`. `reviewed_sha` is the head of the newest
+    well-formed ledger comment of any status (so a stale GREEN can be named
+    in the failure message), or None when no ledger comment exists.
+    """
+
+    valid: bool
+    reviewed_sha: Optional[str]
+    status: Optional[str]
     reason: str
 
 
@@ -1469,6 +1508,109 @@ def load_exception_approval(
     )
 
 
+def _current_head_and_owner(current: dict) -> tuple[str, str]:
+    """Return `(head_sha, base_repo_owner_login)` from a current PR snapshot,
+    failing closed on anything missing or malformed."""
+    current_head = current.get("head")
+    current_base = current.get("base")
+    if not isinstance(current_head, dict) or not isinstance(current_base, dict):
+        raise GuardPolicyError("current pull request snapshot is missing head/base objects")
+    current_sha = current_head.get("sha")
+    if not isinstance(current_sha, str) or not _FULL_SHA_RE.fullmatch(current_sha):
+        raise GuardPolicyError("current pull request head SHA is missing or malformed")
+    base_repo = current_base.get("repo")
+    owner = base_repo.get("owner") if isinstance(base_repo, dict) else None
+    owner_login = owner.get("login") if isinstance(owner, dict) else None
+    if not isinstance(owner_login, str) or not owner_login:
+        raise GuardPolicyError("current pull request base repository owner login is missing")
+    return current_sha, owner_login
+
+
+def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> CodexAttestation:
+    """Read the Codex review ledger from the PR's issue comments (JSON lines of
+    `{id, body, user: {login, type}}`) and bind it to the current head.
+
+    Trust model — the same one `scripts/adversarial-review-ledger.mjs` uses:
+    only a comment posted by the repository owner account (the account the
+    review lane runs under; `user.type` must be `User`) whose body matches
+    the ledger envelope from its first character counts. Malformed, forged,
+    bot-authored, or foreign-account comments are ignored — they can neither
+    mint nor revoke a GREEN. Among counting comments the newest (highest
+    numeric id) decides: the attestation is valid only when that comment's
+    `reviewed_sha` is the current head AND its status is `GREEN`. A newer
+    `ISSUES_FOUND` at the same head withdraws an older GREEN; a GREEN at any
+    other SHA is stale by definition.
+    """
+    current = _load_json_object(current_pull_path, description="current pull request")
+    current_sha, owner_login = _current_head_and_owner(current)
+
+    try:
+        text = Path(comments_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise GuardPolicyError(f"cannot read review comments file {comments_path}: {exc}") from exc
+
+    newest_id = -1
+    newest: Optional[tuple[str, str]] = None
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise GuardPolicyError(
+                f"review comments line {line_number} is not valid JSON: {exc}"
+            ) from exc
+        if not isinstance(record, dict):
+            raise GuardPolicyError(f"review comments line {line_number} is not an object")
+        comment_id = record.get("id")
+        body = record.get("body")
+        user = record.get("user")
+        if not isinstance(comment_id, int) or isinstance(comment_id, bool):
+            raise GuardPolicyError(f"review comments line {line_number} lacks a numeric id")
+        if not isinstance(body, str) or not isinstance(user, dict):
+            continue
+        if user.get("type") != "User" or user.get("login") != owner_login:
+            continue
+        match = _CODEX_REVIEW_RE.match(body)
+        if match is None:
+            continue
+        if comment_id > newest_id:
+            newest_id = comment_id
+            newest = (match.group("sha"), match.group("status"))
+
+    if newest is None:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=None,
+            status=None,
+            reason=f"no {_CODEX_REVIEW_MARKER} ledger comment on this pull request",
+        )
+    reviewed_sha, status = newest
+    if reviewed_sha != current_sha:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            status=status,
+            reason=(
+                f"newest {_CODEX_REVIEW_MARKER} reviewed {reviewed_sha} ({status}) "
+                f"but the pull request head is {current_sha}"
+            ),
+        )
+    if status != "GREEN":
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            status=status,
+            reason=f"newest {_CODEX_REVIEW_MARKER} at the current head reports {status}",
+        )
+    return CodexAttestation(
+        valid=True,
+        reviewed_sha=reviewed_sha,
+        status=status,
+        reason=f"{_CODEX_REVIEW_MARKER} GREEN bound to the current head {current_sha}",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Exception PR-body parsing — consume rendered CommonMark token structure plus
 # GitHub's table/strikethrough rules, not source-looking regex approximations.
@@ -1778,11 +1920,17 @@ def evaluate(
     policy: GuardPolicy,
     *,
     exception_approval_valid: bool = False,
+    codex_attestation: Optional[CodexAttestation] = None,
 ) -> GuardResult:
     """Require an audited exception for any guarded or control-plane touch.
 
     For a rename, both `previous_path` and `path` are checked — a rename-out
     of a guarded tree and a rename-in to a guarded tree are both violations.
+
+    A guarded touch passes on the substantive exception body PLUS either a
+    fresh maintainer label event (`exception_approval_valid`) or a Codex
+    ledger GREEN bound to the current head (`codex_attestation.valid`). The
+    label itself is required only on the maintainer route.
     """
     touched: list[str] = []
     seen: set[str] = set()
@@ -1807,20 +1955,54 @@ def evaluate(
             message="No guarded legacy or control-plane paths touched.",
         )
 
+    body_missing = _exception_missing_fields(pr_body)
+    codex_valid = codex_attestation is not None and codex_attestation.valid
+
+    if not body_missing and codex_valid:
+        return GuardResult(
+            allowed=True,
+            guarded_paths=tuple(touched),
+            missing_fields=(),
+            message=(
+                "INDEPENDENT REVIEW: "
+                + codex_attestation.reason  # type: ignore[union-attr]
+                + " satisfies the lifecycle gate for: "
+                + ", ".join(touched)
+            ),
+        )
+
     missing: list[str] = []
     if _LEGACY_LABEL not in set(labels):
         missing.append(f"label:{_LEGACY_LABEL}")
-    missing.extend(_exception_missing_fields(pr_body))
+    missing.extend(body_missing)
     if not missing and not exception_approval_valid:
         missing.append("approval:fresh legacy-ui-exception label bound to current head/body")
 
     if missing:
+        if codex_attestation is not None and codex_attestation.reviewed_sha is not None:
+            if codex_attestation.status == "GREEN":
+                headline = (
+                    f"REVIEW STALE (Codex GREEN reviewed {codex_attestation.reviewed_sha}; "
+                    "the head has moved — rerun scripts/adversarial-review.sh; "
+                    "no label action is needed)"
+                )
+            else:
+                headline = (
+                    f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
+                    "remediate and re-review, or a maintainer applies the exception label)"
+                )
+        else:
+            headline = (
+                "INDEPENDENT REVIEW REQUIRED (guarded path touched; run "
+                "scripts/adversarial-review.sh to GREEN at this head, or a maintainer "
+                "applies the exception label for a true architectural exception)"
+            )
         return GuardResult(
             allowed=False,
             guarded_paths=tuple(touched),
             missing_fields=tuple(missing),
             message=(
-                "Guarded legacy presentation or control-plane path(s) touched without "
+                headline + ". Guarded legacy presentation or control-plane path(s) touched without "
                 f"an audited `{_LEGACY_LABEL}` exception. Touched: "
                 + ", ".join(touched)
                 + ". Missing: "
@@ -1884,6 +2066,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Current GitHub repository-permission JSON for the label-event actor.",
+    )
+    p.add_argument(
+        "--review-comments-json-file",
+        type=Path,
+        default=None,
+        help=(
+            "Issue-comment JSON-lines ({id, body, user: {login, type}}) holding the "
+            "Codex review ledger; requires --current-pull-json-file."
+        ),
     )
     p.add_argument(
         "--changes-json-file",
@@ -1955,17 +2146,24 @@ def main(argv: Optional[list] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    approval_files = (
-        args.event_json_file,
-        args.current_pull_json_file,
-        args.approver_permission_json_file,
-    )
-    if any(path is not None for path in approval_files) and not all(
-        path is not None for path in approval_files
+    # The label-event trio is all-or-nothing. The current-pull snapshot may
+    # also stand alone, because the review-ledger route binds to it without
+    # any label event.
+    label_event_files = (args.event_json_file, args.approver_permission_json_file)
+    if any(path is not None for path in label_event_files) and not (
+        all(path is not None for path in label_event_files)
+        and args.current_pull_json_file is not None
     ):
         print(
             "error: --event-json-file, --current-pull-json-file, and "
             "--approver-permission-json-file must be provided together",
+            file=sys.stderr,
+        )
+        return 2
+    if args.review_comments_json_file is not None and args.current_pull_json_file is None:
+        print(
+            "error: --review-comments-json-file requires --current-pull-json-file "
+            "(the ledger is bound to the current head)",
             file=sys.stderr,
         )
         return 2
@@ -1997,6 +2195,11 @@ def main(argv: Optional[list] = None) -> int:
                 reason="no GitHub label-event attestation was supplied",
             )
         )
+        codex = (
+            load_codex_attestation(args.review_comments_json_file, args.current_pull_json_file)
+            if args.review_comments_json_file is not None
+            else None
+        )
     except GuardPolicyError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
@@ -2007,6 +2210,7 @@ def main(argv: Optional[list] = None) -> int:
         pr_body,
         policy,
         exception_approval_valid=approval.valid,
+        codex_attestation=codex,
     )
     if not result.allowed:
         for touched_path in result.guarded_paths:

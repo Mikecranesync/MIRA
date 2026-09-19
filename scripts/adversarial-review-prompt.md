@@ -48,6 +48,26 @@ architecture boundary violations (this repo's rules are explicit — cite the
 rule file when one is violated); undocumented behavioral changes; insufficient
 tests; rollback/recovery weaknesses; operational failure modes.
 
+## Frozen legacy UI (your GREEN is the lifecycle attestation)
+
+The `Legacy UI Lifecycle Guard` accepts your `GREEN` at this exact head in
+place of a maintainer's `legacy-ui-exception` label. So when the diff touches
+a guarded legacy path, run the guard yourself and classify each flagged path:
+
+```
+python3 tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD
+```
+
+Migration, removal, an adapter or compatibility bridge, or a narrow correction
+that moves behavior toward the canonical shell is acceptable and needs no
+finding. Any change that **introduces or expands** frozen legacy presentation
+or behavior (a new legacy surface, new user-facing behavior inside a frozen
+implementation, a new dependency on the frozen tree, a bypass of the
+canonical shell, or a change to this guard's own control plane) is a
+**BLOCKER** finding citing `.claude/rules/factorylm-unified-ui-cutover.md` —
+that is a human decision, never a GREEN. When you cannot tell which it is,
+report the finding; ambiguity fails closed.
+
 ## Discipline
 
 - Distinguish **observed** defects (you demonstrated it in the code or ran
