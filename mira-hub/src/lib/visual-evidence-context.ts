@@ -194,6 +194,236 @@ export async function promoteVisualObservations(opts: {
   });
 }
 
+/** A technician's correction of ONE persisted reading: the exact observation
+ *  being replaced and the value they read instead. */
+export type VisualCorrection = {
+  readonly observationId: string;
+  readonly value: string;
+};
+
+/** Matches the confirm route's identity-field cap (`readIdentity` slices to 200). */
+const MAX_CORRECTION_VALUE_CHARS = 200;
+
+/**
+ * Split a persisted `normalized_value` (`"<field>: <value>"`, as written by
+ * `recordNameplateObservations`) back into its field. Returns null when the
+ * row is not in that shape — the caller then SKIPS the correction (fail safe)
+ * rather than guessing a field name.
+ */
+/**
+ * Two nameplate values agree when they differ only in case or whitespace —
+ * "GS10" and " gs10 " are one reading, "GS10" and "GS20" are two. Used to
+ * refuse a correction that contradicts the identity confirmed in the same
+ * request (Codex F1); deliberately NOT a fuzzy match, so a one-character
+ * misread is still a contradiction and not silently accepted.
+ */
+export function sameNameplateValue(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  return norm(a) === norm(b);
+}
+
+export function fieldOfNormalizedValue(normalized: string | null | undefined): string | null {
+  if (typeof normalized !== "string") return null;
+  const idx = normalized.indexOf(": ");
+  if (idx <= 0) return null;
+  const field = normalized.slice(0, idx);
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(field) ? field : null;
+}
+
+/**
+ * Apply a technician's CORRECTIONS to exact persisted visual observations
+ * (Slice 3). Correction never destroys evidence — it changes which observation
+ * is active/trusted:
+ *
+ *  1. INSERT a replacement observation on the SAME session + evidence (same
+ *     photo): `normalized_value = "<field>: <corrected value>"`,
+ *     `extractor='technician'`, `review_state='corrected'` (a human-provided
+ *     reading is `verified` under the Python trust contract), `raw_value` NULL
+ *     (the human did not read raw text), `metadata.corrected_from` = the old id.
+ *  2. Supersede the old row exactly as Python `supersede_observation` does:
+ *     `SET evidence_state='SUPERSEDED', superseded_by=<new id>` — its
+ *     `raw_value` / `normalized_value` / `review_state` are left untouched, so
+ *     the vision reading is preserved as history and the Slice 1 active filter
+ *     (`evidence_state NOT IN ('REJECTED','SUPERSEDED')`, `superseded_by IS
+ *     NULL`) drops it from chat context. No DELETE, ever (migration 063).
+ *
+ * Scoping is IDENTICAL to `promoteVisualObservations`: the exact observation id
+ * ∧ tenant ∧ the notebook's server-bound `asset_id` ∧ this photo's `file_id`
+ * ∧ a LIVE candidate (`review_state='unreviewed'`, active, not superseded).
+ * A correction aimed at another asset, another capture, a confirmed/corrected/
+ * rejected row, or an unknown id changes nothing. Unbound / non-UUID key /
+ * non-UUID fileId / malformed ids / empty values / a value equal to the recorded
+ * one → skipped, never broadened. The row is locked (`FOR UPDATE`) inside the
+ * `withTenantContext` transaction so two concurrent confirms cannot both
+ * supersede the same reading.
+ *
+ * ONE technician truth per field (Codex F1, 2026-09-17): a confirm request also
+ * carries the identity the technician just confirmed, and that identity becomes
+ * a trusted nameplate document. A correction whose SERVER-DERIVED field is one
+ * of those identity fields must therefore agree with the confirmed value —
+ * otherwise the same request would mint two contradictory technician-verified
+ * facts (nameplate "Model: GS10" and a corrected observation "model: GS20").
+ * `expected` is that confirmed identity, keyed by field. A correction on a
+ * field the identity does not carry is unconstrained; a mismatching one is
+ * SKIPPED (no INSERT, no supersede) and reported in `mismatched` so the caller
+ * can surface it. The server still derives the FIELD from the stored row,
+ * never from the identity.
+ *
+ * IDEMPOTENT BY VALUE (Codex round 3 F1): the confirm is retried with the same
+ * client key after a lost response or a retryable partial, and the mobile
+ * reducer refuses `complete` unless every requested correction is reported
+ * applied. So a replayed correction whose target is already superseded by a
+ * technician-corrected replacement with this exact field and value is reported
+ * as satisfied (same pair, nothing written) instead of as lost. A superseded
+ * target whose replacement holds a DIFFERENT value is not satisfied and is
+ * skipped as before — replay never broadens what counts as applied.
+ *
+ * Returns the (supersededId, replacementId) pairs applied or already applied
+ * with this value, plus the corrections refused for contradicting the confirmed
+ * identity.
+ */
+export type VisualCorrectionMismatch = { observationId: string; field: string };
+
+export async function correctVisualObservations(opts: {
+  readonly tenantId: string;
+  readonly boundEntityId: string | null;
+  readonly fileId: string;
+  readonly corrections: readonly VisualCorrection[];
+  readonly correctedBy: string | null;
+  /** The identity confirmed by the SAME request, keyed by nameplate field. */
+  readonly expected?: Readonly<Record<string, string | undefined>>;
+}): Promise<{
+  corrected: { supersededId: string; replacementId: string }[];
+  mismatched: VisualCorrectionMismatch[];
+}> {
+  if (!isUuidKey(opts.boundEntityId)) return { corrected: [], mismatched: [] };
+  if (!isUuidKey(opts.fileId)) return { corrected: [], mismatched: [] };
+  const wanted = opts.corrections
+    .filter((c) => isUuidKey(c.observationId) && typeof c.value === "string" && c.value.trim() !== "")
+    .map((c) => ({ observationId: c.observationId, value: c.value.trim().slice(0, MAX_CORRECTION_VALUE_CHARS) }));
+  if (wanted.length === 0) return { corrected: [], mismatched: [] };
+  const expected = opts.expected ?? {};
+
+  return withTenantContext(opts.tenantId, async (c: QueryClient) => {
+    const corrected: { supersededId: string; replacementId: string }[] = [];
+    const mismatched: VisualCorrectionMismatch[] = [];
+    for (const w of wanted) {
+      // Same ownership scope as promotion (exact id ∧ tenant ∧ bound asset ∧ this
+      // photo); FOR UPDATE pins the row for this transaction. The LIVENESS test
+      // is applied in code below rather than in the WHERE, because an already-
+      // superseded target is not "not ours" — it may be this very correction
+      // replayed (Codex round 3 F1), which must read as satisfied, not as lost.
+      const target = await c.query(
+        `SELECT o.observation_id::text AS id, o.session_id::text AS session_id,
+                o.evidence_id::text AS evidence_id, o.normalized_value,
+                o.review_state, o.evidence_state, o.superseded_by::text AS superseded_by
+           FROM observation o
+          WHERE o.observation_id = $1::uuid
+            AND o.tenant_id = $2
+            AND o.session_id IN (
+              SELECT vs.session_id FROM visual_session vs
+               WHERE vs.tenant_id = $2 AND vs.asset_id = $3::uuid
+            )
+            AND o.evidence_id IN (
+              SELECT e.evidence_id FROM evidence_item e
+               WHERE e.tenant_id = $2 AND e.capture_meta->>'file_id' = $4
+            )
+          FOR UPDATE`,
+        [w.observationId, opts.tenantId, opts.boundEntityId, opts.fileId],
+      );
+      const row = target.rows[0];
+      if (!row) continue; // not ours / not this capture → nothing
+      const field = fieldOfNormalizedValue(row.normalized_value as string | null);
+      if (!field) continue; // not a "<field>: <value>" row → cannot correct safely
+      const wantedValue = `${field}: ${w.value}`;
+
+      // ONE technician truth per field — checked BEFORE both the replay and the
+      // fresh-write branches (Codex F1): a replayed correction that disagrees
+      // with the identity confirmed by THIS request is a contradiction too, and
+      // must never be reported as satisfied.
+      const confirmed = expected[field];
+      if (typeof confirmed === "string" && !sameNameplateValue(confirmed, w.value)) {
+        mismatched.push({ observationId: String(row.id), field });
+        continue;
+      }
+
+      // Replay of a correction that already committed (lost response, or a
+      // retry after another part of the confirm returned a retryable outcome):
+      // the target is superseded and its replacement is THE active technician
+      // correction of this exact target — same session and evidence (photo),
+      // technician-authored, review_state corrected, itself active and not
+      // superseded, pointing back through metadata.corrected_from — carrying
+      // EXACTLY this field and value (Codex F3: a same-tenant corrected row with
+      // matching text, or a replacement that was later superseded, is NOT
+      // satisfaction). Report it as satisfied with the existing pair and write
+      // nothing; anything else falls through to the liveness check and skips.
+      if (row.superseded_by) {
+        const rep = await c.query(
+          `SELECT r.normalized_value
+             FROM observation r
+            WHERE r.observation_id = $1::uuid
+              AND r.tenant_id = $2
+              AND r.session_id = $3::uuid
+              AND r.evidence_id = $4::uuid
+              AND r.extractor = 'technician'
+              AND r.review_state = 'corrected'
+              AND r.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
+              AND r.superseded_by IS NULL
+              AND r.metadata->>'corrected_from' = $5
+            FOR UPDATE`,
+          [row.superseded_by, opts.tenantId, row.session_id, row.evidence_id, row.id],
+        );
+        const r = rep.rows[0];
+        if (r && r.normalized_value === wantedValue) {
+          corrected.push({ supersededId: String(row.id), replacementId: String(row.superseded_by) });
+          continue;
+        }
+      }
+
+      // Liveness: only an unreviewed, active, not-superseded candidate can be corrected.
+      if (row.review_state !== "unreviewed") continue;
+      if (row.evidence_state === "REJECTED" || row.evidence_state === "SUPERSEDED") continue;
+      if (row.superseded_by) continue;
+      if (wantedValue === row.normalized_value) continue; // same value = a confirm, not a correction
+
+      const ins = await c.query(
+        `INSERT INTO observation
+           (session_id, tenant_id, evidence_id, obs_kind, raw_value, normalized_value,
+            evidence_state, confidence, extractor, review_state, metadata)
+         VALUES ($1::uuid, $2, $3::uuid, 'property', NULL, $4, 'VISIBLE', NULL, 'technician', 'corrected', $5::jsonb)
+         RETURNING observation_id::text AS id`,
+        [
+          row.session_id,
+          opts.tenantId,
+          row.evidence_id,
+          `${field}: ${w.value}`,
+          JSON.stringify({ corrected_from: row.id, corrected_by: opts.correctedBy, field }),
+        ],
+      );
+      const replacementId = String(ins.rows[0].id);
+
+      // Mirror of Python `_SUPERSEDE_OBSERVATION_SQL`, re-guarded on the live
+      // state so a racing writer cannot supersede an already-superseded row.
+      const sup = await c.query(
+        `UPDATE observation
+            SET evidence_state = 'SUPERSEDED', superseded_by = $2::uuid
+          WHERE observation_id = $1::uuid
+            AND tenant_id = $3
+            AND superseded_by IS NULL
+            AND evidence_state <> 'SUPERSEDED'
+          RETURNING observation_id::text AS id`,
+        [row.id, replacementId, opts.tenantId],
+      );
+      if (sup.rows.length === 0) {
+        // Lost the race after our INSERT — do not leave a dangling replacement.
+        throw new Error(`visual correction race on observation ${row.id}`);
+      }
+      corrected.push({ supersededId: String(row.id), replacementId });
+    }
+    return { corrected, mismatched };
+  });
+}
+
 export type VisualEvidenceRow = {
   readonly observationId: string;
   readonly sessionId: string;

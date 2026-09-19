@@ -68,7 +68,10 @@ vi.mock("@/lib/safe-download", () => ({
 // Slice 2: the promote lib is unit- and Postgres-proven separately; here we spy
 // it to prove the ROUTE never synthesizes the promoted set from `identity` and
 // passes through exactly the client-submitted ids.
-vi.mock("@/lib/visual-evidence-context", () => ({ promoteVisualObservations: vi.fn() }));
+vi.mock("@/lib/visual-evidence-context", () => ({
+  promoteVisualObservations: vi.fn(),
+  correctVisualObservations: vi.fn(),
+}));
 
 import { POST } from "../confirm/route";
 import { sessionOr401 } from "@/lib/session";
@@ -86,7 +89,7 @@ import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimI
 import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
 import { safeDownloadPdf } from "@/lib/safe-download";
-import { promoteVisualObservations } from "@/lib/visual-evidence-context";
+import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const NODE_ID = "99999999-8888-7777-6666-555555555555";
@@ -218,6 +221,7 @@ beforeEach(() => {
   // Default chunk read: no identity evidence.
   vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
   vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [] });
+  vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
 });
 
 describe("auth, tenancy, and request shape", () => {
@@ -881,15 +885,25 @@ describe("canonical-evidence contract (085)", () => {
       NAMEPLATE_DOC_ID,
       expect.objectContaining({
         originFileId: PHOTO_FILE_ID,
-        matchEvidence: { confirm_client_key: "ck-abc" },
+        // Codex F2: the key AND a digest of what was confirmed — a key alone
+        // cannot tell a replay from an edited retry.
+        matchEvidence: { confirm_client_key: "ck-abc", confirm_payload_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
       }),
     );
   });
 
-  it("a replay carrying the SAME clientKey reuses the existing derived doc — no re-park, no re-ingest, no supersede", async () => {
+  it("a replay carrying the SAME clientKey AND the same confirmed payload reuses the existing derived doc — no re-park, no re-ingest, no supersede", async () => {
+    // Learn the digest the route stores for this exact payload, then replay against it.
+    happyIngestMocks();
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }), makeParams(NOTEBOOK_ID));
+    const stored = (vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence: { confirm_payload_sha256: string } }).matchEvidence.confirm_payload_sha256;
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(ingestTextToNode).mockClear();
+    vi.mocked(attachSource).mockClear();
+    vi.mocked(supersedePriorOriginSources).mockClear();
     vi.mocked(findVisibleOriginSource).mockResolvedValue({
       docId: NAMEPLATE_DOC_ID,
-      matchEvidence: { confirm_client_key: "ck-abc" },
+      matchEvidence: { confirm_client_key: "ck-abc", confirm_payload_sha256: stored },
     });
     const res = await POST(
       makeReq({ ...baseBody, discover: false, clientKey: "ck-abc" }),
@@ -1029,6 +1043,185 @@ describe("visual-observation promotion (Slice 2)", () => {
     );
     expect(promoteVisualObservations).toHaveBeenCalledWith(
       expect.objectContaining({ observationIds: [OBS_1] }),
+    );
+  });
+});
+
+// ── Slice 3: corrections supersede the EXACT edited vision readings — the
+//    route forwards verbatim, derives nothing, and never fails the confirm. ──
+describe("visual-observation correction (Slice 3)", () => {
+  const ASSET_UUID = "a5e70000-0000-4000-8000-000000000001";
+  const OBS_1 = "01a10000-0000-4000-8000-0000000000a1";
+  const OBS_2 = "01a10000-0000-4000-8000-0000000000a2";
+  const boundNotebook = { ...(notebook as object), asset: { entityId: ASSET_UUID } } as never;
+
+  it("no corrections → correct lib not called, count 0 (a full identity is never turned into corrections)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const res = await POST(makeReq({ ...baseBody, discover: false }), makeParams(NOTEBOOK_ID));
+    const body = (await res.json()) as { visualCorrectedCount: number };
+    expect(body.visualCorrectedCount).toBe(0);
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+  });
+
+  it("forwards {observationId, value} pairs VERBATIM, scoped to the bound asset + this photo + the session user, and surfaces the count", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [{ supersededId: OBS_2, replacementId: "new-1" }], mismatched: [] });
+    const res = await POST(
+      makeReq({
+        ...baseBody,
+        discover: false,
+        observationIds: [OBS_1],
+        corrections: [{ observationId: OBS_2, value: "GS10" }],
+      }),
+      makeParams(NOTEBOOK_ID),
+    );
+    const body = (await res.json()) as { visualPromotedCount: number; visualCorrectedCount: number; visualCorrectionMismatches: unknown[] };
+    expect(body.visualCorrectedCount).toBe(1);
+    expect(body.visualCorrectionMismatches).toEqual([]);
+    expect(correctVisualObservations).toHaveBeenCalledTimes(1);
+    expect(correctVisualObservations).toHaveBeenCalledWith({
+      tenantId: TENANT_ID,
+      boundEntityId: ASSET_UUID,
+      fileId: PHOTO_FILE_ID,
+      corrections: [{ observationId: OBS_2, value: "GS10" }],
+      correctedBy: "u_1",
+      // Codex F1: the SANITIZED confirmed identity rides along as the constraint —
+      // the lib refuses a correction that contradicts it on the same field.
+      expected: expect.objectContaining({ manufacturer: "Allen-Bradley", model: "525", serialNumber: "SN-99" }),
+    });
+    // Promotion and correction are independent calls on disjoint sets.
+    expect(promoteVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ observationIds: [OBS_1] }));
+  });
+
+  it("Codex F1: a correction that contradicts the identity confirmed in the SAME request is refused and reported, never silently dropped", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    // The lib decides the mismatch (it owns the stored field); the route must
+    // pass the confirmed identity in, keep the confirm a 200, and surface the
+    // refusal explicitly instead of counting it as a correction.
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [{ observationId: OBS_2, field: "model" }] });
+    const res = await POST(
+      makeReq({ ...baseBody, identity: { ...IDENTITY, model: "GS10" }, discover: false, corrections: [{ observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualCorrectedCount: number; visualCorrectionMismatches: { observationId: string; field: string }[] };
+    expect(body.status).toBe("complete");
+    expect(body.visualCorrectedCount).toBe(0);
+    expect(body.visualCorrectionMismatches).toEqual([{ observationId: OBS_2, field: "model" }]);
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ expected: expect.objectContaining({ model: "GS10" }) }));
+  });
+
+  it("Codex F4: the same observation in BOTH arrays is rejected 400 before ANY side effect — a client partition is not a server invariant", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, OBS_2], corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "observation_in_both_sets", observationIds: [OBS_2] });
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+    expect(promoteVisualObservations).not.toHaveBeenCalled();
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+  });
+
+  it("Codex F5: the lists are de-duplicated and bounded at the boundary — over-limit is an explicit 400 with no side effect, duplicates collapse", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    const many = Array.from({ length: 51 }, (_, i) => ({ observationId: `01a10000-0000-4000-8000-${String(i).padStart(12, "0")}`, value: "x" }));
+    const over = await POST(makeReq({ ...baseBody, discover: false, corrections: many }), makeParams(NOTEBOOK_ID));
+    expect(over.status).toBe(400);
+    expect(await over.json()).toEqual({ error: "too_many_visual_entries", max: 50 });
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(correctVisualObservations).not.toHaveBeenCalled();
+
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
+    vi.mocked(promoteVisualObservations).mockResolvedValue({ promotedIds: [OBS_1] });
+    await POST(
+      makeReq({ ...baseBody, discover: false, observationIds: [OBS_1, OBS_1, OBS_1], corrections: [{ observationId: OBS_2, value: "GS10" }, { observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(promoteVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ observationIds: [OBS_1] }));
+    // First occurrence wins for a duplicated correction target.
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ corrections: [{ observationId: OBS_2, value: "GS10" }] }));
+  });
+
+  it("Codex F2: the idempotency record binds the client key to WHAT was confirmed — a true replay reuses the doc, an edited retry under the same key materializes anew and supersedes the prior reading", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockResolvedValue({ corrected: [], mismatched: [] });
+    // Attempt 1: nothing visible yet → materialize; capture the stored (key, payload hash).
+    vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    const attach1 = vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence?: { confirm_client_key: string; confirm_payload_sha256: string } };
+    expect(attach1.matchEvidence?.confirm_client_key).toBe("k1");
+    expect(attach1.matchEvidence?.confirm_payload_sha256).toMatch(/^[0-9a-f]{64}$/);
+    const storedHash = attach1.matchEvidence!.confirm_payload_sha256;
+    const existing = { docId: NAMEPLATE_DOC_ID, matchEvidence: { confirm_client_key: "k1", confirm_payload_sha256: storedHash } } as never;
+
+    // Attempt 2 — TRUE REPLAY (same key, same identity, same corrections): reuse, no re-park.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(findVisibleOriginSource).mockResolvedValue(existing);
+    const replay = await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    expect(replay.status).toBe(200);
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect((await replay.json()).nameplate.docId).toBe(NAMEPLATE_DOC_ID);
+
+    // Attempt 3 — EDITED RETRY (same key, model edited GS10 → GS20, correction edited too): NOT a replay.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(supersedePriorOriginSources).mockClear();
+    await POST(
+      makeReq({ ...baseBody, identity: { ...IDENTITY, model: "GS20" }, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS20" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1); // a new derived document for the edited identity
+    // The prior reading of this photo is superseded so the stale GS10 document does not stay active beside the GS20 correction.
+    expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, PHOTO_FILE_ID, NAMEPLATE_DOC_ID);
+    const attach3 = vi.mocked(attachSource).mock.calls.at(-1)![3] as { matchEvidence?: { confirm_payload_sha256: string } };
+    expect(attach3.matchEvidence?.confirm_payload_sha256).not.toBe(storedHash);
+
+    // A legacy record with the key but no stored payload hash is never treated as a replay.
+    vi.mocked(parkOrReuseFile).mockClear();
+    vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: NAMEPLATE_DOC_ID, matchEvidence: { confirm_client_key: "k1" } } as never);
+    await POST(makeReq({ ...baseBody, discover: false, clientKey: "k1", corrections: [{ observationId: OBS_2, value: "GS10" }] }), makeParams(NOTEBOOK_ID));
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unbound notebook forwards boundEntityId=null — the lib then corrects nothing", async () => {
+    await POST(
+      makeReq({ ...baseBody, discover: false, corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ boundEntityId: null }));
+  });
+
+  it("a correction failure never fails the confirm — count 0, nameplate still complete", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    vi.mocked(correctVisualObservations).mockRejectedValue(new Error("visual correction race"));
+    const res = await POST(
+      makeReq({ ...baseBody, discover: false, corrections: [{ observationId: OBS_2, value: "GS10" }] }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; visualCorrectedCount: number; visualCorrectionFailed: boolean };
+    expect(body.status).toBe("complete");
+    expect(body.visualCorrectedCount).toBe(0);
+    // Codex round 2 F1: the failure is NAMED so the client cannot read count 0
+    // as "nothing to do" — the technician's edits did not land.
+    expect(body.visualCorrectionFailed).toBe(true);
+  });
+
+  it("drops malformed correction entries (fail-safe shape guard)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(boundNotebook);
+    await POST(
+      makeReq({
+        ...baseBody,
+        discover: false,
+        corrections: [{ observationId: OBS_2, value: "GS10" }, { observationId: 7, value: "x" }, { value: "no id" }, null, "str"],
+      }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(correctVisualObservations).toHaveBeenCalledWith(
+      expect.objectContaining({ corrections: [{ observationId: OBS_2, value: "GS10" }] }),
     );
   });
 });

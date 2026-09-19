@@ -1155,6 +1155,16 @@ export interface ConfirmComponentResult {
    *  technician-confirmed (0 unless the client sent unchanged observation ids
    *  for a bound-asset capture). */
   visualPromotedCount?: number;
+  /** Slice 3: how many vision readings this confirm superseded with a
+   *  technician-provided replacement. */
+  visualCorrectedCount?: number;
+  /** Slice 3 (Codex F1): corrections the server REFUSED because their value
+   *  contradicted the identity confirmed in the same request. */
+  visualCorrectionMismatches?: { observationId: string; field: string }[];
+  /** Slice 3 (Codex round 2 F1): true when corrections were submitted and the
+   *  server could not apply them (transient DB error, supersede race). The
+   *  confirm itself still succeeded; the technician's edits did not land. */
+  visualCorrectionFailed?: boolean;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1179,6 +1189,16 @@ export interface ConfirmComponentBody {
    *  confirming (only the readings whose value is unchanged). The server
    *  promotes only these, scoped to the bound asset + this photo. */
   observationIds?: string[];
+  /** Slice 3: the readings the technician EDITED — exact observation id plus
+   *  the value they read instead. The server supersedes the vision reading
+   *  and records a technician-provided replacement on the same photo. */
+  corrections?: VisualCorrection[];
+}
+
+/** One correction: replace THIS observation's value with what the technician read. */
+export interface VisualCorrection {
+  observationId: string;
+  value: string;
 }
 
 /** Confirm the COMPONENT identity read from the nameplate. This never touches
@@ -1224,6 +1244,16 @@ export async function confirmComponentNameplate(
     message: d.message != null ? String(d.message) : null,
     warning: d.warning != null ? String(d.warning) : null,
     visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
+    visualCorrectedCount: typeof d.visualCorrectedCount === "number" ? d.visualCorrectedCount : 0,
+    visualCorrectionMismatches: Array.isArray(d.visualCorrectionMismatches)
+      ? (d.visualCorrectionMismatches as unknown[]).flatMap((m) => {
+          const o = m as { observationId?: unknown; field?: unknown } | null;
+          return o && typeof o.observationId === "string" && typeof o.field === "string"
+            ? [{ observationId: o.observationId, field: o.field }]
+            : [];
+        })
+      : [],
+    visualCorrectionFailed: d.visualCorrectionFailed === true,
   };
 }
 
