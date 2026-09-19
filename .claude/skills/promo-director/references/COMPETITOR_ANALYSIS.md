@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-19
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-19
+
+### Most actionable change for the playbook
+
+Augury launched an "Industrial AI Workforce" at AVEVA World (May 18, 2026): role-based AI agents for reliability, maintenance, and operations roles, integrated with Google Gemini + AVEVA CONNECT. Augury shifted from hardware-first sensor detection to autonomous-agent framing — "bridge insight to action" and "eliminate swivel chair operations" are the new competitive hooks. Augury is now directly adjacent to MIRA's positioning. MIRA's differentiation window narrows to: sensor-agnostic + OEM-manual-native + cited answers (grounded, not generated). Also: Notion's "used to be a place to work in. Now it's a place to build on." is a steal-worthy identity-reframe hook structure for MIRA's own positioning shift.
+
+### New findings
+
+**Predictive maintenance**
+- **Augury** — "A New Agent in Town: Inside the Industrial AI Workforce" (May 18, 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — Machine Design CEO+CPO interview at AVEVA World Milan; role-based AI agents; Google Gemini + AVEVA CONNECT integration; major style drift from sensor hardware to AI workforce framing [transcript not verified]
+
+**Automation / SCADA**
+- **Inductive Automation** — ICC 2026 (Sep 22–24, Sacramento): https://icc.inductiveautomation.com/ — Ignition 2027 preview + AI roadmap; 60+ sessions (largest ICC in history); no public keynote video at scan time (conference opened same day as this refresh)
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (SF May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — first owned multi-city developer conference (SF + London May 20–21 + Tokyo June 5–6); 19 sessions, 8 hours; London: https://www.youtube.com/watch?v=6amLO7I9xdg; Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo; style shift: analyst appearances → owned developer conference; Dario & Daniela Amodei + Boris Cherny (Claude Code) headlined [transcript not verified]
+- **Notion** — "Introducing Notion's Developer Platform: Keynote" (Ivan Zhao, May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — "Notion used to be a place to work in. Now it's a place to build on."; CEO-led platform identity reframe; Workers cloud sandbox; steal-worthy hook structure for MIRA's own positioning shift
+- **Figma** — Config 2026 keynote (Dylan Field, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — annual conference-as-launch-vehicle pattern confirmed second year running
+- **Stripe** — Sessions 2026 opening keynote (2026): https://www.youtube.com/live/Nadf3MdJS-8 — reframed from "future of commerce" to "building the economic infrastructure for AI"; product keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw
 
 ---
 
@@ -146,6 +168,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
 
+**Industrial AI Workforce — AVEVA World Milan (May 18, 2026)**
+- URL: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce
+- Title: "A New Agent in Town: Inside the Industrial AI Workforce"
+- Format: Machine Design CEO+CPO interview at AVEVA World; third-party credibility distribution
+- Key claims: role-based AI agents for reliability, maintenance, and operations roles; Google Gemini + AVEVA CONNECT integration; "bridge insight to action"; "eliminate swivel chair operations"
+- Style drift: major pivot from hardware/sensor messaging to autonomous AI workforce framing
+- Competitive note: Augury is now directly competing for the AI-agent-for-factory-workers frame MIRA occupies; MIRA's counterplay is sensor-agnostic + OEM-manual-native + cited answers (grounded, not generated) [transcript not verified]
+
 ---
 
 ### Senseye (now Siemens)
@@ -186,7 +216,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 **Ignition 8.3 release (fall 2025)**
 - Called "biggest LinkedIn post of all time" for the brand
 - Video format: release announcement, likely screen capture + narration
-- ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
+- ICC 2025 recordings: free from Jan 2, 2026 — extended content tail
+
+**ICC 2026 (Sep 22–24, Sacramento)**
+- URL: https://icc.inductiveautomation.com/
+- Ignition 2027 preview + AI roadmap; 60+ sessions (largest ICC in history)
+- No public keynote video at scan time (conference opened Sep 22, 2026)
 
 ---
 
@@ -254,9 +289,10 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026**
+- Opening keynote URL: https://www.youtube.com/live/Nadf3MdJS-8
+- Product keynote URL: https://www.youtube.com/watch?v=lIsHZfRl2zw
+- Framing shift: from "future of commerce" to "building the economic infrastructure for AI" — same tailwinds frame but AI as the primary axis; [transcript not verified]
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -304,6 +340,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 — multi-city developer conference**
+- SF keynote (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA
+- London keynote (May 20–21, 2026): https://www.youtube.com/watch?v=6amLO7I9xdg
+- Tokyo keynote (June 5–6, 2026): https://www.youtube.com/watch?v=N4efO8viXXo
+- Format: 19 sessions, 8 hours; Dario & Daniela Amodei + Boris Cherny (Claude Code) headlined
+- Style drift: analyst/conference appearances → owned multi-city developer conference
+- Pattern note: first owned developer conference signals Anthropic treating Claude Code as a developer platform, not a product feature; "Code with Claude" brand now has a conference asset [transcript not verified]
+
 ---
 
 ### Cursor
@@ -340,6 +384,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Developer Platform keynote (Ivan Zhao, May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote"
+- Opening hook: "Notion used to be a place to work in. Now it's a place to build on."
+- Format: CEO-led platform identity reframe; Workers cloud sandbox; full developer API
+- Pattern note: "used to be X. Now it's Y." is a steal-worthy identity-reframe hook structure — applicable to MIRA's own shift from "a Telegram bot" to "the context layer every maintenance AI runs on"
+
 ---
 
 ### Figma
@@ -354,6 +405,10 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Dylan Field, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Annual conference-as-launch-vehicle pattern confirmed second year running; specific launches not extracted at scan time [transcript not verified]
 
 ---
 
@@ -385,6 +440,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Used to be X. Now it's Y." identity reframe | Notion: "used to be a place to work in. Now it's a place to build on." | "MIRA used to answer your questions. Now it knows the answer before you arrive." |
+| "Bridge insight to action" / eliminate the middle step | Augury: "bridge insight to action", "eliminate swivel chair operations" | "From fault alarm to root cause — no swivel chair, no manual, no guesswork." |
 
 ### Anti-patterns (avoid)
 
@@ -397,4 +454,7 @@ No video content surfaced for 2025–2026.
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **2026 update:** pivoted messaging from hardware/sensor detection to "Industrial AI Workforce" — role-based AI agents framing with AVEVA/Google Gemini integration. Now competing directly for the AI-agent-for-factory-workers frame.
+- **Anthropic**: shifted from analyst/panel appearances to owned multi-city developer conference (Code with Claude 2026: SF, London, Tokyo). Treating Claude Code as a developer platform with a conference asset.
+- **Notion**: moved from productivity-tool positioning to platform/developer identity ("a place to build on"). Conference keynotes now serve product-identity reframes, not just feature launches.
+- **Stripe**: reframed from "future of commerce" to "economic infrastructure for AI" — same tailwinds formula, AI as primary axis.
