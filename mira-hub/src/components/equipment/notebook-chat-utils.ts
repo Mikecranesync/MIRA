@@ -260,7 +260,11 @@ export async function readNotebookStream(
     if (out.sawStatus) return out;
     throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
       partial: out.content,
-      ...(out.safetyNotice ? { safetyNotice: out.safetyNotice } : {}),
+      // Safety is an authoritative server determination, not an evidence
+      // claim. Carry only this marker through a throwing abort; consumers must
+      // continue to discard citations, basis, machine/visual evidence, and
+      // follow-ups from the interrupted result.
+      safetyNotice: out.safetyNotice,
     });
   }
   return out;

@@ -655,6 +655,22 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
     });
   });
 
+  it("carries an already-received Safety STOP on a throwing abort", async () => {
+    const p = readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "SAFETY STOP: isolate now." }),
+        frame({ kind: "safety", trigger: "smoke coming" }),
+        frame({ kind: "status", status: "answered" }),
+      ], { abortAfter: 2 }),
+      () => {},
+    );
+    await expect(p).rejects.toMatchObject({
+      name: "AbortError",
+      partial: "SAFETY STOP: isolate now.",
+      safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    });
+  });
+
   it("returns terminal truth when the reader aborts after the status frame", async () => {
     const out = await readNotebookStream(
       streamOf(

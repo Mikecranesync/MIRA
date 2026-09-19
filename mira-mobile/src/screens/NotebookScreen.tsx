@@ -874,7 +874,11 @@ export function NotebookScreen({
           canRetry={Boolean(failedSend) && !busy}
           chatError={chatError}
           handlers={{
-            onSend: (text) => void sendQuestion(text),
+            // The unified shell composes attachment evidence and hands it back
+            // as the SAME rider Sensor already uses, so it rides this one send
+            // path instead of a second one. Attachment picking/holding/upload
+            // lives in the canonical adapter tree (src/unified/attachments.ts).
+            onSend: (text, evidence) => void sendQuestion(text, undefined, evidence),
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),

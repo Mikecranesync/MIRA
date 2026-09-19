@@ -167,7 +167,8 @@ function FirstRun() {
   const grounding = hooks?.groundingLine?.();
   const handleChipClick = (text: string) => {
     if (hooks?.onSend) {
-      hooks.onSend(text);
+      // Text-only: a retry/resend of a body the composer already released.
+      hooks.onSend(text, []);
     } else {
       dispatch({ type: "set-draft", draft: text });
       dispatch({ type: "mock-send" });

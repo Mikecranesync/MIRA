@@ -763,7 +763,9 @@ services:
 
   mira-hub:
     build:
-      context: ./mira-hub
+      # Repo-root context: the Hub image compiles ../packages/factorylm-* (Hub mount PR 1, #3839).
+      context: .
+      dockerfile: mira-hub/Dockerfile
       args:
         NEXT_PUBLIC_BASE_PATH: ""
         NEXT_PUBLIC_API_BASE: ""
