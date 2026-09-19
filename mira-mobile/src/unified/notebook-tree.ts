@@ -50,6 +50,28 @@ export function notebookIdFromItem(itemId: string): string | null {
   return threadRefFromItem(itemId)?.notebookId ?? null;
 }
 
+const SOURCES_PREFIX = "sources-";
+
+/** The drawer id for a notebook's Sources panel. */
+export function sourcesItemId(notebookId: string): string {
+  return SOURCES_PREFIX + notebookId;
+}
+
+/**
+ * Source management needs its OWN front door.
+ *
+ * In the unified shell the notebook appbar (and its overflow, which is where
+ * "Sources" lives) is gated behind `!chromeless`, so the Sources panel was only
+ * ever reachable through the composer's Photo/File/Camera handlers setting
+ * `openAddSources`. That is precisely the conflation this change removes: the
+ * composer attaches to a MESSAGE, while Sources manages what a machine is
+ * GROUNDED in. Fixing the composer without giving Sources a door of its own
+ * would have deleted the only route to it.
+ */
+export function sourcesRefFromItem(itemId: string): string | null {
+  return itemId.startsWith(SOURCES_PREFIX) ? itemId.slice(SOURCES_PREFIX.length) || null : null;
+}
+
 export function notebookIdFromProject(projectId: string): string | null {
   return projectId.startsWith("project-") ? projectId.slice("project-".length) : null;
 }
@@ -102,6 +124,7 @@ export function notebookProjects(notebooks: readonly Notebook[]): readonly Proje
     children: [
       ...(nb.asset ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }] : []),
       ...threadRows(nb),
+      { kind: "file" as const, id: sourcesItemId(nb.id), label: `Sources (${nb.sourceCount})` },
     ],
   }));
 }
