@@ -14,6 +14,7 @@ import {
   latestRequestGate,
   metaFor,
   newThreadId,
+  retainedStreamInterruption,
   shellThreadId,
   stoppedStreamResult,
 } from "./hub-host-logic";
@@ -35,6 +36,30 @@ describe("stoppedStreamResult", () => {
       safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
       sawStatus: false,
     });
+  });
+
+  it("retains a safety warning as failed, not stopped, after a network reader error", () => {
+    const retained = retainedStreamInterruption(
+      Object.assign(new TypeError("network reset"), {
+        partial: "SAFETY STOP",
+        safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+      }),
+    );
+
+    expect(retained).toMatchObject({
+      stopped: false,
+      result: {
+        content: "SAFETY STOP",
+        citations: [],
+        basis: null,
+        safetyNotice: { kind: "safety_notice", trigger: "arc flash" },
+        sawStatus: false,
+      },
+    });
+  });
+
+  it("does not retain an ordinary non-abort failure with no safety determination", () => {
+    expect(retainedStreamInterruption(Object.assign(new TypeError("network reset"), { partial: "maybe" }))).toBeNull();
   });
 });
 

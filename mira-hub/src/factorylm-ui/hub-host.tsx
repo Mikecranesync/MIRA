@@ -51,8 +51,8 @@ import {
   latestRequestGate,
   metaFor,
   newThreadId,
+  retainedStreamInterruption,
   shellThreadId,
-  stoppedStreamResult,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -268,9 +268,18 @@ export function HubShellHost() {
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
     } catch (err) {
-      if (isAbortError(err)) {
-        const result = stoppedStreamResult(err);
-        setLive((cur) => (cur && cur.id === id ? { ...cur, content: result.content, stopped: true, result } : cur));
+      const retained = retainedStreamInterruption(err);
+      if (retained) {
+        setLive((cur) =>
+          cur && cur.id === id
+            ? { ...cur, content: retained.result.content, stopped: retained.stopped, result: retained.result }
+            : cur,
+        );
+        if (!retained.stopped) {
+          const message = err instanceof Error ? err.message : String(err);
+          setFailedBody({ body, question });
+          dispatch({ type: "set-send-error", error: message });
+        }
         return;
       }
       const message = err instanceof Error ? err.message : String(err);

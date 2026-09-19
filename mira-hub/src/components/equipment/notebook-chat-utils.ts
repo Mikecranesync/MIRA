@@ -220,6 +220,10 @@ export async function readNotebookStream(
       }
     }
   } catch (err) {
+    // `status` is the route's authoritative terminal frame. A reader failure
+    // after it (for example while waiting for follow-ups or [DONE]) cannot
+    // retroactively turn a completed answer into a stop/truncation.
+    if (out.sawStatus) return out;
     throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
       partial: out.content,
       // Safety is an authoritative server determination, not an evidence

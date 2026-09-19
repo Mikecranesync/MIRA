@@ -566,6 +566,30 @@ describe("readNotebookStream — safety frame sets safetyNotice (FLEET-002)", ()
       safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
     });
   });
+
+  it("returns terminal truth when the reader aborts after the status frame", async () => {
+    const out = await readNotebookStream(
+      streamOf(
+        [
+          frame({ kind: "content", content: "P042 sets decel time." }),
+          frame({ kind: "sources", citations: [], sourceSnapshot: [] }),
+          frame({ kind: "evidence", basis: "oem_documentation" }),
+          frame({ kind: "status", status: "answered" }),
+          frame({ kind: "followups", suggestions: ["Never reached"] }),
+        ],
+        { abortAfter: 4 },
+      ),
+      () => {},
+    );
+
+    expect(out).toMatchObject({
+      content: "P042 sets decel time.",
+      status: "answered",
+      basis: "oem_documentation",
+      sawStatus: true,
+    });
+    expect(out.followups).toEqual([]);
+  });
 });
 
 describe("buildChatBody — the web body carries no window selection", () => {

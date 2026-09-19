@@ -6,7 +6,7 @@
  */
 import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
-import { buildChatBody, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
+import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
@@ -39,6 +39,17 @@ export function stoppedStreamResult(err: unknown): CompatibleStreamResult {
     safetyNotice: isSafetyNoticeEntry(interrupted.safetyNotice) ? interrupted.safetyNotice : null,
     sawStatus: false,
   };
+}
+
+/** Decide whether a throwing stream interruption contains state the live turn
+ *  must retain. User aborts remain `stopped`; a network failure is retained
+ *  only when it carries an authoritative safety warning and stays `failed`. */
+export function retainedStreamInterruption(
+  err: unknown,
+): { result: CompatibleStreamResult; stopped: boolean } | null {
+  const result = stoppedStreamResult(err);
+  const stopped = isAbortError(err);
+  return stopped || result.safetyNotice ? { result, stopped } : null;
 }
 
 /** First notebook, its most recently updated thread (or the legacy one). */
