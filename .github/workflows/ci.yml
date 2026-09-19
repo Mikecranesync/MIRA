@@ -709,7 +709,9 @@ jobs:
       - name: Install mira-hub dependencies
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
 
       - name: Run vitest unit suite
         # `bun run test` == `vitest run`; the include glob (src/**/*.test.ts)
