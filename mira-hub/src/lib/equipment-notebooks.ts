@@ -1503,11 +1503,12 @@ export async function recordTurn(
          FROM equipment_notebook_turns t
          JOIN owned_notebook nb
            ON nb.id = t.notebook_id AND nb.tenant_id = t.tenant_id
-        WHERE $14::uuid IS NOT NULL
-          AND t.owner_user_id = $12
-          AND t.client_request_id = $14::uuid
-          AND t.client_request_state = 'complete'
-       LIMIT 1`,
+         WHERE $14::uuid IS NOT NULL
+           AND t.owner_user_id = $12
+           AND t.client_request_id = $14::uuid
+           AND t.client_request_state = 'complete'
+           AND $15::uuid IS NULL
+        LIMIT 1`,
       [
         notebookId,
         tenantId,

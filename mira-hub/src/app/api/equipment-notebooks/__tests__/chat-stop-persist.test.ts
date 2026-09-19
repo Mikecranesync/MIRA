@@ -26,6 +26,11 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  claimNotebookTurnRequest: vi.fn(async () => ({
+    status: "claimed" as const,
+    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  })),
+  abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => undefined),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({
@@ -211,6 +216,32 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     expect(kinds.every((k) => k === "content")).toBe(true);
     // Legacy path: no spend ledger write.
     expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+  });
+
+  it("releases a keyed request claim when persistence of the stopped turn fails", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const provider = hangingProvider(["DC bus "]);
+    vi.stubGlobal("fetch", vi.fn(async () => provider.res));
+    domainMock.recordTurn.mockRejectedValueOnce(new Error("write unavailable"));
+
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledWith(
+        TENANT_A,
+        NB,
+        "u1",
+        clientRequestId,
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      ),
+    );
   });
 
   it("an aborted request signal stops the turn the same way and records spend when the seam is on", async () => {

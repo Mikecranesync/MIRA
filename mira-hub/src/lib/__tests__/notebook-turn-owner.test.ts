@@ -200,6 +200,21 @@ describe("recordTurn — owner from the session, atomic tenant ownership", () =>
     expect(ins.values).toContain(clientRequestId);
   });
 
+  it("never lets a leased writer accept another worker's completed row", async () => {
+    const calls = wire([]);
+    await recordTurn(TENANT, NB, {
+      ...baseTurn,
+      ownerUserId: USER_A,
+      clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    });
+    const ins = calls.find((c) => /INSERT INTO equipment_notebook_turns/.test(c.sql))!;
+
+    expect(ins.sql).toMatch(
+      /t\.client_request_state\s*=\s*'complete'[\s\S]+\$15::uuid\s+IS\s+NULL/i,
+    );
+  });
+
   it("fails closed when the notebook is not this tenant's (zero rows inserted)", async () => {
     wire([], { insertRowCount: 0 });
     await expect(recordTurn(TENANT, NB, { ...baseTurn, ownerUserId: USER_A })).rejects.toBeInstanceOf(NotebookNotFoundError);

@@ -119,7 +119,7 @@ export function terminalSafetyNotice(
     : [];
   const notice = stopTrigger !== undefined
     ? (notices.find((entry) => entry.trigger === stopTrigger) ?? notices.at(-1) ?? null)
-    : (notices[0] ?? null);
+    : (notices.at(-1) ?? null);
   if (!notice) return null;
   // Compatibility for hard stops written before `safety_stop` existed. An
   // ordinary electrical directive is answered with a non-null evidence basis.

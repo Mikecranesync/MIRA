@@ -518,7 +518,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const safetyNotices = turn.evidence.filter(isSafetyNoticeEntry);
   const safetyNotice = explicitSafetyStop
     ? (safetyNotices.find((entry) => entry.trigger === explicitSafetyStop.trigger) ?? safetyNotices.at(-1) ?? null)
-    : (safetyNotices[0] ?? null);
+    : (safetyNotices.at(-1) ?? null);
   // Compatibility for terminal rows written before the explicit marker
   // shipped: directive answers have a basis; hard stops are answered with no
   // basis. New rows always carry `safety_stop` so this inference can sunset.
@@ -1605,6 +1605,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           });
         } catch (err) {
           console.error("[notebook-chat] recordTurn (stopped) failed:", err instanceof Error ? err.message : err);
+          await abandonRequestClaim().catch((releaseErr) => {
+            console.error(
+              "[notebook-chat] request claim release failed:",
+              releaseErr instanceof Error ? releaseErr.message : releaseErr,
+            );
+          });
         }
         if (seam) {
           const stoppedUsage: TurnUsage = activeProvider

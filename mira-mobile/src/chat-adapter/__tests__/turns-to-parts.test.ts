@@ -390,6 +390,24 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(a.parts.some((p) => p.type === "unknown")).toBe(false);
   });
 
+  it("uses the terminal notice from a legacy two-notice Safety STOP", () => {
+    const a = hydrateMessages([
+      {
+        id: "t-legacy-two-notice",
+        question: "can I open this energized panel?",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { kind: "safety_notice", trigger: "exposed conductor" },
+        ],
+        basis: null,
+      },
+    ])[1];
+
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "exposed conductor" });
+  });
+
   it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
     const live = liveTurnMessages(
       "q",

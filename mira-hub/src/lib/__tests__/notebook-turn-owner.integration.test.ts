@@ -1,5 +1,5 @@
 /**
- * Turn ownership against REAL Postgres (migration 086 applied by
+ * Turn ownership and request-id fencing against REAL Postgres (migrations 086–089 applied by
  * scripts/setup-integration-db.mjs). Proves, on the actual schema and RLS:
  *
  *   - a legacy row (owner_user_id IS NULL) is readable by every tenant user
@@ -7,6 +7,7 @@
  *   - User A's new turn is invisible to User B on the SAME shared notebook
  *   - a turn cannot be written into a notebook of another tenant (atomic
  *     INSERT … SELECT against equipment_notebooks)
+ *   - stale lease holders cannot abandon or complete a successor's request
  *
  * Run: cd mira-hub && TEST_DATABASE_URL=… npm run db:integration:setup && npx vitest run --config vitest.integration.config.ts src/lib/__tests__/notebook-turn-owner
  */
@@ -230,6 +231,64 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
       [TENANT_A, nbA, USER_A, clientRequestId],
     );
     expect(row.rows[0].claim_token).toBe(successor.claimToken);
+  });
+
+  it("does not let a stale claimant accept a successor's completed turn", async () => {
+    const clientRequestId = "ffffffff-0000-4000-8000-00000000000f";
+    const requestPayload = { message: "completion takeover", sourceDocIds: [] };
+    const first = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "completion takeover",
+      requestPayload,
+    });
+    if (first.status !== "claimed") throw new Error("expected the first lease");
+
+    await q(
+      `UPDATE equipment_notebook_turns
+          SET client_request_started_at = now() - interval '11 minutes'
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    const successor = await claimNotebookTurnRequest(TENANT_A, nbA, {
+      ownerUserId: USER_A,
+      clientRequestId,
+      question: "completion takeover",
+      requestPayload,
+    });
+    if (successor.status !== "claimed") throw new Error("expected the successor lease");
+
+    const turn = {
+      question: "completion takeover",
+      answerStatus: "answered" as const,
+      enabledSourceDocIds: [] as string[],
+      evidence: [] as unknown[],
+      model: null,
+      ownerUserId: USER_A,
+      clientRequestId,
+    };
+    await recordTurn(TENANT_A, nbA, {
+      ...turn,
+      answerText: "successor winner",
+      claimToken: successor.claimToken,
+    });
+    await expect(
+      recordTurn(TENANT_A, nbA, {
+        ...turn,
+        answerText: "stale divergent answer",
+        claimToken: first.claimToken,
+      }),
+    ).rejects.toBeInstanceOf(NotebookNotFoundError);
+
+    const row = await q(
+      `SELECT answer_text
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid`,
+      [TENANT_A, nbA, USER_A, clientRequestId],
+    );
+    expect(row.rows[0].answer_text).toBe("successor winner");
   });
 
   it("fails closed on a keyed 088 row whose request payload was never backfilled", async () => {

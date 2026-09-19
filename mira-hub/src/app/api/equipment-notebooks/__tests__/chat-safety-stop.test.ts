@@ -212,6 +212,35 @@ describe("notebook chat safety hard-stop", () => {
     expect(domainMock.validateChatSources).not.toHaveBeenCalled();
   });
 
+  it("uses the terminal notice from a legacy two-notice Safety STOP", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    domainMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-legacy-two-notice",
+        question: "can I open this energized panel?",
+        answerStatus: "answered",
+        answerText: SAFETY_STOP,
+        enabledSourceDocIds: [DOC_A],
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { kind: "safety_notice", trigger: "exposed conductor" },
+        ],
+        model: null,
+        basis: null,
+      },
+    });
+
+    const res = await POST(
+      chatReq({ message: "can I open this energized panel?", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const replayed = await readFrames(res);
+
+    expect(res.headers.get("X-Safety-Stop")).toBe("exposed conductor");
+    expect(replayed.some((frame) => frame.includes('"kind":"safety","trigger":"exposed conductor"'))).toBe(true);
+  });
+
   it("refuses a concurrent duplicate while the first request owns the key", async () => {
     domainMock.claimNotebookTurnRequest.mockResolvedValue({ status: "in_progress" });
 
