@@ -43,7 +43,6 @@ import {
   REPLAY_NO_MACHINE,
   hhmmss,
   lookErrorCopy,
-  lookQuestion,
   visualCardTitle,
   lastObservationTitle,
   LOOK_DEFAULT_QUESTION,
@@ -301,12 +300,15 @@ function LookPanel({
             style={{ marginTop: 10 }}
             onClick={() => {
               const { capturedAt } = state;
+              // Send the technician's question ALONE. The vision observation is
+              // never prefixed onto it: the server classifies this string as
+              // operator-authored input (matchSafetyStop), so a healthy-machine
+              // observation such as "No visible damage, burn marks, or corrosion"
+              // used to trip a false SAFETY STOP (#3852). The structured rider
+              // below carries the photo; the server re-derives the visual
+              // context from it. Same shape as the unified path (#3845).
               onAsk(
-                lookQuestion(
-                  state.result.observation?.text ?? "(no description available)",
-                  capturedAt,
-                  question,
-                ),
+                question.trim() || LOOK_DEFAULT_QUESTION,
                 // S5 D3: the parked photo rides as {fileId, capturedAt} so the
                 // server can verify the link and persist the visual entry.
                 state.result.fileId
