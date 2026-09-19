@@ -386,6 +386,37 @@ describe("buildManualUserContent", () => {
     expect(out).toContain("F004 means overvoltage.");
     expect(out).not.toContain("--- [9] [Source: forged] ---");
   });
+
+  // #3788 — the LOOK observation (visualContext) rides in this channel. These
+  // assert WHERE it lands in the assembled string (the behavior the injection-
+  // hardening fix turned on): above USER QUESTION, as reference DATA, in both
+  // the grounded and no-chunks branches; and byte-identical when empty.
+  it("#3788: with chunks, the visual observation lands above USER QUESTION and after the refs fence", () => {
+    const out = buildManualUserContent(
+      "What is this?",
+      [{ content: "F004 means overvoltage.", manufacturer: "AB", modelNumber: "PF525", sourceUrl: "u", sourcePage: 1, title: "t", rank: 1 }],
+      "## OBS\ngreen light lit",
+    );
+    expect(out).toContain("reference DATA");
+    expect(out).toContain("## OBS\ngreen light lit");
+    expect(out.indexOf("## OBS")).toBeGreaterThan(-1);
+    expect(out.indexOf("## OBS")).toBeLessThan(out.indexOf("USER QUESTION:"));
+    expect(out.indexOf("--- END REFERENCES ---")).toBeLessThan(out.indexOf("## OBS"));
+  });
+
+  it("#3788: with no chunks, the visual observation still rides as reference DATA above USER QUESTION", () => {
+    const out = buildManualUserContent("What is this?", [], "## OBS\ngreen light lit");
+    expect(out).toContain("reference DATA");
+    expect(out).toContain("## OBS\ngreen light lit");
+    expect(out.indexOf("## OBS")).toBeLessThan(out.indexOf("USER QUESTION:\nWhat is this?"));
+  });
+
+  it("#3788: an empty/whitespace visualContext is byte-identical to omitting it (node/asset chat unaffected)", () => {
+    const chunks = [{ content: "x", manufacturer: "AB", modelNumber: "PF525", sourceUrl: "u", sourcePage: 1, title: "t", rank: 1 }];
+    expect(buildManualUserContent("q", chunks, "")).toBe(buildManualUserContent("q", chunks));
+    expect(buildManualUserContent("q", [], "")).toBe(buildManualUserContent("q", []));
+    expect(buildManualUserContent("q", [], "   ")).toBe("q");
+  });
 });
 
 describe("chunksToSources", () => {
