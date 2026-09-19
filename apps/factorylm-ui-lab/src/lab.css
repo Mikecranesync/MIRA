@@ -14,3 +14,7 @@ html, body { margin: 0; background: var(--fl-workspace-bg); color: var(--fl-work
 .lab[data-viewport="fluid"] .lab__stage { display: grid; }
 .lab:not([data-viewport="fluid"]) .lab__stage { display: grid; place-items: start center; padding: var(--fl-workspace-space-4); overflow: auto; }
 .lab__frame { border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-surface); box-shadow: var(--fl-workspace-shadow-pop); }
+
+/* Public-demo host configuration, shown so the operator can see exactly what
+   this preview is pointed at. Tokens only, same discipline as the packages. */
+.lab__demo-config { margin: 0; font-size: var(--fl-workspace-fs-xs); color: var(--fl-workspace-muted); line-height: 1.5; word-break: break-all; }

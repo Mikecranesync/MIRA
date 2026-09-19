@@ -15,10 +15,59 @@ from typing import Any, Optional
 
 logger = logging.getLogger("simlab.api")
 
+#: The ONLY paths reachable when SimLab runs in public-demo mode.
+#:
+#: SimLab is both the machine and the grader. The grading half — the scenario
+#: rubric, the evidence packet that names the faulted asset, the eval scorecard,
+#: the approval gate, the validation writes, and the engineer dashboard — must
+#: never be reachable from a public origin, or the demo's whole claim ("MIRA
+#: diagnoses a machine it was not told the answer to") is falsifiable by curl.
+#:
+#: `tests/simlab/test_public_demo_trust_boundary.py` proves the CLIENT cannot
+#: express those requests. This is the SERVER half of the same boundary, and it
+#: is the one that matters once SimLab is deployed: a client-side allowlist
+#: protects nobody from a stranger with a terminal.
+#:
+#: **Default-deny.** Matching is exact segment-by-segment against these
+#: patterns, so a route added to SimLab later is NOT public until someone adds
+#: it here on purpose. That is the property worth having — the failure mode this
+#: prevents is a future endpoint silently inheriting public reachability.
+PUBLIC_DEMO_PATHS: tuple[tuple[str, ...], ...] = (
+    ("simlab", "healthz"),
+    ("simlab", "snapshot"),
+    ("simlab", "alarms"),
+    ("simlab", "history"),
+    ("simlab", "lines", "*", "assets"),
+    ("simlab", "assets", "*", "tags"),
+    ("simlab", "assets", "*", "docs"),
+    ("simlab", "docs", "*", "*"),
+    ("simlab", "scenario", "*", "start"),
+    ("simlab", "scenario", "reset"),
+    ("simlab", "scenario", "tick"),
+)
+
+
+def _is_public_demo_path(path: str) -> bool:
+    """True only for a path that exactly matches an allowlisted pattern.
+
+    `*` matches exactly one segment and never a separator, so
+    `/simlab/scenario/x/rubric` cannot match `("simlab","scenario","*","start")`
+    and `/simlab/docs/a/b/../rubric` cannot smuggle extra segments through.
+    """
+    segments = tuple(s for s in path.split("/") if s)
+    for pattern in PUBLIC_DEMO_PATHS:
+        if len(segments) != len(pattern):
+            continue
+        if all(p == "*" or p == s for p, s in zip(pattern, segments)):
+            return True
+    return False
+
+
 # Lazy FastAPI import — sim core loads bare without it.
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import HTMLResponse, PlainTextResponse
+
     _HAS_FASTAPI = True
 except ImportError:  # pragma: no cover
     _HAS_FASTAPI = False
@@ -99,9 +148,7 @@ def build_app(
         hmac_key = os.getenv("SIMLAB_RELAY_HMAC_KEY", "").strip()
         api_key = os.getenv("SIMLAB_RELAY_API_KEY", "").strip()
         engine.add_publisher(
-            RelayIngestPublisher(
-                relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key
-            )
+            RelayIngestPublisher(relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key)
         )
         logger.info(
             "SimLab live relay feed enabled -> %s (tenant=%s, auth=%s)",
@@ -118,6 +165,48 @@ def build_app(
         description="Deterministic juice-bottling-line simulation for MIRA.",
         version="0.1.0",
     )
+
+    # Browser access (opt-in): a page served from another origin — the public
+    # demo host on localhost — cannot read these endpoints without CORS, and no
+    # amount of correct client code changes that. OFF by default so nothing
+    # about the existing headless/CI behaviour moves; set
+    # SIMLAB_CORS_ORIGINS="http://localhost:4199" (comma-separated) to enable.
+    # Read-only surface either way: the middleware grants no capability the
+    # endpoints do not already have.
+    # Public-demo mode (opt-in): serve ONLY the read/control surface the visitor
+    # flow needs, and 404 everything else — rubric, evidence, eval, approval
+    # gate, validation writes, and the engineer dashboard included.
+    #
+    # Registered BEFORE CORS so it is the OUTERMOST middleware and therefore the
+    # LAST to see the request: a denied path returns 404 without CORS headers
+    # and without reaching any route handler. Off by default, so local and CI
+    # behaviour is unchanged.
+    if os.getenv("SIMLAB_PUBLIC_ONLY", "").strip() in ("1", "true", "yes"):
+        from starlette.responses import JSONResponse
+
+        @app.middleware("http")
+        async def _public_demo_gate(request, call_next):  # type: ignore[no-untyped-def]
+            if not _is_public_demo_path(request.url.path):
+                logger.info("SimLab public-only: denied %s", request.url.path)
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
+            return await call_next(request)
+
+        logger.info(
+            "SimLab PUBLIC-ONLY mode: %d paths allowed, everything else 404s",
+            len(PUBLIC_DEMO_PATHS),
+        )
+
+    cors_origins = [o.strip() for o in os.getenv("SIMLAB_CORS_ORIGINS", "").split(",") if o.strip()]
+    if cors_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
+        logger.info("SimLab CORS enabled for %s", ", ".join(cors_origins))
 
     # ------------------------------------------------------------------
     # Metadata / line structure
@@ -411,6 +500,7 @@ def build_app(
 # ---------------------------------------------------------------------------
 # Module-level app (default juice line, underfill armed but not started)
 # ---------------------------------------------------------------------------
+
 
 def _make_default_app() -> Any:
     if not _HAS_FASTAPI:
