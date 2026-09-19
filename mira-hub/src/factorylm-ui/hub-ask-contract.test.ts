@@ -81,6 +81,7 @@ describe("POST /api/hub/ask — provider exhaustion (M5)", () => {
       answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
       citations: [],
       provider: null,
+      basis: null,
     });
   });
 });
@@ -155,5 +156,65 @@ describe("POST /api/hub/ask — the surrounding contract the adapter relies on",
     const res = await POST(req({ question: QUESTION }));
     expect(res.status).toBe(401);
     expect(rag.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * L0 — the unbound generative Ask (ChatGPT-first lock, wiki/architecture/
+ * chatgpt-first-maintenance-genie.md §2.2 evidence rules, §3 L0/L5):
+ * "Unbound → may answer from model prior; must label general_reasoning" and
+ * "retrieval miss → still may answer generally and say plant docs didn't match
+ * — do NOT only emit sources-miss copy". Observed live on /v3 (2026-09-19):
+ * "What is a VFD…" → "I'm sorry — I don't have any relevant manual excerpts…
+ * upload a VFD manual". These pin the prompt the route sends and the basis it
+ * reports, so the shell's General / Manual p.N badge is driven by the server.
+ */
+describe("POST /api/hub/ask — L0 unbound generative Ask (ChatGPT-first lock)", () => {
+  const GENERAL = "What is a VFD and when would I use one on a conveyor";
+
+  function sentMessages(): { system: string; user: string } {
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+    return { system, user };
+  }
+
+  it("with no retrieved chunks, instructs the model to ANSWER from general knowledge, not to refuse", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "A VFD varies motor speed…", provider: "groq" });
+    const body = await (await POST(req({ question: GENERAL }))).json();
+    const { system, user } = sentMessages();
+    expect(system).toMatch(/answer(?:s|ing)? (?:it )?from (?:your )?general/i);
+    expect(system).not.toMatch(/cite-or-refuse/i);
+    expect(system).not.toMatch(/say so plainly and suggest uploading/i);
+    expect(user).toContain(GENERAL);
+    expect(body.basis).toBe("general_reasoning");
+    expect(body.citations).toEqual([]);
+  });
+
+  it("still forbids inventing machine-specific facts (fault codes, part numbers, specs, manual refs)", async () => {
+    await POST(req({ question: GENERAL }));
+    const { system } = sentMessages();
+    expect(system).toMatch(/fault codes/i);
+    expect(system).toMatch(/part numbers/i);
+    expect(system).toMatch(/do not invent|never invent/i);
+  });
+
+  it("with chunks that the answer cites, reports basis manual", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk({})]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "Clear it via P037 [1].", provider: "groq" });
+    const body = await (await POST(req({ question: QUESTION }))).json();
+    expect(body.basis).toBe("manual");
+    expect(body.citations).toHaveLength(1);
+  });
+
+  it("with chunks the answer does not cite (retrieval miss), reports basis general_reasoning and tells the model to say the docs did not match", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk({})]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "Generally, a VFD…", provider: "groq" });
+    const body = await (await POST(req({ question: GENERAL }))).json();
+    const { system } = sentMessages();
+    expect(system).toMatch(/did not match|didn't match|does not support/i);
+    expect(body.basis).toBe("general_reasoning");
+    expect(body.citations).toEqual([]);
   });
 });

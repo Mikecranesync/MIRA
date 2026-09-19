@@ -80,27 +80,41 @@ export type HubAskResponse = {
   answer: string;
   citations: ManualSource[];
   provider: string | null;
+  /** What the answer rests on — drives the shell's honesty badge (L5). */
+  basis: "manual" | "general_reasoning" | null;
 };
 
+// L0 of the ChatGPT-first lock (wiki/architecture/chatgpt-first-maintenance-genie.md
+// §2.2, §3): an UNBOUND question may be answered from the model's general
+// knowledge and is labelled `general_reasoning`; a retrieval miss must not
+// collapse into sources-miss copy. What stays forbidden is inventing facts
+// that only a specific machine's documentation could supply.
 const SYSTEM_PROMPT = [
   "You are MIRA, a maintenance intelligence assistant for industrial",
   "equipment. You are answering a signed-in maintenance technician asking a",
   "GENERAL question — one not yet bound to a specific machine in their",
-  "namespace. You may search their own uploaded manuals as well as the",
-  "shared OEM library.",
+  "namespace. Their own uploaded manuals and the shared OEM library have",
+  "already been searched; any supporting excerpts appear in CONTEXT.",
   "",
   "Rules:",
-  "- Cite-or-refuse. If the context block has no supporting chunk, say so",
-  "  plainly and suggest uploading the manual. Do NOT invent fault codes,",
-  "  part numbers, torque specs, or manual references.",
+  "- Answer the question. Answer it from your general maintenance and",
+  "  industrial-equipment knowledge whenever the CONTEXT has no excerpt that",
+  "  supports it — an educational or general question deserves a clear,",
+  "  useful answer, never a refusal.",
+  "- When a CONTEXT excerpt supports a claim, cite it with [n] markers",
+  "  matching the numbered chunks. When the CONTEXT does not support the",
+  "  answer, do not cite it; say in one short line that their plant docs",
+  "  did not match, then give the general answer anyway.",
+  "- Do NOT invent machine-specific facts: fault codes, part numbers, torque",
+  "  specs, parameter names or manual references that are not in CONTEXT.",
+  "  If the answer would need one, say so and say which manual would carry it.",
   "- NEVER claim to know which machine they are standing at. You have no",
   "  confirmed asset context here. If the answer would differ by machine,",
   "  say which detail you would need.",
-  "- When you cite, use [n] markers matching the numbered CONTEXT chunks.",
   "- Keep answers tight — 4-8 short bullets max. A technician is reading",
   "  this on a phone in a noisy plant.",
-  "- Lead with the most likely cause + a specific corrective step, then",
-  "  2-3 alternatives ranked by probability.",
+  "- For a troubleshooting question, lead with the most likely cause + a",
+  "  specific corrective step, then 2-3 alternatives ranked by probability.",
 ].join("\n");
 
 export async function POST(req: Request) {
@@ -191,7 +205,7 @@ export async function POST(req: Request) {
       role: "user",
       content: context
         ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
-        : `(no manuals indexed for this question yet)\n\nUSER QUESTION:\n${question}`,
+        : `CONTEXT: (no manual excerpt matched this question — answer from general knowledge)\n\n---\n\nUSER QUESTION:\n${question}`,
     },
   ];
 
@@ -207,6 +221,7 @@ export async function POST(req: Request) {
         answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
         citations: [],
         provider: null,
+        basis: null,
       } as HubAskResponse,
       { status: 503 },
     );
@@ -231,9 +246,12 @@ export async function POST(req: Request) {
   //    means nothing was cited, whatever words were chosen.
   const citations: ManualSource[] = selectCitations(chunks, result.content);
 
+  // L5 honesty badge: the basis is what the answer actually used, not what
+  // was retrieved — chunks the model did not cite are a retrieval miss.
   return NextResponse.json({
     answer: result.content,
     citations,
     provider: result.provider,
+    basis: citations.length > 0 ? "manual" : "general_reasoning",
   } as HubAskResponse);
 }
