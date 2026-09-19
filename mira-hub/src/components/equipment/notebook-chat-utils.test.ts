@@ -13,7 +13,9 @@ import {
   persistedTurns,
   postNotebookChat,
   readNotebookStream,
+  retainedTurnsForRetry,
   retainedSafetyStreamFailure,
+  restoreRetriedExchange,
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
@@ -721,6 +723,27 @@ describe("turnsWithoutRetriedExchange", () => {
   it("leaves ordinary retry state alone because that exchange already rolled back", () => {
     const turns = [{ id: "older" }];
     expect(turnsWithoutRetriedExchange(turns)).toEqual(turns);
+  });
+
+  it("captures the retained safety exchange before Retry removes it", () => {
+    const safety = { id: "a-failed", safetyNotice: { kind: "safety_notice", trigger: "smoke" } };
+    expect(retainedTurnsForRetry([{ id: "older" }, { id: "u-failed" }, safety], ["u-failed", "a-failed"])).toEqual([
+      { id: "u-failed" },
+      safety,
+    ]);
+  });
+
+  it("restores the authoritative safety exchange when its retry fails without a replacement warning", () => {
+    const fallback = [
+      { id: "u-failed", content: "smoke" },
+      { id: "a-failed", content: "SAFETY STOP", safetyNotice: { kind: "safety_notice", trigger: "smoke" } },
+    ] as const;
+    const duringRetry = [{ id: "older", content: "ok" }, { id: "u-retry", content: "smoke" }, { id: "a-retry", content: "" }];
+
+    expect(restoreRetriedExchange(duringRetry, ["u-retry", "a-retry"], fallback)).toEqual([
+      { id: "older", content: "ok" },
+      ...fallback,
+    ]);
   });
 });
 

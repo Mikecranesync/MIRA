@@ -19,6 +19,8 @@ import {
   machineReplayCaption,
   postNotebookChat,
   retainedSafetyStreamFailure,
+  retainedTurnsForRetry,
+  restoreRetriedExchange,
   restoreComposer,
   stoppedTurn,
   stoppedTurnFromAbort,
@@ -351,7 +353,7 @@ export function NotebookChat({
 
   // Post one body and stream the answer. Shared by a fresh send and Retry so
   // the retried request is byte-identical to the one that failed.
-  const post = useCallback(async (body: SendBody) => {
+  const post = useCallback(async (body: SendBody, retryFallback: readonly [ChatTurn, ChatTurn] | null = null) => {
     setFailed(null);
     setBusy(true);
     const controller = new AbortController();
@@ -359,6 +361,13 @@ export function NotebookChat({
     const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: body.message };
     const aId = `a${Date.now()}`;
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
+
+    const restoreSafetyFallback = () => {
+      if (!retryFallback) return false;
+      setTurns((prev) => restoreRetriedExchange(prev, [userTurn.id, aId], retryFallback));
+      setFailed({ body, retainedTurnIds: [retryFallback[0].id, retryFallback[1].id] });
+      return true;
+    };
 
     try {
       const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
@@ -377,6 +386,9 @@ export function NotebookChat({
       // follow-ups, all of which would present a cut-off stream as a complete,
       // cited answer.
       if (!sawStatus) {
+        // A retry must never erase the earlier authoritative STOP unless this
+        // attempt produced an equally authoritative replacement warning.
+        if (!safetyNotice && restoreSafetyFallback()) return;
         setTurns((prev) =>
           prev.map((x) =>
             x.id === aId
@@ -410,6 +422,7 @@ export function NotebookChat({
       );
     } catch (err) {
       if (isAbortError(err)) {
+        if (!retainedSafetyStreamFailure(err) && restoreSafetyFallback()) return;
         // Stopped by the technician: keep the partial text, mark it as not an
         // answer (STRM-2). Preserve an authoritative safety frame if it already
         // arrived; no other evidence survives. No retry, no provider call.
@@ -429,6 +442,7 @@ export function NotebookChat({
           setFailed({ body, retainedTurnIds: [userTurn.id, aId] });
           return;
         }
+        if (restoreSafetyFallback()) return;
         // Failure keeps the question (CMPS-2): roll back the optimistic
         // exchange, put the text back in the composer, offer Retry with the
         // identical body. Nothing is fabricated in the transcript.
@@ -455,9 +469,13 @@ export function NotebookChat({
 
   const retry = useCallback(() => {
     if (!failed || busy) return;
+    const retryFallback = retainedTurnsForRetry(turnsRef.current, failed.retainedTurnIds);
+    // If the retained authoritative pair is unexpectedly absent, do not start
+    // a retry that cannot restore it on failure.
+    if (failed.retainedTurnIds && !retryFallback) return;
     setTurns((prev) => turnsWithoutRetriedExchange(prev, failed.retainedTurnIds));
     setInput((cur) => (cur === failed.body.message ? "" : cur));
-    void post(failed.body);
+    void post(failed.body, retryFallback);
   }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
