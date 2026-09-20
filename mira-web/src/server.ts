@@ -384,7 +384,13 @@ app.get("/", (c) => {
 
 // Health probe
 app.get("/api/health", (c) =>
-  c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
+  c.json({
+    status: "ok",
+    service: "mira-web",
+    version: process.env.MIRA_APP_VERSION || "unknown",
+    gitSha: process.env.MIRA_GIT_SHA || "unknown",
+    builtAt: process.env.MIRA_BUILD_TIME || "unknown",
+  })
 );
 
 // Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe

@@ -151,7 +151,12 @@ services:
       start_period: 10s
 
   mira-web:
-    build: ./mira-web
+    build:
+      context: ./mira-web
+      args:
+        MIRA_GIT_SHA: ${MIRA_GIT_SHA:-unknown}
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
+        MIRA_BUILD_TIME: ${MIRA_BUILD_TIME:-unknown}
     container_name: mira-web
     ports:
       - "127.0.0.1:3200:3000"
