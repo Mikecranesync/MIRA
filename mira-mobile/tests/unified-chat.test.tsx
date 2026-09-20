@@ -56,7 +56,11 @@ const SAFETY_TURN: NotebookServerTurn = {
   question: "How do I bypass the interlock?",
   answerStatus: "answered",
   answerText: "Stop.",
-  evidence: [CITATION, { kind: "safety_notice", trigger: "bypass the interlock" }],
+  evidence: [
+    CITATION,
+    { kind: "safety_notice", trigger: "bypass the interlock" },
+    { kind: "safety_stop", trigger: "bypass the interlock" },
+  ],
   basis: "documents",
 };
 
@@ -290,6 +294,40 @@ describe("UnifiedChat", () => {
       const last = h.onSend.mock.calls.at(-1);
       expect(last?.[1]).toMatchObject({ visualEvidence: { fileId: "file-retry-1" } });
     });
+  });
+
+  // #3863: the bytes a failed upload keeps for Try again must never ride a
+  // send the technician did not attach them to. Dismiss closes the error and
+  // releases the chip; the next question is a plain text send — no upload, no
+  // rider, no invisible photo.
+  it("does not attach a dismissed failed photo to the next unrelated send (#3863)", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(
+      <UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+        chatError={null} handlers={h} meta={META} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "what is this" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(h.onSend).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Dismiss" })); });
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+
+    fireEvent.change(box, { target: { value: "what is P06.01" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+
+    // Plain text send: the host gets the question alone, and no upload ran.
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(h.onSend.mock.calls[0]).toEqual(["what is P06.01"]);
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
   });
 
 });

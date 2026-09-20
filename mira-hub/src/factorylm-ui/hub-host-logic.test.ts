@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
+  homeSendPlan,
+  isUnboundNotebook,
+  landingSelection,
   NO_PROJECT_ERROR,
   chatBodyFor,
   detailQueryFor,
@@ -80,8 +83,9 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "legacy" }).threadId).toBeNull();
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "abc" }).threadId).toBe("abc");
   });
-  it("the no-project error is the text the Composer shows when the hook throws", () => {
-    expect(NO_PROJECT_ERROR).toMatch(/Pick a project first/);
+  it("the loading error is the text the Composer shows when the hook throws (before the list or the notebook has loaded)", () => {
+    expect(NO_PROJECT_ERROR).toMatch(/Still loading your projects/);
+    expect(NO_PROJECT_ERROR).not.toMatch(/Pick a project first/);
   });
 });
 
@@ -244,5 +248,50 @@ describe("fixtureFor / newThreadId", () => {
     const id = newThreadId(() => "3f2a-UUID-like:ok");
     expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/);
     expect(newThreadId(() => "")).toMatch(/^t\d+$/);
+  });
+});
+
+describe("HOME (no notebook selected) — L0 unbound Ask on the Hub host", () => {
+  const nb = (id: string, over: Partial<HubNotebook> = {}): HubNotebook =>
+    ({ id, displayName: id, manufacturer: null, model: null, asset: null, threads: [], updatedAt: "2026-09-01T00:00:00.000Z", ...over } as unknown as HubNotebook);
+  const bound = (id: string): HubNotebook => nb(id, { manufacturer: "Rockwell", model: "PowerFlex 525", asset: { entityId: "e1" } as never });
+
+  it("a fresh mount lands on HOME, not in the first notebook's latest thread (09-07 cold-launch failure)", () => {
+    expect(landingSelection([nb("a"), nb("b")])).toBeNull();
+  });
+
+  it("a HOME send goes to an UNBOUND notebook, never the last-opened machine notebook (its identity would ride the turn as machine context — #3875 F1)", () => {
+    // The list is ordered by last opened: the machine notebook is first.
+    expect(homeSendPlan([bound("gs10-line-3"), nb("general")])).toEqual({ kind: "existing", notebookId: "general" });
+    expect(homeSendPlan([bound("gs10-line-3"), nb("scratch", { manufacturer: "  " })])).toEqual({ kind: "existing", notebookId: "scratch" });
+  });
+
+  it("among unbound notebooks the one named General wins — a notebook's name is machine context too", () => {
+    expect(homeSendPlan([bound("m"), nb("conveyor-4"), nb("general", { displayName: "General" })])).toEqual({ kind: "existing", notebookId: "general" });
+  });
+
+  it("with only machine notebooks, a HOME send must CREATE a general one", () => {
+    expect(homeSendPlan([bound("a"), bound("b")])).toEqual({ kind: "create", body: { displayName: "General", identitySourceType: "user" } });
+  });
+
+  it("a HOME send with no notebooks at all must CREATE one — a stranger can always ask", () => {
+    expect(homeSendPlan([])).toEqual({ kind: "create", body: { displayName: "General", identitySourceType: "user" } });
+  });
+
+  it("before the list has loaded it does NOT send — a send then would create a duplicate General (#3875 F2)", () => {
+    expect(homeSendPlan(null)).toEqual({ kind: "loading" });
+  });
+
+  it("the created project is the same contract the legacy New-notebook button posts", () => {
+    const plan = homeSendPlan([]);
+    expect(plan.kind).toBe("create");
+    if (plan.kind === "create") expect(Object.keys(plan.body)).toEqual(["displayName", "identitySourceType"]);
+  });
+
+  it("isUnboundNotebook: a binding OR a manufacturer/model makes a notebook machine-scoped", () => {
+    expect(isUnboundNotebook({ asset: null, manufacturer: null, model: null })).toBe(true);
+    expect(isUnboundNotebook({ asset: null, manufacturer: "Siemens", model: null })).toBe(false);
+    expect(isUnboundNotebook({ asset: null, manufacturer: null, model: "G120" })).toBe(false);
+    expect(isUnboundNotebook({ asset: { entityId: "e" } as never, manufacturer: null, model: null })).toBe(false);
   });
 });

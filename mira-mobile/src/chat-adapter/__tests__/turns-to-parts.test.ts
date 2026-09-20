@@ -241,6 +241,27 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       },
     },
     {
+      name: "verified-photo abstention",
+      live: parseChatSse(
+        frame({ kind: "sources", citations: [] }) +
+          frame({ kind: "evidence", visualEvidence: VISUAL }) +
+          frame({
+            kind: "status",
+            status: "insufficient_evidence",
+            message: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+          }) +
+          DONE,
+      ),
+      row: {
+        id: "t4-photo",
+        question: "what am I looking at?",
+        answerStatus: "insufficient_evidence",
+        answerText: "I saw your photo, but I couldn't find anything about it in the selected sources.",
+        evidence: [VISUAL],
+        basis: null,
+      },
+    },
+    {
       name: "machine evidence (REPLAY)",
       live: parseChatSse(
         frame({ kind: "content", content: "Around 14:03 the bus dipped [1]." }) +
@@ -322,6 +343,71 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     });
   }
 
+  it("verified-photo abstention is technician-visible live and after reload", () => {
+    const c = cases.find((candidate) => candidate.name === "verified-photo abstention")!;
+    const live = liveTurnMessages(c.row.question, c.live, 0)[1];
+    const hydrated = hydrateMessages([c.row])[1];
+    const copy = "I saw your photo, but I couldn't find anything about it in the selected sources.";
+    expect(c.live.statusMessage).toBe(copy);
+    expect(textOf(live)).toBe(copy);
+    expect(textOf(hydrated)).toBe(copy);
+    expect(live.parts.some((p) => p.type === "observation")).toBe(true);
+    expect(hydrated.parts.some((p) => p.type === "observation")).toBe(true);
+  });
+
+  it("keeps a non-terminal electrical directive as a cited, basis-bearing answer", () => {
+    const a = hydrateMessages([
+      {
+        ...PERSISTED[0],
+        evidence: [
+          ...CITATIONS,
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+        ],
+      },
+    ])[1];
+
+    expect(a.parts.some((p) => p.type === "safety_notice")).toBe(false);
+    expect(citationsOf(a)).toHaveLength(2);
+    expect(a.parts.some((p) => p.type === "basis" && p.basis === "oem_documentation")).toBe(true);
+  });
+
+  it("recognizes safety_stop as a terminal discriminator, not unknown evidence", () => {
+    const a = hydrateMessages([
+      {
+        id: "t-stop",
+        question: "can I open it live?",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
+        basis: null,
+      },
+    ])[1];
+
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(a.parts.some((p) => p.type === "unknown")).toBe(false);
+  });
+
+  it("uses the terminal notice from a legacy two-notice Safety STOP", () => {
+    const a = hydrateMessages([
+      {
+        id: "t-legacy-two-notice",
+        question: "can I open this energized panel?",
+        answerStatus: "answered",
+        answerText: "STOP.",
+        evidence: [
+          { kind: "safety_notice", trigger: "energized-electrical-work" },
+          { kind: "safety_notice", trigger: "exposed conductor" },
+        ],
+        basis: null,
+      },
+    ])[1];
+
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "exposed conductor" });
+  });
+
   it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
     const live = liveTurnMessages(
       "q",
@@ -339,7 +425,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
         question: "q",
         answerStatus: "answered",
         answerText: "STOP.",
-        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
         basis: null,
       },
     ])[1];
@@ -447,9 +536,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       0,
     )[1];
     expect(a.parts.some((p) => p.type === "safety_notice")).toBe(true);
-    // ...and the terminal-truth rule still holds: no manufactured completion.
-    expect(a.lifecycle).toBe("failed");
-    expect(a.parts).toContainEqual({ type: "error", reason: "provider_failure" });
+    // The warning itself is terminal. A transport failure cannot attach the
+    // ordinary retryable provider-failure affordance to a validated STOP.
+    expect(a.lifecycle).toBe("completed");
+    expect(a.parts.some((p) => p.type === "error")).toBe(false);
   });
 
   it("FLEET-003: safety is STICKY when the technician stops the stream", () => {
@@ -473,7 +563,10 @@ describe("live ≡ hydrated parity (the invariant)", () => {
         question: "q",
         answerStatus: "error",
         answerText: "STOP. Lock out fir",
-        evidence: [{ kind: "safety_notice", trigger: "loto" }],
+        evidence: [
+          { kind: "safety_notice", trigger: "loto" },
+          { kind: "safety_stop", trigger: "loto" },
+        ],
         basis: null,
       },
     ])[1];
@@ -521,7 +614,11 @@ describe("live ≡ hydrated parity (the invariant)", () => {
           question: "can I open it live?",
           answerStatus: "answered",
           answerText: "Do not work on this equipment while energized.",
-          evidence: [marker, { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" }],
+          evidence: [
+            marker,
+            { kind: "safety_stop", trigger: "loto" },
+            { citationId: "1", sourceTitle: "GS10 manual", page: 42, docId: "d1", fileId: "f1" },
+          ],
           basis: "general_reasoning",
         } as never,
       ])[1];

@@ -32,7 +32,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
-import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
+import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
+import { recordLookObservation } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
@@ -192,6 +193,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     const text = extractObservation(reply.text);
     if (!text) throw new Error("vision_empty_response");
+    // #3788 — persist the observation into the VisualSession ledger (migration
+    // 063; NO new table) so a later chat turn that re-sends THIS photo as visual
+    // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
+    // LOOK turn — the photo is already parked and the observation is returned to
+    // the client regardless (Law 1: the bytes/observation must survive).
+    try {
+      await recordLookObservation({
+        tenantId: ctx.tenantId,
+        fileId: parked.fileId,
+        photoHash: sha256Hex(buffer),
+        text,
+        model: reply.model,
+        capturedAt,
+        createdBy: ctx.userId ?? null,
+      });
+    } catch (err) {
+      console.error("[notebook-look] observation persist failed (continuing):", err);
+    }
     return NextResponse.json({
       ...retained,
       observation: { text, capturedAt, provenance: "phone_photo" as const, model: reply.model },

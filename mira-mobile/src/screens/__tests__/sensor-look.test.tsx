@@ -2,8 +2,10 @@
 // Sensor v0 S2 — LOOK in the notebook (contract §4.1, §2.3):
 //   • picking a photo posts it to /look/ and renders an evidence card
 //     (thumbnail of the parked file + observation)
-//   • "Ask MIRA about this" closes the sheet and sends the prefixed question
-//     through the notebook's ONE send path (askNotebook, same route)
+//   • "Ask MIRA about this" closes the sheet and sends the technician's
+//     question ALONE through the notebook's ONE send path (askNotebook, same
+//     route) — the photo rides as the structured visualEvidence rider, never
+//     as vision prose glued onto the classified text (#3852)
 //   • an intake failure shows the server's reason, not "nothing seen"
 //
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/sensor-look
@@ -50,6 +52,7 @@ vi.mock("../FilePreview", () => ({
 
 import { NotebookScreen } from "../NotebookScreen";
 import { ApiError } from "../../api/client";
+import { LOOK_DEFAULT_QUESTION } from "../../lib/sensor";
 
 const detail = () => ({
   notebook: { id: "nb1", displayName: "CV-101", manufacturer: null, model: null, asset: null },
@@ -107,7 +110,7 @@ describe("Sensor LOOK (S2)", () => {
     expect(getNotebookDetail.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("Ask MIRA about this closes the sheet and sends the prefixed question via askNotebook", async () => {
+  it("Ask MIRA about this closes the sheet and sends the question alone (+ rider) via askNotebook", async () => {
     lookAtPhoto.mockResolvedValue({
       fileId: "f-park",
       attachment: null,
@@ -134,9 +137,12 @@ describe("Sensor LOOK (S2)", () => {
     const [nbId, question, scope, opts] = askNotebook.mock.calls[0];
     expect(nbId).toBe("nb1");
     expect(scope).toEqual([]);
-    expect(question).toBe(
-      "Visual observation (02:14:21, phone photo): Contactor K1 pulled in.\n\nIs that normal at idle?",
-    );
+    // #3852: the question is the technician's text ONLY. The vision prose
+    // must never be prefixed — the server classifies this whole string with
+    // matchSafetyStop, so an observation sentence would be read as the
+    // technician's own words.
+    expect(question).toBe("Is that normal at idle?");
+    expect(question.startsWith("Visual observation (")).toBe(false);
     // S5 D3: the parked photo rides as identifiers only — the server verifies
     // the link and re-derives the evidence entry.
     expect(opts.visualEvidence).toEqual({ fileId: "f-park", capturedAt: "2026-08-28T02:14:21" });
@@ -148,6 +154,61 @@ describe("Sensor LOOK (S2)", () => {
     expect(card.querySelector(".title")?.textContent).toBe("Visual observation · Photo captured · 02:14:21");
     expect(card.querySelector('[data-testid="thumb"]')?.textContent).toBe("f-park");
     expect(screen.queryByRole("button", { name: /f-park/ })).toBeNull();
+  });
+
+  // #3852: a healthy-machine observation ("No visible damage, burn marks, or
+  // corrosion") glued onto the question tripped the server's matchSafetyStop —
+  // the classic LOOK panel was the last carrier after #3845 fixed the unified
+  // path. The text sent must be the technician's question ALONE (or the
+  // default LOOK question when blank); the photo rides ONLY as the structured
+  // visualEvidence rider.
+  it("#3852: a healthy-machine observation is never sent as text — question alone + rider", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: "f-park",
+      attachment: null,
+      observation: {
+        text: "No visible damage, burn marks, or corrosion on the drive.",
+        capturedAt: "2026-08-28T02:14:21",
+        provenance: "phone_photo",
+      },
+      quality: null,
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    // Blank question → the default LOOK question, nothing else.
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    const [, question, , opts] = askNotebook.mock.calls[0];
+    expect(question).toBe(LOOK_DEFAULT_QUESTION);
+    expect(question.startsWith("Visual observation (")).toBe(false);
+    expect(question).not.toContain("burn marks");
+    expect(question).not.toContain("corrosion");
+    // The rider still carries the photo — identifiers only.
+    expect(opts.visualEvidence).toEqual({ fileId: "f-park", capturedAt: "2026-08-28T02:14:21" });
+    expect(opts.machineEvidence).toBeUndefined();
+  });
+
+  it("#3852: no parked fileId → question alone and NO rider (never prose in its place)", async () => {
+    lookAtPhoto.mockResolvedValue({
+      fileId: null,
+      attachment: null,
+      observation: { text: "No burn marks.", capturedAt: "2026-08-28T02:14:21", provenance: "phone_photo" },
+      quality: null,
+    });
+    askNotebook.mockResolvedValue({ answer: "ok", citations: [], status: "answered" });
+    mount();
+    await openLook();
+    await screen.findByTestId("look-card");
+    fireEvent.change(screen.getByLabelText("Question about this photo"), {
+      target: { value: "Anything to check?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+    const [, question, , opts] = askNotebook.mock.calls[0];
+    expect(question).toBe("Anything to check?");
+    expect(opts?.visualEvidence).toBeUndefined();
   });
 
   it("S5 D3: a failed send keeps visualEvidence on the pending body so Retry is byte-identical", async () => {
@@ -223,7 +284,12 @@ describe("Sensor LOOK (S2)", () => {
     expect(note).toMatch(/still ask MIRA/);
     fireEvent.click(screen.getByRole("button", { name: "Ask MIRA about this" }));
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
-    expect(askNotebook.mock.calls[0][1]).toContain("(no description available)");
+    // No prose is sent either way (#3852): a blank question falls back to the
+    // default LOOK question, and the placeholder "(no description available)"
+    // never reaches the classifier.
+    expect(askNotebook.mock.calls[0][1]).toBe(LOOK_DEFAULT_QUESTION);
+    expect(askNotebook.mock.calls[0][1]).not.toContain("(no description available)");
+    expect(askNotebook.mock.calls[0][3].visualEvidence).toEqual({ fileId: "f-park", capturedAt: expect.any(String) });
   });
 
   it("an intake failure shows the server's reason (415), not an invented one", async () => {

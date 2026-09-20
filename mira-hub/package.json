@@ -60,7 +60,7 @@
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.8.0",
     "mdast-util-find-and-replace": "^3.0.2",
-    "next": "16.2.4",
+    "next": "16.3.5",
     "next-auth": "^4.24.14",
     "next-intl": "^4.9.1",
     "openid-client": "^6.6.0",
@@ -92,9 +92,13 @@
     "@types/xml2js": "^0.4.14",
     "@vitest/expect": "^3.2.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.4",
+    "tar": ">=7.5.22"
   }
 }

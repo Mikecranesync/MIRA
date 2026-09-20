@@ -60,6 +60,50 @@ export function initialSelection(notebooks: readonly HubNotebook[]): HubSelectio
   return { notebookId: nb.id, threadId: threads[0]?.id ?? LEGACY_THREAD_ID };
 }
 
+/**
+ * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
+ * stranger walk recorded "cold launch drops into the last thread" as a failure;
+ * the ChatGPT-first lock's L0 is a composer home that answers immediately.
+ * `initialSelection` remains the deep-link / project-click entry.
+ */
+export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
+  void notebooks; // HOME regardless of how many projects exist
+  return null;
+}
+
+export type HomeSendPlan =
+  | { kind: "loading" }
+  | { kind: "existing"; notebookId: string }
+  | { kind: "create"; body: { displayName: string; identitySourceType: "user" } };
+
+/** A notebook with no machine behind it: no canonical binding and no
+ *  manufacturer/model identity. Only such a notebook may host a HOME question,
+ *  because the canonical route's general-mode prompt still appends the
+ *  notebook's machine context (equipment, asset path, loaded documents). */
+export function isUnboundNotebook(nb: Pick<HubNotebook, "asset" | "manufacturer" | "model">): boolean {
+  return !nb.asset && !(nb.manufacturer ?? "").trim() && !(nb.model ?? "").trim();
+}
+
+/**
+ * A HOME send is a new thread in an UNBOUND notebook, so the answer is truly
+ * general: the list is ordered by last opened, so `notebooks[0]` would be the
+ * machine notebook the technician was just in, and its identity would ride the
+ * turn as machine context (alpha-remote #3875 F1). With no unbound notebook it
+ * creates one ("General") through the exact body the legacy New-notebook
+ * button posts. Until the list has loaded it must NOT send (F2): the Composer's
+ * throw-keeps-the-draft contract covers that case; a send before the list is
+ * known would create a duplicate "General".
+ */
+export function homeSendPlan(notebooks: readonly HubNotebook[] | null): HomeSendPlan {
+  if (!notebooks) return { kind: "loading" };
+  const unbound = notebooks.filter(isUnboundNotebook);
+  // A notebook's NAME is machine context too ("Conveyor 4" colours the answer),
+  // so the one literally called General wins; any other unbound one is next.
+  const general = unbound.find((nb) => nb.displayName.trim().toLowerCase() === "general") ?? unbound[0];
+  if (general) return { kind: "existing", notebookId: general.id };
+  return { kind: "create", body: { displayName: "General", identitySourceType: "user" } };
+}
+
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
@@ -124,14 +168,14 @@ export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "a
 
 /** The first-run line under the greeting: claims only what this notebook can do. */
 export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number): string | undefined {
-  if (!nb) return "Pick a project to ask about its manuals.";
+  if (!nb) return "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.";
   const label = nb.asset ? machineNameFor(nb) : notebookLabel(nb);
   if (enabledCount === 0) return `${label} has no selected sources yet — general help only, nothing is cited.`;
   return `Answers cite ${enabledCount} selected source${enabledCount === 1 ? "" : "s"} for ${label}.`;
 }
 
 /** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
-export const NO_PROJECT_ERROR = "Pick a project first — answers come from a notebook's selected sources.";
+export const NO_PROJECT_ERROR = "Still loading your projects — try again in a moment.";
 
 /**
  * The canonical route's request body for one send. With no enabled sources the
