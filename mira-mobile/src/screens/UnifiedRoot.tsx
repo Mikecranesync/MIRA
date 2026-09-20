@@ -100,17 +100,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   }, []);
 
   const open = useCallback((id: string, threadId?: string | null) => {
+    const notebook = notebooks?.find((nb) => nb.id === id);
+    // #3851: opening the project the boot restore already pointed at must
+    // resume the thread the technician was last reading, not the newest one —
+    // and must not overwrite the persisted pointer with the newest id (that is
+    // what made "resume on the wrong thread" permanent). An explicit threadId
+    // (a thread row, a deep link) still wins; another project opens on its
+    // latest thread as before.
+    const restored =
+      id === selected && selectedThreadId && notebook?.threads?.some((thread) => thread.id === selectedThreadId)
+        ? selectedThreadId
+        : null;
+    const activeThread = threadId ?? restored ?? latestThreadId(notebook);
     setSelected(id);
-    setSelectedThreadId(threadId ?? latestThreadId(notebooks?.find((nb) => nb.id === id)));
+    setSelectedThreadId(activeThread);
     setDraftThreadId(null);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
-      const activeThread = threadId ?? latestThreadId(notebooks?.find((nb) => nb.id === id));
       await preferencesStore.set(LAST_THREAD_KEY(id), activeThread);
     });
-  }, [notebooks]);
+  }, [notebooks, selected, selectedThreadId]);
 
   // A deep link resolves through the SAME decision the QR scanner uses
   // (resolveScan): tag → asset → that machine's notebook, opened in place.
