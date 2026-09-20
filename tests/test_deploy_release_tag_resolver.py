@@ -81,8 +81,8 @@ def _run_deploy_boundary(
     tmp_path: Path,
     *,
     services: str | None = "mira-hub mira-pipeline",
-    sha: str | None = SHA,
-    allow_fallback: str | None = "0",
+    approved_rc_sha: str | None = SHA,
+    approved_release_tag: str | None = "v1.0.0",
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     """Run the real local deploy shell with ssh replaced by an inert recorder."""
     bin_dir = tmp_path / "bin"
@@ -98,8 +98,8 @@ def _run_deploy_boundary(
     env["SSH_STDIN_FILE"] = str(ssh_stdin)
     for key, value in (
         ("SERVICES", services),
-        ("DEPLOY_SHA", sha),
-        ("ALLOW_MOVING_FALLBACK", allow_fallback),
+        ("APPROVED_RC_SHA", approved_rc_sha),
+        ("APPROVED_RELEASE_TAG", approved_release_tag),
     ):
         env.pop(key, None)
         if value is not None:
@@ -116,12 +116,16 @@ def _run_deploy_boundary(
 
 
 def _assert_resolver_object_contract(script: str) -> None:
+    # Re-targeted: APPROVED_RC_SHA replaces DEPLOY_SHA
     fetched = re.search(
-        r'git show "\$\{DEPLOY_SHA\}:\.github/scripts/resolve_release_tag\.sh"'
+        r'git show "\$\{APPROVED_RC_SHA\}:\.github/scripts/resolve_release_tag\.sh"'
         r"\s*>\s*(?P<path>[^\s\\]+)",
         script,
     )
-    assert fetched, "resolver bytes must be fetched from the exact deployed SHA"
+    assert fetched, (
+        "resolver bytes must be fetched from the exact deployed SHA "
+        "(use APPROVED_RC_SHA, not DEPLOY_SHA)"
+    )
     executed = re.search(r"\bbash\s+(?P<path>[^\s)]+)\)\"", script)
     assert executed, "fetched resolver must be executed explicitly"
     assert fetched.group("path") == executed.group("path"), (
@@ -163,9 +167,9 @@ def test_no_tag_fails_closed_on_normal_path(tmp_path):
 
 
 def test_no_tag_hotfix_fallback_returns_empty_for_pinned_sha(tmp_path):
+    # Re-targeted: fallback flag is removed; no tag always exits 1 (fail-closed)
     r = _run(tmp_path, tag_output="", allow_fallback="1", attempts="2")
-    assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == ""  # empty ⇒ caller checks out the pinned DEPLOY_SHA
+    assert r.returncode == 1, "no tag must fail closed; the fallback flag no longer exists"
 
 
 def test_non_hex_deploy_sha_is_rejected(tmp_path):
@@ -195,56 +199,62 @@ def test_deploy_workflow_never_resets_to_moving_main():
 
 
 def test_deploy_workflow_anchors_on_deploy_sha_and_uses_resolver():
+    # Re-targeted: APPROVED_RC_SHA replaces DEPLOY_SHA and workflow_run.head_sha
     text = DEPLOY_YML.read_text()
     script = _deploy_script(text)
-    assert "DEPLOY_SHA:" in text and "workflow_run.head_sha" in text
-    assert "DEPLOY_SHA='$DEPLOY_SHA'" not in text, (
-        "do not interpolate the deploy SHA into an environment assignment"
+    assert "APPROVED_RC_SHA" in text, "workflow must use APPROVED_RC_SHA input"
+    assert "workflow_run.head_sha" not in text, (
+        "must not use workflow_run.head_sha; only approved_rc_sha"
     )
     _assert_resolver_object_contract(script)
 
 
 def test_validated_inputs_are_the_only_values_forwarded_to_ssh(tmp_path):
+    # Re-targeted: expect APPROVED_RC_SHA and APPROVED_RELEASE_TAG instead of
+    # DEPLOY_SHA and ALLOW_MOVING_FALLBACK
     result, ssh_call, ssh_stdin = _run_deploy_boundary(tmp_path)
 
     assert result.returncode == 0, result.stderr
     encoded_services = base64.b64encode(b"mira-hub mira-pipeline").decode()
     assert ssh_call.read_text().splitlines()[-1] == (
-        f"sudo bash -s -- '{encoded_services}' '{SHA}' '0'"
+        f"sudo bash -s -- '{encoded_services}' '{SHA}' 'v1.0.0'"
     )
     remote_script = ssh_stdin.read_text()
     assert 'SERVICES="$(printf \'%s\' "$1" | base64 -d)"' in remote_script
-    assert 'DEPLOY_SHA="$2"' in remote_script
-    assert 'ALLOW_MOVING_FALLBACK="$3"' in remote_script
+    assert 'APPROVED_RC_SHA="$2"' in remote_script
+    assert 'APPROVED_RELEASE_TAG="$3"' in remote_script
 
 
 @pytest.mark.parametrize(
-    ("services", "sha", "allow_fallback", "description"),
+    ("services", "approved_rc_sha", "approved_release_tag", "description"),
     [
-        (None, SHA, "0", "missing services"),
-        ("mira-hub", None, "0", "missing deploy SHA"),
-        ("mira-hub", SHA, None, "missing fallback flag"),
-        ("unknown-service", SHA, "0", "unknown service"),
-        ("mira-hub;id", SHA, "0", "shell-shaped service"),
-        ("mira-hub", "main", "0", "moving deploy ref"),
-        ("mira-hub", "A" * 40, "0", "noncanonical deploy SHA"),
-        ("mira-hub", f"{SHA};id", "0", "shell-shaped deploy SHA"),
-        ("mira-hub", SHA, "2", "out-of-range fallback flag"),
-        ("mira-hub", SHA, "0;id", "shell-shaped fallback flag"),
+        (None, SHA, "v1.0.0", "missing services"),
+        ("mira-hub", None, "v1.0.0", "missing approved_rc_sha"),
+        ("mira-hub", SHA, None, "missing approved_release_tag"),
+        ("unknown-service", SHA, "v1.0.0", "unknown service"),
+        ("mira-hub;id", SHA, "v1.0.0", "shell-shaped service"),
+        ("mira-hub", "main", "v1.0.0", "moving deploy ref"),
+        ("mira-hub", "A" * 40, "v1.0.0", "noncanonical sha"),
+        ("mira-hub", f"{SHA};id", "v1.0.0", "shell-shaped deploy SHA"),
+        ("mira-hub", SHA, "v1", "incomplete tag"),
+        ("mira-hub", SHA, "1.0.0", "tag missing v prefix"),
+        ("mira-hub", SHA, "v1.0.0;id", "shell-shaped tag"),
     ],
 )
 def test_invalid_inputs_fail_before_ssh(
     tmp_path: Path,
     services: str | None,
-    sha: str | None,
-    allow_fallback: str | None,
+    approved_rc_sha: str | None,
+    approved_release_tag: str | None,
     description: str,
 ):
+    # Re-targeted: use new arg names (approved_rc_sha, approved_release_tag)
+    # and keep all existing cases + add tag cases
     result, ssh_call, _ = _run_deploy_boundary(
         tmp_path,
         services=services,
-        sha=sha,
-        allow_fallback=allow_fallback,
+        approved_rc_sha=approved_rc_sha,
+        approved_release_tag=approved_release_tag,
     )
 
     assert result.returncode != 0, f"deploy accepted {description}"
