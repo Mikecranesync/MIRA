@@ -402,4 +402,33 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getByText("Dismiss"));
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("#3851: a cold start resumes the persisted last-viewed thread when the project is opened — not the latest one", async () => {
+    // thrd-a1 is the NEWEST thread of nb-a (updatedAt 12:00); the technician was
+    // last reading thrd-a2 (11:00). The boot restore reads that id, and opening
+    // the project must honour it instead of falling back to the latest thread —
+    // and must not overwrite the persisted pointer with the latest id.
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-a2");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Drive A" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
+    await waitFor(() => expect(prefStore.mem.get("flm.unified.thread.v1.nb-a")).toBe("thrd-a2"));
+  });
+
+  it("#3851 control: opening a DIFFERENT project than the restored one still lands on its latest thread", async () => {
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-a2");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "General notes" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-b1");
+  });
 });
