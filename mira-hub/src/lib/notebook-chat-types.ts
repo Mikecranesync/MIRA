@@ -143,6 +143,11 @@ export type NotebookBasisEvidenceFrame = {
   /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
    *  turn was asked with. Additive, same discipline as `machineEvidence`. */
   visualEvidence?: VisualObservationEntry;
+  /** Energized-electrical hazard directive (#3841): non-terminal safety notice
+   *  entries for the directive that guides the answer (no standalone safety
+   *  frame is emitted, only this entry on the evidence frame). Additive, same
+   *  discipline as machine/visual evidence. */
+  hazardEntries?: SafetyNoticeEntry[];
   /** 086 §3: the client asked about a DIFFERENT asset than this notebook's
    *  confirmed binding, so the identity was treated as unconfirmed for this
    *  turn (no machine evidence, no asset snapshot, no machine-specific facts).

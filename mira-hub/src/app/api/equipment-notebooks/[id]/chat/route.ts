@@ -1788,6 +1788,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             };
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
+      if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
 
       // Complete the durable turn before touching the response controller.
