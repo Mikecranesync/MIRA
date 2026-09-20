@@ -111,6 +111,8 @@ Do not create a competing issue when one below already owns the gap.
 | Per-user session revocation absent | [#3831](https://github.com/Mikecranesync/MIRA/issues/3831) | Choose max-age/session-version control and owner before scaling beyond pilot. |
 | Mobile cannot target a real HTTPS staging environment | [#3796](https://github.com/Mikecranesync/MIRA/issues/3796) | Production synthetic-tenant proof may unblock the pilot; staging remains required for a repeatable release loop. |
 | Public SimLab demo not boot/deploy proven | [#3883](https://github.com/Mikecranesync/MIRA/issues/3883) | Parallel commercial-readiness lane; does not replace authenticated product acceptance. |
+| Production run-diff capability has no owner, CI, or real-store proof | [#3886](https://github.com/Mikecranesync/MIRA/issues/3886) | Main set the next review to 2026-10-19 in #3885; verify live flag state, assign/disable, gate its tests, and capture real-store evidence. |
+| TechnicianContext ADR and staging proof remain unresolved | [#3887](https://github.com/Mikecranesync/MIRA/issues/3887) | Main set the next review to 2026-10-19 in #3885; Mike disposition of ADR-0033 plus live staging state and manifest evidence. |
 
 Umbrella issues [#3735](https://github.com/Mikecranesync/MIRA/issues/3735)
 and [#3740](https://github.com/Mikecranesync/MIRA/issues/3740) remain useful product
@@ -135,7 +137,8 @@ Correctness/safety in parallel
                                                      |
                                        owner-signed customer GO / NO-GO
 
-Parallel P1: #3883 public demo; #3796 staging; #3785/#3786/#3831 hardening
+Parallel P1: #3883 public demo; #3796 staging; #3785/#3786/#3831 hardening;
+#3886/#3887 capability decisions and evidence
 ```
 
 ### Lane rules

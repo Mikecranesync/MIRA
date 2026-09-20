@@ -20,7 +20,11 @@ parallel with the current mobile release/Pixel gate
 phone/web proof [#3882](https://github.com/Mikecranesync/MIRA/issues/3882) ->
 default-route cutover [#3880](https://github.com/Mikecranesync/MIRA/issues/3880)
 -> explicit human go/no-go. Public demo proof is parallel in
-[#3883](https://github.com/Mikecranesync/MIRA/issues/3883).
+[#3883](https://github.com/Mikecranesync/MIRA/issues/3883). The UTC date rollover
+also expired two pre-existing capability reviews; #3885 landed the canonical
+2026-10-19 deferrals, while their actual closure work is tracked in
+[#3886](https://github.com/Mikecranesync/MIRA/issues/3886) and
+[#3887](https://github.com/Mikecranesync/MIRA/issues/3887).
 
 Refresh live state before acting. A merge, green CI, image, signed APK,
 installation, launch, or direct-route screenshot is not interchangeable with a
