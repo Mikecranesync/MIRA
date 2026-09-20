@@ -76,7 +76,8 @@ capabilities:
     owner: null
     owner_missing: >-
       No owner recorded. It is enabled in production and nobody is named for it —
-      the single most actionable gap in this registry.
+      the single most actionable gap in this registry. Current closure is tracked
+      in issue #3886.
     ci_jobs: []
     required_checks: []
     evidence:
@@ -98,7 +99,8 @@ capabilities:
       (mira-crawler/tests/test_run_baseline.py, test_machine_memory.py,
       test_historize_runs_integration.py) run in no CI job — mira-crawler/tests/
       is enumerated per-file at ci.yml:906 and none is named (#3089 class) — and
-      no run-diff artifact has been reviewed. "Enabled" is not "proven".
+      no real NeonRunStore production artifact has been reviewed. "Enabled" is
+      not "proven". Issue #3886 owns the current decision/evidence gap.
     acknowledged_rules: []
     promotion_criteria:
       - "DONE 2026-08-19 - produce and review a run-diff artifact (see evidence)."
@@ -243,6 +245,7 @@ capabilities:
     owner_missing: >-
       ADR-0033, which governs this contract, is itself status Proposed and
       awaiting Mike — so ownership is pending that decision, not merely unassigned.
+      Current closure is tracked in issue #3887.
     ci_jobs:
       - test-eval-offline          # runs tests/test_context_contract.py
     required_checks: []
@@ -250,7 +253,8 @@ capabilities:
     rollback: "Unset MIRA_CONTEXT_CONTRACT in Doppler factorylm/stg."
     blocker: >-
       ADR-0033 is Proposed, not accepted. Production enablement should not
-      precede that decision.
+      precede that decision. Issue #3887 owns the decision and staging-evidence
+      gap.
     acknowledged_rules: []
     promotion_criteria:
       - "ADR-0033 accepted or explicitly re-scoped."
@@ -499,7 +503,8 @@ capabilities:
       includes the foundation (#3625), interaction and composer (#3628),
       mobile behavior and fixture matrix (#3632), connected mobile chat and
       whole-app adapters (#3633/#3639), subsequent mobile hardening (#3642),
-      and shared-shell Slice A (#3643).
+      shared-shell Slice A (#3643), and the Hub `/v3` host/home path
+      (#3839/#3875).
       FACTORYLM-UNIFIED-UI-CUTOVER-001 charter:
       docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
     customer_outcome: >-
@@ -523,6 +528,7 @@ capabilities:
       - "mira-mobile/src/unified/                           # platform adapter and notebook transforms"
     consumers:
       - "mira-mobile canary                     # device-local flm.chatui.v1=unified opt-in"
+      - "mira-hub /v3                           # merged on main; not yet deployed/default"
     schema: []
     environments:
       dev: unset
@@ -561,6 +567,10 @@ capabilities:
         note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
       - path: mira-mobile/tests/unified-root.test.tsx
         note: "Whole-app mobile shell host behavior."
+      - path: mira-hub/src/factorylm-ui/hub-host-logic.test.ts
+        note: "Hub HOME, General-project selection, loading gate, and New-project host behavior from #3875."
+      - path: docs/promo-screenshots/2026-09-19_hub-v3-shell-thread-persists-after-reload_desktop.png
+        note: "Exact #3875 proof screenshot: the Hub /v3 thread persists after reload; not production proof."
       - path: https://updates.factorylm.com/manifest.canary.json
         note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
     rollback: >-
@@ -570,15 +580,19 @@ capabilities:
       seams. If the canary bundle itself is bad, use the signed OTA rollback
       procedure in docs/release/android/ota.md. Production remains unset.
     reason: >-
-      The shared shell is connected and CI-covered on the opt-in mobile canary,
-      but physical-handset Golden Conversation proof has not yet been recorded
-      for canary 1.1.7 and the new shell is not the production default. No
-      database, provider, Hub route, or public-web cutover is claimed.
+      The shared shell is connected and CI-covered on the opt-in mobile canary
+      and is hosted at Hub `/v3` on main, but production still reports recovery
+      SHA 0178b1b0776f30cccde42c8d255031254b882a38. A current physical-handset
+      Golden Conversation and one-thread phone/web proof have not been recorded,
+      and the authenticated root still selects `/feed`. No production-default
+      or public-web cutover is claimed.
     promotion_criteria:
       - "Record the Golden Conversation on a physical canary phone at the exact OTA release SHA: sign in, open/create thread, ask, attach evidence, cited answer, save/reload, and reopen the same thread."
       - "Keep the device-local classic/v2 rollback available until the physical canary proof and accessibility/performance gates pass."
-      - "Connect Hub and public through bounded adapters and their own CI before claiming cross-surface or production-default rollout."
-    review_by: "2026-09-20"
+      - "Deploy and prove the exact Hub /v3 release (#3879), then prove one persisted thread phone -> web -> phone (#3882)."
+      - "Make /v3 the authenticated default only with a tested legacy recovery path (#3880); public demo proof remains separate (#3883)."
+      - "REVIEW 2026-09-20 -> 2026-09-27 (reason): #3839/#3875 connect and exercise Hub /v3 on main, so the record was re-decided rather than date-bumped. Production, current Pixel release (#3881), cross-surface continuity (#3882), and default cutover (#3880) remain open. Re-decide after exact-release evidence; do not extend again as a date-only fix."
+    review_by: "2026-09-27"
     notes: >-
       Do not create a second capability registry for UI cutover state — this
       record is the ONE capability-closure entry for the unified shell
