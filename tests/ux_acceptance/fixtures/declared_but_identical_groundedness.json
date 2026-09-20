@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000006",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "The half-fix worth catching: both bases are declared in markup but render with one identical treatment, so the technician still cannot tell them apart.",
+  "nodes": [
+    {
+      "id": "a1",
+      "tag": "div",
+      "text": "Serial number 49849 is listed on the nameplate.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "a2",
+      "tag": "div",
+      "text": "A grinding noise usually indicates bearing wear.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "b1",
+      "tag": "span",
+      "text": "\u25cf cited",
+      "attrs": {
+        "class": "fl-part fl-pill",
+        "data-part-type": "evidence_basis",
+        "data-basis-kind": "cited",
+        "data-authorized": "false"
+      },
+      "style": {
+        "color": "rgb(17,17,17)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "b2",
+      "tag": "span",
+      "text": "\u25cf general",
+      "attrs": {
+        "class": "fl-part fl-pill",
+        "data-part-type": "evidence_basis",
+        "data-basis-kind": "general",
+        "data-authorized": "false"
+      },
+      "style": {
+        "color": "rgb(17,17,17)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "rendered": true,
+      "hittable": true
+    }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
+  ]
+}
