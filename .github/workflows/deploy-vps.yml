@@ -1,22 +1,28 @@
 name: Deploy to VPS
 
-# Deploy gate (2026-05-18, see docs/specs/staging-environment-spec.md):
-#   This workflow refuses to deploy unless the most-recent "Staging Gate" run
-#   on the same commit succeeded. Staging Gate runs on every PR to main against
-#   the NeonDB staging branch — by the time code lands on main, it has been
-#   graded by the rubric in docs/specs/mira-answer-quality-standard.md.
-#   `workflow_dispatch` hotfixes bypass the check (set inputs.skip_staging_gate=true).
+# Exact-source production deploy (#3910 + #3911, release-hardening carrier).
+#
+#   approved_rc_sha == checked-out == built == deployed == reported-at-runtime
+#
+#   * The ONLY source of the deployed code is the `approved_rc_sha` input — an
+#     immutable 40-hex commit. This file never resolves the moving main ref; the
+#     workflow definition runs from main (the trusted controller), the deployed
+#     source is the input, and the two are deliberately kept separate.
+#   * A vX.Y.Z release tag must point AT that SHA (resolved by
+#     .github/scripts/resolve_release_tag.sh, which now fails closed).
+#   * The Staging Gate must have passed on the PR head that produced the SHA.
+#   * A deployed-staging receipt artifact (`staging-receipt-<sha>`, written by
+#     deploy-staging.yml) must exist, be unexpired, and verify for the same SHA.
+#   * The production migration-drift gate ALWAYS runs and fails closed. There are
+#     no skip_* inputs; gate bypasses were removed, not made optional.
+#   * Images are built with `--no-cache --pull`; the built image IDs must equal
+#     the running container image IDs; /api/version (hub) and /api/health (web)
+#     must report gitSha == approved_rc_sha, or the run STOPs naming the prior
+#     tag/SHA as the rollback anchor. A `production-receipt-<sha>` artifact
+#     records the proof.
+#   AUTO-DEPLOY stays DISABLED (#3800): a merge to main must NOT deploy production.
 
 on:
-  # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
-  # Push → smoke-test.yml → deploy-vps.yml (also gated by Staging Gate verification).
-  # AUTO-DEPLOY DISABLED for the OVH cutover (#3800): a merge to main must NOT
-  # deploy production. workflow_dispatch only until the first OVH deploy is
-  # explicitly authorized. (Was: workflow_run on "Smoke Test" completing @ main.)
-  # workflow_run: [disabled for OVH cutover]
-
-  # Manual deploy bypass — for hotfixes when you need to deploy without
-  # waiting for smoke. Still runs health checks post-deploy.
   workflow_dispatch:
     inputs:
       approved_rc_sha:
@@ -348,7 +354,7 @@ jobs:
           [[ "$APPROVED_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid approved_release_tag"; exit 1; }
           SERVICES_B64="$(printf '%s' "$NORMALIZED_SERVICES" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            ubuntu@40.160.141.61 "sudo bash -s -- '$SERVICES_B64' '$APPROVED_RC_SHA' '$APPROVED_RELEASE_TAG'" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s -- '$SERVICES_B64' '$APPROVED_RC_SHA' '$APPROVED_RELEASE_TAG'" << 'ENDSSH' 2>&1 | tee "$RUNNER_TEMP/deploy.out"
 
           set -euo pipefail
           SERVICES="$(printf '%s' "$1" | base64 -d)"
@@ -364,30 +370,38 @@ jobs:
           touch /opt/mira/.deploy-in-progress
           trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
 
-          echo "=== Pull code — pin to the release tag AT the gated SHA (#3055) ==="
-          # Deploy ONE immutable commit — the SHA that passed the staging gate +
-          # smoke — pinned to its release tag, NEVER a moving origin/main. A rollback
-          # target is only real if prod references a tag (docs/versioning.md).
-          # version-tag.yml lays vX.Y.Z on that merge commit asynchronously, so we
-          # bounded-poll for the tag AT $DEPLOY_SHA via the resolver, run from the
-          # object fetched at that SHA (so it is the EXACT deployed version):
-          #   prints the tag on success; prints empty ONLY on an authorised hotfix
-          #   fallback (we then checkout the pinned SHA); exit 1 = FAIL CLOSED.
-          git fetch origin main --tags --force
-          if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
-            echo "::error::Deploy SHA ${DEPLOY_SHA} not present after fetch — refusing to deploy an unknown ref."
+          echo "=== Rollback anchor (the code running BEFORE this deploy) ==="
+          PRIOR_SHA="$(git rev-parse HEAD)"
+          PRIOR_TAG="$(git tag --points-at HEAD --list 'v[0-9]*' | sort -V | tail -1)"
+          echo "Prior: sha=${PRIOR_SHA} tag=${PRIOR_TAG:-<none>}"
+
+          echo "=== Pull code — the exact approved RC SHA, never a moving ref (#3910) ==="
+          # Deploy ONE immutable commit: the approved RC SHA. The release tag must
+          # point AT it; the SHA itself is what gets checked out (the tag is a
+          # label for /api/version + rollback, not the anchor). No origin/main.
+          git fetch origin --tags --force
+          git fetch origin "$APPROVED_RC_SHA"
+          if ! git cat-file -e "${APPROVED_RC_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Approved SHA ${APPROVED_RC_SHA} not present after fetch — refusing to deploy an unknown ref."
             exit 1
           fi
-          git show "${DEPLOY_SHA}:.github/scripts/resolve_release_tag.sh" > /tmp/resolve_release_tag.sh \
-            || { echo "::error::resolve_release_tag.sh missing at ${DEPLOY_SHA} — cannot verify release identity; failing closed."; exit 1; }
-          RELEASE_TAG="$(DEPLOY_SHA="$DEPLOY_SHA" ALLOW_MOVING_FALLBACK="${ALLOW_MOVING_FALLBACK:-0}" \
-            bash /tmp/resolve_release_tag.sh)"
-          if [ -n "$RELEASE_TAG" ]; then
-            echo "Deploying release tag $RELEASE_TAG (immutably == $DEPLOY_SHA)"
-            git -c advice.detachedHead=false checkout --force "$RELEASE_TAG"
-          else
-            echo "::warning::HOTFIX fallback: no release tag at $DEPLOY_SHA — deploying the pinned SHA (still immutable; version will report 'unknown')"
-            git -c advice.detachedHead=false checkout --force "$DEPLOY_SHA"
+          git show "${APPROVED_RC_SHA}:.github/scripts/resolve_release_tag.sh" > /tmp/resolve_release_tag.sh \
+            || { echo "::error::resolve_release_tag.sh missing at ${APPROVED_RC_SHA} — cannot verify release identity; failing closed."; exit 1; }
+          RELEASE_TAG="$(DEPLOY_SHA="$APPROVED_RC_SHA" bash /tmp/resolve_release_tag.sh)"
+          if [ "$RELEASE_TAG" != "$APPROVED_RELEASE_TAG" ]; then
+            echo "::error::Resolved release tag '${RELEASE_TAG}' != authorized '${APPROVED_RELEASE_TAG}' — failing closed."
+            exit 1
+          fi
+          TAGGED_SHA="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          if [ "$TAGGED_SHA" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::Release tag ${RELEASE_TAG} points at ${TAGGED_SHA}, not ${APPROVED_RC_SHA} — failing closed."
+            exit 1
+          fi
+          echo "Deploying ${APPROVED_RC_SHA} (release tag ${RELEASE_TAG})"
+          git -c advice.detachedHead=false checkout --force "$APPROVED_RC_SHA"
+          if [ "$(git rev-parse HEAD)" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::Checkout did not land on ${APPROVED_RC_SHA} — failing closed."
+            exit 1
           fi
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
@@ -457,21 +471,30 @@ jobs:
           # Deploy identity (#2226) — bake the SHA/version/time into the hub image
           # so /api/version + /api/health report which code is live. Exported here
           # so docker-compose build.args pick them up; default "unknown" otherwise.
-          export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+          export MIRA_GIT_SHA="$APPROVED_RC_SHA"
           # `/VERSION` was retired 2026-08-02 (#3064) — the version is DERIVED from
-          # the release tag. Reuse RELEASE_TAG (computed above, and the ref actually
-          # checked out) rather than re-deriving with `git describe`: in the no-tag
-          # fallback branch the checkout is origin/main, and `git describe` would
-          # name the PREVIOUS tag — reporting a version that is not the running
-          # code. Empty ⇒ "unknown", which is the honest answer there.
+          # the release tag, which was verified above to point AT the approved SHA.
           export MIRA_APP_VERSION="${RELEASE_TAG#v}"
-          export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
           export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
 
           echo "=== Build images (old containers keep serving) ==="
           # Build BEFORE any teardown. Nothing user-facing is interrupted here.
-          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml build $TARGETS
+          # --no-cache --pull: no stale local layer and a fresh base image, so the
+          # image is built from the approved source (exact source provenance; base
+          # images and dependency fallbacks remain mutable inputs — this is NOT a
+          # reproducible-build claim).
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml build --no-cache --pull $TARGETS
+
+          echo "=== Built image identities ==="
+          BUILT_IDS="$(mktemp)"
+          for svc in $TARGETS; do
+            img="$(doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config --images "$svc" | head -1)"
+            [ -n "$img" ] || { echo "::error::compose reports no image for ${svc} — failing closed."; exit 1; }
+            id="$(docker image inspect --format '{{.Id}}' "$img")"
+            [ -n "$id" ] || { echo "::error::no built image id for ${svc} (${img}) — failing closed."; exit 1; }
+            echo "${svc}=${id}" | tee -a "$BUILT_IDS"
+          done
 
           echo "=== Swap to new containers (health-gated) ==="
           # --wait blocks until every recreated service is healthy (8 of the 9 targets
@@ -556,6 +579,20 @@ jobs:
           fi
           rm -f "$swap_out"
 
+          echo "=== Running image identities must equal the built ones ==="
+          RUNNING_IDS="$(mktemp)"
+          for svc in $TARGETS; do
+            cid="$(doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml ps -q "$svc")"
+            [ -n "$cid" ] || { echo "::error::no running container for ${svc} after the swap — failing closed."; exit 1; }
+            running="$(docker inspect --format '{{.Image}}' "$cid")"
+            built="$(grep "^${svc}=" "$BUILT_IDS" | cut -d= -f2-)"
+            if [ -z "$running" ] || [ "$running" != "$built" ]; then
+              echo "::error::built/running image mismatch for ${svc}: built=${built} running=${running} — STOP. Rollback anchor: ${PRIOR_TAG:-<none>} @ ${PRIOR_SHA}"
+              exit 1
+            fi
+            echo "${svc}=${running}" | tee -a "$RUNNING_IDS"
+          done
+
           echo "=== Health check ==="
           # Only check mira-pipeline if it was in the deploy targets (minimal Hub+web does not include it)
           if echo " $TARGETS " | grep -q " mira-pipeline "; then
@@ -598,15 +635,96 @@ jobs:
             sleep 3
           done
           echo "mira-hub health: $HUB_STATUS"
-          if [ "$HUB_STATUS" != "200" ]; then
-            echo "WARNING: mira-hub health returned $HUB_STATUS — check container logs"
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-hub
-            # Don't fail the whole deploy on hub health alone — pipeline is the critical path
+          HUB_GIT_SHA=""
+          if echo " $TARGETS " | grep -q " mira-hub "; then
+            if [ "$HUB_STATUS" != "200" ]; then
+              echo "::error::mira-hub health returned $HUB_STATUS — STOP. Rollback anchor: ${PRIOR_TAG:-<none>} @ ${PRIOR_SHA}"
+              doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-hub
+              exit 1
+            fi
+            echo "=== mira-hub runtime identity ==="
+            HUB_GIT_SHA="$(curl -sfL http://127.0.0.1:3101/api/version | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))")"
+            if [ "$HUB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
+              echo "::error::mira-hub runtime gitSha '${HUB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP. Rollback anchor: ${PRIOR_TAG:-<none>} @ ${PRIOR_SHA}"
+              exit 1
+            fi
+            echo "mira-hub reports gitSha=${HUB_GIT_SHA} (== approved)"
+          else
+            echo "mira-hub: not in deploy targets, skipping identity check"
+          fi
+
+          WEB_GIT_SHA=""
+          if echo " $TARGETS " | grep -q " mira-web "; then
+            echo "=== mira-web runtime identity ==="
+            WEB_GIT_SHA="$(curl -sfL http://127.0.0.1:3200/api/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))")"
+            if [ "$WEB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
+              echo "::error::mira-web runtime gitSha '${WEB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP. Rollback anchor: ${PRIOR_TAG:-<none>} @ ${PRIOR_SHA}"
+              exit 1
+            fi
+            echo "mira-web reports gitSha=${WEB_GIT_SHA} (== approved)"
+          else
+            echo "mira-web: not in deploy targets, skipping identity check"
           fi
 
           echo "=== Deploy complete ==="
           doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml ps --format "table {{.Name}}\t{{.Status}}"
+
+          # One-line machine-readable receipt; the runner extracts, verifies and
+          # uploads it as the durable production-receipt-<sha> artifact.
+          BUILT_IDS="$BUILT_IDS" RUNNING_IDS="$RUNNING_IDS" \
+          APPROVED_RC_SHA="$APPROVED_RC_SHA" RELEASE_TAG="$RELEASE_TAG" \
+          HUB_GIT_SHA="$HUB_GIT_SHA" WEB_GIT_SHA="$WEB_GIT_SHA" \
+          PRIOR_SHA="$PRIOR_SHA" PRIOR_TAG="$PRIOR_TAG" \
+          python3 - <<'PYRECEIPT'
+          import json, os, datetime
+          def pairs(path):
+              out = {}
+              with open(path) as fh:
+                  for line in fh:
+                      line = line.strip()
+                      if "=" in line:
+                          k, v = line.split("=", 1)
+                          out[k] = v
+              return out
+          receipt = {
+              "schema": "factorylm.deploy-receipt/1",
+              "environment": "production",
+              "approved_rc_sha": os.environ["APPROVED_RC_SHA"],
+              "release_tag": os.environ["RELEASE_TAG"],
+              "runtime": {
+                  "mira-hub": os.environ.get("HUB_GIT_SHA") or None,
+                  "mira-web": os.environ.get("WEB_GIT_SHA") or None,
+              },
+              "built_images": pairs(os.environ["BUILT_IDS"]),
+              "running_images": pairs(os.environ["RUNNING_IDS"]),
+              "target": {"host": "40.160.141.61", "compose": "docker-compose.saas.yml+docker-compose.production.yml"},
+              "prior": {"sha": os.environ["PRIOR_SHA"], "tag": os.environ.get("PRIOR_TAG") or None},
+              "deployed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+          print("FACTORYLM_DEPLOY_RECEIPT_JSON=" + json.dumps(receipt, separators=(",", ":"), sort_keys=True))
+          PYRECEIPT
+          rm -f "$BUILT_IDS" "$RUNNING_IDS"
           ENDSSH
+
+      - name: Extract and verify the production receipt
+        env:
+          APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 tools/staging_receipt.py extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
+            --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
+          python3 tools/staging_receipt.py verify --receipt production-receipt.json \
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1
+
+      - name: Upload production receipt (90-day retention)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-receipt-${{ needs.authorize-source.outputs.approved_rc_sha }}
+          path: production-receipt.json
+          retention-days: 90
+          if-no-files-found: error
 
       - name: nginx sites-enabled hygiene (#3173)
         # READ-ONLY. /etc/nginx/nginx.conf includes sites-enabled/ by a BARE
@@ -666,5 +784,5 @@ jobs:
       - name: Notify failure
         if: failure()
         run: |
-          echo "::error::VPS deploy failed — check logs above. SSH to 40.160.141.61 (ubuntu) and run:"
+          echo "::error::VPS deploy failed — check logs above (the 'Rollback anchor' line names the prior tag/SHA). SSH to 40.160.141.61 (ubuntu) and run:"
           echo "::error::  cd /opt/mira && doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=50"
