@@ -12,6 +12,7 @@ import {
   type ManualSource,
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
+import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,20 @@ export async function POST(req: Request) {
     );
   }
   const manufacturer = (body.manufacturer ?? "").trim() || null;
+
+  // SAFETY HARD-STOP — before retrieval and before any provider call, as every
+  // other chat route gates (asset, node, notebook, hub/ask). The IP rate limit
+  // above necessarily runs first: the question is not known until the body is
+  // parsed. The classifier carries the educational carve-out ("what is LOTO?"
+  // is a question, not a hazard report), so the stranger questions this route
+  // exists for still answer. Same stop shape as the sibling routes (#3876).
+  const safetyTrigger = matchSafetyStop(question);
+  if (safetyTrigger) {
+    return NextResponse.json(
+      { answer: SAFETY_STOP, citations: [], provider: null },
+      { headers: { "X-Safety-Stop": safetyTrigger } },
+    );
+  }
 
   // Pull the top-K chunks.
   let chunks: ManualChunk[] = [];
