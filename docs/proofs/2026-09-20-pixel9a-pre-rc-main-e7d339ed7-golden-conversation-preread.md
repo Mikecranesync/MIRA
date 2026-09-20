@@ -88,7 +88,7 @@ restart 03:07 · web follow-up 03:08:40→03:09 · phone relaunch 03:10.
    #3875 list; presentation, shared-core lane.
 4. Cosmetic: the citation sheet's Close button sits under the Android navigation bar (step 3 shot).
 
-Items 1–2 are mobile-product-context lane (mine); filed as issues from this run. Item 3 needs the shared-core claim.
+Items 1–2 are mobile-product-context lane (mine): filed as #3896 (New project disabled in a conversation, P1) and #3895 (created project missing from the drawer, P0). Item 3 needs the shared-core claim.
 
 ## Restore + cleanup
 
