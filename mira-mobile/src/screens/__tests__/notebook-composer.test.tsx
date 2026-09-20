@@ -256,6 +256,52 @@ describe("NotebookScreen composer", () => {
     expect(screen.queryByText(/couldn't find anything about that in your sources/)).toBeNull();
   });
 
+  it("#3862 opposite direction: asset + source + insufficient_evidence → exactly ONE call, the abstention renders (a bound machine never gets a General answer)", async () => {
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "CV-101", manufacturer: "Acme", model: "Conveyor", asset: { entityId: "e1" } },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "", citations: [], status: "insufficient_evidence" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/couldn't find anything about that in your sources/);
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    expect(askNotebook.mock.calls[0][2]).toEqual(["d1"]);
+    expect((askNotebook.mock.calls[0][3] as AskOpts).mode).toBeUndefined();
+  });
+
+  it("#3862: a Retry replays the identical grounded body — it never triggers the general re-ask", async () => {
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "RA-CELL-001", manufacturer: null, model: null, asset: null },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    // First send: the grounded ask fails at transport (retryable). Retry: the
+    // replayed grounded body comes back insufficient_evidence — and must NOT
+    // fan out into a general re-ask, because Retry re-sends the identical body.
+    askNotebook
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ answer: "", citations: [], status: "insufficient_evidence" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    fireEvent.click(retry);
+    await screen.findByText(/couldn't find anything about that in your sources/);
+    expect(askNotebook).toHaveBeenCalledTimes(2);
+    const [first, second] = askNotebook.mock.calls as [unknown[], unknown[]];
+    expect((second[3] as { clientRequestId?: string }).clientRequestId).toBe((first[3] as { clientRequestId?: string }).clientRequestId);
+    expect((second[3] as AskOpts).mode).toBeUndefined();
+  });
+
   it("#3742: asset + sources enabled → mode:undefined, scope:[docIds] (grounded)", async () => {
     // When a machine IS selected (notebook.asset exists) AND sources are enabled,
     // mode should be omitted (undefined) and scope should contain the enabled docIds.

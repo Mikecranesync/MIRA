@@ -380,13 +380,17 @@ export function NotebookScreen({
           onUpdate: (partial) => setPending({ q: question, a: partial }),
         });
       let a = await ask(body);
-      // A grounded turn the selected sources could not answer: re-ask once in
-      // general mode under its OWN request id (the server fences idempotency
-      // on the exact payload, so a re-send with a different mode must not
-      // collide with the abstained turn). Never for a replay (Retry re-sends
-      // the identical body) and never when the turn was already general.
+      // A grounded turn the selected sources could not answer, on an UNBOUND
+      // notebook only (the #3862/#3742 case: a general question with a manual
+      // attached): re-ask once in general mode under its OWN request id (the
+      // server fences idempotency on the exact payload, so a re-send with a
+      // different mode must not collide with the abstained turn). A machine-
+      // BOUND notebook keeps its abstention — an answer about that machine is
+      // grounded or it is not. Never for a replay (Retry re-sends the identical
+      // body) and never when the turn was already general.
       if (
         !replay &&
+        !notebook.asset &&
         body.mode === undefined &&
         !isTruncatedTurn(a) &&
         a.status === "insufficient_evidence" &&
