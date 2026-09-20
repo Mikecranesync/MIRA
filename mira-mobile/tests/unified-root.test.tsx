@@ -91,6 +91,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
         data-initial-sensor={props.initialSensorStart ?? ""}
+        data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
@@ -193,6 +194,24 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toMatch(/^thrd_/));
     expect(screen.getByTestId("nb").getAttribute("data-thread-id")).not.toBe(firstThread);
+  });
+
+  it("a project created from the New-project form is in the drawer's Project list at once, Sources included (#3895)", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pixel pre-read" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Name the machine" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    // The form's createNotebook mock answers with id nb-general and the typed
+    // name; the host must land in it AND list it — on the phone the drawer had
+    // no row for the new project (and no Sources to upload into) until the app
+    // was killed and relaunched.
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(JSON.parse(nb.getAttribute("data-project-names") ?? "[]")).toContain("Pixel pre-read");
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {
