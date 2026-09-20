@@ -1,38 +1,35 @@
-import { expect, test } from "bun:test";
-import { getHealthIdentity } from "../lib/health-identity.js";
+import { describe, expect, test } from "bun:test";
+import { deployIdentity } from "../capabilities/deploy-identity.js";
 
-// Test the /api/health endpoint identity contract: gitSha, version, and builtAt
-// from environment variables (or "unknown" without them).
+// /api/health returns deployIdentity() (server.ts). The deploy workflows assert
+// gitSha == approved_rc_sha after the swap (#3910), so the identity must come
+// from the build-time env and never from a hardcoded version string.
+// Tested through the capability module: importing server.ts has module-level
+// side effects that perturb the rest of the suite.
 
-test("getHealthIdentity returns identity fields from environment", () => {
-  const testSha = "a".repeat(40); // 40-char hex SHA
-  const testVersion = "1.2.3";
-  const testBuildTime = "2026-09-20T18:00:00Z";
+describe("deployIdentity (#3910)", () => {
+  test("reports gitSha, version and builtAt from the build-time env", () => {
+    const body = deployIdentity({
+      MIRA_GIT_SHA: "a".repeat(40),
+      MIRA_APP_VERSION: "3.349.16",
+      MIRA_BUILD_TIME: "2026-09-20T18:00:00Z",
+    });
+    expect(body.status).toBe("ok");
+    expect(body.service).toBe("mira-web");
+    expect(body.gitSha).toBe("a".repeat(40));
+    expect(body.version).toBe("3.349.16");
+    expect(body.builtAt).toBe("2026-09-20T18:00:00Z");
+  });
 
-  process.env.MIRA_GIT_SHA = testSha;
-  process.env.MIRA_APP_VERSION = testVersion;
-  process.env.MIRA_BUILD_TIME = testBuildTime;
+  test("reports 'unknown' when the build args were never injected", () => {
+    const body = deployIdentity({});
+    expect(body.gitSha).toBe("unknown");
+    expect(body.version).toBe("unknown");
+    expect(body.builtAt).toBe("unknown");
+  });
 
-  const identity = getHealthIdentity();
-
-  expect(identity.status).toBe("ok");
-  expect(identity.service).toBe("mira-web");
-  expect(identity.gitSha).toBe(testSha);
-  expect(identity.version).toBe(testVersion);
-  expect(identity.builtAt).toBe(testBuildTime);
-});
-
-test("getHealthIdentity returns 'unknown' when environment variables are not set", () => {
-  // Clear environment variables
-  delete process.env.MIRA_GIT_SHA;
-  delete process.env.MIRA_APP_VERSION;
-  delete process.env.MIRA_BUILD_TIME;
-
-  const identity = getHealthIdentity();
-
-  expect(identity.status).toBe("ok");
-  expect(identity.service).toBe("mira-web");
-  expect(identity.gitSha).toBe("unknown");
-  expect(identity.version).toBe("unknown");
-  expect(identity.builtAt).toBe("unknown");
+  test("never reports a hardcoded semantic version as source identity", () => {
+    const body = deployIdentity({ MIRA_APP_VERSION: "0.2.1" });
+    expect(body.gitSha).toBe("unknown");
+  });
 });

@@ -32,7 +32,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
-import { getHealthIdentity } from "./lib/health-identity.js";
+import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -384,7 +384,10 @@ app.get("/", (c) => {
 });
 
 // Health probe
-app.get("/api/health", (c) => c.json(getHealthIdentity()));
+// Deploy identity (#3910): reports the build-time MIRA_GIT_SHA so the deploy
+// workflows can assert gitSha == approved_rc_sha at runtime. See
+// src/capabilities/deploy-identity.ts.
+app.get("/api/health", (c) => c.json(deployIdentity()));
 
 // Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe
 app.route("/api/probe-state", probeStateRoute);
