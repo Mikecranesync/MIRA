@@ -39,7 +39,12 @@ cat > "$SSH_STDIN_FILE"
 
 
 def _load_workflow(path: Path) -> dict:
-    return yaml.safe_load(path.read_text())
+    wf = yaml.safe_load(path.read_text())
+    # PyYAML 1.1: bare `on:` becomes boolean True, not the string "on"
+    # Normalize to "on" key for compatibility with test assertions
+    if True in wf and "on" not in wf:
+        wf["on"] = wf.pop(True)
+    return wf
 
 
 def _deploy_step_script(workflow: dict) -> str:
