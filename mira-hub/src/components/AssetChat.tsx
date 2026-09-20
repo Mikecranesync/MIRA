@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, ClipboardCheck, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { SourceChips, type SourceChip } from "@/components/SourceChips";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
 
 interface ChatMessage {
@@ -20,6 +22,102 @@ interface ChatMessage {
   stopped?: boolean;
   traceId?: string;
   nextCheck?: string;
+  /** Retrieved manual sources for this answer. The route has ALWAYS emitted
+   *  these — its own comment at the emit site reads "Emit retrieved sources up
+   *  front so the UI can render citation chips" — and this client dropped the
+   *  frame, so the surface showed none. E-1: the citation is the product's
+   *  claim; withholding it is not a styling gap. */
+  sources?: SourceChip[];
+}
+
+/**
+ * Humane failure copy (gates G-1…G-5).
+ *
+ * The live product said `Chat unavailable (412). Try again or refresh the page.`
+ * — three defects in one sentence. A status code is not a sentence; refreshing
+ * cannot satisfy a gate, restore a connection, or re-run a provider call, so it
+ * is advice that cannot work; and a 412 is not an outage at all — it is MIRA
+ * REFUSING for a stated reason, which reads as breakage only because we
+ * rendered it as breakage.
+ *
+ * The composer already gets the failed text back (`restoreComposer`), so
+ * "your message is still here" is a statement of fact, not reassurance.
+ */
+export function failureMessage(status: number | null): string {
+  if (status === 412) {
+    return "MIRA needs to know which machine before answering that. Your message is still here.";
+  }
+  if (status !== null && status >= 500) {
+    return "MIRA could not answer that just now. Your message is still here.";
+  }
+  return "Couldn't reach MIRA. Your message is still here.";
+}
+
+/** The HTTP status behind a failure, or null when the failure was transport —
+ *  no network, aborted socket, DNS. Kept separate from the copy so the number
+ *  can reach a log without ever reaching a technician. */
+export function statusFromError(err: unknown): number | null {
+  const m = /\bstatus (\d{3})\b/.exec((err as Error)?.message ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * What the Copy control puts on the clipboard for an asset-scoped answer (B-8).
+ *
+ * Deliberately thinner than the notebook chat's payload, and the difference is
+ * a product gap rather than a styling choice: `ChatMessage` carries **no
+ * citations**, so this surface renders none and there are no sources to attach.
+ * The notebook chat sends its sources and its basis label along with the text;
+ * here the answer travels alone because that is all the surface has.
+ *
+ * A partial answer says so. If the technician pressed Stop mid-stream, the text
+ * on screen is whatever had arrived — pasting that into a work order without
+ * the caption would present a truncated answer as a complete one.
+ */
+export function assetAnswerCopyPayload(msg: {
+  content: string;
+  stopped?: boolean;
+  hasSafetyAlert?: boolean;
+  sources?: readonly SourceChip[];
+}): string {
+  const lines = [msg.content.trim()];
+  if (msg.sources && msg.sources.length > 0) {
+    lines.push("");
+    for (const s of msg.sources) {
+      lines.push(`[${s.index}] ${s.title}${s.page != null ? ` · p.${s.page}` : ""}`);
+    }
+  }
+  if (msg.stopped) lines.push("", "(Stopped — this answer was cut short.)");
+  if (msg.hasSafetyAlert) lines.push("", "⚠ A safety alert was shown with this answer.");
+  return lines.join("\n");
+}
+
+/** The copy affordance. Its own component so the "Copied" acknowledgement is
+ *  scoped to one answer rather than appearing under every one. */
+function CopyAssetAnswer({ msg }: { msg: ChatMessage }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      data-testid="copy-asset-answer"
+      aria-label="Copy this answer"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(assetAnswerCopyPayload(msg))
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+      className="mt-1.5 rounded-lg border px-3 text-xs"
+      style={{
+        background: "var(--surface-0)",
+        borderColor: "var(--border)",
+        color: "var(--foreground)",
+        minHeight: 44,
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
 }
 
 interface AssetChatProps {
@@ -93,14 +191,28 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
+          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm"
           style={{
             background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
         >
-          {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+          {msg.content ? (
+            /* B-3 — render GFM, do not print it. This surface used
+               `whitespace-pre-wrap` on the raw string, so every bold, bullet
+               and heading MIRA produced arrived as literal syntax. The proof
+               needs no browser: WELCOME itself contains `**${name}**`, so the
+               first thing a technician saw on this screen was the asterisks.
+               Reuses the notebook's renderer rather than adding a second one —
+               one markdown behaviour across surfaces, not two. Citations are
+               passed empty here: the [n] tap-through belongs to the notebook's
+               EvidenceCitation shape, while this surface carries SourceChip and
+               renders its evidence as chips below. */
+            <AnswerMarkdown content={msg.content} citations={[]} />
+          ) : (
+            <span style={{ color: "var(--foreground-subtle)" }}>…</span>
+          )}
         </div>
         {msg.hasSafetyAlert && (
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
@@ -126,7 +238,21 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
             Next check: {msg.nextCheck}
           </div>
         )}
+        {!isSafety && <SourceChips sources={msg.sources} />}
         {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
+        {/* B-8 — a persistent action row under every answer, copy
+            non-negotiable. Suppressed on a safety stop: that is an instruction
+            to stop work, not an answer to relay.
+
+            NOTE the limit, because a copy button here is weaker than it looks:
+            `ChatMessage` carries no citations, so this surface renders none and
+            the copy has no sources to attach. On the notebook chat the sources
+            and the basis label travel with the text; here there is nothing to
+            travel. Fixing that is E-1/E-2 work on this surface, not a copy
+            control — see `assetAnswerCopyPayload`. */}
+        {msg.role === "assistant" && !isSafety && msg.content.trim() !== "" && (
+          <CopyAssetAnswer msg={msg} />
+        )}
       </div>
     </div>
   );
@@ -193,6 +319,10 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The message that failed, so Retry has something to re-send. The composer
+   *  also keeps it (restoreComposer), which is why the copy can truthfully say
+   *  "your message is still here". */
+  const [failedText, setFailedText] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -227,6 +357,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {
+    setError(null);
+    setFailedText(null);
     if (!text.trim() || streaming) return;
 
     setError(null);
@@ -257,7 +389,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
       });
 
       if (!res.ok) {
-        throw new Error(`Server error ${res.status}`);
+        // Machine-readable for `statusFromError`; never rendered.
+        throw new Error(`request failed with status ${res.status}`);
       }
 
       isSafety = res.headers.get("X-Safety-Stop") !== null;
@@ -287,6 +420,11 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
               traceId?: string;
               next_check?: string;
               safetyAlert?: boolean;
+              /** Retrieved manual sources. The route emits this frame whenever
+               *  `manualSources.length > 0`; this type omitted it, which is how
+               *  the frame came to be dropped silently — the compiler could not
+               *  object to reading a field the shape never declared. */
+              sources?: SourceChip[];
             };
             if (parsed.content) {
               setMessages((prev) => {
@@ -315,6 +453,17 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, traceId: tid };
+                }
+                return next;
+              });
+            }
+            if (Array.isArray(parsed.sources)) {
+              const src = parsed.sources as SourceChip[];
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, sources: src };
                 }
                 return next;
               });
@@ -351,12 +500,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         return;
       }
       console.error("[AssetChat] chat request failed:", err);
-      const statusCode = /(\d{3})/.exec((err as Error).message ?? "")?.[1];
-      setError(
-        statusCode
-          ? `Chat unavailable (${statusCode}). Try again or refresh the page.`
-          : "Connection lost. Check your network and try again.",
-      );
+      setError(failureMessage(statusFromError(err)));
+      setFailedText(text);
       setMessages((prev) => {
         const next = [...prev];
         next.pop(); // remove empty assistant bubble
@@ -457,11 +602,39 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         ))}
 
         {error && (
+          /* G-3/G-4 — degrade to the nearest working state, and give the
+             technician a BUTTON rather than a sentence telling them to try
+             again. Amber, not red: this is a state to act from, not damage.
+             Dismissible, so it cannot become the permanent banner the recon
+             found. */
           <div
-            className="text-xs px-3 py-2 rounded-lg"
-            style={{ background: "var(--status-red-bg)", color: "#991B1B", border: "1px solid #FECACA" }}
+            role="status"
+            data-testid="chat-error"
+            className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+            style={{ background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}
           >
-            {error}
+            <span className="flex-1">{error}</span>
+            {failedText && (
+              <button
+                type="button"
+                data-testid="chat-retry"
+                onClick={() => { const t = failedText; setError(null); setFailedText(null); void sendMessage(t); }}
+                className="rounded-lg border px-3"
+                style={{ borderColor: "#FDE68A", color: "#92400E", minHeight: 44 }}
+              >
+                Retry
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss"
+              data-testid="chat-error-dismiss"
+              onClick={() => { setError(null); setFailedText(null); }}
+              className="rounded-lg px-2"
+              style={{ color: "#92400E", minHeight: 44 }}
+            >
+              ×
+            </button>
           </div>
         )}
 
