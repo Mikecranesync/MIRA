@@ -111,6 +111,16 @@ scope the post-freeze job should claim; the PR itself stays draft/unmerged (dire
 - The pre-read proved persistence phone → legacy Hub notebook page (`/equipment/<id>/`) → phone (turn
   `534a980c-518c-4aa3-92ea-752bd9277383` appeared once). **`/v3` was not exercisable on prod `0178b1b07`** (old prototype
   page); #3882 steps 6–8 on the shared shell wait for the #3879 deploy.
+- **Idempotency / thread-identity code trace (BRAVO-B, read-only review on PR #3915, 17:06Z) backing rows B14/B17:**
+  `clientRequestId` is minted per send on both surfaces (mobile `NotebookScreen.tsx:351` `crypto.randomUUID()`, reused on
+  replay; web `chatBodyFor()` default). The Hub's `claimNotebookTurnRequest` (`chat/route.ts:706-742`) returns the stored
+  turn on `replay` (a reused id never creates a second turn → B17 "exactly once"), answers `409 + Retry-After` on
+  `in_progress` (concurrent duplicate → B14), rejects `mismatch` fail-closed (payload-bound), and proceeds on `claimed` with
+  a `requestClaimToken`. Thread identity converges: `storedThreadId()` maps mobile `null` and web `"legacy"` → DB `NULL`,
+  `publicThreadId()` maps back → `"legacy"` (`lib/equipment-notebooks.ts:128-142`), so both surfaces address the same
+  thread. **Requires prod migrations 088/089 (#3878).** Still NOT TESTED on a real phone↔web run: (1) web reuses the SAME
+  `clientRequestId` on a logical replay (mobile does); (2) the shared-shell mount (#3806/#3839) sends the identical
+  `clientRequestId` + `threadId` contract as the classic web UI.
 - Known open defect that will show on the RC walk after the deploy: **#3900** (uncited answer badged "Grounded in this
   notebook's sources." — basis derived from request scope). It is not a client defect; the evidence sheet has a row for it.
 
