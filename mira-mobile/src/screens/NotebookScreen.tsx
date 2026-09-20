@@ -324,13 +324,16 @@ export function NotebookScreen({
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
-    // When no machine is selected, always use general mode and empty scope
-    // regardless of enabled sources — sources without a machine context cannot
-    // ground retrieval (#3742). When a machine IS selected, omit mode to trigger
-    // grounded retrieval if scope has sources.
-    const noMachine = !notebook.asset;
-    const effectiveScope = noMachine ? [] : scope;
-    const effectiveMode = noMachine || effectiveScope.length === 0 ? "general" : undefined;
+    // Confirmed sources ALWAYS ride the turn, bound machine or not (#3862): the
+    // manual a project uploaded is the reason it exists, and the server grounds
+    // on the scope, not on an asset binding. #3745 had gated this on
+    // `notebook.asset` to spare a GENERAL question ("What is a VFD?") the
+    // sources-miss abstention — that case is handled below instead: a grounded
+    // turn that comes back `insufficient_evidence` is re-asked ONCE in general
+    // mode, so the technician gets an answer either way and the abstention
+    // stays on the record as the honest trail.
+    const effectiveScope = scope;
+    const effectiveMode = effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
       scope: effectiveScope,
@@ -365,16 +368,37 @@ export function NotebookScreen({
     setChatError(null);
     setPending({ q: question, a: EMPTY_TURN });
     try {
-      const a = await askNotebook(id, body.question, body.scope, {
-        threadId,
-        mode: body.mode,
-        history: body.history,
-        clientRequestId: body.clientRequestId,
-        machineEvidence: body.machineEvidence,
-        visualEvidence: body.visualEvidence,
-        signal: ctl.signal,
-        onUpdate: (partial) => setPending({ q: question, a: partial }),
-      });
+      const ask = (send: PendingSend) =>
+        askNotebook(id, send.question, send.scope, {
+          threadId,
+          mode: send.mode,
+          history: send.history,
+          clientRequestId: send.clientRequestId,
+          machineEvidence: send.machineEvidence,
+          visualEvidence: send.visualEvidence,
+          signal: ctl.signal,
+          onUpdate: (partial) => setPending({ q: question, a: partial }),
+        });
+      let a = await ask(body);
+      // A grounded turn the selected sources could not answer, on an UNBOUND
+      // notebook only (the #3862/#3742 case: a general question with a manual
+      // attached): re-ask once in general mode under its OWN request id (the
+      // server fences idempotency on the exact payload, so a re-send with a
+      // different mode must not collide with the abstained turn). A machine-
+      // BOUND notebook keeps its abstention — an answer about that machine is
+      // grounded or it is not. Never for a replay (Retry re-sends the identical
+      // body) and never when the turn was already general.
+      if (
+        !replay &&
+        !notebook.asset &&
+        body.mode === undefined &&
+        !isTruncatedTurn(a) &&
+        a.status === "insufficient_evidence" &&
+        !ctl.signal.aborted
+      ) {
+        const general: PendingSend = { ...body, scope: [], mode: "general", clientRequestId: crypto.randomUUID() };
+        a = await ask(general);
+      }
       if (isTruncatedTurn(a)) {
         const interrupted: ChatTurn = {
           answer: a.answer,
