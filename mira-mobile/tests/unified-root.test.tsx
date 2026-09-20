@@ -77,6 +77,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
     initialQuestion?: string | null;
     initialSensorStart?: "read-scan" | null;
     onExit: () => void;
+    onCreateProject?: () => void;
   }) => {
     props.backRef.current = () => {
       props.onExit();
@@ -93,6 +94,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-initial-sensor={props.initialSensorStart ?? ""}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
+        <button onClick={() => props.onCreateProject?.()}>create-project-from-notebook</button>
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
     );
@@ -193,6 +195,16 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toMatch(/^thrd_/));
     expect(screen.getByTestId("nb").getAttribute("data-thread-id")).not.toBe(firstThread);
+  });
+
+  it("New project is reachable from inside a conversation, not only from HOME (#3896)", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("create-project-from-notebook"));
+    expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {

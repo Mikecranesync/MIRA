@@ -157,6 +157,7 @@ export function NotebookScreen({
   onInitialSensorStartConsumed,
   onInitialAddSourcesConsumed,
   onNewThread,
+  onCreateProject,
 }: {
   id: string;
   /** 087 / THRD-0: selected conversation inside this notebook-as-Project. */
@@ -175,6 +176,10 @@ export function NotebookScreen({
   onInitialAddSourcesConsumed?: () => void;
   /** Root-owned THRD-0 creation, used by the shared shell's New chat control. */
   onNewThread?: (notebookId?: string | null) => void;
+  /** Root-owned project creation, used by the shared shell's New project
+   *  control (#3896). Without it the drawer honestly disables the control —
+   *  which is what technicians saw inside every conversation. */
+  onCreateProject?: () => void;
   /** Direct Sensor entry queued by the unified home/shell Scan action. */
   initialSensorStart?: "read-scan" | null;
   onInitialSensorStartConsumed?: () => void;
@@ -914,6 +919,7 @@ export function NotebookScreen({
               return null;
             },
             onNewChat: () => onNewThread?.(id),
+            ...(onCreateProject ? { onCreateProject } : {}),
           }}
           initialQuestion={initialQuestion}
           onInitialQuestionSent={onInitialQuestionSent}

@@ -426,6 +426,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         initialSensorStart={queuedSensorStart}
         onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}
         onNewThread={startNewThread}
+        onCreateProject={onCreateProject}
       />
     </div>
   );

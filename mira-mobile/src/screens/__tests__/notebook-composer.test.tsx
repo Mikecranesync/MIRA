@@ -6,6 +6,18 @@
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/notebook-composer
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// The unified shell (used by the #3896 test) observes its layout; jsdom has no
+// ResizeObserver, so stub it the way tests/unified-root.test.tsx does.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 
 vi.mock("@capacitor/core", () => ({
@@ -393,6 +405,31 @@ describe("NotebookScreen composer", () => {
     render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} chromeless />);
     expect(await screen.findByRole("button", { name: "← Back" })).toBeTruthy();
     expect(screen.queryByText("← Notebooks")).toBeNull();
+  });
+
+  // #3896: inside a conversation the shell's drawer showed "New project" as
+  // disabled ("Not available in this workspace yet.") because this screen never
+  // forwarded the root's hook. Only HOME could create a project.
+  it("unified shell: drawer New project calls the root's onCreateProject (#3896)", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockResolvedValue(detail());
+    const onCreateProject = vi.fn();
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={backRef}
+        onExit={() => {}}
+        chromeless
+        unifiedShell={{ projects: [], machines: [], onOpenItem: () => {} }}
+        onCreateProject={onCreateProject}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open navigation" }));
+    const newProject = screen.getAllByRole("button", { name: "New project" })[0] as HTMLButtonElement;
+    expect(newProject.disabled).toBe(false);
+    fireEvent.click(newProject);
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
   it("detail-error boundary keeps '← Notebooks' in the classic host", async () => {
