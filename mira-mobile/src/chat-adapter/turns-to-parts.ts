@@ -15,6 +15,7 @@
  * a non-terminal directive carries only the notice.
  */
 import {
+  ENERGIZED_ELECTRICAL_HAZARD,
   isTruncatedTurn,
   normalizeCitations,
   type ChatCitation,
@@ -128,6 +129,24 @@ export function terminalSafetyNotice(
     : null;
 }
 
+/** The NON-terminal energized-electrical directive persisted on the row, if any
+ *  (#3893). Distinct from `terminalSafetyNotice`: the directive is an ANSWERED
+ *  turn framed by an NFPA 70E warning, persisted as `{kind:"safety_notice",
+ *  trigger:ENERGIZED_ELECTRICAL_HAZARD}` with NO `safety_stop` entry and a
+ *  non-null basis — so `terminalSafetyNotice` returns null for it, and without
+ *  this reader the directive was dropped on reload (the hydration half of the
+ *  same gap #3893 fixes on the live wire). Gated on `terminalSafetyNotice`
+ *  being null so a hard stop always wins the turn; returns the trigger (always
+ *  ENERGIZED_ELECTRICAL_HAZARD) or null. */
+export function directiveSafetyNotice(
+  turn: Pick<NotebookServerTurn, "answerStatus" | "basis" | "evidence">,
+): string | null {
+  if (terminalSafetyNotice(turn) !== null) return null;
+  return safetyNoticeEntry(turn.evidence)?.trigger === ENERGIZED_ELECTRICAL_HAZARD
+    ? ENERGIZED_ELECTRICAL_HAZARD
+    : null;
+}
+
 function userMessage(id: string, text: string): AdapterMessage {
   return {
     id,
@@ -147,6 +166,7 @@ function assistantParts(opts: {
   basisLabel?: string | null;
   followups?: string[];
   safetyTrigger?: string;
+  safetyDirective?: string;
   identityDisputed?: boolean;
   unknown?: unknown[];
   error?: "stopped" | "provider_failure";
@@ -159,10 +179,19 @@ function assistantParts(opts: {
   // renderer means ChatV2 and the classic screen cannot drift apart, and the
   // live turn and its rehydrated row suppress identically — which is what
   // `comparableProjection` then pins.
+  //
+  // The energized-electrical DIRECTIVE (#3841/#3893) is the ONE exception: it
+  // is an ANSWERED turn framed by an NFPA 70E warning, so it emits a
+  // NON-terminal safety_notice AND keeps every piece of success chrome. It is
+  // deliberately NOT folded into `safety` — that gate stays terminal-only, so
+  // the `!safety` chrome blocks below run unchanged for a directive turn.
   const safety = opts.safetyTrigger !== undefined;
+  const directive = !safety && opts.safetyDirective !== undefined;
   const citations = safety ? [] : opts.citations;
   if (safety) {
-    parts.push({ type: "safety_notice", trigger: opts.safetyTrigger || null });
+    parts.push({ type: "safety_notice", trigger: opts.safetyTrigger || null, terminal: true });
+  } else if (directive) {
+    parts.push({ type: "safety_notice", trigger: opts.safetyDirective || null, terminal: false });
   }
   parts.push({
     type: "text",
@@ -193,6 +222,10 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
   return rows.flatMap((t): AdapterMessage[] => {
     const user = userMessage(`${t.id}-q`, t.question);
     const safetyNotice = terminalSafetyNotice(t);
+    // #3893: non-terminal energized directive persisted on the row — reloads as
+    // a warning-with-answer, matching the live wire and the criterion-6 parity
+    // contract (`comparableProjection.safetyNotice`).
+    const safetyDirective = directiveSafetyNotice(t) ?? undefined;
     const visualEvidence = visualObservationEntries(t.evidence ?? []);
     if (isStoppedTurn(t)) {
       return [
@@ -236,6 +269,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
           visual: visualEvidence,
           basis: t.basis,
           safetyTrigger: safetyNotice?.trigger,
+          safetyDirective,
           identityDisputed: hasIdentityDispute(t.evidence),
           unknown: unknownEvidenceEntries(t.evidence),
           ...(failed ? { error: "provider_failure" as const } : {}),
@@ -322,6 +356,10 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
         basisLabel: a.evidenceLabel || null,
         followups: a.status === "answered" ? a.followups : undefined,
         safetyTrigger: a.safetyTrigger,
+        // #3893: the non-terminal energized directive rides the completed
+        // (answered) live turn only — a truncated/stopped turn above is not an
+        // answer, so its framing warning is moot and stays out of that branch.
+        safetyDirective: a.safetyDirective,
         identityDisputed: a.identityDisputed === true,
         unknown: a.unknownFrames,
         ...(failed ? { error: "provider_failure" as const } : {}),
@@ -348,8 +386,14 @@ export function pendingMessages(q: string, a: ChatTurn): AdapterMessage[] {
         // first content byte. The warning must render in that pre-content window
         // too, never briefly as an ordinary answer.
         ...(a.safetyTrigger !== undefined
-          ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null }]
-          : []),
+          ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null, terminal: true }]
+          : a.safetyDirective !== undefined
+            ? // #3893: the directive frame lands late (after content, on the
+              // evidence frame), so it usually surfaces just as the turn
+              // completes — but render it non-terminally the moment it arrives,
+              // never as a stop.
+              [{ type: "safety_notice" as const, trigger: a.safetyDirective || null, terminal: false }]
+            : []),
         { type: "text" as const, text: a.answer, knownCitationIds: [] },
         // 086 §3: the marker frame is the FIRST thing on a disputed wire, so
         // the in-flight turn can — and must — say it before any content.
