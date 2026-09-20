@@ -193,6 +193,46 @@ def test_deploy_script_emits_receipt_json():
     assert "FACTORYLM_DEPLOY_RECEIPT_JSON=" in script, "deploy script must emit a receipt JSON line"
 
 
+def test_deploy_script_fails_closed_on_untracked_build_context():
+    """Reviewer P1: /opt/mira is persistent; untracked files survive `checkout --force`
+    and enter the Docker build context. The remote script must STOP on any tracked,
+    staged, or untracked change AFTER the checkout and BEFORE any build."""
+    script = _deploy_step_script(_load_workflow(DEPLOY_VPS_YML))
+    checkout = script.index('git -c advice.detachedHead=false checkout --force "$APPROVED_RC_SHA"')
+    build = script.index("build --no-cache --pull")
+    untracked = script.index("git ls-files --others --exclude-standard")
+    assert checkout < untracked < build, "cleanliness check must sit between checkout and build"
+    window = script[checkout:build]
+    assert "git diff --quiet" in window and "git diff --cached --quiet" in window
+    assert "exit 1" in script[untracked : untracked + 400]
+    assert "git clean" not in script, "never destructive-clean the host; STOP instead"
+
+
+def test_authorize_source_binds_receipt_to_a_successful_staging_run():
+    """Reviewer P1: the artifact name is only a lookup key. The step must resolve the
+    artifact's workflow_run, require deploy-staging.yml / workflow_dispatch /
+    completed / success in this repo, and bind the receipt's run identity to it."""
+    wf = _load_workflow(DEPLOY_VPS_YML)
+    step = next(
+        s
+        for s in wf["jobs"]["authorize-source"]["steps"]
+        if "staging-receipt-" in (s.get("run") or "")
+    )
+    run = step["run"]
+    for needle in (
+        ".workflow_run.id",
+        "/actions/runs/",
+        '".github/workflows/deploy-staging.yml"',
+        '"workflow_dispatch"',
+        '"completed"',
+        '"success"',
+        "--expect-run-id",
+        "--expect-run-url",
+    ):
+        assert needle in run, f"receipt provenance check missing {needle!r}"
+    assert ".head_sha" not in run, "controller head commit must not be compared to the target SHA"
+
+
 def test_authorize_source_calls_staging_receipt_verify():
     wf = _load_workflow(DEPLOY_VPS_YML)
     authorize = wf["jobs"].get("authorize-source", {})

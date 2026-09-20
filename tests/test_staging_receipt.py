@@ -197,6 +197,50 @@ def test_required_services_can_be_narrowed_but_never_widened_silently():
     assert _verify(hub_only, required_services=("mira-hub",)) == []
 
 
+def test_run_identity_binding_rejects_a_receipt_from_another_run():
+    """Provenance (reviewer P1): the receipt must name the exact run whose artifact
+    it was downloaded from; a same-name artifact from another run is refused."""
+    assert _verify(_good(), expected_run_id="1", expected_run_url=_good()["run_url"]) == []
+    problems = _verify(_good(), expected_run_id="2", expected_run_url=_good()["run_url"])
+    assert any("run_id" in p and "run 2" in p or "run '2'" in p for p in problems), problems
+    problems = _verify(_good(), expected_run_id="1", expected_run_url="https://elsewhere/9")
+    assert any("run_url" in p for p in problems), problems
+
+
+def test_cli_verify_binds_run_identity(tmp_path):
+    out = tmp_path / "receipt.json"
+    data = _good(deployed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    out.write_text(json.dumps(data))
+    ok = _cli(
+        "verify",
+        "--receipt",
+        str(out),
+        "--approved-rc-sha",
+        SHA,
+        "--environment",
+        "staging",
+        "--expect-run-id",
+        "1",
+        "--expect-run-url",
+        data["run_url"],
+    )
+    assert ok.returncode == 0, ok.stderr
+    bad = _cli(
+        "verify",
+        "--receipt",
+        str(out),
+        "--approved-rc-sha",
+        SHA,
+        "--environment",
+        "staging",
+        "--expect-run-id",
+        "999",
+        "--expect-run-url",
+        data["run_url"],
+    )
+    assert bad.returncode == 1 and "run_id" in bad.stderr
+
+
 def test_non_object_receipt_is_rejected():
     assert receipt.verify_receipt(
         ["not", "a", "dict"], approved_rc_sha=SHA, environment="staging", now=NOW, max_age_hours=1

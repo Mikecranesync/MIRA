@@ -86,10 +86,14 @@ def verify_receipt(
     now: datetime,
     max_age_hours: float,
     required_services: tuple[str, ...] = DEFAULT_REQUIRED_SERVICES,
+    expected_run_id: str | None = None,
+    expected_run_url: str | None = None,
 ) -> list[str]:
     """Return every problem with ``receipt``; an empty list means it verifies.
 
     Fail-closed by construction: a missing field is a problem, not a skip.
+    ``expected_run_id`` / ``expected_run_url`` bind the receipt to the exact
+    Actions run that produced the artifact it was downloaded from (provenance).
     """
     problems: list[str] = []
     now_utc = _as_utc(now)
@@ -185,6 +189,14 @@ def verify_receipt(
         problems.append("run_url: missing")
     if not receipt.get("run_id"):
         problems.append("run_id: missing")
+    if expected_run_id is not None and str(receipt.get("run_id")) != str(expected_run_id):
+        problems.append(
+            f"run_id: receipt says {receipt.get('run_id')!r}, artifact came from run {expected_run_id!r}"
+        )
+    if expected_run_url is not None and receipt.get("run_url") != expected_run_url:
+        problems.append(
+            f"run_url: receipt says {receipt.get('run_url')!r}, artifact came from {expected_run_url!r}"
+        )
 
     return problems
 
@@ -219,6 +231,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         now=datetime.now(timezone.utc),
         max_age_hours=args.max_age_hours,
         required_services=required,
+        expected_run_id=args.expect_run_id,
+        expected_run_url=args.expect_run_url,
     )
     if problems:
         for problem in problems:
@@ -257,6 +271,16 @@ def main(argv: list[str] | None = None) -> int:
         "--require-services",
         default=",".join(DEFAULT_REQUIRED_SERVICES),
         help="comma-separated services whose runtime + image identity must be present",
+    )
+    verify.add_argument(
+        "--expect-run-id",
+        default=None,
+        help="the workflow run id the artifact was produced by; the receipt must match",
+    )
+    verify.add_argument(
+        "--expect-run-url",
+        default=None,
+        help="the workflow run html_url the artifact was produced by; the receipt must match",
     )
     verify.set_defaults(func=_cmd_verify)
 

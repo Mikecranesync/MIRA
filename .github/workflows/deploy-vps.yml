@@ -182,22 +182,49 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          ARTIFACTS=$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${APPROVED_RC_SHA}&per_page=20" --jq '.artifacts | sort_by(.created_at) | reverse | .[0]')
-          if [ -z "$ARTIFACTS" ] || [ "$ARTIFACTS" = "null" ]; then
-            echo "::error::No staging receipt found for $APPROVED_RC_SHA"
+          # The artifact NAME is only the lookup key. Trust requires provenance:
+          # the newest unexpired artifact of that name must have been produced by
+          # a completed, successful `workflow_dispatch` run of
+          # .github/workflows/deploy-staging.yml in THIS repository, and the
+          # receipt inside it must carry that exact run's identity. A same-name
+          # artifact from any other run STOPs the deploy — we never fall through
+          # to an older candidate. (The staging run's own head commit is the trusted
+          # controller ref, deliberately NOT compared to approved_rc_sha; the
+          # receipt payload carries the target identity.)
+          STAGING_WORKFLOW_PATH=".github/workflows/deploy-staging.yml"
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::No unexpired staging-receipt-${APPROVED_RC_SHA} artifact exists — deploy staging first."
             exit 1
           fi
-          ARTIFACT_ID=$(echo "$ARTIFACTS" | jq -r '.id')
-          EXPIRED=$(echo "$ARTIFACTS" | jq -r '.expired')
-          if [ "$EXPIRED" = "true" ]; then
-            echo "::error::Staging receipt for $APPROVED_RC_SHA has expired"
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          STAGING_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          if [ -z "$STAGING_RUN_ID" ]; then
+            echo "::error::staging receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."
+            exit 1
+          fi
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${STAGING_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "staging receipt artifact ${ARTIFACT_ID} <- run ${STAGING_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$STAGING_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_dispatch" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::staging receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_dispatch run of ${STAGING_WORKFLOW_PATH} in ${REPO} — STOP."
             exit 1
           fi
           echo "::group::Download staging receipt"
           gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > receipt.zip
           unzip -o receipt.zip
           echo "::endgroup::"
-          python3 tools/staging_receipt.py verify --receipt staging-receipt.json --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168
+          python3 tools/staging_receipt.py verify --receipt staging-receipt.json \
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168 \
+            --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL"
+          echo "staging receipt verified: run ${RUN_URL}"
 
   # The migration gate intentionally runs on a separate runner from the VPS
   # deploy. It receives the prod DB URL but never the SSH key; the deploy job
@@ -403,6 +430,23 @@ jobs:
             echo "::error::Checkout did not land on ${APPROVED_RC_SHA} — failing closed."
             exit 1
           fi
+
+          echo "=== Source cleanliness — the build context must be exactly the approved tree ==="
+          # /opt/mira is a persistent checkout. `checkout --force` resets tracked
+          # files but leaves untracked ones, and untracked files are part of the
+          # Docker build context — so a stray file here would ship in the image
+          # while every SHA check still passes. STOP (never clean the host):
+          # the operator decides what the file is. The only tolerated untracked
+          # path is the in-progress sentinel this script created above.
+          git diff --quiet || { echo "::error::tracked files are modified in /opt/mira — STOP:"; git status --short | head -50; exit 1; }
+          git diff --cached --quiet || { echo "::error::staged changes present in /opt/mira — STOP:"; git status --short | head -50; exit 1; }
+          UNTRACKED_FILES="$(git ls-files --others --exclude-standard | grep -vx '.deploy-in-progress' || true)"
+          if [ -n "$UNTRACKED_FILES" ]; then
+            echo "::error::untracked files in /opt/mira would enter the build context — STOP (approved_rc_sha == built cannot be proven):"
+            echo "$UNTRACKED_FILES"
+            exit 1
+          fi
+          echo "Source tree is exactly ${APPROVED_RC_SHA} (no tracked, staged, or untracked changes)"
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
           # PR #1219 dropped root in mira-pipeline/mira-mcp/mira-ingest Dockerfiles.
