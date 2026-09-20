@@ -277,6 +277,29 @@ def test_cli_extract_exits_1_on_missing_line(tmp_path):
     assert r.returncode == 1 and "FACTORYLM_DEPLOY_RECEIPT_JSON" in r.stderr
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "approved_rc_sha=" + OTHER,
+        "environment=production",
+        "deployed_at=2099-01-01T00:00:00Z",
+        "runtime=x",
+        "schema=x",
+        "run_url=",
+    ],
+    ids=["sha", "environment", "deployed_at", "runtime", "schema", "empty-value"],
+)
+def test_cli_extract_set_cannot_overwrite_security_fields(tmp_path, flag):
+    """Reviewer point (d): --set is for run identity only; a runner-side flag must
+    never be able to rewrite what the deploy transcript proved."""
+    log = tmp_path / "deploy.out"
+    log.write_text("FACTORYLM_DEPLOY_RECEIPT_JSON=" + json.dumps(_good()) + "\n")
+    out = tmp_path / "receipt.json"
+    r = _cli("extract", "--log", str(log), "--out", str(out), "--set", flag)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert not out.exists()
+
+
 def test_cli_verify_rejects_unknown_environment(tmp_path):
     out = tmp_path / "receipt.json"
     out.write_text(json.dumps(_good()))

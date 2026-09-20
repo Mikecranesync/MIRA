@@ -236,7 +236,8 @@ jobs:
           TAGS_AT_SHA="$(git tag --points-at "$APPROVED_RC_SHA" --list 'v[0-9]*' 2>/dev/null | sort -V | tail -1)"
           export MIRA_APP_VERSION="${TAGS_AT_SHA#v}"
           export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
-          export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export MIRA_BUILD_TIME
           echo "Staging deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
 
           echo "=== Build staging images (no-cache, fresh base) ==="

@@ -37,6 +37,10 @@ DEFAULT_REQUIRED_SERVICES = ("mira-hub", "mira-web")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FUTURE_SKEW = timedelta(minutes=5)
+# The ONLY fields the runner may stamp after extraction: run identity. Every
+# security-bearing field (SHA, environment, runtime, images, timestamp) must come
+# from the deploy transcript itself, never from a runner-side flag.
+SETTABLE_FIELDS = ("run_url", "run_id")
 
 
 def extract_receipt_line(text: str) -> dict:
@@ -191,8 +195,12 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         if "=" not in kv:
             raise ValueError(f"--set expects key=value, got {kv!r}")
         key, value = kv.split("=", 1)
-        if not key:
-            raise ValueError(f"--set expects a non-empty key, got {kv!r}")
+        if key not in SETTABLE_FIELDS:
+            raise ValueError(
+                f"--set may only stamp {SETTABLE_FIELDS}; refusing to overwrite {key!r}"
+            )
+        if not value:
+            raise ValueError(f"--set {key} requires a non-empty value")
         receipt[key] = value
     Path(args.out).write_text(
         json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8"
@@ -236,7 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="KEY=VALUE",
-        help="stamp a field onto the receipt",
+        help=f"stamp a run-identity field onto the receipt (only {', '.join(SETTABLE_FIELDS)})",
     )
     extract.set_defaults(func=_cmd_extract)
 
