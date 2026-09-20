@@ -105,7 +105,8 @@ capabilities:
       - "Enumerate the three run-engine suites (test_run_baseline, test_machine_memory, test_historize_runs_integration) in a named CI job - they still run nowhere."
       - "Answer the two artifact questions: why anomalous_runs=0 while critical diffs are written, and whether a window-average baseline should be labelled as such in any UI."
       - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
-    review_by: "2026-09-19"
+      - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - CI enumeration, artifact questions, and production NeonRunStore proof. Re-decide by the new date."
+    review_by: "2026-10-19"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
       enabled. Commented there 2026-08-18; the issue text remains stale.
@@ -254,7 +255,8 @@ capabilities:
     promotion_criteria:
       - "ADR-0033 accepted or explicitly re-scoped."
       - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
-    review_by: "2026-09-19"
+      - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - ADR-0033 decision and staging evidence. Re-decide by the new date."
+    review_by: "2026-10-19"
 
   # =========================================================================
   - id: live_machine_state
