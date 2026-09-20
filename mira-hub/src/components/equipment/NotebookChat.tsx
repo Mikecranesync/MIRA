@@ -71,6 +71,10 @@ export type ChatTurn = {
   /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash
    *  refusal — suppresses all ordinary-answer affordances. */
   safetyNotice?: SafetyNoticeEntry;
+  /** #3841: the energized-electrical hazard DIRECTIVE that framed a completed
+   *  answer. A warning, not a stop: the answer, its citations, basis and
+   *  follow-ups all stay. Same value live (evidence frame) and hydrated. */
+  hazardNotice?: SafetyNoticeEntry;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -140,6 +144,18 @@ export function Bubble({
         >
           <AlertTriangle size={16} aria-hidden />
           Safety stop — isolate the machine before proceeding
+        </div>
+      )}
+      {!turn.safetyNotice && turn.hazardNotice && (
+        <div
+          className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold"
+          style={{ background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}
+          data-testid="hazard-directive-banner"
+          role="status"
+          aria-label="Energized electrical work"
+        >
+          <AlertTriangle size={16} aria-hidden />
+          Energized electrical work — de-energize, lock out, and verify absence of voltage before any hands-on step
         </div>
       )}
       <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
@@ -367,7 +383,7 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
+      const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, hazardNotice, sawStatus } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
@@ -424,6 +440,9 @@ export function NotebookChat({
                 // status:"answered" even for a hard-stop. Store it so the
                 // live and reloaded views are byte-semantically identical.
                 ...(safetyNotice ? { safetyNotice } : {}),
+                // #3841: the directive is a warning on an answered turn; only a
+                // served answer carries it, mirroring what the server persists.
+                ...(status === "answered" && hazardNotice ? { hazardNotice } : {}),
               }
             : x,
         ),

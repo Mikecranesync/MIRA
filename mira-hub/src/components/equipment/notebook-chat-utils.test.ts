@@ -21,6 +21,7 @@ import {
 } from "./notebook-chat-utils";
 
 import { visualObservationCaption } from "./notebook-chat-utils";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 
 const enc = new TextEncoder();
 const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
@@ -585,6 +586,63 @@ describe("readNotebookStream picks the machine entry off the evidence frame", ()
       () => {},
     );
     expect(without.machineEvidence).toBeNull();
+  });
+});
+
+// ── #3841: the energized-electrical DIRECTIVE rides the evidence frame ─────────
+describe("readNotebookStream — hazardEntries on the evidence frame surface as hazardNotice, never safetyNotice (#3841)", () => {
+  const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+
+  it("a directive turn completes as an answered, cited turn with hazardNotice set and safetyNotice null", async () => {
+    const out = await readNotebookStream(
+      streamOf([
+        frame({ kind: "content", content: "De-energize first. [1]" }),
+        frame({ kind: "sources", citations: [{ citationId: "1", docId: "d", sourceTitle: "M", page: 3, fileId: null, quote: null }], sourceSnapshot: ["d"] }),
+        frame({ kind: "evidence", basis: "oem_documentation", hazardEntries: [directive] }),
+        frame({ kind: "status", status: "answered" }),
+        "data: [DONE]\n\n",
+      ]),
+      () => {},
+    );
+    expect(out.status).toBe("answered");
+    expect(out.citations).toHaveLength(1);
+    expect(out.hazardNotice).toEqual(directive);
+    // The classic page renders `safetyNotice` as the terminal "Safety stop"
+    // banner and hides citations — the directive must never land there.
+    expect(out.safetyNotice).toBeNull();
+  });
+
+  it("a terminal safety frame still lands in safetyNotice and leaves hazardNotice null (control)", async () => {
+    const out = await readNotebookStream(
+      streamOf([frame({ kind: "safety", trigger: "arc flash" }), frame({ kind: "content", content: "Stop." }), frame({ kind: "status", status: "answered" })]),
+      () => {},
+    );
+    expect(out.safetyNotice).toEqual({ kind: "safety_notice", trigger: "arc flash" });
+    expect(out.hazardNotice).toBeNull();
+  });
+});
+
+describe("persistedTurns — a directive row hydrates with hazardNotice (#3841 live == hydrated on the classic page)", () => {
+  const cite = { citationId: "1", docId: "d", sourceTitle: "M", page: 3, fileId: null, quote: null };
+  const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+
+  it("keeps the citations and basis, carries hazardNotice, and never sets safetyNotice", () => {
+    const [, a] = persistedTurns([
+      { id: "t40", question: "q", answerStatus: "answered", answerText: "De-energize first. [1]", evidence: [directive, cite], basis: "oem_documentation" },
+    ]);
+    expect(a.citations).toEqual([cite]);
+    expect(a.basis).toBe("oem_documentation");
+    expect(a.hazardNotice).toEqual(directive);
+    expect(a.safetyNotice).toBeUndefined();
+  });
+
+  it("a terminal stop row (safety_stop marker) still hydrates as safetyNotice, not hazardNotice (control)", () => {
+    const stop = { kind: "safety_notice" as const, trigger: "arc flash" };
+    const [, a] = persistedTurns([
+      { id: "t41", question: "q", answerStatus: "answered", answerText: "Stop.", evidence: [stop, { kind: "safety_stop", trigger: "arc flash" }], basis: null },
+    ]);
+    expect(a.safetyNotice).toEqual(stop);
+    expect(a.hazardNotice).toBeUndefined();
   });
 });
 
