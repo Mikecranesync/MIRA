@@ -527,6 +527,7 @@ run("visual-evidence-context (integration)", () => {
       photoHash: "look-roundtrip-hash",
       text: OBS_TEXT,
       model: "together/vision-it",
+      hazards: [{ code: "exposed_conductor", confidence: 0.93 }],
       capturedAt: "2026-09-19T12:00:00.000Z",
       createdBy: "it-look",
     });
@@ -541,6 +542,7 @@ run("visual-evidence-context (integration)", () => {
       trust: "candidate",
       fileId: LOOK_FILE,
       photoHash: "look-roundtrip-hash",
+      hazards: [{ code: "exposed_conductor", confidence: 0.93 }],
     });
   });
 

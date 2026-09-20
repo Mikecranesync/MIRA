@@ -41,6 +41,52 @@ type QueryClient = { query: (text: string, params?: unknown[]) => Promise<{ rows
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Bounded visual hazards emitted by the LOOK vision pass. This is deliberately
+ * not a free-form label: chat may turn one of these values into a deterministic
+ * safety stop, so unknown provider output must be ignored rather than becoming
+ * policy. The descriptor is stored beside the same parked file id as the LOOK
+ * observation; clients never supply it.
+ */
+export const LOOK_HAZARD_CODES = ["arcing", "exposed_conductor", "active_fire", "smoke"] as const;
+export type LookHazardCode = (typeof LOOK_HAZARD_CODES)[number];
+export type LookHazardDescriptor = { readonly code: LookHazardCode; readonly confidence: number };
+
+/** A model score at or above this threshold hard-stops the photo-backed turn. */
+export const LOOK_HAZARD_STOP_CONFIDENCE = 0.85;
+
+/** Validate, deduplicate, and bound untrusted JSON produced by the vision model. */
+export function normalizeLookHazards(raw: unknown): LookHazardDescriptor[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set<string>(LOOK_HAZARD_CODES);
+  const byCode = new Map<LookHazardCode, number>();
+  for (const item of raw.slice(0, 16)) {
+    if (!item || typeof item !== "object") continue;
+    const code = (item as { code?: unknown }).code;
+    const confidence = (item as { confidence?: unknown }).confidence;
+    if (typeof code !== "string" || !allowed.has(code)) continue;
+    if (typeof confidence !== "number" || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) continue;
+    const typed = code as LookHazardCode;
+    byCode.set(typed, Math.max(byCode.get(typed) ?? -1, confidence));
+  }
+  return LOOK_HAZARD_CODES.flatMap((code) => {
+    const confidence = byCode.get(code);
+    return confidence === undefined ? [] : [{ code, confidence }];
+  });
+}
+
+/** Return the highest-confidence deterministic hard-stop descriptor, if any. */
+export function blockingLookHazard(
+  hazards: readonly LookHazardDescriptor[] | null | undefined,
+): LookHazardDescriptor | null {
+  let blocked: LookHazardDescriptor | null = null;
+  for (const hazard of normalizeLookHazards(hazards)) {
+    if (hazard.confidence < LOOK_HAZARD_STOP_CONFIDENCE) continue;
+    if (!blocked || hazard.confidence > blocked.confidence) blocked = hazard;
+  }
+  return blocked;
+}
+
 /** `equipment_entity_id` is TEXT holding `coalesce(entity_id, id::text)` — a UUID
  *  for a bridged/seeded asset, but not guaranteed. Guard before any `::uuid`
  *  cast so a non-UUID key never throws (write path) or 500s a turn (read path). */
@@ -170,6 +216,8 @@ export async function recordLookObservation(opts: {
   readonly text: string;
   /** The vision model that produced it (provenance for recall/versioning). */
   readonly model: string | null;
+  /** Structured server-side vision output; never accepted from the client. */
+  readonly hazards?: readonly LookHazardDescriptor[];
   /** Server receipt time (ISO) the LOOK route already computed. */
   readonly capturedAt: string;
   readonly createdBy: string | null;
@@ -202,6 +250,7 @@ export async function recordLookObservation(opts: {
           model: opts.model,
           captured_at: opts.capturedAt,
           provenance: "phone_photo",
+          hazards: normalizeLookHazards(opts.hazards),
         }),
       ],
     );
@@ -526,6 +575,8 @@ export type VisualEvidenceRow = {
   readonly fileId: string | null;
   readonly photoHash: string | null;
   readonly observedAt: string | null;
+  /** Structured LOOK hazards stored with this exact photo. Empty on older rows. */
+  readonly hazards?: readonly LookHazardDescriptor[];
 };
 
 /**
@@ -599,7 +650,8 @@ export async function loadVisualEvidenceForPhoto(
     `SELECT o.observation_id::text AS observation_id, o.session_id::text AS session_id,
             coalesce(o.normalized_value, o.raw_value) AS text, o.obs_kind, o.confidence,
             o.review_state, o.created_at,
-            e.original_hash AS photo_hash, e.capture_meta->>'file_id' AS file_id
+            e.original_hash AS photo_hash, e.capture_meta->>'file_id' AS file_id,
+            e.capture_meta->'hazards' AS hazards
        FROM observation o
        JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
       WHERE o.tenant_id = $1
@@ -624,6 +676,7 @@ export async function loadVisualEvidenceForPhoto(
     fileId: (r.file_id as string) ?? null,
     photoHash: (r.photo_hash as string) ?? null,
     observedAt: r.created_at ? String(r.created_at) : null,
+    hazards: normalizeLookHazards(r.hazards),
   };
 }
 

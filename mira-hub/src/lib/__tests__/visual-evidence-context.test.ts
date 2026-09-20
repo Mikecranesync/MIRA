@@ -17,11 +17,13 @@ vi.mock("@/lib/workspace-files", () => ({ sha256Hex: (b: Buffer) => `sha:${b.len
 import { withTenantContext } from "@/lib/tenant-context";
 
 import {
+  blockingLookHazard,
   correctVisualObservations,
   fieldOfNormalizedValue,
   isUuidKey,
   loadVisualEvidenceForAsset,
   loadVisualEvidenceForPhoto,
+  normalizeLookHazards,
   promoteVisualObservations,
   recordLookObservation,
   recordNameplateObservations,
@@ -33,6 +35,29 @@ import {
 const UUID = "64a24de7-0000-4000-8000-000000000001";
 const UUID2 = "64a24de7-0000-4000-8000-000000000002";
 const FILE = "f11a1111-1111-4111-8111-111111111111";
+
+describe("structured LOOK hazards", () => {
+  it("accepts only bounded finite descriptors, deduplicates by highest score, and keeps taxonomy order", () => {
+    expect(normalizeLookHazards([
+      { code: "smoke", confidence: 0.91 },
+      { code: "arcing", confidence: 0.7 },
+      { code: "arcing", confidence: 0.99 },
+      { code: "invented", confidence: 1 },
+      { code: "exposed_conductor", confidence: 2 },
+    ])).toEqual([
+      { code: "arcing", confidence: 0.99 },
+      { code: "smoke", confidence: 0.91 },
+    ]);
+  });
+
+  it("hard-stops only at the explicit confidence threshold", () => {
+    expect(blockingLookHazard([{ code: "arcing", confidence: 0.84 }])).toBeNull();
+    expect(blockingLookHazard([
+      { code: "arcing", confidence: 0.85 },
+      { code: "smoke", confidence: 0.96 },
+    ])).toEqual({ code: "smoke", confidence: 0.96 });
+  });
+});
 
 describe("isUuidKey", () => {
   it("accepts a UUID and rejects a slug / null / empty", () => {
@@ -449,7 +474,11 @@ describe("recordLookObservation — pre-DB guard + write shape (asset_id NULL, r
   it("writes an unassigned session (asset_id NULL), a source_type='unknown' evidence item carrying the file id, and ONE 'property' observation in raw_value", async () => {
     const query = vi.fn(async () => ({ rows: [{ id: UUID }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
-    const out = await recordLookObservation({ ...base, text: "  green indicator lit; no burn marks  " });
+    const out = await recordLookObservation({
+      ...base,
+      text: "  green indicator lit; no burn marks  ",
+      hazards: [{ code: "arcing", confidence: 0.97 }],
+    });
     expect(out).toEqual({ sessionId: UUID, evidenceId: UUID, observationId: UUID });
     expect(query).toHaveBeenCalledTimes(3);
 
@@ -463,7 +492,12 @@ describe("recordLookObservation — pre-DB guard + write shape (asset_id NULL, r
     expect(evSql).toMatch(/source_type/);
     expect(evSql).toMatch(/'unknown'/); // stays inside the existing CHECK enum → no migration
     const captureMeta = JSON.parse(String(evParams[3]));
-    expect(captureMeta).toMatchObject({ file_id: FILE, model: "together/vision", provenance: "phone_photo" });
+    expect(captureMeta).toMatchObject({
+      file_id: FILE,
+      model: "together/vision",
+      provenance: "phone_photo",
+      hazards: [{ code: "arcing", confidence: 0.97 }],
+    });
 
     const [obsSql, obsParams] = query.mock.calls[2] as unknown as [string, unknown[]];
     expect(obsSql).toMatch(/'property', \$4, NULL, 'VISIBLE', NULL, 'inspection_vision', 'unreviewed'/);
@@ -487,11 +521,17 @@ describe("loadVisualEvidenceForPhoto — keyed on the server-verified file id, m
       rows: [{
         observation_id: UUID, session_id: "s", text: "green indicator lit", obs_kind: "property",
         confidence: null, review_state: "unreviewed", created_at: "2026-09-19T00:00:00.000Z",
-        photo_hash: "h", file_id: FILE,
+        photo_hash: "h", file_id: FILE, hazards: [{ code: "exposed_conductor", confidence: 0.92 }],
       }],
     }));
     const out = await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE);
-    expect(out).toMatchObject({ observationId: UUID, text: "green indicator lit", trust: "candidate", fileId: FILE });
+    expect(out).toMatchObject({
+      observationId: UUID,
+      text: "green indicator lit",
+      trust: "candidate",
+      fileId: FILE,
+      hazards: [{ code: "exposed_conductor", confidence: 0.92 }],
+    });
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/e\.capture_meta->>'file_id' = \$2/);
     expect(sql).toMatch(/o\.tenant_id = \$1/); // TEXT compare, no ::uuid cast (post-069)

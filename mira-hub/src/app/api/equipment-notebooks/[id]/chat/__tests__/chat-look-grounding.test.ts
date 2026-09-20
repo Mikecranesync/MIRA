@@ -51,6 +51,9 @@ vi.mock("@/lib/workspace-files", () => filesMock);
 
 // The store is proven elsewhere; here we control its output to prove the wiring.
 const veMock = vi.hoisted(() => ({
+  blockingLookHazard: vi.fn((hazards: { code: string; confidence: number }[] | undefined) =>
+    hazards?.filter((h) => h.confidence >= 0.85).sort((a, b) => b.confidence - a.confidence)[0] ?? null,
+  ),
   loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
   renderVisualEvidenceSection: vi.fn(() => ""),
   loadVisualEvidenceForPhoto: vi.fn(async () => ({
@@ -63,6 +66,7 @@ const veMock = vi.hoisted(() => ({
     fileId: PHOTO,
     photoHash: "h",
     observedAt: null,
+    hazards: [] as { code: "arcing" | "exposed_conductor" | "active_fire" | "smoke"; confidence: number }[],
   })),
   renderLookObservationSection: vi.fn((row: unknown | null) => (row ? LOOK_SENTINEL : "")),
 }));
@@ -152,5 +156,117 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
     const call = vi.mocked(ragMock.buildManualUserContent).mock.calls.at(-1) as unknown as [string, unknown[], string?];
     expect(call[2] ?? "").toBe("");
+  });
+
+  it("a server-stored high-confidence photo hazard stops before any answer provider", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "Visible arcing at an uncovered terminal.",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "arcing", confidence: 0.99 }],
+    });
+
+    const res = await POST(
+      req({
+        message: "what am I looking at here",
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+
+    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(
+      TENANT,
+      NB,
+      expect.objectContaining({
+        answerText: expect.stringContaining("SAFETY STOP"),
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ kind: "safety_stop", trigger: "visual:arcing" }),
+          expect.objectContaining({ kind: "visual_observation", fileId: PHOTO }),
+        ]),
+      }),
+    );
+  });
+
+  it("preserves the zero-source refusal for an unverified photo claim", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+
+    const res = await POST(
+      req({ message: "what am I looking at here", visualEvidence: { fileId: PHOTO } }),
+      params,
+    );
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: "no_sources_selected" });
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a server-stored photo hazard overrides a non-terminal energized-question directive", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "Visible arcing at an uncovered terminal.",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "arcing", confidence: 0.99 }],
+    });
+
+    const res = await POST(
+      req({
+        message: "480V main panel. Can I measure voltage while it's running?",
+        mode: "general",
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+
+    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("ignores a client-supplied photo hazard when the server-stored descriptor is healthy", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "No exposed wiring, guards in place, no burn marks.",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [],
+    });
+
+    const res = await POST(
+      req({
+        message: "what am I looking at here",
+        mode: "general",
+        visualEvidence: {
+          fileId: PHOTO,
+          hazards: [{ code: "arcing", confidence: 1 }],
+        },
+      }),
+      params,
+    );
+    await res.text();
+
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(fetch).toHaveBeenCalled();
   });
 });
