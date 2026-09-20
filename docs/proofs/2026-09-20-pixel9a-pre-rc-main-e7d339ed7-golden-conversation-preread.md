@@ -92,6 +92,20 @@ restart 03:07 · web follow-up 03:08:40→03:09 · phone relaunch 03:10.
 
 Items 1–2 are mobile-product-context lane (mine): filed as #3896 (New project disabled in a conversation, P1) and #3895 (created project missing from the drawer, P0). Item 3 needs the shared-core claim.
 
+## Round 2 (03:25Z–03:31Z) — hardware confirmation of the two fixes
+
+Throwaway build of main `f4ef32cad` + PR #3898 (#3895) + PR #3899 (#3896), release-key-signed debuggable, vc12 /
+`1.2.1-main-f4ef32cad+3898+3899-dbg`, apk sha256 `e3b58d046bb4a11e…`, installed in place; neither PR head was touched.
+
+| fix | walk on the phone | result | evidence |
+|---|---|---|---|
+| #3896 (PR #3899) | open the pre-read project's conversation → drawer → **New project** | **enabled** (no "Not available in this workspace yet." hint) → the New-project form opens | `2026-09-20_3896-hw-new-project-form-opens-from-inside-conversation_android.png` |
+| #3895 (PR #3898) | from that form create `PIXEL 3895 3896 hardware check` → drawer, **no relaunch** | the new project is the first PROJECTS row with its `Chat` and `Sources (0)` rows | `2026-09-20_3895-hw-created-project-listed-in-drawer-without-relaunch_android.png` |
+
+Restored again to the stock `1.2.1` vc12 (`f1b047a5…`, byte-verified, not debuggable), forwards dropped, launcher in focus,
+PHONE RELEASED 03:31Z. Note for the merge queue: #3898 and #3899 both append to `mira-mobile/tests/unified-root.test.tsx`
+at the same spot — whichever lands second needs a trivial conflict resolution (keep both tests).
+
 ## Restore + cleanup
 
 Original `1.2.1` vc12 reinstalled with `adb install -r` and byte-verified (`f1b047a5…`); not debuggable; fixture PDF removed from
