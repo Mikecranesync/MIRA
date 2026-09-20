@@ -860,7 +860,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
       );
     } catch (err) {
-      console.error("[notebook-chat] look observation load failed (continuing without it):", err);
+      // F2: fail closed when a verified photo's descriptor cannot be loaded.
+      console.error("[notebook-chat] look observation load failed (fail-closed for verified photo):", err);
+      await abandonRequestClaim();
+      return NextResponse.json({ error: "visual_descriptor_load_failed" }, { status: 500 });
     }
   }
   const visualHazard = blockingLookHazard(lookRow?.hazards);

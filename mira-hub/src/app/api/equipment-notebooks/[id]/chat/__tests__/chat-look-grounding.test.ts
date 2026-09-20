@@ -269,4 +269,18 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(fetch).toHaveBeenCalled();
   });
+
+  it("F2: when a verified photo is present and descriptor load throws, fails closed (no provider call)", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockRejectedValueOnce(new Error("DB connection lost"));
+
+    const res = await POST(
+      req({ message: "what am I looking at here", mode: "general", visualEvidence: { fileId: PHOTO } }),
+      params,
+    );
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "visual_descriptor_load_failed" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

@@ -628,12 +628,19 @@ export async function loadVisualEvidenceForAsset(
  * keyed ONLY on the SERVER-VERIFIED file id (never a client string) via
  * `evidence_item.capture_meta->>'file_id'`. Unlike {@link loadVisualEvidenceForAsset}
  * this is NOT asset-scoped, so it works on an UNBOUND notebook — the photo id is
- * the whole key. `LIMIT 1` (most recent): one photo has one description, so
+ * the whole key.
+ *
+ * F1 (IR #3907): restricts to LOOK-provenance rows ONLY (`extractor='inspection_vision'`)
+ * so a later nameplate row for the same file cannot erase a stored hazard. Takes the
+ * LATEST LOOK-only row (`LIMIT 1`, most recent): one photo has one description, so
  * re-posting the same bytes (same file id, `parkOrReuseFile` sha-dedup) surfaces
- * the latest reading without duplicate lines — read-side dedup keeps the write
- * path append-only (materialized-evidence rule 7). Returns null for a non-UUID id
- * or when nothing is stored. `c` is a tenant-scoped client (called inside the
- * route's `withTenantContext`).
+ * the latest LOOK reading without duplicate lines — read-side dedup keeps the write
+ * path append-only (materialized-evidence rule 7). A re-LOOK with `hazards: []` (model
+ * variance or a follow-up question) does un-stop the photo; max-over-all-LOOK vs
+ * latest-LOOK-only is the current choice (latest-only).
+ *
+ * Returns null for a non-UUID id or when nothing is stored. `c` is a tenant-scoped
+ * client (called inside the route's `withTenantContext`).
  *
  * NOTE: `capture_meta->>'file_id'` is not indexed; the query is bounded by the
  * tenant predicate (+ RLS). At beta scale this is fine; a functional index
@@ -656,6 +663,7 @@ export async function loadVisualEvidenceForPhoto(
        JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
       WHERE o.tenant_id = $1
         AND e.capture_meta->>'file_id' = $2
+        AND o.extractor = 'inspection_vision'
         AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
         AND o.review_state <> 'rejected'
         AND o.superseded_by IS NULL

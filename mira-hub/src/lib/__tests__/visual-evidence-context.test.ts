@@ -51,7 +51,8 @@ describe("structured LOOK hazards", () => {
   });
 
   it("hard-stops only at the explicit confidence threshold", () => {
-    expect(blockingLookHazard([{ code: "arcing", confidence: 0.84 }])).toBeNull();
+    expect(blockingLookHazard([{ code: "arcing", confidence: 0.849 }])).toBeNull();
+    expect(blockingLookHazard([{ code: "arcing", confidence: 0.85 }])).toEqual({ code: "arcing", confidence: 0.85 });
     expect(blockingLookHazard([
       { code: "arcing", confidence: 0.85 },
       { code: "smoke", confidence: 0.96 },
@@ -535,10 +536,30 @@ describe("loadVisualEvidenceForPhoto — keyed on the server-verified file id, m
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/e\.capture_meta->>'file_id' = \$2/);
     expect(sql).toMatch(/o\.tenant_id = \$1/); // TEXT compare, no ::uuid cast (post-069)
+    expect(sql).toMatch(/o\.extractor = 'inspection_vision'/); // F1: LOOK-provenance only
     expect(sql).toMatch(/evidence_state NOT IN \('REJECTED', 'SUPERSEDED'\)/);
     expect(sql).toMatch(/superseded_by IS NULL/);
     expect(sql).toMatch(/LIMIT 1/); // one photo = one description; read-side dedup
     expect(params).toEqual([base_tenant, FILE]);
+  });
+
+  it("F1 regression: a newer nameplate row for the same fileId does NOT erase an older LOOK hazard — stops on the LOOK row", async () => {
+    // Older LOOK row with arcing@0.9, newer nameplate row for the same file_id.
+    // Before F1 fix: latest-row-wins, nameplate row (hazards: null) wins → no stop.
+    // After F1 fix: extractor = 'inspection_vision' filter → only LOOK row matches → stop.
+    const query = vi.fn(async () => ({
+      rows: [{
+        observation_id: UUID, session_id: "s", text: "Visible arcing at terminal", obs_kind: "property",
+        confidence: null, review_state: "unreviewed", created_at: "2026-09-19T00:00:00.000Z",
+        photo_hash: "h", file_id: FILE, hazards: [{ code: "arcing", confidence: 0.9 }],
+      }],
+    }));
+    const out = await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE);
+    expect(out).toMatchObject({
+      text: "Visible arcing at terminal",
+      hazards: [{ code: "arcing", confidence: 0.9 }],
+    });
+    expect(blockingLookHazard(out?.hazards)).toEqual({ code: "arcing", confidence: 0.9 });
   });
 });
 
