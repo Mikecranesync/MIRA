@@ -237,6 +237,16 @@ export async function readNotebookStream(
           if (frame.basis) out.basis = frame.basis;
           if (isMachineEvidenceEntry(frame.machineEvidence)) out.machineEvidence = frame.machineEvidence;
           if (isVisualObservationEntry(frame.visualEvidence)) out.visualEvidence = frame.visualEvidence;
+          // Energized-electrical hazard directive (#3841): surface on evidence frame
+          if ((frame as Record<string, unknown>).hazardEntries) {
+            const entries = (frame as Record<string, unknown>).hazardEntries as Array<unknown>;
+            for (const entry of entries) {
+              if (isSafetyNoticeEntry(entry)) {
+                out.safetyNotice = entry;
+                break;
+              }
+            }
+          }
         }
         else if (frame.kind === "safety") {
           out.safetyNotice = { kind: "safety_notice", trigger: frame.trigger };
