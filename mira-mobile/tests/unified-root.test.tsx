@@ -459,4 +459,38 @@ describe("UnifiedRoot", () => {
     expect(nb.getAttribute("data-id")).toBe("nb-general");
     expect(nb.getAttribute("data-initial-question")).toBe("What is a VFD?");
   });
+
+  it("#3851: a persisted last-viewed id that is no longer in the notebook's list falls back to the latest thread and the pointer is rewritten", async () => {
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-deleted-or-outside-the-window");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Drive A" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a1");
+    await waitFor(() => expect(prefStore.mem.get("flm.unified.thread.v1.nb-a")).toBe("thrd-a1"));
+  });
+
+  it("#3851: a selection that went stale AFTER boot (a draft New-chat id not in the server list) is not resumed — open() re-validates against the list", async () => {
+    // Boot already normalises a stale PERSISTED id, so open()'s own membership
+    // check is only load-bearing for ids that go stale later: HOME "New chat"
+    // mints a draft thread that exists only client-side (in nb-b, the unbound
+    // notebook). Back to HOME, then tapping that project must land on its real
+    // latest thread, not the empty draft.
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
+    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+    await act(async () => { backRef.current?.(); });
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "General notes" }));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toBe("thrd-b1"));
+  });
 });
