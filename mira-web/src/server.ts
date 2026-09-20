@@ -32,6 +32,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
+import { getHealthIdentity } from "./lib/health-identity.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -383,15 +384,7 @@ app.get("/", (c) => {
 });
 
 // Health probe
-app.get("/api/health", (c) =>
-  c.json({
-    status: "ok",
-    service: "mira-web",
-    version: process.env.MIRA_APP_VERSION || "unknown",
-    gitSha: process.env.MIRA_GIT_SHA || "unknown",
-    builtAt: process.env.MIRA_BUILD_TIME || "unknown",
-  })
-);
+app.get("/api/health", (c) => c.json(getHealthIdentity()));
 
 // Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe
 app.route("/api/probe-state", probeStateRoute);
