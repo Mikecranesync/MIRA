@@ -31,6 +31,20 @@ _DOCS_ROOT = Path(__file__).parent / "docs"
 _DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
 
 
+def _safe_doc_path(asset_id: str, filename: str) -> Optional[Path]:
+    """Resolve a docs path, returning it only if it stays under ``_DOCS_ROOT``.
+
+    Path-traversal containment (#3815 / #3883): ``asset_id`` and ``filename`` come
+    straight off the URL, so ``/simlab/docs/../scenarios.py`` would otherwise let
+    ``get_doc`` read the rubric answer key (``simlab/scenarios.py``). ``resolve()``
+    collapses ``..`` (literal or percent-decoded) and follows symlinks on both
+    sides; a target outside the docs tree yields ``None`` -> 404.
+    """
+    docs_root = _DOCS_ROOT.resolve()
+    candidate = (docs_root / asset_id / filename).resolve()
+    return candidate if candidate.is_relative_to(docs_root) else None
+
+
 def _dashboard_html() -> str:
     """The self-scoring dashboard page (read from disk; small, cached per process)."""
     global _DASHBOARD_HTML_CACHE
@@ -291,8 +305,8 @@ def build_app(
 
     @app.get("/simlab/docs/{asset_id}/{filename}")
     def get_doc(asset_id: str, filename: str) -> PlainTextResponse:
-        doc_path = _DOCS_ROOT / asset_id / filename
-        if not doc_path.exists():
+        doc_path = _safe_doc_path(asset_id, filename)
+        if doc_path is None or not doc_path.exists():
             raise HTTPException(404, f"Doc {asset_id}/{filename} not found")
         return PlainTextResponse(doc_path.read_text())
 
