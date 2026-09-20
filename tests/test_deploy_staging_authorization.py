@@ -126,6 +126,8 @@ def test_authorizer_accepts_approved_rc_sha_and_emits_only_validated_values(tmp_
         ({"controller_ref": "refs/heads/release/test"}, "non-main controller"),
         ({"approved_rc_sha": "A" * 40}, "non-lowercase target SHA"),
         ({"approved_rc_sha": "b" * 40}, "SHA not present in the repository"),
+        ({"approved_rc_sha": "a" * 39}, "39-char SHA"),
+        ({"approved_rc_sha": ""}, "empty approved_rc_sha"),
         ({"services": "mira-hub; id"}, "shell metacharacter in services"),
         ({"services": "unknown-service"}, "service outside the allowlist"),
         ({"services": "mira-hub mira-hub"}, "duplicate service"),
