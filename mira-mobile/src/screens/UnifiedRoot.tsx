@@ -313,6 +313,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         onCancel={() => setShowCreateProject(false)}
         onCreated={(nb) => {
           setShowCreateProject(false);
+          // #3895: the list is fetched once at boot, so a project created here
+          // has to be added to it or the drawer never shows it (no thread row,
+          // no Sources to upload into) until the app is relaunched. Same idiom
+          // as createGeneral above.
+          setNotebooks((current) => (current?.some((existing) => existing.id === nb.id) ? current : [nb, ...(current ?? [])]));
           open(nb.id);
           setHomeVisible(false);
         }}
@@ -426,6 +431,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         initialSensorStart={queuedSensorStart}
         onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}
         onNewThread={startNewThread}
+        onCreateProject={onCreateProject}
       />
     </div>
   );
