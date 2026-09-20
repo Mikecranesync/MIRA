@@ -33,7 +33,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
-import { recordLookObservation } from "@/lib/visual-evidence-context";
+import {
+  normalizeLookHazards,
+  recordLookObservation,
+  type LookHazardDescriptor,
+} from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
@@ -67,7 +71,14 @@ Rules:
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
 - Keep it concise (short sentences or a short list). Plain text, no markdown headings.
-Respond ONLY with JSON: {"observation": string}`;
+For safety classification, also report only hazards visibly present now using this bounded vocabulary:
+- arcing: visible electrical arc or flash
+- exposed_conductor: visibly bare energized-capable conductor outside its intended insulation or guard
+- active_fire: visible flame
+- smoke: visible smoke
+Do not infer a hazard from labels, warnings, equipment type, or absence of a guard unless the hazardous condition itself is visible.
+Use a confidence from 0 to 1. A healthy image or negated condition has an empty hazards array.
+Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}]}`;
 
 function safePhotoName(raw: string | undefined, mime: string): string {
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : mime === "image/gif" ? "gif" : "jpg";
@@ -90,16 +101,17 @@ function optionalString(v: FormDataEntryValue | null, max: number): string | und
 
 /** Deterministic stand-in for NAMEPLATE_RECOGNIZER=fixture — no network. */
 const fixtureVisionCall: VisionCall = async () => ({
-  text: JSON.stringify({ observation: "Fixture observation: one enclosure with a green indicator lit." }),
+  text: JSON.stringify({ observation: "Fixture observation: one enclosure with a green indicator lit.", hazards: [] }),
   model: "fixture",
 });
 
-/** Unwrap the JSON-mode reply; a provider that answered in prose is kept verbatim. */
-function extractObservation(text: string): string | null {
+/** Unwrap and validate JSON-mode output; a prose answer stays a healthy observation. */
+function extractInspection(text: string): { text: string; hazards: LookHazardDescriptor[] } | null {
   const parsed = safeJson(text);
   const fromJson = parsed && typeof parsed.observation === "string" ? parsed.observation : null;
   const value = (fromJson ?? text).trim();
-  return value.length > 0 && value !== "{}" ? value : null;
+  if (value.length === 0 || value === "{}") return null;
+  return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -191,8 +203,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       temperature: 0.1,
       maxTokens: 600,
     });
-    const text = extractObservation(reply.text);
-    if (!text) throw new Error("vision_empty_response");
+    const inspection = extractInspection(reply.text);
+    if (!inspection) throw new Error("vision_empty_response");
     // #3788 — persist the observation into the VisualSession ledger (migration
     // 063; NO new table) so a later chat turn that re-sends THIS photo as visual
     // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
@@ -203,8 +215,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         tenantId: ctx.tenantId,
         fileId: parked.fileId,
         photoHash: sha256Hex(buffer),
-        text,
+        text: inspection.text,
         model: reply.model,
+        hazards: inspection.hazards,
         capturedAt,
         createdBy: ctx.userId ?? null,
       });
@@ -213,7 +226,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json({
       ...retained,
-      observation: { text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
+      observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "vision_failed";

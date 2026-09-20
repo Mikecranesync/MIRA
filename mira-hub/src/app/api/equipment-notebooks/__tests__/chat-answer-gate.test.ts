@@ -62,7 +62,7 @@ const ragMock = vi.hoisted(() => ({
 vi.mock("@/lib/manual-rag", () => ragMock);
 
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }));
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));

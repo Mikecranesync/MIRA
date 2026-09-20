@@ -89,6 +89,7 @@ import {
 import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
 import { clampSpan, fetchMachineHistory, parseAnchor, type HistoryCoverage } from "@/lib/machine-history";
 import {
+  blockingLookHazard,
   loadVisualEvidenceForAsset,
   renderVisualEvidenceSection,
   loadVisualEvidenceForPhoto,
@@ -716,13 +717,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // reuses their classifier rather than adding a second policy, which keeps the
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
-  const safetyTrigger = matchSafetyStop(message);
+  const questionSafetyTrigger = matchSafetyStop(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
   // trigger keeps the terminal SAFETY_STOP exactly as before.
-  const electricalHazardDirective = safetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
-
   // Own/replay the idempotency key before consulting mutable source approval
   // or membership. The key is bound to the full original request payload, so
   // a completed turn remains replayable even if a source is later detached;
@@ -823,7 +822,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || safetyTrigger) && validated.error === "no_sources_selected") {
+    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -849,6 +848,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const visualEntry = await releaseClaimOnFailure(() =>
     verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
   );
+
+  // #3888 — load the structured descriptor by the SERVER-VERIFIED photo id.
+  // The client rider carries only a fileId; any client `hazards` field is never
+  // read. This happens before retrieval and every answer-provider call so a
+  // positive descriptor deterministically owns the turn.
+  let lookRow: Awaited<ReturnType<typeof loadVisualEvidenceForPhoto>> = null;
+  if (visualEntry) {
+    try {
+      lookRow = await withTenantContext(ctx.tenantId, (c) =>
+        loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
+      );
+    } catch (err) {
+      // F2: fail closed when a verified photo's descriptor cannot be loaded.
+      console.error("[notebook-chat] look observation load failed (fail-closed for verified photo):", err);
+      await abandonRequestClaim();
+      return NextResponse.json({ error: "visual_descriptor_load_failed" }, { status: 500 });
+    }
+  }
+  const visualHazard = blockingLookHazard(lookRow?.hazards);
+  const visualSafetyTrigger = visualHazard ? `visual:${visualHazard.code}` : null;
+  // A visible structured hazard is stronger than the question classifier's
+  // non-terminal energized-work directive and therefore owns the turn.
+  const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
+  const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+
+  // A claimed photo is allowed past the early zero-source branch only so its
+  // server record can be checked. If it is unverified/healthy and this is not a
+  // general turn, preserve the original explicit no-sources refusal.
+  if (!validated.ok && !general && !safetyTrigger) {
+    await abandonRequestClaim();
+    return NextResponse.json({ error: validated.error }, { status: 422 });
+  }
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
@@ -1111,11 +1142,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // is the one path allowed past this gate. Gate G for DOCUMENTS is unchanged:
   // with sources selected and nothing retrieved and nothing else grounding the
   // turn, MIRA still refuses without calling a provider. A verified photo does
-  // NOT open the gate (#3788): the route cannot read the photo's observation
-  // text (LOOK returns it to the phone and does not persist it), so answering
-  // from zero chunks would be model reasoning dressed as a photo answer. The
-  // photo rides the abstain instead — persisted, streamed, and named in the
-  // status message — so nothing the technician captured is lost.
+  // NOT open this DOCUMENT gate (#3788): the persisted LOOK observation is
+  // model-produced candidate evidence, not a selected manual source. The photo
+  // rides the abstain instead — persisted, streamed, and named in the status
+  // message — so nothing the technician captured is lost. General mode can use
+  // the injection-hardened LOOK context below without weakening this refusal.
   //
   // The third clause is the Sensor REPLAY correction. A served, non-empty
   // machine window IS grounding — it is recorded observation, re-fetched by the
@@ -1259,17 +1290,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  let lookContext = "";
-  if (visualEntry) {
-    try {
-      const lookRow = await withTenantContext(ctx.tenantId, (c) =>
-        loadVisualEvidenceForPhoto(c, ctx.tenantId, visualEntry.fileId),
-      );
-      lookContext = renderLookObservationSection(lookRow);
-    } catch (err) {
-      console.error("[notebook-chat] look observation load failed (continuing without it):", err);
-    }
-  }
+  const lookContext = renderLookObservationSection(lookRow);
 
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers

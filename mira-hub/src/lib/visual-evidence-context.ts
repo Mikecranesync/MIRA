@@ -41,6 +41,52 @@ type QueryClient = { query: (text: string, params?: unknown[]) => Promise<{ rows
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Bounded visual hazards emitted by the LOOK vision pass. This is deliberately
+ * not a free-form label: chat may turn one of these values into a deterministic
+ * safety stop, so unknown provider output must be ignored rather than becoming
+ * policy. The descriptor is stored beside the same parked file id as the LOOK
+ * observation; clients never supply it.
+ */
+export const LOOK_HAZARD_CODES = ["arcing", "exposed_conductor", "active_fire", "smoke"] as const;
+export type LookHazardCode = (typeof LOOK_HAZARD_CODES)[number];
+export type LookHazardDescriptor = { readonly code: LookHazardCode; readonly confidence: number };
+
+/** A model score at or above this threshold hard-stops the photo-backed turn. */
+export const LOOK_HAZARD_STOP_CONFIDENCE = 0.85;
+
+/** Validate, deduplicate, and bound untrusted JSON produced by the vision model. */
+export function normalizeLookHazards(raw: unknown): LookHazardDescriptor[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set<string>(LOOK_HAZARD_CODES);
+  const byCode = new Map<LookHazardCode, number>();
+  for (const item of raw.slice(0, 16)) {
+    if (!item || typeof item !== "object") continue;
+    const code = (item as { code?: unknown }).code;
+    const confidence = (item as { confidence?: unknown }).confidence;
+    if (typeof code !== "string" || !allowed.has(code)) continue;
+    if (typeof confidence !== "number" || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) continue;
+    const typed = code as LookHazardCode;
+    byCode.set(typed, Math.max(byCode.get(typed) ?? -1, confidence));
+  }
+  return LOOK_HAZARD_CODES.flatMap((code) => {
+    const confidence = byCode.get(code);
+    return confidence === undefined ? [] : [{ code, confidence }];
+  });
+}
+
+/** Return the highest-confidence deterministic hard-stop descriptor, if any. */
+export function blockingLookHazard(
+  hazards: readonly LookHazardDescriptor[] | null | undefined,
+): LookHazardDescriptor | null {
+  let blocked: LookHazardDescriptor | null = null;
+  for (const hazard of normalizeLookHazards(hazards)) {
+    if (hazard.confidence < LOOK_HAZARD_STOP_CONFIDENCE) continue;
+    if (!blocked || hazard.confidence > blocked.confidence) blocked = hazard;
+  }
+  return blocked;
+}
+
 /** `equipment_entity_id` is TEXT holding `coalesce(entity_id, id::text)` — a UUID
  *  for a bridged/seeded asset, but not guaranteed. Guard before any `::uuid`
  *  cast so a non-UUID key never throws (write path) or 500s a turn (read path). */
@@ -170,6 +216,8 @@ export async function recordLookObservation(opts: {
   readonly text: string;
   /** The vision model that produced it (provenance for recall/versioning). */
   readonly model: string | null;
+  /** Structured server-side vision output; never accepted from the client. */
+  readonly hazards?: readonly LookHazardDescriptor[];
   /** Server receipt time (ISO) the LOOK route already computed. */
   readonly capturedAt: string;
   readonly createdBy: string | null;
@@ -202,6 +250,7 @@ export async function recordLookObservation(opts: {
           model: opts.model,
           captured_at: opts.capturedAt,
           provenance: "phone_photo",
+          hazards: normalizeLookHazards(opts.hazards),
         }),
       ],
     );
@@ -526,6 +575,8 @@ export type VisualEvidenceRow = {
   readonly fileId: string | null;
   readonly photoHash: string | null;
   readonly observedAt: string | null;
+  /** Structured LOOK hazards stored with this exact photo. Empty on older rows. */
+  readonly hazards?: readonly LookHazardDescriptor[];
 };
 
 /**
@@ -573,16 +624,24 @@ export async function loadVisualEvidenceForAsset(
 }
 
 /**
- * Load THE most recent active LOOK observation for a specific photo (#3788),
- * keyed ONLY on the SERVER-VERIFIED file id (never a client string) via
+ * Load the BLOCKING hazard and most recent LOOK observation for a specific photo
+ * (#3788), keyed ONLY on the SERVER-VERIFIED file id (never a client string) via
  * `evidence_item.capture_meta->>'file_id'`. Unlike {@link loadVisualEvidenceForAsset}
  * this is NOT asset-scoped, so it works on an UNBOUND notebook — the photo id is
- * the whole key. `LIMIT 1` (most recent): one photo has one description, so
- * re-posting the same bytes (same file id, `parkOrReuseFile` sha-dedup) surfaces
- * the latest reading without duplicate lines — read-side dedup keeps the write
- * path append-only (materialized-evidence rule 7). Returns null for a non-UUID id
- * or when nothing is stored. `c` is a tenant-scoped client (called inside the
- * route's `withTenantContext`).
+ * the whole key.
+ *
+ * F1 (IR #3907, sticky-MAX remediation): restricts to LOOK-provenance rows ONLY
+ * (`extractor='inspection_vision'`) so a later nameplate row for the same file
+ * cannot erase a stored hazard. Returns the **MAX-confidence blocking hazard**
+ * across ALL active (non-rejected, non-superseded) LOOK rows for this fileId, plus
+ * the latest LOOK observation text. A re-LOOK with `hazards: []` (model variance or
+ * follow-up) does NOT un-stop an older LOOK with a high-confidence hazard — the
+ * hazard is **sticky until a human rejects the observation** (director default on
+ * #3626). This aggregates the stop decision across all LOOK rows while surfacing
+ * one description (the latest) to avoid duplicate lines in context.
+ *
+ * Returns null for a non-UUID id or when nothing is stored. `c` is a tenant-scoped
+ * client (called inside the route's `withTenantContext`).
  *
  * NOTE: `capture_meta->>'file_id'` is not indexed; the query is bounded by the
  * tenant predicate (+ RLS). At beta scale this is fine; a functional index
@@ -599,31 +658,49 @@ export async function loadVisualEvidenceForPhoto(
     `SELECT o.observation_id::text AS observation_id, o.session_id::text AS session_id,
             coalesce(o.normalized_value, o.raw_value) AS text, o.obs_kind, o.confidence,
             o.review_state, o.created_at,
-            e.original_hash AS photo_hash, e.capture_meta->>'file_id' AS file_id
+            e.original_hash AS photo_hash, e.capture_meta->>'file_id' AS file_id,
+            e.capture_meta->'hazards' AS hazards
        FROM observation o
        JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
       WHERE o.tenant_id = $1
         AND e.capture_meta->>'file_id' = $2
+        AND o.extractor = 'inspection_vision'
         AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
         AND o.review_state <> 'rejected'
         AND o.superseded_by IS NULL
         AND coalesce(o.normalized_value, o.raw_value, '') <> ''
-      ORDER BY o.created_at DESC
-      LIMIT 1`,
+      ORDER BY o.created_at DESC`,
     [tenantId, fileId],
   );
-  const r = res.rows[0];
-  if (!r) return null;
+  if (res.rows.length === 0) return null;
+
+  // Latest LOOK observation text (one description per photo, read-side dedup).
+  const latest = res.rows[0];
+  
+  // MAX-confidence blocking hazard across ALL active LOOK rows (sticky until rejected).
+  let maxHazards: LookHazardDescriptor[] = [];
+  for (const row of res.rows) {
+    const rowHazards = normalizeLookHazards(row.hazards);
+    for (const h of rowHazards) {
+      const existing = maxHazards.find((m) => m.code === h.code);
+      if (!existing || h.confidence > existing.confidence) {
+        maxHazards = maxHazards.filter((m) => m.code !== h.code);
+        maxHazards.push(h);
+      }
+    }
+  }
+
   return {
-    observationId: String(r.observation_id),
-    sessionId: String(r.session_id),
-    text: String(r.text),
-    obsKind: String(r.obs_kind),
-    trust: r.review_state === "confirmed" || r.review_state === "corrected" ? "verified" : "candidate",
-    confidence: r.confidence == null ? null : Number(r.confidence),
-    fileId: (r.file_id as string) ?? null,
-    photoHash: (r.photo_hash as string) ?? null,
-    observedAt: r.created_at ? String(r.created_at) : null,
+    observationId: String(latest.observation_id),
+    sessionId: String(latest.session_id),
+    text: String(latest.text),
+    obsKind: String(latest.obs_kind),
+    trust: latest.review_state === "confirmed" || latest.review_state === "corrected" ? "verified" : "candidate",
+    confidence: latest.confidence == null ? null : Number(latest.confidence),
+    fileId: (latest.file_id as string) ?? null,
+    photoHash: (latest.photo_hash as string) ?? null,
+    observedAt: latest.created_at ? String(latest.created_at) : null,
+    hazards: maxHazards,
   };
 }
 
