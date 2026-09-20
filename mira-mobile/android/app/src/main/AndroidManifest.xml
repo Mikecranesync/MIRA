@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- #3732: the session cookie jar lives in plain SharedPreferences
+         (Capacitor Preferences, `flm.cookiejar.v1`). No app data is worth a
+         credential off-device: backups are off, and the extraction rules
+         exclude the stores anyway should allowBackup ever be flipped.
+         Pinned by tests/android-secret-hygiene.test.ts. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
