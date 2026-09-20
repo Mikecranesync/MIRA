@@ -61,6 +61,26 @@ The governed-metadata job reads `versionName`/`versionCode` **from the checked-o
 them into `latest.json` — so the version bump must be a **commit on the RC SHA**, not a worktree-local edit, for CI-built
 artifacts. That bump is a native-fingerprint change (as is #3903, already on main) → **APK release, never OTA**.
 
+## 3a. What "reconstruct #3845's delta" actually means (read-only patch analysis, 17:10Z)
+
+Wholesale merge of PR #3845 (head `93dddf10f`, merge-base `41cf3e27a`, 15 commits) into `5eb562feb` is **not** a version bump —
+`git diff --stat origin/main 93dddf10f -- mira-mobile packages` is **39 files, +353 / −1557**: it would delete main's newer
+work (the #3863 retained-photo path, `statusMessage` in `sse.ts`, `home-send.ts` (#3890), `android-secret-hygiene.test.ts`
+(#3903), the `ThreadHeader` fix (#3905), the #3889/#3891 tests, the #3866 SensorSheet rider change, …). `git cherry` finds only
+one of its commits patch-identical on main (`e23e4e65d`); the rest landed by other routes (#3829/#3835) or are superseded.
+
+The **genuine forward content** #3845 still carries beyond `main` is three small items, each to be re-applied as a fresh
+red-first commit on the frozen RC SHA by whoever owns the carrier (claim first):
+
+| # | Item | Files | Note |
+|---|---|---|---|
+| R1 | `versionCode 12` / `versionName "1.2.1"` | `mira-mobile/android/app/build.gradle` | native fingerprint → APK-only; confirm `12` is unused on Play first |
+| R2 | one-photo-at-a-time guard + default attachment question — `assertSupportedAttachments()` (throw before Composer releases the chips when >1 photo) and `questionForAttachments()` ("What am I looking at, and what should I check?" / "What is in this document?") | `mira-mobile/src/unified/attachments.ts`, `src/screens/UnifiedChat.tsx` `onSend` | must be re-fitted to main's `onSend(text, pending, { retry })` signature — #3845 predates #3863/#3864 and drops the retry path if applied verbatim |
+| R3 | browser/PWA file-picker fallback `pickInBrowser(accept, capture)` when `!canPickNatively()` | `mira-mobile/src/lib/native-pick.ts` (+ its test) | web-only behaviour; no native change |
+
+Everything else in #3845's diff is either already on `main` or a regression and must **not** be re-applied. This is the
+scope the post-freeze job should claim; the PR itself stays draft/unmerged (director rule).
+
 ## 4. Stale publication host — what is actually live
 
 | Reference | State at 16:50Z |
