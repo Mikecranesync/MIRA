@@ -37,12 +37,19 @@ vi.mock("../src/api/client", async () => {
   return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
 });
 
+const notebookApi = vi.hoisted(() => ({
+  createNotebook: vi.fn(async (input: { displayName: string }) => ({
+    id: "nb-general", displayName: input.displayName, manufacturer: null, model: null, equipmentType: null,
+    identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [],
+  })),
+}));
 vi.mock("../src/api/resources", async () => {
   const actual = await vi.importActual<typeof import("../src/api/resources")>("../src/api/resources");
   return {
     ...actual,
     getAssetByTag: scanApi.getAssetByTag,
     openAssetNotebook: scanApi.openAssetNotebook,
+    createNotebook: notebookApi.createNotebook,
     listNotebooks: vi.fn(async () => [
       { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
         threads: [
@@ -132,7 +139,7 @@ afterEach(() => {
 });
 
 describe("UnifiedRoot", () => {
-  it("loads notebooks into a composer-first home, then opens the preferred notebook when the user sends", async () => {
+  it("loads notebooks into a composer-first home; a HOME send opens an UNBOUND notebook, never the last-opened machine one (#3877)", async () => {
     const onSignOut = vi.fn(async () => {});
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={onSignOut} />);
 
@@ -143,7 +150,9 @@ describe("UnifiedRoot", () => {
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
-    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    // nb-a is the bound Siemens G120 and first in last-opened order; nb-b is
+    // the unbound "General notes". A general question must not inherit a drive.
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
     expect(nb.getAttribute("data-chromeless")).toBe("true");
     expect(nb.getAttribute("data-initial-question")).toBe("Why did the conveyor stop?");
@@ -161,7 +170,7 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("about"))).toBeTruthy();
   });
 
-  it("New chat from the sidebar creates a clean thread in the selected project without destroying the old one", async () => {
+  it("New chat from HOME creates a clean thread in an UNBOUND project (#3877) without destroying the old one", async () => {
     const backRef = { current: null as (() => boolean) | null };
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
@@ -170,7 +179,10 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
     const nb = await waitFor(() => screen.getByTestId("nb"));
     const firstThread = nb.getAttribute("data-thread-id");
-    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    // From HOME, "New chat" is a blank GENERAL chat: nb-b (unbound), not nb-a
+    // (the last-opened Siemens G120). Inside a notebook, New chat still stays
+    // in that notebook — that path is unchanged.
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(firstThread).toMatch(/^thrd_/);
 
     await act(async () => {
@@ -430,5 +442,21 @@ describe("UnifiedRoot", () => {
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-b1");
+  });
+
+  it("a HOME send with only machine notebooks creates General first, then asks there (#3877)", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([
+      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null }, threads: [] },
+    ] as never);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.input(box, { target: { value: "What is a VFD?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledWith({ displayName: "General", identitySourceType: "user" });
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What is a VFD?");
   });
 });
