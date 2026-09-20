@@ -145,6 +145,13 @@ export type StreamResult = {
   visualEvidence: VisualObservationEntry | null;
   /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash refusal. */
   safetyNotice: SafetyNoticeEntry | null;
+  /** #3841: the energized-electrical hazard DIRECTIVE, when the answer was
+   *  framed by it. Rides the evidence frame's `hazardEntries` (never a
+   *  `safety` frame), so it is a separate field from `safetyNotice` on purpose:
+   *  the classic page renders `safetyNotice` as the terminal "Safety stop" and
+   *  hides citations, while a directive turn is a COMPLETED, cited answer with
+   *  a warning. Live and hydrated (`persistedTurns`) carry the same value. */
+  hazardNotice: SafetyNoticeEntry | null;
   /** ADR-0038 rule 6: did a terminal `status` frame ACTUALLY arrive? `status`
    *  is the only terminal marker on the wire a client may trust — `[DONE]` is
    *  a transport sentinel carrying no state, and stream closure is
@@ -216,6 +223,7 @@ export async function readNotebookStream(
     machineEvidence: null,
     visualEvidence: null,
     safetyNotice: initialSafetyNotice,
+    hazardNotice: null,
     sawStatus: false,
   };
   try {
@@ -237,15 +245,15 @@ export async function readNotebookStream(
           if (frame.basis) out.basis = frame.basis;
           if (isMachineEvidenceEntry(frame.machineEvidence)) out.machineEvidence = frame.machineEvidence;
           if (isVisualObservationEntry(frame.visualEvidence)) out.visualEvidence = frame.visualEvidence;
-          // Energized-electrical hazard directive (#3841): surface on evidence frame
-          if ((frame as Record<string, unknown>).hazardEntries) {
-            const entries = (frame as Record<string, unknown>).hazardEntries as Array<unknown>;
-            for (const entry of entries) {
-              if (isSafetyNoticeEntry(entry)) {
-                out.safetyNotice = entry;
-                break;
-              }
-            }
+          // #3841: the energized-electrical directive rides here (never a
+          // `safety` frame — mobile treats any live safety frame as a stop).
+          // It lands in `hazardNotice`, NOT `safetyNotice`, because the classic
+          // page renders `safetyNotice` as the terminal stop and drops the
+          // citations. The route emits at most one entry today; the first
+          // `safety_notice` wins if that ever changes.
+          if ("hazardEntries" in frame && Array.isArray(frame.hazardEntries)) {
+            const directive = frame.hazardEntries.find(isSafetyNoticeEntry);
+            if (directive) out.hazardNotice = directive;
           }
         }
         else if (frame.kind === "safety") {
@@ -400,6 +408,8 @@ type HydratedTurn = {
   machineEvidence?: MachineEvidenceEntry[];
   visualEvidence?: VisualObservationEntry[];
   safetyNotice?: SafetyNoticeEntry;
+  /** #3841: the non-terminal energized-electrical directive on a completed row. */
+  hazardNotice?: SafetyNoticeEntry;
   stopped?: boolean;
 };
 
@@ -447,6 +457,10 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
       safetyNotice && (safetyStop || (t.answerStatus === "answered" && t.basis == null))
         ? safetyNotice
         : null;
+    // #3841: a `safety_notice` that is NOT a terminal stop is the directive —
+    // hydrate it into the same field the live reader fills, so the classic
+    // page shows the same warning before and after a reload.
+    const hazardNotice = safetyNotice && !terminalSafetyNotice ? safetyNotice : null;
     return [
       { id: `${t.id}-q`, role: "user" as const, content: t.question },
       {
@@ -468,6 +482,7 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         // Safety marker — a reloaded safety turn is distinguishable from a
         // normal `answered` turn: the `safetyNotice` field carries the trigger.
         ...(!stopped && terminalSafetyNotice ? { safetyNotice: terminalSafetyNotice } : {}),
+        ...(!stopped && hazardNotice ? { hazardNotice } : {}),
         ...(stopped ? { stopped: true } : {}),
       },
     ];

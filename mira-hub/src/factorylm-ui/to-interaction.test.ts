@@ -61,6 +61,7 @@ function stream(over: Partial<StreamResultWithStatusMessage> = {}): StreamResult
     machineEvidence: null,
     visualEvidence: null,
     safetyNotice: null,
+    hazardNotice: null,
     sawStatus: true,
     ...over,
     // #3854 makes this field required on StreamResult. Keep this branch
@@ -121,6 +122,15 @@ describe("partsFromStream", () => {
       machineEvidence: { kind: "machine_evidence", assetId: "a", anchorAt: AT, pre: 1, post: 1, rowCount: 0, freshness: "live", reason: "unavailable" },
     }), LIVE);
     expect(me).toMatchObject({ type: "machine_evidence", evidence: { source: "live", reason: "unavailable" } });
+  });
+
+  it("a live directive (hazardNotice) renders a WARNING notice after the evidence and stays completed (#3841)", () => {
+    const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
+    const live = stream({ hazardNotice: directive });
+    const parts = partsFromStream(live, LIVE);
+    expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice", "followups"]);
+    expect(parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    expect(lifecycleFromStream(live)).toBe("completed");
   });
 
   it("a safety stop renders the stop notice with the trigger AND is a first-class safety_stop lifecycle, never completed (Codex #3839 F2)", () => {

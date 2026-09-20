@@ -37,6 +37,9 @@ export function stoppedStreamResult(err: unknown): CompatibleStreamResult {
     machineEvidence: null,
     visualEvidence: null,
     safetyNotice: isSafetyNoticeEntry(interrupted.safetyNotice) ? interrupted.safetyNotice : null,
+    // An interrupted stream keeps no evidence claim; the directive rides the
+    // evidence frame, so it is not carried through a throwing abort (#3841).
+    hazardNotice: null,
     sawStatus: false,
   };
 }

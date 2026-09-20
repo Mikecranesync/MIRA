@@ -4,6 +4,7 @@
  * Run: npx vitest run src/components/equipment/NotebookChat.test.tsx
  */
 import { renderToStaticMarkup } from "react-dom/server";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { describe, expect, it } from "vitest";
 import { Bubble, chatBodyFor, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
 import { buildChatBody, persistedTurns, stoppedTurn } from "./notebook-chat-utils";
@@ -299,6 +300,39 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     expect(empty).not.toContain("recorded observation");
     // Neither claims a machine basis — the turn keeps the basis it earned.
     expect(unavailable).toContain("Grounded in this notebook's sources".replace(/'/g, "&#x27;"));
+  });
+});
+
+// ── #3841: the energized-electrical DIRECTIVE is a warning, not a stop ───────
+describe("Bubble — energized-electrical directive (#3841)", () => {
+  const directiveTurn: ChatTurn = {
+    id: "d1",
+    role: "assistant",
+    content: "De-energize and verify absence of voltage, then check the contactor coil. [1]",
+    status: "answered",
+    hazardNotice: { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD },
+    citations: [{ citationId: "1", docId: "d", sourceTitle: "Manual", page: 3, fileId: null, quote: null }],
+    followups: ["What next?"],
+    basis: "oem_documentation",
+  };
+
+  it("renders the answer, its citations, the basis caption AND a non-terminal warning — never the Safety stop alert", () => {
+    const html = renderToStaticMarkup(<Bubble turn={directiveTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="hazard-directive-banner"');
+    expect(html).toContain("De-energize");
+    expect(html).not.toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain('aria-label="Safety stop"');
+    // Ordinary-answer affordances survive: the passage list and the basis caption.
+    expect(html).toContain("supporting passage");
+    expect(html).toContain("Grounded in this notebook".replace(/'/g, "&#x27;"));
+  });
+
+  it("control — a Tier-1 hard stop still renders the terminal alert and hides citations", () => {
+    const stopTurn: ChatTurn = { ...directiveTurn, hazardNotice: undefined, safetyNotice: { kind: "safety_notice", trigger: "smoke coming" } };
+    const html = renderToStaticMarkup(<Bubble turn={stopTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain('data-testid="hazard-directive-banner"');
+    expect(html).not.toContain("supporting passage");
   });
 });
 
