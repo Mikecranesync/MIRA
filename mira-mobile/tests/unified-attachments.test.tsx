@@ -227,7 +227,10 @@ describe("unified attachments controller", () => {
     expect(composed).toMatchObject({ failure: expect.stringContaining("couldn't analyze") });
     expect(composed).not.toHaveProperty("rider");
     // Held for another attempt, exactly like the other failure paths.
-    expect(get().hasCarried()).toBe(true);
+    // Since #3864 a failed send retains its bytes in `retained` (armed only for
+    // Try again), never in `carried` (which rides the next send by design).
+    expect(get().hasRetained()).toBe(true);
+    expect(get().hasCarried()).toBe(false);
   });
 
 });
