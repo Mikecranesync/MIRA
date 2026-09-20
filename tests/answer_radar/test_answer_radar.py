@@ -412,3 +412,66 @@ def test_report_renders_the_headline_numbers() -> None:
     assert "VCAD:" in out
     assert "MIRA FIELD BENCHMARK" in out
     assert "excluded from the denominator" in out
+
+
+# ── KB preflight: never score a run you cannot attribute ─────────────────────
+#
+# The 2026-09-05 day-one run published VCAD 0/6 with "zero retrieved chunks on all
+# six". That was not a MIRA result: `neon_fallback=True` silently continues without
+# recall when the corpus is unreachable, and the same questions retrieve 2-4 chunks on
+# clean `main`. An unreachable corpus and a genuinely ignorant model produce identical
+# artefacts — no citations, honesty directive, low score — so the harness must refuse
+# to grade rather than guess which it saw.
+
+
+def test_kb_health_is_falsy_when_unreachable(monkeypatch) -> None:
+    from answer_radar.kb_health import check_kb_health
+
+    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
+    monkeypatch.setenv("MIRA_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+    health = check_kb_health()
+    assert not health
+    assert "unreachable" in health.detail.lower()
+
+
+def test_kb_health_reports_a_missing_tenant_rather_than_probing() -> None:
+    from answer_radar.kb_health import check_kb_health
+
+    health = check_kb_health(tenant_id="")
+    assert not health
+
+
+def test_require_kb_raises_instead_of_producing_a_scorecard(monkeypatch) -> None:
+    """The whole point: abort, never emit an unattributable number."""
+    from answer_radar.kb_health import KBUnreachableError, require_kb
+
+    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
+    monkeypatch.setenv("MIRA_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+    with pytest.raises(KBUnreachableError, match="refusing to run the benchmark"):
+        require_kb()
+
+
+def test_runner_does_not_silently_degrade_without_the_kb() -> None:
+    """`neon_fallback=True` is the exact switch that invalidated the first scorecard."""
+    source = (_ROOT / "answer_radar" / "runner.py").read_text(encoding="utf-8")
+    code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))
+    assert "neon_fallback=False" in code
+    assert "neon_fallback=True" not in code
+
+
+def test_batch_preflights_before_asking_anything() -> None:
+    source = (_ROOT / "answer_radar" / "batch.py").read_text(encoding="utf-8")
+    assert "require_kb()" in source
+    # The preflight must precede the question loop, or it proves nothing.
+    assert source.index("require_kb()") < source.index("for q in questions")
+
+
+def test_the_first_scorecard_carries_its_correction() -> None:
+    """It is committed evidence. Two wrong causes were published against it before the
+    real one (the engine does not invoke retrieval), so it must carry that correction
+    rather than be read at face value."""
+    card = _ROOT / "answer_radar" / "runs" / "SCORECARD-2026-09-05.txt"
+    if card.exists():
+        text = card.read_text(encoding="utf-8")
+        assert "SUPERSEDED" in text
+        assert "0 times" in text, "must state the actual mechanism, not just that it is stale"

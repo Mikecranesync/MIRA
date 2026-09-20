@@ -190,9 +190,15 @@ async def run_question(
     chat_id = f"answer-radar-{question.question_id}"
 
     if pipeline is None:
+        # neon_fallback=False on purpose. True means "continue without NeonDB recall
+        # (RAGWorker returns empty chunks -> honesty directive fires)" — a silent
+        # degradation that makes an unreachable corpus look exactly like MIRA knowing
+        # nothing. That produced the invalid VCAD 0/6 scorecard on 2026-09-05. The batch
+        # additionally preflights with `kb_health.require_kb()`; this is the second lock,
+        # so a caller using `run_question` directly cannot reintroduce the hole.
         pipeline = _import_local_pipeline()(
             db_path=os.getenv("ANSWER_RADAR_DB", "/tmp/mira-answer-radar.db"),
-            neon_fallback=True,
+            neon_fallback=False,
         )
 
     # A fresh session per question: prior turns would leak context between unrelated
