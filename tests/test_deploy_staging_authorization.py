@@ -42,8 +42,7 @@ def _run_authorizer(
     event_name: str = "workflow_dispatch",
     controller_ref: str = "refs/heads/main",
     controller_sha: str = _MAIN_SHA,
-    target_ref: str = "refs/heads/main",
-    target_sha: str = _MAIN_SHA,
+    approved_rc_sha: str = _MAIN_SHA,
     services: str = "mira-hub mira-pipeline",
     reset_volumes: str = "false",
 ) -> subprocess.CompletedProcess[str]:
@@ -57,12 +56,16 @@ def _run_authorizer(
     gh = bin_dir / "gh"
     gh.write_text(
         "#!/bin/sh\n"
+        f'VALID_SHA="{_MAIN_SHA}"\n'
         'test "$#" -eq 4 || exit 90\n'
         'test "$1" = api || exit 91\n'
-        'test "$2" = repos/Mikecranesync/MIRA/git/ref/heads/main || exit 92\n'
         'test "$3" = --jq || exit 93\n'
-        'test "$4" = .object.sha || exit 94\n'
-        "printf '%s\\n' \"$REMOTE_MAIN_SHA\"\n",
+        'test "$4" = .sha || exit 94\n'
+        'if [ "$2" = "repos/Mikecranesync/MIRA/commits/$VALID_SHA" ]; then\n'
+        '  printf "%s\\n" "$VALID_SHA"\n'
+        "else\n"
+        "  exit 22\n"
+        "fi\n",
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -77,9 +80,7 @@ def _run_authorizer(
             "GITHUB_SHA": controller_sha,
             "GITHUB_REPOSITORY": "Mikecranesync/MIRA",
             "GITHUB_OUTPUT": str(output_path),
-            "REMOTE_MAIN_SHA": _MAIN_SHA,
-            "TARGET_REF_INPUT": target_ref,
-            "TARGET_SHA_INPUT": target_sha,
+            "APPROVED_RC_SHA": approved_rc_sha,
             "SERVICES_INPUT": services,
             "RESET_VOLUMES_INPUT": reset_volumes,
         }
@@ -95,33 +96,26 @@ def _run_authorizer(
 
 
 def test_staging_deploy_exposes_only_manual_exact_main_inputs():
-    """A push trigger or a caller-selected ref would bypass exact-main review."""
+    """A push trigger or a caller-selected SHA would bypass approval review."""
     workflow = _workflow()
     triggers = _triggers(workflow)
 
     assert set(triggers) == {"workflow_dispatch"}
     inputs = triggers["workflow_dispatch"]["inputs"]
-    assert inputs["target_ref"] == {
-        "description": "Exact Git ref to deploy (main only)",
-        "required": True,
-        "type": "choice",
-        "options": ["refs/heads/main"],
-    }
-    assert inputs["target_sha"]["required"] is True
-    assert inputs["target_sha"]["type"] == "string"
+    assert inputs["approved_rc_sha"]["required"] is True
+    assert inputs["approved_rc_sha"]["type"] == "string"
+    assert "target_ref" not in inputs
+    assert "target_sha" not in inputs
     assert workflow["permissions"] == {"contents": "read"}
 
 
-def test_authorizer_accepts_current_main_and_emits_only_validated_values(tmp_path):
+def test_authorizer_accepts_approved_rc_sha_and_emits_only_validated_values(tmp_path):
     """The happy path must bind every downstream value to validated metadata."""
     result = _run_authorizer(tmp_path, reset_volumes="true")
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "github-output").read_text(encoding="utf-8") == (
-        "target_ref=refs/heads/main\n"
-        f"target_sha={_MAIN_SHA}\n"
-        "services=mira-hub mira-pipeline\n"
-        "reset_volumes=true\n"
+        f"approved_rc_sha={_MAIN_SHA}\nservices=mira-hub mira-pipeline\nreset_volumes=true\n"
     )
 
 
@@ -130,10 +124,8 @@ def test_authorizer_accepts_current_main_and_emits_only_validated_values(tmp_pat
     [
         ({"event_name": "push"}, "non-manual invocation"),
         ({"controller_ref": "refs/heads/release/test"}, "non-main controller"),
-        ({"controller_sha": "b" * 40}, "stale controller checkout"),
-        ({"target_ref": "refs/heads/release/test"}, "non-main target ref"),
-        ({"target_sha": "A" * 40}, "non-lowercase target SHA"),
-        ({"target_sha": "b" * 40}, "target other than current main"),
+        ({"approved_rc_sha": "A" * 40}, "non-lowercase target SHA"),
+        ({"approved_rc_sha": "b" * 40}, "SHA not present in the repository"),
         ({"services": "mira-hub; id"}, "shell metacharacter in services"),
         ({"services": "unknown-service"}, "service outside the allowlist"),
         ({"services": "mira-hub mira-hub"}, "duplicate service"),
@@ -161,14 +153,13 @@ def test_authorization_job_is_secret_free_and_owns_downstream_values():
     assert "secrets." not in serialized
     assert "vars." not in serialized
     assert authorize["outputs"] == {
-        "target_ref": "${{ steps.authorize.outputs.target_ref }}",
-        "target_sha": "${{ steps.authorize.outputs.target_sha }}",
-        "services": "${{ steps.authorize.outputs.services }}",
-        "reset_volumes": "${{ steps.authorize.outputs.reset_volumes }}",
+        "approved_rc_sha": "${{ steps.validate.outputs.approved_rc_sha }}",
+        "services": "${{ steps.validate.outputs.services }}",
+        "reset_volumes": "${{ steps.validate.outputs.reset_volumes }}",
     }
 
 
-def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
+def test_deploy_job_reauthorizes_source_immediately_before_ssh_key_access():
     """A stale rerun must fail before the protected SSH key is materialized."""
     workflow = _workflow()
     deploy = workflow["jobs"]["deploy"]
@@ -176,21 +167,26 @@ def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
     assert deploy["needs"] == "authorize-target"
     assert deploy["environment"] == "staging-deploy"
     steps = deploy["steps"]
-    revalidate_index = next(
+    head_check_index = next(
         index
         for index, step in enumerate(steps)
-        if step.get("name") == "Revalidate current main and deploy user"
+        if step.get("name") == "Require HEAD == approved_rc_sha"
+    )
+    revalidate_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Revalidate deploy user"
     )
     credential_index = next(
         index for index, step in enumerate(steps) if step.get("name") == "Set up SSH"
     )
-    assert credential_index == revalidate_index + 1
+    assert head_check_index < credential_index
+    assert revalidate_index < credential_index
+
+    head_check = steps[head_check_index]
+    assert "$(git rev-parse HEAD)" in head_check["run"]
+    assert "$APPROVED_RC_SHA" in head_check["run"]
 
     revalidate = steps[revalidate_index]
     revalidate_text = json.dumps(revalidate)
-    assert "git/ref/heads/main" in revalidate_text
-    assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in revalidate["run"]
-    assert '"$AUTHORIZED_TARGET_SHA" = "$CURRENT_MAIN_SHA"' in revalidate["run"]
     assert revalidate["env"]["DEPLOY_USER"] == "${{ vars.STAGING_DEPLOY_USER }}"
     assert revalidate["id"] == "revalidate"
     assert "deploy_user=%s\\n" in revalidate["run"]
@@ -209,22 +205,21 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
     checkout = next(step for step in deploy["steps"] if "uses" in step)
     assert checkout["uses"] == ("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803")
     assert checkout["with"] == {
-        "ref": "${{ needs.authorize-target.outputs.target_sha }}",
+        "ref": "${{ needs.authorize-target.outputs.approved_rc_sha }}",
         "persist-credentials": False,
     }
 
     deploy_step = _step(deploy, "Deploy exact authorized staging source")
     assert deploy_step["env"] == {
-        "TARGET_REF": "${{ needs.authorize-target.outputs.target_ref }}",
-        "TARGET_SHA": "${{ needs.authorize-target.outputs.target_sha }}",
+        "APPROVED_RC_SHA": "${{ needs.authorize-target.outputs.approved_rc_sha }}",
         "SERVICES": "${{ needs.authorize-target.outputs.services }}",
         "RESET_VOLUMES": "${{ needs.authorize-target.outputs.reset_volumes }}",
         "DEPLOY_USER": "${{ steps.revalidate.outputs.deploy_user }}",
     }
     script = deploy_step["run"]
-    assert 'git fetch --no-tags origin "$TARGET_REF"' in script
-    assert '"$FETCHED_SHA" = "$TARGET_SHA"' in script
-    assert 'git reset --hard "$TARGET_SHA"' in script
+    assert 'git fetch --no-tags origin "$APPROVED_RC_SHA"' in script
+    assert '"$FETCHED_SHA" = "$APPROVED_RC_SHA"' in script
+    assert 'git reset --hard "$APPROVED_RC_SHA"' in script
     assert "git diff --quiet" in script
     assert "git diff --cached --quiet" in script
     assert "git ls-files --others --exclude-standard" in script
@@ -234,7 +229,7 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
     assert "ssh-keyscan" not in script
     assert "${{ inputs." not in script
     assert "${{ github.event.inputs." not in script
-    assert "printf 'TARGET_SHA=%q\\n'" in script
+    assert "printf 'APPROVED_RC_SHA=%q\\n'" in script
 
     for job in workflow["jobs"].values():
         for step in job.get("steps", []):
@@ -249,8 +244,8 @@ def test_staging_health_and_production_co_tenant_guards_fail_the_job():
     assert '|| echo "FAIL"' not in script
     for port_path in (
         "127.0.0.1:4101/api/health",
+        "127.0.0.1:4200/api/health",
         "127.0.0.1:4099/health",
-        "127.0.0.1:4088/",
     ):
         assert port_path in script
     low_count_guard = script.index("Production container count looks too low")
