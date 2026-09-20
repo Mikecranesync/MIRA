@@ -96,6 +96,9 @@ def _run_deploy_boundary(
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env["SSH_CALL_FILE"] = str(ssh_call)
     env["SSH_STDIN_FILE"] = str(ssh_stdin)
+    # GitHub provides RUNNER_TEMP on every runner; the Deploy step tees the
+    # ssh transcript there so the receipt can be extracted afterwards.
+    env["RUNNER_TEMP"] = str(tmp_path)
     for key, value in (
         ("SERVICES", services),
         ("APPROVED_RC_SHA", approved_rc_sha),
@@ -283,7 +286,7 @@ def test_resolver_fetch_and_execution_paths_cannot_diverge():
             1,
         ),
         script.replace(
-            'git show "${DEPLOY_SHA}:.github/scripts/resolve_release_tag.sh"',
+            'git show "${APPROVED_RC_SHA}:.github/scripts/resolve_release_tag.sh"',
             'git show "origin/main:.github/scripts/resolve_release_tag.sh"',
             1,
         ),
