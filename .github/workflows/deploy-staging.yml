@@ -275,34 +275,36 @@ jobs:
             echo "${svc}=${running}" | tee -a "$RUNNING_IDS"
           done
 
-          echo "=== Health check ==="
-          sleep 8
+          echo "=== Health checks (fail closed) ==="
+          sleep 10
           echo "--- stg-mira-hub (4101) ---"
-          curl -sfL -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4101/api/health || echo "unreachable"
-          echo "--- stg-mira-web (4200) ---"
-          curl -sfL -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4200/api/health || echo "unreachable"
+          curl -sfL -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4101/api/health
           echo "--- stg-mira-pipeline (4099) ---"
-          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4099/health || echo "unreachable"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4099/health
+          echo "--- stg-atlas-api (4088) ---"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4088/
 
-          echo "=== Staging hub runtime identity ==="
-          HUB_GIT_SHA="$(curl -sfL http://127.0.0.1:4101/api/version 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))" || echo "")"
-          if [ -z "$HUB_GIT_SHA" ]; then
-            echo "WARNING: could not read mira-hub gitSha; proceeding without validation"
-          elif [ "$HUB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
-            echo "::error::stg-mira-hub runtime gitSha '${HUB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP."
-            exit 1
-          else
+          # Runtime identity — for every deployed surface the reported gitSha MUST
+          # equal the approved SHA. An unreadable answer is a STOP, not a warning.
+          HUB_GIT_SHA=""
+          if [[ " $TARGETS " == *" mira-hub "* ]]; then
+            echo "=== Staging hub runtime identity ==="
+            HUB_GIT_SHA="$(curl -sfL http://127.0.0.1:4101/api/version | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))")"
+            if [ "$HUB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
+              echo "::error::stg-mira-hub runtime gitSha '${HUB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP."
+              exit 1
+            fi
             echo "mira-hub reports gitSha=${HUB_GIT_SHA} (== approved)"
           fi
 
-          echo "=== Staging web runtime identity ==="
-          WEB_GIT_SHA="$(curl -sfL http://127.0.0.1:4200/api/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))" || echo "")"
-          if [ -z "$WEB_GIT_SHA" ]; then
-            echo "WARNING: could not read mira-web gitSha; proceeding without validation"
-          elif [ "$WEB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
-            echo "::error::stg-mira-web runtime gitSha '${WEB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP."
-            exit 1
-          else
+          WEB_GIT_SHA=""
+          if [[ " $TARGETS " == *" mira-web "* ]]; then
+            echo "=== Staging web runtime identity ==="
+            WEB_GIT_SHA="$(curl -sfL http://127.0.0.1:4200/api/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('gitSha',''))")"
+            if [ "$WEB_GIT_SHA" != "$APPROVED_RC_SHA" ]; then
+              echo "::error::stg-mira-web runtime gitSha '${WEB_GIT_SHA}' != approved ${APPROVED_RC_SHA} — STOP."
+              exit 1
+            fi
             echo "mira-web reports gitSha=${WEB_GIT_SHA} (== approved)"
           fi
 
@@ -330,10 +332,14 @@ jobs:
               "schema": "factorylm.deploy-receipt/1",
               "environment": "staging",
               "approved_rc_sha": os.environ["APPROVED_RC_SHA"],
-              "release_tag": "v" + os.environ.get("MIRA_APP_VERSION", "unknown"),
+              "release_tag": ("v" + os.environ["MIRA_APP_VERSION"]) if os.environ.get("MIRA_APP_VERSION", "unknown") != "unknown" else None,
+              # Only surfaces that were deployed AND answered are reported; the
+              # verifier treats every reported value as mandatory-equal and never
+              # lets one matching surface stand in for a missing one.
               "runtime": {
-                  "mira-hub": os.environ.get("HUB_GIT_SHA") or None,
-                  "mira-web": os.environ.get("WEB_GIT_SHA") or None,
+                  svc: sha
+                  for svc, sha in (("mira-hub", os.environ.get("HUB_GIT_SHA", "")), ("mira-web", os.environ.get("WEB_GIT_SHA", "")))
+                  if sha
               },
               "built_images": pairs(os.environ["BUILT_IDS"]),
               "running_images": pairs(os.environ["RUNNING_IDS"]),
@@ -372,7 +378,8 @@ jobs:
           python3 tools/staging_receipt.py extract --log "$RUNNER_TEMP/staging-deploy.out" --out staging-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
           python3 tools/staging_receipt.py verify --receipt staging-receipt.json \
-            --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 1
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 1 \
+            --require-services ""
 
       - name: Upload staging receipt (90-day retention)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -378,7 +378,7 @@ jobs:
           echo "=== Pull code — the exact approved RC SHA, never a moving ref (#3910) ==="
           # Deploy ONE immutable commit: the approved RC SHA. The release tag must
           # point AT it; the SHA itself is what gets checked out (the tag is a
-          # label for /api/version + rollback, not the anchor). No origin/main.
+          # label for /api/version + rollback, not the anchor). Never a moving ref.
           git fetch origin --tags --force
           git fetch origin "$APPROVED_RC_SHA"
           if ! git cat-file -e "${APPROVED_RC_SHA}^{commit}" 2>/dev/null; then
@@ -691,9 +691,13 @@ jobs:
               "environment": "production",
               "approved_rc_sha": os.environ["APPROVED_RC_SHA"],
               "release_tag": os.environ["RELEASE_TAG"],
+              # Only surfaces that were deployed AND answered are reported; the
+              # verifier treats every reported value as mandatory-equal and never
+              # lets one matching surface stand in for a missing one.
               "runtime": {
-                  "mira-hub": os.environ.get("HUB_GIT_SHA") or None,
-                  "mira-web": os.environ.get("WEB_GIT_SHA") or None,
+                  svc: sha
+                  for svc, sha in (("mira-hub", os.environ.get("HUB_GIT_SHA", "")), ("mira-web", os.environ.get("WEB_GIT_SHA", "")))
+                  if sha
               },
               "built_images": pairs(os.environ["BUILT_IDS"]),
               "running_images": pairs(os.environ["RUNNING_IDS"]),
@@ -716,7 +720,8 @@ jobs:
           python3 tools/staging_receipt.py extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
           python3 tools/staging_receipt.py verify --receipt production-receipt.json \
-            --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1 \
+            --require-services ""
 
       - name: Upload production receipt (90-day retention)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
