@@ -79,12 +79,13 @@ def verify_receipt(
     runtime = receipt.get("runtime", {})
     if runtime:
         runtime_shas = [v for v in runtime.values() if v is not None]
-        if runtime_shas:
-            if not any(v == approved_rc_sha for v in runtime_shas):
-                problems.append(
-                    f"runtime sha mismatch: expected at least one to equal {approved_rc_sha}, "
-                    f"got {runtime_shas}"
-                )
+        if not runtime_shas:
+            problems.append("at least one runtime value must be non-None")
+        elif not any(v == approved_rc_sha for v in runtime_shas):
+            problems.append(
+                f"runtime sha mismatch: expected at least one to equal {approved_rc_sha}, "
+                f"got {runtime_shas}"
+            )
 
     # Image identity check
     built_images = receipt.get("built_images", {})

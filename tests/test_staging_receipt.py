@@ -162,6 +162,31 @@ def test_verify_rejects_expired_receipt():
     )
 
 
+def test_verify_rejects_all_runtime_none():
+    """When runtime dict is non-empty but all values are None, reject it."""
+    now = datetime.utcnow()
+    deployed_at = (now - timedelta(minutes=5)).isoformat() + "Z"
+    receipt_data = {
+        "schema": "factorylm.deploy-receipt/1",
+        "environment": "staging",
+        "approved_rc_sha": "a" * 40,
+        "runtime": {"mira-hub": None, "mira-web": None},
+        "target": {"host": "165.245.138.91", "compose": "docker-compose.staging-vps.yml"},
+        "deployed_at": deployed_at,
+        "run_url": "https://github.com/...",
+        "run_id": "12345",
+    }
+    problems = receipt.verify_receipt(
+        receipt_data,
+        approved_rc_sha="a" * 40,
+        environment="staging",
+        now=now,
+    )
+    assert any("at least one runtime value" in p for p in problems), (
+        "must reject when all runtime values are None"
+    )
+
+
 # ── CLI commands ────────────────────────────────────────────────────────────
 
 
