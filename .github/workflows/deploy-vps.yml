@@ -19,28 +19,17 @@ on:
   # waiting for smoke. Still runs health checks post-deploy.
   workflow_dispatch:
     inputs:
+      approved_rc_sha:
+        description: "Immutable approved release candidate SHA (exactly 40 lowercase hex characters)"
+        required: true
+        type: string
+      approved_release_tag:
+        description: "Release tag corresponding to approved_rc_sha (e.g., v1.2.3), or empty to resolve from SHA"
+        required: false
+        type: string
+        default: ""
       services:
         description: "Space-separated services to rebuild (leave blank for all)"
-        required: false
-        default: ""
-      skip_staging_gate:
-        description: "Skip staging-gate verification (hotfix only — REQUIRES skip_reason)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
-      skip_drift_check:
-        description: "Skip the prod migration-drift gate (only when the deploy does NOT depend on the pending migration — REQUIRES skip_reason)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
-      skip_reason:
-        description: "Why is a gate being skipped? (Required when skip_staging_gate=true OR skip_drift_check=true; auto-opens an audit issue)"
         required: false
         default: ""
 
@@ -48,15 +37,11 @@ concurrency:
   group: deploy-vps
   cancel-in-progress: false  # never cancel a running deploy
 
-# The repo default token is READ-ONLY (org setting), so without this block the
-# staging-gate-bypass audit issue was silently never filed — every bypass fell
-# through to the ::warning:: fallback and the audit trail existed only in run
-# logs. contents:read = checkout; actions:read = the Staging Gate run lookup;
-# issues:write = the bypass audit issue.
+# Permissions: contents:read for checkout and artifact access; actions:read for
+# artifact list API.
 permissions:
   contents: read
   actions: read
-  issues: write
 
 jobs:
   # Authorize the immutable source and its Staging Gate result before GitHub
@@ -64,52 +49,84 @@ jobs:
   # environment and receives neither the production DB credential nor SSH key.
   authorize-source:
     name: Authorize production source
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      approved_rc_sha: ${{ steps.validate.outputs.approved_rc_sha }}
+      approved_release_tag: ${{ steps.resolve-tag.outputs.approved_release_tag }}
+      services: ${{ steps.validate.outputs.services }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ inputs.approved_rc_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Require the exact current main source
+      - name: Reject gate-bypass inputs
+        env:
+          INPUTS_JSON: ${{ toJSON(github.event.inputs) }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
-          CURRENT_MAIN="$(git rev-parse origin/main)"
+          for key in skip_staging_gate skip_drift_check skip_reason; do
+            if echo "$INPUTS_JSON" | grep -q "\"$key\""; then
+              echo "::error::Gate-bypass input '$key' is no longer allowed"
+              exit 1
+            fi
+          done
+      - name: Validate approved source identity
+        id: validate
+        env:
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          APPROVED_RELEASE_TAG: ${{ inputs.approved_release_tag }}
+          SERVICES: ${{ inputs.services }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$APPROVED_RC_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::approved_rc_sha must be exactly 40 lowercase hex characters"
+            exit 1
+          fi
+          if [ -n "$APPROVED_RELEASE_TAG" ] && ! [[ "$APPROVED_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::approved_release_tag must match ^v[0-9]+\.[0-9]+\.[0-9]+$ or be empty"
+            exit 1
+          fi
+          echo "approved_rc_sha=$APPROVED_RC_SHA" >> "$GITHUB_OUTPUT"
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+      - name: Require HEAD == approved_rc_sha
+        env:
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+        run: |
+          set -euo pipefail
           CHECKED_OUT="$(git rev-parse HEAD)"
-          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
-            echo "::error::Refusing stale production authorization: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+          if [ "$CHECKED_OUT" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::HEAD ($CHECKED_OUT) != approved_rc_sha ($APPROVED_RC_SHA)"
+            exit 1
+          fi
+      - name: Resolve and pin the release tag
+        id: resolve-tag
+        env:
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          APPROVED_RELEASE_TAG: ${{ inputs.approved_release_tag }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          RESOLVED="$(DEPLOY_SHA="$APPROVED_RC_SHA" TAG_WAIT_ATTEMPTS=20 bash .github/scripts/resolve_release_tag.sh)"
+          if [ -n "$APPROVED_RELEASE_TAG" ] && [ "$APPROVED_RELEASE_TAG" != "$RESOLVED" ]; then
+            echo "::error::approved_release_tag ($APPROVED_RELEASE_TAG) != resolved tag ($RESOLVED)"
+            exit 1
+          fi
+          TAGGED_SHA="$(git rev-parse "refs/tags/${RESOLVED}^{commit}")" || {
+            echo "::error::Tag $RESOLVED does not resolve to a commit"
             exit 1
           }
-      - name: Validate requested gate bypasses
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          SKIP_STAGING_GATE: ${{ github.event.inputs.skip_staging_gate }}
-          SKIP_DRIFT_CHECK: ${{ github.event.inputs.skip_drift_check }}
-          REASON: ${{ github.event.inputs.skip_reason }}
-        run: |
-          set -euo pipefail
-          if [ "$SKIP_STAGING_GATE" = "true" ] && [ -z "${REASON// /}" ]; then
-            echo "::error::skip_staging_gate=true requires a non-empty skip_reason."
+          if [ "$TAGGED_SHA" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::Tag $RESOLVED points to $TAGGED_SHA, not $APPROVED_RC_SHA"
             exit 1
           fi
-          if [ "$SKIP_DRIFT_CHECK" = "true" ] && [ -z "${REASON// /}" ]; then
-            echo "::error::skip_drift_check=true requires a non-empty skip_reason."
-            exit 1
-          fi
+          echo "approved_release_tag=$RESOLVED" >> "$GITHUB_OUTPUT"
       - name: Verify Staging Gate passed
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_staging_gate != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOY_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -152,6 +169,29 @@ jobs:
               exit 1
               ;;
           esac
+      - name: Require a deployed-staging receipt for approved_rc_sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ARTIFACTS=$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${APPROVED_RC_SHA}&per_page=20" --jq '.artifacts | sort_by(.created_at) | reverse | .[0]')
+          if [ -z "$ARTIFACTS" ] || [ "$ARTIFACTS" = "null" ]; then
+            echo "::error::No staging receipt found for $APPROVED_RC_SHA"
+            exit 1
+          fi
+          ARTIFACT_ID=$(echo "$ARTIFACTS" | jq -r '.id')
+          EXPIRED=$(echo "$ARTIFACTS" | jq -r '.expired')
+          if [ "$EXPIRED" = "true" ]; then
+            echo "::error::Staging receipt for $APPROVED_RC_SHA has expired"
+            exit 1
+          fi
+          echo "::group::Download staging receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > receipt.zip
+          unzip -o receipt.zip
+          echo "::endgroup::"
+          python3 tools/staging_receipt.py verify --receipt staging-receipt.json --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168
 
   # The migration gate intentionally runs on a separate runner from the VPS
   # deploy. It receives the prod DB URL but never the SSH key; the deploy job
@@ -159,47 +199,36 @@ jobs:
   migration-drift:
     name: Verify production migration drift
     needs: authorize-source
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.authorize-source.outputs.approved_rc_sha }}
           persist-credentials: false
-      - name: Require the exact current main source
+      - name: Require HEAD == approved_rc_sha
+        env:
+          APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
-          CURRENT_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
-            echo "::error::Refusing stale production migration check: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+          if [ "$CHECKED_OUT" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::HEAD ($CHECKED_OUT) != approved_rc_sha ($APPROVED_RC_SHA)"
             exit 1
-          }
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        if: github.event.inputs.skip_drift_check != 'true'
         with:
           python-version: "3.12"
       - name: Install hash-locked migration driver
-        if: github.event.inputs.skip_drift_check != 'true'
         run: |
           python3 -I -m pip install \
             --disable-pip-version-check \
             --only-binary=:all: --require-hashes \
             -r tools/migration-drift-requirements.txt
       - name: Install Doppler CLI
-        if: github.event.inputs.skip_drift_check != 'true'
         uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
       - name: Fetch only the production database URL
-        if: github.event.inputs.skip_drift_check != 'true'
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
@@ -214,7 +243,6 @@ jobs:
           echo "::add-mask::$URL"
           printf '%s' "$URL" > "$URL_FILE"
       - name: Verify prod migration drift = 0
-        if: github.event.inputs.skip_drift_check != 'true'
         run: |
           set -euo pipefail
           URL_FILE="$RUNNER_TEMP/prod-db-url"
@@ -235,14 +263,11 @@ jobs:
               echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run"
               echo "gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=apply"
               echo '```'
-              echo "Then re-run this deploy. A verified-independent manual hotfix may use skip_drift_check=true with skip_reason."
+              echo "Then re-run this deploy."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::error::Prod has unapplied migration(s); see the job summary."
             exit 1
           fi
-      - name: Record deliberate drift-gate bypass
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_drift_check == 'true'
-        run: echo "Migration drift execution was deliberately bypassed; the deploy job validates the reason and writes the audit issue."
 
   deploy:
     name: Deploy MIRA to production VPS
