@@ -6,10 +6,10 @@
 > Every claim below points at a GitHub comment, run, or SHA; peer messages were
 > coordination only and are not cited as evidence.
 
-**Date stopped:** PENDING — window opened 16:19Z (T+00); this draft was written at T+240–T+280 (20:00–20:58Z). Filled in at the real T+300.
-**Reason stopped:** PENDING (expected: window ended — **partial**: read-only packets complete; the code carrier never started — see § broken/risky)
+**Date stopped:** 2026-09-20 21:30Z (T+300 posted late; window opened 16:19Z = T+00). The CHARLIE host **crashed at ~20:58Z** (T+279), killing the release-control, device-captain and Codex-reviewer sessions; release control resumed 21:27Z under a new peer id and closed the window from the same checkout. This draft was written T+240–T+280 and finalized at T+310.
+**Reason stopped:** window ended — **partial**: read-only packets complete; the code carrier never started (see § broken/risky). The host crash did not interrupt any write: the handoff worktree was clean at `f9728318a` on resume.
 **Branch (this doc only):** `docs/nap5h-release-control-handoff` (docs-only, cut from the RC; no code)
-**Control plane:** [#3626](https://github.com/Mikecranesync/MIRA/issues/3626) — T+00 `issuecomment-5751026339`, T+120 `issuecomment-5751692332`, T+300 **PENDING** (URL inserted when posted)
+**Control plane:** [#3626](https://github.com/Mikecranesync/MIRA/issues/3626) — T+00 `issuecomment-5751026339`, T+120 `issuecomment-5751692332`, T+300 `issuecomment-5752799568`
 **RC (frozen 10:36Z, unchanged all window):** `5eb562feba2c6418c86d5ba82d73c19bdac8e5f5` = `origin/main`
 **Production (unchanged all window):** `/api/health/ .gitSha` = `0178b1b0776f30cccde42c8d255031254b882a38` (`recovery-0178b1b07`, built 2026-09-15); last `deploy-vps.yml` run = 35505726834, **failure**, 10:40Z; no dispatch since
 **Verdict carried:** **NO-GO retained.** Nothing in this window is cross-surface acceptance.
@@ -29,13 +29,13 @@
 | 5C mobile + cross-surface (#3881, #3882) | read-only packet + evidence sheet | done | release control #3881 `issuecomment-5751081955`, #3882 `issuecomment-5751082777`; mira-2b packet #3881 `issuecomment-5751229855`, `-5751261982` (#3845 delta), #3882 `issuecomment-5751229973`; docs draft PR **#3915** @ `76bb672bf41cd554cd8c6df2b5e8c175b9ad8c1d` (BRAVO-B IR PASS; merge held) |
 | 5D STOP persistence spec (#3912) | read-only test spec | done | release control `issuecomment-5751090607`; BRAVO-B contract `issuecomment-5751077614`; mira-2b emulator baseline `issuecomment-5751251645` (component-only, prod `0178b1b07`, **not** RC, **not** acceptance) |
 | 5E `/v3` decision packet (#3880) | read-only options | done | release control `issuecomment-5751100987`; BRAVO-B `issuecomment-5751077697` |
-| 6 Freeze + wake-up packet | this file + T+300 | **in progress** (draft PR #3918) | this file; T+300 comment PENDING |
+| 6 Freeze + wake-up packet | this file + T+300 | done (draft PR #3918, not merged) | this file; T+300 #3626 `issuecomment-5752799568` |
 
-**Unplanned lane absorbed:** Mike authorized BRAVO-A in-session to take **#3893** first (claim #3893 `issuecomment-5751270200`, 17:01Z). Draft PR **#3917** @ `122f5041f7b17262ca3d2d09bedb5fb82ff9ad1d` (17:17Z; 10 files, all `mira-mobile/src/**` → guarded, needs `legacy-ui-exception`; PR body carries the section). Codex exact-head **FAIL** `#3917 issuecomment-5751395584` (P1: directive not sticky across truncation/stop on ChatV2). **No remediation push** from 17:23Z through 20:58Z (final range PENDING); Codex 30-min stall notice #3893 `issuecomment-5751541336`. staging-gate PASS at that head (`issuecomment-5751365410`) is not a verdict.
+**Unplanned lane absorbed:** Mike authorized BRAVO-A in-session to take **#3893** first (claim #3893 `issuecomment-5751270200`, 17:01Z). Draft PR **#3917** @ `122f5041f7b17262ca3d2d09bedb5fb82ff9ad1d` (17:17Z; 10 files, all `mira-mobile/src/**` → guarded, needs `legacy-ui-exception`; PR body carries the section). Codex exact-head **FAIL** `#3917 issuecomment-5751395584` (P1: directive not sticky across truncation/stop on ChatV2). **No remediation push** from 17:23Z through 21:29Z (verified at close: head unchanged, last #3893 comment 17:50Z); Codex 30-min stall notice #3893 `issuecomment-5751541336`. staging-gate PASS at that head (`issuecomment-5751365410`) is not a verdict.
 
 ## What I did NOT touch (scope discipline)
 
-- `main`: `5eb562feb…` at open and at 20:58Z (stop value PENDING) — **no merges** (verified by `git rev-parse origin/main` on every 5-min watch tick, logs in session).
+- `main`: `5eb562feb…` at open and at 21:29Z (stop) — **no merges** (verified by `git rev-parse origin/main` on every 5-min watch tick, logs in session).
 - Production: no `deploy-vps.yml` dispatch, no migration apply, no container action, no host command. **Note for the record:** the OVH host Doppler token at `/opt/mira` scope was provisioned by **Mike himself** at ~13:1xZ, *before* plan adoption, via `doppler secrets get OVH_PROD_DEPLOY … | ssh root@… 'doppler configure set token …'`; the token never transited chat. Not a window action.
 - Secrets, DNS, OAuth, GitHub environments, branch protection: untouched.
 - OTA channels / `updates.factorylm.com` / Play: untouched. Pixel: not attached, untouched. Emulator-5554 used once by mira-2b for a component check, RELEASED 16:58Z (`issuecomment-5751251753`).
@@ -46,7 +46,7 @@
 ## What's broken / risky (read before merging anything)
 
 1. **The window's one code deliverable did not happen.** #3910 (deterministic deploy, `approved_rc_sha`) and #3911 (mandatory drift gate) are still open with no branch. Until they land, `deploy-vps.yml` still resolves `origin/main` at dispatch time, still honours `skip_drift_check`, and still has `continue-on-error: true` at :477. **Any prod deploy before then is against un-hardened tooling.**
-2. **BRAVO-A stalled three times today on critical lanes** (#3876, #3841 reassigned earlier; #3893/#3917 stalled 17:23Z→20:58Z with no ACK; stop value PENDING). Under the sequential mandate I did not reassign. `f7wg2tjp@bravo` is read-only, warm at `5eb562feb`.
+2. **BRAVO-A stalled three times today on critical lanes** (#3876, #3841 reassigned earlier; #3893/#3917 stalled 17:23Z→21:29Z with no ACK at stop). Under the sequential mandate I did not reassign. `f7wg2tjp@bravo` is read-only, warm at `5eb562feb`.
 3. **Sequencing conflict you must settle** — plan line 106 says the standby "writes only after a recorded handoff" (parallel is permitted); Codex relayed your later heartbeat "BRAVO-A is the only code writer, resume sequentially". I applied the restrictive one (17:30Z). Both are on the card as decision 10.
 4. **#3917 review conflict, not just a bug:** Codex requires the energized directive to be *sticky* across truncation/stop; the Hub at `e6f5fbbf8` (#3901) *deliberately drops* `hazardNotice` on truncated/stopped turns (ADR-0038 r6). Whichever wins must be applied to both surfaces or Hub and mobile diverge (mira-2b, #3917 `issuecomment-5751405747`). New P2 **#3916** (shell prints `Trigger: <phrase>` to the technician, `parts.tsx:333`).
 5. **Rollback anchor is the running SHA `0178b1b07`, not tag `v3.349.15` (`ad8806dc8`).** Image digest is not exposed by `/api/version` or `/api/health`; needs a read-only host `docker inspect`. Rollback rehearsal **unexecuted** (no non-prod host).
@@ -75,13 +75,13 @@
 
 ### Release control (`uip267k1@charlie`)
 ```text
-Outcome proven: control plane run T+00→T+280 so far (T+300 PENDING); 5C/5D/5E read-only packets; lane map; this HANDOFF draft. No code.
+Outcome proven: control plane run T+00→T+300 (T+300 posted 21:30Z, late — host crash 20:58Z); 5C/5D/5E read-only packets; lane map; this HANDOFF. No code.
 Issue / criterion: #3626; plan 54600b724 Tasks 1, 5C, 5D, 5E, 6
 Primary / backup: uip267k1@charlie / none
 Worktree / branch: /Users/charlienode/MIRA-worktrees/nap5h-handoff / docs/nap5h-release-control-handoff (this doc only)
 Base SHA / exact tested head: 5eb562feba2c6418c86d5ba82d73c19bdac8e5f5 / n/a (no code)
 Files changed or inspected: docs/mira/evidence/nappy-time-2026-09-20/HANDOFF.md (new); inspected .github/workflows/deploy-vps.yml, mira-hub/src/middleware.ts, notebook-chat-utils.ts, NotebookChat.tsx, turns-to-parts.ts, mira-mobile build.gradle (read-only)
-Commands, UTC timestamps, exit codes: gh issue/pr view + git fetch/rev-parse every 5 min 16:29Z→20:58Z so far (exit 0; final range PENDING); curl /api/health/ 18:16Z exit 0; no writes except issue comments listed above
+Commands, UTC timestamps, exit codes: gh issue/pr view + git fetch/rev-parse every 5 min 16:29Z→20:58Z (exit 0; watch died with the host), then a one-shot re-verify 21:29Z (git rev-parse origin/main, curl /api/health/, gh run list, gh pr view 3915/3917, git ls-remote — all exit 0); no writes except issue comments listed above
 PASS / FAIL / NOT TESTED rows: n/a — packets, not tests
 Independent verdict and reviewed SHA: n/a
 Remaining blocker: carrier #3910/#3911 unstarted
@@ -145,7 +145,7 @@ git ls-remote --heads origin | grep -E 'harden.*carrier|3910|3911'   # (empty �
 
 ## Suggested morning checklist (Mike)
 
-- [ ] Read this top to bottom, then the T+300 comment on #3626 (PENDING until posted).
+- [ ] Read this top to bottom, then the T+300 comment on #3626 (`issuecomment-5752799568`).
 - [ ] Confirm the untouched list yourself: `origin/main`, prod `.gitSha`, `gh api repos/Mikecranesync/MIRA/environments`, Pixel.
 - [ ] Decide card items 10 → 1 → 4 → 5 (writer policy first; it unblocks the carrier).
 - [ ] If keeping #3917: settle item 11 before BRAVO-A remediates, or the fix will be reviewed against the wrong rule.
