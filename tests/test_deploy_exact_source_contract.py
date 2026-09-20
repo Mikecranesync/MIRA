@@ -265,10 +265,14 @@ def test_mira_web_dockerfile_has_args():
 
 
 def test_mira_web_health_endpoint_returns_gitssha():
+    # Check either server.ts directly (inlined) or via imported health-identity module
     server_file = REPO / "mira-web" / "src" / "server.ts"
+    health_identity_file = REPO / "mira-web" / "src" / "lib" / "health-identity.ts"
     if server_file.exists():
-        text = server_file.read_text()
-        assert "gitSha" in text or "MIRA_GIT_SHA" in text, (
+        server_text = server_file.read_text()
+        identity_text = health_identity_file.read_text() if health_identity_file.exists() else ""
+        combined_text = server_text + identity_text
+        assert "gitSha" in combined_text or "MIRA_GIT_SHA" in combined_text, (
             "mira-web health endpoint must include gitSha"
         )
 
