@@ -272,15 +272,7 @@ jobs:
   deploy:
     name: Deploy MIRA to production VPS
     needs: [authorize-source, migration-drift]
-    # For workflow_run triggers: only deploy when the smoke test passed.
-    # For workflow_dispatch (manual hotfix): always run.
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
@@ -288,196 +280,19 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.authorize-source.outputs.approved_rc_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Require the exact current main source
+      - name: Require HEAD == approved_rc_sha
+        env:
+          APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
-          CURRENT_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
-            echo "::error::Refusing stale production deploy: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
-            exit 1
-          }
-
-      # When the operator dispatches with skip_staging_gate=true, the gate
-      # verification is bypassed. CLAUDE.md says "file a follow-up PR within
-      # 24h" but nothing enforced it — silent bypasses leaked the rule. Now:
-      #   1. skip_reason is required (else this step fails the deploy upfront)
-      #   2. an audit issue is auto-opened so the bypass is loud, not silent
-      #   3. the issue carries the actor, SHA, services, reason, run URL,
-      #      and the 24-hour follow-up-PR expectation
-      - name: Validate + audit staging-gate bypass
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging_gate == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ACTOR: ${{ github.actor }}
-          SHA: ${{ github.sha }}
-          SERVICES: ${{ github.event.inputs.services }}
-          REASON: ${{ github.event.inputs.skip_reason }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          if [ -z "${REASON// /}" ]; then
-            echo "::error::skip_staging_gate=true requires a non-empty skip_reason. Re-dispatch with a reason (e.g., 'hotfix: prod login broken, sev-1 incident #N')."
+          if [ "$CHECKED_OUT" != "$APPROVED_RC_SHA" ]; then
+            echo "::error::HEAD ($CHECKED_OUT) != approved_rc_sha ($APPROVED_RC_SHA)"
             exit 1
           fi
-          SERVICES_DISPLAY="${SERVICES:-(all)}"
-          SHORT_SHA="${SHA:0:8}"
-          {
-            echo "## staging-gate bypass — audit record"
-            echo ""
-            echo "A production deploy was triggered with \`skip_staging_gate=true\`."
-            echo "The Staging Gate was NOT verified for the commit being shipped."
-            echo ""
-            echo "| Field | Value |"
-            echo "|---|---|"
-            echo "| Actor | @${ACTOR} |"
-            echo "| SHA | \`${SHA}\` |"
-            echo "| Services | \`${SERVICES_DISPLAY}\` |"
-            echo "| Reason | ${REASON} |"
-            echo "| Run | [${RUN_URL}](${RUN_URL}) |"
-            echo ""
-            echo "### 24-hour follow-up — required (per CLAUDE.md)"
-            echo ""
-            echo "- [ ] Open a normal PR that applies the same fix and lands via the Staging Gate. Reference this issue in the PR description."
-            echo "- [ ] Close this issue once the follow-up PR has merged green through the Staging Gate."
-            echo ""
-            echo "If the bypass hid a real regression, escalate immediately and open a SEV ticket."
-            echo ""
-            echo "---"
-            echo ""
-            echo "_Auto-filed by \`.github/workflows/deploy-vps.yml\` (R8, staging-gate architectural review 2026-05-31). The title carries the short SHA for cross-referencing._"
-          } > bypass_issue_body.md
-          # Non-fatal: an audit-log failure must NOT block a production hotfix.
-          # The GITHUB_TOKEN may lack issues:write (GraphQL "Resource not accessible
-          # by integration") — in that case warn + record the reason in the run log,
-          # and let the deploy proceed. (Prod incident 2026-06-02: this createIssue
-          # error aborted every hotfix deploy while prod chat was down.)
-          gh issue create \
-            --repo "$REPO" \
-            --title "staging-gate bypass: deploy by @${ACTOR} at ${SHORT_SHA}" \
-            --body-file bypass_issue_body.md \
-            || echo "::warning::Could not auto-open the staging-gate-bypass audit issue (token may lack issues:write). Deploy continues — record the bypass manually. Reason: ${REASON}"
-
-      - name: Verify Staging Gate passed
-        # Refuse to deploy a commit that hasn't been graded by the staging gate.
-        # This repo uses squash-merge, so the SHA on main is a NEW commit that
-        # no PR workflow ever ran on. We resolve the squashed merge commit
-        # back to its source PR, then check Staging Gate against the PR head.
-        # On workflow_dispatch, the operator may set skip_staging_gate=true.
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_staging_gate != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # On workflow_run, the head_sha is the commit that landed on main.
-          # On manual dispatch (without skip), use the checked-out HEAD.
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          echo "Resolving PR head for merge commit $DEPLOY_SHA"
-          # /commits/{sha}/pulls returns PRs that this commit was the merge of.
-          # Call the API ONCE and fail loudly if the call itself errors: a 5xx /
-          # rate-limit used to be swallowed (2>/dev/null || echo "") and then
-          # reported as the definitive-sounding "No PR associated" — a false
-          # diagnosis for what is a transient outage. Both outcomes still fail
-          # closed; only the message (and the operator's next move) differs.
-          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
-            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
-            exit 1
-          fi
-          PR_HEAD_SHA=$(echo "$PULLS_JSON" \
-            | jq -r '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty')
-          if [ -z "$PR_HEAD_SHA" ]; then
-            # Fallback: any PR associated with this commit (covers rebase-merge
-            # corner cases where merge_commit_sha doesn't exactly match).
-            PR_HEAD_SHA=$(echo "$PULLS_JSON" | jq -r '.[0].head.sha // empty')
-          fi
-          if [ -z "$PR_HEAD_SHA" ]; then
-            echo "::error::No PR associated with $DEPLOY_SHA (API call succeeded; the commit genuinely has no PR). Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
-            exit 1
-          fi
-          echo "PR head SHA: $PR_HEAD_SHA"
-          # Same discipline for the run lookup: an API failure is not "no run".
-          if ! STATUS=$(gh run list \
-            --repo "$REPO" \
-            --workflow "Staging Gate" \
-            --commit "$PR_HEAD_SHA" \
-            --limit 1 \
-            --json status,conclusion \
-            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
-            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
-            exit 1
-          fi
-          echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
-          case "$STATUS" in
-            completed:success)
-              echo "✓ staging gate passed — proceeding with deploy"
-              ;;
-            ""|"null:null")
-              echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA. Re-run the gate (gh workflow run staging-gate.yml) or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
-              exit 1
-              ;;
-            *)
-              echo "::error::Staging Gate did not pass for PR head $PR_HEAD_SHA (status=$STATUS). Aborting deploy."
-              exit 1
-              ;;
-          esac
-
-      # Deploy-order gate (2026-08-18, after the #3245 incident — migrations
-      # 075/076/077 merged to main + the code that depends on them deployed to
-      # prod, but the migrations sat unapplied for ~21h; same class as the
-      # 2026-07-14 061-064 incident, 9 days of asset-enrich 500s). The Staging
-      # Gate above proves the code was GRADED; it says nothing about whether the
-      # target DB has the schema that code requires. Refuse to deploy code onto a
-      # prod DB that is missing a merged migration. Read-only: SELECTs
-      # schema_migrations only (same tool as migration-drift-check.yml). Escape
-      # hatch: dispatch with skip_drift_check=true (+ skip_reason) ONLY when the
-      # deploy genuinely does not depend on the pending migration.
-      - name: Validate + audit drift-check bypass
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_drift_check == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ACTOR: ${{ github.actor }}
-          SHA: ${{ github.sha }}
-          REASON: ${{ github.event.inputs.skip_reason }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          if [ -z "${REASON// /}" ]; then
-            echo "::error::skip_drift_check=true requires a non-empty skip_reason (e.g. 'hotfix: bot 409 fix, does not touch the pending 07x schema')."
-            exit 1
-          fi
-          SHORT_SHA="${SHA:0:8}"
-          {
-            echo "## drift-check bypass — audit record"
-            echo ""
-            echo "A production deploy was triggered with \`skip_drift_check=true\`, so it shipped code WITHOUT confirming prod has every merged migration."
-            echo ""
-            echo "| Field | Value |"
-            echo "|---|---|"
-            echo "| Actor | @${ACTOR} |"
-            echo "| SHA | \`${SHA}\` |"
-            echo "| Reason | ${REASON} |"
-            echo "| Run | [${RUN_URL}](${RUN_URL}) |"
-            echo ""
-            echo "### Follow-up — required"
-            echo "- [ ] Promote any pending prod migrations: \`gh workflow run apply-migrations.yml -f target=prod -f migrations=all -f mode=dry-run\` (review) then \`mode=apply\`."
-            echo "- [ ] Confirm \`migration-drift-check.yml -f target=prod\` reports 0 drift, then close this issue."
-            echo ""
-            echo "_Auto-filed by \`.github/workflows/deploy-vps.yml\` deploy-order gate._"
-          } > drift_bypass_issue_body.md
-          # Non-fatal (same posture as the staging-gate bypass): an audit-log
-          # failure must never block a production hotfix.
-          gh issue create \
-            --repo "$REPO" \
-            --title "drift-check bypass: deploy by @${ACTOR} at ${SHORT_SHA}" \
-            --body-file drift_bypass_issue_body.md \
-            || echo "::warning::Could not auto-open the drift-check-bypass audit issue. Deploy continues — record the bypass manually. Reason: ${REASON}"
 
       - name: Set up SSH
         env:
@@ -516,14 +331,9 @@ jobs:
 
       - name: Deploy
         env:
-          SERVICES: ${{ github.event.inputs.services }}
-          # The IMMUTABLE commit that passed the staging gate + smoke (workflow_run
-          # head_sha; github.sha on a manual dispatch). The deploy anchors on THIS,
-          # never on a moving origin/main (#3055).
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          # Only an operator hotfix dispatch (skip_staging_gate=true) may deploy the
-          # pinned SHA when no release tag exists yet; the normal path fails closed.
-          ALLOW_MOVING_FALLBACK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging_gate == 'true') && '1' || '0' }}
+          SERVICES: ${{ needs.authorize-source.outputs.services }}
+          APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
+          APPROVED_RELEASE_TAG: ${{ needs.authorize-source.outputs.approved_release_tag }}
         run: |
           set -euo pipefail
           ALLOWED_SERVICES="factorylm-foreman mira-ask mira-bot-slack mira-bot-telegram mira-cmms-sync mira-historian-beat mira-historian-worker mira-hub mira-ingest mira-mcp mira-pipeline mira-redis mira-relay mira-synthetic-dogfood-beat mira-synthetic-dogfood-worker mira-tika mira-web nango-db nango-server"
@@ -534,16 +344,16 @@ jobs:
               *) echo "::error::Unknown deploy service: $service"; exit 1 ;;
             esac
           done
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deploy SHA"; exit 1; }
-          [[ "$ALLOW_MOVING_FALLBACK" =~ ^[01]$ ]] || { echo "::error::Invalid fallback flag"; exit 1; }
+          [[ "$APPROVED_RC_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid approved_rc_sha"; exit 1; }
+          [[ "$APPROVED_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid approved_release_tag"; exit 1; }
           SERVICES_B64="$(printf '%s' "$NORMALIZED_SERVICES" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            ubuntu@40.160.141.61 "sudo bash -s -- '$SERVICES_B64' '$DEPLOY_SHA' '$ALLOW_MOVING_FALLBACK'" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s -- '$SERVICES_B64' '$APPROVED_RC_SHA' '$APPROVED_RELEASE_TAG'" << 'ENDSSH'
 
           set -euo pipefail
           SERVICES="$(printf '%s' "$1" | base64 -d)"
-          DEPLOY_SHA="$2"
-          ALLOW_MOVING_FALLBACK="$3"
+          APPROVED_RC_SHA="$2"
+          APPROVED_RELEASE_TAG="$3"
           cd /opt/mira
 
           # Signal "deploy in progress" so the heartbeat + self-healer crons stand
