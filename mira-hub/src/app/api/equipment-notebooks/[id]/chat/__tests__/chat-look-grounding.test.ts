@@ -283,4 +283,44 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(await res.json()).toEqual({ error: "visual_descriptor_load_failed" });
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("F1 sticky MAX: older LOOK with high hazard + newer LOOK with empty hazards → still stops (MAX across all active rows)", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    // loadVisualEvidenceForPhoto now aggregates: returns latest text but MAX hazard across all rows.
+    // Simulates: older LOOK arcing@0.9 + newer LOOK hazards:[] → MAX is arcing@0.9, still blocks.
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o2",
+      sessionId: "s1",
+      text: "No visible hazards at this time.", // latest observation text
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "arcing", confidence: 0.9 }], // MAX from older row
+    });
+
+    const res = await POST(
+      req({
+        message: "what am I looking at here",
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+
+    // Even though the latest LOOK says no hazards, the older high-confidence hazard is sticky.
+    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(
+      TENANT,
+      NB,
+      expect.objectContaining({
+        answerText: expect.stringContaining("SAFETY STOP"),
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ kind: "safety_stop", trigger: "visual:arcing" }),
+        ]),
+      }),
+    );
+  });
 });

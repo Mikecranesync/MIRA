@@ -517,7 +517,7 @@ describe("loadVisualEvidenceForPhoto — keyed on the server-verified file id, m
     expect(query).not.toHaveBeenCalled();
   });
 
-  it("scopes on tenant + capture_meta file id, limits to the latest, and maps a candidate reading", async () => {
+  it("scopes on tenant + capture_meta file id, returns latest text with MAX hazard aggregation", async () => {
     const query = vi.fn(async () => ({
       rows: [{
         observation_id: UUID, session_id: "s", text: "green indicator lit", obs_kind: "property",
@@ -539,7 +539,7 @@ describe("loadVisualEvidenceForPhoto — keyed on the server-verified file id, m
     expect(sql).toMatch(/o\.extractor = 'inspection_vision'/); // F1: LOOK-provenance only
     expect(sql).toMatch(/evidence_state NOT IN \('REJECTED', 'SUPERSEDED'\)/);
     expect(sql).toMatch(/superseded_by IS NULL/);
-    expect(sql).toMatch(/LIMIT 1/); // one photo = one description; read-side dedup
+    expect(sql).toMatch(/ORDER BY o\.created_at DESC/); // latest text first; hazards MAX-aggregated
     expect(params).toEqual([base_tenant, FILE]);
   });
 
@@ -560,6 +560,66 @@ describe("loadVisualEvidenceForPhoto — keyed on the server-verified file id, m
       hazards: [{ code: "arcing", confidence: 0.9 }],
     });
     expect(blockingLookHazard(out?.hazards)).toEqual({ code: "arcing", confidence: 0.9 });
+  });
+
+  it("F1 sticky MAX: older LOOK arcing@0.9 + newer LOOK hazards:[] → MAX is arcing@0.9 (sticky until rejected)", async () => {
+    // Two LOOK rows for the same fileId:
+    //  - older (index 1): arcing@0.9
+    //  - newer (index 0, latest text): hazards:[]
+    // Returns: latest text ("No visible hazards") but MAX hazard (arcing@0.9) from older row.
+    const query = vi.fn(async () => ({
+      rows: [
+        { // newer (DESC order)
+          observation_id: "o2", session_id: "s", text: "No visible hazards at this time", obs_kind: "property",
+          confidence: null, review_state: "unreviewed", created_at: "2026-09-19T12:00:00.000Z",
+          photo_hash: "h", file_id: FILE, hazards: [],
+        },
+        { // older
+          observation_id: "o1", session_id: "s", text: "Visible arcing at terminal", obs_kind: "property",
+          confidence: null, review_state: "unreviewed", created_at: "2026-09-19T10:00:00.000Z",
+          photo_hash: "h", file_id: FILE, hazards: [{ code: "arcing", confidence: 0.9 }],
+        },
+      ],
+    }));
+    const out = await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE);
+    expect(out).toMatchObject({
+      observationId: "o2", // latest
+      text: "No visible hazards at this time", // latest text
+      hazards: [{ code: "arcing", confidence: 0.9 }], // MAX from older row
+    });
+    expect(blockingLookHazard(out?.hazards)).toEqual({ code: "arcing", confidence: 0.9 });
+  });
+
+  it("F1 sticky MAX: multiple hazards across rows → returns MAX confidence per code", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          observation_id: "o3", session_id: "s", text: "Latest observation", obs_kind: "property",
+          confidence: null, review_state: "unreviewed", created_at: "2026-09-19T14:00:00.000Z",
+          photo_hash: "h", file_id: FILE, hazards: [{ code: "exposed_conductor", confidence: 0.7 }],
+        },
+        {
+          observation_id: "o2", session_id: "s", text: "Middle observation", obs_kind: "property",
+          confidence: null, review_state: "unreviewed", created_at: "2026-09-19T12:00:00.000Z",
+          photo_hash: "h", file_id: FILE, hazards: [{ code: "arcing", confidence: 0.88 }, { code: "exposed_conductor", confidence: 0.92 }],
+        },
+        {
+          observation_id: "o1", session_id: "s", text: "Oldest observation", obs_kind: "property",
+          confidence: null, review_state: "unreviewed", created_at: "2026-09-19T10:00:00.000Z",
+          photo_hash: "h", file_id: FILE, hazards: [{ code: "arcing", confidence: 0.95 }],
+        },
+      ],
+    }));
+    const out = await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE);
+    expect(out).toMatchObject({
+      text: "Latest observation",
+      hazards: expect.arrayContaining([
+        { code: "arcing", confidence: 0.95 }, // MAX from oldest
+        { code: "exposed_conductor", confidence: 0.92 }, // MAX from middle
+      ]),
+    });
+    expect(out?.hazards).toHaveLength(2);
+    expect(blockingLookHazard(out?.hazards)).toEqual({ code: "arcing", confidence: 0.95 });
   });
 });
 

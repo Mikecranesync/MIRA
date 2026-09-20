@@ -624,20 +624,21 @@ export async function loadVisualEvidenceForAsset(
 }
 
 /**
- * Load THE most recent active LOOK observation for a specific photo (#3788),
- * keyed ONLY on the SERVER-VERIFIED file id (never a client string) via
+ * Load the BLOCKING hazard and most recent LOOK observation for a specific photo
+ * (#3788), keyed ONLY on the SERVER-VERIFIED file id (never a client string) via
  * `evidence_item.capture_meta->>'file_id'`. Unlike {@link loadVisualEvidenceForAsset}
  * this is NOT asset-scoped, so it works on an UNBOUND notebook — the photo id is
  * the whole key.
  *
- * F1 (IR #3907): restricts to LOOK-provenance rows ONLY (`extractor='inspection_vision'`)
- * so a later nameplate row for the same file cannot erase a stored hazard. Takes the
- * LATEST LOOK-only row (`LIMIT 1`, most recent): one photo has one description, so
- * re-posting the same bytes (same file id, `parkOrReuseFile` sha-dedup) surfaces
- * the latest LOOK reading without duplicate lines — read-side dedup keeps the write
- * path append-only (materialized-evidence rule 7). A re-LOOK with `hazards: []` (model
- * variance or a follow-up question) does un-stop the photo; max-over-all-LOOK vs
- * latest-LOOK-only is the current choice (latest-only).
+ * F1 (IR #3907, sticky-MAX remediation): restricts to LOOK-provenance rows ONLY
+ * (`extractor='inspection_vision'`) so a later nameplate row for the same file
+ * cannot erase a stored hazard. Returns the **MAX-confidence blocking hazard**
+ * across ALL active (non-rejected, non-superseded) LOOK rows for this fileId, plus
+ * the latest LOOK observation text. A re-LOOK with `hazards: []` (model variance or
+ * follow-up) does NOT un-stop an older LOOK with a high-confidence hazard — the
+ * hazard is **sticky until a human rejects the observation** (director default on
+ * #3626). This aggregates the stop decision across all LOOK rows while surfacing
+ * one description (the latest) to avoid duplicate lines in context.
  *
  * Returns null for a non-UUID id or when nothing is stored. `c` is a tenant-scoped
  * client (called inside the route's `withTenantContext`).
@@ -668,23 +669,38 @@ export async function loadVisualEvidenceForPhoto(
         AND o.review_state <> 'rejected'
         AND o.superseded_by IS NULL
         AND coalesce(o.normalized_value, o.raw_value, '') <> ''
-      ORDER BY o.created_at DESC
-      LIMIT 1`,
+      ORDER BY o.created_at DESC`,
     [tenantId, fileId],
   );
-  const r = res.rows[0];
-  if (!r) return null;
+  if (res.rows.length === 0) return null;
+
+  // Latest LOOK observation text (one description per photo, read-side dedup).
+  const latest = res.rows[0];
+  
+  // MAX-confidence blocking hazard across ALL active LOOK rows (sticky until rejected).
+  let maxHazards: LookHazardDescriptor[] = [];
+  for (const row of res.rows) {
+    const rowHazards = normalizeLookHazards(row.hazards);
+    for (const h of rowHazards) {
+      const existing = maxHazards.find((m) => m.code === h.code);
+      if (!existing || h.confidence > existing.confidence) {
+        maxHazards = maxHazards.filter((m) => m.code !== h.code);
+        maxHazards.push(h);
+      }
+    }
+  }
+
   return {
-    observationId: String(r.observation_id),
-    sessionId: String(r.session_id),
-    text: String(r.text),
-    obsKind: String(r.obs_kind),
-    trust: r.review_state === "confirmed" || r.review_state === "corrected" ? "verified" : "candidate",
-    confidence: r.confidence == null ? null : Number(r.confidence),
-    fileId: (r.file_id as string) ?? null,
-    photoHash: (r.photo_hash as string) ?? null,
-    observedAt: r.created_at ? String(r.created_at) : null,
-    hazards: normalizeLookHazards(r.hazards),
+    observationId: String(latest.observation_id),
+    sessionId: String(latest.session_id),
+    text: String(latest.text),
+    obsKind: String(latest.obs_kind),
+    trust: latest.review_state === "confirmed" || latest.review_state === "corrected" ? "verified" : "candidate",
+    confidence: latest.confidence == null ? null : Number(latest.confidence),
+    fileId: (latest.file_id as string) ?? null,
+    photoHash: (latest.photo_hash as string) ?? null,
+    observedAt: latest.created_at ? String(latest.created_at) : null,
+    hazards: maxHazards,
   };
 }
 
