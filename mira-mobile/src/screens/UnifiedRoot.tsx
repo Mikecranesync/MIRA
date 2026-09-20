@@ -9,7 +9,8 @@
  */
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
-import { listNotebooks, type Me, type Notebook } from "../api/resources";
+import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
+import { homeSendPlan } from "../unified/home-send";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -172,6 +173,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     });
     return id;
   }, [preferredNotebookId]);
+
+  /**
+   * The thread a HOME question or a HOME "New chat" opens (#3877): an UNBOUND
+   * notebook — General first — never `preferredNotebookId()`, which is the
+   * last-opened notebook, i.e. the machine the technician was just at; its
+   * identity would ride the turn as machine context. With no unbound notebook
+   * it creates General so a stranger with no project can still ask. Async only
+   * on that create path; the caller sequences the question after it.
+   */
+  const startHomeThread = useCallback(async (): Promise<string | null> => {
+    const plan = homeSendPlan(notebooks);
+    if (plan.kind === "loading") return null;
+    if (plan.kind === "existing") return startNewThread(plan.notebookId);
+    try {
+      const created = await createNotebook(plan.body);
+      setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
+      return startNewThread(created.id);
+    } catch (e) {
+      setError(apiErrorCopy(e, "Could not create a project for your question."));
+      return null;
+    }
+  }, [notebooks, startNewThread]);
 
   const openPreferredNotebook = useCallback((): string | null => {
     const id = preferredNotebookId();
@@ -343,13 +366,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
             onSend: (text) => {
-              const id = startNewThread();
-              if (id) setQueuedQuestion(text);
+              void startHomeThread().then((id) => { if (id) setQueuedQuestion(text); });
             },
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,
-            onNewChat: () => { startNewThread(); },
+            onNewChat: () => { void startHomeThread(); },
             onCreateProject: () => { onCreateProject(); },
             onScanMachine: async () => {
               const id = openPreferredNotebook();
