@@ -30,7 +30,7 @@
 // divergence and the implementation can never drift apart silently).
 // Change the contract file, not just this file.
 
-import BuildConfig from "../plugins/build-config";
+import { resolveDeepLinkConfig } from "../plugins/build-config";
 
 const ASSET_TAG_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -43,15 +43,17 @@ async function initTrustConfig(): Promise<void> {
   if (TRUSTED_ORIGIN !== null && APP_SCHEME_PREFIX !== null) return;
   if (configPromise !== null) return configPromise;
 
-  configPromise = BuildConfig.getDeepLinkConfig()
+  configPromise = resolveDeepLinkConfig()
     .then(({ host, scheme }) => {
       TRUSTED_ORIGIN = { protocol: "https:", host };
       APP_SCHEME_PREFIX = new RegExp(`^${scheme}:\\/\\/m\\/`, "i");
     })
-    .catch(() => {
-      // Fallback to production values if plugin fails (defensive)
-      TRUSTED_ORIGIN = { protocol: "https:", host: "app.factorylm.com" };
-      APP_SCHEME_PREFIX = /^factorylm:\/\/m\//i;
+    .catch((e: unknown) => {
+      // Fail closed: with no flavor config NOTHING is a trusted deep link
+      // (isTrustedDeepLink returns false while uninitialized). Never fall back
+      // to another environment's origin. Reset so a later init can retry.
+      configPromise = null;
+      console.warn("[tags] deep-link trust config unavailable; rejecting all links", e);
     });
 
   return configPromise;
@@ -77,6 +79,13 @@ export function isTrustedDeepLink(input: string): boolean {
 }
 
 /** Initialize the trust configuration. Must be called before any tag extraction. */
+/** Test seam: forget flavor trust so the next init re-resolves. */
+export function __resetTagParserForTests(): void {
+  TRUSTED_ORIGIN = null;
+  APP_SCHEME_PREFIX = null;
+  configPromise = null;
+}
+
 export async function initTagParser(): Promise<void> {
   await initTrustConfig();
 }

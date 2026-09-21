@@ -11,12 +11,18 @@ import { signOutSyncInProgressCopy, signOutWarningCopy } from "../sign-out-copy"
 import { TABS, visibleTabs, can } from "../../nav";
 
 // Mock BuildConfig to return production values for tests
-vi.mock("../../plugins/build-config", () => ({
-  default: {
-    getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
-    getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
-  },
-}));
+vi.mock("../../plugins/build-config", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../plugins/build-config")>();
+  return {
+    ...mod,
+    default: {
+      getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
+      getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+    },
+    resolveApiBase: vi.fn(async () => "https://app.factorylm.com"),
+    resolveDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+  };
+});
 
 beforeEach(async () => {
   // Initialize tag parser before each test

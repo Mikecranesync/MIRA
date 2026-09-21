@@ -11,29 +11,42 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import BuildConfig from "../plugins/build-config";
+import { resolveApiBase } from "../plugins/build-config";
 
 // API_BASE is determined at runtime from the Android build flavor's BuildConfig
-// or the web fallback. Initialized on first request.
+// (production or staging) or, in a browser, the plugin's web implementation.
+// Initialized on first request. There is deliberately NO environment fallback:
+// if the flavor cannot be read, every request fails with a typed "network"
+// ApiError rather than silently talking to a different environment.
 let API_BASE: string | null = null;
 let apiBasePromise: Promise<string> | null = null;
 
 async function getApiBase(): Promise<string> {
   if (API_BASE !== null) return API_BASE;
   if (apiBasePromise !== null) return apiBasePromise;
-  
-  apiBasePromise = BuildConfig.getApiBase()
-    .then(({ apiBase }) => {
+
+  apiBasePromise = resolveApiBase()
+    .then((apiBase) => {
       API_BASE = apiBase;
       return apiBase;
     })
-    .catch(() => {
-      // Fallback if plugin fails (should never happen, but defensive)
-      API_BASE = "https://app.factorylm.com";
-      return API_BASE;
+    .catch((e: unknown) => {
+      // Fail closed. Reset so a later request can retry once the bridge is up.
+      apiBasePromise = null;
+      throw new ApiError(
+        "network",
+        null,
+        e instanceof Error ? e.message : "build configuration unavailable",
+      );
     });
-  
+
   return apiBasePromise;
+}
+
+/** Test/diagnostic seam: forget the resolved origin so the next request re-resolves. */
+export function __resetApiBaseForTests(): void {
+  API_BASE = null;
+  apiBasePromise = null;
 }
 
 const JAR_KEY = "flm.cookiejar.v1";

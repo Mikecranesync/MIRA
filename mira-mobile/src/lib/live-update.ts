@@ -30,14 +30,16 @@ import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { LiveUpdate } from "@capawesome/capacitor-live-update";
 import { ApiError, request } from "../api/client";
-import BuildConfig from "../plugins/build-config";
+import { resolveApiBase } from "../plugins/build-config";
 
 /** Where the signed manifest lives. FactoryLM-controlled, HTTPS, no exceptions. */
 const OTA_MANIFEST_PATH = "/api/mobile/live-update/manifest/";
 
 /** Get the OTA manifest URL for the current build flavor. */
 async function getOtaManifestUrl(): Promise<string> {
-  const { apiBase } = await BuildConfig.getApiBase().catch(() => ({ apiBase: "https://app.factorylm.com" }));
+  // Fails closed (BuildConfigUnavailableError) — an OTA check must never be
+  // made against a guessed environment.
+  const apiBase = await resolveApiBase();
   return `${apiBase}${OTA_MANIFEST_PATH}`;
 }
 
@@ -436,7 +438,7 @@ export async function checkAndStage(opts: {
 
   let manifest: OtaManifestResponse;
   try {
-    const apiBase = (await BuildConfig.getApiBase().catch(() => ({ apiBase: "https://app.factorylm.com" }))).apiBase;
+    const apiBase = await resolveApiBase();
     const manifestUrl = opts.manifestUrl ?? await getOtaManifestUrl();
     const configured = new URL(manifestUrl, apiBase);
     if (configured.origin !== apiBase) {
