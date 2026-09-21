@@ -49,7 +49,9 @@ jobs:
       - name: Refuse a conf that names a production hostname
         run: |
           set -euo pipefail
-          if grep -nE 'server_name[^;]*\b(app\.factorylm\.com|www\.factorylm\.com|updates\.factorylm\.com|factorylm\.com)\b' deployment/nginx-staging-factorylm.conf; then
+          # Whole-hostname match: `\b` treated `staging.factorylm.com` as a hit on
+          # `factorylm.com` (run 35651928676 refused the staging conf itself).
+          if grep -nE 'server_name[^;]*(^|[[:space:]])(app\.|www\.|updates\.)?factorylm\.com([[:space:]]|;)' deployment/nginx-staging-factorylm.conf; then
             echo "::error::staging vhost file names a production hostname — refusing (#3930 safeguard 6)"
             exit 1
           fi
