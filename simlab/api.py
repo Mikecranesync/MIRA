@@ -10,6 +10,7 @@ Production startup uses ``simlab.__main__``.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -441,4 +442,12 @@ def _make_default_app() -> Any:
     return build_app(engine=_default_engine, approvals=_default_approvals)
 
 
-app = _make_default_app()
+# Defer app initialization under pytest to avoid SQLite race condition when
+# pytest-xdist workers import this module in parallel (all try to create
+# /tmp/mira_simlab_approvals.db with WAL mode at the same time). Tests use
+# build_app() directly with tmp_path fixtures; only production startup needs
+# the module-level app.
+if "pytest" not in sys.modules:
+    app = _make_default_app()
+else:
+    app = None  # type: ignore[assignment]
