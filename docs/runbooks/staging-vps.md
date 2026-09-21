@@ -1,184 +1,210 @@
-# Staging VPS Runbook
+# Staging VPS Runbook (Co-Hosted)
 
-**Created:** 2026-05-19. **Authorization model updated:** 2026-09-07. **Separate host:** 2026-09-21 (#3909).
+**Created:** 2026-05-19. **Authorization model updated:** 2026-09-07.
+**Co-hosted on the production VPS:** 2026-09-21 (owner decision, #3930) —
+replaces the separate-host requirement from #3909/#3921.
 
 > **Current rule:** staging deploys are manual, protected, and bound to the
-> exact current `main` SHA. Push-triggered deploys, feature-ref deploys, direct
-> root SSH bootstrap, and caller-selected moving refs are retired. The
-> `staging-deploy` GitHub environment and its scoped non-root identity must be
-> provisioned before this workflow is dispatched.
+> exact `main` SHA named by `approved_rc_sha` (never a moving ref). The
+> `staging-deploy` GitHub environment and its scoped non-root identity must
+> be provisioned before this workflow is dispatched. `STAGING_HOST` may
+> legitimately equal the pinned production host — see "Why co-hosted".
 
-Lightweight staging environment on a **separate staging host** (never the
-production VPS — #3909, PRD §5/SC3). The host is named only by the
-`STAGING_HOST` repository variable; its SSH host key is pinned by
-`STAGING_HOST_KEY`. The deploy workflow refuses any host that appears in
-`deployment/known_hosts.factorylm-prod`, and STOPs if it finds production
-containers, `/opt/mira`, or a Doppler token that can read `factorylm/prd` on
-the box. (The 2026-05 co-tenant design on the DigitalOcean VPS is retired:
-that host is dead, and container isolation is not host isolation.)
+## Why co-hosted
 
-## Why this design
-
-- **No host-level path to production secrets** — a sudo-capable account on a
-  shared host could read the prod Doppler token; a separate cheap VPS cannot.
-- **Same image build, same Dockerfiles** — staging is just the prod compose
-  graph with a smaller subset of services and offset ports.
-- **Separate NeonDB branch** — `ep-polished-hall-ahcqtcxe-pooler`, has the
-  garage namespace already seeded.
-- **Dedicated Telegram bot only** — staging uses `TELEGRAM_BOT_TOKEN_STG` and
-  never the production poller token. Slack remains intentionally absent.
+Solo-operator project: **host isolation is not required** — a second VPS
+bought no real security margin and cost a live host to maintain.
+**Operational isolation is mandatory** and mechanically enforced, not just
+documented — every deploy re-checks it and STOPs (not warns) if it doesn't
+hold. Accepted trade-off: staging and production share a kernel, Docker
+daemon, and public IP; they never share a compose project, network, volume,
+Doppler config, Neon database, or nginx vhost.
 
 ## What runs in staging
 
-| Service | Staging port | Prod equivalent |
+| Service | Staging port (loopback) | Prod equivalent |
 |---|---|---|
 | stg-mira-hub | 4101 | 3101 |
 | stg-mira-pipeline | 4099 | 9099 |
 | stg-mira-mcp | 4000 (MCP) / 4001 (REST) | 8009 / 8001 |
 | stg-mira-web | 4200 | 3200 |
 | stg-atlas-api | 4088 | 8088 |
+| stg-atlas-frontend | 4100 | 3100 |
 | stg-atlas-db | 4433 | 5433 |
 | stg-atlas-minio | 4900 (API) / 4901 (UI) | 9000 / 9001 |
+| stg-mira-tika | 9999 | 9998 |
 
-**Not in staging** (intentionally): mira-core (Open WebUI), mira-ingest,
-mira-docling (1.7GB RAM), mira-sidecar, mira-bridge, mira-relay,
-mira-bot-slack, mira-cmms-sync. Hub will render KB and
-proposal data from the staging NeonDB branch — no LLM-backed ingest is
-required for Phase 1.
+`mira-cmms-sync` also runs (no published port), disabled by default
+(`CMMS_SYNC_ENABLED=false`).
 
 ## URLs
 
-- Hub: `http://$STAGING_HOST:4101`
-- Pipeline health: `http://$STAGING_HOST:4099/health`
-- Web: `http://$STAGING_HOST:4200`
-- Atlas API: `http://$STAGING_HOST:4088`
+All ports above bind `127.0.0.1` only — never the bare host IP. Public
+access is the two vhosts `deploy-nginx-stg.yml` installs:
 
-(`STAGING_HOST` is the repository variable; the workflow prints the URLs.)
+- `https://staging.factorylm.com` → `127.0.0.1:4200` (stg-mira-web)
+- `https://app-staging.factorylm.com` → `127.0.0.1:4101` (stg-mira-hub)
 
-These are **plain HTTP** in Phase 1 — no TLS, no DNS. Mike can hit them from
-his phone over the public internet. Phase 2 is to add TLS via either:
+Any other loopback port needs an SSH tunnel, e.g. `ssh -L
+4099:127.0.0.1:4099 staging-deploy@$STAGING_HOST`. TLS starts as HTTP: the
+vhost conf is installed and `nginx -t && reload`d first; `deploy-nginx-stg.yml`
+then checks whether both hostnames already resolve here and, if so, runs
+`certbot --nginx` for both in one certificate. Re-dispatch after DNS
+propagates to pick up TLS.
 
-1. Caddy on port 8443 with a Cloudflare DNS-01 challenge, or
-2. A `staging.factorylm.com` server block in whatever reverse proxy already
-   owns ports 80/443 on the VPS.
+## The seven co-host safeguards
 
-Both deferred until the Phase 1 preview is working end-to-end.
+Checked in this order before anything on the host is touched (#6 runs before
+the nginx reload). Each is a hard STOP; none can be skipped by an input.
+Enforced in `deploy-staging.yml` unless noted:
 
-## Isolation guarantees
+1. **Path** — checkout must never resolve into `/opt/mira` (`readlink -f`
+   catches symlinks). Checked before any `git clone`/`git reset`.
+2. **Database identity** — staging `NEON_DATABASE_URL` host must differ from
+   production's (compared to the running `mira-hub` container's env, and to
+   the known production endpoint name).
+3. **Doppler scope** — the deploy identity must resolve `factorylm/stg` and
+   must **not** be able to read `factorylm/prd`.
+4. **Names** — every container/network/volume the compose file creates must
+   be `stg-`/`staging-`/`factorylm-staging`-prefixed and unowned by another
+   compose project.
+5. **Ports** — every published host port must be `127.0.0.1`-only and
+   unheld by a container outside the `factorylm-staging` project.
+6. **Nginx isolation** (`deploy-nginx-stg.yml`) — the staging vhost file is
+   refused if it names a production `server_name`; the reload step hashes
+   every other `sites-enabled/` file before and after and STOPs on any
+   change.
+7. **Production untouched** — every non-staging container's id, name,
+   compose-project label, and creation time is snapshotted before the
+   deploy and compared byte-for-byte after.
 
-1. Separate Docker network: `staging-net` (production is on `mira-net`).
-2. All container names prefixed with `stg-`.
-3. Working copy lives at `/opt/mira-staging/` — production is `/opt/mira/`.
-4. Atlas DB has its own volume (`stg-atlas-pgdata`) — never reads or writes
-   `atlas_pgdata`.
-5. Bind ports use the `4xxx` range — no overlap with prod's `3xxx`/`8xxx`/`9xxx`.
-6. Doppler config is `factorylm/stg` — production reads `factorylm/prd`.
-7. Separate host: the deploy workflow ends with a guard that STOPs if any
-   production-named `mira-*` container, `/opt/mira`, or prd-readable Doppler
-   token exists on the staging host.
+`tests/test_deploy_staging_authorization.py` pins the STOP text + ordering
+(1–3 before the first git mutation, 4–5 before the first docker mutation, 7
+compared only after).
 
-## First-time provisioning (maintainer-owned)
+## First-time provisioning (on the production host)
 
-1. Order a small VPS (OVH VPS-1/2 class, Ubuntu 24.04) that is **not** the
-   production host. The stored OVH API credential is GET-only, so this is a
-   panel step.
-2. As root on the fresh box, run once:
-   `sudo bash tools/staging/bootstrap-staging-host.sh '<staging-deploy public key>'`
-   (public key: Doppler `factorylm/stg` `STAGING_DEPLOY_SSH_PUBLIC_KEY`). It
-   installs Docker + the Doppler CLI, creates the non-root `staging-deploy`
-   account (docker group, no sudo), hardens sshd to keys-only, creates
-   `/opt/mira-staging`, and prints the host key line.
-3. As `staging-deploy`, configure a `factorylm/stg` **service** token scoped to
-   `/opt/mira-staging` (`doppler configure set token … --scope /opt/mira-staging`).
-   Never a personal token, never anything that can read `prd`.
-4. Set repository variables `STAGING_HOST` (IP or hostname) and
-   `STAGING_HOST_KEY` (the `ssh-ed25519 AAAA…` line printed in step 2), and
-   confirm `STAGING_DEPLOY_USER=staging-deploy` plus the `STAGING_DEPLOY_SSH_KEY`
-   secret (private key; also in Doppler stg as `STAGING_DEPLOY_SSH_PRIVATE_KEY`).
-5. Update the Doppler stg public URLs (`ATLAS_PUBLIC_API_URL`,
-   `ATLAS_PUBLIC_FRONT_URL`, `NEXTAUTH_URL`) to the new host if they still name
-   an old one; the workflow defaults the rest from `STAGING_HOST`.
-6. Dispatch `deploy-staging.yml` with the approved `main` SHA. Evidence for
-   #3909 is in the run log: `id` of the deploy user, the separate-host
-   invariant line, and the `staging-receipt-<sha>` artifact.
+1. **Bootstrap the deploy identity** — as root: `sudo bash
+   tools/staging/bootstrap-staging-host.sh '<staging-deploy ssh-ed25519
+   public key>'` (no `--harden-sshd` — the host's own sshd policy already
+   governs it). Creates the non-sudo `staging-deploy` account (`docker`
+   group) and `/opt/mira-staging`; prints the host key line.
+2. **Mint a scoped Doppler token** — as `staging-deploy`:
+   `doppler configure set token <service-token> --scope /opt/mira-staging`,
+   a `factorylm/stg` **service** token. Never a personal token; never one
+   that can read `prd`.
+3. **Set repository variables** — `STAGING_HOST=<production host IP>`,
+   `STAGING_DEPLOY_USER=staging-deploy`. `STAGING_HOST_KEY` is only needed
+   if `STAGING_HOST` is **not** already pinned in
+   `deployment/known_hosts.factorylm-prod` — the co-hosted host is pinned,
+   so its key is reused automatically.
+4. **Confirm the `STAGING_DEPLOY_SSH_KEY` secret** — the private key paired
+   with step 1's public key (also in Doppler `stg` as
+   `STAGING_DEPLOY_SSH_PRIVATE_KEY`).
+5. **Point staging's URLs at the staging hostnames** in Doppler `stg`:
+   `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`, `PLG_HUB_URL`,
+   `PLG_API_ALLOWED_ORIGINS`, `ATLAS_PUBLIC_API_URL`,
+   `ATLAS_PUBLIC_FRONT_URL` → `https://app-staging.factorylm.com` /
+   `https://staging.factorylm.com` as appropriate.
+6. **DNS (human, Namecheap)** — A records for `staging.factorylm.com` and
+   `app-staging.factorylm.com` → the production host's IP.
+7. **Install the nginx vhosts**: `gh workflow run deploy-nginx-stg.yml --ref
+   main`. HTTP-only first; re-run after DNS propagates for TLS.
+8. **Deploy**: `gh workflow run deploy-staging.yml --ref main -f
+   approved_rc_sha=<exact main SHA>` (see "Routine deploy" for the full
+   command).
 
-The workflow creates the staging checkout if it is absent. Until the protected
-environment and scoped account exist, staging deployment is intentionally on
-HOLD; do not fall back to the retired root procedure.
+The workflow creates `/opt/mira-staging` on first run if absent. Until the
+`staging-deploy` GitHub environment and scoped account exist, deployment is
+intentionally on HOLD — do not fall back to a root procedure.
 
-## Routine deploy (GitHub Action)
+## Retiring the `mira-preview` stack
 
-Resolve the exact current `main` SHA, then dispatch the workflow itself from
-`main` with both immutable target fields:
+A hub-only preview predating this design (compose project `mira-preview`,
+`/opt/mira-preview`, vhost `preview.40.160.141.61.nip.io`) already holds
+host port **4101** — the port `factorylm-staging` needs for `stg-mira-hub`.
+Its owner must stop it (`docker compose -p mira-preview down`, from
+`/opt/mira-preview`) **before the first `factorylm-staging` deploy** —
+safeguard 5 will STOP the deploy otherwise, correctly. The staging workflow
+must never remove `mira-preview` itself; it's a different compose project,
+out of its authority.
+
+## Routine deploy
 
 ```bash
-# The approved release-candidate SHA (normally current main). Staging deploys
-# an exact SHA, never a moving ref.
 APPROVED_RC_SHA="$(gh api repos/Mikecranesync/MIRA/git/ref/heads/main --jq '.object.sha')"
-gh workflow run deploy-staging.yml --ref main \
-  -f approved_rc_sha="$APPROVED_RC_SHA"
+gh workflow run deploy-staging.yml --ref main -f approved_rc_sha="$APPROVED_RC_SHA"
 ```
 
-If `main` moves between authorization and credential access, the run fails and
-must be dispatched again. There is no push trigger and no feature-branch path.
-
-To rebuild a single service:
+Rebuild one service (allowlist: `atlas-api`, `atlas-db`, `atlas-frontend`,
+`atlas-minio`, `mira-bot-telegram`, `mira-cmms-sync`, `mira-hub`,
+`mira-mcp`, `mira-pipeline`, `mira-tika`, `mira-web`):
 
 ```bash
 gh workflow run deploy-staging.yml --ref main \
-  -f approved_rc_sha="$APPROVED_RC_SHA" \
-  -f services="mira-hub"
+  -f approved_rc_sha="$APPROVED_RC_SHA" -f services="mira-hub"
 ```
 
-To wipe the staging Atlas DB volumes (e.g., to re-seed from scratch):
+Wipe the staging Atlas DB volumes and re-seed from scratch:
 
 ```bash
 gh workflow run deploy-staging.yml --ref main \
-  -f approved_rc_sha="$APPROVED_RC_SHA" \
-  -f reset_volumes=true
+  -f approved_rc_sha="$APPROVED_RC_SHA" -f reset_volumes=true
 ```
+
+If `main` moves between authorization and credential access, or the
+checked-out SHA doesn't match `approved_rc_sha`, the run fails closed and
+must be re-dispatched.
+
+## Evidence a deploy run prints
+
+1. Safeguard line — `Co-host safeguards hold: path ok, doppler=stg (prd
+   unreadable), db endpoint '<host>' != prod, names/ports free; N
+   non-staging container(s) snapshotted`.
+2. Built image id == running image id, per rebuilt service.
+3. Runtime identity — `mira-hub reports gitSha=<sha> (== approved)` / same
+   for `mira-web`, read from `/api/version` / `/api/health`.
+4. The `staging-receipt-<sha>.json` artifact (90-day retention), verified by
+   `tools/staging_receipt.py` against the approved SHA.
+5. Closing line — `Production untouched: non-staging container set
+   identical before and after`.
+
+## What is deliberately NOT in staging
+
+`mira-core` (Open WebUI), `mira-ingest`, `mira-docling` (1.7GB RAM),
+`mira-sidecar`, `mira-bridge`, `mira-relay`, and `mira-bot-slack` (a second
+connection on the shared Slack token would dual-poll production). Hub reads
+KB/proposal data straight from the staging NeonDB branch — no LLM-backed
+ingest service required.
 
 ## Doppler `factorylm/stg` — required keys
 
-The compose file gracefully no-ops when these are missing, but for a
-useful preview the following should be set on `factorylm/stg`:
+- `NEON_DATABASE_URL` — the staging Neon branch.
+- `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`, `PLG_HUB_URL`,
+  `PLG_API_ALLOWED_ORIGINS`, `ATLAS_PUBLIC_API_URL`, `ATLAS_PUBLIC_FRONT_URL`
+  — pointed at the staging hostnames, never a bare host:port or a
+  production hostname.
+- `AUTH_SECRET`, `OAUTH_TOKEN_ENC_KEY`, `ATLAS_DB_PASSWORD`,
+  `ATLAS_JWT_SECRET`, `ATLAS_MINIO_PASSWORD` — separate from prod.
+- `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` — same as prod is
+  fine.
+- `MCP_REST_API_KEY`, `PIPELINE_API_KEY` — separate from prod.
+- `TELEGRAM_BOT_TOKEN_STG` — the dedicated `@Mira_stagong_bot` token, never
+  the production poller token.
 
-- `NEON_DATABASE_URL` — staging branch (`ep-polished-hall-ahcqtcxe-pooler`)
-- `AUTH_SECRET`, `OAUTH_TOKEN_ENC_KEY` — separate from prod
-- `ATLAS_DB_PASSWORD`, `ATLAS_JWT_SECRET`, `ATLAS_MINIO_PASSWORD`
-- `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GEMINI_API_KEY` — same as prod is fine
-- `MCP_REST_API_KEY`, `PIPELINE_API_KEY` — separate from prod
-- `HUB_AUTH_GOOGLE_CLIENT_ID/_SECRET` — only if you've registered a staging
-  OAuth client; otherwise leave blank and sign-in won't work in staging
-  (the Hub will still render unauthenticated views).
+**`SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` MUST NOT be set on `factorylm/stg`**
+— shared with prod; a second connection would dual-poll. Memory:
+`project_slack_token_stg_prd_shared`.
 
-**Slack tokens (`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`) MUST NOT be set on
-`factorylm/stg`.** Tokens are shared with prod and a second connection would
-dual-poll. See memory: `project_slack_token_stg_prd_shared`.
+## When prod and staging collide on the shared host
 
-## What to do when prod and staging collide
-
-- **Port already in use** → check `lsof -i :4xxx` on the VPS. The prod stack
-  is bound to `127.0.0.1` for its services and `0.0.0.0` is open. If a port
-  in the 4xxx range collides, pick the next free 4xxx.
-- **`stg-atlas-db` won't start** → `docker volume ls | grep stg-atlas` and
-  inspect logs. Don't `rm` the `atlas_pgdata` volume — that's prod.
-- **Hub returns 500 on /api/health** → most common cause is
-  `NEON_DATABASE_URL` missing on `factorylm/stg`. `doppler run --project
-  factorylm --config stg -- printenv NEON_DATABASE_URL` should print a
-  `postgres://` URL pointing at the staging branch.
-
-## TLS / DNS — Phase 2
-
-Two routes when needed:
-
-1. **Caddy on a non-conflicting port** (e.g. 8443) — Caddyfile would proxy
-   `staging.factorylm.com:8443` → `stg-mira-hub:3000`. Caddy needs to obtain
-   a cert via DNS-01 because 80/443 belong to the production proxy.
-
-2. **Add staging server blocks to the existing prod reverse proxy** — if
-   nginx already terminates TLS for `app.factorylm.com`, add a
-   `staging.factorylm.com` upstream → `127.0.0.1:4101`. This is the simpler
-   option once DNS is pointed.
-
-Neither is needed for the "see Hub from phone" wedge.
+- **STOPs on safeguard 4 or 5** → another compose project already owns a
+  `stg-*` name or a `4xxx` port — exactly what `mira-preview` does on 4101
+  until stopped (see above).
+- **`stg-atlas-db` won't start** → check `docker volume ls | grep
+  stg-atlas` and logs. Never `rm` `atlas_pgdata` — that's production's.
+- **Hub 500s on `/api/health`** → usually `NEON_DATABASE_URL` missing on
+  `factorylm/stg`.
+- **STOPs on safeguard 7** → a production container was
+  restarted/recreated during the run — diff the logged `PROD_BEFORE`/
+  `PROD_AFTER` sets before re-running.
