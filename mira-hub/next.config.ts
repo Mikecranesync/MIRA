@@ -96,9 +96,14 @@ const nextConfig: NextConfig = {
   },
   // Bare-domain friendliness when the hub fronts the whole host (tailscale
   // serve / phone testing): / is outside basePath and 404s. In prod nginx owns
-  // / (mira-web), so this redirect is never reached there.
+  // / (mira-web), so this redirect is never reached there. Only apply when
+  // basePath is "/hub" — when basePath is "" (staging), / is already the hub
+  // root and this redirect would send it to a non-existent /hub/ path.
   async redirects() {
-    return [{ source: "/", destination: "/hub/", basePath: false, permanent: false }];
+    if (basePath === "/hub") {
+      return [{ source: "/", destination: "/hub/", basePath: false, permanent: false }];
+    }
+    return [];
   },
 };
 
