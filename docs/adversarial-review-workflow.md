@@ -164,7 +164,10 @@ instructions.
 - Duplicate reviews of the same exact head-and-body snapshot are skipped; the
   skip reports the **prior verdict for that exact snapshot** (a prior
   ISSUES_FOUND exits 1, not 0). A different body digest at the same head is
-  stale and receives a fresh review. `--force` re-reviews.
+  stale and receives a fresh review. `--force` re-reviews. A deduplicated
+  verdict still publishes a token-bound terminal result with its exact
+  snapshot and status. Deduplicated ISSUES_FOUND has no trusted local rendered
+  artifact, so the loop stops explicitly without privileged remediation.
 - Iteration numbers and exact-snapshot dedupe are derived from the PR's own
   comments — stateless, no local state file to drift. Parsing lives in ONE place
   (`scripts/adversarial-review-ledger.mjs`, consumed by both scripts): the
@@ -233,9 +236,11 @@ local locks — sessions run on different machines):
    an exclusive, durable local claim. It publishes both the rendered review
    and mode-`0600` `result-<pr>-<token>.json` with atomic no-replace semantics,
    so neither a peer nor a pre-existing path can be overwritten. The result
-   contains the exact head, body digest, `run_id`, numeric reservation comment
-   id, mode, rendered review path, and SHA-256 of the exact rendered bytes. No
-   head-only artifact is load-bearing.
+   always contains `kind` (`fresh_review` or `deduplicated`), `status`, exact
+   head/body digest, and mode. A fresh result additionally carries `run_id`,
+   numeric reservation comment id, rendered review path, and SHA-256 of the
+   exact rendered bytes; those fields are null for a deduplicated terminal
+   result. No head-only artifact or pre-call snapshot is fallback authority.
 5. **Immediately before privileged remediation** (`claude
    --dangerously-skip-permissions`) the loop accepts only that token's result,
    opens the result and review with no-follow fd checks, rejects non-regular
@@ -252,9 +257,15 @@ local locks — sessions run on different machines):
    escalation records all carry the same `run_id` (+ reservation comment id);
    the loop rejects a disposition whose `run_id` does not match the round it
    authorized. Remediation input still comes ONLY from the trusted local
-   runner artifact, never from PR comments. One cooperative lock serializes
-   review/remediation in a worktree; at the final privileged boundary the loop
-   also proves local `HEAD == reviewed_sha` and a clean tracked tree.
+   runner artifact, never from PR comments. One shared cooperative lock
+   serializes standalone reviews and loop remediation in a worktree. The loop
+   owns it across all cycles and passes an unguessable 128-bit owner token;
+   each child runner reopens and verifies the regular mode-`0600` owner record
+   before re-entering without releasing the parent lock. Missing, malformed,
+   or mismatched owner state fails closed. At the final privileged boundary
+   the loop also proves local `HEAD == reviewed_sha` and captures tracked
+   status with an explicit successful exit code; failed or nonempty status
+   can never authorize Claude.
 7. Any GitHub API failure, incomplete pagination, malformed ledger, or
    inability to prove ownership stops the process — never proceed
    optimistically.

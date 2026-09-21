@@ -73,24 +73,9 @@ fi
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-
-# One local review/remediation loop may control a worktree at a time. Git's
-# per-worktree administrative directory gives each linked checkout its own
-# cooperative lock while keeping the lock independent of ADV_REVIEW_OUT_DIR.
-WORKTREE_LOCK="$(git rev-parse --git-path adversarial-review-loop.lock)"
-if ! mkdir "$WORKTREE_LOCK" 2>/dev/null; then
-  echo "ERROR: this worktree already has an active adversarial review/remediation lock:" >&2
-  echo "       $WORKTREE_LOCK" >&2
-  exit 2
-fi
-# Invoked indirectly by the EXIT trap below.
-# shellcheck disable=SC2329
-release_worktree_lock() {
-  rm -f "$WORKTREE_LOCK/owner"
-  rmdir "$WORKTREE_LOCK" 2>/dev/null || true
-}
-trap release_worktree_lock EXIT
-printf 'pid=%s\n' "$$" > "$WORKTREE_LOCK/owner"
+# shellcheck source=scripts/adversarial-review-lock.sh
+source "$ROOT/scripts/adversarial-review-lock.sh"
+adversarial_review_lock_acquire || exit 2
 
 OUT_DIR="${ADV_REVIEW_OUT_DIR:-$ROOT/.adversarial-review}"
 mkdir -p "$OUT_DIR"
@@ -180,7 +165,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     escalate "could not read the exact PR head/body snapshot before review"
     exit 2
   }
-  read -r PRE_REMOTE_SHA PRE_BODY_SHA256 <<< "$PRE_SNAPSHOT"
+  read -r PRE_REMOTE_SHA _ <<< "$PRE_SNAPSHOT"
   if [ "$PRE_REMOTE_SHA" != "$PRE_SHA" ]; then
     escalate "local head ${PRE_SHA:0:12} does not match PR head ${PRE_REMOTE_SHA:0:12} before review"
     exit 2
@@ -206,38 +191,46 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     const crypto=require("node:crypto");
     const fs=require("node:fs");
     const path=require("node:path");
-    const [resultFile,outDir,pr,expectedHead,expectedMode,token,tpl,iteration]=process.argv.slice(1);
-    const safeOpen=(file,missingExit)=>{
+    const [resultFile,outDir,pr,expectedHead,expectedMode,token,tpl,iteration,runnerRc]=process.argv.slice(1);
+    const safeOpen=(file)=>{
       let fd;
       try {
         fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
-      } catch(e) {
-        if(missingExit && e && e.code==="ENOENT") process.exit(missingExit);
-        process.exit(1);
-      }
+      } catch { process.exit(1); }
       const st=fs.fstatSync(fd);
       if(!st.isFile()){ fs.closeSync(fd); process.exit(1); }
       return {fd,st};
     };
-    const resultOpen=safeOpen(resultFile,4);
+    const resultOpen=safeOpen(resultFile);
     if((resultOpen.st.mode & 0o777)!==0o600){ fs.closeSync(resultOpen.fd); process.exit(1); }
     let j;
     try { j=JSON.parse(fs.readFileSync(resultOpen.fd,"utf8")); }
     catch { fs.closeSync(resultOpen.fd); process.exit(1); }
     fs.closeSync(resultOpen.fd);
     if(!j || typeof j!=="object" || Array.isArray(j)
+      || !["fresh_review","deduplicated"].includes(j.kind)
+      || !["GREEN","ISSUES_FOUND"].includes(j.status)
       || !/^[0-9a-f]{40}$/.test(j.head_sha)
       || !/^[0-9a-f]{64}$/.test(j.body_sha256)
-      || !/^[0-9a-f]{32}$/.test(j.run_id)
-      || !Number.isInteger(j.reservation_comment_id) || j.reservation_comment_id < 1
       || !["full","review_only"].includes(j.mode)
-      || typeof j.review_artifact!=="string" || j.review_artifact.length===0
-      || !/^[0-9a-f]{64}$/.test(j.review_artifact_sha256)
       || j.head_sha!==expectedHead || j.mode!==expectedMode) process.exit(1);
+    const expectedStatus=runnerRc==="0" || runnerRc==="4" ? "GREEN"
+      : runnerRc==="1" ? "ISSUES_FOUND" : null;
+    if(j.status!==expectedStatus) process.exit(1);
+    if(j.kind==="deduplicated") {
+      if(j.run_id!==null || j.reservation_comment_id!==null
+        || j.review_artifact!==null || j.review_artifact_sha256!==null) process.exit(1);
+      process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} - 0 ${j.mode} -\n`);
+      process.exit(0);
+    }
+    if(!/^[0-9a-f]{32}$/.test(j.run_id)
+      || !Number.isInteger(j.reservation_comment_id) || j.reservation_comment_id < 1
+      || typeof j.review_artifact!=="string" || j.review_artifact.length===0
+      || !/^[0-9a-f]{64}$/.test(j.review_artifact_sha256)) process.exit(1);
     const artifactKey=`${j.head_sha}-${j.body_sha256}-${token}`;
     const expectedArtifact=path.join(outDir,`comment-${pr}-${artifactKey}.md`);
     if(j.review_artifact!==expectedArtifact) process.exit(1);
-    const reviewOpen=safeOpen(expectedArtifact,0);
+    const reviewOpen=safeOpen(expectedArtifact);
     let reviewBytes;
     try { reviewBytes=fs.readFileSync(reviewOpen.fd); }
     catch { fs.closeSync(reviewOpen.fd); process.exit(1); }
@@ -245,31 +238,34 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     const digest=crypto.createHash("sha256").update(reviewBytes).digest("hex");
     if(digest!==j.review_artifact_sha256) process.exit(1);
     const review=reviewBytes.toString("utf8");
-    const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (?:GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([0-9]+)\r?\n/;
+    const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([0-9]+)\r?\n/;
     const match=review.match(re);
     if(!match || match[1]!==j.head_sha || match[2]!==j.body_sha256
-      || match[3]!==j.run_id || match[4]!==String(j.reservation_comment_id)) process.exit(1);
-    let prompt=fs.readFileSync(tpl,"utf8");
-    for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:j.head_sha,
-      ITERATION:iteration,REVIEW_CONTENT:review,RUN_ID:j.run_id,
-      RESERVATION_ID:String(j.reservation_comment_id)}))
-      prompt=prompt.split("{{"+k+"}}").join(v);
-    const promptFile=path.join(outDir,`remediation-${pr}-${artifactKey}.md`);
-    fs.writeFileSync(promptFile,prompt,{encoding:"utf8",mode:0o600,flag:"wx"});
-    fs.chmodSync(promptFile,0o600);
-    process.stdout.write(`${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey}\n`);
+      || match[3]!==j.status || match[4]!==j.run_id
+      || match[5]!==String(j.reservation_comment_id)) process.exit(1);
+    if(j.status==="ISSUES_FOUND") {
+      let prompt=fs.readFileSync(tpl,"utf8");
+      for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:j.head_sha,
+        ITERATION:iteration,REVIEW_CONTENT:review,RUN_ID:j.run_id,
+        RESERVATION_ID:String(j.reservation_comment_id)}))
+        prompt=prompt.split("{{"+k+"}}").join(v);
+      const promptFile=path.join(outDir,`remediation-${pr}-${artifactKey}.md`);
+      fs.writeFileSync(promptFile,prompt,{encoding:"utf8",mode:0o600,flag:"wx"});
+      fs.chmodSync(promptFile,0o600);
+    }
+    process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey}\n`);
   ' "$RESULT_FILE" "$OUT_DIR" "$PR_NUMBER" "$PRE_SHA" "$LOOP_MODE" \
-    "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE")"
+    "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE" "$RC")"
   RESULT_READ_RC=$?
   set -e
-  RESULT_PRESENT=0
-  if [ "$RESULT_READ_RC" -eq 0 ]; then
-    RESULT_PRESENT=1
-    read -r REVIEWED_SHA REVIEWED_BODY_SHA256 RUN_ID RESERVATION_ID RES_MODE ARTIFACT_KEY <<< "$RESULT_FIELDS"
-    REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$ARTIFACT_KEY.md"
-  elif [ "$RESULT_READ_RC" -ne 4 ]; then
-    escalate "runner result or rendered review is missing, malformed, replaced, or digest-mismatched — refusing local handoff"
+  if [ "$RESULT_READ_RC" -ne 0 ]; then
+    escalate "required runner result or rendered review is missing, malformed, replaced, or digest-mismatched — refusing local handoff"
     exit 2
+  fi
+  read -r RESULT_KIND RESULT_STATUS REVIEWED_SHA REVIEWED_BODY_SHA256 RUN_ID \
+    RESERVATION_ID RES_MODE ARTIFACT_KEY <<< "$RESULT_FIELDS"
+  if [ "$RESULT_KIND" = "fresh_review" ]; then
+    REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$ARTIFACT_KEY.md"
   fi
 
   if [ "$RC" -eq 0 ] || [ "$RC" -eq 4 ]; then
@@ -278,23 +274,16 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     # never an announcement of GREEN for an unreviewed head.
     CUR_SNAPSHOT="$(current_snapshot_fields || echo "")"
     read -r CUR_HEAD CUR_BODY_SHA256 <<< "$CUR_SNAPSHOT"
-    GREEN_SHA="$PRE_SHA"
-    GREEN_BODY_SHA256="$PRE_BODY_SHA256"
-    if [ "$RESULT_PRESENT" -eq 1 ]; then
-      GREEN_SHA="$REVIEWED_SHA"
-      GREEN_BODY_SHA256="$REVIEWED_BODY_SHA256"
-    fi
-    if [ "$RC" -eq 0 ] && [ "$CUR_HEAD" = "$PRE_SHA" ] \
-        && [ "$CUR_HEAD" = "$GREEN_SHA" ] \
-        && [ "$CUR_BODY_SHA256" = "$GREEN_BODY_SHA256" ]; then
-      echo "ADVERSARIAL GATE: GREEN (PR #$PR_NUMBER @ ${GREEN_SHA:0:12})"
+    if [ "$RC" -eq 0 ] && [ "$CUR_HEAD" = "$REVIEWED_SHA" ] \
+        && [ "$CUR_BODY_SHA256" = "$REVIEWED_BODY_SHA256" ]; then
+      echo "ADVERSARIAL GATE: GREEN (PR #$PR_NUMBER @ ${REVIEWED_SHA:0:12})"
       exit 0
     fi
     if [ -z "$CUR_HEAD" ]; then
       escalate "could not re-verify the PR head after a GREEN review — NOT green"
       exit 2
     fi
-    if [ "$CUR_HEAD" = "$GREEN_SHA" ]; then
+    if [ "$CUR_HEAD" = "$REVIEWED_SHA" ]; then
       echo "PR body changed during the review — continuing with the new exact snapshot."
       continue
     fi
@@ -313,9 +302,9 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     exit 2
   fi
 
-  if [ "$RESULT_PRESENT" -ne 1 ]; then
-    escalate "ISSUES_FOUND returned without a validated runner result — refusing privileged remediation"
-    exit 2
+  if [ "$RESULT_KIND" = "deduplicated" ] && [ "$RESULT_STATUS" = "ISSUES_FOUND" ]; then
+    escalate "deduplicated ISSUES_FOUND has no trusted local review artifact — refusing privileged remediation"
+    exit 1
   fi
 
   if [ "$REVIEW_ONLY" -eq 1 ]; then
@@ -406,7 +395,11 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     escalate "local HEAD changed after review (${LOCAL_REMEDIATION_SHA:-unknown} != $REVIEWED_SHA) — Claude NOT launched"
     exit 2
   fi
-  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  if ! LOCAL_TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"; then
+    escalate "git status failed at the final local snapshot gate — Claude NOT launched"
+    exit 2
+  fi
+  if [ -n "$LOCAL_TRACKED_STATUS" ]; then
     escalate "local tracked worktree changed after review — Claude NOT launched"
     exit 2
   fi

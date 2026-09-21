@@ -32,9 +32,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO_ROOT / "scripts"
 BASH = shutil.which("bash")
 NODE = shutil.which("node")
+GIT = shutil.which("git")
 
 pytestmark = pytest.mark.skipif(
-    not BASH or not NODE, reason="bash + node are required (present in CI and Git Bash dev boxes)"
+    not BASH or not NODE or not GIT,
+    reason="bash + node + git are required (present in CI and Git Bash dev boxes)",
 )
 
 VIEWER = "Mikecranesync"
@@ -435,6 +437,8 @@ case "$*" in
           review-replaced)
             review="$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).review_artifact)' "$result")"
             printf '\nTAMPERED AFTER RESULT PUBLICATION\n' >> "$review" ;;
+          result-delete)
+            rm "$result" ;;
         esac
       fi ;;
   pr\\ comment\\ 99\\ --body\\ *)
@@ -485,6 +489,21 @@ if [ "$rc" -eq 0 ] && [ "${{STUB_HOLD_RESULT_PUBLISH:-0}}" = "1" ]; then
   done
 fi
 exit "$rc"
+''',
+        )
+        _write_exec(
+            self.stubs / "git",
+            f'''#!/usr/bin/env bash
+REAL_GIT="{_posix(Path(GIT))}"
+if [ "$1" = "status" ] && [ -n "${{STUB_FAIL_GIT_STATUS_ON_CALL:-}}" ]; then
+  count_file="{fix}/git-status-count"
+  count=0
+  if [ -s "$count_file" ]; then count="$(cat "$count_file")"; fi
+  count=$((count+1))
+  printf '%s' "$count" > "$count_file"
+  if [ "$count" = "$STUB_FAIL_GIT_STATUS_ON_CALL" ]; then exit 86; fi
+fi
+exec "$REAL_GIT" "$@"
 ''',
         )
         _write_exec(
@@ -557,6 +576,7 @@ cat > /dev/null
             "ADV_REVIEW_HUMAN_AUTHORIZED",
             "ADV_REVIEW_MODE",
             "ADV_REVIEW_ARTIFACT_TOKEN",
+            "ADV_REVIEW_LOCK_TOKEN",
             "STUB_HOLD_POST",
             "STUB_FAIL_LIST",
             "STUB_FAIL_RUN_LIST",
@@ -567,6 +587,7 @@ cat > /dev/null
             "STUB_HOLD_RESULT_PUBLISH",
             "STUB_HOLD_RESULT_READ",
             "STUB_HOLD_CLAUDE",
+            "STUB_FAIL_GIT_STATUS_ON_CALL",
             "ADV_TEST_PROC",
         ):
             env.pop(k, None)
@@ -589,6 +610,36 @@ cat > /dev/null
             text=True, encoding="utf-8", errors="replace",
         )
 
+    def add_peer_worktree(self, path: Path) -> Path:
+        subprocess.run(
+            [GIT, "worktree", "add", "-q", "-b", "peer", str(path), self.head],
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        shutil.copytree(self.repo / "scripts", path / "scripts")
+        return path
+
+    def popen_in(
+        self,
+        cwd: Path,
+        script: str,
+        *args: str,
+        env_extra: dict | None = None,
+    ):
+        return subprocess.Popen(
+            [BASH, f"scripts/{script}", *args],
+            cwd=cwd,
+            env=self._env(env_extra),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
     def codex_runs(self) -> int:
         f = self.fix / "codex-count"
         return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
@@ -607,6 +658,18 @@ cat > /dev/null
 
     def posted_reviews(self) -> list[str]:
         return [p.read_text(encoding="utf-8") for p in sorted(self.fix.glob("posted-*.md"))]
+
+    def review_lock_dir(self) -> Path:
+        raw = subprocess.run(
+            [GIT, "rev-parse", "--git-path", "adversarial-review.lock"],
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+        path = Path(raw)
+        return path if path.is_absolute() else self.repo / path
 
     def codex_prompts(self) -> list[str]:
         return [
@@ -1194,7 +1257,9 @@ def test_different_bodies_compete_for_last_slot(tmp_path):
         pytest.fail("body-A process never reached the reservation POST barrier")
 
     h.set_pr_body(body_b)
-    p2 = h.popen(
+    peer = h.add_peer_worktree(tmp_path / "peer-repo")
+    p2 = h.popen_in(
+        peer,
         "adversarial-review.sh",
         "99",
         env_extra={
@@ -1297,7 +1362,9 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
             "ADV_REVIEW_MODE": "full",
         },
     )
-    p2 = h.popen(
+    peer = h.add_peer_worktree(tmp_path / "peer-repo")
+    p2 = h.popen_in(
+        peer,
         "adversarial-review.sh", "99",
         env_extra={
             "STUB_HOLD_POST": "1",
@@ -1655,6 +1722,8 @@ def test_invocation_unique_artifacts_for_same_head_different_bodies(tmp_path):
         assert len(token) == 32
         assert stat.S_IMODE(result_path.stat().st_mode) == 0o600
         result = json.loads(result_path.read_text(encoding="utf-8"))
+        assert result["kind"] == "fresh_review"
+        assert result["status"] == "ISSUES_FOUND"
         artifact_key = f"{result['head_sha']}-{result['body_sha256']}-{token}"
         seen_keys.add(artifact_key)
         seen_digests.add(result["body_sha256"])
@@ -1743,6 +1812,117 @@ def test_worktree_lock_excludes_a_second_local_loop(tmp_path):
     assert first.returncode == 1, first_output
 
 
+def test_git_status_failure_at_final_boundary_never_launches_claude(tmp_path):
+    """A failed tracked-state probe is unknown state, never a clean tree."""
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+
+    result = h.run(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_FAIL_GIT_STATUS_ON_CALL": "2"},
+    )
+
+    assert result.returncode == 2
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    assert "git status" in (result.stdout + result.stderr + h.posted()).lower()
+
+
+def test_standalone_runner_is_excluded_while_loop_owns_worktree(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    loop = h.popen(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_HOLD_CLAUDE": "1", "ADV_TEST_PROC": "loop-owner"},
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "claude-waiting").exists():
+            break
+        time.sleep(0.1)
+    else:
+        loop.kill()
+        pytest.fail("loop never reached Claude while owning the worktree")
+
+    try:
+        runner = h.run("adversarial-review.sh", "99")
+    finally:
+        (h.fix / "go-claude").write_text("go", encoding="utf-8")
+        loop_output, _ = loop.communicate(timeout=180)
+
+    assert loop.returncode == 1, loop_output
+    assert runner.returncode == 2
+    assert "worktree" in runner.stderr.lower() and "lock" in runner.stderr.lower()
+    assert h.codex_runs() == 1
+    reservations = [
+        c for c in h.ledger() if c["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")
+    ]
+    assert len(reservations) == 1
+
+
+def test_loop_child_reuses_unguessable_lock_owner_token(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    loop = h.popen(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_HOLD_CLAUDE": "1"},
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "claude-waiting").exists():
+            break
+        time.sleep(0.1)
+    else:
+        loop.kill()
+        pytest.fail("loop child never completed review under the parent lock")
+
+    try:
+        owner = (h.review_lock_dir() / "owner").read_text(encoding="utf-8").strip()
+        assert len(owner) == 32
+        assert all(char in "0123456789abcdef" for char in owner)
+        assert h.codex_runs() == 1
+        assert len(list(h.out_dir.glob("result-99-*.json"))) == 1
+    finally:
+        (h.fix / "go-claude").write_text("go", encoding="utf-8")
+        output, _ = loop.communicate(timeout=180)
+
+    assert loop.returncode == 1, output
+    assert not h.review_lock_dir().exists()
+
+
+@pytest.mark.parametrize("owner_state", ["missing", "malformed", "mismatched"])
+def test_runner_reentrant_lock_owner_state_fails_closed(tmp_path, owner_state):
+    h = Harness(tmp_path)
+    h.set_envelope(GREEN_ENVELOPE)
+    token = "a" * 32
+    lock_dir = h.review_lock_dir()
+    lock_dir.mkdir()
+    if owner_state == "malformed":
+        (lock_dir / "owner").write_text("not-a-token\n", encoding="utf-8")
+    elif owner_state == "mismatched":
+        (lock_dir / "owner").write_text("b" * 32 + "\n", encoding="utf-8")
+
+    result = h.run(
+        "adversarial-review.sh",
+        "99",
+        env_extra={"ADV_REVIEW_LOCK_TOKEN": token},
+    )
+
+    assert result.returncode == 2
+    assert "lock" in result.stderr.lower()
+    assert h.codex_runs() == 0
+    assert h.remote_write_calls() == []
+
+
 @pytest.mark.parametrize("tamper", ["review-symlink", "review-replaced"])
 def test_result_or_review_artifact_tampering_never_launches_claude(tmp_path, tamper):
     h = Harness(tmp_path)
@@ -1794,6 +1974,73 @@ def test_result_symlink_swap_between_metadata_check_and_read_fails_closed(tmp_pa
     assert process.returncode == 2, output
     assert h.codex_runs() == 1
     assert h.claude_runs() == 0
+
+
+def test_deleted_fresh_green_result_never_falls_back_to_pre_call_snapshot(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(GREEN_ENVELOPE)
+
+    result = h.run(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_TAMPER_AFTER_RESULT": "result-delete"},
+    )
+
+    assert result.returncode != 0
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    assert "ADVERSARIAL GATE: GREEN" not in result.stdout
+    assert "result" in (result.stdout + result.stderr + h.posted()).lower()
+
+
+def test_deduplicated_green_publishes_bound_terminal_result(tmp_path):
+    h = Harness(tmp_path)
+    body_sha256 = hashlib.sha256(h.body.encode("utf-8")).hexdigest()
+    h.set_comments([_record(h.head, "GREEN", 1, body_sha256=body_sha256)])
+
+    result = h.run("adversarial-review-loop.sh", "99")
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert h.codex_runs() == 0
+    assert h.claude_runs() == 0
+    results = list(h.out_dir.glob("result-99-*.json"))
+    assert len(results) == 1
+    terminal = json.loads(results[0].read_text(encoding="utf-8"))
+    assert terminal == {
+        "kind": "deduplicated",
+        "status": "GREEN",
+        "head_sha": h.head,
+        "body_sha256": body_sha256,
+        "run_id": None,
+        "reservation_comment_id": None,
+        "mode": "full",
+        "review_artifact": None,
+        "review_artifact_sha256": None,
+    }
+    assert "ADVERSARIAL GATE: GREEN" in result.stdout
+
+
+def test_deduplicated_issues_publish_bound_fail_closed_terminal_result(tmp_path):
+    h = Harness(tmp_path)
+    body_sha256 = hashlib.sha256(h.body.encode("utf-8")).hexdigest()
+    h.set_comments([_record(h.head, "ISSUES_FOUND", 1, body_sha256=body_sha256)])
+
+    result = h.run("adversarial-review-loop.sh", "99")
+
+    assert result.returncode == 1
+    assert h.codex_runs() == 0
+    assert h.claude_runs() == 0
+    results = list(h.out_dir.glob("result-99-*.json"))
+    assert len(results) == 1
+    terminal = json.loads(results[0].read_text(encoding="utf-8"))
+    assert terminal["kind"] == "deduplicated"
+    assert terminal["status"] == "ISSUES_FOUND"
+    assert terminal["head_sha"] == h.head
+    assert terminal["body_sha256"] == body_sha256
+    assert terminal["review_artifact"] is None
+    combined = (result.stdout + result.stderr + h.posted()).lower()
+    assert "deduplicated issues_found" in combined
+    assert "trusted local review artifact" in combined
 
 
 def test_post_cap_human_authorized_review_only_never_invokes_claude(tmp_path):

@@ -66,6 +66,9 @@ done
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+# shellcheck source=scripts/adversarial-review-lock.sh
+source "$ROOT/scripts/adversarial-review-lock.sh"
+adversarial_review_lock_acquire || exit 2
 OUT_DIR="${ADV_REVIEW_OUT_DIR:-$ROOT/.adversarial-review}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
@@ -77,6 +80,11 @@ if [ -n "$ARTIFACT_TOKEN" ] && ! [[ "$ARTIFACT_TOKEN" =~ ^[0-9a-f]{32}$ ]]; then
 fi
 if [ -z "$ARTIFACT_TOKEN" ]; then
   ARTIFACT_TOKEN="$(node -e 'process.stdout.write(require("crypto").randomBytes(16).toString("hex"))')"
+fi
+MODE="${ADV_REVIEW_MODE:-review_only}"
+if [ "$MODE" != "full" ] && [ "$MODE" != "review_only" ]; then
+  echo "ERROR: ADV_REVIEW_MODE must be 'full' or 'review_only' (got: '$MODE')." >&2
+  exit 3
 fi
 
 # ── Preconditions ────────────────────────────────────────────────────────────
@@ -107,6 +115,42 @@ node -e '
 ' "$TOKEN_CLAIM" || {
   echo "ERROR: artifact token $ARTIFACT_TOKEN is already reserved or cannot be claimed." >&2
   exit 2
+}
+
+# Publish the only handoff the loop may consume. Both a fresh review and a
+# deduplicated terminal verdict produce an exact-snapshot, token-bound result;
+# only a fresh result may carry reservation and rendered-review authority.
+publish_result() { # kind status head body run_id reservation_id review digest
+  local kind="$1" status="$2" head="$3" body="$4" run_id="$5"
+  local reservation_id="$6" review_artifact="$7" review_digest="$8"
+  if [ "$DRY_RUN" -eq 1 ]; then return 0; fi
+  local result_file="$OUT_DIR/result-$PR_NUMBER-$ARTIFACT_TOKEN.json"
+  local result_tmp="$result_file.tmp.$$"
+  node -e '
+    const fs=require("node:fs");
+    const [tmp,final,kind,status,head,body,runId,reservationId,mode,reviewArtifact,reviewDigest]=process.argv.slice(1);
+    if(!["fresh_review","deduplicated"].includes(kind)
+      || !["GREEN","ISSUES_FOUND"].includes(status)) process.exit(1);
+    const fresh=kind==="fresh_review";
+    if(fresh && (!/^[0-9a-f]{32}$/.test(runId)
+      || !/^[1-9][0-9]*$/.test(reservationId)
+      || reviewArtifact.length===0 || !/^[0-9a-f]{64}$/.test(reviewDigest))) process.exit(1);
+    if(!fresh && (runId!=="" || reservationId!=="" || reviewArtifact!=="" || reviewDigest!=="")) process.exit(1);
+    const result={kind,status,head_sha:head,body_sha256:body,
+      run_id:fresh?runId:null,
+      reservation_comment_id:fresh?Number(reservationId):null,
+      mode,review_artifact:fresh?reviewArtifact:null,
+      review_artifact_sha256:fresh?reviewDigest:null};
+    fs.writeFileSync(tmp,JSON.stringify(result)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
+    fs.chmodSync(tmp,0o600);
+    fs.linkSync(tmp,final);
+    fs.unlinkSync(tmp);
+  ' "$result_tmp" "$result_file" "$kind" "$status" "$head" "$body" \
+    "$run_id" "$reservation_id" "$MODE" "$review_artifact" "$review_digest" || {
+    rm -f "$result_tmp"
+    echo "ERROR: could not publish the runner result artifact without replacement" >&2
+    return 2
+  }
 }
 
 PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName,url)" || {
@@ -160,7 +204,11 @@ if [ "$LOCAL_SHA" != "$HEAD_SHA" ]; then
   echo "       Push your work (or pull the PR head) so the reviewed tree matches GitHub." >&2
   exit 3
 fi
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+if ! LOCAL_TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"; then
+  echo "ERROR: git status failed — cannot prove the tracked worktree is clean." >&2
+  exit 3
+fi
+if [ -n "$LOCAL_TRACKED_STATUS" ]; then
   echo "ERROR: working tree has uncommitted tracked changes — the review would not match $HEAD_SHA." >&2
   echo "       Commit/push first. (--allow-dirty was removed: an exact-SHA review of a dirty tree is a lie.)" >&2
   exit 3
@@ -264,8 +312,12 @@ final_green_gate() {
 if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
   echo "Already reviewed at $HEAD_SHA (prior status: $PRIOR_STATUS). Use --force to re-review."
   case "$PRIOR_STATUS" in
-    GREEN) final_green_gate ;;
-    ISSUES_FOUND) exit 1 ;;
+    GREEN)
+      publish_result deduplicated GREEN "$HEAD_SHA" "$PR_BODY_SHA256" "" "" "" "" || exit 2
+      final_green_gate ;;
+    ISSUES_FOUND)
+      publish_result deduplicated ISSUES_FOUND "$HEAD_SHA" "$PR_BODY_SHA256" "" "" "" "" || exit 2
+      exit 1 ;;
     *) echo "Prior review at this SHA is malformed — re-reviewing is required (--force)." >&2; exit 2 ;;
   esac
 fi
@@ -301,11 +353,6 @@ fi
 # autonomous slots — review records remain the conservative floor).
 RUN_ID=""
 RESERVATION_ID=""
-MODE="${ADV_REVIEW_MODE:-review_only}"
-if [ "$MODE" != "full" ] && [ "$MODE" != "review_only" ]; then
-  echo "ERROR: ADV_REVIEW_MODE must be 'full' or 'review_only' (got: '$MODE')." >&2
-  exit 3
-fi
 if [ "$DRY_RUN" -eq 0 ]; then
   RUN_ID="$(node -e 'process.stdout.write(require("crypto").randomBytes(16).toString("hex"))')"
   HA_FLAG=false
@@ -504,32 +551,9 @@ REVIEW_ARTIFACT_SHA256="$(node -e '
   exit 2
 }
 
-# Publish the invocation handoff only after the rendered artifact validates.
-# The loop accepts no other local file as authority. A sibling temp plus an
-# exclusive hard-link makes the completed JSON visible atomically and refuses
-# to replace an attacker- or peer-created destination.
-if [ "$DRY_RUN" -eq 0 ]; then
-  RESULT_FILE="$OUT_DIR/result-$PR_NUMBER-$ARTIFACT_TOKEN.json"
-  RESULT_TMP="$RESULT_FILE.tmp.$$"
-  node -e '
-    const fs=require("node:fs");
-    const [tmp,final,head,body,runId,reservationId,mode,reviewArtifact,reviewDigest]=process.argv.slice(1);
-    const result={head_sha:head,body_sha256:body,run_id:runId,
-      reservation_comment_id:Number(reservationId),mode,review_artifact:reviewArtifact,
-      review_artifact_sha256:reviewDigest};
-    fs.writeFileSync(tmp,JSON.stringify(result)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
-    fs.chmodSync(tmp,0o600);
-    fs.linkSync(tmp,final);
-    fs.unlinkSync(tmp);
-  ' "$RESULT_TMP" "$RESULT_FILE" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
-    "$RESERVATION_ID" "$MODE" "$BODY_FILE" "$REVIEW_ARTIFACT_SHA256" || {
-    rm -f "$RESULT_TMP"
-    echo "ERROR: could not publish the runner result artifact without replacement" >&2
-    exit 2
-  }
-fi
-
 STATUS="${STATUS_LINE%% *}"
+publish_result fresh_review "$STATUS" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
+  "$RESERVATION_ID" "$BODY_FILE" "$REVIEW_ARTIFACT_SHA256" || exit 2
 echo "Review result: $STATUS_LINE"
 
 # ── Post to the PR ───────────────────────────────────────────────────────────
