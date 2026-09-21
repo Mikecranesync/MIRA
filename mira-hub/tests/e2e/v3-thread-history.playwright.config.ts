@@ -13,7 +13,7 @@ import { defineConfig, devices } from "@playwright/test";
 export const HUB_URL = process.env.HUB_URL ?? "http://localhost:3131";
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: ".",
   testMatch: "v3-thread-history.spec.ts",
   timeout: 300_000,
   expect: { timeout: 15_000 },
