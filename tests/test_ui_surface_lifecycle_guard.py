@@ -2765,20 +2765,20 @@ def test_workflow_restricts_trigger_to_main_branch():
     assert on_block["pull_request_target"]["branches"] == ["main"]
 
 
-def test_workflow_lists_every_metadata_sensitive_event():
+def test_workflow_lists_every_current_metadata_sensitive_event():
     doc = _workflow_doc()
     on_block = doc.get(True, doc.get("on", {}))
-    types = set(on_block["pull_request_target"]["types"])
+    event_types = set(on_block["pull_request_target"]["types"])
     required = {
         "opened",
         "reopened",
         "synchronize",
         "edited",
-        "labeled",
-        "unlabeled",
         "ready_for_review",
     }
-    assert required <= types
+    assert event_types == required
+    assert "labeled" not in event_types
+    assert "unlabeled" not in event_types
 
 
 def test_workflow_has_three_jobs_wired_pending_then_guard_then_final_status():
@@ -2954,21 +2954,6 @@ def test_workflow_and_hot_cache_do_not_claim_advisory_status_becomes_required():
         assert "advisory" in text
 
 
-def test_governance_plan_runnable_guard_contract_matches_hardened_workflow():
-    plan = (
-        REPO_ROOT
-        / "docs"
-        / "superpowers"
-        / "plans"
-        / "2026-09-06-factorylm-unified-ui-cutover-governance.md"
-    ).read_text(encoding="utf-8")
-
-    assert ".github/workflows/**" in plan
-    assert "--approver-permission-json-file" in plan
-    assert "collaborators/$APPROVER_LOGIN/permission" in plan
-    assert "`pending` -> `guard` -> `final-status`" in plan
-
-
 def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():
     text = _workflow_text()
     assert ".changed_files" in text
@@ -2976,17 +2961,7 @@ def test_workflow_fetches_expected_change_count_and_passes_it_to_the_guard():
     assert "--expected-change-count-file" in text
 
 
-def test_workflow_binds_exception_to_event_and_current_pull_snapshot():
-    text = _workflow_text()
-
-    assert "current-pull.json" in text
-    assert '--event-json-file "$GITHUB_EVENT_PATH"' in text
-    assert '--current-pull-json-file "$RUNNER_TEMP/current-pull.json"' in text
-    assert "collaborators/$APPROVER_LOGIN/permission" in text
-    assert '--approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"' in text
-
-
-def test_workflow_derives_labels_from_the_same_current_pull_snapshot():
+def test_workflow_uses_current_pull_snapshot_without_label_or_permission_plumbing():
     doc = _workflow_doc()
     guard = doc["jobs"]["guard"]
     metadata_step = next(
@@ -2995,9 +2970,21 @@ def test_workflow_derives_labels_from_the_same_current_pull_snapshot():
         if "current-pull.json" in step.get("run", "") and "gh api" in step.get("run", "")
     )
     run = metadata_step["run"]
+    eval_step = next(
+        step for step in guard["steps"] if "tools/ui_surface_lifecycle_guard.py" in step.get("run", "")
+    )
+    workflow_text = _workflow_text()
 
-    assert "jq -r '.labels[].name' \"$RUNNER_TEMP/current-pull.json\"" in run
-    assert "/issues/" not in run
+    assert "current-pull.json" in workflow_text
+    assert "/collaborators/" not in workflow_text
+    assert "approver-permission.json" not in workflow_text
+    assert "labels.txt" not in workflow_text
+    assert "APPROVER_LOGIN" not in workflow_text
+    assert "jq -r '.labels[].name'" not in run
+    assert "GITHUB_EVENT_PATH" not in run
+    assert "--event-json-file" not in eval_step["run"]
+    assert "--labels-file" not in eval_step["run"]
+    assert "--approver-permission-json-file" not in eval_step["run"]
     assert guard["permissions"] == {"contents": "read", "pull-requests": "read"}
 
 
@@ -3050,10 +3037,16 @@ def test_pull_request_template_names_full_guard_control_plane():
     assert "requirements/ui-lifecycle-guard.txt" in text
 
 
-def test_workflow_uses_labels_file_never_bare_labels_flag():
-    text = _workflow_text()
-    assert "--labels-file" in text
-    assert "--labels " not in text and not text.rstrip().endswith("--labels")
+def test_workflow_final_status_describes_only_rationale_and_exact_head_body_green():
+    doc = _workflow_doc()
+    final_step = next(
+        step for step in doc["jobs"]["final-status"]["steps"] if "gh api" in step.get("run", "")
+    )
+    final_run = final_step["run"]
+
+    assert "substantive rationale" in final_run
+    assert "exact-head/exact-body Codex ledger GREEN" in final_run
+    assert "label" not in final_run.lower()
 
 
 def test_workflow_top_level_permissions_are_empty():
