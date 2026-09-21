@@ -3047,6 +3047,7 @@ def test_workflow_final_status_describes_only_rationale_and_exact_head_body_gree
     assert "substantive rationale" in final_run
     assert "exact-head/exact-body Codex ledger GREEN" in final_run
     assert "label" not in final_run.lower()
+    assert "guard step failed" not in final_run
 
 
 def test_workflow_top_level_permissions_are_empty():

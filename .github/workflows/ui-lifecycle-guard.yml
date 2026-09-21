@@ -232,7 +232,7 @@ jobs:
             DESC="No guarded legacy change, or substantive rationale plus exact-head/exact-body Codex ledger GREEN is present."
           else
             STATE=failure
-            DESC="Guarded path lacks substantive rationale plus exact-head/exact-body Codex ledger GREEN (or a guard step failed)."
+            DESC="Guarded path lacks substantive rationale plus exact-head/exact-body Codex ledger GREEN."
           fi
           gh api "repos/$REPO/statuses/$HEAD_SHA" \
             -f "state=$STATE" \
