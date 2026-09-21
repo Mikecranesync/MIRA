@@ -1,8 +1,8 @@
 """Security contract for the staging deployment workflow.
 
-The staging host is co-tenanted with production, so a manual dispatch must
-authorize an immutable ``main`` commit before the protected environment or its
-SSH credential can be reached.  These tests exercise the authorization shell
+Staging runs on a separate host resolved from repository variables (#3909), and
+a manual dispatch must authorize an immutable ``main`` commit before the
+protected environment or its SSH credential can be reached.  These tests exercise the authorization shell
 against controlled GitHub metadata and separately verify the workflow job
 boundary that keeps credentials behind that authorization.
 """
@@ -196,8 +196,55 @@ def test_deploy_job_reauthorizes_source_immediately_before_ssh_key_access():
     assert "secrets." not in revalidate_text
 
     credential = steps[credential_index]
-    assert credential["env"] == {"STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}"}
+    assert credential["env"] == {
+        "STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}",
+        "STAGING_HOST": "${{ steps.staging_host.outputs.staging_host }}",
+        "STAGING_HOST_KEY": "${{ vars.STAGING_HOST_KEY }}",
+    }
     assert "VPS_SSH_KEY" not in json.dumps(deploy)
+
+
+def test_staging_host_resolves_from_repository_variables_with_pinned_key():
+    """No literal host anywhere; the target and its host key come from validated
+    repository variables, and any pinned production host is refused (#3909)."""
+    text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "165.245.138.91" not in text
+    assert "40.160.141.61" not in text
+    for pinned in (_ROOT / "deployment" / "known_hosts.factorylm-prod").read_text().splitlines():
+        if pinned and not pinned.startswith("#"):
+            assert pinned.split()[0] not in text
+
+    deploy = _workflow()["jobs"]["deploy"]
+    steps = deploy["steps"]
+    resolve_index = next(
+        i for i, st in enumerate(steps) if st.get("name") == "Resolve staging host"
+    )
+    credential_index = next(i for i, st in enumerate(steps) if st.get("name") == "Set up SSH")
+    assert resolve_index < credential_index
+    resolve = steps[resolve_index]
+    assert resolve["id"] == "staging_host"
+    assert resolve["env"] == {
+        "STAGING_HOST": "${{ vars.STAGING_HOST }}",
+        "STAGING_HOST_KEY": "${{ vars.STAGING_HOST_KEY }}",
+    }
+    assert "deployment/known_hosts.factorylm-prod" in resolve["run"]
+    assert "pinned production host" in resolve["run"]
+    assert "ssh-ed25519" in resolve["run"]
+    fp_guard = resolve["run"].index("does not parse as an SSH public key")
+    assert "exit 1" in resolve["run"][fp_guard : fp_guard + 120]
+    assert "staging_host=%s\\n" in resolve["run"]
+
+    ssh_setup = steps[credential_index]["run"]
+    assert "known_hosts.factorylm-prod" not in ssh_setup
+    assert '"$STAGING_HOST" "$STAGING_HOST_KEY"' in ssh_setup
+    assert "ssh-keyscan" not in ssh_setup
+
+    deploy_step = _step(deploy, "Deploy exact authorized staging source")
+    assert deploy_step["env"]["STAGING_HOST"] == "${{ steps.staging_host.outputs.staging_host }}"
+    script = deploy_step["run"]
+    assert "printf 'STAGING_HOST=%q\\n'" in script
+    assert '"$STAGING_HOST" \\\n' in script  # the ssh target
+    assert "StrictHostKeyChecking=yes" in script
 
 
 def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
@@ -217,6 +264,7 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
         "SERVICES": "${{ needs.authorize-target.outputs.services }}",
         "RESET_VOLUMES": "${{ needs.authorize-target.outputs.reset_volumes }}",
         "DEPLOY_USER": "${{ steps.revalidate.outputs.deploy_user }}",
+        "STAGING_HOST": "${{ steps.staging_host.outputs.staging_host }}",
     }
     script = deploy_step["run"]
     assert 'git fetch --no-tags origin "$APPROVED_RC_SHA"' in script
@@ -238,8 +286,9 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
             assert "${{ inputs." not in step.get("run", "")
 
 
-def test_staging_health_and_production_co_tenant_guards_fail_the_job():
-    """A red staging service or missing prod container cannot be log-only success."""
+def test_staging_health_and_separate_host_guards_fail_the_job():
+    """A red staging service, or anything production-shaped on the staging host,
+    cannot be log-only success (#3909: separate host, no path to prod secrets)."""
     workflow = _workflow()
     script = _step(workflow["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
 
@@ -250,5 +299,38 @@ def test_staging_health_and_production_co_tenant_guards_fail_the_job():
         "127.0.0.1:4099/health",
     ):
         assert port_path in script
-    low_count_guard = script.index("Production container count looks too low")
-    assert "exit 1" in script[low_count_guard : low_count_guard + 220]
+    # The co-tenant "prod containers must still be running" guard is retired.
+    assert "Production container count looks too low" not in script
+    for marker in (
+        "production-named containers present on the staging host",
+        "/opt/mira (production checkout) exists on the staging host",
+        "Doppler token can read factorylm/prd",
+    ):
+        guard = script.index(marker)
+        assert "exit 1" in script[guard : guard + 260], marker
+    assert "doppler secrets --project factorylm --config prd --only-names" in script
+
+
+def test_separate_host_invariant_runs_before_any_mutation():
+    """The STOP must precede the first clone/reset/rm/build/up (Codex #3921 P1):
+    a production host reached by alias or a wrong variable must be refused
+    before anything on it is touched."""
+    script = _step(_workflow()["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+    first_mutation = min(
+        script.index(m)
+        for m in (
+            "git clone",
+            "git reset --hard",
+            "docker rm -f",
+            "compose build",
+            "compose -f docker-compose.staging-vps.yml up",
+        )
+    )
+    for marker in (
+        "production-named containers present on the staging host",
+        "/opt/mira (production checkout) exists on the staging host",
+        "Doppler token can read factorylm/prd",
+    ):
+        assert script.index(marker) < first_mutation, marker
+    # The pre-check happens before the working copy exists, so it must not cd into it.
+    assert script.index("production-named containers present") < script.index('cd "$STG_DIR"')
