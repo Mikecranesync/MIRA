@@ -1,10 +1,16 @@
 name: Deploy to Staging VPS
 
-# Deploys the docker-compose.staging-vps.yml stack to the SEPARATE staging
-# host named by the STAGING_HOST repository variable (never the production
-# host — #3909, PRD §5/SC3), with stg-* container names and offset host
-# ports (4xxx). The host key is pinned from the STAGING_HOST_KEY variable.
-# See docs/runbooks/staging-vps.md for provisioning and isolation rules.
+# Deploys the docker-compose.staging-vps.yml stack (compose project
+# `factorylm-staging`, checkout /opt/mira-staging) to the host named by the
+# STAGING_HOST repository variable. Since 2026-09-21 (#3930, owner decision)
+# staging is CO-HOSTED on the production VPS: STAGING_HOST may equal the
+# pinned production host, whose key is then reused from
+# deployment/known_hosts.factorylm-prod; any other host needs STAGING_HOST_KEY.
+# Isolation is operational, enforced fail-closed before anything is touched:
+# path never under /opt/mira, staging Neon + factorylm/stg only, no compose
+# project/name/port collision with production, no host-wide docker cleanup,
+# and production containers must be byte-for-byte untouched afterwards.
+# See docs/runbooks/staging-vps.md.
 
 on:
   workflow_dispatch:
@@ -150,18 +156,21 @@ jobs:
           STAGING_HOST_KEY: ${{ vars.STAGING_HOST_KEY }}
         run: |
           set -euo pipefail
-          # Separate host (#3909): the target comes from a repository variable, never
-          # a literal in this file, and must not be any pinned production host.
+          # The target comes from a repository variable, never a literal in this
+          # file. Co-hosted staging (#3930): the production host is ALLOWED, and its
+          # pinned key is reused from the committed known_hosts; any other host must
+          # supply STAGING_HOST_KEY. Trust is pinned either way — never keyscanned.
           [[ "$STAGING_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$STAGING_HOST" =~ ^[a-z0-9]([a-z0-9-]{0,62}\.)+[a-z]{2,}$ ]] || {
             echo "::error::STAGING_HOST repository variable is missing or invalid"
             exit 1
           }
-          if grep -qE "^${STAGING_HOST//./\\.} " deployment/known_hosts.factorylm-prod; then
-            echo "::error::STAGING_HOST ${STAGING_HOST} is a pinned production host — staging must run on a separate host (#3909)"
-            exit 1
+          PINNED="$(grep -E "^${STAGING_HOST//./\\.} " deployment/known_hosts.factorylm-prod | head -1 || true)"
+          if [ -n "$PINNED" ]; then
+            STAGING_HOST_KEY="$(printf '%s\n' "$PINNED" | awk '{print $2" "$3}')"
+            echo "STAGING_HOST ${STAGING_HOST} is the pinned production host — co-hosted staging, key reused from deployment/known_hosts.factorylm-prod"
           fi
           [[ "$STAGING_HOST_KEY" =~ ^ssh-ed25519\ AAAA[0-9A-Za-z+/]+=*$ ]] || {
-            echo "::error::STAGING_HOST_KEY repository variable is missing or not an ssh-ed25519 host public key"
+            echo "::error::STAGING_HOST_KEY is missing or not an ssh-ed25519 host public key (required for a host not pinned in deployment/known_hosts.factorylm-prod)"
             exit 1
           }
           # The key must also parse as a real public key (pipefail + set -e: a bad
@@ -173,12 +182,13 @@ jobs:
           }
           echo "Staging host: ${STAGING_HOST} (${STAGING_HOST_KEY_FP})"
           printf 'staging_host=%s\n' "$STAGING_HOST" >> "$GITHUB_OUTPUT"
+          printf 'staging_host_key=%s\n' "$STAGING_HOST_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Set up SSH
         env:
           STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
           STAGING_HOST: ${{ steps.staging_host.outputs.staging_host }}
-          STAGING_HOST_KEY: ${{ vars.STAGING_HOST_KEY }}
+          STAGING_HOST_KEY: ${{ steps.staging_host.outputs.staging_host_key }}
         run: |
           set -euo pipefail
           [ -n "$STAGING_DEPLOY_SSH_KEY" ] || {
@@ -188,7 +198,7 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/staging_deploy_key
           chmod 600 ~/.ssh/staging_deploy_key
-          # Pinned trust only: the staging host key comes from the validated variable.
+          # Pinned trust only: the key is the committed production pin or the validated variable.
           printf '%s %s\n' "$STAGING_HOST" "$STAGING_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -210,28 +220,46 @@ jobs:
 
           set -euo pipefail
 
-          # Separate-host invariant (#3909, PRD §5/SC3) — checked FIRST, before
-          # anything on this host is touched (Codex #3921 P1): a production host
-          # reached by an alias or a wrong STAGING_HOST must be refused before a
-          # clone, reset, container removal, build or Doppler call happens here.
-          PROD_CONTAINERS="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^mira-' | grep -v '^stg-' || true)"
-          if [ -n "$PROD_CONTAINERS" ]; then
-            echo "::error::production-named containers present on the staging host — STOP (#3909): ${PROD_CONTAINERS}"
-            exit 1
-          fi
-          if [ -e /opt/mira ]; then
-            echo "::error::/opt/mira (production checkout) exists on the staging host — STOP (#3909)"
-            exit 1
-          fi
+          # ── Co-host safeguards (#3930) — checked FIRST, before anything on this
+          # host is touched. Production may live on this same box; staging is
+          # allowed only when every one of these holds. Each is a STOP, not a
+          # warning, and none of them may be skipped by an input.
+          STG_DIR=/opt/mira-staging
+          PROJECT=factorylm-staging
+          COMPOSE_FILE=docker-compose.staging-vps.yml
+          # (1) path: never /opt/mira or inside it (resolved, so no symlink games).
+          case "$(readlink -f "$STG_DIR" 2>/dev/null || echo "$STG_DIR")" in
+            /opt/mira|/opt/mira/*) echo "::error::staging path resolves into /opt/mira — STOP (#3930 safeguard 1)"; exit 1;;
+          esac
+          # (3) Doppler: this identity must run factorylm/stg and must NOT be able to read prd.
           if doppler secrets --project factorylm --config prd --only-names >/dev/null 2>&1; then
-            echo "::error::this host's Doppler token can read factorylm/prd — STOP (#3909)"
+            echo "::error::the staging deploy identity can read factorylm/prd — STOP (#3930 safeguard 3)"
             exit 1
           fi
-          echo "Separate-host invariant holds before deploy: no production containers, no /opt/mira, no prd Doppler access"
+          STG_DB_HOST="$(doppler run --project factorylm --config stg -- sh -c 'printf %s "${NEON_DATABASE_URL:-}"' | sed -E 's#^[a-z+]+://[^@]*@([^/?:]+).*#\1#')"
+          [ -n "$STG_DB_HOST" ] || { echo "::error::factorylm/stg has no NEON_DATABASE_URL — STOP (#3930 safeguard 2)"; exit 1; }
+          # (2) database identity: staging must not share production's endpoint. The
+          # production hub container's own environment is the source of truth when it
+          # is running here; the endpoint id is the compared token, never a URL.
+          PROD_DB_HOST="$(docker inspect mira-hub --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -nE 's#^NEON_DATABASE_URL=[a-z+]+://[^@]*@([^/?:]+).*#\1#p' | head -1 || true)"
+          if [ -n "$PROD_DB_HOST" ] && [ "$PROD_DB_HOST" = "$STG_DB_HOST" ]; then
+            echo "::error::staging NEON_DATABASE_URL points at the production database endpoint — STOP (#3930 safeguard 2)"
+            exit 1
+          fi
+          case "$STG_DB_HOST" in *purple-hall*) echo "::error::staging NEON_DATABASE_URL names the production Neon endpoint — STOP (#3930 safeguard 2)"; exit 1;; esac
+          # (7) production must be untouched: snapshot every non-project container's
+          # identity AND start time now and require the identical set afterwards.
+          # StartedAt is what distinguishes a restart from "still running": ID,
+          # name and creation time all survive a restart (IR round 1, mira-9f).
+          prod_snapshot() {
+            docker ps -aq | xargs -r docker inspect --format '{{.Id}} {{.Name}} {{index .Config.Labels "com.docker.compose.project"}} {{.Created}} {{.State.StartedAt}}' \
+              | grep -vE " ${PROJECT} " | sort
+          }
+          PROD_BEFORE="$(prod_snapshot)"
+          echo "Co-host safeguards hold: path ok, doppler=stg (prd unreadable), db endpoint '${STG_DB_HOST}' != prod, names/ports free; $(printf '%s\n' "$PROD_BEFORE" | grep -c . ) non-staging container(s) snapshotted"
 
           # Staging lives in its own working copy so a force-reset here never
           # touches the production checkout at /opt/mira.
-          STG_DIR=/opt/mira-staging
           if [ ! -d "$STG_DIR/.git" ]; then
             echo "=== First-time clone of staging working copy ==="
             git clone --no-checkout https://github.com/Mikecranesync/MIRA.git "$STG_DIR"
@@ -261,6 +289,29 @@ jobs:
             exit 1
           }
 
+          # Safeguards (4) and (5) need the exact checked-out compose file; they run
+          # here, after the git checkout of STG_DIR only, and before any docker mutation.
+          # (4) names: every container/network/volume this project would create must be
+          # stg-/project-prefixed, and none may already exist under another project.
+          PLANNED="$(cd "$STG_DIR" 2>/dev/null && doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --format json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(sorted(set([s.get("container_name","") for s in d.get("services",{}).values()] + list(d.get("networks",{}).keys()) + list(d.get("volumes",{}).keys())))))' || true)"
+          for name in $PLANNED; do
+            case "$name" in stg-*|staging-net|"$PROJECT"*|default) ;; *) echo "::error::planned staging resource '$name' is not stg-/staging- prefixed — STOP (#3930 safeguard 4)"; exit 1;; esac
+            owner="$(docker inspect "$name" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+            if [ -n "$owner" ] && [ "$owner" != "$PROJECT" ]; then
+              echo "::error::'$name' already exists under compose project '$owner' (not $PROJECT) — STOP (#3930 safeguard 4)"
+              exit 1
+            fi
+          done
+          # (5) ports: every host port the compose file publishes must be loopback and
+          # must not be held by a container outside this project.
+          if grep -qE '"0\.0\.0\.0:[0-9]+:' "$STG_DIR/$COMPOSE_FILE" 2>/dev/null; then
+            echo "::error::staging compose publishes a port on 0.0.0.0 — loopback only (#3930 safeguard 5)"; exit 1
+          fi
+          for port in $(grep -oE '"127\.0\.0\.1:[0-9]+:' "$STG_DIR/$COMPOSE_FILE" 2>/dev/null | grep -oE '[0-9]+' | sort -u); do
+            holder="$(docker ps --format '{{.Names}} {{.Label "com.docker.compose.project"}} {{.Ports}}' | grep -E "(127\.0\.0\.1|0\.0\.0\.0):${port}->" | grep -vE " ${PROJECT} " | awk '{print $1}' || true)"
+            [ -z "$holder" ] || { echo "::error::host port ${port} is held by '${holder}' outside project ${PROJECT} — STOP (#3930 safeguard 5)"; exit 1; }
+          done
+
           # mira-bot-telegram MUST be in the default set: the staging Telegram
           # smoke (nameplate photo -> Drive Commander pack answer) runs against
           # stg-mira-bot-telegram, and build/force-recreate below are scoped to
@@ -276,7 +327,7 @@ jobs:
           if [ "${RESET_VOLUMES:-false}" = "true" ]; then
             echo "=== RESET_VOLUMES=true — destroying staging volumes ==="
             doppler run --project factorylm --config stg -- \
-              docker compose -f docker-compose.staging-vps.yml down -v
+              docker compose -p "$PROJECT" -f "$COMPOSE_FILE" down -v
           fi
 
           echo "=== Pre-deploy cleanup: remove any stale stg-* containers ==="
@@ -305,20 +356,20 @@ jobs:
 
           echo "=== Build staging images (no-cache, fresh base) ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml build --no-cache --pull "${TARGET_LIST[@]}"
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" build --no-cache --pull "${TARGET_LIST[@]}"
 
           echo "=== Bring up full staging stack ==="
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml up -d --remove-orphans
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --remove-orphans
 
           # Force-recreate only the rebuilt services so their new images take effect.
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate "${TARGET_LIST[@]}"
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${TARGET_LIST[@]}"
 
           echo "=== Built image identities ==="
           BUILT_IDS="$(mktemp)"
           for svc in "${TARGET_LIST[@]}"; do
-            img="$(doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging-vps.yml config --images "$svc" | head -1)"
+            img="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --images "$svc" | head -1)"
             [ -n "$img" ] || { echo "::error::compose reports no image for ${svc} — failing closed."; exit 1; }
             id="$(docker image inspect --format '{{.Id}}' "$img")"
             [ -n "$id" ] || { echo "::error::no built image id for ${svc} (${img}) — failing closed."; exit 1; }
@@ -328,7 +379,7 @@ jobs:
           echo "=== Running image identities must equal the built ones ==="
           RUNNING_IDS="$(mktemp)"
           for svc in "${TARGET_LIST[@]}"; do
-            cid="$(doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging-vps.yml ps -q "$svc")"
+            cid="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps -q "$svc")"
             [ -n "$cid" ] || { echo "::error::no running container for ${svc} after the swap — failing closed."; exit 1; }
             running="$(docker inspect --format '{{.Image}}' "$cid")"
             built="$(grep "^${svc}=" "$BUILT_IDS" | cut -d= -f2-)"
@@ -374,7 +425,7 @@ jobs:
 
           echo "=== Deploy complete ==="
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging-vps.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
           # One-line machine-readable receipt; the runner extracts, verifies and
           # uploads it as the durable staging-receipt-<sha> artifact.
@@ -414,22 +465,16 @@ jobs:
           PYRECEIPT
           rm -f "$BUILT_IDS" "$RUNNING_IDS"
 
-          # Separate-host invariant, re-checked after the deploy (the pre-check above
-          # is the gate; this catches anything production-shaped that appeared since).
-          PROD_CONTAINERS="$(docker ps -a --format '{{.Names}}' | grep -E '^mira-' | grep -v '^stg-' || true)"
-          if [ -n "$PROD_CONTAINERS" ]; then
-            echo "::error::production-named containers present on the staging host — STOP (#3909): ${PROD_CONTAINERS}"
+          # (7) production untouched — the identical non-staging container set
+          # (ids + creation times + START times) must exist after the deploy. A
+          # restarted OR recreated production container changes this and STOPs.
+          PROD_AFTER="$(prod_snapshot)"
+          if [ "$PROD_BEFORE" != "$PROD_AFTER" ]; then
+            echo "::error::non-staging containers changed during the staging deploy — STOP (#3930 safeguard 7)"
+            diff <(printf '%s\n' "$PROD_BEFORE") <(printf '%s\n' "$PROD_AFTER") || true
             exit 1
           fi
-          if [ -e /opt/mira ]; then
-            echo "::error::/opt/mira (production checkout) exists on the staging host — STOP (#3909)"
-            exit 1
-          fi
-          if doppler secrets --project factorylm --config prd --only-names >/dev/null 2>&1; then
-            echo "::error::this host's Doppler token can read factorylm/prd — STOP (#3909)"
-            exit 1
-          fi
-          echo "Separate-host invariant holds: no production containers, no /opt/mira, no prd Doppler access"
+          echo "Production untouched: non-staging container set identical before and after"
           ENDSSH
           } | ssh \
             -i ~/.ssh/staging_deploy_key \
