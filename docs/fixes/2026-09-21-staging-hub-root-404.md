@@ -1,7 +1,7 @@
 # Staging Hub Root 404 Fix
 
-**Issue:** #3936 (P0)
-**PR:** (to be created)
+**Issue:** Staging Hub root 404 (Mike P0 2026-09-21)
+**PR:** #3937
 **Fixed:** 2026-09-21
 **Affects:** Staging Hub (`app-staging.factorylm.com`)
 
@@ -164,8 +164,8 @@ The fix is minimal and well-scoped. The redirect was already unused in productio
 
 ## Related Issues
 
-- #3936 — Original staging 404 report
 - Phase 2 migration (2026-04-27) — When production moved to basePath=""
+- Note: PR #3936 (merged, safeguard4 whitespace fix) is unrelated to this hub root 404
 
 ## Notes
 

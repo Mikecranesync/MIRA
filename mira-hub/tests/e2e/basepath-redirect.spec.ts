@@ -4,8 +4,9 @@
  * Verifies that the root redirect in next.config.ts only fires when
  * basePath="/hub" (production) and NOT when basePath="" (staging).
  *
- * Context: #3936 — staging root was 404ing because the config was redirecting
- * / → /hub/ unconditionally, but staging has basePath="", so /hub/ doesn't exist.
+ * Context: Staging hub root 404 (Mike P0 2026-09-21) — staging root was 404ing
+ * because the config was redirecting / → /hub/ unconditionally, but staging has
+ * basePath="", so /hub/ doesn't exist.
  *
  * Fix: The redirect is now conditional on basePath === "/hub".
  *

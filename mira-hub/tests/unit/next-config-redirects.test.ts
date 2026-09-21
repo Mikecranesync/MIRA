@@ -1,9 +1,9 @@
 /**
  * Unit test for next.config.ts redirects() logic
  *
- * Regression test for #3936 — staging root was 404ing because the config
- * was redirecting / → /hub/ unconditionally, but staging has basePath="",
- * so /hub/ doesn't exist.
+ * Regression test for staging hub root 404 (Mike P0 2026-09-21) — staging root
+ * was 404ing because the config was redirecting / → /hub/ unconditionally,
+ * but staging has basePath="", so /hub/ doesn't exist.
  *
  * The redirect should only apply when basePath="/hub".
  */
