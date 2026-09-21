@@ -199,7 +199,7 @@ def test_deploy_job_reauthorizes_source_immediately_before_ssh_key_access():
     assert credential["env"] == {
         "STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}",
         "STAGING_HOST": "${{ steps.staging_host.outputs.staging_host }}",
-        "STAGING_HOST_KEY": "${{ vars.STAGING_HOST_KEY }}",
+        "STAGING_HOST_KEY": "${{ steps.staging_host.outputs.staging_host_key }}",
     }
     assert "VPS_SSH_KEY" not in json.dumps(deploy)
 
@@ -227,15 +227,22 @@ def test_staging_host_resolves_from_repository_variables_with_pinned_key():
         "STAGING_HOST": "${{ vars.STAGING_HOST }}",
         "STAGING_HOST_KEY": "${{ vars.STAGING_HOST_KEY }}",
     }
+    # Co-hosted staging (#3930): the production host is allowed and its committed
+    # pin is reused; any other host needs STAGING_HOST_KEY. Never keyscanned.
     assert "deployment/known_hosts.factorylm-prod" in resolve["run"]
-    assert "pinned production host" in resolve["run"]
+    assert "co-hosted staging, key reused" in resolve["run"]
+    assert "staging must run on a separate host" not in resolve["run"]
     assert "ssh-ed25519" in resolve["run"]
+    assert "staging_host_key=%s\\n" in resolve["run"]
     fp_guard = resolve["run"].index("does not parse as an SSH public key")
     assert "exit 1" in resolve["run"][fp_guard : fp_guard + 120]
     assert "staging_host=%s\\n" in resolve["run"]
 
     ssh_setup = steps[credential_index]["run"]
-    assert "known_hosts.factorylm-prod" not in ssh_setup
+    assert (
+        steps[credential_index]["env"]["STAGING_HOST_KEY"]
+        == "${{ steps.staging_host.outputs.staging_host_key }}"
+    )
     assert '"$STAGING_HOST" "$STAGING_HOST_KEY"' in ssh_setup
     assert "ssh-keyscan" not in ssh_setup
 
@@ -286,12 +293,27 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
             assert "${{ inputs." not in step.get("run", "")
 
 
-def test_staging_health_and_separate_host_guards_fail_the_job():
-    """A red staging service, or anything production-shaped on the staging host,
-    cannot be log-only success (#3909: separate host, no path to prod secrets)."""
-    workflow = _workflow()
-    script = _step(workflow["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+SAFEGUARD_MARKERS = (
+    "staging path resolves into /opt/mira",
+    "staging deploy identity can read factorylm/prd",
+    "points at the production database endpoint",
+    "names the production Neon endpoint",
+    "is not stg-/staging- prefixed",
+    "already exists under compose project",
+    "publishes a port on 0.0.0.0",
+    "is held by",
+    "non-staging containers changed during the staging deploy",
+)
 
+
+def _deploy_script() -> str:
+    return _step(_workflow()["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+
+
+def test_staging_health_and_cohost_safeguards_fail_the_job():
+    """Co-hosted staging (#3930): a red staging service, or any of the seven
+    co-host safeguards, is a STOP — never log-only success."""
+    script = _deploy_script()
     assert '|| echo "FAIL"' not in script
     for port_path in (
         "127.0.0.1:4101/api/health",
@@ -299,38 +321,93 @@ def test_staging_health_and_separate_host_guards_fail_the_job():
         "127.0.0.1:4099/health",
     ):
         assert port_path in script
-    # The co-tenant "prod containers must still be running" guard is retired.
-    assert "Production container count looks too low" not in script
-    for marker in (
-        "production-named containers present on the staging host",
-        "/opt/mira (production checkout) exists on the staging host",
-        "Doppler token can read factorylm/prd",
-    ):
+    # The separate-host rule is retired (owner decision, #3930).
+    assert "production-named containers present on the staging host" not in script
+    assert "/opt/mira (production checkout) exists on the staging host" not in script
+    for marker in SAFEGUARD_MARKERS:
         guard = script.index(marker)
         assert "exit 1" in script[guard : guard + 260], marker
-    assert "doppler secrets --project factorylm --config prd --only-names" in script
 
 
-def test_separate_host_invariant_runs_before_any_mutation():
-    """The STOP must precede the first clone/reset/rm/build/up (Codex #3921 P1):
-    a production host reached by alias or a wrong variable must be refused
-    before anything on it is touched."""
-    script = _step(_workflow()["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
-    first_mutation = min(
+def test_cohost_safeguards_run_before_any_mutation():
+    """Path/Doppler/DB identity are checked before the checkout touches disk;
+    name/port collisions before any docker mutation; production is snapshotted
+    first and compared last (Codex #3921 P1 ordering, carried over)."""
+    script = _deploy_script()
+    first_git = min(script.index(m) for m in ("git clone", "git reset --hard"))
+    first_docker = min(
         script.index(m)
-        for m in (
-            "git clone",
-            "git reset --hard",
-            "docker rm -f",
-            "compose build",
-            "compose -f docker-compose.staging-vps.yml up",
-        )
+        for m in ("docker rm -f", "compose build", 'compose -p "$PROJECT" -f "$COMPOSE_FILE" up')
     )
     for marker in (
-        "production-named containers present on the staging host",
-        "/opt/mira (production checkout) exists on the staging host",
-        "Doppler token can read factorylm/prd",
+        "staging path resolves into /opt/mira",
+        "can read factorylm/prd",
+        "production database endpoint",
     ):
-        assert script.index(marker) < first_mutation, marker
-    # The pre-check happens before the working copy exists, so it must not cd into it.
-    assert script.index("production-named containers present") < script.index('cd "$STG_DIR"')
+        assert script.index(marker) < first_git, marker
+    assert script.index("PROD_BEFORE=") < first_git
+    for marker in (
+        "is not stg-/staging- prefixed",
+        "already exists under compose project",
+        "publishes a port on 0.0.0.0",
+        "is held by",
+    ):
+        assert first_git < script.index(marker) < first_docker, marker
+    assert script.index("non-staging containers changed") > first_docker
+
+
+def test_every_compose_call_is_project_scoped_and_nothing_prunes():
+    """Safeguard 7: staging may only ever address its own compose project, and no
+    step may run a host-wide docker cleanup or a bare production-shaped command."""
+    workflow_text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    script = _deploy_script()
+    compose_calls = [
+        line
+        for line in script.splitlines()
+        if "docker compose" in line and not line.strip().startswith("#")
+    ]
+    assert compose_calls, "no compose calls found"
+    for line in compose_calls:
+        assert '-p "$PROJECT"' in line and '-f "$COMPOSE_FILE"' in line, line
+    assert "PROJECT=factorylm-staging" in script
+    for forbidden in (
+        "prune",
+        "docker rm -f mira-",
+        "docker stop mira",
+        "docker restart",
+        "cd /opt/mira\n",
+        'cd "/opt/mira"',
+        "-C /opt/mira ",
+        "/opt/mira/docker-compose",
+        "docker-compose.saas.yml",
+    ):
+        assert forbidden not in workflow_text, forbidden
+    # The only `docker rm` is the stg-* scoped pre-clean.
+    for line in script.splitlines():
+        if "docker rm" in line:
+            assert '"stg-${svc}"' in line, line
+
+
+def test_staging_compose_is_namespaced_and_loopback_only():
+    """The compose file itself carries the operational isolation: its own project
+    name, stg-* containers/volumes, a staging network, loopback host ports, a
+    memory cap on every service, and staging web wired to the STAGING hub."""
+    compose = yaml.safe_load((_ROOT / "docker-compose.staging-vps.yml").read_text(encoding="utf-8"))
+    assert compose["name"] == "factorylm-staging"
+    for svc_name, svc in compose["services"].items():
+        assert svc.get("container_name", "").startswith("stg-"), svc_name
+        assert "mem_limit" in svc, svc_name
+        for port in svc.get("ports", []):
+            assert str(port).startswith("127.0.0.1:"), (svc_name, port)
+        for mount in svc.get("volumes", []):
+            src = str(mount).split(":", 1)[0]
+            assert src != "/opt/mira" and not src.startswith("/opt/mira/"), (svc_name, mount)
+    assert all(v.startswith("stg-") for v in (compose.get("volumes") or {})), compose.get("volumes")
+    assert set(compose.get("networks") or {}) == {"staging-net"} or "staging-net" in (
+        compose.get("networks") or {}
+    )
+    web_env = "\n".join(compose["services"]["mira-web"]["environment"])
+    assert "PLG_HUB_URL=${PLG_HUB_URL:-https://app-staging.factorylm.com}" in web_env
+    assert "app.factorylm.com" not in web_env
+    hub_env = "\n".join(compose["services"]["mira-hub"]["environment"])
+    assert "NEXTAUTH_URL=${NEXTAUTH_URL:-https://app-staging.factorylm.com/api/auth}" in hub_env

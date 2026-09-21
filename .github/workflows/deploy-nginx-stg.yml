@@ -1,14 +1,14 @@
-name: Deploy nginx stg.factorylm.com vhost
+name: Deploy nginx staging vhosts
 
-# Installs deployment/nginx-stg-factorylm.conf as the stg.factorylm.com vhost on
-# the prod nginx box, giving the staging stack (stg-mira-hub :4101) an HTTPS front
-# door. See docs/plans/2026-06-15-staging-usable-subdomain.md.
+# Installs deployment/nginx-staging-factorylm.conf on the host named by the
+# STAGING_HOST repository variable (the production VPS — co-hosted staging,
+# #3930): staging.factorylm.com → stg-mira-web :4200, app-staging.factorylm.com
+# → stg-mira-hub :4101. Production vhosts are never touched: the workflow
+# refuses a conf that names a production hostname, adds ONE new site file,
+# validates with `nginx -t`, and only then reloads. TLS: once both names
+# resolve to the host, certbot extends the vhosts in place.
 #
-# Human-dispatched (touches the prod nginx box → `production` environment gate).
-# One-shot per change to deployment/nginx-stg-factorylm.conf.
-#
-# AFTER first run: on the VPS run `certbot --nginx -d stg.factorylm.com` to add
-# TLS (requires the DNS A record stg.factorylm.com -> 165.245.138.91 to be live).
+# Human-dispatched (touches the production nginx → `production` environment gate).
 
 on:
   workflow_dispatch:
@@ -46,27 +46,61 @@ jobs:
           chmod 600 ~/.ssh/vps_deploy_key
           install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
-      - name: SCP vhost to prod
+      - name: Refuse a conf that names a production hostname
         run: |
-          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            deployment/nginx-stg-factorylm.conf \
-            root@165.245.138.91:/etc/nginx/sites-available/stg-factorylm
-
-      - name: Symlink + test + reload nginx
-        run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            root@165.245.138.91 'bash -s' << 'ENDSSH'
           set -euo pipefail
-          [ -L /etc/nginx/sites-enabled/stg-factorylm ] || \
-            ln -sf /etc/nginx/sites-available/stg-factorylm /etc/nginx/sites-enabled/stg-factorylm
+          if grep -nE 'server_name[^;]*\b(app\.factorylm\.com|www\.factorylm\.com|updates\.factorylm\.com|factorylm\.com)\b' deployment/nginx-staging-factorylm.conf; then
+            echo "::error::staging vhost file names a production hostname — refusing (#3930 safeguard 6)"
+            exit 1
+          fi
+          grep -qE 'server_name staging\.factorylm\.com;' deployment/nginx-staging-factorylm.conf
+          grep -qE 'server_name app-staging\.factorylm\.com;' deployment/nginx-staging-factorylm.conf
+
+      - name: Resolve staging host (pinned)
+        id: host
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$STAGING_HOST" =~ ^[a-z0-9]([a-z0-9-]{0,62}\.)+[a-z]{2,}$ ]] || { echo "::error::STAGING_HOST missing/invalid"; exit 1; }
+          grep -qE "^${STAGING_HOST//./\\.} " deployment/known_hosts.factorylm-prod || { echo "::error::STAGING_HOST is not pinned in deployment/known_hosts.factorylm-prod"; exit 1; }
+          printf 'host=%s\n' "$STAGING_HOST" >> "$GITHUB_OUTPUT"
+
+      - name: SCP vhost to the host
+        env:
+          STAGING_HOST: ${{ steps.host.outputs.host }}
+        run: |
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            deployment/nginx-staging-factorylm.conf \
+            "root@${STAGING_HOST}:/etc/nginx/sites-available/staging-factorylm"
+
+      - name: Enable + test + reload nginx, then certbot if DNS points here
+        env:
+          STAGING_HOST: ${{ steps.host.outputs.host }}
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "root@${STAGING_HOST}" 'bash -s' << 'ENDSSH'
+          set -euo pipefail
+          PROD_BEFORE="$(sha256sum /etc/nginx/sites-enabled/* 2>/dev/null | grep -v staging-factorylm | sort)"
+          ln -sfn /etc/nginx/sites-available/staging-factorylm /etc/nginx/sites-enabled/staging-factorylm
           nginx -t
           systemctl reload nginx
-          echo "=== probe (http; will be 301->https once certbot has run) ==="
-          curl -sI -o /dev/null -w "http://stg.factorylm.com -> %{http_code}\n" --max-time 10 http://stg.factorylm.com/ || true
-          curl -sI -o /dev/null -w "https://stg.factorylm.com -> %{http_code}\n" --max-time 10 https://stg.factorylm.com/ || true
+          PROD_AFTER="$(sha256sum /etc/nginx/sites-enabled/* 2>/dev/null | grep -v staging-factorylm | sort)"
+          [ "$PROD_BEFORE" = "$PROD_AFTER" ] || { echo "::error::a non-staging nginx site changed — STOP (#3930 safeguard 6)"; exit 1; }
+          MY_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
+          echo "=== host-header probes (independent of DNS) ==="
+          curl -s -o /dev/null -w "staging.factorylm.com     -> %{http_code}\n" --max-time 10 -H 'Host: staging.factorylm.com' http://127.0.0.1/ || true
+          curl -s -o /dev/null -w "app-staging.factorylm.com -> %{http_code}\n" --max-time 10 -H 'Host: app-staging.factorylm.com' http://127.0.0.1/api/health/ || true
+          echo "=== production hostnames still route to production ==="
+          curl -s --max-time 10 -H 'Host: app.factorylm.com' http://127.0.0.1/api/version/ | head -c 160 || true; echo
+          A1="$(dig +short staging.factorylm.com A | tail -1)"; A2="$(dig +short app-staging.factorylm.com A | tail -1)"
+          if [ -n "$MY_IP" ] && [ "$A1" = "$MY_IP" ] && [ "$A2" = "$MY_IP" ]; then
+            echo "=== DNS points here — issuing/renewing TLS ==="
+            certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
+              --cert-name staging-factorylm -d staging.factorylm.com -d app-staging.factorylm.com \
+              --register-unsafely-without-email
+            nginx -t && systemctl reload nginx
+          else
+            echo "::warning::DNS does not (yet) point staging.factorylm.com / app-staging.factorylm.com at this host (${MY_IP}) — vhosts installed on HTTP; re-run after the A records land to get TLS"
+          fi
           ENDSSH
-
-      - name: Reminder
-        run: |
-          echo "If https probe was not 2xx/3xx, run on the VPS: certbot --nginx -d stg.factorylm.com"
-          echo "(needs DNS A record stg.factorylm.com -> 165.245.138.91 live first)"

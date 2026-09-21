@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Bootstrap a SEPARATE FactoryLM staging host (#3909, PRD §5/SC3).
+# Bootstrap the FactoryLM staging deploy identity on a host — normally the
+# production VPS itself (co-hosted staging, owner decision 2026-09-21, #3930).
 #
-# Run ONCE as root on a fresh Ubuntu 24.04 VPS that is NOT the production host:
+# Run ONCE as root:
 #   sudo bash bootstrap-staging-host.sh "<staging-deploy ssh public key line>"
 #
 # What it does (and nothing else):
 #   1. installs Docker Engine + compose plugin and the Doppler CLI
 #   2. creates the non-root `staging-deploy` account (docker group, NO sudo)
-#   3. installs the given public key for it and hardens sshd to keys-only
+#   3. installs the given public key for it (sshd is NOT changed unless
+#      --harden-sshd is passed: on the production host that is a prod change)
 #   4. creates /opt/mira-staging owned by staging-deploy (never /opt/mira)
 # It never installs a Doppler token: the deploy user configures a
 # `factorylm/stg` SERVICE token afterwards, scoped to /opt/mira-staging
@@ -17,14 +19,14 @@ set -euo pipefail
 DEPLOY_USER="staging-deploy"
 STG_DIR="/opt/mira-staging"
 PUBKEY="${1:-}"
+HARDEN_SSHD="${2:-}"
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 [[ "$PUBKEY" =~ ^ssh-ed25519\ AAAA[0-9A-Za-z+/]+=*( .*)?$ ]] || {
   echo "usage: $0 '<ssh-ed25519 public key line for ${DEPLOY_USER}>'" >&2; exit 1; }
-[ ! -e /opt/mira ] || { echo "/opt/mira exists — this looks like the production host. STOP." >&2; exit 1; }
-if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^mira-'; then
-  echo "production-named containers present — this looks like the production host. STOP." >&2; exit 1
-fi
+# Co-hosted: production may live on this host. The only path rule is that the
+# staging checkout never equals or enters /opt/mira.
+case "$(readlink -f "$STG_DIR")" in /opt/mira|/opt/mira/*) echo "STG_DIR must not be /opt/mira or inside it. STOP." >&2; exit 1;; esac
 
 echo "=== packages ==="
 export DEBIAN_FRONTEND=noninteractive
@@ -62,13 +64,17 @@ chown "$DEPLOY_USER:$DEPLOY_USER" "$HOME_DIR/.ssh/authorized_keys"
 chmod 600 "$HOME_DIR/.ssh/authorized_keys"
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$STG_DIR"
 
-echo "=== sshd: keys only ==="
-cat > /etc/ssh/sshd_config.d/90-factorylm-staging.conf <<'SSHD'
+if [ "$HARDEN_SSHD" = "--harden-sshd" ]; then
+  echo "=== sshd: keys only (explicitly requested) ==="
+  cat > /etc/ssh/sshd_config.d/90-factorylm-staging.conf <<'SSHD'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 SSHD
-sshd -t && systemctl reload ssh
+  sshd -t && systemctl reload ssh
+else
+  echo "=== sshd: unchanged (pass --harden-sshd to enforce keys-only) ==="
+fi
 
 echo "=== evidence ==="
 id "$DEPLOY_USER"
