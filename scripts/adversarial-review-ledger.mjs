@@ -44,24 +44,26 @@
 //   - A runner POSTS a reservation (unique 128-bit run_id) BEFORE running
 //     Codex, then re-reads the ledger and proceeds only if its reservation is
 //     CANONICAL for the reserved (head_sha, body_sha256) snapshot.
-//   - V2 canonical = the earliest valid reservation for one exact snapshot by
-//     immutable numeric comment id (creation time is advisory only). Later
-//     reservations for that same snapshot LOSE deterministically; a crashed
-//     winner conservatively keeps the slot consumed and there is no takeover.
-//     A body edit at the same head is a new reviewable snapshot, not a retry of
-//     the old one.
+//   - V2 canonical = the earliest valid reservation for one exact-snapshot
+//     review epoch by immutable numeric comment id (creation time is advisory
+//     only). A validated review advances the epoch. Later reservations in the
+//     same epoch LOSE deterministically; a crashed winner conservatively keeps
+//     the slot consumed and there is no takeover. A body edit at the same head
+//     is a different exact snapshot, while returning to a reviewed snapshot
+//     starts a new epoch rather than refunding the earlier round.
 //   - Legacy digest-less reservations remain budget evidence, canonicalized
 //     per head exactly as before migration. They cannot authorize ownership or
 //     block a v2 reservation because they do not identify an exact body.
 //   - Distinct run_ids never collapse. Duplicate posts of the SAME run_id
 //     collapse to the earliest comment id (idempotent retry), and a caller
 //     whose own comment id is not that earliest must fail closed.
-//   - consumed preserves every validated review iteration and adds one slot
-//     for each crashed canonical v2 FULL reservation whose exact snapshot has
-//     no review. A legacy canonical FULL reservation supplies the historical
-//     per-head floor of one. Thus completed rounds are not double-counted,
-//     body-specific crashed rounds cannot disappear behind another body at
-//     the same head, and all heads/bodies share the same durable cap.
+//   - consumed preserves every validated review iteration. Each review can
+//     complete at most one earlier compatible canonical FULL reservation
+//     (strict run_id matching when present); every unmatched reservation stays
+//     charged as crashed. Legacy canonical FULL reservations retain the
+//     historical compatibility floor. Thus completion is one-to-one, crashed
+//     epochs cannot disappear behind other reviews, and every head/body/epoch
+//     shares the same durable cap.
 //
 // Exit codes: 0 ok · 3 unusable input (callers must treat as tooling failure,
 // never as an empty ledger).

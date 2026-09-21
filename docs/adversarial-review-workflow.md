@@ -229,24 +229,32 @@ local locks — sessions run on different machines):
 4. Every invocation has a fresh 128-bit lowercase-hex artifact token. All
    load-bearing prompt, envelope, Codex log, changed-file list, rendered
    comment, remediation prompt, and Claude log names use
-   `<head_sha>-<body_sha256>-<token>`. After rendering, the runner atomically
-   publishes mode-`0600` `result-<pr>-<token>.json` containing the exact head,
-   body digest, `run_id`, numeric reservation comment id, mode, and rendered
-   review path. No head-only artifact is load-bearing.
+   `<head_sha>-<body_sha256>-<token>`. The runner first reserves the token with
+   an exclusive, durable local claim. It publishes both the rendered review
+   and mode-`0600` `result-<pr>-<token>.json` with atomic no-replace semantics,
+   so neither a peer nor a pre-existing path can be overwritten. The result
+   contains the exact head, body digest, `run_id`, numeric reservation comment
+   id, mode, rendered review path, and SHA-256 of the exact rendered bytes. No
+   head-only artifact is load-bearing.
 5. **Immediately before privileged remediation** (`claude
    --dangerously-skip-permissions`) the loop accepts only that token's result,
-   verifies every field and the expected review path/envelope, rechecks that
-   the current PR still equals the runner-captured snapshot, then re-reads the
-   ledger. It proves the run still owns its canonical epoch reservation,
-   `consumed_before_mine < 3`, and no `[CLAUDE-REMEDIATION]` completion exists
-   for that `run_id`. The loop's pre-call snapshot is advisory only. Any
-   missing, malformed, cross-token, stale, or mismatched handoff exits without
-   launching Claude.
+   opens the result and review with no-follow fd checks, rejects non-regular
+   files, verifies every field, expected review path/envelope, and rendered
+   byte digest, and constructs the remediation prompt from that one verified
+   read (never a later pathname reopen). It rechecks that the current PR still
+   equals the runner-captured snapshot, then re-reads the ledger. It proves the
+   run still owns its canonical epoch reservation, `consumed_before_mine < 3`,
+   and no `[CLAUDE-REMEDIATION]` completion exists for that `run_id`. The
+   loop's pre-call snapshot is advisory only. Any missing, malformed,
+   cross-token, stale, replaced, symlinked, or digest-mismatched handoff exits
+   without launching Claude.
 6. **Evidence binding:** the review record, the remediation disposition, and
    escalation records all carry the same `run_id` (+ reservation comment id);
    the loop rejects a disposition whose `run_id` does not match the round it
    authorized. Remediation input still comes ONLY from the trusted local
-   runner artifact, never from PR comments.
+   runner artifact, never from PR comments. One cooperative lock serializes
+   review/remediation in a worktree; at the final privileged boundary the loop
+   also proves local `HEAD == reviewed_sha` and a clean tracked tree.
 7. Any GitHub API failure, incomplete pagination, malformed ledger, or
    inability to prove ownership stops the process — never proceed
    optimistically.

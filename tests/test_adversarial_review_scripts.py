@@ -374,6 +374,19 @@ case "$*" in
       exit "$rc" ;;
   api\\ repos/*/comments\\ --paginate)
       if [ "${{STUB_FAIL_LIST:-0}}" = "1" ]; then exit 1; fi
+      count_file="$FIX/list-count"
+      count=0
+      if [ -s "$count_file" ]; then count="$(cat "$count_file")"; fi
+      count=$((count+1))
+      printf '%s' "$count" > "$count_file"
+      if [ -n "${{STUB_LOCAL_MUTATION_ON_LIST:-}}" ] \
+          && [ "$count" = "${{STUB_LOCAL_MUTATION_ON_LIST_COUNT:-4}}" ]; then
+        case "${{STUB_LOCAL_MUTATION_ON_LIST}}" in
+          head) git -c user.email=t@t -c user.name=t commit --allow-empty -qm local-drift ;;
+          dirty) printf 'local drift\n' >> work.txt ;;
+          *) exit 72 ;;
+        esac
+      fi
       cat "$FIX/comments.json" ;;
   "pr view 99 --json number,title,body,baseRefName,headRefOid,headRefName,url")
       cat "$FIX/pr.json" ;;
@@ -406,7 +419,24 @@ case "$*" in
         cat "$FIX/pr_head"
       fi ;;
   pr\\ comment\\ 99\\ --body-file\\ *)
-      cp "$5" "$FIX/posted-$(ls "$FIX" | grep -c posted- || true).md" ;;
+      cp "$5" "$FIX/posted-$(ls "$FIX" | grep -c posted- || true).md"
+      result="$(find "${{ADV_REVIEW_OUT_DIR}}" -maxdepth 1 -name 'result-99-*.json' -print | head -n1)"
+      if [ -n "$result" ]; then
+        case "${{STUB_TAMPER_AFTER_RESULT:-}}" in
+          result-symlink)
+            cp -p "$result" "$FIX/result-target.json"
+            rm "$result"
+            ln -s "$FIX/result-target.json" "$result" ;;
+          review-symlink)
+            review="$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).review_artifact)' "$result")"
+            cp -p "$review" "$FIX/review-target.md"
+            rm "$review"
+            ln -s "$FIX/review-target.md" "$review" ;;
+          review-replaced)
+            review="$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).review_artifact)' "$result")"
+            printf '\nTAMPERED AFTER RESULT PUBLICATION\n' >> "$review" ;;
+        esac
+      fi ;;
   pr\\ comment\\ 99\\ --body\\ *)
       printf '%s' "$5" > "$FIX/posted-body-$(ls "$FIX" | grep -c posted- || true).md" ;;
   run\\ list\\ --workflow\\ ui-lifecycle-guard.yml*)
@@ -416,6 +446,45 @@ case "$*" in
   "run rerun 4242") : ;;
   *) echo "gh-stub: unhandled: $*" >&2; exit 64 ;;
 esac
+''',
+        )
+        _write_exec(
+            self.stubs / "node",
+            f'''#!/usr/bin/env bash
+REAL_NODE="{_posix(Path(NODE))}"
+if [ "${{STUB_HOLD_RESULT_READ:-0}}" = "1" ]; then
+  result_arg=""
+  has_tmp=0
+  for arg in "$@"; do
+    case "$arg" in
+      *result-99-*.json) result_arg="$arg" ;;
+      *result-99-*.json.tmp.*) has_tmp=1 ;;
+    esac
+  done
+  if [ -n "$result_arg" ] && [ "$has_tmp" -eq 0 ]; then
+    : > "{fix}/result-read-waiting"
+    i=0
+    until [ -e "{fix}/go-result-read" ]; do
+      i=$((i+1)); [ "$i" -gt 300 ] && exit 75; sleep 0.1
+    done
+  fi
+fi
+"$REAL_NODE" "$@"
+rc=$?
+if [ "$rc" -eq 0 ] && [ "${{STUB_HOLD_RESULT_PUBLISH:-0}}" = "1" ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      *result-99-*.json.tmp.*)
+        : > "{fix}/result-publish-waiting"
+        i=0
+        until [ -e "{fix}/go-result-publish" ]; do
+          i=$((i+1)); [ "$i" -gt 300 ] && exit 73; sleep 0.1
+        done
+        break ;;
+    esac
+  done
+fi
+exit "$rc"
 ''',
         )
         _write_exec(
@@ -437,6 +506,13 @@ cp "$FIX/envelope.json" "$out"
             self.stubs / "claude",
             f'''#!/usr/bin/env bash
 echo "${{ADV_TEST_PROC:-x}}" >> "{fix}/claude-invoked"
+if [ "${{STUB_HOLD_CLAUDE:-0}}" = "1" ]; then
+  : > "{fix}/claude-waiting"
+  i=0
+  until [ -e "{fix}/go-claude" ]; do
+    i=$((i+1)); [ "$i" -gt 300 ] && exit 74; sleep 0.1
+  done
+fi
 cat > /dev/null
 ''',
         )
@@ -485,6 +561,12 @@ cat > /dev/null
             "STUB_FAIL_LIST",
             "STUB_FAIL_RUN_LIST",
             "STUB_NO_MATCHING_RUN",
+            "STUB_LOCAL_MUTATION_ON_LIST",
+            "STUB_LOCAL_MUTATION_ON_LIST_COUNT",
+            "STUB_TAMPER_AFTER_RESULT",
+            "STUB_HOLD_RESULT_PUBLISH",
+            "STUB_HOLD_RESULT_READ",
+            "STUB_HOLD_CLAUDE",
             "ADV_TEST_PROC",
         ):
             env.pop(k, None)
@@ -689,6 +771,51 @@ def test_runner_rejects_invalid_artifact_token(tmp_path, token):
     assert "32 lowercase hexadecimal" in result.stderr
     assert h.codex_runs() == 0
     assert h.remote_write_calls() == []
+
+
+def test_same_token_contention_never_overwrites_result(tmp_path):
+    """A competing creator that wins after the runner prepares its temporary
+    result must not be overwritten by publication."""
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    token = "a" * 32
+    process = h.popen(
+        "adversarial-review.sh",
+        "99",
+        env_extra={
+            "ADV_REVIEW_ARTIFACT_TOKEN": token,
+            "STUB_HOLD_RESULT_PUBLISH": "1",
+        },
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "result-publish-waiting").exists():
+            break
+        time.sleep(0.1)
+    else:
+        process.kill()
+        pytest.fail("runner never reached the result-publication barrier")
+
+    result_path = h.out_dir / f"result-99-{token}.json"
+    attacker_created = False
+    try:
+        fd = os.open(result_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        attacker_created = True
+        os.write(fd, b'{"attacker":"must-not-be-overwritten"}\n')
+        os.close(fd)
+    (h.fix / "go-result-publish").write_text("go", encoding="utf-8")
+    output, _ = process.communicate(timeout=180)
+
+    assert attacker_created is False, output
+    assert process.returncode == 1, output
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["run_id"]
 
 
 # ── adversarial-review.sh: durable budget across restarts ────────────────────
@@ -1145,12 +1272,12 @@ def test_body_a_body_b_body_a_creates_new_review_epoch(tmp_path):
 
 
 def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
-    """THE F1 acceptance test: two real loop processes, one shared stub
+    """THE F1 acceptance test: two real runner processes, one shared stub
     ledger, a barrier ensuring BOTH observe the same available final slot
     before EITHER's reservation posts. Exactly one reservation becomes
-    canonical; exactly one process runs Codex and launches Claude; the loser
-    exits fail-closed; both run_ids persist distinctly; the winner stays
-    bound to the original head."""
+    canonical; exactly one process runs Codex; the loser exits fail-closed;
+    both run_ids persist distinctly; the winner stays bound to the original
+    head. Loop-level local serialization is covered separately."""
     h = Harness(tmp_path)
     # Two of three slots already consumed by canonical FULL reservations on
     # earlier heads — both racers see exactly one slot left.
@@ -1163,12 +1290,20 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
     h.set_envelope(ISSUES_ENVELOPE)
 
     p1 = h.popen(
-        "adversarial-review-loop.sh", "99",
-        env_extra={"STUB_HOLD_POST": "1", "ADV_TEST_PROC": "p1"},
+        "adversarial-review.sh", "99",
+        env_extra={
+            "STUB_HOLD_POST": "1",
+            "ADV_TEST_PROC": "p1",
+            "ADV_REVIEW_MODE": "full",
+        },
     )
     p2 = h.popen(
-        "adversarial-review-loop.sh", "99",
-        env_extra={"STUB_HOLD_POST": "1", "ADV_TEST_PROC": "p2"},
+        "adversarial-review.sh", "99",
+        env_extra={
+            "STUB_HOLD_POST": "1",
+            "ADV_TEST_PROC": "p2",
+            "ADV_REVIEW_MODE": "full",
+        },
     )
     # Barrier: wait until BOTH processes are blocked at their reservation POST
     # (each has already read the ledger and seen the free slot), then release.
@@ -1188,12 +1323,12 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
     out2, _ = p2.communicate(timeout=180)
     rcs = {p1.returncode, p2.returncode}
 
-    # Exactly one Codex review and exactly one privileged remediation ran.
+    # Exactly one Codex review ran; runners never launch privileged remediation.
     assert h.codex_runs() == 1, out1 + out2
-    assert h.claude_runs() == 1, out1 + out2
+    assert h.claude_runs() == 0, out1 + out2
     # One process lost the race and exited fail-closed before Codex.
     assert "LOST RESERVATION RACE" in out1 + out2
-    assert 0 not in rcs  # winner escalates no-progress (1); loser fails closed (2)
+    assert rcs == {1, 3}  # winner reports issues; loser fails acquisition
     # Both reservations persist with DISTINCT run_ids — never collapsed.
     ledger = h.ledger()
     res_bodies = [c["body"] for c in ledger if c["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")]
@@ -1217,11 +1352,15 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
     # Restarting the LOSER cannot reclaim or duplicate the consumed round:
     # the durable budget is now exhausted, so a fresh invocation refuses
     # before Codex ever runs.
-    r = h.run("adversarial-review-loop.sh", "99", env_extra={"ADV_TEST_PROC": "p2r"})
-    assert r.returncode == 1
-    assert "durable review budget exhausted" in h.posted()
+    r = h.run(
+        "adversarial-review.sh",
+        "99",
+        env_extra={"ADV_TEST_PROC": "p2r", "ADV_REVIEW_MODE": "full"},
+    )
+    assert r.returncode == 3
+    assert "durable review budget" in r.stderr
     assert h.codex_runs() == 1  # unchanged
-    assert h.claude_runs() == 1  # unchanged
+    assert h.claude_runs() == 0  # unchanged
 
 
 def test_reservation_already_held_by_another_run_fails_closed(tmp_path):
@@ -1532,12 +1671,129 @@ def test_invocation_unique_artifacts_for_same_head_different_bodies(tmp_path):
         assert all(path.exists() for path in expected_paths), expected_paths
         assert Path(result["review_artifact"]) == expected_paths[4]
         rendered = expected_paths[4].read_text(encoding="utf-8")
+        assert result["review_artifact_sha256"] == hashlib.sha256(
+            expected_paths[4].read_bytes()
+        ).hexdigest()
         assert f"reviewed_body_sha256: {result['body_sha256']}" in rendered
 
     assert len(seen_keys) == 2
     assert seen_digests == {
         hashlib.sha256(body.encode("utf-8")).hexdigest() for body in bodies
     }
+
+
+@pytest.mark.parametrize("mutation", ["head", "dirty"])
+def test_local_head_drift_or_tracked_tree_dirt_before_claude_fails_closed(
+    tmp_path, mutation
+):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+
+    result = h.run(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_LOCAL_MUTATION_ON_LIST": mutation},
+    )
+
+    assert result.returncode == 2
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    combined = (result.stdout + result.stderr + h.posted()).lower()
+    assert "local" in combined
+    assert "tracked" in combined or "head" in combined
+
+
+def test_worktree_lock_excludes_a_second_local_loop(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    first = h.popen(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_HOLD_CLAUDE": "1", "ADV_TEST_PROC": "first"},
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "claude-waiting").exists():
+            break
+        time.sleep(0.1)
+    else:
+        first.kill()
+        pytest.fail("first loop never reached Claude while holding the worktree")
+
+    second = h.run(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"ADV_TEST_PROC": "second"},
+    )
+    combined = (second.stdout + second.stderr).lower()
+    assert second.returncode == 2
+    assert "worktree" in combined and "lock" in combined
+    reservations = [
+        comment
+        for comment in h.ledger()
+        if comment["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")
+    ]
+    assert len(reservations) == 1
+
+    (h.fix / "go-claude").write_text("go", encoding="utf-8")
+    first_output, _ = first.communicate(timeout=180)
+    assert first.returncode == 1, first_output
+
+
+@pytest.mark.parametrize("tamper", ["review-symlink", "review-replaced"])
+def test_result_or_review_artifact_tampering_never_launches_claude(tmp_path, tamper):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+
+    result = h.run(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_TAMPER_AFTER_RESULT": tamper},
+    )
+
+    assert result.returncode == 2
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    combined = (result.stdout + result.stderr + h.posted()).lower()
+    assert "result" in combined or "review" in combined or "digest" in combined
+
+
+def test_result_symlink_swap_between_metadata_check_and_read_fails_closed(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    process = h.popen(
+        "adversarial-review-loop.sh",
+        "99",
+        env_extra={"STUB_HOLD_RESULT_READ": "1"},
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "result-read-waiting").exists():
+            break
+        time.sleep(0.1)
+    else:
+        process.kill()
+        pytest.fail("loop never reached the result-read barrier")
+
+    results = list(h.out_dir.glob("result-99-*.json"))
+    assert len(results) == 1
+    result_path = results[0]
+    target = h.fix / "result-race-target.json"
+    shutil.copy2(result_path, target)
+    result_path.unlink()
+    result_path.symlink_to(target)
+    (h.fix / "go-result-read").write_text("go", encoding="utf-8")
+    output, _ = process.communicate(timeout=180)
+
+    assert process.returncode == 2, output
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
 
 
 def test_post_cap_human_authorized_review_only_never_invokes_claude(tmp_path):

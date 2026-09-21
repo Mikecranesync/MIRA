@@ -88,6 +88,27 @@ if [ -z "$PR_NUMBER" ]; then
   exit 3
 fi
 
+# Reserve the caller-supplied invocation namespace before creating any of its
+# artifacts. The durable claim is intentionally never removed: a token is a
+# one-shot capability and must not be reusable after a crash or partial run.
+TOKEN_CLAIM="$OUT_DIR/token-$PR_NUMBER-$ARTIFACT_TOKEN.claim"
+# The single-quoted JavaScript contains a JavaScript template literal.
+# shellcheck disable=SC2016
+node -e '
+  const fs=require("node:fs");
+  const [claim]=process.argv.slice(1);
+  const flags=fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW;
+  const fd=fs.openSync(claim,flags,0o600);
+  try {
+    fs.writeFileSync(fd,`pid=${process.ppid}\n`,"utf8");
+    fs.fchmodSync(fd,0o600);
+  }
+  finally { fs.closeSync(fd); }
+' "$TOKEN_CLAIM" || {
+  echo "ERROR: artifact token $ARTIFACT_TOKEN is already reserved or cannot be claimed." >&2
+  exit 2
+}
+
 PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName,url)" || {
   echo "ERROR: gh could not read PR #$PR_NUMBER" >&2; exit 2; }
 PR_TITLE="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).title))')"
@@ -452,33 +473,58 @@ if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
   fi
 fi
 BODY_FILE="$OUT_DIR/comment-$PR_NUMBER-$ARTIFACT_KEY.md"
-node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
-  "${RENDER_ARGS[@]}" > "$BODY_FILE"
+BODY_TMP="$(mktemp "$BODY_FILE.tmp.XXXXXX")" || {
+  echo "ERROR: could not create a private rendered-review temporary file" >&2
+  exit 2
+}
+if ! node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
+    "${RENDER_ARGS[@]}" > "$BODY_TMP"; then
+  rm -f "$BODY_TMP"
+  echo "ERROR: could not render the validated review artifact" >&2
+  exit 2
+fi
+# link(2) gives publication atomic no-replace semantics. The same fd used for
+# the regular-file check supplies the exact bytes whose digest is handed off.
+REVIEW_ARTIFACT_SHA256="$(node -e '
+  const crypto=require("node:crypto");
+  const fs=require("node:fs");
+  const [tmp,final]=process.argv.slice(1);
+  const fd=fs.openSync(tmp,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+  try {
+    const st=fs.fstatSync(fd);
+    if(!st.isFile()) process.exit(1);
+    const bytes=fs.readFileSync(fd);
+    fs.linkSync(tmp,final);
+    fs.unlinkSync(tmp);
+    process.stdout.write(crypto.createHash("sha256").update(bytes).digest("hex"));
+  } finally { fs.closeSync(fd); }
+' "$BODY_TMP" "$BODY_FILE")" || {
+  rm -f "$BODY_TMP"
+  echo "ERROR: could not publish the rendered review artifact without replacement" >&2
+  exit 2
+}
 
 # Publish the invocation handoff only after the rendered artifact validates.
-# The loop accepts no other local file as authority. A sibling temp + rename
-# prevents it from observing a partial JSON document.
+# The loop accepts no other local file as authority. A sibling temp plus an
+# exclusive hard-link makes the completed JSON visible atomically and refuses
+# to replace an attacker- or peer-created destination.
 if [ "$DRY_RUN" -eq 0 ]; then
   RESULT_FILE="$OUT_DIR/result-$PR_NUMBER-$ARTIFACT_TOKEN.json"
   RESULT_TMP="$RESULT_FILE.tmp.$$"
-  if [ -e "$RESULT_FILE" ]; then
-    echo "ERROR: result artifact already exists for token $ARTIFACT_TOKEN; refusing to overwrite it." >&2
-    exit 2
-  fi
   node -e '
     const fs=require("node:fs");
-    const [tmp,head,body,runId,reservationId,mode,reviewArtifact]=process.argv.slice(1);
+    const [tmp,final,head,body,runId,reservationId,mode,reviewArtifact,reviewDigest]=process.argv.slice(1);
     const result={head_sha:head,body_sha256:body,run_id:runId,
-      reservation_comment_id:Number(reservationId),mode,review_artifact:reviewArtifact};
+      reservation_comment_id:Number(reservationId),mode,review_artifact:reviewArtifact,
+      review_artifact_sha256:reviewDigest};
     fs.writeFileSync(tmp,JSON.stringify(result)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
     fs.chmodSync(tmp,0o600);
-  ' "$RESULT_TMP" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
-    "$RESERVATION_ID" "$MODE" "$BODY_FILE" || {
-    echo "ERROR: could not write the runner result artifact" >&2
-    exit 2
-  }
-  mv "$RESULT_TMP" "$RESULT_FILE" || {
-    echo "ERROR: could not publish the runner result artifact atomically" >&2
+    fs.linkSync(tmp,final);
+    fs.unlinkSync(tmp);
+  ' "$RESULT_TMP" "$RESULT_FILE" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
+    "$RESERVATION_ID" "$MODE" "$BODY_FILE" "$REVIEW_ARTIFACT_SHA256" || {
+    rm -f "$RESULT_TMP"
+    echo "ERROR: could not publish the runner result artifact without replacement" >&2
     exit 2
   }
 fi

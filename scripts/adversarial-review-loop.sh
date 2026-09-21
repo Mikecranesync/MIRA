@@ -73,6 +73,25 @@ fi
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+
+# One local review/remediation loop may control a worktree at a time. Git's
+# per-worktree administrative directory gives each linked checkout its own
+# cooperative lock while keeping the lock independent of ADV_REVIEW_OUT_DIR.
+WORKTREE_LOCK="$(git rev-parse --git-path adversarial-review-loop.lock)"
+if ! mkdir "$WORKTREE_LOCK" 2>/dev/null; then
+  echo "ERROR: this worktree already has an active adversarial review/remediation lock:" >&2
+  echo "       $WORKTREE_LOCK" >&2
+  exit 2
+fi
+# Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2329
+release_worktree_lock() {
+  rm -f "$WORKTREE_LOCK/owner"
+  rmdir "$WORKTREE_LOCK" 2>/dev/null || true
+}
+trap release_worktree_lock EXIT
+printf 'pid=%s\n' "$$" > "$WORKTREE_LOCK/owner"
+
 OUT_DIR="${ADV_REVIEW_OUT_DIR:-$ROOT/.adversarial-review}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
@@ -177,56 +196,80 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   RC=$?
   set -e
 
+  # Open each handoff artifact once with O_NOFOLLOW, validate the opened fd,
+  # and build the remediation prompt from those already-verified review bytes.
+  # No trusted pathname is reopened after validation.
+  set +e
+  # The single-quoted JavaScript contains JS template literals.
+  # shellcheck disable=SC2016
+  RESULT_FIELDS="$(node -e '
+    const crypto=require("node:crypto");
+    const fs=require("node:fs");
+    const path=require("node:path");
+    const [resultFile,outDir,pr,expectedHead,expectedMode,token,tpl,iteration]=process.argv.slice(1);
+    const safeOpen=(file,missingExit)=>{
+      let fd;
+      try {
+        fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+      } catch(e) {
+        if(missingExit && e && e.code==="ENOENT") process.exit(missingExit);
+        process.exit(1);
+      }
+      const st=fs.fstatSync(fd);
+      if(!st.isFile()){ fs.closeSync(fd); process.exit(1); }
+      return {fd,st};
+    };
+    const resultOpen=safeOpen(resultFile,4);
+    if((resultOpen.st.mode & 0o777)!==0o600){ fs.closeSync(resultOpen.fd); process.exit(1); }
+    let j;
+    try { j=JSON.parse(fs.readFileSync(resultOpen.fd,"utf8")); }
+    catch { fs.closeSync(resultOpen.fd); process.exit(1); }
+    fs.closeSync(resultOpen.fd);
+    if(!j || typeof j!=="object" || Array.isArray(j)
+      || !/^[0-9a-f]{40}$/.test(j.head_sha)
+      || !/^[0-9a-f]{64}$/.test(j.body_sha256)
+      || !/^[0-9a-f]{32}$/.test(j.run_id)
+      || !Number.isInteger(j.reservation_comment_id) || j.reservation_comment_id < 1
+      || !["full","review_only"].includes(j.mode)
+      || typeof j.review_artifact!=="string" || j.review_artifact.length===0
+      || !/^[0-9a-f]{64}$/.test(j.review_artifact_sha256)
+      || j.head_sha!==expectedHead || j.mode!==expectedMode) process.exit(1);
+    const artifactKey=`${j.head_sha}-${j.body_sha256}-${token}`;
+    const expectedArtifact=path.join(outDir,`comment-${pr}-${artifactKey}.md`);
+    if(j.review_artifact!==expectedArtifact) process.exit(1);
+    const reviewOpen=safeOpen(expectedArtifact,0);
+    let reviewBytes;
+    try { reviewBytes=fs.readFileSync(reviewOpen.fd); }
+    catch { fs.closeSync(reviewOpen.fd); process.exit(1); }
+    fs.closeSync(reviewOpen.fd);
+    const digest=crypto.createHash("sha256").update(reviewBytes).digest("hex");
+    if(digest!==j.review_artifact_sha256) process.exit(1);
+    const review=reviewBytes.toString("utf8");
+    const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (?:GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([0-9]+)\r?\n/;
+    const match=review.match(re);
+    if(!match || match[1]!==j.head_sha || match[2]!==j.body_sha256
+      || match[3]!==j.run_id || match[4]!==String(j.reservation_comment_id)) process.exit(1);
+    let prompt=fs.readFileSync(tpl,"utf8");
+    for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:j.head_sha,
+      ITERATION:iteration,REVIEW_CONTENT:review,RUN_ID:j.run_id,
+      RESERVATION_ID:String(j.reservation_comment_id)}))
+      prompt=prompt.split("{{"+k+"}}").join(v);
+    const promptFile=path.join(outDir,`remediation-${pr}-${artifactKey}.md`);
+    fs.writeFileSync(promptFile,prompt,{encoding:"utf8",mode:0o600,flag:"wx"});
+    fs.chmodSync(promptFile,0o600);
+    process.stdout.write(`${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey}\n`);
+  ' "$RESULT_FILE" "$OUT_DIR" "$PR_NUMBER" "$PRE_SHA" "$LOOP_MODE" \
+    "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE")"
+  RESULT_READ_RC=$?
+  set -e
   RESULT_PRESENT=0
-  if [ -e "$RESULT_FILE" ]; then
+  if [ "$RESULT_READ_RC" -eq 0 ]; then
     RESULT_PRESENT=1
-    RESULT_MODE_BITS="$(stat -f '%Lp' "$RESULT_FILE" 2>/dev/null || stat -c '%a' "$RESULT_FILE" 2>/dev/null || true)"
-    if [ "$RESULT_MODE_BITS" != "600" ]; then
-      escalate "runner result has mode $RESULT_MODE_BITS instead of 600 — refusing local handoff"
-      exit 2
-    fi
-    # The single-quoted JavaScript contains JS template literals.
-    # shellcheck disable=SC2016
-    RESULT_FIELDS="$(node -e '
-      const fs=require("fs");
-      let j;
-      try { j=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); } catch { process.exit(1); }
-      if(!j || typeof j!=="object" || Array.isArray(j)
-        || !/^[0-9a-f]{40}$/.test(j.head_sha)
-        || !/^[0-9a-f]{64}$/.test(j.body_sha256)
-        || !/^[0-9a-f]{32}$/.test(j.run_id)
-        || !Number.isInteger(j.reservation_comment_id) || j.reservation_comment_id < 1
-        || !["full","review_only"].includes(j.mode)
-        || typeof j.review_artifact!=="string" || j.review_artifact.length===0) process.exit(1);
-      process.stdout.write(`${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode}\n`);
-    ' "$RESULT_FILE")" || {
-      escalate "runner result is missing or malformed — refusing local handoff"
-      exit 2
-    }
-    read -r REVIEWED_SHA REVIEWED_BODY_SHA256 RUN_ID RESERVATION_ID RES_MODE <<< "$RESULT_FIELDS"
-    if [ "$REVIEWED_SHA" != "$PRE_SHA" ] || [ "$RES_MODE" != "$LOOP_MODE" ]; then
-      escalate "runner result carries the wrong head or mode — refusing local handoff"
-      exit 2
-    fi
-    ARTIFACT_KEY="$REVIEWED_SHA-$REVIEWED_BODY_SHA256-$ARTIFACT_TOKEN"
-    REVIEW_ARTIFACT="$OUT_DIR/comment-$PR_NUMBER-$ARTIFACT_KEY.md"
-    # The single-quoted JavaScript contains JS template literals.
-    # shellcheck disable=SC2016
-    if ! node -e '
-      const fs=require("fs");
-      const [resultFile,expectedArtifact,head,body,runId,reservationId]=process.argv.slice(1);
-      const j=JSON.parse(fs.readFileSync(resultFile,"utf8"));
-      if(j.review_artifact!==expectedArtifact) process.exit(1);
-      const review=fs.readFileSync(expectedArtifact,"utf8");
-      const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (?:GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([0-9]+)\r?\n/;
-      const match=review.match(re);
-      if(!match || match[1]!==head || match[2]!==body
-        || match[3]!==runId || match[4]!==reservationId) process.exit(1);
-    ' "$RESULT_FILE" "$REVIEW_ARTIFACT" "$REVIEWED_SHA" "$REVIEWED_BODY_SHA256" \
-      "$RUN_ID" "$RESERVATION_ID"; then
-      escalate "runner result does not bind the expected rendered review artifact"
-      exit 2
-    fi
+    read -r REVIEWED_SHA REVIEWED_BODY_SHA256 RUN_ID RESERVATION_ID RES_MODE ARTIFACT_KEY <<< "$RESULT_FIELDS"
+    REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$ARTIFACT_KEY.md"
+  elif [ "$RESULT_READ_RC" -ne 4 ]; then
+    escalate "runner result or rendered review is missing, malformed, replaced, or digest-mismatched — refusing local handoff"
+    exit 2
   fi
 
   if [ "$RC" -eq 0 ] || [ "$RC" -eq 4 ]; then
@@ -351,25 +394,22 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   fi
 
   # ── Claude remediation (headless) ─────────────────────────────────────────
-  # The review content is injected VERBATIM from the runner's own artifact
-  # (Codex F1, round 2): remediation must never fetch its instructions from
-  # PR comments, which any account can forge. The reservation identity rides
-  # into the disposition so completion evidence binds to this exact round.
-  REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$ARTIFACT_KEY.md"
-  if [ ! -s "$REVIEW_ARTIFACT" ]; then
-    escalate "trusted review artifact missing for ${REVIEWED_SHA:0:12} — cannot hand remediation untrusted input"
+  # The review content was injected VERBATIM from the runner artifact during
+  # the single fd-based validation read above. It is never reopened by path or
+  # fetched from PR comments before privileged execution.
+
+  # Remote PR state and durable ledger ownership are necessary but not enough:
+  # Claude runs in this worktree. Re-prove the local executable snapshot at the
+  # final boundary after every other authorization check and prompt build.
+  LOCAL_REMEDIATION_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [ "$LOCAL_REMEDIATION_SHA" != "$REVIEWED_SHA" ]; then
+    escalate "local HEAD changed after review (${LOCAL_REMEDIATION_SHA:-unknown} != $REVIEWED_SHA) — Claude NOT launched"
     exit 2
   fi
-  node -e '
-    const fs=require("fs");
-    const [tpl,out,pr,sha,iter,reviewFile,runId,resId]=process.argv.slice(1);
-    let s=fs.readFileSync(tpl,"utf8");
-    const review=fs.readFileSync(reviewFile,"utf8");
-    for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:sha,ITERATION:iter,REVIEW_CONTENT:review,RUN_ID:runId,RESERVATION_ID:resId}))
-      s=s.split("{{"+k+"}}").join(v);
-    fs.writeFileSync(out,s);
-  ' "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$REM_PROMPT" \
-    "$PR_NUMBER" "$REVIEWED_SHA" "$CYCLE" "$REVIEW_ARTIFACT" "$RUN_ID" "$RESERVATION_ID"
+  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    escalate "local tracked worktree changed after review — Claude NOT launched"
+    exit 2
+  fi
 
   echo "Invoking Claude for remediation (cycle $CYCLE, run_id $RUN_ID)…"
   set +e
