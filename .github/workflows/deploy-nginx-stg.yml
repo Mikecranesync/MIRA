@@ -99,8 +99,11 @@ jobs:
           ln -sfn /etc/nginx/sites-available/staging-factorylm /etc/nginx/sites-enabled/staging-factorylm
           nginx -t
           systemctl reload nginx
-          PROD_AFTER="$(site_hashes)" || exit 1
-          [ "$PROD_BEFORE" = "$PROD_AFTER" ] || { echo "::error::a non-staging nginx site changed — STOP (#3930 safeguard 6)"; exit 1; }
+          check_prod_sites() {
+            local after; after="$(site_hashes)" || exit 1
+            [ "$PROD_BEFORE" = "$after" ] || { echo "::error::a non-staging nginx site changed — STOP (#3930 safeguard 6)"; exit 1; }
+          }
+          check_prod_sites
           MY_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
           echo "=== host-header probes (independent of DNS) ==="
           curl -s -o /dev/null -w "staging.factorylm.com     -> %{http_code}\n" --max-time 10 -H 'Host: staging.factorylm.com' http://127.0.0.1/ || true
@@ -115,6 +118,9 @@ jobs:
             certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
               --cert-name staging-factorylm -d staging.factorylm.com -d app-staging.factorylm.com
             nginx -t && systemctl reload nginx
+            # certbot rewrites vhosts in place: the production-site comparison must
+            # bracket it too (IR round 1, mira-9f).
+            check_prod_sites
           else
             echo "::warning::DNS does not (yet) point staging.factorylm.com / app-staging.factorylm.com at this host (${MY_IP}) — vhosts installed on HTTP; re-run after the A records land to get TLS"
           fi

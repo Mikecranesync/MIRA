@@ -33,6 +33,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
+import { hubUrl } from "./capabilities/hub-origin.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -1988,9 +1989,8 @@ app.get("/api/connect/status", requireActive, async (c) => {
 // ---------------------------------------------------------------------------
 
 // PLG_HUB_URL keeps a staging web on the staging hub (#3930); prod default unchanged.
-const HUB_ORIGIN = (process.env.PLG_HUB_URL || "https://app.factorylm.com").replace(/\/$/, "");
-app.get("/login", (c) => c.redirect(`${HUB_ORIGIN}/login`, 301));
-app.get("/signup", (c) => c.redirect(`${HUB_ORIGIN}/signup`, 301));
+app.get("/login", (c) => c.redirect(hubUrl("/login"), 301));
+app.get("/signup", (c) => c.redirect(hubUrl("/signup"), 301));
 
 // ---------------------------------------------------------------------------
 // 404 — custom page with home link (CRA-109)

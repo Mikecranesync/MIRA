@@ -15,6 +15,7 @@ import {
   resolveAssetWithChannelConfig,
 } from "../lib/qr-tracker.js";
 import { sendEmail } from "../lib/mailer.js";
+import { hubOrigin } from "../capabilities/hub-origin.js";
 
 export const mReport = new Hono();
 export const mReportApi = new Hono();
@@ -42,7 +43,7 @@ const NOT_FOUND_HTML = `<!doctype html>
 </head><body>
   <h1>Asset not found in your plant</h1>
   <p>This asset tag is not associated with your plant. If you believe this is an error, contact your admin.</p>
-  <p><a href="https://app.factorylm.com">Open MIRA</a></p>
+  <p><a href="${hubOrigin()}">Open MIRA</a></p>
 </body></html>`;
 
 function escapeHtml(s: string): string {

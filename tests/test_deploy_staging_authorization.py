@@ -346,6 +346,9 @@ def test_cohost_safeguards_run_before_any_mutation():
     ):
         assert script.index(marker) < first_git, marker
     assert script.index("PROD_BEFORE=") < first_git
+    # A restart keeps id/name/creation time; only the start time changes (IR round 1).
+    assert "{{.State.StartedAt}}" in script
+    assert 'PROD_AFTER="$(prod_snapshot)"' in script and 'PROD_BEFORE="$(prod_snapshot)"' in script
     for marker in (
         "is not stg-/staging- prefixed",
         "already exists under compose project",
@@ -411,3 +414,23 @@ def test_staging_compose_is_namespaced_and_loopback_only():
     assert "app.factorylm.com" not in web_env
     hub_env = "\n".join(compose["services"]["mira-hub"]["environment"])
     assert "NEXTAUTH_URL=${NEXTAUTH_URL:-https://app-staging.factorylm.com/api/auth}" in hub_env
+
+
+def test_nginx_workflow_brackets_certbot_and_refuses_production_hostnames():
+    """Safeguard 6 lives in deploy-nginx-stg.yml: a conf naming a production
+    hostname is refused; the non-staging site snapshot is compared after the
+    reload AND after certbot's in-place rewrite; an unreadable site fails."""
+    wf = yaml.safe_load(
+        (_ROOT / ".github" / "workflows" / "deploy-nginx-stg.yml").read_text(encoding="utf-8")
+    )
+    job = wf["jobs"]["deploy-nginx"]
+    refuse = _step(job, "Refuse a conf that names a production hostname")["run"]
+    assert "app\\.factorylm\\.com" in refuse and "exit 1" in refuse
+    remote = _step(job, "Enable + test + reload nginx, then certbot if DNS points here")["run"]
+    assert "return 1" in remote  # unreadable site → explicit failure
+    first_check = remote.index("check_prod_sites\n")
+    certbot = remote.index("certbot --nginx")
+    assert first_check < certbot < remote.rindex("check_prod_sites")
+    assert 'PROD_BEFORE="$(site_hashes)" || exit 1' in remote
+    assert "165.245.138.91" not in json.dumps(wf)
+    assert "vars.STAGING_HOST" in json.dumps(wf)

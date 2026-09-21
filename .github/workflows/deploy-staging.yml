@@ -248,8 +248,14 @@ jobs:
           fi
           case "$STG_DB_HOST" in *purple-hall*) echo "::error::staging NEON_DATABASE_URL names the production Neon endpoint — STOP (#3930 safeguard 2)"; exit 1;; esac
           # (7) production must be untouched: snapshot every non-project container's
-          # identity now and require the identical set afterwards.
-          PROD_BEFORE="$(docker ps -a --format '{{.ID}} {{.Names}} {{.Label "com.docker.compose.project"}} {{.CreatedAt}}' | grep -vE " ${PROJECT} " | sort)"
+          # identity AND start time now and require the identical set afterwards.
+          # StartedAt is what distinguishes a restart from "still running": ID,
+          # name and creation time all survive a restart (IR round 1, mira-9f).
+          prod_snapshot() {
+            docker ps -aq | xargs -r docker inspect --format '{{.Id}} {{.Name}} {{index .Config.Labels "com.docker.compose.project"}} {{.Created}} {{.State.StartedAt}}' \
+              | grep -vE " ${PROJECT} " | sort
+          }
+          PROD_BEFORE="$(prod_snapshot)"
           echo "Co-host safeguards hold: path ok, doppler=stg (prd unreadable), db endpoint '${STG_DB_HOST}' != prod, names/ports free; $(printf '%s\n' "$PROD_BEFORE" | grep -c . ) non-staging container(s) snapshotted"
 
           # Staging lives in its own working copy so a force-reset here never
@@ -460,9 +466,9 @@ jobs:
           rm -f "$BUILT_IDS" "$RUNNING_IDS"
 
           # (7) production untouched — the identical non-staging container set
-          # (ids + creation times) must exist after the deploy. A restarted or
-          # recreated production container changes this and STOPs the run.
-          PROD_AFTER="$(docker ps -a --format '{{.ID}} {{.Names}} {{.Label "com.docker.compose.project"}} {{.CreatedAt}}' | grep -vE " ${PROJECT} " | sort)"
+          # (ids + creation times + START times) must exist after the deploy. A
+          # restarted OR recreated production container changes this and STOPs.
+          PROD_AFTER="$(prod_snapshot)"
           if [ "$PROD_BEFORE" != "$PROD_AFTER" ]; then
             echo "::error::non-staging containers changed during the staging deploy — STOP (#3930 safeguard 7)"
             diff <(printf '%s\n' "$PROD_BEFORE") <(printf '%s\n' "$PROD_AFTER") || true

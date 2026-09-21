@@ -54,7 +54,9 @@ propagates to pick up TLS.
 
 ## The seven co-host safeguards
 
-Checked in this order before anything on the host is touched (#6 runs before
+Checked in this order — 1–3 and the production snapshot before anything on the
+host is touched; 4–5 after the exact-SHA checkout of `/opt/mira-staging` (they
+need the compose file) and before any docker mutation (#6 runs before
 the nginx reload). Each is a hard STOP; none can be skipped by an input.
 Enforced in `deploy-staging.yml` unless noted:
 

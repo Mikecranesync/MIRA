@@ -14,6 +14,7 @@ import {
   resolveAssetWithChannelConfig,
 } from "../lib/qr-tracker.js";
 import { buildChannelPrefCookie } from "../lib/cookie-session.js";
+import { hubOrigin, hubUrl } from "../capabilities/hub-origin.js";
 
 export const mChooser = new Hono();
 
@@ -49,7 +50,7 @@ const NOT_FOUND_HTML = `<!doctype html>
 </head><body>
   <h1>Asset not found in your plant</h1>
   <p>This asset tag is not associated with your plant. If you believe this is an error, contact your admin.</p>
-  <p><a href="https://app.factorylm.com">Open MIRA</a></p>
+  <p><a href="${hubOrigin()}">Open MIRA</a></p>
 </body></html>`;
 
 function buildChannelUrl(
@@ -65,7 +66,7 @@ function buildChannelUrl(
     case "openwebui":
       return config.openwebuiUrl
         ? `${config.openwebuiUrl}/c/new`
-        : "https://app.factorylm.com/c/new";
+        : hubUrl("/c/new");
     case "slack":
       return `/m/${assetTag}/report`; // Phase 4 — fallback to report for now
     case "guest":
