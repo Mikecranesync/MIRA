@@ -2678,6 +2678,25 @@ def test_removed_cli_flags_are_unknown_arguments(obsolete_flag):
     assert f"unrecognized arguments: {obsolete_flag}" in completed.stderr
 
 
+def test_guard_check_uses_the_current_evaluate_contract():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(REPO_ROOT / "tools" / "guard-check.py"),
+            "--files",
+            "docs/README.md",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    assert "CONTROL docs/README.md" in completed.stdout
+    assert "files  lifecycle-gated=False  guarded 0/1" in completed.stdout
+
+
 def test_guard_executable_contains_no_obsolete_label_authorization_route():
     source = (REPO_ROOT / "tools" / "ui_surface_lifecycle_guard.py").read_text(encoding="utf-8")
     for obsolete in (
