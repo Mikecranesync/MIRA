@@ -39,6 +39,10 @@ RESERVATION_MARKER='[ADVERSARIAL-ROUND-RESERVATION]'
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_TIMEOUT_SECS="${CODEX_TIMEOUT_SECS:-2400}"
 MAX_TOTAL_ROUNDS=3
+if ! [[ "$CODEX_TIMEOUT_SECS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CODEX_TIMEOUT_SECS must be a positive integer." >&2
+  exit 3
+fi
 
 FORCE=0
 DRY_RUN=0
@@ -153,10 +157,11 @@ publish_result() { # kind status head body run_id reservation_id review digest
   }
 }
 
-PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName,url)" || {
+PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,baseRefOid,headRefOid,headRefName,url)" || {
   echo "ERROR: gh could not read PR #$PR_NUMBER" >&2; exit 2; }
 PR_TITLE="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).title))')"
 BASE_REF="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).baseRefName))')"
+BASE_SHA="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).baseRefOid))')"
 HEAD_SHA="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).headRefOid))')"
 BASE_REPO_OWNER="$(printf '%s' "$PR_JSON" | node -e '
   let d="";
@@ -198,21 +203,44 @@ printf '%s' "$PR_JSON" | node -e '
   exit 2
 }
 
+if [ -z "${ADV_REVIEW_TRUSTED_BASE_SHA:-}" ] || [ -z "${ADV_REVIEW_CANDIDATE_SHA:-}" ]; then
+  echo "ERROR: candidate-local invocation is non-authoritative; load scripts/adversarial-review-trusted.sh from origin/<current-base>." >&2
+  exit 3
+fi
+if [ "$ADV_REVIEW_TRUSTED_BASE_SHA" != "$BASE_SHA" ] || [ "$ADV_REVIEW_CANDIDATE_SHA" != "$HEAD_SHA" ]; then
+  echo "ERROR: trusted execution tuple does not match the current PR base/head." >&2
+  exit 3
+fi
 LOCAL_SHA="$(git rev-parse HEAD)"
-if [ "$LOCAL_SHA" != "$HEAD_SHA" ]; then
-  echo "ERROR: local HEAD ($LOCAL_SHA) != PR head ($HEAD_SHA)." >&2
-  echo "       Push your work (or pull the PR head) so the reviewed tree matches GitHub." >&2
+if [ "$LOCAL_SHA" != "$BASE_SHA" ]; then
+  echo "ERROR: producer HEAD ($LOCAL_SHA) != captured PR base ($BASE_SHA)." >&2
   exit 3
 fi
-if ! LOCAL_TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"; then
-  echo "ERROR: git status failed — cannot prove the tracked worktree is clean." >&2
+if [[ "$OUT_DIR/" == "$ROOT/"* ]]; then
+  echo "ERROR: review artifacts must live outside the trusted-base worktree." >&2
   exit 3
 fi
-if [ -n "$LOCAL_TRACKED_STATUS" ]; then
-  echo "ERROR: working tree has uncommitted tracked changes — the review would not match $HEAD_SHA." >&2
-  echo "       Commit/push first. (--allow-dirty was removed: an exact-SHA review of a dirty tree is a lie.)" >&2
+git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null || {
+  echo "ERROR: candidate commit $HEAD_SHA is unavailable as read-only git evidence." >&2
   exit 3
-fi
+}
+assert_local_snapshot() {
+  local expected_sha="$1" phase="$2" local_sha local_status
+  local_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [ "$local_sha" != "$expected_sha" ]; then
+    echo "ERROR: local HEAD drifted during $phase ($local_sha != $expected_sha)." >&2
+    return 1
+  fi
+  if ! local_status="$(git status --porcelain --untracked-files=all --ignored=matching)"; then
+    echo "ERROR: git status failed during $phase — cannot prove the full worktree is clean." >&2
+    return 1
+  fi
+  if [ -n "$local_status" ]; then
+    echo "ERROR: worktree has tracked, untracked, or ignored drift during $phase." >&2
+    return 1
+  fi
+}
+assert_local_snapshot "$BASE_SHA" "initial trusted-base snapshot" || exit 3
 
 # Fail CLOSED: a stale origin/$BASE_REF silently yields a wrong merge-base,
 # which poisons the reviewed diff scope and the coverage gate.
@@ -220,7 +248,11 @@ git fetch origin "$BASE_REF" -q || {
   echo "ERROR: could not fetch origin/$BASE_REF — refusing to compute a merge-base from stale state." >&2
   exit 2
 }
-MERGE_BASE="$(git merge-base "origin/$BASE_REF" HEAD)"
+if [ "$(git rev-parse "origin/$BASE_REF")" != "$BASE_SHA" ]; then
+  echo "ERROR: origin/$BASE_REF no longer equals captured base $BASE_SHA." >&2
+  exit 2
+fi
+MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
 
 # ── Ledger: iteration + dedupe + durable budget (PR comments are the ledger) ─
 #
@@ -286,25 +318,15 @@ final_green_gate() {
     echo "STALE: PR body changed during review; GREEN is not authoritative." >&2
     exit 4
   fi
-  # The Lifecycle Guard reads this ledger but only re-evaluates on a
-  # pull_request_target event, which a new comment is not. Re-run its latest
-  # run for this head so the status reflects the GREEN without a label click.
-  # Best effort: a failure here never changes the review verdict.
+  # A new comment does not trigger pull_request_target. Dispatch the workflow
+  # freshly from the current trusted base branch; never rerun historical event
+  # context whose base policy may be stale. Best effort: dispatch failure does
+  # not alter the exact-snapshot review verdict.
   if [ "$DRY_RUN" -eq 0 ]; then
-    local run_id
-    if ! run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
-        --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
-        2>/dev/null)"; then
-      echo "NOTE: could not look up the Lifecycle Guard workflow run for $HEAD_SHA;" >&2
-      echo "      its status remains blocked, but the exact-snapshot review verdict remains GREEN." >&2
-    elif [ -z "$run_id" ]; then
-      echo "NOTE: no matching Lifecycle Guard workflow run exists for $HEAD_SHA;" >&2
-      echo "      its status remains blocked, but the exact-snapshot review verdict remains GREEN." >&2
-    else
-      gh run rerun "$run_id" >/dev/null 2>&1 \
-        && echo "Re-ran Lifecycle Guard run $run_id for $HEAD_SHA." \
-        || echo "NOTE: could not re-run Lifecycle Guard run $run_id; its status remains blocked, but the review verdict remains GREEN." >&2
-    fi
+    gh workflow run ui-lifecycle-guard.yml --ref "$BASE_REF" \
+      -f "pr_number=$PR_NUMBER" >/dev/null 2>&1 \
+      && echo "Dispatched current-base Lifecycle Guard for PR #$PR_NUMBER." \
+      || echo "NOTE: could not dispatch the current-base Lifecycle Guard; its status remains blocked, but the review verdict remains GREEN." >&2
   fi
   exit 0
 }
@@ -469,18 +491,29 @@ if [ -n "${CODEX_MODEL:-}" ]; then CODEX_ARGS+=(-m "$CODEX_MODEL"); fi
 
 echo "Running Codex adversarial review of PR #$PR_NUMBER @ ${HEAD_SHA:0:12} (iteration $ITERATION)…"
 set +e
-if command -v timeout >/dev/null 2>&1; then
-  timeout -k 30 "$CODEX_TIMEOUT_SECS" "$CODEX_BIN" "${CODEX_ARGS[@]}" - < "$PROMPT_FILE" > "$CODEX_LOG" 2>&1
-else
-  "$CODEX_BIN" "${CODEX_ARGS[@]}" - < "$PROMPT_FILE" > "$CODEX_LOG" 2>&1
-fi
+"$CODEX_BIN" "${CODEX_ARGS[@]}" - < "$PROMPT_FILE" > "$CODEX_LOG" 2>&1 &
+CODEX_PID=$!
+(
+  sleep "$CODEX_TIMEOUT_SECS"
+  if kill -0 "$CODEX_PID" 2>/dev/null; then
+    kill "$CODEX_PID" 2>/dev/null || true
+    sleep 30
+    kill -9 "$CODEX_PID" 2>/dev/null || true
+  fi
+) </dev/null >/dev/null 2>&1 &
+WATCHDOG_PID=$!
+wait "$CODEX_PID"
 CODEX_RC=$?
+kill "$WATCHDOG_PID" 2>/dev/null || true
+wait "$WATCHDOG_PID" 2>/dev/null || true
 set -e
 if [ "$CODEX_RC" -ne 0 ] || [ ! -s "$ENVELOPE" ]; then
   echo "ERROR: codex failed (rc=$CODEX_RC) or produced no envelope. Log: $CODEX_LOG" >&2
   echo "A tooling failure is NOT a GREEN gate." >&2
   exit 2
 fi
+
+assert_local_snapshot "$BASE_SHA" "post-Codex trusted-base snapshot" || exit 2
 
 # ── Validate + render (fail-safe: malformed => exit 2, never GREEN) ──────────
 RENDER_ARGS=(--sha "$HEAD_SHA" --body-sha256 "$PR_BODY_SHA256" --base "$MERGE_BASE" --iteration "$ITERATION")
@@ -502,7 +535,7 @@ fi
 # files_reviewed covers EVERY changed file in the diff; otherwise it is an
 # incomplete review => tooling failure, never GREEN.
 CHANGED_FILE_LIST="$OUT_DIR/changed-$PR_NUMBER-$ARTIFACT_KEY.txt"
-git diff --name-only "$MERGE_BASE"..HEAD > "$CHANGED_FILE_LIST"
+git diff --name-only "$MERGE_BASE".."$HEAD_SHA" > "$CHANGED_FILE_LIST"
 if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
   if ! node -e '
     const fs=require("fs");
@@ -552,6 +585,7 @@ REVIEW_ARTIFACT_SHA256="$(node -e '
 }
 
 STATUS="${STATUS_LINE%% *}"
+assert_local_snapshot "$BASE_SHA" "pre-publication trusted-base snapshot" || exit 2
 publish_result fresh_review "$STATUS" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
   "$RESERVATION_ID" "$BODY_FILE" "$REVIEW_ARTIFACT_SHA256" || exit 2
 echo "Review result: $STATUS_LINE"
@@ -560,6 +594,7 @@ echo "Review result: $STATUS_LINE"
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "--dry-run: not posting. Rendered comment at $BODY_FILE"
 else
+  assert_local_snapshot "$BASE_SHA" "immediate pre-post trusted-base snapshot" || exit 2
   gh pr comment "$PR_NUMBER" --body-file "$BODY_FILE" >/dev/null || {
     echo "ERROR: failed to post the review comment (review preserved at $BODY_FILE)" >&2; exit 2; }
   echo "Posted review to PR #$PR_NUMBER."

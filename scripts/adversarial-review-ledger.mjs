@@ -57,13 +57,15 @@
 //   - Distinct run_ids never collapse. Duplicate posts of the SAME run_id
 //     collapse to the earliest comment id (idempotent retry), and a caller
 //     whose own comment id is not that earliest must fail closed.
-//   - consumed preserves every validated review iteration. Each review can
-//     complete at most one earlier compatible canonical FULL reservation
-//     (strict run_id matching when present); every unmatched reservation stays
-//     charged as crashed. Legacy canonical FULL reservations retain the
-//     historical compatibility floor. Thus completion is one-to-one, crashed
-//     epochs cannot disappear behind other reviews, and every head/body/epoch
-//     shares the same durable cap.
+//   - consumed preserves every current-format completion by strict run_id,
+//     including concurrent completions that happened to choose the same
+//     review_iteration at different exact body snapshots. Only legacy records
+//     lacking run_id use the historical (sha, iteration) compatibility key.
+//     Each review completes at most one earlier compatible canonical FULL
+//     reservation by the same strict run_id; every unmatched reservation stays
+//     charged as crashed. Thus completion is one-to-one, crashed epochs cannot
+//     disappear behind other reviews, and every head/body/epoch shares the
+//     same durable cap.
 //
 // Exit codes: 0 ok · 3 unusable input (callers must treat as tooling failure,
 // never as an empty ledger).
@@ -78,9 +80,9 @@ const REMEDIATION_MARKER = "[CLAUDE-REMEDIATION]";
 // snapshot. Legacy records remain valid for iteration/budget accounting only.
 // Order is load-bearing; anything that does not match is not a record.
 const V2_REVIEW_RE =
-  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?(?:run_id: ([0-9a-f]{32})\r?\n)?/;
+  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?(?:run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?\r?\nBLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\nFALSE_POSITIVE: ([0-9]+)\r?\n```(?:\r?\n|$)/;
 const LEGACY_REVIEW_RE =
-  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?(?:run_id: ([0-9a-f]{32})\r?\n)?/;
+  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?\r?\nBLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\nFALSE_POSITIVE: ([0-9]+)\r?\n```(?:\r?\n|$)/;
 const V2_RESERVATION_RE =
   /^\[ADVERSARIAL-ROUND-RESERVATION\]\r?\n\r?\n```\r?\nrun_id: ([0-9a-f]{32})\r?\nhead_sha: ([0-9a-f]{40})\r?\nbody_sha256: ([0-9a-f]{64})\r?\nmode: (full|review_only)\r?\nhuman_authorized: (true|false)\r?\nrequested_at: [0-9TZz:.+-]+\r?\n```/;
 const LEGACY_RESERVATION_RE =
@@ -145,6 +147,11 @@ for (const c of reviewComments) {
   const v2 = c.body.match(V2_REVIEW_RE);
   const legacy = c.body.match(LEGACY_REVIEW_RE);
   if (v2) {
+    const realFindings = v2.slice(6, 10).reduce((sum, value) => sum + Number(value), 0);
+    if (v2[3] === "GREEN" && realFindings !== 0) {
+      if (headSha && c.body.includes(`reviewed_sha: ${headSha}`)) sawMalformedAtSha = true;
+      continue;
+    }
     reviews.push({
       sha: v2[1],
       bodySha256: v2[2],
@@ -154,12 +161,17 @@ for (const c of reviewComments) {
       commentId: c.id,
     });
   } else if (legacy) {
+    const realFindings = legacy.slice(4, 8).reduce((sum, value) => sum + Number(value), 0);
+    if (legacy[2] === "GREEN" && realFindings !== 0) {
+      if (headSha && c.body.includes(`reviewed_sha: ${headSha}`)) sawMalformedAtSha = true;
+      continue;
+    }
     reviews.push({
       sha: legacy[1],
       bodySha256: null,
       status: legacy[2],
       iteration: Number(legacy[3]),
-      runId: legacy[4] || null,
+      runId: null,
       commentId: c.id,
     });
   }
@@ -268,7 +280,9 @@ function uniqueReviewsBefore(cutoff) {
   const unique = new Map();
   for (const review of reviews) {
     if (review.commentId >= cutoff) break;
-    const key = `${review.sha}:${review.iteration}`;
+    const key = review.runId === null
+      ? `legacy:${review.sha}:${review.iteration}`
+      : `run:${review.runId}`;
     if (!unique.has(key)) unique.set(key, review);
   }
   return [...unique.values()].sort((a, b) => a.commentId - b.commentId);

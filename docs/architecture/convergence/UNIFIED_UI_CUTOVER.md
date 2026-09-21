@@ -263,6 +263,16 @@ at that snapshot withdraws an earlier GREEN. Malformed, bot-authored, or
 foreign-account comments are ignored and can neither grant nor revoke. There
 is no label or manual bypass.
 
+The supported operator entrypoint is `scripts/adversarial-review-trusted.sh`
+loaded directly from the immutable captured `origin/<base>` object. It
+materializes every producer and instruction asset in a neutral detached base
+worktree and exposes the candidate only as immutable read-only git-object/diff
+evidence. Candidate-local runner/loop invocation is non-authoritative and
+fails closed. The PR that first introduces this mechanism is a bootstrap: it
+requires external exact-head review and the owner's explicit integration
+decision, and the new sole route is proven on a later guarded PR after these
+assets exist on the default branch.
+
 The Codex contract classifies every guarded path the guard flags. Any
 introduction or expansion of frozen legacy presentation — a new surface, new
 user-facing behavior inside a frozen implementation, a new dependency on the
@@ -270,9 +280,9 @@ frozen tree, or a bypass of the canonical shell — is a BLOCKER and can never
 produce GREEN. A change to the guard or its control plane is not automatically
 a BLOCKER; it is reviewable and may produce GREEN only when fail-closed
 behavior, trusted-base guarantees, and the test contract remain sound.
-Rerunning the guard after a new GREEN is the review script's job (`gh run
-rerun` of the latest guard run for that head), since a comment is not a
-`pull_request_target` event.
+Dispatching a fresh current-default-branch guard run after a new GREEN is the
+review script's job, since a comment is not a `pull_request_target` event. A
+historical workflow run is never rerun because its event-time base may be stale.
 
 ### 3.1 Trusted enforcement boundary
 

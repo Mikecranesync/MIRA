@@ -68,6 +68,9 @@ DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 # quietly loosened in the same PR that would benefit from the loosening.
 # ---------------------------------------------------------------------------
 CONTROL_PATTERNS: tuple[str, ...] = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/**",
     "conftest.py",
     "docs/architecture/convergence/REGISTRY.yaml",
     "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
@@ -84,6 +87,7 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "tox.ini",
     "usercustomize.py",
     "tests/test_ui_surface_lifecycle_guard.py",
+    "tests/test_adversarial_review_scripts.py",
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/rules/factorylm-unified-ui-cutover.md",
@@ -94,6 +98,16 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".github/scripts/resolve_release_tag.sh",
     ".github/pull_request_template.md",
     "requirements/ui-lifecycle-guard.txt",
+    "scripts/adversarial-review.sh",
+    "scripts/adversarial-review-loop.sh",
+    "scripts/adversarial-review-lock.sh",
+    "scripts/adversarial-review-ledger.mjs",
+    "scripts/adversarial-review-render.mjs",
+    "scripts/adversarial-review-schema.json",
+    "scripts/adversarial-review-prompt.md",
+    "scripts/adversarial-review-remediation-prompt.md",
+    "scripts/adversarial-review-trusted.sh",
+    "docs/adversarial-review-workflow.md",
     "tools/hooks/prod-guard.sh",
     "tools/ota_handset_evidence.py",
 )
@@ -626,6 +640,15 @@ _CODEX_REVIEW_RE = re.compile(
     r"base_sha: [^\r\n]+\r?\n"
     r"status: (?P<status>GREEN|ISSUES_FOUND)\r?\n"
     r"review_iteration: (?P<iteration>[0-9]+)\r?\n"
+    r"(?:post_cap_human_authorized: true\r?\n)?"
+    r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?"
+    r"\r?\n"
+    r"BLOCKER: (?P<blocker>[0-9]+)\r?\n"
+    r"HIGH: (?P<high>[0-9]+)\r?\n"
+    r"MEDIUM: (?P<medium>[0-9]+)\r?\n"
+    r"LOW: (?P<low>[0-9]+)\r?\n"
+    r"FALSE_POSITIVE: [0-9]+\r?\n"
+    r"```(?:\r?\n|$)"
 )
 
 # GitHub pull-files `status` values this guard understands, mapped to the
@@ -1426,6 +1449,10 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
             continue
         match = _CODEX_REVIEW_RE.match(body)
         if match is None:
+            continue
+        if match.group("status") == "GREEN" and any(
+            int(match.group(name)) != 0 for name in ("blocker", "high", "medium", "low")
+        ):
             continue
         if comment_id > newest_id:
             newest_id = comment_id

@@ -41,8 +41,10 @@ closed without a substantive value on all three lines below).
 The sole authorization route is this substantive rationale plus the newest
 well-formed owner-account User `[CODEX-ADVERSARIAL-REVIEW]` ledger record whose
 `reviewed_sha` matches the current head, whose `reviewed_body_sha256` matches
-SHA-256 of the current PR body, and whose `status: GREEN`. Run
-`scripts/adversarial-review.sh <PR>` from the PR worktree. Any push or body edit
+SHA-256 of the current PR body, and whose `status: GREEN`. Load
+`scripts/adversarial-review-trusted.sh` directly from the immutable captured
+`origin/<base>` object; never execute review producers from the PR worktree.
+Any push or body edit
 invalidates the reviewed snapshot and requires a fresh review.
 
 A change that introduces or expands frozen legacy presentation is a BLOCKER

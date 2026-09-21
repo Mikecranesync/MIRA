@@ -73,6 +73,21 @@ fi
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+TRUSTED_BASE_SHA="${ADV_REVIEW_TRUSTED_BASE_SHA:-}"
+REMEDIATION_ROOT="${ADV_REVIEW_REMEDIATION_WORKTREE:-}"
+HEAD_REF="${ADV_REVIEW_HEAD_REF:-}"
+if ! [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [ -z "$REMEDIATION_ROOT" ]; then
+  echo "ERROR: candidate-local loop invocation is non-authoritative; use the trusted-base entrypoint." >&2
+  exit 2
+fi
+if ! git check-ref-format --branch "$HEAD_REF" >/dev/null 2>&1; then
+  echo "ERROR: malformed trusted candidate head ref." >&2
+  exit 2
+fi
+if [ "$(git rev-parse HEAD)" != "$TRUSTED_BASE_SHA" ] || [ ! -d "$REMEDIATION_ROOT" ]; then
+  echo "ERROR: malformed trusted-base/remediation worktree context." >&2
+  exit 2
+fi
 # shellcheck source=scripts/adversarial-review-lock.sh
 source "$ROOT/scripts/adversarial-review-lock.sh"
 adversarial_review_lock_acquire || exit 2
@@ -90,7 +105,8 @@ if [ -z "$PR_NUMBER" ]; then
 fi
 
 escalate() { # $1 = reason
-  local sha; sha="$(git rev-parse HEAD)"
+  local sha; sha="$(current_snapshot_fields 2>/dev/null | awk '{print $1}')"
+  if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then sha="unknown"; fi
   local body="[ADVERSARIAL-ESCALATION]
 
 \`\`\`
@@ -160,12 +176,12 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   CYCLE=$((CYCLE + 1))
   echo "── Cycle $CYCLE/$MAX_ITER (durable rounds consumed: $CONSUMED/$MAX_TOTAL_ROUNDS) ──"
 
-  PRE_SHA="$(git rev-parse HEAD)"
   PRE_SNAPSHOT="$(current_snapshot_fields)" || {
     escalate "could not read the exact PR head/body snapshot before review"
     exit 2
   }
   read -r PRE_REMOTE_SHA _ <<< "$PRE_SNAPSHOT"
+  PRE_SHA="$(git -C "$REMEDIATION_ROOT" rev-parse HEAD 2>/dev/null || true)"
   if [ "$PRE_REMOTE_SHA" != "$PRE_SHA" ]; then
     escalate "local head ${PRE_SHA:0:12} does not match PR head ${PRE_REMOTE_SHA:0:12} before review"
     exit 2
@@ -177,6 +193,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   RESULT_FILE="$OUT_DIR/result-$PR_NUMBER-$ARTIFACT_TOKEN.json"
   set +e
   ADV_REVIEW_MODE="$LOOP_MODE" ADV_REVIEW_ARTIFACT_TOKEN="$ARTIFACT_TOKEN" \
+    ADV_REVIEW_CANDIDATE_SHA="$PRE_SHA" \
     "$ROOT/scripts/adversarial-review.sh" "$PR_NUMBER"
   RC=$?
   set -e
@@ -191,7 +208,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     const crypto=require("node:crypto");
     const fs=require("node:fs");
     const path=require("node:path");
-    const [resultFile,outDir,pr,expectedHead,expectedMode,token,tpl,iteration,runnerRc]=process.argv.slice(1);
+    const [resultFile,outDir,pr,expectedHead,expectedMode,token,tpl,iteration,runnerRc,remediationRoot]=process.argv.slice(1);
     const safeOpen=(file)=>{
       let fd;
       try {
@@ -238,16 +255,18 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     const digest=crypto.createHash("sha256").update(reviewBytes).digest("hex");
     if(digest!==j.review_artifact_sha256) process.exit(1);
     const review=reviewBytes.toString("utf8");
-    const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([0-9]+)\r?\n/;
+    const re=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?run_id: ([0-9a-f]{32})\r?\nreservation_comment_id: ([1-9][0-9]*)\r?\n\r?\nBLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\nFALSE_POSITIVE: ([0-9]+)\r?\n```(?:\r?\n|$)/;
     const match=review.match(re);
     if(!match || match[1]!==j.head_sha || match[2]!==j.body_sha256
       || match[3]!==j.status || match[4]!==j.run_id
       || match[5]!==String(j.reservation_comment_id)) process.exit(1);
+    if(j.status==="GREEN" && match.slice(6,10).some(v=>Number(v)!==0)) process.exit(1);
     if(j.status==="ISSUES_FOUND") {
       let prompt=fs.readFileSync(tpl,"utf8");
       for(const [k,v] of Object.entries({PR_NUMBER:pr,REVIEWED_SHA:j.head_sha,
         ITERATION:iteration,REVIEW_CONTENT:review,RUN_ID:j.run_id,
-        RESERVATION_ID:String(j.reservation_comment_id)}))
+        RESERVATION_ID:String(j.reservation_comment_id),WORKTREE_PATH:remediationRoot,
+        HEAD_REF:process.env.ADV_REVIEW_HEAD_REF}))
         prompt=prompt.split("{{"+k+"}}").join(v);
       const promptFile=path.join(outDir,`remediation-${pr}-${artifactKey}.md`);
       fs.writeFileSync(promptFile,prompt,{encoding:"utf8",mode:0o600,flag:"wx"});
@@ -255,7 +274,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     }
     process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey}\n`);
   ' "$RESULT_FILE" "$OUT_DIR" "$PR_NUMBER" "$PRE_SHA" "$LOOP_MODE" \
-    "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE" "$RC")"
+    "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE" "$RC" "$REMEDIATION_ROOT")"
   RESULT_READ_RC=$?
   set -e
   if [ "$RESULT_READ_RC" -ne 0 ]; then
@@ -292,7 +311,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
       escalate "git fetch origin failed at cycle $CYCLE — refusing to proceed on stale refs (fail closed)"
       exit 2
     }
-    if ! git merge --ff-only "$CUR_HEAD" 2>/dev/null; then
+    if ! git -C "$REMEDIATION_ROOT" merge --ff-only "$CUR_HEAD" 2>/dev/null; then
       escalate "local checkout diverged from advanced PR head ${CUR_HEAD:0:12} at cycle $CYCLE — manual sync required"
       exit 2
     fi
@@ -390,17 +409,17 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   # Remote PR state and durable ledger ownership are necessary but not enough:
   # Claude runs in this worktree. Re-prove the local executable snapshot at the
   # final boundary after every other authorization check and prompt build.
-  LOCAL_REMEDIATION_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+  LOCAL_REMEDIATION_SHA="$(git -C "$REMEDIATION_ROOT" rev-parse HEAD 2>/dev/null || true)"
   if [ "$LOCAL_REMEDIATION_SHA" != "$REVIEWED_SHA" ]; then
     escalate "local HEAD changed after review (${LOCAL_REMEDIATION_SHA:-unknown} != $REVIEWED_SHA) — Claude NOT launched"
     exit 2
   fi
-  if ! LOCAL_TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"; then
+  if ! LOCAL_TRACKED_STATUS="$(git -C "$REMEDIATION_ROOT" status --porcelain --untracked-files=all --ignored=matching)"; then
     escalate "git status failed at the final local snapshot gate — Claude NOT launched"
     exit 2
   fi
   if [ -n "$LOCAL_TRACKED_STATUS" ]; then
-    escalate "local tracked worktree changed after review — Claude NOT launched"
+    escalate "local remediation worktree has tracked, untracked, or ignored drift after review — Claude NOT launched"
     exit 2
   fi
 
@@ -416,6 +435,15 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   set -e
   if [ "$CLAUDE_RC" -ne 0 ]; then
     escalate "Claude remediation failed (rc=$CLAUDE_RC) at cycle $CYCLE"
+    exit 2
+  fi
+
+  if ! POST_CLAUDE_STATUS="$(git -C "$REMEDIATION_ROOT" status --porcelain --untracked-files=all --ignored=matching)"; then
+    escalate "git status failed after Claude remediation — refusing progress"
+    exit 2
+  fi
+  if [ -n "$POST_CLAUDE_STATUS" ]; then
+    escalate "Claude left tracked, untracked, or ignored remediation worktree drift — refusing progress"
     exit 2
   fi
 
@@ -438,6 +466,10 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   # comment from OUR OWN account must attest to remediating exactly PRE_SHA.
   if ! git merge-base --is-ancestor "$REVIEWED_SHA" "$NEW_SHA" 2>/dev/null; then
     escalate "new PR head ${NEW_SHA:0:12} does not descend from the reviewed ${REVIEWED_SHA:0:12} — not remediation progress"
+    exit 2
+  fi
+  if [ "$(git -C "$REMEDIATION_ROOT" rev-parse HEAD 2>/dev/null || true)" != "$NEW_SHA" ]; then
+    escalate "Claude's local committed HEAD does not equal the exact pushed PR head — refusing progress"
     exit 2
   fi
   # Strictly-parsed attestation (Codex round 3 F2 + iteration-4 F1): the
@@ -466,7 +498,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   # Fast-forward ONLY — this loop never runs a history-discarding command; a
   # divergence means something else pushed to the branch mid-loop, which is a
   # human problem, not one to bulldoze (.claude/rules/dangerous-commands-safety.md).
-  if ! git merge --ff-only "$NEW_SHA" 2>/dev/null; then
+  if ! git -C "$REMEDIATION_ROOT" merge --ff-only "$NEW_SHA" 2>/dev/null; then
     escalate "local checkout diverged from pushed PR head ${NEW_SHA:0:12} at cycle $CYCLE — manual sync required"
     exit 2
   fi

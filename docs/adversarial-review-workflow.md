@@ -30,11 +30,15 @@ it adds no OpenAI secrets to the repository.
 ## Architecture
 
 ```
+operator loads origin/<captured-base>:scripts/adversarial-review-trusted.sh
+        -> detached neutral base producer + detached candidate remediation tree
+        -> artifacts outside both worktrees
+        |
 Claude implements -> tests/lint -> commit + push
         |
         v
-scripts/adversarial-review.sh          (one round)
-   resolve PR -> HEAD==PR-head gate -> exact-snapshot dedupe
+trusted-base scripts/adversarial-review.sh          (one round)
+   resolve PR -> producer-HEAD==captured-base gate -> exact-snapshot dedupe
         (head SHA + PR-body SHA-256) -> ordered reservation acquisition
         -> codex exec (read-only, --output-schema) -> validate/render
         -> atomic invocation-token result handoff
@@ -55,22 +59,26 @@ GREEN  |  [ADVERSARIAL-ESCALATION] after 3 cycles / no progress
 
 ## Running it
 
-From the repo root (Git Bash on Windows; plain bash elsewhere):
+The supported entrypoint must itself be loaded from the PR's captured current
+base object. Candidate-local scripts and instructions are never executable
+inputs. From any checkout that can reach the PR objects:
 
 ```bash
-# Full autonomous loop on the current branch's PR (max 3 cycles):
-bash scripts/adversarial-review-loop.sh
+# Capture the current base, then execute exactly that immutable base blob.
+PR=3245
+BASE_SHA="$(gh pr view "$PR" --json baseRefOid --jq .baseRefOid)"
+git fetch origin "$(gh pr view "$PR" --json baseRefName --jq .baseRefName)"
+git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | bash -s -- "$PR"
 
-# Same, for an explicit PR:
-bash scripts/adversarial-review-loop.sh 3245
-
-# One review round only — post the verdict, no remediation:
-bash scripts/adversarial-review-loop.sh --review-only
-# (or directly: bash scripts/adversarial-review.sh [PR] [--force] [--dry-run])
+# Review only (no remediation):
+git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | \
+  bash -s -- "$PR" --review-only
 
 # Post-cap verification pass (requires EXPLICIT human authorization — see
 # "Durable review budget" below). Review-only by construction:
-ADV_REVIEW_HUMAN_AUTHORIZED=1 bash scripts/adversarial-review.sh <PR>
+ADV_REVIEW_HUMAN_AUTHORIZED=1 \
+  git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | \
+  bash -s -- "$PR" --review-only
 ```
 
 PR arguments are validated strictly (numeric PR ids only); unknown flags fail
@@ -80,11 +88,23 @@ always a precondition failure. A failed fetch of the base branch is a tooling
 failure (exit 2) — a stale merge-base silently poisons the reviewed diff scope,
 so it fails closed rather than proceeding.
 
-From a Claude Code session: `/adversarial-gate [PR] [--review-only]`.
+There is deliberately no candidate-local Claude slash command for this gate:
+candidate instruction files are not an authorization source. Use only the
+immutable-base operator invocation above.
 
-Preconditions (all fail closed): an open PR for the branch; local HEAD equals
-the PR head (push first); clean tracked working tree; `gh auth status` OK;
-`codex` authenticated (`codex doctor`).
+Preconditions (all fail closed): an open PR; captured base/head objects present;
+neutral detached producer HEAD equals the captured base; producer and detached
+candidate remediation worktrees are fully clean (tracked, untracked, and
+ignored); artifacts are outside both worktrees; `gh auth status` OK; `codex`
+authenticated (`codex doctor`). Direct candidate-local runner/loop invocation
+is non-authoritative and fails closed.
+
+Candidate `AGENTS.md`, `CLAUDE.md`, `.claude/**`, runner/renderer/schema,
+prompts, and docs are read-only untrusted evidence. Codex and Claude start in
+the neutral trusted-base checkout. The current PR that introduces this
+mechanism is a bootstrap: it cannot authorize itself and requires an external
+exact-head review plus the owner's explicit integration decision. The sole
+route is first proven on a later guarded PR after these assets exist on `main`.
 
 ## Review format (machine-readable envelope)
 
@@ -135,8 +155,8 @@ presentation a BLOCKER that can never produce GREEN. A guard/control-plane
 change is not automatically a BLOCKER: the reviewer may return GREEN only
 when fail-closed behavior, trusted-base guarantees, and the relevant tests
 remain sound. Because a comment is not a `pull_request_target` event,
-`final_green_gate` re-runs the latest guard run for the head after a GREEN
-(best effort; `gh run rerun` by hand otherwise).
+`final_green_gate` dispatches a fresh workflow from the current default branch
+after a GREEN (best effort; never rerun a historical event snapshot).
 
 Claude's disposition comment starts with `[CLAUDE-REMEDIATION]` and lists one
 line per finding id with its classification. Escalations start with
@@ -301,7 +321,8 @@ rotating credentials, or making consequential product/architecture calls —
 those become `NEEDS_HUMAN_DECISION` dispositions.
 
 Safety floors: Claude runs headless with `--dangerously-skip-permissions`
-**inside this repo only**, where the deterministic `PreToolUse` hooks
+from the neutral trusted-base checkout and edits only the separately named
+detached remediation worktree. The trusted base's deterministic `PreToolUse` hooks
 (`tools/hooks/prod-guard.sh`, `rm-guard.sh`, `git-state-guard.sh`) remain the
 hard floor, and the loop itself contains no history-discarding git commands
 (fast-forward only). Codex runs sandboxed `read-only`.
@@ -314,30 +335,30 @@ hard floor, and the loop itself contains no history-discarding git commands
 | Malformed Codex output | exit 2 (never GREEN), envelope kept in `.adversarial-review/envelope-*.json` | re-run with `--force` |
 | GitHub unavailable / `gh` unauthenticated | exit 2/3 before any review runs | `gh auth login`; re-run |
 | No PR yet | exit 3 with instruction | create the PR, re-run |
-| Dirty worktree / HEAD ≠ PR head | exit 3 with instruction | commit/push, re-run |
+| Producer/remediation drift or captured base/head mismatch | exit 2/3, no authorization | clean the source state and restart from the current base |
 | New commits arrive mid-review | the posted comment stamps the SHA that was actually reviewed; the next round reviews the new head | nothing — by design |
 | Claude remediation fails | escalation comment, exit 2 | read `.adversarial-review/claude-*.log` |
 
 Artifacts (prompts, envelopes, rendered comments, logs, and atomic runner
-results) live in `.adversarial-review/` (gitignored) and are invocation-unique.
+results) live in a private launcher temporary directory outside both detached
+worktrees and are invocation-unique.
 Each process also writes the exact PR body bytes to a read-only token-bound
 artifact and passes only that trusted path into the review prompt; PR-authored
 body text is never interpolated into shell or template code.
 
 ## Disable procedure
 
-Nothing runs automatically — both scripts are invoked manually (or via
-`/adversarial-gate`). To disable: simply don't run them. To remove the slash
-command without deleting the implementation, delete
-`.claude/commands/adversarial-gate.md`. No hooks, cron, or CI were added.
+Nothing runs automatically. To disable, simply do not run the immutable-base
+operator entrypoint. No candidate-local slash command, hook, cron, or CI
+producer invocation exists.
 
 ## Rollback
 
 The automation is self-contained in:
-`scripts/adversarial-review{,-loop}.sh`,
+`scripts/adversarial-review-trusted.sh`, `scripts/adversarial-review{,-loop}.sh`,
 `scripts/adversarial-review-{prompt,remediation-prompt}.md`,
 `scripts/adversarial-review-{schema.json,render.mjs}`,
-`.claude/commands/adversarial-gate.md`, this document, and one `.gitignore`
+this document, and one `.gitignore`
 line. Revert the introducing commit (or delete those files) and the repo is
 exactly as before.
 

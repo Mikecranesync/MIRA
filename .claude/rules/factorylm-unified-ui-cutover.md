@@ -107,8 +107,9 @@ twelve alphanumeric characters per field).
 There is one authorization route: the newest well-formed owner-account User
 `[CODEX-ADVERSARIAL-REVIEW]` ledger record must have `reviewed_sha` equal to
 the current head, `reviewed_body_sha256` equal to SHA-256 of the current PR
-body, and `status: GREEN`. Run `scripts/adversarial-review.sh <PR>` from the PR
-worktree. Any push or body edit invalidates the reviewed snapshot and requires
+body, and `status: GREEN`. Load `scripts/adversarial-review-trusted.sh` from
+the immutable captured `origin/<base>` object; never execute review producers
+from the PR worktree. Any push or body edit invalidates the reviewed snapshot and requires
 a fresh review. There is no label or manual bypass.
 
 The Codex contract reports any introduction or expansion of frozen legacy

@@ -2800,16 +2800,17 @@ def test_workflow_lists_every_current_metadata_sensitive_event():
     assert "unlabeled" not in event_types
 
 
-def test_workflow_has_three_jobs_wired_pending_then_guard_then_final_status():
+def test_workflow_wires_snapshot_then_pending_guard_and_final_status():
     doc = _workflow_doc()
     jobs = doc["jobs"]
-    assert set(jobs) == {"pending", "guard", "final-status"}
-    assert jobs["guard"].get("needs") in ("pending", ["pending"])
+    assert set(jobs) == {"snapshot", "pending", "guard", "final-status"}
+    assert jobs["pending"].get("needs") == "snapshot"
+    assert set(jobs["guard"].get("needs")) == {"snapshot", "pending"}
     assert set(
         jobs["final-status"]["needs"]
         if isinstance(jobs["final-status"]["needs"], list)
         else [jobs["final-status"]["needs"]]
-    ) == {"pending", "guard"}
+    ) == {"snapshot", "pending", "guard"}
 
 
 def test_workflow_every_checkout_step_uses_exact_base_sha_and_no_repository_override():
@@ -2820,7 +2821,7 @@ def test_workflow_every_checkout_step_uses_exact_base_sha_and_no_repository_over
             if step.get("uses", "").startswith("actions/checkout"):
                 found_checkout = True
                 with_block = step.get("with", {}) or {}
-                assert with_block.get("ref") == "${{ github.event.pull_request.base.sha }}", (
+                assert with_block.get("ref") == "${{ needs.snapshot.outputs.base_sha }}", (
                     f"job {job_name}: checkout ref must be the exact base.sha expression"
                 )
                 assert "repository" not in with_block, (
@@ -4154,7 +4155,8 @@ def _ledger_comment(
         "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
         f"reviewed_sha: {sha}\nreviewed_body_sha256: {_body_sha256(body)}\n"
         f"base_sha: {'c' * 40}\nstatus: {status}\n"
-        f"review_iteration: {iteration}\nreview_scope: full\n```\n\n"
+        f"review_iteration: {iteration}\n\n"
+        "BLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n\n"
         f"ADVERSARIAL GATE: {status}\n"
     )
 
@@ -4210,6 +4212,25 @@ def test_scenario_b_codex_green_at_exact_head_passes_guarded_touch_without_label
     assert result.allowed is True
     assert result.message.startswith("INDEPENDENT REVIEW:")
     assert "legacy/tree/a.ts" in result.message
+
+
+@pytest.mark.parametrize("cut_after", range(1, 15))
+def test_guard_rejects_review_truncated_at_every_metadata_boundary(tmp_path, cut_after):
+    lines = _ledger_comment(_HEAD_A, "GREEN").splitlines(keepends=True)
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, "".join(lines[:cut_after]))]
+    )
+
+    attestation = load_codex_attestation(comments_path, pull_path)
+
+    assert attestation.valid is False
+
+
+def test_guard_rejects_green_with_nonzero_real_finding_count(tmp_path):
+    body = _ledger_comment(_HEAD_A, "GREEN").replace("MEDIUM: 0", "MEDIUM: 1")
+    comments_path, pull_path = _write_codex_ledger(tmp_path, [_owner_comment(1, body)])
+
+    assert load_codex_attestation(comments_path, pull_path).valid is False
 
 
 def test_codex_green_for_same_head_but_old_body_is_stale(tmp_path):
@@ -4606,7 +4627,10 @@ def test_workflow_passes_the_review_ledger_to_the_guard_with_the_current_pull_sn
 
 def test_codex_prompt_makes_legacy_expansion_a_blocker_and_names_the_guard():
     prompt = (REPO_ROOT / "scripts" / "adversarial-review-prompt.md").read_text(encoding="utf-8")
-    assert "tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD" in prompt
+    assert (
+        "tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head {{HEAD_SHA}}"
+        in prompt
+    )
     assert "introduces or expands" in prompt
     assert "BLOCKER" in prompt
     assert "never produce GREEN" in prompt
@@ -4652,8 +4676,11 @@ def test_governing_documentation_describes_the_sole_exact_snapshot_route(relativ
         ".github/pull_request_template.md",
         ".claude/rules/factorylm-unified-ui-cutover.md",
         "docs/adversarial-review-workflow.md",
+        "tests/test_adversarial_review_scripts.py",
         "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
         "scripts/adversarial-review-prompt.md",
+        ".claude/workflows/flm-ui-slice.js",
+        ".claude/workflows/flm-ui-verify.js",
     ],
 )
 def test_active_policy_documentation_has_no_obsolete_manual_attestation_route(relative_path):
@@ -4667,6 +4694,53 @@ def test_active_policy_documentation_has_no_obsolete_manual_attestation_route(re
         "--approver-permission-json-file",
     ):
         assert obsolete not in text
+
+
+def test_live_hot_cache_policy_uses_only_exact_snapshot_review_route():
+    text = (REPO_ROOT / "wiki/hot.md").read_text(encoding="utf-8")
+    live = text.split("**Legacy exception policy (live):**", 1)[1].split(
+        "**Active shared-core claim", 1
+    )[0]
+    assert "## Lifecycle guard rationale" in live
+    assert "reviewed_sha" in live
+    assert "reviewed_body_sha256" in live
+    assert "owner-account" in live
+    assert "legacy-ui-exception" not in live
+    assert "## Legacy UI exception" not in live
+
+
+def test_control_plane_guards_every_adversarial_producer_and_instruction_surface():
+    required = {
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".claude/**",
+        "scripts/adversarial-review.sh",
+        "scripts/adversarial-review-loop.sh",
+        "scripts/adversarial-review-lock.sh",
+        "scripts/adversarial-review-ledger.mjs",
+        "scripts/adversarial-review-render.mjs",
+        "scripts/adversarial-review-schema.json",
+        "scripts/adversarial-review-prompt.md",
+        "scripts/adversarial-review-remediation-prompt.md",
+        "scripts/adversarial-review-trusted.sh",
+        "docs/adversarial-review-workflow.md",
+        "tests/test_adversarial_review_scripts.py",
+    }
+
+    assert required <= set(CONTROL_PATTERNS)
+
+
+def test_lifecycle_workflow_dispatches_current_default_branch_and_binds_captured_snapshot():
+    workflow = _workflow_doc()
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]
+    assert dispatch["pr_number"]["required"] is True
+    text = (REPO_ROOT / ".github/workflows/ui-lifecycle-guard.yml").read_text(encoding="utf-8")
+    assert "github.event.pull_request.base.sha" not in text
+    assert "github.event.pull_request.head.sha" not in text
+    assert "steps.snapshot.outputs.base_sha" in text
+    assert "steps.snapshot.outputs.head_sha" in text
+    assert 'DISPATCH_REF" != "refs/heads/main"' in text
+    assert 'workflow_dispatch must execute the current default-branch workflow' in text
 
 
 def test_cli_current_pull_snapshot_may_stand_alone_for_the_review_route(tmp_path):
