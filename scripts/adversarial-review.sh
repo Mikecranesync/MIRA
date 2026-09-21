@@ -158,7 +158,7 @@ final_green_gate() {
       const pr=JSON.parse(d);
       const body=pr.body ?? "";
       const digest=crypto.createHash("sha256").update(body,"utf8").digest("hex");
-      process.stdout.write(`${pr.headRefOid} ${digest}\n`);
+      process.stdout.write(pr.headRefOid + " " + digest + "\n");
     });')
   if [ "$cur" != "$HEAD_SHA" ]; then
     echo "STALE: PR head advanced to ${cur:0:12} — this GREEN applies only to the reviewed ${HEAD_SHA:0:12}." >&2
