@@ -7,8 +7,8 @@ docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md.
 This module proves `tools/ui_surface_lifecycle_guard.py` fails closed on every
 addition/modification/deletion/rename-in/rename-out of a guarded legacy
 presentation path or a control-plane file, and only opens for an EXACT,
-substantive `legacy-ui-exception` label + PR-body section — never on
-placeholder/blank/fenced/HTML-comment text standing in for one.
+substantive lifecycle rationale plus an exact-head/body Codex GREEN — never
+on placeholder/blank/fenced/HTML-comment text standing in for one.
 
 Written test-first (RED before GREEN): at the moment this file is added,
 `tools/ui_surface_lifecycle_guard.py` does not exist, so collection fails.
@@ -16,6 +16,7 @@ Written test-first (RED before GREEN): at the moment this file is added,
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -52,11 +53,12 @@ ChangedFile = _guard.ChangedFile
 GuardPolicy = _guard.GuardPolicy
 GuardPolicyError = _guard.GuardPolicyError
 GuardResult = _guard.GuardResult
+CodexAttestation = _guard.CodexAttestation
 _build_arg_parser = _guard._build_arg_parser
 changed_files_between = _guard.changed_files_between
 evaluate = _guard.evaluate
 load_changed_files = _guard.load_changed_files
-load_exception_approval = _guard.load_exception_approval
+load_codex_attestation = _guard.load_codex_attestation
 load_guard_policy = _guard.load_guard_policy
 main = _guard.main
 path_is_guarded = _guard.path_is_guarded
@@ -103,7 +105,7 @@ def test_guard_policy_is_frozen():
 def test_modification_under_guarded_tree_fails_without_exception():
     policy = _policy("legacy/tree/**")
     changes = [ChangedFile(status="modified", path="legacy/tree/a.ts")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert "legacy/tree/a.ts" in result.guarded_paths
 
@@ -111,7 +113,7 @@ def test_modification_under_guarded_tree_fails_without_exception():
 def test_addition_under_guarded_tree_fails_without_exception():
     policy = _policy("legacy/tree/**")
     changes = [ChangedFile(status="added", path="legacy/tree/new.ts")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert "legacy/tree/new.ts" in result.guarded_paths
 
@@ -119,7 +121,7 @@ def test_addition_under_guarded_tree_fails_without_exception():
 def test_deletion_under_guarded_tree_fails_without_exception():
     policy = _policy("legacy/tree/**")
     changes = [ChangedFile(status="removed", path="legacy/tree/gone.ts")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert "legacy/tree/gone.ts" in result.guarded_paths
 
@@ -129,7 +131,7 @@ def test_rename_in_to_guarded_tree_fails_without_exception():
     changes = [
         ChangedFile(status="renamed", path="legacy/tree/dst.ts", previous_path="canonical/src.ts")
     ]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert "legacy/tree/dst.ts" in result.guarded_paths
 
@@ -139,7 +141,7 @@ def test_rename_out_of_guarded_tree_fails_without_exception():
     changes = [
         ChangedFile(status="renamed", path="canonical/dst.ts", previous_path="legacy/tree/src.ts")
     ]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert "legacy/tree/src.ts" in result.guarded_paths
 
@@ -147,7 +149,7 @@ def test_rename_out_of_guarded_tree_fails_without_exception():
 def test_unrelated_canonical_package_change_passes():
     policy = _policy("legacy/tree/**")
     changes = [ChangedFile(status="modified", path="packages/factorylm-ui/src/Shell.tsx")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is True
     assert result.guarded_paths == ()
     assert result.missing_fields == ()
@@ -165,7 +167,7 @@ def test_sibling_file_newly_created_under_each_guarded_directory_is_caught():
     for sib in siblings:
         assert path_is_guarded(sib, real_policy), f"expected {sib} to be guarded"
         changes = [ChangedFile(status="added", path=sib)]
-        result = evaluate(changes, labels=set(), pr_body="", policy=real_policy)
+        result = evaluate(changes, pr_body="", policy=real_policy)
         assert result.allowed is False, f"expected {sib} to be blocked without an exception"
 
 
@@ -229,7 +231,7 @@ def test_git_derived_delete_and_renames_fail_without_exception(tmp_path):
     repo, base, head = _init_repo_with_rename_and_delete_history(tmp_path)
     changes = changed_files_between(repo, base, head)
     policy = _policy("legacy/tree/**")
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     # rename-out (legacy/tree/a.ts -> canonical/a_moved.ts) and rename-in
     # (canonical/src.ts -> legacy/tree/dst.ts) must both be caught.
@@ -292,7 +294,7 @@ def test_git_derived_open_path_symlink_into_frozen_tree_fails_closed(tmp_path):
     assert change.new_mode == "120000"
     assert change.new_type == "blob"
 
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert relative_link in result.guarded_paths
 
@@ -315,7 +317,7 @@ def test_git_derived_chmod_on_otherwise_open_path_fails_closed(tmp_path):
     change = next(change for change in changes if change.path == path)
     assert (change.old_mode, change.new_mode) == ("100644", "100755")
 
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert path in result.guarded_paths
 
@@ -340,7 +342,7 @@ def test_git_derived_file_to_directory_substitution_fails_closed(tmp_path):
     assert (change.old_mode, change.old_type) == ("100644", "blob")
     assert (change.new_mode, change.new_type) == ("040000", "tree")
 
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
     assert path in result.guarded_paths
 
@@ -371,7 +373,7 @@ def test_git_tree_evidence_uses_three_dot_merge_base_not_base_branch_tip(tmp_pat
     changes = changed_files_between(repo, base_tip, head)
     change = next(change for change in changes if change.path == "scripts/audit-helper.sh")
     assert (change.old_mode, change.new_mode) == ("100644", "100644")
-    result = evaluate(changes, labels=set(), pr_body="", policy=load_guard_policy(REAL_REGISTRY))
+    result = evaluate(changes, pr_body="", policy=load_guard_policy(REAL_REGISTRY))
     assert result.allowed is True
 
 
@@ -431,7 +433,6 @@ def test_transitive_trusted_base_inputs_are_control_patterns(control_path):
     assert path_is_guarded(control_path, policy)
     result = evaluate(
         [ChangedFile(status="added", path=control_path)],
-        labels=set(),
         pr_body="",
         policy=policy,
     )
@@ -447,7 +448,6 @@ def test_pip_package_shadow_is_a_control_pattern():
     assert path_is_guarded(shadow, policy)
     result = evaluate(
         [ChangedFile(status="added", path=shadow)],
-        labels=set(),
         pr_body="",
         policy=policy,
     )
@@ -462,7 +462,6 @@ def test_arbitrary_github_workflow_is_guarded_without_exception():
     assert path_is_guarded(spoof, real_policy)
     result = evaluate(
         [ChangedFile(status="added", path=spoof)],
-        labels=set(),
         pr_body="",
         policy=real_policy,
     )
@@ -491,7 +490,7 @@ def test_control_patterns_stay_guarded_even_if_registry_has_no_legacy_entries(tm
             "head revision's registry carries no legacy entries at all"
         )
     changes = [ChangedFile(status="modified", path="tools/ui_surface_lifecycle_guard.py")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=policy)
+    result = evaluate(changes, pr_body="", policy=policy)
     assert result.allowed is False
 
 
@@ -506,34 +505,62 @@ _VALID_BODY = textwrap.dedent(
     """
     Some PR description text.
 
-    ## Legacy UI exception
+    ## Lifecycle guard rationale
 
-    Reason: severity-1 production repair for a broken rollback path
+    Reason: severity-1 production repair for a broken rollback route
     Canonical replacement impact: none, this only touches the recovery route
     Rollback: revert this commit; the legacy route is otherwise untouched
     """
 )
+_VALID_CODEX_ATTESTATION = CodexAttestation(
+    valid=True,
+    reviewed_sha="a" * 40,
+    reviewed_body_sha256="d" * 64,
+    status="GREEN",
+    reason="test-only exact-head and exact-body GREEN",
+)
 
 
-def test_valid_label_without_body_fails():
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body="", policy=_POLICY)
+def test_valid_attestation_without_body_fails():
+    result = evaluate(
+        _TOUCH,
+        pr_body="",
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
     assert result.allowed is False
 
 
-def test_valid_body_without_label_fails():
-    result = evaluate(_TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY)
+def test_valid_body_without_attestation_fails():
+    result = evaluate(_TOUCH, pr_body=_VALID_BODY, policy=_POLICY)
     assert result.allowed is False
+
+
+def test_legacy_label_text_cannot_authorize_a_guarded_touch():
+    result = evaluate(
+        _TOUCH,
+        pr_body=_VALID_BODY,
+        policy=_POLICY,
+        codex_attestation=None,
+    )
+    assert result.allowed is False
+    assert "exact-head and exact-body Codex GREEN" in result.message
 
 
 def test_missing_fields_in_section_fail():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: a real reason for this exception
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
     assert result.allowed is False
     assert any("Canonical replacement impact" in f for f in result.missing_fields)
     assert any("Rollback" in f for f in result.missing_fields)
@@ -542,14 +569,14 @@ def test_missing_fields_in_section_fail():
 def test_blank_fields_fail():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason:
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
@@ -560,14 +587,14 @@ def test_blank_fields_fail():
 def test_na_style_placeholder_values_fail(placeholder):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {placeholder}
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
@@ -575,14 +602,14 @@ def test_na_style_placeholder_values_fail(placeholder):
 def test_angle_bracket_placeholder_values_fail():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: <why the change cannot be made in the canonical shell or adapter>
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("unsafe or non-comment HTML" in f for f in result.missing_fields)
 
@@ -590,38 +617,37 @@ def test_angle_bracket_placeholder_values_fail():
 def test_html_comment_only_values_fail():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: <!-- explain why here -->
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
 
 def test_duplicate_exception_sections_fail():
     body = _VALID_BODY + "\n" + _VALID_BODY
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("duplicate" in f.lower() for f in result.missing_fields)
 
 
 def test_complete_block_inside_fenced_code_block_fails():
     body = "```markdown\n" + _VALID_BODY + "\n```\n"
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
 
 
 def test_exactly_one_live_section_with_substantive_values_passes():
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=_VALID_BODY,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
     assert result.allowed is True
 
@@ -639,10 +665,9 @@ def test_exception_fields_ignore_later_work_claim_fields():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is True
@@ -652,7 +677,7 @@ def test_exception_fields_ignore_later_work_claim_fields():
 def test_indented_top_level_boundary_cannot_supply_exception_fields(boundary):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: severity-1 production repair for a broken rollback path
         Canonical replacement impact: none, this only touches the recovery route
@@ -664,10 +689,9 @@ def test_indented_top_level_boundary_cannot_supply_exception_fields(boundary):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -682,7 +706,7 @@ def test_bare_commonmark_atx_boundary_cannot_supply_exception_fields(boundary):
     body = (
         textwrap.dedent(
             """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: severity-1 production repair for a broken rollback path
         Canonical replacement impact: none, this only touches the recovery route
@@ -693,10 +717,9 @@ def test_bare_commonmark_atx_boundary_cannot_supply_exception_fields(boundary):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -707,7 +730,7 @@ def test_bare_commonmark_atx_boundary_cannot_supply_exception_fields(boundary):
 def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: severity-1 production repair for a broken rollback path
         Canonical replacement impact: none, this only touches the recovery route
@@ -720,10 +743,9 @@ def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -734,7 +756,7 @@ def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
 def test_four_space_indented_pseudo_boundary_stays_inside_exception(pseudo_boundary):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: severity-1 production repair for a broken rollback path
         Canonical replacement impact: none, this only touches the recovery route
@@ -746,162 +768,37 @@ def test_four_space_indented_pseudo_boundary_stays_inside_exception(pseudo_bound
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is True
 
 
 def test_commonmark_indented_exception_heading_is_live():
-    body = _VALID_BODY.replace("## Legacy UI exception", "   ## Legacy UI exception")
+    body = _VALID_BODY.replace("## Lifecycle guard rationale", "   ## Lifecycle guard rationale")
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is True
 
 
-def test_valid_label_and_body_without_fresh_bound_approval_fail():
+def test_valid_rationale_without_exact_snapshot_review_fails():
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=_VALID_BODY,
         policy=_POLICY,
     )
 
     assert result.allowed is False
-    assert "approval:fresh legacy-ui-exception label bound to current head/body" in (
-        result.missing_fields
-    )
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
 
-
-def _write_exception_approval_files(
-    tmp_path: Path,
-    *,
-    event_body: str = _VALID_BODY,
-    current_body: str = _VALID_BODY,
-    event_head: str = "a" * 40,
-    current_head: str = "a" * 40,
-    action: str = "labeled",
-    event_label: str = "legacy-ui-exception",
-    sender_type: str = "User",
-    permission: str = "write",
-    role_name: str = "maintain",
-    permission_login: str = "maintainer",
-) -> tuple[Path, Path, Path]:
-    event = {
-        "action": action,
-        "number": 123,
-        "label": {"name": event_label},
-        "sender": {"login": "maintainer", "type": sender_type},
-        "repository": {"full_name": "Factory/MIRA"},
-        "pull_request": {
-            "number": 123,
-            "body": event_body,
-            "head": {"sha": event_head},
-        },
-    }
-    current = {
-        "number": 123,
-        "body": current_body,
-        "head": {"sha": current_head},
-        "base": {"repo": {"full_name": "Factory/MIRA"}},
-        "labels": [{"name": "legacy-ui-exception"}],
-    }
-    event_path = tmp_path / "event.json"
-    pull_path = tmp_path / "current-pr.json"
-    permission_path = tmp_path / "approver-permission.json"
-    event_path.write_text(json.dumps(event))
-    pull_path.write_text(json.dumps(current))
-    permission_path.write_text(
-        json.dumps(
-            {
-                "permission": permission,
-                "role_name": role_name,
-                "user": {"login": permission_login},
-            }
-        )
-    )
-    return event_path, pull_path, permission_path
-
-
-def test_fresh_user_label_event_bound_to_current_head_and_body_is_valid(tmp_path):
-    event_path, pull_path, permission_path = _write_exception_approval_files(tmp_path)
-
-    approval = load_exception_approval(event_path, pull_path, permission_path)
-
-    assert approval.valid is True
-    assert approval.approver == "maintainer"
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"current_body": _VALID_BODY + "\nchanged after approval"},
-        {"current_head": "b" * 40},
-        {"action": "edited"},
-        {"event_label": "some-other-label"},
-        {"sender_type": "Bot"},
-    ],
-)
-def test_exception_approval_invalidates_on_body_head_event_or_actor_change(tmp_path, overrides):
-    event_path, pull_path, permission_path = _write_exception_approval_files(tmp_path, **overrides)
-
-    approval = load_exception_approval(event_path, pull_path, permission_path)
-
-    assert approval.valid is False
-
-
-@pytest.mark.parametrize(
-    ("permission", "role_name"),
-    [
-        ("write", "write"),
-        ("read", "triage"),
-        ("read", "read"),
-        ("none", "none"),
-        ("write", "custom-release-role"),
-    ],
-)
-def test_exception_approval_rejects_actor_without_maintain_or_admin_permission(
-    tmp_path, permission, role_name
-):
-    event_path, pull_path, permission_path = _write_exception_approval_files(
-        tmp_path, permission=permission, role_name=role_name
-    )
-
-    approval = load_exception_approval(event_path, pull_path, permission_path)
-
-    assert approval.valid is False
-    assert "maintain or admin" in approval.reason
-
-
-def test_exception_approval_accepts_admin_legacy_permission(tmp_path):
-    event_path, pull_path, permission_path = _write_exception_approval_files(
-        tmp_path, permission="admin", role_name="admin"
-    )
-
-    approval = load_exception_approval(event_path, pull_path, permission_path)
-
-    assert approval.valid is True
-
-
-def test_exception_approval_rejects_permission_record_for_different_actor(tmp_path):
-    event_path, pull_path, permission_path = _write_exception_approval_files(
-        tmp_path, permission_login="someone-else"
-    )
-
-    approval = load_exception_approval(event_path, pull_path, permission_path)
-
-    assert approval.valid is False
-    assert "permission record actor mismatches" in approval.reason
 
 
 # ---------------------------------------------------------------------------
@@ -921,14 +818,14 @@ def test_unclosed_fenced_code_block_swallows_everything_after_it():
     # section that follows it — never leave it scannable, but also never
     # leave it silently un-stripped as literal ``` text in the visible body.
     body = "```markdown\nsome pasted diff\n" + _VALID_BODY
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
-    assert any("Legacy UI exception section" in f for f in result.missing_fields)
+    assert any("Lifecycle guard rationale section" in f for f in result.missing_fields)
 
 
 def test_tilde_fenced_code_block_is_stripped_like_backticks():
     body = "~~~markdown\n" + _VALID_BODY + "\n~~~\n"
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
 
 
@@ -938,7 +835,7 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
         textwrap.dedent(
             """
             - ```markdown
-              ## Legacy UI exception
+              ## Lifecycle guard rationale
             Reason: severity one repair for a broken rollback path
             Canonical replacement impact: canonical shell remains fully unaffected
             Rollback: revert the emergency repair commit cleanly
@@ -947,7 +844,7 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
         textwrap.dedent(
             """
             1. ~~~markdown
-               ## Legacy UI exception
+               ## Lifecycle guard rationale
                ~~~
             Reason: severity one repair for a broken rollback path
             Canonical replacement impact: canonical shell remains fully unaffected
@@ -959,7 +856,7 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
             - ```markdown
               decoy
             - ```
-              ## Legacy UI exception
+              ## Lifecycle guard rationale
             Reason: severity one repair for a broken rollback path
             Canonical replacement impact: canonical shell remains fully unaffected
             Rollback: revert the emergency repair commit cleanly
@@ -975,17 +872,16 @@ def test_tilde_fenced_code_block_is_stripped_like_backticks():
 def test_list_contained_fence_cannot_supply_exception_heading(body):
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
     expected = (
-        "body:renderer-specific markup invalidates Legacy UI exception"
+        "body:renderer-specific markup invalidates Lifecycle guard rationale"
         if "~" in body
-        else "body:## Legacy UI exception section"
+        else "body:## Lifecycle guard rationale section"
     )
     assert expected in result.missing_fields
 
@@ -1001,14 +897,13 @@ def test_list_contained_fence_cannot_supply_exception_heading(body):
 def test_container_transition_cannot_close_fence_and_expose_exception(body):
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:## Legacy UI exception section" in result.missing_fields
+    assert "body:## Lifecycle guard rationale section" in result.missing_fields
 
 
 def test_closed_top_level_fence_before_live_exception_still_passes():
@@ -1016,10 +911,9 @@ def test_closed_top_level_fence_before_live_exception_still_passes():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is True
@@ -1036,7 +930,7 @@ def test_closed_top_level_fence_before_live_exception_still_passes():
 )
 def test_raw_html_block_cannot_supply_exception_heading(open_tag, close_tag):
     body = (
-        f"{open_tag}\n## Legacy UI exception\n{close_tag}\n"
+        f"{open_tag}\n## Lifecycle guard rationale\n{close_tag}\n"
         "Reason: severity one repair for a broken rollback path\n"
         "Canonical replacement impact: canonical shell remains fully unaffected\n"
         "Rollback: revert the emergency repair commit cleanly\n"
@@ -1044,14 +938,13 @@ def test_raw_html_block_cannot_supply_exception_heading(open_tag, close_tag):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1059,7 +952,7 @@ def test_raw_html_block_cannot_supply_exception_heading(open_tag, close_tag):
 def test_raw_html_block_cannot_supply_exception_fields():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         <div>
         Reason: severity one repair for a broken rollback path
@@ -1071,14 +964,13 @@ def test_raw_html_block_cannot_supply_exception_fields():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1087,7 +979,7 @@ def test_raw_html_block_cannot_supply_exception_fields():
 def test_blank_line_html_container_cannot_wrap_exception_section(tag):
     body = (
         f"<{tag}>\n\n"
-        "## Legacy UI exception\n\n"
+        "## Lifecycle guard rationale\n\n"
         "Reason: severity one repair for a broken rollback path\n"
         "Canonical replacement impact: canonical shell remains fully unaffected\n"
         "Rollback: revert the emergency repair commit cleanly\n\n"
@@ -1096,34 +988,32 @@ def test_blank_line_html_container_cannot_wrap_exception_section(tag):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
 
 def test_non_comment_inline_html_invalidates_exception_body():
     body = _VALID_BODY.replace(
-        "Reason: severity-1 production repair for a broken rollback path",
-        "Reason: <span>severity-1 production repair for a broken rollback path</span>",
+        "Reason: severity-1 production repair for a broken rollback route",
+        "Reason: <span>severity-1 production repair for a broken rollback route</span>",
     )
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1133,10 +1023,9 @@ def test_standalone_html_comment_before_live_exception_is_allowed():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is True
@@ -1152,14 +1041,13 @@ def test_malformed_html_comment_cannot_open_hidden_container(prefix):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1169,21 +1057,20 @@ def test_overlapping_html_comment_delimiters_are_not_a_valid_empty_comment():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:unsafe or non-comment HTML invalidates Legacy UI exception" in (
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
 
 @pytest.mark.parametrize(
     "nested_heading",
-    ["- item\n  ## Legacy UI exception", "> ## Legacy UI exception"],
+    ["- item\n  ## Lifecycle guard rationale", "> ## Lifecycle guard rationale"],
     ids=("list", "blockquote"),
 )
 def test_nested_heading_is_not_a_top_level_exception_section(nested_heading):
@@ -1196,20 +1083,19 @@ def test_nested_heading_is_not_a_top_level_exception_section(nested_heading):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:## Legacy UI exception section" in result.missing_fields
+    assert "body:## Lifecycle guard rationale section" in result.missing_fields
 
 
 @pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\u0085", "\v", "\f"])
 def test_non_commonmark_line_separator_cannot_shift_exception_heading_lookup(separator):
     body = (
-        f"prefix{separator}## Legacy UI exception\n"
+        f"prefix{separator}## Lifecycle guard rationale\n"
         "## Other heading\n"
         "Reason: severity one repair for a broken rollback path\n"
         "Canonical replacement impact: canonical shell remains fully unaffected\n"
@@ -1218,20 +1104,19 @@ def test_non_commonmark_line_separator_cannot_shift_exception_heading_lookup(sep
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:## Legacy UI exception section" in result.missing_fields
+    assert "body:## Lifecycle guard rationale section" in result.missing_fields
 
 
 def test_gfm_table_cannot_supply_top_level_exception_fields():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: severity one repair for a broken rollback path | note
         --- | ---
@@ -1242,10 +1127,9 @@ def test_gfm_table_cannot_supply_top_level_exception_fields():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1258,20 +1142,19 @@ def test_gfm_table_cannot_supply_top_level_exception_fields():
 
 def test_struck_through_text_cannot_supply_exception_field_value():
     body = _VALID_BODY.replace(
-        "Reason: severity-1 production repair for a broken rollback path",
-        "Reason: ~~severity-1 production repair for a broken rollback path~~",
+        "Reason: severity-1 production repair for a broken rollback route",
+        "Reason: ~~severity-1 production repair for a broken rollback route~~",
     )
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+    assert "body:renderer-specific markup invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1279,7 +1162,7 @@ def test_struck_through_text_cannot_supply_exception_field_value():
 def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: ~severity one repair for a broken rollback path~
         Canonical replacement impact: ~canonical shell remains fully unaffected~
@@ -1289,14 +1172,13 @@ def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+    assert "body:renderer-specific markup invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1304,7 +1186,7 @@ def test_github_single_tilde_struck_text_cannot_supply_exception_field_values():
 def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         ~concealed attestation begins
         Reason: severity one repair for a broken rollback path
@@ -1316,14 +1198,13 @@ def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph(
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
-    assert "body:renderer-specific markup invalidates Legacy UI exception" in (
+    assert "body:renderer-specific markup invalidates Lifecycle guard rationale" in (
         result.missing_fields
     )
 
@@ -1333,7 +1214,7 @@ def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph(
     [
         textwrap.dedent(
             """
-            ## Legacy UI exception
+            ## Lifecycle guard rationale
 
             [^attest]:
                 Reason: severity one repair for a broken rollback path
@@ -1343,7 +1224,7 @@ def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph(
         ),
         textwrap.dedent(
             """
-            ## Legacy UI exception
+            ## Lifecycle guard rationale
 
             [review the attestation][^long-hyphenated-attestation-reference]
 
@@ -1366,10 +1247,9 @@ def test_github_single_tilde_wrapper_cannot_strike_entire_attestation_paragraph(
 def test_github_footnote_container_cannot_supply_exception_fields(body):
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1381,7 +1261,7 @@ def test_github_footnote_container_cannot_supply_exception_fields(body):
     [
         textwrap.dedent(
             r"""
-            ## Legacy UI exception
+            ## Lifecycle guard rationale
 
             $$
             Reason: severity one repair for a broken rollback path
@@ -1392,7 +1272,7 @@ def test_github_footnote_container_cannot_supply_exception_fields(body):
         ),
         textwrap.dedent(
             r"""
-            ## Legacy UI exception
+            ## Lifecycle guard rationale
 
             Reason: $\phantom{severity one repair for a broken rollback path}$
             Canonical replacement impact: $\phantom{canonical shell remains fully unaffected}$
@@ -1401,7 +1281,7 @@ def test_github_footnote_container_cannot_supply_exception_fields(body):
         ),
         textwrap.dedent(
             r"""
-            ## Legacy UI exception
+            ## Lifecycle guard rationale
 
             Reason: $`\phantom{severity one repair for a broken rollback path}`$
             Canonical replacement impact: $`\phantom{canonical shell remains fully unaffected}`$
@@ -1420,10 +1300,9 @@ def test_github_footnote_container_cannot_supply_exception_fields(body):
 def test_github_math_container_cannot_hide_exception_fields(body):
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1441,7 +1320,7 @@ def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
     rollback = value_template.format(alias="leftwards_arrow_with_hook")
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {reason}
         Canonical replacement impact: {impact}
@@ -1451,10 +1330,9 @@ def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1470,7 +1348,7 @@ def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
     invisible_value = (filler * 4 + " ") * 3
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {invisible_value}
         Canonical replacement impact: {invisible_value}
@@ -1480,10 +1358,9 @@ def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1501,7 +1378,7 @@ def test_unicode_combining_overlays_cannot_visually_strike_field_values(overlay)
 
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {crossed_out("severity one repair for a broken rollback path")}
         Canonical replacement impact: {crossed_out("canonical shell remains fully unaffected")}
@@ -1511,10 +1388,9 @@ def test_unicode_combining_overlays_cannot_visually_strike_field_values(overlay)
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1530,7 +1406,7 @@ def test_non_commonmark_separator_cannot_manufacture_field_lines_before_work_cla
     separator,
 ):
     body = (
-        "## Legacy UI exception\n\n"
+        "## Lifecycle guard rationale\n\n"
         "Reason: severity one repair for a broken rollback path"
         f"{separator}Canonical replacement impact: canonical shell remains fully unaffected"
         f"{separator}Rollback: revert the emergency repair commit cleanly"
@@ -1539,10 +1415,9 @@ def test_non_commonmark_separator_cannot_manufacture_field_lines_before_work_cla
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1557,7 +1432,7 @@ def test_character_reference_line_feed_cannot_manufacture_field_or_work_claim_li
     line_feed_entity,
 ):
     body = (
-        "## Legacy UI exception\n\n"
+        "## Lifecycle guard rationale\n\n"
         "Reason: severity one repair for a broken rollback path"
         f"{line_feed_entity}Canonical replacement impact: canonical shell remains fully unaffected"
         f"{line_feed_entity}Rollback: revert the emergency repair commit cleanly"
@@ -1567,10 +1442,9 @@ def test_character_reference_line_feed_cannot_manufacture_field_or_work_claim_li
 
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
 
     assert result.allowed is False
@@ -1582,7 +1456,7 @@ def test_character_reference_line_feed_cannot_manufacture_field_or_work_claim_li
 
 def test_unclosed_html_comment_swallows_everything_after_it():
     body = "<!-- pasted context, never closed\n" + _VALID_BODY
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("unsafe or non-comment HTML" in f for f in result.missing_fields)
 
@@ -1600,14 +1474,14 @@ def test_unclosed_html_comment_swallows_everything_after_it():
 def test_placeholder_phrase_variants_fail(placeholder_value):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {placeholder_value}
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
@@ -1616,14 +1490,14 @@ def test_placeholder_phrase_variants_fail(placeholder_value):
 def test_punctuation_only_values_fail(punctuation_value):
     body = textwrap.dedent(
         f"""
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: {punctuation_value}
         Canonical replacement impact: something real happens here
         Rollback: revert the commit
         """
     )
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
 
@@ -1631,7 +1505,7 @@ def test_punctuation_only_values_fail(punctuation_value):
 def test_one_character_exception_values_fail_as_non_substantive():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: x
         Canonical replacement impact: x
@@ -1639,7 +1513,12 @@ def test_one_character_exception_values_fail_as_non_substantive():
         """
     )
 
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
 
     assert result.allowed is False
     assert set(result.missing_fields) == {
@@ -1652,7 +1531,7 @@ def test_one_character_exception_values_fail_as_non_substantive():
 def test_long_single_token_exception_value_fails_as_non_substantive():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: xxxxxxxxxxxxxxxxxxxxxxxxx
         Canonical replacement impact: something real happens here
@@ -1660,7 +1539,7 @@ def test_long_single_token_exception_value_fails_as_non_substantive():
         """
     )
 
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    result = evaluate(_TOUCH, pr_body=body, policy=_POLICY)
 
     assert result.allowed is False
     assert any("Reason" in field for field in result.missing_fields)
@@ -1671,7 +1550,7 @@ def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
     # a placeholder-vocabulary word away from the start of the value.
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: the TODO comment in home.ts was hiding a null deref
         Canonical replacement impact: none, this only touches the recovery route
@@ -1680,10 +1559,9 @@ def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
     )
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
     assert result.allowed is True
 
@@ -1691,7 +1569,7 @@ def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
 def test_duplicate_field_label_within_one_section_is_ambiguous_and_fails():
     body = textwrap.dedent(
         """
-        ## Legacy UI exception
+        ## Lifecycle guard rationale
 
         Reason: a real reason for this exception
         Reason: a second, contradicting reason
@@ -1703,10 +1581,9 @@ def test_duplicate_field_label_within_one_section_is_ambiguous_and_fails():
     # cannot pass merely because the approval precondition failed first.
     result = evaluate(
         _TOUCH,
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
     assert result.allowed is False
     assert any("Reason" in f for f in result.missing_fields)
@@ -2078,7 +1955,7 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
 
     assert path_is_guarded(path, policy), f"expected {path} to be guarded"
     result = evaluate(
-        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=policy
+        [ChangedFile(status="added", path=path)], pr_body="", policy=policy
     )
     assert result.allowed is False
 
@@ -2201,7 +2078,7 @@ def test_legacy_surface_build_mount_and_alternate_entry_controls_fail_closed(pat
 
     assert path_is_guarded(path, policy), f"expected build/mount control {path} to be guarded"
     result = evaluate(
-        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=policy
+        [ChangedFile(status="modified", path=path)], pr_body="", policy=policy
     )
     assert result.allowed is False
 
@@ -2266,7 +2143,7 @@ def test_test_shaped_names_inside_legacy_source_cannot_escape_classification(pat
 
     assert path_is_guarded(path, policy), f"runtime-capable source path {path} must be guarded"
     result = evaluate(
-        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=policy
+        [ChangedFile(status="modified", path=path)], pr_body="", policy=policy
     )
     assert result.allowed is False
 
@@ -2451,7 +2328,7 @@ def test_public_static_presentation_capable_additions_are_guarded(path):
     real_policy = load_guard_policy(REAL_REGISTRY)
     assert path_is_guarded(path, real_policy), f"expected {path} to be guarded"
     result = evaluate(
-        [ChangedFile(status="added", path=path)], labels=set(), pr_body="", policy=real_policy
+        [ChangedFile(status="added", path=path)], pr_body="", policy=real_policy
     )
     assert result.allowed is False
 
@@ -2460,7 +2337,6 @@ def test_public_static_active_deletion_is_guarded():
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
         [ChangedFile(status="removed", path="mira-web/public/app.js")],
-        labels=set(),
         pr_body="",
         policy=real_policy,
     )
@@ -2477,7 +2353,6 @@ def test_public_static_both_rename_directions_are_guarded():
                 previous_path="scripts/build-only.js",
             )
         ],
-        labels=set(),
         pr_body="",
         policy=real_policy,
     )
@@ -2491,7 +2366,6 @@ def test_public_static_both_rename_directions_are_guarded():
                 previous_path="mira-web/public/renamed-out.js",
             )
         ],
-        labels=set(),
         pr_body="",
         policy=real_policy,
     )
@@ -2512,7 +2386,7 @@ def test_public_static_executable_infrastructure_files_are_guarded(path):
     real_policy = load_guard_policy(REAL_REGISTRY)
     assert path_is_guarded(path, real_policy), f"expected {path} to be guarded (executable JS)"
     result = evaluate(
-        [ChangedFile(status="modified", path=path)], labels=set(), pr_body="", policy=real_policy
+        [ChangedFile(status="modified", path=path)], pr_body="", policy=real_policy
     )
     assert result.allowed is False
 
@@ -2609,7 +2483,7 @@ def test_load_changed_files_attaches_immutable_github_tree_evidence(tmp_path):
             tree_evidence_complete=True,
         ),
     )
-    result = evaluate(changes, labels=set(), pr_body="", policy=load_guard_policy(REAL_REGISTRY))
+    result = evaluate(changes, pr_body="", policy=load_guard_policy(REAL_REGISTRY))
     assert result.allowed is False
 
 
@@ -2763,15 +2637,58 @@ def test_cli_accepts_changes_json_file_with_count_and_immutable_trees(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# --labels-file is the ONLY labels input the CLI accepts — no bare --labels.
+# The guard CLI exposes only the exact-snapshot review route.
 # ---------------------------------------------------------------------------
 
 
-def test_cli_has_no_bare_labels_flag():
+def test_cli_has_no_label_or_permission_inputs():
     parser = _build_arg_parser()
     option_strings = {opt for action in parser._actions for opt in action.option_strings}
-    assert "--labels-file" in option_strings
-    assert "--labels" not in option_strings
+    assert not {
+        "--labels",
+        "--labels-file",
+        "--event-json-file",
+        "--approver-permission-json-file",
+    } & option_strings
+
+
+@pytest.mark.parametrize(
+    "obsolete_flag",
+    ["--labels-file", "--event-json-file", "--approver-permission-json-file"],
+)
+def test_removed_cli_flags_are_unknown_arguments(obsolete_flag):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(REPO_ROOT / "tools" / "ui_surface_lifecycle_guard.py"),
+            "--base",
+            "HEAD~1",
+            "--head",
+            "HEAD",
+            obsolete_flag,
+            "obsolete-input.json",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert f"unrecognized arguments: {obsolete_flag}" in completed.stderr
+
+
+def test_guard_executable_contains_no_obsolete_label_authorization_route():
+    source = (REPO_ROOT / "tools" / "ui_surface_lifecycle_guard.py").read_text(encoding="utf-8")
+    for obsolete in (
+        "ExceptionApproval",
+        "load_exception_approval",
+        "_LEGACY_LABEL",
+        "--labels-file",
+        "--event-json-file",
+        "--approver-permission-json-file",
+    ):
+        assert obsolete not in source
 
 
 # ---------------------------------------------------------------------------
@@ -2793,7 +2710,6 @@ def test_every_control_pattern_is_guarded_without_exception(control_path):
     assert path_is_guarded(control_path, real_policy)
     result = evaluate(
         [ChangedFile(status="modified", path=control_path)],
-        labels=set(),
         pr_body="",
         policy=real_policy,
     )
@@ -3192,19 +3108,20 @@ def test_pr_template_has_exactly_one_blank_exception_section_that_fails_closed()
     template_path = REPO_ROOT / ".github" / "pull_request_template.md"
     assert template_path.exists()
     body = template_path.read_text(encoding="utf-8")
+    # Task 4 owns the template migration; until then its legacy heading must
+    # remain non-authoritative even when the three fields are populated.
     assert body.count("## Legacy UI exception") == 1
 
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
         [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
-        labels={"legacy-ui-exception"},
         pr_body=body,
         policy=real_policy,
     )
     assert result.allowed is False, "the blank template scaffold must not itself satisfy the guard"
 
 
-def test_pr_template_exception_section_passes_once_filled_with_substantive_text():
+def test_legacy_pr_template_section_cannot_authorize_once_filled():
     template_path = REPO_ROOT / ".github" / "pull_request_template.md"
     body = template_path.read_text(encoding="utf-8")
     filled = body.replace(
@@ -3218,12 +3135,12 @@ def test_pr_template_exception_section_passes_once_filled_with_substantive_text(
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
         [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
-        labels={"legacy-ui-exception"},
         pr_body=filled,
         policy=real_policy,
-        exception_approval_valid=True,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
-    assert result.allowed is True
+    assert result.allowed is False
+    assert "body:## Lifecycle guard rationale section" in result.missing_fields
 
 
 def test_mobile_release_tests_are_isolated_from_production_signing_workspace():
@@ -4197,170 +4114,31 @@ def test_ota_workflow_enforces_canary_first_promotion():
 
 
 # ---------------------------------------------------------------------------
-# A non-`labeled` run carries no attestation — that is a NON-APPROVAL, not a
-# malformed-metadata error.
-#
-# `main()` passes `--event-json-file` on every invocation, so
-# `load_exception_approval` ran on every push. GitHub only populates
-# `event.label` on a `labeled` event, so the strict object check raised
-# `exception approval metadata is missing required GitHub objects` and failed
-# the guard on every PR — including PRs whose diff touches no guarded path at
-# all. Observed on PR #3682 at 2eb3701e, whose failure message named a missing
-# GitHub object rather than anything about the change.
-#
-# The fix must be fail-closed: returning `valid=False` grants nothing, so a PR
-# that DOES touch a guarded path is still blocked (asserted below), and a
-# `labeled` act with malformed metadata must still raise (asserted below).
 # ---------------------------------------------------------------------------
-
-
-def _non_label_event_files(tmp_path, action: str = "synchronize"):
-    """A realistic push/synchronize event: no `label` object, as GitHub sends."""
-    event_path = tmp_path / "event.json"
-    pull_path = tmp_path / "pull.json"
-    permission_path = tmp_path / "permission.json"
-    head_sha = "a" * 40
-    event_path.write_text(
-        json.dumps(
-            {
-                "action": action,
-                "pull_request": {"head": {"sha": head_sha}, "body": "body"},
-                "sender": {"type": "User", "login": "someone"},
-                "repository": {"full_name": "Mikecranesync/MIRA"},
-            }
-        )
-    )
-    pull_path.write_text(
-        json.dumps(
-            {
-                "head": {"sha": head_sha},
-                "base": {"repo": {"full_name": "Mikecranesync/MIRA"}},
-                "labels": [{"name": "review:PARTIAL"}],
-                "body": "body",
-            }
-        )
-    )
-    permission_path.write_text(
-        json.dumps({"permission": "write", "role_name": "maintain", "user": {"login": "someone"}})
-    )
-    return event_path, pull_path, permission_path
-
-
-@pytest.mark.parametrize("action", ["synchronize", "opened", "reopened", "edited", "unlabeled"])
-def test_non_label_event_is_a_non_approval_not_an_error(tmp_path, action):
-    """The regression: these actions must not raise, and must not approve."""
-    paths = _non_label_event_files(tmp_path, action=action)
-
-    approval = load_exception_approval(*paths)
-
-    assert approval.valid is False
-    assert approval.approver is None
-    assert "attestation" in approval.reason
-
-
-def test_non_label_event_still_blocks_a_guarded_path(tmp_path):
-    """Fail-closed control. The non-approval must not become a free pass."""
-    approval = load_exception_approval(*_non_label_event_files(tmp_path))
-    assert approval.valid is False
-
-    result = evaluate(
-        [ChangedFile(path="mira-hub/src/app/(hub)/feed/page.tsx", status="modified")],
-        [],
-        "",
-        load_guard_policy(REAL_REGISTRY),
-        exception_approval_valid=approval.valid,
-    )
-
-    assert result.allowed is False
-    assert "feed/page.tsx" in result.message
-
-
-def test_a_labeled_act_with_malformed_metadata_still_raises(tmp_path):
-    """Tamper detection is unchanged: once it IS a label act, every object is
-    still required. Without this the fix could have degraded a tampered
-    attestation into a silent non-approval."""
-    event_path, pull_path, permission_path = _non_label_event_files(tmp_path)
-    event_path.write_text(
-        json.dumps(
-            {
-                "action": "labeled",
-                "label": {"name": "legacy-ui-exception"},
-                "pull_request": {"head": {"sha": "a" * 40}, "body": "body"},
-                # `sender` deliberately absent — the malformed case.
-            }
-        )
-    )
-
-    with pytest.raises(GuardPolicyError, match="missing required GitHub objects"):
-        load_exception_approval(event_path, pull_path, permission_path)
-
-
-@pytest.mark.parametrize(
-    "malformed_label",
-    ["legacy-ui-exception", None, ["legacy-ui-exception"], 7],
-    ids=["string", "null", "list", "number"],
-)
-def test_a_labeled_act_with_a_malformed_label_raises_rather_than_reporting_no_attestation(
-    tmp_path, malformed_label
-):
-    """Diagnostics control (peer review of 719c0e99).
-
-    The first draft of the early return also tested `isinstance(event_label,
-    dict)`, so a GENUINE `labeled` act whose `label` was malformed took the
-    non-approval path and was told "no GitHub label-event attestation on this
-    run" — pointing the author at the push/label distinction instead of at
-    their malformed metadata. No security impact (a non-approval blocks either
-    way), but it is the same misdirection this fix exists to remove: the old
-    message said "policy violation" when it meant "missing JSON key".
-
-    A malformed `label` on a real label act is malformed METADATA and must
-    reach the strict object check.
-    """
-    event_path, pull_path, permission_path = _non_label_event_files(tmp_path)
-    event_path.write_text(
-        json.dumps(
-            {
-                "action": "labeled",
-                "label": malformed_label,
-                "pull_request": {"head": {"sha": "a" * 40}, "body": "body"},
-                "sender": {"type": "User", "login": "someone"},
-                "repository": {"full_name": "Mikecranesync/MIRA"},
-            }
-        )
-    )
-
-    with pytest.raises(GuardPolicyError, match="missing required GitHub objects"):
-        load_exception_approval(event_path, pull_path, permission_path)
-
-
-def test_a_valid_label_act_is_unaffected_by_the_fix(tmp_path):
-    """Positive control: the happy path still approves, so the new early
-    return cannot be shadowing real attestations."""
-    approval = load_exception_approval(*_write_exception_approval_files(tmp_path))
-    assert approval.valid is True
-
-
+# The Codex adversarial-review ledger is the sole authorization route for a
+# guarded touch. Expansion of frozen legacy UI remains a blocker, never GREEN.
 # ---------------------------------------------------------------------------
-# Independent-review route — the Codex adversarial-review ledger is the exact-
-# head attestation for Category 2 (migration / removal / adapter) legacy
-# touches. Spec: FactoryLM Legacy UI Gate — Agent-Autonomous Governance
-# Update (2026-09-18), scenarios A–D. The maintainer label route is unchanged
-# and remains the only route for a true architectural exception (Codex reports
-# expansion of frozen legacy UI as a BLOCKER, never GREEN).
-# ---------------------------------------------------------------------------
-
-load_codex_attestation = _guard.load_codex_attestation
-CodexAttestation = _guard.CodexAttestation
 
 _HEAD_A = "a" * 40
 _HEAD_B = "b" * 40
 _OWNER = "repo-owner"
 
 
-def _ledger_comment(sha: str, status: str, iteration: int = 1) -> str:
+def _body_sha256(body: str) -> str:
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _ledger_comment(
+    sha: str,
+    status: str,
+    iteration: int = 1,
+    *,
+    body: str = _VALID_BODY,
+) -> str:
     return (
         "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
-        f"reviewed_sha: {sha}\nbase_sha: {'c' * 40}\nstatus: {status}\n"
+        f"reviewed_sha: {sha}\nreviewed_body_sha256: {_body_sha256(body)}\n"
+        f"base_sha: {'c' * 40}\nstatus: {status}\n"
         f"review_iteration: {iteration}\nreview_scope: full\n```\n\n"
         f"ADVERSARIAL GATE: {status}\n"
     )
@@ -4372,6 +4150,7 @@ def _write_codex_ledger(
     *,
     head: str = _HEAD_A,
     owner: str = _OWNER,
+    body: str | None = _VALID_BODY,
 ) -> tuple[Path, Path]:
     comments_path = tmp_path / "review-comments.jsonl"
     pull_path = tmp_path / "current-pr.json"
@@ -4380,7 +4159,7 @@ def _write_codex_ledger(
         json.dumps(
             {
                 "number": 123,
-                "body": _VALID_BODY,
+                "body": body,
                 "head": {"sha": head},
                 "base": {"repo": {"full_name": f"{owner}/MIRA", "owner": {"login": owner}}},
                 "labels": [],
@@ -4396,7 +4175,7 @@ def _owner_comment(comment_id: int, body: str, *, login: str = _OWNER, type_: st
 
 def test_scenario_a_category_1_no_guarded_touch_passes_without_any_attestation():
     changes = [ChangedFile(status="modified", path="packages/factorylm-ui/src/x.tsx")]
-    result = evaluate(changes, labels=set(), pr_body="", policy=_POLICY, codex_attestation=None)
+    result = evaluate(changes, pr_body="", policy=_POLICY, codex_attestation=None)
     assert result.allowed is True
     assert result.guarded_paths == ()
 
@@ -4408,13 +4187,85 @@ def test_scenario_b_codex_green_at_exact_head_passes_guarded_touch_without_label
     attestation = load_codex_attestation(comments_path, pull_path)
     assert attestation.valid is True
     assert attestation.reviewed_sha == _HEAD_A
+    assert attestation.reviewed_body_sha256 == _body_sha256(_VALID_BODY)
 
     result = evaluate(
-        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+        _TOUCH, pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
     )
     assert result.allowed is True
     assert result.message.startswith("INDEPENDENT REVIEW:")
     assert "legacy/tree/a.ts" in result.message
+
+
+def test_codex_green_for_same_head_but_old_body_is_stale(tmp_path):
+    old_body = _VALID_BODY.replace("rollback route", "old rollback route")
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN", body=old_body))],
+        body=_VALID_BODY,
+    )
+
+    attestation = load_codex_attestation(comments_path, pull_path)
+
+    assert attestation.valid is False
+    assert attestation.reviewed_body_sha256 == _body_sha256(old_body)
+    assert attestation.reason.startswith("review body stale")
+
+
+def test_legacy_digestless_comment_never_authorizes(tmp_path):
+    legacy_comment = (
+        "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
+        f"reviewed_sha: {_HEAD_A}\nbase_sha: {'c' * 40}\nstatus: GREEN\n"
+        "review_iteration: 1\nreview_scope: full\n```\n\n"
+        "ADVERSARIAL GATE: GREEN\n"
+    )
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, legacy_comment)]
+    )
+
+    attestation = load_codex_attestation(comments_path, pull_path)
+
+    assert attestation.valid is False
+    assert attestation.reviewed_sha is None
+    assert attestation.reviewed_body_sha256 is None
+
+
+def test_missing_current_body_fails_closed(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    current = json.loads(pull_path.read_text())
+    del current["body"]
+    pull_path.write_text(json.dumps(current))
+
+    with pytest.raises(GuardPolicyError, match="body is missing"):
+        load_codex_attestation(comments_path, pull_path)
+
+
+def test_null_current_body_is_normalized_to_empty_string(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path,
+        [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN", body=""))],
+        body=None,
+    )
+
+    attestation = load_codex_attestation(comments_path, pull_path)
+
+    assert attestation.valid is True
+    assert attestation.reviewed_body_sha256 == _body_sha256("")
+
+
+@pytest.mark.parametrize("body", [17, [], {}], ids=["integer", "list", "object"])
+def test_non_text_current_body_fails_closed(tmp_path, body):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    current = json.loads(pull_path.read_text())
+    current["body"] = body
+    pull_path.write_text(json.dumps(current))
+
+    with pytest.raises(GuardPolicyError, match="body is not text or null"):
+        load_codex_attestation(comments_path, pull_path)
 
 
 def test_codex_green_never_waives_the_substantive_exception_body(tmp_path):
@@ -4424,7 +4275,6 @@ def test_codex_green_never_waives_the_substantive_exception_body(tmp_path):
     attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
-        labels=set(),
         pr_body="no section here",
         policy=_POLICY,
         codex_attestation=attestation,
@@ -4443,12 +4293,12 @@ def test_scenario_d_green_at_old_head_is_stale_and_names_both_shas(tmp_path):
     assert _HEAD_B in attestation.reason
 
     result = evaluate(
-        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+        _TOUCH, pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
     )
     assert result.allowed is False
     assert result.message.startswith("REVIEW STALE")
     assert _HEAD_A in result.message
-    assert "no label action is needed" in result.message
+    assert "current head and body" in result.message
 
 
 def test_scenario_d_fresh_green_at_the_new_head_restores_the_gate(tmp_path):
@@ -4478,7 +4328,7 @@ def test_newer_issues_found_at_the_same_head_withdraws_an_older_green(tmp_path):
     assert attestation.status == "ISSUES_FOUND"
 
     result = evaluate(
-        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+        _TOUCH, pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
     )
     assert result.allowed is False
     assert result.message.startswith("INDEPENDENT REVIEW FOUND ISSUES")
@@ -4536,7 +4386,7 @@ def test_scenario_c_forged_or_foreign_ledger_comments_are_ignored(tmp_path, comm
     assert attestation.reviewed_sha is None
 
     result = evaluate(
-        _TOUCH, labels=set(), pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
+        _TOUCH, pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=attestation
     )
     assert result.allowed is False
     assert result.message.startswith("INDEPENDENT REVIEW REQUIRED")
@@ -4601,32 +4451,6 @@ def test_ledger_binding_fails_closed_without_owner_or_head(tmp_path, current):
         load_codex_attestation(comments_path, pull_path)
 
 
-def test_maintainer_label_route_is_unchanged_by_the_review_route():
-    """Positive control: the label route still passes exactly as before with
-    no ledger at all, and still fails without the fresh event."""
-    ok = evaluate(
-        _TOUCH,
-        labels={"legacy-ui-exception"},
-        pr_body=_VALID_BODY,
-        policy=_POLICY,
-        exception_approval_valid=True,
-        codex_attestation=None,
-    )
-    assert ok.allowed is True
-    assert ok.message.startswith("Audited legacy-ui-exception approved")
-    stale = evaluate(
-        _TOUCH,
-        labels={"legacy-ui-exception"},
-        pr_body=_VALID_BODY,
-        policy=_POLICY,
-        exception_approval_valid=False,
-        codex_attestation=None,
-    )
-    assert stale.allowed is False
-    assert "approval:fresh legacy-ui-exception label bound to current head/body" in (
-        stale.missing_fields
-    )
-
 
 def test_cli_review_comments_file_requires_current_pull_file(tmp_path):
     comments_path = tmp_path / "review-comments.jsonl"
@@ -4669,7 +4493,6 @@ def test_cli_end_to_end_codex_green_passes_guarded_change_without_label(tmp_path
     }
     (tmp_path / "base-tree.json").write_text(json.dumps(tree))
     (tmp_path / "head-tree.json").write_text(json.dumps(tree))
-    (tmp_path / "labels.txt").write_text("")
     (tmp_path / "body.md").write_text(_VALID_BODY)
     comments_path, pull_path = _write_codex_ledger(
         tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
@@ -4685,8 +4508,6 @@ def test_cli_end_to_end_codex_green_passes_guarded_change_without_label(tmp_path
         str(tmp_path / "base-tree.json"),
         "--head-tree-json-file",
         str(tmp_path / "head-tree.json"),
-        "--labels-file",
-        str(tmp_path / "labels.txt"),
         "--pr-body-file",
         str(tmp_path / "body.md"),
         "--current-pull-json-file",
@@ -4754,19 +4575,6 @@ def test_codex_prompt_makes_legacy_expansion_a_blocker_and_names_the_guard():
     assert "introduces or expands" in prompt
     assert "BLOCKER" in prompt
     assert ".claude/rules/factorylm-unified-ui-cutover.md" in prompt
-
-
-@pytest.mark.parametrize(
-    "extra",
-    [
-        ["--event-json-file", "e.json"],
-        ["--approver-permission-json-file", "p.json"],
-        ["--event-json-file", "e.json", "--approver-permission-json-file", "p.json"],
-    ],
-    ids=["event-alone", "permission-alone", "event+permission-without-pull"],
-)
-def test_cli_label_event_trio_still_all_or_nothing(extra):
-    assert main(["--base", "HEAD~1", "--head", "HEAD", *extra]) == 2
 
 
 def test_cli_current_pull_snapshot_may_stand_alone_for_the_review_route(tmp_path):
