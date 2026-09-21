@@ -1,14 +1,27 @@
 // Pure-logic regression net for the mobile client (Phase 3): deep-link tag
 // parsing (trust filter included), SSE chat parsing, cookie splitting, and the
 // canonical fail-closed nav model. No DOM, no network.
-import { describe, it, expect } from "vitest";
-import { extractAssetTag } from "../tags";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { extractAssetTag, initTagParser } from "../tags";
 import { parseChatSse } from "../sse";
 import { ApiError, splitSetCookie } from "../../api/client";
 import { apiErrorCopy } from "../api-error-copy";
 import { signInFailureCopy } from "../resource-copy";
 import { signOutSyncInProgressCopy, signOutWarningCopy } from "../sign-out-copy";
 import { TABS, visibleTabs, can } from "../../nav";
+
+// Mock BuildConfig to return production values for tests
+vi.mock("../../plugins/build-config", () => ({
+  default: {
+    getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
+    getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+  },
+}));
+
+beforeEach(async () => {
+  // Initialize tag parser before each test
+  await initTagParser();
+});
 
 describe("extractAssetTag (Hub scan-target semantics + trust filter)", () => {
   it("accepts full app URL, custom scheme, path, and raw tag", () => {

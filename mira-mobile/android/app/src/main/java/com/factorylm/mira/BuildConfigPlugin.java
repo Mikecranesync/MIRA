@@ -15,4 +15,12 @@ public class BuildConfigPlugin extends Plugin {
         ret.put("apiBase", BuildConfig.API_BASE);
         call.resolve(ret);
     }
+
+    @PluginMethod
+    public void getDeepLinkConfig(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("host", BuildConfig.DEEP_LINK_HOST);
+        ret.put("scheme", BuildConfig.DEEP_LINK_SCHEME);
+        call.resolve(ret);
+    }
 }

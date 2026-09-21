@@ -4,10 +4,12 @@
 //
 // Mobile adds exactly two sanctioned behaviors on top of the Hub grammar:
 //   1. Deep-link trust filter — an absolute-URL input resolves only from the
-//      canonical app origin (https://app.factorylm.com) or the app's own
-//      factorylm://m/ scheme. Foreign origins never resolve; the Hub, an
-//      authed web app, has no such concern.
-//   2. The factorylm:// scheme itself — the OS delivers it only to this app,
+//      canonical app origin (determined by build flavor: app.factorylm.com for
+//      production, app-staging.factorylm.com for staging) or the app's own
+//      custom scheme (factorylm:// for production, factorylmstaging:// for
+//      staging). Foreign origins never resolve; the Hub, an authed web app,
+//      has no such concern.
+//   2. The custom scheme itself — the OS delivers it only to this app,
 //      so it is resolved here by explicit prefix (never via URL parsing:
 //      WHATWG parsers read a non-special scheme's 'm' as the host, which is
 //      why the Hub resolver returns null for it).
@@ -28,14 +30,42 @@
 // divergence and the implementation can never drift apart silently).
 // Change the contract file, not just this file.
 
+import BuildConfig from "../plugins/build-config";
+
 const ASSET_TAG_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 
-const TRUSTED_ORIGIN = { protocol: "https:", host: "app.factorylm.com" };
-const APP_SCHEME_PREFIX = /^factorylm:\/\/m\//i;
+// Flavor-specific trust configuration, initialized on first use
+let TRUSTED_ORIGIN: { protocol: string; host: string } | null = null;
+let APP_SCHEME_PREFIX: RegExp | null = null;
+let configPromise: Promise<void> | null = null;
+
+async function initTrustConfig(): Promise<void> {
+  if (TRUSTED_ORIGIN !== null && APP_SCHEME_PREFIX !== null) return;
+  if (configPromise !== null) return configPromise;
+
+  configPromise = BuildConfig.getDeepLinkConfig()
+    .then(({ host, scheme }) => {
+      TRUSTED_ORIGIN = { protocol: "https:", host };
+      APP_SCHEME_PREFIX = new RegExp(`^${scheme}:\\/\\/m\\/`, "i");
+    })
+    .catch(() => {
+      // Fallback to production values if plugin fails (defensive)
+      TRUSTED_ORIGIN = { protocol: "https:", host: "app.factorylm.com" };
+      APP_SCHEME_PREFIX = /^factorylm:\/\/m\//i;
+    });
+
+  return configPromise;
+}
 
 /** The deep-link trust rule, on the normalized URL. Exported so the shadow
  * suite sanctions divergence with the SAME rule the implementation uses. */
 export function isTrustedDeepLink(input: string): boolean {
+  // Synchronous check requires config to be initialized first
+  if (TRUSTED_ORIGIN === null || APP_SCHEME_PREFIX === null) {
+    // Not initialized yet - reject as untrusted (fail-closed)
+    return false;
+  }
+
   const s = input.trim();
   if (APP_SCHEME_PREFIX.test(s)) return true;
   try {
@@ -46,6 +76,11 @@ export function isTrustedDeepLink(input: string): boolean {
   }
 }
 
+/** Initialize the trust configuration. Must be called before any tag extraction. */
+export async function initTagParser(): Promise<void> {
+  await initTrustConfig();
+}
+
 export function extractAssetTag(input: string): string | null {
   const s = input.trim();
   if (!s) return null;
@@ -54,13 +89,15 @@ export function extractAssetTag(input: string): string | null {
     // Absolute URL: trust filter first — foreign origins never resolve.
     if (!isTrustedDeepLink(s)) return null;
 
-    // factorylm://m/<TAG> — the app's own scheme, resolved by prefix
+    // Custom scheme: <scheme>://m/<TAG> — resolved by prefix
     // (scheme case-insensitive; the tag itself stays case-sensitive).
-    const appScheme = s.match(APP_SCHEME_PREFIX);
-    if (appScheme) {
-      const raw = s.slice(appScheme[0].length).split(/[?#]/)[0].replace(/\/$/, "");
-      const candidate = safeDecode(raw);
-      return ASSET_TAG_REGEX.test(candidate) ? candidate : null;
+    if (APP_SCHEME_PREFIX !== null) {
+      const appScheme = s.match(APP_SCHEME_PREFIX);
+      if (appScheme) {
+        const raw = s.slice(appScheme[0].length).split(/[?#]/)[0].replace(/\/$/, "");
+        const candidate = safeDecode(raw);
+        return ASSET_TAG_REGEX.test(candidate) ? candidate : null;
+      }
     }
 
     // https app URL — mirror Hub scan-target.ts exactly.

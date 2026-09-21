@@ -34,7 +34,15 @@ vi.mock("@capacitor/core", () => ({
     isNativePlatform: () => true,
   },
   CapacitorHttp: { request: vi.fn() },
-  registerPlugin: () => ({}),
+  registerPlugin: (name: string) => {
+    if (name === "BuildConfig") {
+      return {
+        getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
+        getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+      };
+    }
+    return {};
+  },
 }));
 
 vi.mock("@capacitor/preferences", () => ({
@@ -75,6 +83,7 @@ vi.mock("../screens/UnifiedRoot", () => ({
 }));
 
 import App, { handleDeepLink } from "../App";
+import { initTagParser } from "../lib/tags";
 
 const ME = {
   id: "u",
@@ -90,6 +99,8 @@ beforeEach(() => {
   storage.get.mockReset().mockResolvedValue({ value: null });
   prefStore.mem.clear();
   rootProbe.lastDeepLink = null;
+  // Initialize tag parser with mocked BuildConfig before each test
+  void initTagParser();
 });
 
 afterEach(() => {

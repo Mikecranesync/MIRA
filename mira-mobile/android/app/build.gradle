@@ -53,6 +53,8 @@ android {
             applicationIdSuffix ""
             // API_BASE injected as a BuildConfig constant for src/api/client.ts
             buildConfigField "String", "API_BASE", '"https://app.factorylm.com"'
+            buildConfigField "String", "DEEP_LINK_HOST", '"app.factorylm.com"'
+            buildConfigField "String", "DEEP_LINK_SCHEME", '"factorylm"'
             manifestPlaceholders = [
                 appLabel: "@string/app_name",
                 deepLinkHost: "app.factorylm.com",
@@ -64,6 +66,8 @@ android {
             applicationIdSuffix ".staging"
             // Staging backend URL
             buildConfigField "String", "API_BASE", '"https://app-staging.factorylm.com"'
+            buildConfigField "String", "DEEP_LINK_HOST", '"app-staging.factorylm.com"'
+            buildConfigField "String", "DEEP_LINK_SCHEME", '"factorylmstaging"'
             manifestPlaceholders = [
                 appLabel: "@string/app_name_staging",
                 deepLinkHost: "app-staging.factorylm.com",
