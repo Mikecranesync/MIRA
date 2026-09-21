@@ -32,18 +32,25 @@ echo "=== packages ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q ca-certificates curl gnupg git python3
-install -m 0755 -d /etc/apt/keyrings
-if [ ! -f /etc/apt/keyrings/docker.asc ]; then
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
-  # shellcheck source=/dev/null
-  . /etc/os-release
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
-    > /etc/apt/sources.list.d/docker.list
-  apt-get update -q
+# Docker: install ONLY if absent. On a host that already runs production, an
+# apt install/upgrade of docker-ce restarts dockerd and, without live-restore,
+# every container with it (incident 2026-09-21T10:26Z, #3930). Never "refresh".
+if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
+  echo "docker present ($(docker --version)); leaving the engine untouched"
+else
+  install -m 0755 -d /etc/apt/keyrings
+  if [ ! -f /etc/apt/keyrings/docker.asc ]; then
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+      > /etc/apt/sources.list.d/docker.list
+    apt-get update -q
+  fi
+  apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
 fi
-apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-systemctl enable --now docker
 if ! command -v doppler >/dev/null; then
   curl -sLf --retry 3 https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key \
     | gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg
