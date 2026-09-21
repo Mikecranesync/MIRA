@@ -4,7 +4,7 @@ Covers the 2026-08-17 hardening contract (Mike's directive):
   - duplicate ledger comments cannot inflate the iteration number
   - the 3-round budget is DURABLE across restarts (counted from the PR
     ledger), and post-cap review requires an explicit human authorization
-  - a stale GREEN (head moved during review) is exit 4, never GREEN
+  - a stale GREEN (head or body changed during review) is exit 4, never GREEN
   - malformed/forged marker comments never enter the validated ledger
   - argument parsing is strict (numeric PR ids only; --allow-dirty removed;
     unknown flags fail closed; --max-iter bounded)

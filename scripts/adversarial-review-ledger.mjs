@@ -13,7 +13,7 @@
 //     "next_iteration": N,        // max validated review_iteration + 1 (>= 1)
 //     "consumed": N,              // durable autonomous rounds consumed (see below)
 //     "already": 0|1,             // a validated review record exists at --sha
-//     "prior_status": "NONE" | "GREEN" | "ISSUES_FOUND" | "MALFORMED",
+//     "prior_status": "NONE" | "GREEN" | "ISSUES_FOUND" | "STALE_BODY" | "MALFORMED",
 //     "reservations": N,          // valid reservation records (post-collapse)
 //     "canonical_full": N,        // canonical FULL reservations (budget slots)
 //     // with --sha:

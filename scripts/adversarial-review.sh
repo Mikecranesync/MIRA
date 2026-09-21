@@ -10,14 +10,15 @@
 #
 # Exit codes:
 #   0  GREEN (or already reviewed GREEN at this SHA) — re-verified against the
-#      CURRENT PR head at exit; a GREEN is authoritative only for a head that
-#      is still the reviewed SHA
+#      CURRENT PR head and body at exit; a GREEN is authoritative only while
+#      both still match the reviewed snapshot
 #   1  ISSUES_FOUND (review posted)
 #   2  tooling failure (codex/gh/parse) — NEVER interpreted as GREEN
 #   3  precondition failure (no PR, dirty tree, HEAD mismatch, bad arguments,
 #      or the durable review budget is exhausted without human authorization)
-#   4  stale GREEN — the review is GREEN for the reviewed SHA, but the PR head
-#      advanced while Codex ran; the new head is unreviewed
+#   4  stale GREEN — the review is GREEN for the reviewed head/body snapshot,
+#      but the PR head or body changed while Codex ran; the current snapshot
+#      is unreviewed
 #
 # Durable budget (Mike, 2026-08-17): a PR gets at most MAX_TOTAL_ROUNDS (3)
 # validated review rounds ACROSS ITS WHOLE HISTORY — counted from the PR
