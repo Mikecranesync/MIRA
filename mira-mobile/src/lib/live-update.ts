@@ -29,11 +29,17 @@
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { LiveUpdate } from "@capawesome/capacitor-live-update";
-import { API_BASE, ApiError, request } from "../api/client";
+import { ApiError, request } from "../api/client";
+import BuildConfig from "../plugins/build-config";
 
 /** Where the signed manifest lives. FactoryLM-controlled, HTTPS, no exceptions. */
 const OTA_MANIFEST_PATH = "/api/mobile/live-update/manifest/";
-export const OTA_MANIFEST_URL = `${API_BASE}${OTA_MANIFEST_PATH}`;
+
+/** Get the OTA manifest URL for the current build flavor. */
+async function getOtaManifestUrl(): Promise<string> {
+  const { apiBase } = await BuildConfig.getApiBase().catch(() => ({ apiBase: "https://app.factorylm.com" }));
+  return `${apiBase}${OTA_MANIFEST_PATH}`;
+}
 
 export type OtaChannel = "canary" | "production";
 
@@ -430,8 +436,10 @@ export async function checkAndStage(opts: {
 
   let manifest: OtaManifestResponse;
   try {
-    const configured = new URL(opts.manifestUrl ?? OTA_MANIFEST_URL, API_BASE);
-    if (configured.origin !== API_BASE) {
+    const apiBase = (await BuildConfig.getApiBase().catch(() => ({ apiBase: "https://app.factorylm.com" }))).apiBase;
+    const manifestUrl = opts.manifestUrl ?? await getOtaManifestUrl();
+    const configured = new URL(manifestUrl, apiBase);
+    if (configured.origin !== apiBase) {
       return { staged: null, reason: "invalid_manifest_origin" };
     }
     if (!configured.pathname.endsWith("/")) configured.pathname += "/";
