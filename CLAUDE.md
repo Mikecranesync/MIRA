@@ -58,7 +58,7 @@
 
 **Promotion workflow:** feature branch → PR → `smoke-test.yml` + reviews pass → merge to `main` → `deploy-vps.yml` (gated on smoke passing) → smoke against `factorylm.com` + `app.factorylm.com` → verify on `@FactoryLM_Diagnose`.
 
-**Hotfix bypass:** `gh workflow run deploy-vps.yml -f services="…"`. File a follow-up PR within 24h that goes through the normal gate.
+**Deploy to production:** `gh workflow run deploy-vps.yml -f approved_rc_sha=<40-hex> [-f approved_release_tag=vX.Y.Z] [-f services=…]`. Gate-bypass inputs are no longer available; a deployed-staging receipt for the same SHA is required.
 
 **Existing enforcement:** `tools/hooks/prod-guard.sh` is wired as a `PreToolUse(Bash)` hook in `.claude/settings.json`. Override (human only): `MIRA_ALLOW_PROD=1` per-shell.
 

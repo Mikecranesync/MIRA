@@ -882,6 +882,15 @@ jobs:
         # the deploy-integrity guard runs in a required job, not collected by nothing.
         run: pytest tests/test_deploy_release_tag_resolver.py -q
 
+      - name: deploy exact-source contract tests
+        # Static and behavioral tests for the exact-source contract (#3910):
+        # approved_rc_sha immutability, checkout binding, no moving refs or gate bypasses.
+        run: pytest tests/test_deploy_exact_source_contract.py -q
+
+      - name: deploy receipt verification tests
+        # Receipt extraction, verification, and field schema tests for staging and production.
+        run: pytest tests/test_staging_receipt.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
