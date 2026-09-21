@@ -321,6 +321,15 @@ def test_staging_health_and_cohost_safeguards_fail_the_job():
         "127.0.0.1:4099/health",
     ):
         assert port_path in script
+    # Atlas CMMS answers 403 at "/" by design (Spring Security), so its probe
+    # accepts any HTTP answer and still STOPs on none — the first co-hosted run
+    # (35650758639) died on `curl -sf` exit 22 with every container healthy.
+    atlas = script.index("stg-atlas-api (4088)")
+    atlas_block = script[atlas : atlas + 700]
+    assert "2??|3??|401|403" in atlas_block
+    assert "did not answer HTTP" in atlas_block
+    assert "exit 1" in atlas_block
+    assert 'curl -sf -o /dev/null -w "HTTP %{http_code}\\n" http://127.0.0.1:4088/' not in script
     # The separate-host rule is retired (owner decision, #3930).
     assert "production-named containers present on the staging host" not in script
     assert "/opt/mira (production checkout) exists on the staging host" not in script
