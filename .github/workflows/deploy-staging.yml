@@ -307,6 +307,11 @@ jobs:
               || docker network inspect "$name" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null \
               || docker volume inspect "$name" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null \
               || true)"
+            # A failed `docker container inspect` still emits an empty line before
+            # exiting 1, so the chain can yield "\nfactorylm-staging" — run
+            # 35660962231 STOPped on "'\nfactorylm-staging' (not factorylm-staging)".
+            # The label is one token; drop every whitespace byte before comparing.
+            owner="$(printf '%s' "$owner" | tr -d '[:space:]')"
             if [ -n "$owner" ] && [ "$owner" != "$PROJECT" ]; then
               echo "::error::'$name' already exists under compose project '$owner' (not $PROJECT) — STOP (#3930 safeguard 4)"
               exit 1

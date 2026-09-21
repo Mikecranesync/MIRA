@@ -364,6 +364,12 @@ def test_safeguard4_inspects_every_object_type_and_refuses_an_empty_plan():
     assert 'docker inspect "$name" --format' not in block
     assert '[ -n "$PLANNED" ] ||' in block
     assert "could not render the staging compose plan" in block
+    # A failed `docker container inspect` emits an empty line before exiting 1,
+    # so the chained lookup yielded "\nfactorylm-staging" and STOPped a clean
+    # host (run 35660962231). The owner must be whitespace-stripped before the
+    # comparison, and the comparison must follow the strip.
+    strip = block.index("owner=\"$(printf '%s' \"$owner\" | tr -d '[:space:]')\"")
+    assert strip < block.index('[ "$owner" != "$PROJECT" ]')
 
 
 def test_cohost_safeguards_run_before_any_mutation():
