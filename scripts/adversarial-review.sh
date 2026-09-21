@@ -29,7 +29,8 @@
 #
 # Env overrides: CODEX_BIN, CODEX_TIMEOUT_SECS (default 2400), CODEX_MODEL,
 # ADV_REVIEW_OUT_DIR (default .adversarial-review/, gitignored),
-# ADV_REVIEW_HUMAN_AUTHORIZED (post-cap override, human-set only).
+# ADV_REVIEW_HUMAN_AUTHORIZED (post-cap override, human-set only),
+# ADV_REVIEW_ARTIFACT_TOKEN (optional 32-char lowercase-hex invocation token).
 
 set -euo pipefail
 
@@ -67,6 +68,16 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 OUT_DIR="${ADV_REVIEW_OUT_DIR:-$ROOT/.adversarial-review}"
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+
+ARTIFACT_TOKEN="${ADV_REVIEW_ARTIFACT_TOKEN:-}"
+if [ -n "$ARTIFACT_TOKEN" ] && ! [[ "$ARTIFACT_TOKEN" =~ ^[0-9a-f]{32}$ ]]; then
+  echo "ERROR: ADV_REVIEW_ARTIFACT_TOKEN must be exactly 32 lowercase hexadecimal characters." >&2
+  exit 3
+fi
+if [ -z "$ARTIFACT_TOKEN" ]; then
+  ARTIFACT_TOKEN="$(node -e 'process.stdout.write(require("crypto").randomBytes(16).toString("hex"))')"
+fi
 
 # ── Preconditions ────────────────────────────────────────────────────────────
 if [ -z "$PR_NUMBER" ]; then
@@ -92,22 +103,32 @@ BASE_REPO_OWNER="$(printf '%s' "$PR_JSON" | node -e '
   echo "ERROR: could not resolve the base repository owner from PR #$PR_NUMBER" >&2
   exit 2
 }
-# PID separates concurrent processes; RANDOM also prevents a read-only artifact
-# left by an earlier, PID-reused process from blocking a later review.
-PR_BODY_FILE="$OUT_DIR/pr-body-$PR_NUMBER-$HEAD_SHA-$$-$RANDOM.md"
+# Derive the immutable invocation key before creating any load-bearing local
+# artifact. The token separates concurrent runs even at one exact snapshot.
 PR_BODY_SHA256="$(printf '%s' "$PR_JSON" | node -e '
   const crypto=require("node:crypto");
+  let d="";
+  process.stdin.on("data",c=>d+=c).on("end",()=>{
+    const rawBody=JSON.parse(d).body;
+    if(rawBody !== null && typeof rawBody !== "string") process.exit(1);
+    const body=rawBody ?? "";
+    process.stdout.write(crypto.createHash("sha256").update(body,"utf8").digest("hex"));
+  });')" || {
+  echo "ERROR: could not digest the exact PR body review artifact" >&2
+  exit 2
+}
+ARTIFACT_KEY="$HEAD_SHA-$PR_BODY_SHA256-$ARTIFACT_TOKEN"
+PR_BODY_FILE="$OUT_DIR/pr-body-$PR_NUMBER-$ARTIFACT_KEY.md"
+printf '%s' "$PR_JSON" | node -e '
   const fs=require("node:fs");
   const [out]=process.argv.slice(1);
   let d="";
   process.stdin.on("data",c=>d+=c).on("end",()=>{
     const rawBody=JSON.parse(d).body;
     if(rawBody !== null && typeof rawBody !== "string") process.exit(1);
-    const body=rawBody ?? "";
-    fs.writeFileSync(out,body,{encoding:"utf8",mode:0o400});
+    fs.writeFileSync(out,rawBody ?? "",{encoding:"utf8",mode:0o400,flag:"wx"});
     fs.chmodSync(out,0o400);
-    process.stdout.write(crypto.createHash("sha256").update(body,"utf8").digest("hex"));
-  });' "$PR_BODY_FILE")" || {
+  });' "$PR_BODY_FILE" || {
   echo "ERROR: could not materialize the exact PR body review artifact" >&2
   exit 2
 }
@@ -154,7 +175,7 @@ fi
 # Per-process cache ($$): two concurrent invocations sharing OUT_DIR must
 # never truncate each other's ledger snapshot mid-read (found by the
 # two-process race test).
-COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER-$$.json"
+COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER-$ARTIFACT_KEY.json"
 gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
   echo "ERROR: could not list PR comments" >&2; exit 2; }
 LEDGER_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" \
@@ -249,10 +270,11 @@ fi
 # Check-then-act on the ledger is racy: two invocations can both observe a
 # free slot. The fix is post-FIRST, then decide: publish a reservation with a
 # unique 128-bit run_id, re-read the COMPLETE ledger, and proceed only if this
-# run's reservation is CANONICAL (earliest valid reservation for this exact
-# head/body snapshot by immutable numeric comment id) AND within the durable
-# budget. Every same-snapshot loser exits fail-closed BEFORE Codex runs; a
-# crashed winner conservatively keeps its slot consumed. Mode is review_only
+# run's reservation is CANONICAL (earliest valid reservation for its exact
+# head/body review epoch by immutable numeric comment id) AND within the
+# durable ordered budget prefix. Every same-epoch loser exits fail-closed
+# BEFORE Codex runs; a crashed winner conservatively keeps its slot consumed.
+# Mode is review_only
 # unless the full loop set
 # ADV_REVIEW_MODE=full (only full-mode canonical reservations consume
 # autonomous slots — review records remain the conservative floor).
@@ -267,10 +289,8 @@ if [ "$DRY_RUN" -eq 0 ]; then
   RUN_ID="$(node -e 'process.stdout.write(require("crypto").randomBytes(16).toString("hex"))')"
   HA_FLAG=false
   if [ "$HUMAN_AUTHORIZED" -eq 1 ]; then HA_FLAG=true; fi
-  # Per-process ($$): two invocations racing the same head must never share a
-  # body file, or one's run_id silently replaces the other's before posting
-  # (found by the two-process race test).
-  RES_FILE="$OUT_DIR/reservation-body-$PR_NUMBER-$HEAD_SHA-$$.md"
+  # The artifact key keeps concurrent reservation bodies invocation-unique.
+  RES_FILE="$OUT_DIR/reservation-body-$PR_NUMBER-$ARTIFACT_KEY.md"
   {
     printf '%s\n\n' "$RESERVATION_MARKER"
     printf '```\n'
@@ -305,10 +325,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
   }
   # The single-quoted JS below intentionally contains JS template literals.
   # shellcheck disable=SC2016
-  read -r MINE_FOUND MINE_ID CANONICAL FULL_BEFORE < <(printf '%s' "$ACQ_JSON" | node -e '
+  read -r MINE_FOUND MINE_ID CANONICAL CANONICAL_RUN_ID CONSUMED_BEFORE < <(printf '%s' "$ACQ_JSON" | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       const j=JSON.parse(d);
-      process.stdout.write(`${j.mine_found} ${j.mine_comment_id} ${j.mine_is_canonical_for_its_snapshot} ${j.canonical_full_before_mine}\n`);
+      process.stdout.write(`${j.mine_found} ${j.mine_comment_id} ${j.mine_is_canonical_for_its_snapshot} ${j.canonical_run_id_for_snapshot} ${j.consumed_before_mine}\n`);
     });')
   if [ "${MINE_FOUND:-0}" != "1" ] || [ "$MINE_ID" != "$RESERVATION_ID" ]; then
     echo "ERROR: this run's reservation ($RUN_ID) is not the earliest comment carrying its" >&2
@@ -320,16 +340,15 @@ if [ "$DRY_RUN" -eq 0 ]; then
     echo "Exiting fail-closed without reviewing (run_id $RUN_ID, comment $RESERVATION_ID)." >&2
     exit 3
   fi
-  if [ "$MODE" = "full" ] && [ "${FULL_BEFORE:-$MAX_TOTAL_ROUNDS}" -ge "$MAX_TOTAL_ROUNDS" ]; then
-    echo "ERROR: durable budget exhausted at acquisition ($FULL_BEFORE canonical full" >&2
-    echo "       reservations ahead of this one >= $MAX_TOTAL_ROUNDS). Failing closed." >&2
+  if [ "$CANONICAL_RUN_ID" != "$RUN_ID" ]; then
+    echo "ERROR: canonical reservation identity changed before acquisition completed; failing closed." >&2
     exit 3
   fi
-  # Trusted local artifact binding this round to its reservation — the loop's
-  # pre-privileged recheck consumes THIS, never PR-comment content.
-  printf '{"run_id":"%s","reservation_comment_id":%s,"mode":"%s","head_sha":"%s","body_sha256":"%s"}\n' \
-    "$RUN_ID" "$RESERVATION_ID" "$MODE" "$HEAD_SHA" "$PR_BODY_SHA256" \
-    > "$OUT_DIR/reservation-$PR_NUMBER-$HEAD_SHA-$PR_BODY_SHA256.json"
+  if [ "$MODE" = "full" ] && [ "${CONSUMED_BEFORE:-$MAX_TOTAL_ROUNDS}" -ge "$MAX_TOTAL_ROUNDS" ]; then
+    echo "ERROR: durable budget exhausted at acquisition ($CONSUMED_BEFORE consumed" >&2
+    echo "       review/reservation slots ahead of this one >= $MAX_TOTAL_ROUNDS). Failing closed." >&2
+    exit 3
+  fi
   echo "Round reserved: run_id $RUN_ID (comment $RESERVATION_ID, mode $MODE)."
 fi
 
@@ -337,7 +356,7 @@ fi
 # fixes and avoid re-litigating documented FALSE_POSITIVEs. Written to a REAL
 # file — node is a native Windows binary and cannot read MSYS /dev/fd paths,
 # so bash process substitution must never be passed to it as a filename.
-PRIOR_FILE="$OUT_DIR/prior-$PR_NUMBER-$HEAD_SHA.md"
+PRIOR_FILE="$OUT_DIR/prior-$PR_NUMBER-$ARTIFACT_KEY.md"
 node -e '
   const fs=require("fs");
   const [commentsFile,marker,outFile,viewer]=process.argv.slice(1);
@@ -356,7 +375,7 @@ node -e '
 ' "$COMMENTS_FILE" "$MARKER" "$PRIOR_FILE" "$VIEWER"
 
 # ── Build the prompt ─────────────────────────────────────────────────────────
-PROMPT_FILE="$OUT_DIR/prompt-$PR_NUMBER-$HEAD_SHA.md"
+PROMPT_FILE="$OUT_DIR/prompt-$PR_NUMBER-$ARTIFACT_KEY.md"
 node -e '
   const fs=require("fs");
   const [tpl,out,pr,title,base,mb,sha,iter,priorFile,prBodyFile]=process.argv.slice(1);
@@ -370,8 +389,8 @@ node -e '
   "$PRIOR_FILE" "$PR_BODY_FILE"
 
 # ── Run Codex (read-only, ephemeral, schema-constrained) ─────────────────────
-ENVELOPE="$OUT_DIR/envelope-$PR_NUMBER-$HEAD_SHA.json"
-CODEX_LOG="$OUT_DIR/codex-$PR_NUMBER-$HEAD_SHA.log"
+ENVELOPE="$OUT_DIR/envelope-$PR_NUMBER-$ARTIFACT_KEY.json"
+CODEX_LOG="$OUT_DIR/codex-$PR_NUMBER-$ARTIFACT_KEY.log"
 # --ignore-user-config: auth still comes from CODEX_HOME, but the user's MCP
 # servers / plugins / skills are NOT loaded — reviews run in a clean,
 # reproducible agent (user-config MCP servers crashed live runs, 2026-08-16).
@@ -414,9 +433,9 @@ fi
 # inspect…") emitted before any review happened. A GREEN is accepted only if
 # files_reviewed covers EVERY changed file in the diff; otherwise it is an
 # incomplete review => tooling failure, never GREEN.
+CHANGED_FILE_LIST="$OUT_DIR/changed-$PR_NUMBER-$ARTIFACT_KEY.txt"
+git diff --name-only "$MERGE_BASE"..HEAD > "$CHANGED_FILE_LIST"
 if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
-  CHANGED_FILE_LIST="$OUT_DIR/changed-$PR_NUMBER-$HEAD_SHA.txt"
-  git diff --name-only "$MERGE_BASE"..HEAD > "$CHANGED_FILE_LIST"
   if ! node -e '
     const fs=require("fs");
     const env=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
@@ -432,9 +451,37 @@ if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
     exit 2
   fi
 fi
-BODY_FILE="$OUT_DIR/comment-$PR_NUMBER-$HEAD_SHA.md"
+BODY_FILE="$OUT_DIR/comment-$PR_NUMBER-$ARTIFACT_KEY.md"
 node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
   "${RENDER_ARGS[@]}" > "$BODY_FILE"
+
+# Publish the invocation handoff only after the rendered artifact validates.
+# The loop accepts no other local file as authority. A sibling temp + rename
+# prevents it from observing a partial JSON document.
+if [ "$DRY_RUN" -eq 0 ]; then
+  RESULT_FILE="$OUT_DIR/result-$PR_NUMBER-$ARTIFACT_TOKEN.json"
+  RESULT_TMP="$RESULT_FILE.tmp.$$"
+  if [ -e "$RESULT_FILE" ]; then
+    echo "ERROR: result artifact already exists for token $ARTIFACT_TOKEN; refusing to overwrite it." >&2
+    exit 2
+  fi
+  node -e '
+    const fs=require("node:fs");
+    const [tmp,head,body,runId,reservationId,mode,reviewArtifact]=process.argv.slice(1);
+    const result={head_sha:head,body_sha256:body,run_id:runId,
+      reservation_comment_id:Number(reservationId),mode,review_artifact:reviewArtifact};
+    fs.writeFileSync(tmp,JSON.stringify(result)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
+    fs.chmodSync(tmp,0o600);
+  ' "$RESULT_TMP" "$HEAD_SHA" "$PR_BODY_SHA256" "$RUN_ID" \
+    "$RESERVATION_ID" "$MODE" "$BODY_FILE" || {
+    echo "ERROR: could not write the runner result artifact" >&2
+    exit 2
+  }
+  mv "$RESULT_TMP" "$RESULT_FILE" || {
+    echo "ERROR: could not publish the runner result artifact atomically" >&2
+    exit 2
+  }
+fi
 
 STATUS="${STATUS_LINE%% *}"
 echo "Review result: $STATUS_LINE"

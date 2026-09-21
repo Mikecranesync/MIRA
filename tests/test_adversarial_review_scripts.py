@@ -51,6 +51,8 @@ def _record(
     iteration: int,
     author: str = VIEWER,
     body_sha256: str = BODY_HASH_A,
+    run_id: str | None = None,
+    comment_id: int | None = None,
 ) -> dict:
     body = (
         "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
@@ -59,10 +61,11 @@ def _record(
         "base_sha: {}\n".format("0" * 40)
         + f"status: {status}\n"
         + f"review_iteration: {iteration}\n"
+        + (f"run_id: {run_id}\n" if run_id else "")
         + "\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
     )
     return {
-        "id": 1000 + iteration,
+        "id": comment_id if comment_id is not None else 1000 + iteration,
         "body": body,
         "user": {"login": author, "type": "User"},
     }
@@ -477,6 +480,7 @@ cat > /dev/null
         for k in (
             "ADV_REVIEW_HUMAN_AUTHORIZED",
             "ADV_REVIEW_MODE",
+            "ADV_REVIEW_ARTIFACT_TOKEN",
             "STUB_HOLD_POST",
             "STUB_FAIL_LIST",
             "STUB_FAIL_RUN_LIST",
@@ -623,6 +627,7 @@ def _remediation(run_id: str, reviewed: str, new_head: str, author: str = VIEWER
 RID_1 = "1" * 32
 RID_2 = "2" * 32
 RID_3 = "3" * 32
+RID_4 = "4" * 32
 
 
 # ── adversarial-review.sh: argument strictness ───────────────────────────────
@@ -666,6 +671,22 @@ def test_runner_rejects_authenticated_non_owner_before_review(tmp_path):
 
     assert r.returncode == 3
     assert "base repository owner" in r.stderr
+    assert h.codex_runs() == 0
+    assert h.remote_write_calls() == []
+
+
+@pytest.mark.parametrize("token", ["a" * 31, "A" * 32, "g" * 32])
+def test_runner_rejects_invalid_artifact_token(tmp_path, token):
+    h = Harness(tmp_path)
+
+    result = h.run(
+        "adversarial-review.sh",
+        "99",
+        env_extra={"ADV_REVIEW_ARTIFACT_TOKEN": token},
+    )
+
+    assert result.returncode == 3
+    assert "32 lowercase hexadecimal" in result.stderr
     assert h.codex_runs() == 0
     assert h.remote_write_calls() == []
 
@@ -754,7 +775,13 @@ def test_runner_materializes_exact_untrusted_body_artifact_for_reviewer(tmp_path
     h.set_pr_body(exact_body)
     h.set_envelope(GREEN_ENVELOPE)
 
-    result = h.run("adversarial-review.sh", "99", "--dry-run")
+    token = "a" * 32
+    result = h.run(
+        "adversarial-review.sh",
+        "99",
+        "--dry-run",
+        env_extra={"ADV_REVIEW_ARTIFACT_TOKEN": token},
+    )
 
     assert result.returncode == 0, result.stderr + result.stdout
     artifacts = list(h.out_dir.glob(f"pr-body-99-{h.head}-*.md"))
@@ -771,8 +798,10 @@ def test_runner_materializes_exact_untrusted_body_artifact_for_reviewer(tmp_path
     assert "untrusted" in prompts[0].lower()
     assert "ignore" in prompts[0].lower()
 
-    rendered = (h.out_dir / f"comment-99-{h.head}.md").read_text(encoding="utf-8")
     expected_digest = hashlib.sha256(exact_body.encode("utf-8")).hexdigest()
+    rendered = (
+        h.out_dir / f"comment-99-{h.head}-{expected_digest}-{token}.md"
+    ).read_text(encoding="utf-8")
     assert f"reviewed_body_sha256: {expected_digest}" in rendered
 
 
@@ -781,14 +810,23 @@ def test_null_pr_body_materializes_an_exact_empty_artifact(tmp_path):
     h.set_pr_body(None)
     h.set_envelope(GREEN_ENVELOPE)
 
-    result = h.run("adversarial-review.sh", "99", "--dry-run")
+    token = "b" * 32
+    result = h.run(
+        "adversarial-review.sh",
+        "99",
+        "--dry-run",
+        env_extra={"ADV_REVIEW_ARTIFACT_TOKEN": token},
+    )
 
     assert result.returncode == 0, result.stderr + result.stdout
     artifacts = list(h.out_dir.glob(f"pr-body-99-{h.head}-*.md"))
     assert len(artifacts) == 1
     assert artifacts[0].read_bytes() == b""
-    rendered = (h.out_dir / f"comment-99-{h.head}.md").read_text(encoding="utf-8")
-    assert f"reviewed_body_sha256: {hashlib.sha256(b'').hexdigest()}" in rendered
+    empty_digest = hashlib.sha256(b"").hexdigest()
+    rendered = (
+        h.out_dir / f"comment-99-{h.head}-{empty_digest}-{token}.md"
+    ).read_text(encoding="utf-8")
+    assert f"reviewed_body_sha256: {empty_digest}" in rendered
 
 
 def test_dry_run_green_performs_no_remote_writes(tmp_path):
@@ -905,7 +943,7 @@ def test_body_a_review_then_body_b_at_same_head_gets_one_fresh_review(tmp_path):
     assert len(reservations) == 2
     assert sum(f"body_sha256: {body_a_sha}" in body for body in reservations) == 1
     assert sum(f"body_sha256: {body_b_sha}" in body for body in reservations) == 1
-    local_artifacts = list(h.out_dir.glob(f"reservation-99-{h.head}-*.json"))
+    local_artifacts = list(h.out_dir.glob("result-99-*.json"))
     assert len(local_artifacts) == 2
     local_digests = {
         json.loads(path.read_text(encoding="utf-8"))["body_sha256"]
@@ -966,6 +1004,144 @@ def test_full_reservations_at_same_head_different_bodies_each_consume_budget(tmp
     assert ledger["consumed"] == 3
     assert ledger["canonical_full"] == 3
     assert ledger["canonical_full_before_mine"] == 2
+
+
+def test_consumed_before_mine_counts_validated_reviews_before_reservation(tmp_path):
+    """Acquisition is ordered across reviews and reservations, not merely
+    among canonical reservations. Three older reviews leave no autonomous
+    slot for a newly-posted FULL reservation."""
+    comments = [
+        _record(SHA_A, "ISSUES_FOUND", 1, comment_id=1001),
+        _record(SHA_B, "ISSUES_FOUND", 2, comment_id=1002),
+        _record(SHA_C, "ISSUES_FOUND", 3, comment_id=1003),
+        _reservation(RID_4, "d" * 40, "full", 1004, body_sha256="4" * 64),
+    ]
+
+    ledger = run_ledger(
+        tmp_path,
+        comments,
+        sha="d" * 40,
+        body_sha256="4" * 64,
+        run_id=RID_4,
+    )
+
+    assert ledger["canonical_full_before_mine"] == 0
+    assert ledger["consumed_before_mine"] == 3
+
+
+def test_different_bodies_compete_for_last_slot(tmp_path):
+    """Two distinct bodies may each own their snapshot, but only the first
+    reservation in the global ordered stream may acquire the last slot."""
+    h = Harness(tmp_path)
+    h.set_comments(
+        [
+            _record(SHA_A, "ISSUES_FOUND", 1, comment_id=1001),
+            _record(SHA_B, "ISSUES_FOUND", 2, comment_id=1002),
+        ]
+    )
+    h.set_envelope(ISSUES_ENVELOPE)
+
+    body_a = "Concurrent exact body A"
+    body_b = "Concurrent exact body B"
+    h.set_pr_body(body_a)
+    p1 = h.popen(
+        "adversarial-review.sh",
+        "99",
+        env_extra={
+            "STUB_HOLD_POST": "1",
+            "ADV_TEST_PROC": "body-a",
+            "ADV_REVIEW_MODE": "full",
+            "ADV_REVIEW_ARTIFACT_TOKEN": "a" * 32,
+        },
+    )
+
+    import time
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "post-waiting-body-a").exists():
+            break
+        time.sleep(0.1)
+    else:
+        p1.kill()
+        pytest.fail("body-A process never reached the reservation POST barrier")
+
+    h.set_pr_body(body_b)
+    p2 = h.popen(
+        "adversarial-review.sh",
+        "99",
+        env_extra={
+            "STUB_HOLD_POST": "1",
+            "ADV_TEST_PROC": "body-b",
+            "ADV_REVIEW_MODE": "full",
+            "ADV_REVIEW_ARTIFACT_TOKEN": "b" * 32,
+        },
+    )
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if (h.fix / "post-waiting-body-b").exists():
+            break
+        time.sleep(0.1)
+    else:
+        p1.kill(), p2.kill()
+        pytest.fail("body-B process never reached the reservation POST barrier")
+
+    (h.fix / "go-post").write_text("go", encoding="utf-8")
+    out1, _ = p1.communicate(timeout=180)
+    out2, _ = p2.communicate(timeout=180)
+
+    assert h.codex_runs() == 1, out1 + out2
+    assert {p1.returncode, p2.returncode} == {1, 3}
+    assert "durable budget exhausted at acquisition" in out1 + out2
+    new_reservations = [
+        comment["body"]
+        for comment in h.ledger()
+        if comment["body"].startswith("[ADVERSARIAL-ROUND-RESERVATION]")
+    ]
+    assert len(new_reservations) == 2
+    assert {body.split("body_sha256: ", 1)[1][:64] for body in new_reservations} == {
+        hashlib.sha256(body_a.encode("utf-8")).hexdigest(),
+        hashlib.sha256(body_b.encode("utf-8")).hexdigest(),
+    }
+
+
+def test_body_a_body_b_body_a_creates_new_review_epoch(tmp_path):
+    """Returning to body A after a validated body-B review creates a fresh
+    ownership epoch without refunding either earlier completed round."""
+    comments = [
+        _reservation(RID_1, SHA_A, "full", 2001, body_sha256=BODY_HASH_A),
+        _record(
+            SHA_A,
+            "ISSUES_FOUND",
+            1,
+            body_sha256=BODY_HASH_A,
+            run_id=RID_1,
+            comment_id=2002,
+        ),
+        _reservation(RID_2, SHA_A, "full", 2003, body_sha256=BODY_HASH_B),
+        _record(
+            SHA_A,
+            "ISSUES_FOUND",
+            2,
+            body_sha256=BODY_HASH_B,
+            run_id=RID_2,
+            comment_id=2004,
+        ),
+        _reservation(RID_3, SHA_A, "full", 2005, body_sha256=BODY_HASH_A),
+    ]
+
+    ledger = run_ledger(
+        tmp_path,
+        comments,
+        sha=SHA_A,
+        body_sha256=BODY_HASH_A,
+        run_id=RID_3,
+    )
+
+    assert ledger["canonical_run_id_for_snapshot"] == RID_3
+    assert ledger["mine_is_canonical_for_its_snapshot"] == 1
+    assert ledger["consumed_before_mine"] == 2
+    assert ledger["consumed"] == 3
 
 
 def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
@@ -1166,7 +1342,7 @@ def test_completed_reservation_era_round_is_one_slot_not_two(tmp_path):
     slot — the per-head union must not double-charge completion."""
     comments = [
         _reservation(RID_1, SHA_A, "full", 3001),
-        _record(SHA_A, "ISSUES_FOUND", 1),
+        _record(SHA_A, "ISSUES_FOUND", 1, comment_id=3002),
     ]
     ledger = run_ledger(tmp_path, comments)
     assert ledger["consumed"] == 1
@@ -1177,8 +1353,8 @@ def test_multiple_post_legacy_reservations_accumulate(tmp_path):
     comments = [
         _record(SHA_A, "ISSUES_FOUND", 1),  # legacy head, no reservation
         _reservation(RID_1, SHA_B, "full", 3001),
-        _record(SHA_B, "ISSUES_FOUND", 2),  # RID_1 completed
-        _reservation(RID_2, SHA_C, "full", 3002),  # crashed — stays consumed
+        _record(SHA_B, "ISSUES_FOUND", 2, comment_id=3002),  # RID_1 completed
+        _reservation(RID_2, SHA_C, "full", 3003),  # crashed — stays consumed
     ]
     ledger = run_ledger(tmp_path, comments)
     assert ledger["consumed"] == 3
@@ -1205,8 +1381,13 @@ def test_forced_rereviews_at_one_legacy_head_still_count_each_round(tmp_path):
         _record(SHA_A, "ISSUES_FOUND", 1),
         _record(SHA_A, "ISSUES_FOUND", 2),  # forced re-review, same legacy head
         _reservation(RID_1, SHA_B, "full", 3001),
-        _record(SHA_B, "ISSUES_FOUND", 3),
-        _record(SHA_B, "ISSUES_FOUND", 4),  # human-forced re-review at reserved head
+        _record(SHA_B, "ISSUES_FOUND", 3, comment_id=3002),
+        _record(
+            SHA_B,
+            "ISSUES_FOUND",
+            4,
+            comment_id=3003,
+        ),  # human-forced re-review at reserved head
     ]
     ledger = run_ledger(tmp_path, comments)
     assert ledger["consumed"] == 4  # 2 (SHA_A legacy) + max(2, 1) (SHA_B)
@@ -1270,6 +1451,93 @@ def test_body_movement_before_claude_skips_privileged_remediation(tmp_path):
     assert h.codex_runs() == 1
     assert h.claude_runs() == 0
     assert "body changed" in h.posted().lower() or "body changed" in result.stdout.lower()
+
+
+def test_runner_snapshot_controls_remediation_when_body_returns_to_pre_call_value(tmp_path):
+    """The loop's pre-call snapshot is advisory. If the runner reviews body B
+    while the body is A both before and after it, remediation must still use
+    the runner result and reject B as stale without consulting head-only files."""
+    h = Harness(tmp_path)
+    body_a = "Loop pre-call body A"
+    body_b = "Runner-captured body B"
+    body_a_sha = hashlib.sha256(body_a.encode("utf-8")).hexdigest()
+    h.set_comments(
+        [_reservation(RID_1, h.head, "full", 2001, body_sha256=body_a_sha)]
+    )
+    h.set_envelope(ISSUES_ENVELOPE)
+    h.set_pr_body(body_b, sequence=[body_a, body_a, body_a])
+
+    # This is exactly the stale local handoff the old loop trusted. A secure
+    # loop ignores it because only the invocation-token result is load-bearing.
+    h.out_dir.mkdir()
+    stale_reservation = h.out_dir / f"reservation-99-{h.head}-{body_a_sha}.json"
+    stale_reservation.write_text(
+        json.dumps(
+            {
+                "run_id": RID_1,
+                "reservation_comment_id": 2001,
+                "mode": "full",
+                "head_sha": h.head,
+                "body_sha256": body_a_sha,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = h.run("adversarial-review-loop.sh", "99")
+
+    assert result.returncode != 0
+    assert h.codex_runs() == 1
+    assert h.claude_runs() == 0
+    assert not (h.out_dir / f"comment-99-{h.head}.md").exists()
+    assert "body changed" in (result.stdout + result.stderr + h.posted()).lower()
+
+
+def test_invocation_unique_artifacts_for_same_head_different_bodies(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(ISSUES_ENVELOPE)
+    bodies = ["Invocation body A", "Invocation body B"]
+
+    for index, body in enumerate(bodies, start=1):
+        h.set_pr_body(body)
+        result = h.run(
+            "adversarial-review-loop.sh",
+            "99",
+            env_extra={"ADV_TEST_PROC": f"invocation-{index}"},
+        )
+        assert result.returncode == 1, result.stderr + result.stdout
+
+    results = sorted(h.out_dir.glob("result-99-*.json"))
+    assert len(results) == 2
+    seen_keys = set()
+    seen_digests = set()
+    for result_path in results:
+        token = result_path.stem.rsplit("-", 1)[1]
+        assert len(token) == 32
+        assert stat.S_IMODE(result_path.stat().st_mode) == 0o600
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        artifact_key = f"{result['head_sha']}-{result['body_sha256']}-{token}"
+        seen_keys.add(artifact_key)
+        seen_digests.add(result["body_sha256"])
+
+        expected_paths = [
+            h.out_dir / f"prompt-99-{artifact_key}.md",
+            h.out_dir / f"envelope-99-{artifact_key}.json",
+            h.out_dir / f"codex-99-{artifact_key}.log",
+            h.out_dir / f"changed-99-{artifact_key}.txt",
+            h.out_dir / f"comment-99-{artifact_key}.md",
+            h.out_dir / f"remediation-99-{artifact_key}.md",
+            h.out_dir / f"claude-99-{artifact_key}.log",
+        ]
+        assert all(path.exists() for path in expected_paths), expected_paths
+        assert Path(result["review_artifact"]) == expected_paths[4]
+        rendered = expected_paths[4].read_text(encoding="utf-8")
+        assert f"reviewed_body_sha256: {result['body_sha256']}" in rendered
+
+    assert len(seen_keys) == 2
+    assert seen_digests == {
+        hashlib.sha256(body.encode("utf-8")).hexdigest() for body in bodies
+    }
 
 
 def test_post_cap_human_authorized_review_only_never_invokes_claude(tmp_path):

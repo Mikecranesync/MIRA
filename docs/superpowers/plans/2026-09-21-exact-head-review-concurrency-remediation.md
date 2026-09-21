@@ -42,7 +42,7 @@
 - Runner writes `result-<pr>-<token>.json` only after it has a validated rendered review artifact. The JSON contains exact `head_sha`, `body_sha256`, `run_id`, numeric `reservation_comment_id`, `mode`, and `review_artifact`. The review artifact path must be the invocation-unique rendered comment file.
 - The loop generates and passes the token, reads the result JSON after the runner returns, validates every field, recomputes the expected review-artifact path, and uses the result snapshot for all pre-remediation checks and ledger queries.
 
-- [ ] **Step 1: Add the four RED behavior locks.**
+- [x] **Step 1: Add the four RED behavior locks.**
 
 Add focused tests which prove:
 
@@ -53,7 +53,7 @@ Add focused tests which prove:
 
 Extend the existing artifact test to run two same-head, different-body invocations and assert distinct prompt, envelope, Codex-log, changed-file, rendered-comment, reservation-result, remediation-prompt, and Claude-log paths. Assert each rendered review digest matches the exact body artifact supplied to that invocation.
 
-- [ ] **Step 2: Run the focused selection and confirm RED for the intended missing contracts.**
+- [x] **Step 2: Run the focused selection and confirm RED for the intended missing contracts.**
 
 Run:
 
@@ -64,7 +64,7 @@ Run:
 
 Expected: failures because the ledger exposes only reservation ordering, old snapshot reservations remain canonical forever, artifact names are head-only, and the loop selects artifacts from its pre-call snapshot.
 
-- [ ] **Step 3: Implement ordered budget accounting and review epochs.**
+- [x] **Step 3: Implement ordered budget accounting and review epochs.**
 
 Keep each validated review's immutable numeric comment ID and optional strict `run_id`. Assign each reservation the latest validated review ID preceding it, canonicalize by exact snapshot plus that epoch, and compute budget usage as unique validated review rounds plus canonical FULL reservations not completed by one compatible later review. For `--run-id`, compute `consumed_before_mine` over only validated comments with IDs lower than `mine_comment_id`. Do not use timestamps or array position as authority.
 
@@ -77,13 +77,13 @@ j.canonical_run_id_for_snapshot === runId &&
 j.consumed_before_mine < 3
 ```
 
-- [ ] **Step 4: Implement invocation-unique artifacts and the result handoff.**
+- [x] **Step 4: Implement invocation-unique artifacts and the result handoff.**
 
 Use the strict token in every load-bearing artifact name. Write the result JSON with mode `0600` via a temporary sibling followed by atomic rename. In the loop, reject a missing, malformed, cross-token, wrong-mode, wrong-head/body, wrong-run-ID, nonnumeric-reservation-ID, or unexpected review-artifact path before launching Claude.
 
 Bind remediation prompt and Claude log names to the same artifact key. Replace the loop's use of `PRE_SHA`, `PRE_BODY_SHA256`, and `comment-<pr>-<head>.md` for authorization with the validated result fields. A snapshot mismatch skips or stops stale remediation fail-closed; it never falls back to another local artifact.
 
-- [ ] **Step 5: Run focused GREEN, then the complete review-script suite.**
+- [x] **Step 5: Run focused GREEN, then the complete review-script suite.**
 
 Run:
 
@@ -95,7 +95,7 @@ Run:
 
 Expected: the focused regressions pass, then the complete file passes with no failures.
 
-- [ ] **Step 6: Run script/static verification and commit.**
+- [x] **Step 6: Run script/static verification and commit.**
 
 Run:
 
@@ -115,4 +115,3 @@ git add tests/test_adversarial_review_scripts.py scripts/adversarial-review-ledg
   docs/superpowers/plans/2026-09-21-exact-head-review-concurrency-remediation.md
 git commit -m "fix(review): make exact-snapshot rounds concurrency safe"
 ```
-

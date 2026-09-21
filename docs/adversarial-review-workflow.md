@@ -35,8 +35,9 @@ Claude implements -> tests/lint -> commit + push
         v
 scripts/adversarial-review.sh          (one round)
    resolve PR -> HEAD==PR-head gate -> exact-snapshot dedupe
-        (head SHA + PR-body SHA-256)
+        (head SHA + PR-body SHA-256) -> ordered reservation acquisition
         -> codex exec (read-only, --output-schema) -> validate/render
+        -> atomic invocation-token result handoff
         -> gh pr comment  [CODEX-ADVERSARIAL-REVIEW]
         |
         v
@@ -174,11 +175,18 @@ instructions.
 ### Durable review budget (2026-08-17 hardening)
 
 The 3-round ceiling is enforced against the **PR's validated review ledger**,
-not any single invocation's loop counter — `consumed` = distinct validated
-`(reviewed_sha, review_iteration)` records across the PR's whole history.
-Restarting the script does **not** mint three fresh autonomous rounds; a new
-session resumes the same budget, and the loop re-reads the ledger **every
-cycle** so concurrent or crashed invocations still count.
+not any single invocation's loop counter. The ledger is one stream ordered by
+immutable numeric comment id: each unique validated review round consumes one
+slot, and each unmatched canonical FULL reservation consumes one crashed slot.
+A validated review completes at most one earlier compatible FULL reservation,
+preferring its strict `run_id`; legacy review records without a `run_id` match
+only the earliest unmatched compatible reservation. `consumed_before_mine`
+counts that mixed review/reservation prefix before the caller's reservation,
+so two different bodies cannot both acquire the final slot. Timestamps and API
+array order never decide acquisition. Restarting the script does **not** mint
+three fresh autonomous rounds; a new session resumes the same budget, and the
+loop re-reads the ledger **every cycle** so concurrent or crashed invocations
+still count. `review_only` reservations remain non-consuming.
 
 Past the cap, exactly one action exists: a **human-authorized, review-only**
 pass — `ADV_REVIEW_HUMAN_AUTHORIZED=1` (set by a human, per run; the loop
@@ -201,34 +209,45 @@ local locks — sessions run on different machines):
    `full`; anything else is review-only), `human_authorized`, `requested_at` —
    and captures the comment's immutable numeric id.
 2. It then re-reads the COMPLETE ledger and proceeds only if its reservation
-   is **canonical**: the earliest valid same-account reservation for that
-   exact `(head_sha, body_sha256)` snapshot by numeric comment id (creation
-   time is advisory only). Every same-snapshot loser exits fail-closed before
-   Codex runs; a body edit at the same head can acquire its own canonical
-   reservation. Duplicate posts of the same `run_id` collapse to the earliest
-   comment (idempotent retry); distinct `run_id`s never collapse;
+   is **canonical**: the earliest valid same-account reservation for exact
+   `(head_sha, body_sha256, review_epoch)`, where `review_epoch` is the newest
+   preceding validated review comment id (or `0`), by numeric comment id.
+   This lets A -> reviewed B -> A create a fresh A reservation without
+   refunding either earlier round. Every same-snapshot/same-epoch loser exits
+   fail-closed before Codex runs. Duplicate posts of the same `run_id`
+   collapse to the earliest comment (idempotent retry); distinct `run_id`s
+   never collapse;
    forged/malformed reservations never participate. Pre-migration digest-less
    reservations remain budget evidence but can neither prove ownership nor
    block a new exact-snapshot reservation.
-3. The budget preserves every validated review iteration and charges each
-   canonical full-mode reservation at acquisition. A completed reservation and
-   its exact-snapshot review are one slot, while a crashed reservation for a
-   different head or body remains additive. The historical digest-less
-   reservation format retains its per-head one-slot floor. All heads and bodies
-   share the same three-round ceiling.
-4. **Immediately before privileged remediation** (`claude
-   --dangerously-skip-permissions`) the loop re-reads the ledger and proves
-   again, from the trusted local reservation artifact: it still owns the
-   canonical reservation for the reviewed head/body; the `run_id` and body
-   digest match; the PR head/body still equal the reserved snapshot; the
-   reservation is within budget; and no `[CLAUDE-REMEDIATION]` completion
-   exists for that `run_id`. Any failure exits without launching Claude.
-5. **Evidence binding:** the review record, the remediation disposition, and
+3. The budget preserves every unique validated review round and charges every
+   canonical full-mode reservation until one later compatible review completes
+   it. A completed reservation and its review are one slot; every other
+   unmatched canonical FULL reservation remains charged as crashed. The
+   historical digest-less reservation format remains budget evidence. All
+   heads, bodies, and review epochs share the same three-round ceiling.
+4. Every invocation has a fresh 128-bit lowercase-hex artifact token. All
+   load-bearing prompt, envelope, Codex log, changed-file list, rendered
+   comment, remediation prompt, and Claude log names use
+   `<head_sha>-<body_sha256>-<token>`. After rendering, the runner atomically
+   publishes mode-`0600` `result-<pr>-<token>.json` containing the exact head,
+   body digest, `run_id`, numeric reservation comment id, mode, and rendered
+   review path. No head-only artifact is load-bearing.
+5. **Immediately before privileged remediation** (`claude
+   --dangerously-skip-permissions`) the loop accepts only that token's result,
+   verifies every field and the expected review path/envelope, rechecks that
+   the current PR still equals the runner-captured snapshot, then re-reads the
+   ledger. It proves the run still owns its canonical epoch reservation,
+   `consumed_before_mine < 3`, and no `[CLAUDE-REMEDIATION]` completion exists
+   for that `run_id`. The loop's pre-call snapshot is advisory only. Any
+   missing, malformed, cross-token, stale, or mismatched handoff exits without
+   launching Claude.
+6. **Evidence binding:** the review record, the remediation disposition, and
    escalation records all carry the same `run_id` (+ reservation comment id);
    the loop rejects a disposition whose `run_id` does not match the round it
    authorized. Remediation input still comes ONLY from the trusted local
    runner artifact, never from PR comments.
-6. Any GitHub API failure, incomplete pagination, malformed ledger, or
+7. Any GitHub API failure, incomplete pagination, malformed ledger, or
    inability to prove ownership stops the process — never proceed
    optimistically.
 
@@ -280,10 +299,11 @@ hard floor, and the loop itself contains no history-discarding git commands
 | New commits arrive mid-review | the posted comment stamps the SHA that was actually reviewed; the next round reviews the new head | nothing — by design |
 | Claude remediation fails | escalation comment, exit 2 | read `.adversarial-review/claude-*.log` |
 
-Artifacts (prompts, envelopes, rendered comments, logs) live in
-`.adversarial-review/` (gitignored). Each process also writes the exact PR body
-bytes to a read-only artifact and passes only that trusted path into the review
-prompt; PR-authored body text is never interpolated into shell or template code.
+Artifacts (prompts, envelopes, rendered comments, logs, and atomic runner
+results) live in `.adversarial-review/` (gitignored) and are invocation-unique.
+Each process also writes the exact PR body bytes to a read-only token-bound
+artifact and passes only that trusted path into the review prompt; PR-authored
+body text is never interpolated into shell or template code.
 
 ## Disable procedure
 

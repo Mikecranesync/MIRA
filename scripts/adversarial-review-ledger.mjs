@@ -23,6 +23,7 @@
 //     "mine_comment_id": N|null,
 //     "mine_is_canonical_for_its_snapshot": 0|1,
 //     "canonical_full_before_mine": N,  // budget slots consumed AHEAD of mine
+//     "consumed_before_mine": N,        // ordered mixed-stream budget prefix
 //     "remediation_completed_for_run_id": 0|1
 //   }
 //
@@ -75,9 +76,9 @@ const REMEDIATION_MARKER = "[CLAUDE-REMEDIATION]";
 // snapshot. Legacy records remain valid for iteration/budget accounting only.
 // Order is load-bearing; anything that does not match is not a record.
 const V2_REVIEW_RE =
-  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n/;
+  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?(?:run_id: ([0-9a-f]{32})\r?\n)?/;
 const LEGACY_REVIEW_RE =
-  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n/;
+  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n(?:post_cap_human_authorized: true\r?\n)?(?:run_id: ([0-9a-f]{32})\r?\n)?/;
 const V2_RESERVATION_RE =
   /^\[ADVERSARIAL-ROUND-RESERVATION\]\r?\n\r?\n```\r?\nrun_id: ([0-9a-f]{32})\r?\nhead_sha: ([0-9a-f]{40})\r?\nbody_sha256: ([0-9a-f]{64})\r?\nmode: (full|review_only)\r?\nhuman_authorized: (true|false)\r?\nrequested_at: [0-9TZz:.+-]+\r?\n```/;
 const LEGACY_RESERVATION_RE =
@@ -142,9 +143,23 @@ for (const c of reviewComments) {
   const v2 = c.body.match(V2_REVIEW_RE);
   const legacy = c.body.match(LEGACY_REVIEW_RE);
   if (v2) {
-    reviews.push({ sha: v2[1], bodySha256: v2[2], status: v2[3], iteration: Number(v2[4]) });
+    reviews.push({
+      sha: v2[1],
+      bodySha256: v2[2],
+      status: v2[3],
+      iteration: Number(v2[4]),
+      runId: v2[5] || null,
+      commentId: c.id,
+    });
   } else if (legacy) {
-    reviews.push({ sha: legacy[1], bodySha256: null, status: legacy[2], iteration: Number(legacy[3]) });
+    reviews.push({
+      sha: legacy[1],
+      bodySha256: null,
+      status: legacy[2],
+      iteration: Number(legacy[3]),
+      runId: legacy[4] || null,
+      commentId: c.id,
+    });
   }
   else if (headSha && c.body.includes(`reviewed_sha: ${headSha}`)) sawMalformedAtSha = true;
 }
@@ -204,58 +219,82 @@ for (const r of rawReservations) if (!byRunId.has(r.runId)) byRunId.set(r.runId,
 const reservations = [...byRunId.values()].sort((a, b) => a.commentId - b.commentId);
 
 const snapshotKey = (sha, digest) => `${sha}:${digest}`;
+const snapshotEpochKey = (sha, digest, epoch) => `${snapshotKey(sha, digest)}:${epoch}`;
 
-// V2 ownership is exact-snapshot only. Digest-less records are retained in a
-// separate per-head map solely for historical budget compatibility.
-const canonicalBySnapshot = new Map();
+function newestReviewIdBefore(commentId) {
+  let epoch = 0;
+  for (const review of reviews) {
+    if (review.commentId >= commentId) break;
+    epoch = review.commentId;
+  }
+  return epoch;
+}
+
+// V2 ownership is exact-snapshot + review-epoch. A validated review advances
+// the epoch, so a later return to the same body can reserve again without
+// refunding the prior round. Digest-less records retain their historical
+// per-head identity solely for budget compatibility.
+const canonicalBySnapshotEpoch = new Map();
+const latestCanonicalBySnapshot = new Map();
 const canonicalLegacyBySha = new Map();
 for (const r of reservations) {
   if (r.bodySha256 !== null) {
-    const key = snapshotKey(r.sha, r.bodySha256);
-    if (!canonicalBySnapshot.has(key)) canonicalBySnapshot.set(key, r);
+    r.reviewEpoch = newestReviewIdBefore(r.commentId);
+    const epochKey = snapshotEpochKey(r.sha, r.bodySha256, r.reviewEpoch);
+    if (!canonicalBySnapshotEpoch.has(epochKey)) {
+      canonicalBySnapshotEpoch.set(epochKey, r);
+      latestCanonicalBySnapshot.set(snapshotKey(r.sha, r.bodySha256), r);
+    }
   } else if (!canonicalLegacyBySha.has(r.sha)) {
     canonicalLegacyBySha.set(r.sha, r);
   }
 }
 const canonicalReservations = [
-  ...canonicalBySnapshot.values(),
+  ...canonicalBySnapshotEpoch.values(),
   ...canonicalLegacyBySha.values(),
 ].sort((a, b) => a.commentId - b.commentId);
 const canonicalFull = canonicalReservations
   .filter((r) => r.mode === "full")
   .sort((a, b) => a.commentId - b.commentId);
 
-// Per-head union with exact-snapshot crash charging. Every validated review
-// iteration is a durable slot. A canonical v2 FULL reservation adds a slot
-// only when no review exists for its exact snapshot; a legacy FULL reservation
-// retains the historical one-slot floor when its head has no review at all.
-// This is never lower than the old per-head union, while separate bodies at a
-// shared head can no longer hide one another's crashed reservations.
-const reviewRoundsBySha = new Map();
-const reviewedSnapshots = new Set();
-for (const r of reviews) {
-  if (!reviewRoundsBySha.has(r.sha)) reviewRoundsBySha.set(r.sha, new Set());
-  reviewRoundsBySha.get(r.sha).add(r.iteration);
-  if (r.bodySha256 !== null) reviewedSnapshots.add(snapshotKey(r.sha, r.bodySha256));
+// Budget accounting is one ordered stream. Each unique validated review round
+// costs one slot. It completes at most one earlier canonical FULL reservation:
+// strict run_id first, with an earliest-compatible fallback only for older
+// review records that lack run_id. All other canonical FULL reservations stay
+// charged as crashed.
+function uniqueReviewsBefore(cutoff) {
+  const unique = new Map();
+  for (const review of reviews) {
+    if (review.commentId >= cutoff) break;
+    const key = `${review.sha}:${review.iteration}`;
+    if (!unique.has(key)) unique.set(key, review);
+  }
+  return [...unique.values()].sort((a, b) => a.commentId - b.commentId);
 }
-const allHeads = new Set([
-  ...reviewRoundsBySha.keys(),
-  ...canonicalFull.map((reservation) => reservation.sha),
-]);
-let consumed = 0;
-for (const sha of allHeads) {
-  const reviewCount = reviewRoundsBySha.get(sha)?.size ?? 0;
-  const crashedV2 = canonicalFull.filter(
-    (reservation) =>
-      reservation.sha === sha &&
-      reservation.bodySha256 !== null &&
-      !reviewedSnapshots.has(snapshotKey(reservation.sha, reservation.bodySha256)),
-  ).length;
-  const hasLegacyFull = canonicalFull.some(
-    (reservation) => reservation.sha === sha && reservation.bodySha256 === null,
-  );
-  consumed += reviewCount + crashedV2 + (hasLegacyFull && reviewCount === 0 ? 1 : 0);
+
+function compatible(reservation, review) {
+  if (reservation.commentId >= review.commentId || reservation.sha !== review.sha) return false;
+  if (reservation.bodySha256 === null || review.bodySha256 === null) return true;
+  return reservation.bodySha256 === review.bodySha256;
 }
+
+function consumptionBefore(cutoff) {
+  const budgetReviews = uniqueReviewsBefore(cutoff);
+  const unmatched = canonicalFull.filter((reservation) => reservation.commentId < cutoff);
+  for (const review of budgetReviews) {
+    let index = -1;
+    if (review.runId !== null) {
+      index = unmatched.findIndex(
+        (reservation) => reservation.runId === review.runId && compatible(reservation, review),
+      );
+    } else {
+      index = unmatched.findIndex((reservation) => compatible(reservation, review));
+    }
+    if (index !== -1) unmatched.splice(index, 1);
+  }
+  return budgetReviews.length + unmatched.length;
+}
+const consumed = consumptionBefore(Infinity);
 
 // ── Remediation completions (run_id-bound) ───────────────────────────────────
 const completedRunIds = new Set();
@@ -276,7 +315,9 @@ const out = {
 };
 if (headSha) {
   const canon =
-    bodySha256 === null ? null : canonicalBySnapshot.get(snapshotKey(headSha, bodySha256)) || null;
+    bodySha256 === null
+      ? null
+      : latestCanonicalBySnapshot.get(snapshotKey(headSha, bodySha256)) || null;
   out.canonical_run_id_for_snapshot = canon ? canon.runId : null;
   // Compatibility alias for older consumers. Its semantics are intentionally
   // narrowed: without --body-sha256 it is null and can never prove ownership.
@@ -287,7 +328,9 @@ if (runId) {
   const mineIsCanonical =
     mine &&
     mine.bodySha256 !== null &&
-    canonicalBySnapshot.get(snapshotKey(mine.sha, mine.bodySha256))?.runId === runId;
+    canonicalBySnapshotEpoch.get(
+      snapshotEpochKey(mine.sha, mine.bodySha256, mine.reviewEpoch),
+    )?.runId === runId;
   out.mine_found = mine ? 1 : 0;
   out.mine_comment_id = mine ? mine.commentId : null;
   out.mine_is_canonical_for_its_snapshot = mineIsCanonical ? 1 : 0;
@@ -295,6 +338,7 @@ if (runId) {
   out.canonical_full_before_mine = mine
     ? canonicalFull.filter((r) => r.commentId < mine.commentId).length
     : canonicalFull.length;
+  out.consumed_before_mine = mine ? consumptionBefore(mine.commentId) : consumed;
   out.remediation_completed_for_run_id = completedRunIds.has(runId) ? 1 : 0;
 }
 process.stdout.write(JSON.stringify(out) + "\n");
