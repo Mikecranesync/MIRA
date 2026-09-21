@@ -6,7 +6,7 @@
 //
 // Usage:
 //   node scripts/adversarial-review-ledger.mjs <comments.json> <viewer_login> \
-//        [--sha <head_sha>] [--run-id <32-hex>]
+//        [--sha <head_sha>] [--body-sha256 <64-hex>] [--run-id <32-hex>]
 //
 // stdout: one JSON object:
 //   {
@@ -73,9 +73,12 @@ const REVIEW_MARKER = "[CODEX-ADVERSARIAL-REVIEW]";
 const RESERVATION_MARKER = "[ADVERSARIAL-ROUND-RESERVATION]";
 const REMEDIATION_MARKER = "[CLAUDE-REMEDIATION]";
 
-// Strict envelopes. The renderers/templates emit exactly these shapes; order
-// is load-bearing. Anything that does not match is not a record.
-const REVIEW_RE =
+// Strict envelopes. The v2 digest line binds a record to the exact body
+// snapshot. Legacy records remain valid for iteration/budget accounting only.
+// Order is load-bearing; anything that does not match is not a record.
+const V2_REVIEW_RE =
+  /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nreviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n/;
+const LEGACY_REVIEW_RE =
   /^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\nreview_iteration: ([0-9]+)\r?\n/;
 const RESERVATION_RE =
   /^\[ADVERSARIAL-ROUND-RESERVATION\]\r?\n\r?\n```\r?\nrun_id: ([0-9a-f]{32})\r?\nhead_sha: ([0-9a-f]{40})\r?\nmode: (full|review_only)\r?\nhuman_authorized: (true|false)\r?\nrequested_at: [0-9TZz:.+-]+\r?\n```/;
@@ -90,7 +93,7 @@ function fail(msg) {
 const [file, viewer] = process.argv.slice(2);
 if (!file || !viewer || viewer.startsWith("--")) {
   fail(
-    "usage: adversarial-review-ledger.mjs <comments.json> <viewer_login> [--sha <head_sha>] [--run-id <32-hex>]",
+    "usage: adversarial-review-ledger.mjs <comments.json> <viewer_login> [--sha <head_sha>] [--body-sha256 <64-hex>] [--run-id <32-hex>]",
   );
 }
 function optArg(name, re) {
@@ -101,6 +104,7 @@ function optArg(name, re) {
   return v;
 }
 const headSha = optArg("--sha", /^[0-9a-f]{40}$/);
+const bodySha256 = optArg("--body-sha256", /^[0-9a-f]{64}$/);
 const runId = optArg("--run-id", /^[0-9a-f]{32}$/);
 
 let raw;
@@ -130,8 +134,13 @@ const reviewComments = arr.filter((c) => own(c) && c.body.startsWith(REVIEW_MARK
 const reviews = [];
 let sawMalformedAtSha = false;
 for (const c of reviewComments) {
-  const m = c.body.match(REVIEW_RE);
-  if (m) reviews.push({ sha: m[1], status: m[2], iteration: Number(m[3]) });
+  const v2 = c.body.match(V2_REVIEW_RE);
+  const legacy = c.body.match(LEGACY_REVIEW_RE);
+  if (v2) {
+    reviews.push({ sha: v2[1], bodySha256: v2[2], status: v2[3], iteration: Number(v2[4]) });
+  } else if (legacy) {
+    reviews.push({ sha: legacy[1], bodySha256: null, status: legacy[2], iteration: Number(legacy[3]) });
+  }
   else if (headSha && c.body.includes(`reviewed_sha: ${headSha}`)) sawMalformedAtSha = true;
 }
 const nextIteration = reviews.length ? Math.max(...reviews.map((r) => r.iteration)) + 1 : 1;
@@ -140,9 +149,12 @@ let already = 0;
 let priorStatus = "NONE";
 if (headSha) {
   const atSha = reviews.filter((r) => r.sha === headSha);
-  if (atSha.length) {
+  const exact = bodySha256 === null ? [] : atSha.filter((r) => r.bodySha256 === bodySha256);
+  if (exact.length) {
     already = 1;
-    priorStatus = atSha[atSha.length - 1].status;
+    priorStatus = exact[exact.length - 1].status;
+  } else if (atSha.length) {
+    priorStatus = "STALE_BODY";
   } else if (sawMalformedAtSha) {
     priorStatus = "MALFORMED";
   }

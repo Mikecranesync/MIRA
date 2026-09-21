@@ -19,6 +19,7 @@ ledger/render scripts (they are part of the unit under test).
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import stat
@@ -40,9 +41,32 @@ VIEWER = "Mikecranesync"
 SHA_A = "a" * 40
 SHA_B = "b" * 40
 SHA_C = "c" * 40
+BODY_HASH_A = "1" * 64
+BODY_HASH_B = "2" * 64
 
 
-def _record(sha: str, status: str, iteration: int, author: str = VIEWER) -> dict:
+def _record(
+    sha: str,
+    status: str,
+    iteration: int,
+    author: str = VIEWER,
+    body_sha256: str = BODY_HASH_A,
+) -> dict:
+    body = (
+        "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
+        f"reviewed_sha: {sha}\n"
+        f"reviewed_body_sha256: {body_sha256}\n"
+        "base_sha: {}\n".format("0" * 40)
+        + f"status: {status}\n"
+        + f"review_iteration: {iteration}\n"
+        + "\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
+    )
+    return {"body": body, "user": {"login": author}}
+
+
+def _legacy_record_without_body_hash(
+    sha: str, status: str, iteration: int, author: str = VIEWER
+) -> dict:
     body = (
         "[CODEX-ADVERSARIAL-REVIEW]\n\n```\n"
         f"reviewed_sha: {sha}\n"
@@ -62,12 +86,19 @@ def _malformed(sha: str, author: str = VIEWER) -> dict:
     }
 
 
-def run_ledger(tmp_path: Path, comments: list, sha: str | None = None) -> dict:
+def run_ledger(
+    tmp_path: Path,
+    comments: list,
+    sha: str | None = None,
+    body_sha256: str | None = None,
+) -> dict:
     f = tmp_path / "comments.json"
     f.write_text(json.dumps(comments), encoding="utf-8")
     args = [NODE, str(SCRIPTS / "adversarial-review-ledger.mjs"), str(f), VIEWER]
     if sha:
         args += ["--sha", sha]
+    if body_sha256:
+        args += ["--body-sha256", body_sha256]
     out = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -103,11 +134,60 @@ def test_malformed_and_foreign_records_never_validate(tmp_path):
 
 
 def test_valid_green_at_sha_is_recognized(tmp_path):
-    ledger = run_ledger(tmp_path, [_record(SHA_A, "GREEN", 1)], sha=SHA_A)
+    ledger = run_ledger(
+        tmp_path, [_record(SHA_A, "GREEN", 1)], sha=SHA_A, body_sha256=BODY_HASH_A
+    )
     assert ledger["next_iteration"] == 2
     assert ledger["consumed"] == 1
     assert ledger["already"] == 1
     assert ledger["prior_status"] == "GREEN"
+
+
+def test_green_at_same_head_with_old_body_hash_is_not_deduplicated(tmp_path):
+    ledger = run_ledger(
+        tmp_path,
+        [_record(SHA_A, "GREEN", 1, body_sha256=BODY_HASH_A)],
+        sha=SHA_A,
+        body_sha256=BODY_HASH_B,
+    )
+    assert ledger["already"] == 0
+    assert ledger["prior_status"] == "STALE_BODY"
+
+
+def test_renderer_requires_and_stamps_body_sha256(tmp_path):
+    envelope = tmp_path / "envelope.json"
+    envelope.write_text(json.dumps(GREEN_ENVELOPE), encoding="utf-8")
+    base = [
+        NODE,
+        str(SCRIPTS / "adversarial-review-render.mjs"),
+        str(envelope),
+        "--sha", SHA_A,
+        "--base", SHA_B,
+        "--iteration", "1",
+    ]
+    missing = subprocess.run(base, capture_output=True, text=True)
+    assert missing.returncode == 3
+    rendered = subprocess.run(
+        [*base, "--body-sha256", BODY_HASH_A],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert f"reviewed_body_sha256: {BODY_HASH_A}" in rendered.stdout
+
+
+def test_legacy_records_still_consume_budget_but_never_authorize(tmp_path):
+    legacy = _legacy_record_without_body_hash(SHA_A, "GREEN", 3)
+    ledger = run_ledger(
+        tmp_path,
+        [legacy],
+        sha=SHA_A,
+        body_sha256=BODY_HASH_A,
+    )
+    assert ledger["consumed"] == 1
+    assert ledger["next_iteration"] == 4
+    assert ledger["already"] == 0
+    assert ledger["prior_status"] == "STALE_BODY"
 
 
 # ── Script fixtures ──────────────────────────────────────────────────────────
@@ -171,11 +251,14 @@ class Harness:
 
         self.set_comments([])
         self.set_pr_head(self.head)
+        self.body = "Review the exact PR body, including this punctuation: !"
+        (self.fix / "pr_body").write_text(self.body, encoding="utf-8")
         (self.fix / "pr.json").write_text(
             json.dumps(
                 {
                     "number": 99,
                     "title": "t",
+                    "body": self.body,
                     "baseRefName": "main",
                     "headRefOid": self.head,
                     "headRefName": "work",
@@ -222,8 +305,26 @@ case "$*" in
   api\\ repos/*/comments\\ --paginate)
       if [ "${{STUB_FAIL_LIST:-0}}" = "1" ]; then exit 1; fi
       cat "$FIX/comments.json" ;;
-  "pr view 99 --json number,title,baseRefName,headRefOid,headRefName")
+  "pr view 99 --json number,title,body,baseRefName,headRefOid,headRefName")
       cat "$FIX/pr.json" ;;
+  "pr view 99 --json headRefOid,body")
+      if [ -s "$FIX/head_seq.txt" ]; then
+        cur="$(head -n1 "$FIX/head_seq.txt")"
+        sed -i '1d' "$FIX/head_seq.txt"
+      else
+        cur="$(cat "$FIX/pr_head")"
+      fi
+      if [ -s "$FIX/body_seq.txt" ]; then
+        body="$(head -n1 "$FIX/body_seq.txt")"
+        sed -i '1d' "$FIX/body_seq.txt"
+      else
+        body="$(cat "$FIX/pr_body")"
+      fi
+      node -e '
+        const fs=require("fs");
+        const pr=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+        process.stdout.write(JSON.stringify({{headRefOid:process.argv[2],body:process.argv[3]}}));
+      ' "$FIX/pr.json" "$cur" "$body" ;;
   "pr view 99 --json headRefOid --jq .headRefOid")
       if [ -s "$FIX/head_seq.txt" ]; then
         head -n1 "$FIX/head_seq.txt"
@@ -268,6 +369,14 @@ cat > /dev/null
     def set_pr_head(self, sha: str, sequence: list[str] | None = None) -> None:
         (self.fix / "pr_head").write_text(sha, encoding="utf-8")
         seq = self.fix / "head_seq.txt"
+        if sequence:
+            seq.write_text("\n".join(sequence) + "\n", encoding="utf-8")
+        elif seq.exists():
+            seq.unlink()
+
+    def set_pr_body(self, body: str, sequence: list[str] | None = None) -> None:
+        (self.fix / "pr_body").write_text(body, encoding="utf-8")
+        seq = self.fix / "body_seq.txt"
         if sequence:
             seq.write_text("\n".join(sequence) + "\n", encoding="utf-8")
         elif seq.exists():
@@ -456,7 +565,10 @@ def test_dedupe_early_exit_consumes_no_budget(tmp_path):
     """A re-run at an already-reviewed SHA reports the prior status without
     running codex — and therefore without budget interaction."""
     h = Harness(tmp_path)
-    h.set_comments(_three_consumed() + [_record(h.head, "ISSUES_FOUND", 4)])
+    body_sha256 = hashlib.sha256(h.body.encode("utf-8")).hexdigest()
+    h.set_comments(
+        _three_consumed() + [_record(h.head, "ISSUES_FOUND", 4, body_sha256=body_sha256)]
+    )
     r = h.run("adversarial-review.sh", "99")
     assert r.returncode == 1  # prior ISSUES_FOUND replayed
     assert "Already reviewed" in r.stdout
@@ -482,6 +594,17 @@ def test_green_with_stable_head_is_green(tmp_path):
     r = h.run("adversarial-review.sh", "99")
     assert r.returncode == 0, r.stderr + r.stdout
     assert f"reviewed_sha: {h.head}" in h.posted()
+    body_sha256 = hashlib.sha256(h.body.encode("utf-8")).hexdigest()
+    assert f"reviewed_body_sha256: {body_sha256}" in h.posted()
+
+
+def test_green_for_changed_body_sha256_is_stale(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(GREEN_ENVELOPE)
+    h.set_pr_body(h.body, sequence=["A body edit while Codex is reviewing"])
+    r = h.run("adversarial-review.sh", "99")
+    assert r.returncode == 4
+    assert "body changed" in r.stderr
 
 
 # ── adversarial-review-loop.sh ───────────────────────────────────────────────

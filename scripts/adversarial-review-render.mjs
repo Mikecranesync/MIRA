@@ -3,7 +3,7 @@
 //
 // Usage:
 //   node scripts/adversarial-review-render.mjs <envelope.json> \
-//        --sha <reviewed_sha> --base <base_sha> --iteration <n> [--check-only]
+//        --sha <reviewed_sha> --body-sha256 <64-hex> --base <base_sha> --iteration <n> [--check-only]
 //
 // Exit codes: 0 = valid (comment on stdout unless --check-only; then a status
 // line), 3 = malformed envelope. Fail-safe: malformed output is NEVER GREEN.
@@ -34,6 +34,7 @@ function arg(name, fallback = undefined) {
 const file = process.argv[2];
 if (!file || file.startsWith("--")) fail("usage: render.mjs <envelope.json> --sha S --base B --iteration N");
 const sha = arg("--sha");
+const bodySha256 = arg("--body-sha256");
 const baseSha = arg("--base", "(unknown)");
 const iteration = Number(arg("--iteration", "1"));
 const checkOnly = process.argv.includes("--check-only");
@@ -49,6 +50,7 @@ const reservationId = arg("--reservation-id", null);
 if (runId !== null && !/^[0-9a-f]{32}$/.test(runId)) fail("--run-id must be 32 lowercase hex chars");
 if (reservationId !== null && !/^[0-9]+$/.test(reservationId)) fail("--reservation-id must be numeric");
 if (!sha) fail("--sha is required");
+if (!/^[0-9a-f]{64}$/.test(bodySha256 ?? "")) fail("--body-sha256 must be 64 lowercase hex chars");
 if (!Number.isInteger(iteration) || iteration < 1) fail("--iteration must be a positive integer");
 
 let env;
@@ -92,6 +94,7 @@ lines.push("[CODEX-ADVERSARIAL-REVIEW]");
 lines.push("");
 lines.push("```");
 lines.push(`reviewed_sha: ${sha}`);
+lines.push(`reviewed_body_sha256: ${bodySha256}`);
 lines.push(`base_sha: ${baseSha}`);
 lines.push(`status: ${status}`);
 lines.push(`review_iteration: ${iteration}`);

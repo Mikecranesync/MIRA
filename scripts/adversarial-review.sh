@@ -76,11 +76,18 @@ if [ -z "$PR_NUMBER" ]; then
   exit 3
 fi
 
-PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,baseRefName,headRefOid,headRefName)" || {
+PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName)" || {
   echo "ERROR: gh could not read PR #$PR_NUMBER" >&2; exit 2; }
 PR_TITLE="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).title))')"
 BASE_REF="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).baseRefName))')"
 HEAD_SHA="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).headRefOid))')"
+PR_BODY_SHA256="$(printf '%s' "$PR_JSON" | node -e '
+  const crypto=require("node:crypto");
+  let d="";
+  process.stdin.on("data",c=>d+=c).on("end",()=>{
+    const body=JSON.parse(d).body ?? "";
+    process.stdout.write(crypto.createHash("sha256").update(body,"utf8").digest("hex"));
+  });')"
 
 LOCAL_SHA="$(git rev-parse HEAD)"
 if [ "$LOCAL_SHA" != "$HEAD_SHA" ]; then
@@ -121,7 +128,8 @@ fi
 COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER-$$.json"
 gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
   echo "ERROR: could not list PR comments" >&2; exit 2; }
-LEDGER_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" --sha "$HEAD_SHA")" || {
+LEDGER_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" \
+    --sha "$HEAD_SHA" --body-sha256 "$PR_BODY_SHA256")" || {
   echo "ERROR: could not parse the PR comment ledger" >&2; exit 2; }
 ITERATION="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(String(JSON.parse(d).next_iteration)))')"
 ALREADY="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(String(JSON.parse(d).already)))')"
@@ -132,18 +140,31 @@ if [ -z "${PRIOR_STATUS:-}" ] || [ -z "${ITERATION:-}" ] || [ -z "${CONSUMED:-}"
   exit 2
 fi
 
-# A GREEN — fresh OR deduplicated — is authoritative only if the reviewed SHA
-# is STILL the PR head at exit (Codex round 3 F1: the dedupe early-exit used
-# to skip this, silently re-approving a head that advanced mid-run).
+# A GREEN — fresh OR deduplicated — is authoritative only if the reviewed
+# head/body snapshot is STILL current at exit (Codex round 3 F1: the dedupe
+# early-exit used to skip this, silently re-approving a changed PR).
 final_green_gate() {
-  local cur
-  cur="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
-  if [ -z "$cur" ]; then
-    echo "WARNING: could not re-verify the PR head — treating the GREEN as stale." >&2
+  local cur_json cur cur_body_sha
+  cur_json="$(gh pr view "$PR_NUMBER" --json headRefOid,body 2>/dev/null || echo "")"
+  if [ -z "$cur_json" ]; then
+    echo "WARNING: could not re-verify the PR head/body — treating the GREEN as stale." >&2
     exit 4
   fi
+  read -r cur cur_body_sha < <(printf '%s' "$cur_json" | node -e '
+    const crypto=require("node:crypto");
+    let d="";
+    process.stdin.on("data",c=>d+=c).on("end",()=>{
+      const pr=JSON.parse(d);
+      const body=pr.body ?? "";
+      const digest=crypto.createHash("sha256").update(body,"utf8").digest("hex");
+      process.stdout.write(`${pr.headRefOid} ${digest}\n`);
+    });')
   if [ "$cur" != "$HEAD_SHA" ]; then
     echo "STALE: PR head advanced to ${cur:0:12} — this GREEN applies only to the reviewed ${HEAD_SHA:0:12}." >&2
+    exit 4
+  fi
+  if [ "$cur_body_sha" != "$PR_BODY_SHA256" ]; then
+    echo "STALE: PR body changed during review; GREEN is not authoritative." >&2
     exit 4
   fi
   # The Legacy UI Lifecycle Guard reads this ledger but only re-evaluates on a
@@ -240,7 +261,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     exit 2
   }
   ACQ_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" \
-      --sha "$HEAD_SHA" --run-id "$RUN_ID")" || {
+      --sha "$HEAD_SHA" --body-sha256 "$PR_BODY_SHA256" --run-id "$RUN_ID")" || {
     echo "ERROR: could not parse the ledger after reserving — cannot prove ownership." >&2
     exit 2
   }
@@ -336,7 +357,7 @@ if [ "$CODEX_RC" -ne 0 ] || [ ! -s "$ENVELOPE" ]; then
 fi
 
 # ── Validate + render (fail-safe: malformed => exit 2, never GREEN) ──────────
-RENDER_ARGS=(--sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION")
+RENDER_ARGS=(--sha "$HEAD_SHA" --body-sha256 "$PR_BODY_SHA256" --base "$MERGE_BASE" --iteration "$ITERATION")
 if [ "$HUMAN_AUTHORIZED" -eq 1 ]; then RENDER_ARGS+=(--human-authorized); fi
 # Bind the review record to its reservation (evidence chain: reservation ->
 # review -> disposition all carry the same run_id).
