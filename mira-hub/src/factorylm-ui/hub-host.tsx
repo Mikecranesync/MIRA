@@ -115,6 +115,11 @@ export function HubShellHost() {
   const [signedOut, setSignedOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
   const [selection, setSelection] = useState<HubSelection | null>(null);
+  // Mirror for async callbacks that must know whether anything is open yet
+  // without re-subscribing to the selection (the notebook list reloads after
+  // every send).
+  const selectionRef = useRef<HubSelection | null>(null);
+  useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
@@ -154,9 +159,19 @@ export function HubShellHost() {
     if (!data) return;
     setNotebooks(data.notebooks);
     // A deep link / reload names its conversation (#3922); otherwise HOME (L0).
-    setSelection((cur) => cur ?? selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks));
+    // Opening from the URL goes through the same two steps as a click: the
+    // reducer is told the thread id FIRST (`syncThread`), or its hydrate case
+    // would reset the draft on every render and the composer could not be
+    // typed into (the e2e deep-link follow-up caught exactly that).
+    if (!selectionRef.current) {
+      const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
+      if (next) {
+        syncThread(next);
+        setSelection(next);
+      }
+    }
     return data.notebooks;
-  }, []);
+  }, [syncThread]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
