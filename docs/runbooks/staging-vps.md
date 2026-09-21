@@ -1,6 +1,6 @@
 # Staging VPS Runbook
 
-**Created:** 2026-05-19. **Authorization model updated:** 2026-09-07.
+**Created:** 2026-05-19. **Authorization model updated:** 2026-09-07. **Separate host:** 2026-09-21 (#3909).
 
 > **Current rule:** staging deploys are manual, protected, and bound to the
 > exact current `main` SHA. Push-triggered deploys, feature-ref deploys, direct
@@ -8,13 +8,19 @@
 > `staging-deploy` GitHub environment and its scoped non-root identity must be
 > provisioned before this workflow is dispatched.
 
-Lightweight staging environment **co-tenanted on the production VPS**
-(165.245.138.91). Completely isolated from production via separate Docker
-network, container names, volumes, and host ports.
+Lightweight staging environment on a **separate staging host** (never the
+production VPS — #3909, PRD §5/SC3). The host is named only by the
+`STAGING_HOST` repository variable; its SSH host key is pinned by
+`STAGING_HOST_KEY`. The deploy workflow refuses any host that appears in
+`deployment/known_hosts.factorylm-prod`, and STOPs if it finds production
+containers, `/opt/mira`, or a Doppler token that can read `factorylm/prd` on
+the box. (The 2026-05 co-tenant design on the DigitalOcean VPS is retired:
+that host is dead, and container isolation is not host isolation.)
 
 ## Why this design
 
-- **No new infra cost** — reuses the existing VPS.
+- **No host-level path to production secrets** — a sudo-capable account on a
+  shared host could read the prod Doppler token; a separate cheap VPS cannot.
 - **Same image build, same Dockerfiles** — staging is just the prod compose
   graph with a smaller subset of services and offset ports.
 - **Separate NeonDB branch** — `ep-polished-hall-ahcqtcxe-pooler`, has the
@@ -42,10 +48,12 @@ required for Phase 1.
 
 ## URLs
 
-- Hub: <http://165.245.138.91:4101>
-- Pipeline health: <http://165.245.138.91:4099/health>
-- Web: <http://165.245.138.91:4200>
-- Atlas API: <http://165.245.138.91:4088>
+- Hub: `http://$STAGING_HOST:4101`
+- Pipeline health: `http://$STAGING_HOST:4099/health`
+- Web: `http://$STAGING_HOST:4200`
+- Atlas API: `http://$STAGING_HOST:4088`
+
+(`STAGING_HOST` is the repository variable; the workflow prints the URLs.)
 
 These are **plain HTTP** in Phase 1 — no TLS, no DNS. Mike can hit them from
 his phone over the public internet. Phase 2 is to add TLS via either:
@@ -65,19 +73,34 @@ Both deferred until the Phase 1 preview is working end-to-end.
    `atlas_pgdata`.
 5. Bind ports use the `4xxx` range — no overlap with prod's `3xxx`/`8xxx`/`9xxx`.
 6. Doppler config is `factorylm/stg` — production reads `factorylm/prd`.
-7. The deploy workflow ends with a guard that fails loudly if the count of
-   running production `mira-*` containers drops below 3.
+7. Separate host: the deploy workflow ends with a guard that STOPs if any
+   production-named `mira-*` container, `/opt/mira`, or prd-readable Doppler
+   token exists on the staging host.
 
 ## First-time provisioning (maintainer-owned)
 
-Do not bootstrap staging through an ad-hoc root shell. A maintainer must first:
-
-1. Create and protect the GitHub environment `staging-deploy`.
-2. Set its `STAGING_DEPLOY_USER` variable to a scoped non-root VPS account.
-3. Set its dedicated `STAGING_DEPLOY_SSH_KEY` secret.
-4. Give that account only the access needed for `/opt/mira-staging`, Docker,
-   Git, and the `factorylm/stg` Doppler configuration.
-5. Verify the committed `deployment/known_hosts.factorylm-prod` identity.
+1. Order a small VPS (OVH VPS-1/2 class, Ubuntu 24.04) that is **not** the
+   production host. The stored OVH API credential is GET-only, so this is a
+   panel step.
+2. As root on the fresh box, run once:
+   `sudo bash tools/staging/bootstrap-staging-host.sh '<staging-deploy public key>'`
+   (public key: Doppler `factorylm/stg` `STAGING_DEPLOY_SSH_PUBLIC_KEY`). It
+   installs Docker + the Doppler CLI, creates the non-root `staging-deploy`
+   account (docker group, no sudo), hardens sshd to keys-only, creates
+   `/opt/mira-staging`, and prints the host key line.
+3. As `staging-deploy`, configure a `factorylm/stg` **service** token scoped to
+   `/opt/mira-staging` (`doppler configure set token … --scope /opt/mira-staging`).
+   Never a personal token, never anything that can read `prd`.
+4. Set repository variables `STAGING_HOST` (IP or hostname) and
+   `STAGING_HOST_KEY` (the `ssh-ed25519 AAAA…` line printed in step 2), and
+   confirm `STAGING_DEPLOY_USER=staging-deploy` plus the `STAGING_DEPLOY_SSH_KEY`
+   secret (private key; also in Doppler stg as `STAGING_DEPLOY_SSH_PRIVATE_KEY`).
+5. Update the Doppler stg public URLs (`ATLAS_PUBLIC_API_URL`,
+   `ATLAS_PUBLIC_FRONT_URL`, `NEXTAUTH_URL`) to the new host if they still name
+   an old one; the workflow defaults the rest from `STAGING_HOST`.
+6. Dispatch `deploy-staging.yml` with the approved `main` SHA. Evidence for
+   #3909 is in the run log: `id` of the deploy user, the separate-host
+   invariant line, and the `staging-receipt-<sha>` artifact.
 
 The workflow creates the staging checkout if it is absent. Until the protected
 environment and scoped account exist, staging deployment is intentionally on

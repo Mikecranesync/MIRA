@@ -1,9 +1,10 @@
 name: Deploy to Staging VPS
 
-# Deploys the docker-compose.staging-vps.yml stack to the production VPS
-# (165.245.138.91) under a separate Docker network, with stg-* container
-# names and offset host ports (4xxx). Production stack on saas.yml is
-# never touched — see docs/runbooks/staging-vps.md for isolation rules.
+# Deploys the docker-compose.staging-vps.yml stack to the SEPARATE staging
+# host named by the STAGING_HOST repository variable (never the production
+# host — #3909, PRD §5/SC3), with stg-* container names and offset host
+# ports (4xxx). The host key is pinned from the STAGING_HOST_KEY variable.
+# See docs/runbooks/staging-vps.md for provisioning and isolation rules.
 
 on:
   workflow_dispatch:
@@ -142,9 +143,35 @@ jobs:
           }
           printf 'deploy_user=%s\n' "$DEPLOY_USER" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve staging host
+        id: staging_host
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_HOST_KEY: ${{ vars.STAGING_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          # Separate host (#3909): the target comes from a repository variable, never
+          # a literal in this file, and must not be any pinned production host.
+          [[ "$STAGING_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$STAGING_HOST" =~ ^[a-z0-9]([a-z0-9-]{0,62}\.)+[a-z]{2,}$ ]] || {
+            echo "::error::STAGING_HOST repository variable is missing or invalid"
+            exit 1
+          }
+          if grep -qE "^${STAGING_HOST//./\\.} " deployment/known_hosts.factorylm-prod; then
+            echo "::error::STAGING_HOST ${STAGING_HOST} is a pinned production host — staging must run on a separate host (#3909)"
+            exit 1
+          fi
+          [[ "$STAGING_HOST_KEY" =~ ^ssh-ed25519\ AAAA[0-9A-Za-z+/]+=*$ ]] || {
+            echo "::error::STAGING_HOST_KEY repository variable is missing or not an ssh-ed25519 host public key"
+            exit 1
+          }
+          echo "Staging host: ${STAGING_HOST} ($(printf '%s\n' "$STAGING_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}'))"
+          printf 'staging_host=%s\n' "$STAGING_HOST" >> "$GITHUB_OUTPUT"
+
       - name: Set up SSH
         env:
           STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          STAGING_HOST: ${{ steps.staging_host.outputs.staging_host }}
+          STAGING_HOST_KEY: ${{ vars.STAGING_HOST_KEY }}
         run: |
           set -euo pipefail
           [ -n "$STAGING_DEPLOY_SSH_KEY" ] || {
@@ -154,7 +181,9 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/staging_deploy_key
           chmod 600 ~/.ssh/staging_deploy_key
-          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+          # Pinned trust only: the staging host key comes from the validated variable.
+          printf '%s %s\n' "$STAGING_HOST" "$STAGING_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy exact authorized staging source
         env:
@@ -162,10 +191,12 @@ jobs:
           SERVICES: ${{ needs.authorize-target.outputs.services }}
           RESET_VOLUMES: ${{ needs.authorize-target.outputs.reset_volumes }}
           DEPLOY_USER: ${{ steps.revalidate.outputs.deploy_user }}
+          STAGING_HOST: ${{ steps.staging_host.outputs.staging_host }}
         run: |
           set -euo pipefail
           {
             printf 'APPROVED_RC_SHA=%q\n' "$APPROVED_RC_SHA"
+            printf 'STAGING_HOST=%q\n' "$STAGING_HOST"
             printf 'SERVICES=%q\n' "$SERVICES"
             printf 'RESET_VOLUMES=%q\n' "$RESET_VOLUMES"
             cat <<'ENDSSH'
@@ -239,6 +270,12 @@ jobs:
           MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export MIRA_BUILD_TIME
           echo "Staging deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
+
+          # Public URLs default to this host; values set in Doppler stg take precedence.
+          export ATLAS_PUBLIC_API_URL="${ATLAS_PUBLIC_API_URL:-http://${STAGING_HOST}:4088}"
+          export ATLAS_PUBLIC_FRONT_URL="${ATLAS_PUBLIC_FRONT_URL:-http://${STAGING_HOST}:4200}"
+          export NEXT_PUBLIC_PIPELINE_API_URL="${NEXT_PUBLIC_PIPELINE_API_URL:-http://${STAGING_HOST}:4099}"
+          export NEXTAUTH_URL_INTERNAL="${NEXTAUTH_URL_INTERNAL:-http://${STAGING_HOST}:4101/api/auth}"
 
           echo "=== Build staging images (no-cache, fresh base) ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
@@ -317,7 +354,7 @@ jobs:
           # uploads it as the durable staging-receipt-<sha> artifact.
           BUILT_IDS="$BUILT_IDS" RUNNING_IDS="$RUNNING_IDS" \
           APPROVED_RC_SHA="$APPROVED_RC_SHA" MIRA_APP_VERSION="$MIRA_APP_VERSION" \
-          HUB_GIT_SHA="$HUB_GIT_SHA" WEB_GIT_SHA="$WEB_GIT_SHA" \
+          HUB_GIT_SHA="$HUB_GIT_SHA" WEB_GIT_SHA="$WEB_GIT_SHA" STAGING_HOST="$STAGING_HOST" \
           python3 - <<'PYRECEIPT'
           import json, os, datetime
           def pairs(path):
@@ -344,20 +381,29 @@ jobs:
               },
               "built_images": pairs(os.environ["BUILT_IDS"]),
               "running_images": pairs(os.environ["RUNNING_IDS"]),
-              "target": {"host": "165.245.138.91", "compose": "docker-compose.staging-vps.yml"},
+              "target": {"host": os.environ["STAGING_HOST"], "compose": "docker-compose.staging-vps.yml"},
               "deployed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
           }
           print("FACTORYLM_DEPLOY_RECEIPT_JSON=" + json.dumps(receipt, separators=(",", ":"), sort_keys=True))
           PYRECEIPT
           rm -f "$BUILT_IDS" "$RUNNING_IDS"
 
-          # Hard guard — fail loudly if any production container disappeared.
-          PROD_RUNNING=$(docker ps --filter "name=^mira-" --filter "status=running" --format '{{.Names}}' | grep -v '^stg-' | wc -l)
-          echo "Production mira-* containers still running: $PROD_RUNNING"
-          if [ "$PROD_RUNNING" -lt 3 ]; then
-            echo "::error::Production container count looks too low — investigate before declaring success"
+          # Separate-host invariant (#3909, PRD §5/SC3) — staging never shares a host
+          # with production. Anything production-shaped here is a STOP, not a warning.
+          PROD_CONTAINERS="$(docker ps -a --format '{{.Names}}' | grep -E '^mira-' | grep -v '^stg-' || true)"
+          if [ -n "$PROD_CONTAINERS" ]; then
+            echo "::error::production-named containers present on the staging host — STOP (#3909): ${PROD_CONTAINERS}"
             exit 1
           fi
+          if [ -e /opt/mira ]; then
+            echo "::error::/opt/mira (production checkout) exists on the staging host — STOP (#3909)"
+            exit 1
+          fi
+          if doppler secrets --project factorylm --config prd --only-names >/dev/null 2>&1; then
+            echo "::error::this host's Doppler token can read factorylm/prd — STOP (#3909)"
+            exit 1
+          fi
+          echo "Separate-host invariant holds: no production containers, no /opt/mira, no prd Doppler access"
           ENDSSH
           } | ssh \
             -i ~/.ssh/staging_deploy_key \
@@ -366,7 +412,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -l "$DEPLOY_USER" \
-            165.245.138.91 \
+            "$STAGING_HOST" \
             'bash -s' 2>&1 | tee "$RUNNER_TEMP/staging-deploy.out"
 
       - name: Extract and verify the staging receipt
@@ -392,12 +438,14 @@ jobs:
 
       - name: Print staging URL
         if: success()
+        env:
+          STAGING_HOST: ${{ steps.staging_host.outputs.staging_host }}
         run: |
           echo "::notice::Staging deployed at ${{ needs.authorize-target.outputs.approved_rc_sha }}"
-          echo "::notice::Staging Hub: http://165.245.138.91:4101"
-          echo "::notice::Staging Web: http://165.245.138.91:4200"
-          echo "::notice::Staging Pipeline: http://165.245.138.91:4099/health"
-          echo "::notice::Staging Atlas API: http://165.245.138.91:4088"
+          echo "::notice::Staging Hub: http://${STAGING_HOST}:4101"
+          echo "::notice::Staging Web: http://${STAGING_HOST}:4200"
+          echo "::notice::Staging Pipeline: http://${STAGING_HOST}:4099/health"
+          echo "::notice::Staging Atlas API: http://${STAGING_HOST}:4088"
 
       - name: Notify failure
         if: failure()

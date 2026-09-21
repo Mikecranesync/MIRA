@@ -101,8 +101,8 @@ services:
       DB_PWD: ${ATLAS_DB_PASSWORD}
       JWT_SECRET_KEY: ${ATLAS_JWT_SECRET}
       SPRING_PROFILES_ACTIVE: ${ATLAS_SPRING_PROFILE:-prod}
-      PUBLIC_API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
-      PUBLIC_FRONT_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://165.245.138.91:4200}
+      PUBLIC_API_URL: ${ATLAS_PUBLIC_API_URL:-http://127.0.0.1:4088}
+      PUBLIC_FRONT_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://127.0.0.1:4200}
       MINIO_ENDPOINT: http://stg-atlas-minio:9000
       MINIO_BUCKET: atlas-bucket
       MINIO_ACCESS_KEY: ${ATLAS_MINIO_USER:-minioadmin}
@@ -145,7 +145,7 @@ services:
       atlas-api:
         condition: service_healthy
     environment:
-      API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
+      API_URL: ${ATLAS_PUBLIC_API_URL:-http://127.0.0.1:4088}
       INVITATION_VIA_EMAIL: "false"
       CLOUD_VERSION: "false"
       NODE_ENV: production
@@ -285,7 +285,7 @@ services:
       args:
         NEXT_PUBLIC_BASE_PATH: ""
         NEXT_PUBLIC_API_BASE: ""
-        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
+        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-http://127.0.0.1:4099}
         MIRA_GIT_SHA: ${MIRA_GIT_SHA:-unknown}
         MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
         MIRA_BUILD_TIME: ${MIRA_BUILD_TIME:-unknown}
@@ -315,7 +315,7 @@ services:
       # 2026-05-22). Override NEXTAUTH_URL via Doppler if reaching staging by
       # IP — that callback must also be added to the OAuth client.
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:4101/api/auth}
-      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-http://165.245.138.91:4101/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-http://127.0.0.1:4101/api/auth}
       - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
       - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
@@ -324,7 +324,7 @@ services:
       # staging/prod; fallback below is the founder's tenant where the
       # seeded OEM corpus currently lives.
       - QUICKSTART_TENANT_ID=${QUICKSTART_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
-      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
+      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://127.0.0.1:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
