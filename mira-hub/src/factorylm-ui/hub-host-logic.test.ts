@@ -18,6 +18,8 @@ import {
   metaFor,
   newThreadId,
   retainedStreamInterruption,
+  searchForSelection,
+  selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
 } from "./hub-host-logic";
@@ -293,5 +295,60 @@ describe("HOME (no notebook selected) — L0 unbound Ask on the Hub host", () =>
     expect(isUnboundNotebook({ asset: null, manufacturer: "Siemens", model: null })).toBe(false);
     expect(isUnboundNotebook({ asset: null, manufacturer: null, model: "G120" })).toBe(false);
     expect(isUnboundNotebook({ asset: { entityId: "e" } as never, manufacturer: null, model: null })).toBe(false);
+  });
+});
+
+describe("selectionFromSearch / searchForSelection — addressable conversations (#3922)", () => {
+  /** The shape the mobile New-project form produces: identity confirmed from
+   *  manufacturer+model, no asset binding (asset: null) — 18 of 19 notebooks in
+   *  the walked tenant. It must be addressable exactly like a bound one. */
+  const mobileUnbound = nb({
+    id: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4",
+    displayName: "EMU-WALK-3898-verify",
+    manufacturer: "AutomationDirect",
+    model: "GS10",
+    identityStatus: "user_confirmed",
+    asset: null,
+    threads: [
+      { id: "t-old", notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", title: "ports", createdAt: "", updatedAt: "2026-09-20T22:00:00Z", turnCount: 2, sharedLegacy: false },
+      { id: "t-new", notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", title: "temperature", createdAt: "", updatedAt: "2026-09-21T01:00:00Z", turnCount: 3, sharedLegacy: false },
+    ],
+  });
+  const bound = nb({
+    id: "nb-bound",
+    displayName: "CV-101",
+    asset: { entityId: "asset-cv101", name: null, assetTag: null, selectedVia: null, confirmedBy: "u", confirmedAt: "2026-09-01T00:00:00Z" },
+    threads: [{ id: "t-b", notebookId: "nb-bound", title: "faults", createdAt: "", updatedAt: "2026-09-19T00:00:00Z", turnCount: 4, sharedLegacy: false }],
+  });
+  const list = [bound, mobileUnbound];
+
+  it("opens the exact thread a link names in an UNBOUND (asset: null) notebook", () => {
+    const sel = selectionFromSearch("?notebook=7a352ed1-5f8a-48d6-b66c-1ff641fea9d4&thread=t-old", list);
+    expect(sel).toEqual({ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-old" });
+    expect(shellThreadId(sel!)).toBe("notebook-7a352ed1-5f8a-48d6-b66c-1ff641fea9d4:thread-t-old");
+  });
+  it("opens the exact thread a link names in a BOUND notebook", () => {
+    expect(selectionFromSearch("?notebook=nb-bound&thread=t-b", list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
+  });
+  it("a notebook without a thread opens its most recent thread; legacy is addressable", () => {
+    expect(selectionFromSearch("?notebook=7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", list)).toEqual({ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-new" });
+    expect(selectionFromSearch("?notebook=nb-bound&thread=legacy", list)).toEqual({ notebookId: "nb-bound", threadId: "legacy" });
+  });
+  it("keeps a well-formed thread id that has no server row yet (a reloaded New chat)", () => {
+    expect(selectionFromSearch("?notebook=nb-bound&thread=fresh-1234", list)).toEqual({ notebookId: "nb-bound", threadId: "fresh-1234" });
+  });
+  it("falls back to HOME for no/unknown notebook and to the recent thread for a malformed thread id", () => {
+    expect(selectionFromSearch("", list)).toBeNull();
+    expect(selectionFromSearch("?thread=t-b", list)).toBeNull();
+    expect(selectionFromSearch("?notebook=nope&thread=t-b", list)).toBeNull();
+    expect(selectionFromSearch("?notebook=nb-bound&thread=%20%3Cscript%3E", list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
+    expect(selectionFromSearch("?notebook=nb-bound&thread=" + "x".repeat(121), list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
+  });
+  it("round-trips: the written query string re-selects the same conversation; HOME writes none", () => {
+    for (const sel of [{ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-old" }, { notebookId: "nb-bound", threadId: "legacy" }]) {
+      expect(selectionFromSearch(searchForSelection(sel), list)).toEqual(sel);
+    }
+    expect(searchForSelection(null)).toBe("");
+    expect(searchForSelection({ notebookId: "a b", threadId: "t:1" })).toBe("?notebook=a+b&thread=t%3A1");
   });
 });

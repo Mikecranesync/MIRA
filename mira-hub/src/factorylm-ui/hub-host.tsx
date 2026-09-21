@@ -57,6 +57,8 @@ import {
   metaFor,
   newThreadId,
   retainedStreamInterruption,
+  searchForSelection,
+  selectionFromSearch,
   shellThreadId,
   type CompatibleStreamResult,
   type HubSelection,
@@ -79,6 +81,18 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status:
   const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", headers: { accept: "application/json" }, signal });
   const data = res.ok ? ((await res.json()) as T) : null;
   return { status: res.status, data };
+}
+
+/** The address bar, read/written only in the browser (the page is a client
+ *  component but is still prerendered). `replaceState` keeps one history entry
+ *  per visit: the shell's own Back handling (`adapter.onBack`) is unchanged. */
+function readSearch(): string {
+  return typeof window === "undefined" ? "" : window.location.search;
+}
+function writeSearch(search: string): void {
+  if (typeof window === "undefined") return;
+  const next = `${window.location.pathname}${search}`;
+  if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
 }
 
 const EMPTY_FIXTURE = {
@@ -139,7 +153,8 @@ export function HubShellHost() {
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
-    setSelection((cur) => cur ?? landingSelection(data.notebooks));
+    // A deep link / reload names its conversation (#3922); otherwise HOME (L0).
+    setSelection((cur) => cur ?? selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks));
     return data.notebooks;
   }, []);
   useEffect(() => {
@@ -182,6 +197,7 @@ export function HubShellHost() {
     setFailedBody(null);
     syncThread(sel);
     setSelection(sel);
+    writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
 
   // --- derived shell inputs ---
