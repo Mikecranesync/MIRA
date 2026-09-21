@@ -32,7 +32,9 @@ function arg(name, fallback = undefined) {
 }
 
 const file = process.argv[2];
-if (!file || file.startsWith("--")) fail("usage: render.mjs <envelope.json> --sha S --base B --iteration N");
+if (!file || file.startsWith("--")) {
+  fail("usage: render.mjs <envelope.json> --sha S --body-sha256 H --base B --iteration N");
+}
 const sha = arg("--sha");
 const bodySha256 = arg("--body-sha256");
 const baseSha = arg("--base", "(unknown)");

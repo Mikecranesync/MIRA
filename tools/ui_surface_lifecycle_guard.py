@@ -2,10 +2,10 @@
 """FactoryLM Unified UI Cutover — legacy presentation lifecycle guard.
 
 FACTORYLM-UNIFIED-UI-CUTOVER-001. Charter:
-docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Legacy exception
-policy" + §3.1 "Trusted enforcement boundary". Governance plan:
-docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md
-Task 2.
+docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Lifecycle guard
+rationale and exact-snapshot review" + §3.1 "Trusted enforcement boundary".
+Governance plan: docs/superpowers/plans/
+2026-09-06-factorylm-unified-ui-cutover-governance.md Task 2.
 
 Fails closed by default on ANY addition, modification, deletion, rename-in,
 or rename-out of a guarded legacy presentation path (from
@@ -1847,7 +1847,13 @@ def evaluate(
     if not review_valid:
         missing.append("review:exact-head and exact-body Codex GREEN")
 
-    if codex_attestation is not None and codex_attestation.reviewed_sha is not None:
+    if review_valid and body_missing:
+        headline = (
+            "RATIONALE DEFECT (the exact-head and exact-body Codex GREEN is current, "
+            "but the Lifecycle guard rationale is missing or invalid; correct the rationale "
+            "and rerun review because editing the body invalidates this GREEN)"
+        )
+    elif codex_attestation is not None and codex_attestation.reviewed_sha is not None:
         if codex_attestation.status == "ISSUES_FOUND":
             headline = (
                 f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
@@ -1870,7 +1876,7 @@ def evaluate(
         message=(
             headline
             + ". Guarded legacy presentation or control-plane path(s) touched without "
-            "the required rationale and review. Touched: "
+            "all required rationale and review evidence. Touched: "
             + ", ".join(touched)
             + ". Missing: "
             + ", ".join(missing)

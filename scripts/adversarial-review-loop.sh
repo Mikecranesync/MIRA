@@ -108,12 +108,32 @@ decision is required. See the latest [CODEX-ADVERSARIAL-REVIEW] and
 # counter — a restarted loop resumes the SAME budget). Prints a number, or
 # returns non-zero on any failure (callers fail closed: unknown budget is
 # never treated as budget available).
+current_snapshot_fields() {
+  # The single-quoted JavaScript contains a JS template literal, not shell
+  # interpolation.
+  # shellcheck disable=SC2016
+  gh pr view "$PR_NUMBER" --json headRefOid,body 2>/dev/null | node -e '
+    const crypto=require("node:crypto");
+    let d="";
+    process.stdin.on("data",c=>d+=c).on("end",()=>{
+      const pr=JSON.parse(d);
+      const body=pr.body ?? "";
+      if(!/^[0-9a-f]{40}$/.test(pr.headRefOid) || typeof body!=="string") process.exit(1);
+      const digest=crypto.createHash("sha256").update(body,"utf8").digest("hex");
+      process.stdout.write(`${pr.headRefOid} ${digest}\n`);
+    });'
+}
+
 consumed_rounds() {
-  local viewer comments
+  local viewer comments snapshot snapshot_sha snapshot_body_sha
   viewer="$(gh api user --jq .login 2>/dev/null)" || return 1
+  snapshot="$(current_snapshot_fields)" || return 1
+  read -r snapshot_sha snapshot_body_sha <<< "$snapshot"
+  [[ "$snapshot_sha" =~ ^[0-9a-f]{40}$ && "$snapshot_body_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
   comments="$OUT_DIR/loop-comments-$PR_NUMBER-$$.json"
   gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$comments" || return 1
-  node "$ROOT/scripts/adversarial-review-ledger.mjs" "$comments" "$viewer" 2>/dev/null | node -e '
+  node "$ROOT/scripts/adversarial-review-ledger.mjs" "$comments" "$viewer" \
+      --sha "$snapshot_sha" --body-sha256 "$snapshot_body_sha" 2>/dev/null | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       try{process.stdout.write(String(JSON.parse(d).consumed));}catch(e){process.exit(1);}
     });'
@@ -136,6 +156,15 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   echo "── Cycle $CYCLE/$MAX_ITER (durable rounds consumed: $CONSUMED/$MAX_TOTAL_ROUNDS) ──"
 
   PRE_SHA="$(git rev-parse HEAD)"
+  PRE_SNAPSHOT="$(current_snapshot_fields)" || {
+    escalate "could not read the exact PR head/body snapshot before review"
+    exit 2
+  }
+  read -r PRE_REMOTE_SHA PRE_BODY_SHA256 <<< "$PRE_SNAPSHOT"
+  if [ "$PRE_REMOTE_SHA" != "$PRE_SHA" ]; then
+    escalate "local head ${PRE_SHA:0:12} does not match PR head ${PRE_REMOTE_SHA:0:12} before review"
+    exit 2
+  fi
   # The runner posts the round RESERVATION (atomic acquisition at the GitHub
   # ledger) — mode=full announces that a privileged remediation may follow.
   if [ "$REVIEW_ONLY" -eq 1 ]; then LOOP_MODE=review_only; else LOOP_MODE=full; fi
@@ -148,14 +177,20 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     # F1 (PR #3279 round 1): a GREEN is terminal only if the PR head is STILL
     # the reviewed SHA — a push landing mid-review must trigger another cycle,
     # never an announcement of GREEN for an unreviewed head.
-    CUR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
-    if [ "$RC" -eq 0 ] && [ -n "$CUR_HEAD" ] && [ "$CUR_HEAD" = "$PRE_SHA" ]; then
+    CUR_SNAPSHOT="$(current_snapshot_fields || echo "")"
+    read -r CUR_HEAD CUR_BODY_SHA256 <<< "$CUR_SNAPSHOT"
+    if [ "$RC" -eq 0 ] && [ "$CUR_HEAD" = "$PRE_SHA" ] \
+        && [ "$CUR_BODY_SHA256" = "$PRE_BODY_SHA256" ]; then
       echo "ADVERSARIAL GATE: GREEN (PR #$PR_NUMBER @ ${PRE_SHA:0:12})"
       exit 0
     fi
     if [ -z "$CUR_HEAD" ]; then
       escalate "could not re-verify the PR head after a GREEN review — NOT green"
       exit 2
+    fi
+    if [ "$CUR_HEAD" = "$PRE_SHA" ]; then
+      echo "PR body changed during the review — continuing with the new exact snapshot."
+      continue
     fi
     echo "PR head advanced to ${CUR_HEAD:0:12} during the review — syncing and continuing."
     git fetch origin -q || {
@@ -180,13 +215,14 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     break # findings exist and no cycles left for a fix+re-review
   fi
 
-  # ── Pre-remediation head check (Codex F2, round 2) ───────────────────────
-  # The ISSUES_FOUND we hold is for PRE_SHA. If the PR head advanced while
-  # Codex ran, those findings are stale — remediating them wastes a privileged
-  # run and can push conflicts. Sync and review the new head instead.
-  CUR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")"
+  # ── Pre-remediation snapshot check (Codex F2, round 2) ───────────────────
+  # The ISSUES_FOUND we hold is for PRE_SHA/PRE_BODY_SHA256. If either part of
+  # the PR snapshot changed while Codex ran, those findings are stale — never
+  # spend a privileged remediation run against a different body or head.
+  CUR_SNAPSHOT="$(current_snapshot_fields || echo "")"
+  read -r CUR_HEAD CUR_BODY_SHA256 <<< "$CUR_SNAPSHOT"
   if [ -z "$CUR_HEAD" ]; then
-    escalate "could not re-verify the PR head before remediation at cycle $CYCLE"
+    escalate "could not re-verify the PR head/body before remediation at cycle $CYCLE"
     exit 2
   fi
   if [ "$CUR_HEAD" != "$PRE_SHA" ]; then
@@ -201,27 +237,32 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     fi
     continue
   fi
+  if [ "$CUR_BODY_SHA256" != "$PRE_BODY_SHA256" ]; then
+    escalate "PR body changed during the ISSUES_FOUND review — refusing stale privileged remediation"
+    exit 2
+  fi
 
   # ── Pre-privileged reservation recheck (Codex iteration-4 F1) ─────────────
   # Immediately before launching privileged remediation, re-prove ownership
   # from the DURABLE ledger: this run still owns the canonical reservation for
-  # the reviewed head, its run_id matches the trusted local artifact, the
+  # the reviewed head/body, its run_id matches the trusted local artifact, the
   # reservation is within the autonomous budget, and no remediation completion
   # already exists for it. Any failure exits WITHOUT launching Claude.
-  RES_ARTIFACT="$OUT_DIR/reservation-$PR_NUMBER-$PRE_SHA.json"
+  RES_ARTIFACT="$OUT_DIR/reservation-$PR_NUMBER-$PRE_SHA-$PRE_BODY_SHA256.json"
   if [ ! -s "$RES_ARTIFACT" ]; then
     escalate "trusted reservation artifact missing for ${PRE_SHA:0:12} — refusing privileged remediation without proven round ownership"
     exit 2
   fi
   # The single-quoted JS below intentionally contains JS template literals.
   # shellcheck disable=SC2016
-  read -r RUN_ID RESERVATION_ID RES_MODE RES_HEAD < <(node -e '
+  read -r RUN_ID RESERVATION_ID RES_MODE RES_HEAD RES_BODY_SHA256 < <(node -e '
     const fs=require("fs");
     const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-    process.stdout.write(`${j.run_id} ${j.reservation_comment_id} ${j.mode} ${j.head_sha}\n`);
+    process.stdout.write(`${j.run_id} ${j.reservation_comment_id} ${j.mode} ${j.head_sha} ${j.body_sha256}\n`);
   ' "$RES_ARTIFACT")
-  if [ "$RES_MODE" != "full" ] || [ "$RES_HEAD" != "$PRE_SHA" ]; then
-    escalate "reservation artifact is not a full-mode reservation for ${PRE_SHA:0:12} (mode=$RES_MODE head=${RES_HEAD:0:12}) — refusing privileged remediation"
+  if [ "$RES_MODE" != "full" ] || [ "$RES_HEAD" != "$PRE_SHA" ] \
+      || [ "$RES_BODY_SHA256" != "$PRE_BODY_SHA256" ]; then
+    escalate "reservation artifact is not a full-mode reservation for exact snapshot ${PRE_SHA:0:12}/$PRE_BODY_SHA256 — refusing privileged remediation"
     exit 2
   fi
   RECHECK_COMMENTS="$OUT_DIR/recheck-comments-$PR_NUMBER-$$.json"
@@ -234,7 +275,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     exit 2
   }
   RECHECK_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$RECHECK_COMMENTS" "$RECHECK_VIEWER" \
-      --sha "$PRE_SHA" --run-id "$RUN_ID")" || {
+      --sha "$PRE_SHA" --body-sha256 "$PRE_BODY_SHA256" --run-id "$RUN_ID")" || {
     escalate "ledger unusable at the pre-privileged recheck — refusing to launch Claude"
     exit 2
   }
@@ -242,8 +283,8 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       const j=JSON.parse(d);
       const ok = j.mine_found===1
-        && j.mine_is_canonical_for_its_sha===1
-        && j.canonical_run_id_for_sha===process.argv[1]
+        && j.mine_is_canonical_for_its_snapshot===1
+        && j.canonical_run_id_for_snapshot===process.argv[1]
         && j.canonical_full_before_mine < 3
         && j.remediation_completed_for_run_id===0;
       process.stdout.write(ok?"1":"0");

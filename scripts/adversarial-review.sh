@@ -92,13 +92,25 @@ BASE_REPO_OWNER="$(printf '%s' "$PR_JSON" | node -e '
   echo "ERROR: could not resolve the base repository owner from PR #$PR_NUMBER" >&2
   exit 2
 }
+# PID separates concurrent processes; RANDOM also prevents a read-only artifact
+# left by an earlier, PID-reused process from blocking a later review.
+PR_BODY_FILE="$OUT_DIR/pr-body-$PR_NUMBER-$HEAD_SHA-$$-$RANDOM.md"
 PR_BODY_SHA256="$(printf '%s' "$PR_JSON" | node -e '
   const crypto=require("node:crypto");
+  const fs=require("node:fs");
+  const [out]=process.argv.slice(1);
   let d="";
   process.stdin.on("data",c=>d+=c).on("end",()=>{
-    const body=JSON.parse(d).body ?? "";
+    const rawBody=JSON.parse(d).body;
+    if(rawBody !== null && typeof rawBody !== "string") process.exit(1);
+    const body=rawBody ?? "";
+    fs.writeFileSync(out,body,{encoding:"utf8",mode:0o400});
+    fs.chmodSync(out,0o400);
     process.stdout.write(crypto.createHash("sha256").update(body,"utf8").digest("hex"));
-  });')"
+  });' "$PR_BODY_FILE")" || {
+  echo "ERROR: could not materialize the exact PR body review artifact" >&2
+  exit 2
+}
 
 LOCAL_SHA="$(git rev-parse HEAD)"
 if [ "$LOCAL_SHA" != "$HEAD_SHA" ]; then
@@ -184,19 +196,24 @@ final_green_gate() {
     echo "STALE: PR body changed during review; GREEN is not authoritative." >&2
     exit 4
   fi
-  # The Legacy UI Lifecycle Guard reads this ledger but only re-evaluates on a
+  # The Lifecycle Guard reads this ledger but only re-evaluates on a
   # pull_request_target event, which a new comment is not. Re-run its latest
   # run for this head so the status reflects the GREEN without a label click.
   # Best effort: a failure here never changes the review verdict.
   if [ "$DRY_RUN" -eq 0 ]; then
     local run_id
-    run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
-      --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
-      2>/dev/null || echo "")"
-    if [ -n "$run_id" ]; then
+    if ! run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
+        --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
+        2>/dev/null)"; then
+      echo "NOTE: could not look up the Lifecycle Guard workflow run for $HEAD_SHA;" >&2
+      echo "      its status remains blocked, but the exact-snapshot review verdict remains GREEN." >&2
+    elif [ -z "$run_id" ]; then
+      echo "NOTE: no matching Lifecycle Guard workflow run exists for $HEAD_SHA;" >&2
+      echo "      its status remains blocked, but the exact-snapshot review verdict remains GREEN." >&2
+    else
       gh run rerun "$run_id" >/dev/null 2>&1 \
-        && echo "Re-ran Legacy UI Lifecycle Guard run $run_id for $HEAD_SHA." \
-        || echo "NOTE: could not re-run Legacy UI Lifecycle Guard run $run_id (re-run it by hand)." >&2
+        && echo "Re-ran Lifecycle Guard run $run_id for $HEAD_SHA." \
+        || echo "NOTE: could not re-run Lifecycle Guard run $run_id; its status remains blocked, but the review verdict remains GREEN." >&2
     fi
   fi
   exit 0
@@ -232,10 +249,11 @@ fi
 # Check-then-act on the ledger is racy: two invocations can both observe a
 # free slot. The fix is post-FIRST, then decide: publish a reservation with a
 # unique 128-bit run_id, re-read the COMPLETE ledger, and proceed only if this
-# run's reservation is CANONICAL (earliest valid reservation for this head by
-# immutable numeric comment id) AND within the durable budget. Every loser
-# exits fail-closed BEFORE Codex runs; a crashed winner conservatively keeps
-# its slot consumed. Mode is review_only unless the full loop set
+# run's reservation is CANONICAL (earliest valid reservation for this exact
+# head/body snapshot by immutable numeric comment id) AND within the durable
+# budget. Every same-snapshot loser exits fail-closed BEFORE Codex runs; a
+# crashed winner conservatively keeps its slot consumed. Mode is review_only
+# unless the full loop set
 # ADV_REVIEW_MODE=full (only full-mode canonical reservations consume
 # autonomous slots — review records remain the conservative floor).
 RUN_ID=""
@@ -258,6 +276,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     printf '```\n'
     printf 'run_id: %s\n' "$RUN_ID"
     printf 'head_sha: %s\n' "$HEAD_SHA"
+    printf 'body_sha256: %s\n' "$PR_BODY_SHA256"
     printf 'mode: %s\n' "$MODE"
     printf 'human_authorized: %s\n' "$HA_FLAG"
     printf 'requested_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -289,7 +308,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
   read -r MINE_FOUND MINE_ID CANONICAL FULL_BEFORE < <(printf '%s' "$ACQ_JSON" | node -e '
     let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
       const j=JSON.parse(d);
-      process.stdout.write(`${j.mine_found} ${j.mine_comment_id} ${j.mine_is_canonical_for_its_sha} ${j.canonical_full_before_mine}\n`);
+      process.stdout.write(`${j.mine_found} ${j.mine_comment_id} ${j.mine_is_canonical_for_its_snapshot} ${j.canonical_full_before_mine}\n`);
     });')
   if [ "${MINE_FOUND:-0}" != "1" ] || [ "$MINE_ID" != "$RESERVATION_ID" ]; then
     echo "ERROR: this run's reservation ($RUN_ID) is not the earliest comment carrying its" >&2
@@ -297,7 +316,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     exit 3
   fi
   if [ "${CANONICAL:-0}" != "1" ]; then
-    echo "LOST RESERVATION RACE: an earlier reservation owns head ${HEAD_SHA:0:12} on PR #$PR_NUMBER." >&2
+    echo "LOST RESERVATION RACE: an earlier reservation owns snapshot ${HEAD_SHA:0:12}/$PR_BODY_SHA256 on PR #$PR_NUMBER." >&2
     echo "Exiting fail-closed without reviewing (run_id $RUN_ID, comment $RESERVATION_ID)." >&2
     exit 3
   fi
@@ -308,9 +327,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
   # Trusted local artifact binding this round to its reservation — the loop's
   # pre-privileged recheck consumes THIS, never PR-comment content.
-  printf '{"run_id":"%s","reservation_comment_id":%s,"mode":"%s","head_sha":"%s"}\n' \
-    "$RUN_ID" "$RESERVATION_ID" "$MODE" "$HEAD_SHA" \
-    > "$OUT_DIR/reservation-$PR_NUMBER-$HEAD_SHA.json"
+  printf '{"run_id":"%s","reservation_comment_id":%s,"mode":"%s","head_sha":"%s","body_sha256":"%s"}\n' \
+    "$RUN_ID" "$RESERVATION_ID" "$MODE" "$HEAD_SHA" "$PR_BODY_SHA256" \
+    > "$OUT_DIR/reservation-$PR_NUMBER-$HEAD_SHA-$PR_BODY_SHA256.json"
   echo "Round reserved: run_id $RUN_ID (comment $RESERVATION_ID, mode $MODE)."
 fi
 
@@ -340,15 +359,15 @@ node -e '
 PROMPT_FILE="$OUT_DIR/prompt-$PR_NUMBER-$HEAD_SHA.md"
 node -e '
   const fs=require("fs");
-  const [tpl,out,pr,title,base,mb,sha,iter,priorFile]=process.argv.slice(1);
+  const [tpl,out,pr,title,base,mb,sha,iter,priorFile,prBodyFile]=process.argv.slice(1);
   const prior=fs.readFileSync(priorFile,"utf8");
   let s=fs.readFileSync(tpl,"utf8");
-  const sub={PR_NUMBER:pr,PR_TITLE:title,BASE_REF:base,MERGE_BASE:mb,HEAD_SHA:sha,ITERATION:iter,PRIOR_CONTEXT:prior};
+  const sub={PR_NUMBER:pr,PR_TITLE:title,BASE_REF:base,MERGE_BASE:mb,HEAD_SHA:sha,ITERATION:iter,PRIOR_CONTEXT:prior,PR_BODY_FILE:prBodyFile};
   for(const [k,v] of Object.entries(sub)) s=s.split("{{"+k+"}}").join(v);
   fs.writeFileSync(out,s);
 ' "$ROOT/scripts/adversarial-review-prompt.md" "$PROMPT_FILE" \
   "$PR_NUMBER" "$PR_TITLE" "$BASE_REF" "$MERGE_BASE" "$HEAD_SHA" "$ITERATION" \
-  "$PRIOR_FILE"
+  "$PRIOR_FILE" "$PR_BODY_FILE"
 
 # ── Run Codex (read-only, ephemeral, schema-constrained) ─────────────────────
 ENVELOPE="$OUT_DIR/envelope-$PR_NUMBER-$HEAD_SHA.json"

@@ -4298,6 +4298,26 @@ def test_codex_green_never_waives_the_substantive_exception_body(tmp_path):
     assert any(field.startswith("body:") for field in result.missing_fields)
 
 
+def test_current_green_with_invalid_rationale_reports_rationale_defect(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+
+    result = evaluate(
+        _TOUCH,
+        pr_body="no section here",
+        policy=_POLICY,
+        codex_attestation=attestation,
+    )
+
+    assert result.allowed is False
+    assert result.message.startswith("RATIONALE DEFECT")
+    assert "REVIEW STALE" not in result.message
+    assert "review:exact-head and exact-body Codex GREEN" not in result.missing_fields
+    assert result.missing_fields == ("body:## Lifecycle guard rationale section",)
+
+
 def test_scenario_d_green_at_old_head_is_stale_and_names_both_shas(tmp_path):
     comments_path, pull_path = _write_codex_ledger(
         tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))], head=_HEAD_B
