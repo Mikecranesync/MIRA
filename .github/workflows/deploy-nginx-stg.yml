@@ -81,11 +81,12 @@ jobs:
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             "root@${STAGING_HOST}" 'bash -s' << 'ENDSSH'
           set -euo pipefail
-          PROD_BEFORE="$(sha256sum /etc/nginx/sites-enabled/* 2>/dev/null | grep -v staging-factorylm | sort)"
+          site_hashes() { sha256sum /etc/nginx/sites-enabled/* 2>/dev/null | grep -v staging-factorylm | sort || true; }
+          PROD_BEFORE="$(site_hashes)"
           ln -sfn /etc/nginx/sites-available/staging-factorylm /etc/nginx/sites-enabled/staging-factorylm
           nginx -t
           systemctl reload nginx
-          PROD_AFTER="$(sha256sum /etc/nginx/sites-enabled/* 2>/dev/null | grep -v staging-factorylm | sort)"
+          PROD_AFTER="$(site_hashes)"
           [ "$PROD_BEFORE" = "$PROD_AFTER" ] || { echo "::error::a non-staging nginx site changed — STOP (#3930 safeguard 6)"; exit 1; }
           MY_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
           echo "=== host-header probes (independent of DNS) ==="
@@ -96,9 +97,10 @@ jobs:
           A1="$(dig +short staging.factorylm.com A | tail -1)"; A2="$(dig +short app-staging.factorylm.com A | tail -1)"
           if [ -n "$MY_IP" ] && [ "$A1" = "$MY_IP" ] && [ "$A2" = "$MY_IP" ]; then
             echo "=== DNS points here — issuing/renewing TLS ==="
+            # Reuses the ACME account already registered on this host (production and
+            # the preview were issued from it); a host with no account fails loudly here.
             certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
-              --cert-name staging-factorylm -d staging.factorylm.com -d app-staging.factorylm.com \
-              --register-unsafely-without-email
+              --cert-name staging-factorylm -d staging.factorylm.com -d app-staging.factorylm.com
             nginx -t && systemctl reload nginx
           else
             echo "::warning::DNS does not (yet) point staging.factorylm.com / app-staging.factorylm.com at this host (${MY_IP}) — vhosts installed on HTTP; re-run after the A records land to get TLS"
