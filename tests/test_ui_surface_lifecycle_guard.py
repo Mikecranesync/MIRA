@@ -3098,13 +3098,16 @@ def test_workflow_posts_pending_then_a_final_success_or_failure_status():
 # ---------------------------------------------------------------------------
 
 
-def test_pr_template_has_exactly_one_blank_exception_section_that_fails_closed():
+def test_pr_template_has_exactly_one_blank_rationale_section_that_fails_closed():
     template_path = REPO_ROOT / ".github" / "pull_request_template.md"
     assert template_path.exists()
     body = template_path.read_text(encoding="utf-8")
-    # Task 4 owns the template migration; until then its legacy heading must
-    # remain non-authoritative even when the three fields are populated.
-    assert body.count("## Legacy UI exception") == 1
+    assert body.count("## Lifecycle guard rationale") == 1
+    assert "reviewed_body_sha256" in body
+    assert re.search(r"newest\s+well-formed", body)
+    assert "owner-account" in body
+    assert "status: GREEN" in body
+    assert "fresh review" in body
 
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
@@ -3115,7 +3118,7 @@ def test_pr_template_has_exactly_one_blank_exception_section_that_fails_closed()
     assert result.allowed is False, "the blank template scaffold must not itself satisfy the guard"
 
 
-def test_legacy_pr_template_section_cannot_authorize_once_filled():
+def test_pr_template_rationale_cannot_authorize_without_exact_snapshot_green():
     template_path = REPO_ROOT / ".github" / "pull_request_template.md"
     body = template_path.read_text(encoding="utf-8")
     filled = body.replace(
@@ -3131,10 +3134,9 @@ def test_legacy_pr_template_section_cannot_authorize_once_filled():
         [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
         pr_body=filled,
         policy=real_policy,
-        codex_attestation=_VALID_CODEX_ATTESTATION,
     )
     assert result.allowed is False
-    assert "body:## Lifecycle guard rationale section" in result.missing_fields
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
 
 
 def test_mobile_release_tests_are_isolated_from_production_signing_workspace():
@@ -4568,7 +4570,59 @@ def test_codex_prompt_makes_legacy_expansion_a_blocker_and_names_the_guard():
     assert "tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD" in prompt
     assert "introduces or expands" in prompt
     assert "BLOCKER" in prompt
+    assert "never produce GREEN" in prompt
     assert ".claude/rules/factorylm-unified-ui-cutover.md" in prompt
+    assert "## Lifecycle guard rationale" in prompt
+    assert "reviewed_body_sha256" in prompt
+    assert "not automatically a BLOCKER" in prompt
+    assert "fail-closed" in prompt
+    assert "trusted-base" in prompt
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        ".github/pull_request_template.md",
+        ".claude/rules/factorylm-unified-ui-cutover.md",
+        "docs/adversarial-review-workflow.md",
+        "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
+    ],
+)
+def test_governing_documentation_describes_the_sole_exact_snapshot_route(relative_path):
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+    assert "## Lifecycle guard rationale" in text
+    assert re.search(r"newest\s+well-formed", text)
+    assert "owner-account" in text
+    assert "reviewed_sha" in text
+    assert "reviewed_body_sha256" in text
+    assert "status: GREEN" in text
+    assert "fresh review" in text
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "tools/ui_surface_lifecycle_guard.py",
+        ".github/workflows/ui-lifecycle-guard.yml",
+        ".github/pull_request_template.md",
+        ".claude/rules/factorylm-unified-ui-cutover.md",
+        "docs/adversarial-review-workflow.md",
+        "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
+        "scripts/adversarial-review-prompt.md",
+    ],
+)
+def test_active_policy_documentation_has_no_obsolete_manual_attestation_route(relative_path):
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+    for obsolete in (
+        "legacy-ui-exception",
+        "## Legacy UI exception",
+        "--labels-file",
+        "--event-json-file",
+        "--approver-permission-json-file",
+    ):
+        assert obsolete not in text
 
 
 def test_cli_current_pull_snapshot_may_stand_alone_for_the_review_route(tmp_path):

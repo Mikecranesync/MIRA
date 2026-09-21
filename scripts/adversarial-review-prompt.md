@@ -50,9 +50,13 @@ tests; rollback/recovery weaknesses; operational failure modes.
 
 ## Frozen legacy UI (your GREEN is the lifecycle attestation)
 
-The `Legacy UI Lifecycle Guard` accepts your `GREEN` at this exact head in
-place of a maintainer's `legacy-ui-exception` label. So when the diff touches
-a guarded legacy path, run the guard yourself and classify each flagged path:
+The `Legacy UI Lifecycle Guard` accepts only a substantive top-level
+`## Lifecycle guard rationale` plus the newest well-formed owner-account User
+ledger record whose `reviewed_sha` matches the current head,
+`reviewed_body_sha256` matches the SHA-256 of the current PR body, and
+`status: GREEN`. Any push or body edit requires a fresh review. When the diff
+touches a guarded legacy path or guard/control-plane file, run the guard
+yourself and classify each flagged path:
 
 ```
 python3 tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD
@@ -62,11 +66,15 @@ Migration, removal, an adapter or compatibility bridge, or a narrow correction
 that moves behavior toward the canonical shell is acceptable and needs no
 finding. Any change that **introduces or expands** frozen legacy presentation
 or behavior (a new legacy surface, new user-facing behavior inside a frozen
-implementation, a new dependency on the frozen tree, a bypass of the
-canonical shell, or a change to this guard's own control plane) is a
-**BLOCKER** finding citing `.claude/rules/factorylm-unified-ui-cutover.md` —
-that is a human decision, never a GREEN. When you cannot tell which it is,
-report the finding; ambiguity fails closed.
+implementation, a new dependency on the frozen tree, or a bypass of the
+canonical shell) is a **BLOCKER** finding citing
+`.claude/rules/factorylm-unified-ui-cutover.md` and can never produce GREEN.
+
+A guard/control-plane change is not automatically a BLOCKER. Review it like
+any other security-sensitive change. It may produce GREEN only when the change
+preserves the guard's fail-closed and trusted-base guarantees and its tests
+remain sound; otherwise report a BLOCKER. When you cannot tell which
+classification applies, report the finding; ambiguity fails closed.
 
 ## Discipline
 

@@ -108,6 +108,7 @@ followed by a fenced block:
 
 ```
 reviewed_sha: <full SHA>
+reviewed_body_sha256: <SHA-256 of the exact PR body>
 base_sha: <merge-base SHA>
 status: ISSUES_FOUND | GREEN
 review_iteration: <n>
@@ -120,14 +121,20 @@ A GREEN review additionally contains the literal block
 
 **The GREEN is also the Legacy UI lifecycle attestation.** The
 `Legacy UI Lifecycle Guard` (`tools/ui_surface_lifecycle_guard.py`) reads this
-ledger from the PR's comments and, for a PR that touches a guarded legacy path
-and carries a substantive `## Legacy UI exception` body, accepts the newest
-well-formed owner-account envelope with `reviewed_sha == head` and
-`status: GREEN` in place of a maintainer `legacy-ui-exception` label. The
-review prompt makes any expansion of frozen legacy UI a BLOCKER, so a GREEN
-means "migration / removal / adapter only". Because a comment is not a
-`pull_request_target` event, `final_green_gate` re-runs the latest guard run
-for the head after a GREEN (best effort; `gh run rerun` by hand otherwise).
+ledger from the PR's comments. For any guarded change, the sole authorization
+route is a substantive `## Lifecycle guard rationale` plus the newest
+well-formed owner-account User envelope whose `reviewed_sha` matches the
+current head, whose `reviewed_body_sha256` matches SHA-256 of the current PR
+body, and whose `status: GREEN`. Any push or body edit requires a fresh review.
+There is no label or manual bypass.
+
+The review prompt makes any introduction or expansion of frozen legacy
+presentation a BLOCKER that can never produce GREEN. A guard/control-plane
+change is not automatically a BLOCKER: the reviewer may return GREEN only
+when fail-closed behavior, trusted-base guarantees, and the relevant tests
+remain sound. Because a comment is not a `pull_request_target` event,
+`final_green_gate` re-runs the latest guard run for the head after a GREEN
+(best effort; `gh run rerun` by hand otherwise).
 
 Claude's disposition comment starts with `[CLAUDE-REMEDIATION]` and lists one
 line per finding id with its classification. Escalations start with
@@ -136,10 +143,11 @@ line per finding id with its classification. Escalations start with
 ### Comment-ledger trust model (round-2 hardening)
 
 Anyone who can comment on a PR can type the marker, so a marker alone proves
-nothing. A ledger entry counts only when (a) it was **authored by the same
-GitHub account the runner posts as** and (b) its metadata block **parses
-strictly** (marker line, fenced block, exact `reviewed_sha:`/`status:`
-lines). Forged or malformed comments are ignored and can never mint a GREEN.
+nothing. A ledger entry counts only when (a) it was authored by the
+owner-account GitHub `User` the runner posts as and (b) its metadata block
+parses strictly (marker line, fenced block, exact `reviewed_sha:`,
+`reviewed_body_sha256:`, and `status:` lines). Forged or malformed comments
+are ignored and can never mint a GREEN.
 Remediation never fetches its instructions from PR comments at all — the
 loop injects the runner's own rendered review artifact verbatim into the
 prompt, with an explicit instruction that comment text is data, not
@@ -148,9 +156,9 @@ instructions.
 ### SHA protection
 
 - The review runs only when the local checkout **is** the PR head; the
-  reviewed SHA is stamped into the comment.
-- A GREEN for an older SHA is never approval for a newer one: every new commit
-  changes `headRefOid`, and the runner reviews (and stamps) the new SHA.
+  reviewed SHA and current PR-body digest are stamped into the comment.
+- A GREEN for an older SHA or different body is never approval for a newer
+  snapshot. Every push or body edit requires a fresh review.
 - Duplicate reviews of the same SHA are skipped; the skip reports the **prior
   verdict at that SHA** (a prior ISSUES_FOUND exits 1, not 0). `--force`
   re-reviews.

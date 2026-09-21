@@ -79,7 +79,7 @@ presentation-shaped:
   screenshot/review evidence, top-level docs/tests/tooling, and exact test/lint
   configs stay open. Mobile native production trees and OTA selection controls
   are guarded, while native tests/docs stay open; changes that mount or publish
-  the canonical shell use the audited cutover exception. A validator whose
+  the canonical shell use the audited lifecycle rationale. A validator whose
   verdict authorizes production promotion is a guarded trusted control;
   Git-tracked handset receipts and their screenshots/transcripts stay open as
   review inputs and do not authorize themselves.
@@ -168,8 +168,8 @@ screen hosts (`UnifiedChat.tsx`, `UnifiedRoot.tsx`) are also code-owned
 canonical exclusions. New mobile adapter files should use `src/factorylm-ui/**`
 unless they extend the existing `src/unified/**` adapter. Mobile transport
 conversion continues to reuse `mira-mobile/src/chat-adapter/**`. Mounting an
-adapter in another existing guarded route is an audited exception; creating a
-sibling legacy route or component is not a bypass. In particular,
+adapter in another existing guarded route requires the audited lifecycle
+rationale; creating a sibling legacy route or component is not a bypass. In particular,
 `src/unified/UnifiedAboutUpdates.tsx` may render a canonical update experience
 from injected non-presentational OTA state/actions, while
 `src/screens/AboutUpdates.tsx` remains guarded legacy presentation. A canonical
@@ -201,42 +201,32 @@ These are adapter inputs, not rewrite targets:
 - Existing Atlas/CMMS, work order, schedule, machine-memory, and enterprise
   services.
 
-## 3. Legacy exception policy
+## 3. Lifecycle guard rationale and exact-snapshot review
 
 Addition, modification, deletion, rename into, or rename out of a guarded
 legacy path fails CI by default. The old runtime is rollback-critical until
 Gate 8, so `deletion_safe: false` is enforced rather than documentary.
 
-A maintainer may apply `legacy-ui-exception` only for:
-
-- a security or severity-0/severity-1 production repair;
-- rollback-path correctness;
-- parity work that cannot yet live in an adapter;
-- the controlled adapter mount or cutover itself;
-- an explicit repair or evolution of the lifecycle guard and its trusted
-  control plane.
-
 The live pull-request body must contain:
 
 ```markdown
-## Legacy UI exception
+## Lifecycle guard rationale
 
 Reason: <why the change cannot be made in the canonical shell or adapter>
 Canonical replacement impact: <what is added, unblocked, or intentionally unchanged>
 Rollback: <how this exact change is reversed safely>
 ```
 
-The label is a fresh maintainer attestation, not a persistent convenience
-switch. Exactly one real top-level `## Legacy UI exception` ATX section is
+Exactly one real top-level `## Lifecycle guard rationale` ATX section is
 accepted. The guard uses a pinned CommonMark token parser with GitHub table and
 double-tilde strikethrough rules rather than inferring rendered structure from
 source-looking regular expressions:
 headings or fields inside fenced/indented code, raw HTML, comments, lists,
 blockquotes, tables, or struck text fail closed. Its three values
 must be substantive text; blank values, `N/A`, and template placeholders also
-fail closed. Exception-bearing bodies use a deliberately narrow rendered-text
+fail closed. Rationale-bearing bodies use a deliberately narrow rendered-text
 subset: any GitHub footnote marker, any two dollar signs, or any tilde anywhere
-in the body invalidates the exception because footnote/math/strikethrough
+in the body invalidates the rationale because footnote/math/strikethrough
 extensions can relocate or visually hide source text.
 GitHub emoji aliases, control/format characters,
 invisible Unicode filler, and combining overlay marks cannot supply a field
@@ -245,72 +235,69 @@ them at `[WORK-CLAIM]`; a character reference decoded inside a text token never
 becomes a structural line boundary.
 To prevent HTML DOM containers or malformed comment recovery from hiding an
 otherwise top-level Markdown token, tags and malformed/unclosed HTML comments
-anywhere in the PR body invalidate the exception. Strictly valid standalone
+anywhere in the PR body invalidate the rationale. Strictly valid standalone
 HTML comments remain allowed but cannot supply field text. Each value must
 contain at least three alphanumeric tokens and at least twelve alphanumeric
 characters; one-character or long single-token filler is not approval evidence.
-The substantive exception body is required on both routes below; it is the
-human-readable audit record of why the frozen path was touched.
+The substantive rationale is the human-readable audit record of why the
+guarded path was touched.
 
-**Route 1 — maintainer label (a true architectural exception).** A passing
-exception run must be triggered by a GitHub `User` whose separately
-fetched collaborator record proves predefined Maintain (`permission: write`,
-`role_name: maintain`) or Admin (`permission: admin`) applying the exact
-`legacy-ui-exception` label, and the event-time head SHA and PR body must still
-match a separately fetched current PR snapshot byte for byte. Any later push,
-body edit, different-label event, bot label, permission mismatch, or lower role
-invalidates approval; remove and reapply the label only after reviewing the new
-exact head and text. GitHub identifies the authorized account but does not
-prove whether that account used the web UI or a CLI/token, so repository policy
-must prohibit automation from applying this label; the guard does not claim a
-physical human-input guarantee the platform cannot expose.
+There is one authorization route. The guard accepts the repository's Codex
+adversarial-review ledger (`scripts/adversarial-review.sh`,
+`docs/adversarial-review-workflow.md`) only when:
 
-**Route 2 — independent exact-head review (migration, removal, adapter, or a
-narrow correction toward the canonical shell).** Independent exact-tip review
-is the safety property; a label click is not. The guard therefore also
-accepts the repository's existing Codex adversarial-review ledger
-(`scripts/adversarial-review.sh`, `docs/adversarial-review-workflow.md`): the
-newest well-formed `[CODEX-ADVERSARIAL-REVIEW]` comment posted by the
-repository owner account counts, and it satisfies the gate only when its
-`reviewed_sha` is the current PR head and its `status` is `GREEN`. The Codex
-review contract classifies every guarded path the guard flags and reports any
+```text
+guarded path touched
+  AND substantive Lifecycle guard rationale
+  AND newest valid owner-account ledger record matches current head SHA
+  AND reviewed_body_sha256 matches SHA-256(current PR body)
+  AND status is GREEN
+```
+
+Concretely, the newest well-formed owner-account User
+`[CODEX-ADVERSARIAL-REVIEW]` record must carry `reviewed_sha` equal to the
+current PR head, `reviewed_body_sha256` equal to the SHA-256 digest of the
+current PR body, and `status: GREEN`. Any push or body edit invalidates the
+reviewed snapshot and requires a fresh review. A newer `ISSUES_FOUND` record
+at that snapshot withdraws an earlier GREEN. Malformed, bot-authored, or
+foreign-account comments are ignored and can neither grant nor revoke. There
+is no label or manual bypass.
+
+The Codex contract classifies every guarded path the guard flags. Any
 introduction or expansion of frozen legacy presentation — a new surface, new
 user-facing behavior inside a frozen implementation, a new dependency on the
-frozen tree, a bypass of the canonical shell, or a change to the guard's own
-control plane — as a BLOCKER, so such a change can only pass through Route 1.
-Any head movement makes the GREEN stale by construction; a fresh review at the
-new head restores the gate with no label action, and a newer `ISSUES_FOUND`
-at the same head withdraws an earlier GREEN. Malformed, bot-authored, or
-foreign-account comments are ignored and can neither grant nor revoke. This
-route shares the ledger's trust model — one owner account, policy-protected
-against forgery rather than platform-protected — which is the same level of
-assurance Route 1 already has, not less. Rerunning the guard after a new
-GREEN is the review script's job (`gh run rerun` of the latest guard run for
-that head), since a comment is not a `pull_request_target` event.
+frozen tree, or a bypass of the canonical shell — is a BLOCKER and can never
+produce GREEN. A change to the guard or its control plane is not automatically
+a BLOCKER; it is reviewable and may produce GREEN only when fail-closed
+behavior, trusted-base guarantees, and the test contract remain sound.
+Rerunning the guard after a new GREEN is the review script's job (`gh run
+rerun` of the latest guard run for that head), since a comment is not a
+`pull_request_target` event.
 
 ### 3.1 Trusted enforcement boundary
 
 The authoritative `Legacy UI Lifecycle Guard` runs from the default branch on
 `pull_request_target`. It checks out only the trusted base revision with Git
-credentials disabled, obtains PR filenames/statuses plus one current PR
-snapshot containing labels, body, and head plus the exception actor's current
-repository permission through a least-privilege metadata step, and never checks
-out or executes pull-request code. The enforcement step has no token. It evaluates additions,
-modifications, deletions, and both sides of renames against the base registry.
+credentials disabled, obtains PR filenames/statuses, one current PR snapshot
+containing body and head, and the review-comment ledger through least-privilege
+metadata steps, and never checks out or executes pull-request code. The
+enforcement step has no token. It evaluates additions, modifications,
+deletions, and both sides of renames against the base registry.
 
 The base guard also protects its own control files: the registry, charter,
 guard implementation and tests, focused Claude rule, three UI workflow files,
 every file under `.github/workflows/**`, **its hash-locked dependency file**
 (`requirements/ui-lifecycle-guard.txt`), and **the PR template that documents
-the exception scaffold** (`.github/pull_request_template.md`) — editing any of
+the rationale scaffold** (`.github/pull_request_template.md`) — editing any of
 these is a control-plane change. The workflow pins checkout/setup actions to
 full commit SHAs and installs only exact, hash-locked binary dependencies.
 Its Python module makes no network calls; the GitHub-hosted runner itself is
-not claimed to be network-isolated. Editing any control file requires the
-same audited exception. The workflow reruns on head
-changes, body edits, label changes, draft-to-ready transitions, reopen, and
-open. It posts the uniquely named `Legacy UI Lifecycle Guard` status to the
-PR head SHA.
+not claimed to be network-isolated. Editing any control file requires the same
+substantive rationale and exact-snapshot GREEN, but is not categorically a
+BLOCKER when the fail-closed trusted-base contract and tests remain sound. The
+workflow reruns on head changes, body edits, draft-to-ready transitions,
+reopen, and open. It posts the uniquely named `Legacy UI Lifecycle Guard`
+status to the PR head SHA.
 
 **Branch-protection binding is a separate, not-yet-performed step — this
 governance implementation does not have authority to modify branch
@@ -354,13 +341,13 @@ count and the expected count. `--base`/`--head` mode (used for local/manual
 runs against a real git checkout) has no such truncation risk and needs no
 count file.
 
-**Labels input is `--labels-file` only.** The guard CLI never accepts a bare
-`--labels` value — labels are always read from a file, matching the same
-data-only-step discipline as `--pr-body-file` and `--changes-json-file`.
+The current pull snapshot and review ledger are supplied through
+`--current-pull-json-file` and `--review-comments-json-file`. The guard CLI has
+no label-event or collaborator-permission authorization inputs.
 
 Known transition collision at approval time: PR #3592 modifies
 `mira-web/src/views/home.ts`. It must merge before the freeze, close, or use the
-exception path. This charter does not decide or mutate that PR.
+reviewed rationale path. This charter does not decide or mutate that PR.
 
 ## 4. Capability attachment model
 
@@ -631,7 +618,7 @@ merge, deploy, or add features to guarded legacy presentation paths.
    releases with no unresolved severity-0/severity-1 UI regression, no identity
    or safety parity defect, and no rollback activation.
 8. **Retirement:** owner-approved deletion PR proves zero live route, import,
-   build, deployment, documentation-authority, and open-exception dependency on
+   build, deployment, documentation-authority, and open-rationale dependency on
    the old presentation code.
 
 Until Gate 8 passes, `LEGACY` means **feature-frozen and recoverable**, not safe
