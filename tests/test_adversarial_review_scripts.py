@@ -61,7 +61,11 @@ def _record(
         + f"review_iteration: {iteration}\n"
         + "\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
     )
-    return {"body": body, "user": {"login": author}}
+    return {
+        "id": 1000 + iteration,
+        "body": body,
+        "user": {"login": author, "type": "User"},
+    }
 
 
 def _legacy_record_without_body_hash(
@@ -75,14 +79,19 @@ def _legacy_record_without_body_hash(
         + f"review_iteration: {iteration}\n"
         + "\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
     )
-    return {"body": body, "user": {"login": author}}
+    return {
+        "id": 1000 + iteration,
+        "body": body,
+        "user": {"login": author, "type": "User"},
+    }
 
 
 def _malformed(sha: str, author: str = VIEWER) -> dict:
     # Marker + sha mention, but no strict envelope — must never validate.
     return {
+        "id": 1000,
         "body": f"[CODEX-ADVERSARIAL-REVIEW]\nreviewed_sha: {sha}\nstatus: GREEN\n",
-        "user": {"login": author},
+        "user": {"login": author, "type": "User"},
     }
 
 
@@ -131,6 +140,34 @@ def test_malformed_and_foreign_records_never_validate(tmp_path):
     assert ledger["next_iteration"] == 1
     assert ledger["already"] == 0
     assert ledger["prior_status"] == "MALFORMED"  # visible, but never a GREEN
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda record: record["user"].update(type="Bot"),
+        lambda record: record["user"].update(login="someone-else"),
+        lambda record: record.pop("id"),
+        lambda record: record.update(id="1009"),
+    ],
+    ids=["same-login-bot", "foreign-user", "missing-id", "non-numeric-id"],
+)
+def test_only_owner_user_review_comments_with_numeric_ids_affect_ledger(tmp_path, mutate):
+    trusted = _record(SHA_A, "ISSUES_FOUND", 1)
+    untrusted = _record(SHA_B, "GREEN", 9)
+    mutate(untrusted)
+
+    ledger = run_ledger(
+        tmp_path,
+        [trusted, untrusted],
+        sha=SHA_B,
+        body_sha256=BODY_HASH_A,
+    )
+
+    assert ledger["consumed"] == 1
+    assert ledger["next_iteration"] == 2
+    assert ledger["already"] == 0
+    assert ledger["prior_status"] == "NONE"
 
 
 def test_valid_green_at_sha_is_recognized(tmp_path):
@@ -266,6 +303,7 @@ class Harness:
         self.set_comments([])
         self.set_pr_head(self.head)
         self.body = "Review the exact PR body, including this punctuation: !"
+        (self.fix / "viewer").write_text(VIEWER, encoding="utf-8")
         (self.fix / "pr_body").write_text(self.body, encoding="utf-8")
         (self.fix / "pr.json").write_text(
             json.dumps(
@@ -276,6 +314,7 @@ class Harness:
                     "baseRefName": "main",
                     "headRefOid": self.head,
                     "headRefName": "work",
+                    "url": "https://github.com/Mikecranesync/MIRA/pull/99",
                 }
             ),
             encoding="utf-8",
@@ -288,7 +327,7 @@ class Harness:
 FIX="{fix}"
 echo "$*" >> "$FIX/gh.log"
 case "$*" in
-  "api user --jq .login") echo "{VIEWER}" ;;
+  "api user --jq .login") cat "$FIX/viewer" ;;
   api\\ repos/*/comments\\ -F\\ body=@*\\ --jq\\ .id)
       # POST a comment (reservation). Atomic append under a mkdir lock —
       # this is the shared ledger two racing processes contend on.
@@ -319,7 +358,7 @@ case "$*" in
   api\\ repos/*/comments\\ --paginate)
       if [ "${{STUB_FAIL_LIST:-0}}" = "1" ]; then exit 1; fi
       cat "$FIX/comments.json" ;;
-  "pr view 99 --json number,title,body,baseRefName,headRefOid,headRefName")
+  "pr view 99 --json number,title,body,baseRefName,headRefOid,headRefName,url")
       cat "$FIX/pr.json" ;;
   "pr view 99 --json headRefOid,body")
       if [ -s "$FIX/head_seq.txt" ]; then
@@ -350,6 +389,8 @@ case "$*" in
       cp "$5" "$FIX/posted-$(ls "$FIX" | grep -c posted- || true).md" ;;
   pr\\ comment\\ 99\\ --body\\ *)
       printf '%s' "$5" > "$FIX/posted-body-$(ls "$FIX" | grep -c posted- || true).md" ;;
+  run\\ list\\ --workflow\\ ui-lifecycle-guard.yml*) echo 4242 ;;
+  "run rerun 4242") : ;;
   *) echo "gh-stub: unhandled: $*" >&2; exit 64 ;;
 esac
 ''',
@@ -395,6 +436,9 @@ cat > /dev/null
             seq.write_text("\n".join(sequence) + "\n", encoding="utf-8")
         elif seq.exists():
             seq.unlink()
+
+    def set_viewer(self, login: str) -> None:
+        (self.fix / "viewer").write_text(login, encoding="utf-8")
 
     def set_envelope(self, envelope: dict) -> None:
         (self.fix / "envelope.json").write_text(json.dumps(envelope), encoding="utf-8")
@@ -442,6 +486,19 @@ cat > /dev/null
         return "\n---\n".join(
             p.read_text(encoding="utf-8") for p in sorted(self.fix.glob("posted-*"))
         )
+
+    def remote_write_calls(self) -> list[str]:
+        log = self.fix / "gh.log"
+        if not log.exists():
+            return []
+        calls = log.read_text(encoding="utf-8").splitlines()
+        return [
+            call
+            for call in calls
+            if call.startswith("pr comment ")
+            or (call.startswith("api repos/") and " -F body=@" in call)
+            or call.startswith("run rerun ")
+        ]
 
 
 GREEN_ENVELOPE = {
@@ -538,6 +595,19 @@ def test_runner_fails_closed_when_base_fetch_fails(tmp_path):
     assert "refusing to compute a merge-base" in r.stderr
 
 
+def test_runner_rejects_authenticated_non_owner_before_review(tmp_path):
+    h = Harness(tmp_path)
+    h.set_viewer("authenticated-non-owner")
+    h.set_envelope(GREEN_ENVELOPE)
+
+    r = h.run("adversarial-review.sh", "99")
+
+    assert r.returncode == 3
+    assert "base repository owner" in r.stderr
+    assert h.codex_runs() == 0
+    assert h.remote_write_calls() == []
+
+
 # ── adversarial-review.sh: durable budget across restarts ────────────────────
 
 
@@ -610,6 +680,17 @@ def test_green_with_stable_head_is_green(tmp_path):
     assert f"reviewed_sha: {h.head}" in h.posted()
     body_sha256 = hashlib.sha256(h.body.encode("utf-8")).hexdigest()
     assert f"reviewed_body_sha256: {body_sha256}" in h.posted()
+
+
+def test_dry_run_green_performs_no_remote_writes(tmp_path):
+    h = Harness(tmp_path)
+    h.set_envelope(GREEN_ENVELOPE)
+
+    r = h.run("adversarial-review.sh", "99", "--dry-run")
+
+    assert r.returncode == 0, r.stderr + r.stdout
+    assert h.remote_write_calls() == []
+    assert h.posted() == ""
 
 
 def test_green_for_changed_body_sha256_is_stale(tmp_path):

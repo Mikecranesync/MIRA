@@ -27,10 +27,13 @@
 //   }
 //
 // Trust boundary (Codex F1, PR #3279 round 2): anyone who can comment can type
-// a marker. A record counts ONLY if (a) authored by the SAME GitHub account
-// this runner posts as, and (b) its metadata envelope parses STRICTLY.
-// Malformed or forged comments are ignored — they can never mint a GREEN,
-// move the iteration counter, or create/steal a reservation.
+// a marker. A review record counts ONLY if (a) authored by the repository
+// owner account this runner posts as, (b) GitHub identifies that author as a
+// User, (c) the review comment has an immutable numeric id, and (d) its
+// metadata envelope parses STRICTLY. Malformed or forged comments are ignored
+// — they can never mint a GREEN or move the iteration/budget counters.
+// Reservation/remediation accounting retains its separately documented
+// same-login contract below.
 //
 // Round reservations (Codex iteration-4 F1, 2026-08-17): the durable budget
 // was check-then-act — two concurrent invocations could both observe a free
@@ -120,17 +123,22 @@ try {
 } catch (e) {
   fail(`comments file is not parseable JSON: ${e.message}`);
 }
-// Immutable ordering: numeric GitHub comment id. A comment without a numeric
-// id cannot participate in ordering-sensitive records (reservations).
+// Preserve whether GitHub supplied a numeric id before the legacy reservation
+// normalizer converts number-like values. Review trust must match the guard:
+// a missing or string id cannot participate in the review ledger.
+const reviewIdWasNumeric = new WeakSet();
 for (const c of arr) {
+  if (c && typeof c === "object" && Number.isInteger(c.id)) reviewIdWasNumeric.add(c);
   if (c && typeof c.id !== "undefined" && !Number.isInteger(c.id)) c.id = Number(c.id) || null;
 }
 arr.sort((a, b) => (a?.id ?? Infinity) - (b?.id ?? Infinity));
 
-const own = (c) => typeof c.body === "string" && c.user && c.user.login === viewer;
+const sameLogin = (c) => typeof c.body === "string" && c.user && c.user.login === viewer;
+const trustedReview = (c) =>
+  sameLogin(c) && c.user.type === "User" && reviewIdWasNumeric.has(c);
 
 // ── Reviews ──────────────────────────────────────────────────────────────────
-const reviewComments = arr.filter((c) => own(c) && c.body.startsWith(REVIEW_MARKER));
+const reviewComments = arr.filter((c) => trustedReview(c) && c.body.startsWith(REVIEW_MARKER));
 const reviews = [];
 let sawMalformedAtSha = false;
 for (const c of reviewComments) {
@@ -169,7 +177,7 @@ if (headSha) {
 // ── Reservations ─────────────────────────────────────────────────────────────
 const rawReservations = [];
 for (const c of arr) {
-  if (!own(c) || !c.body.startsWith(RESERVATION_MARKER) || !Number.isInteger(c.id)) continue;
+  if (!sameLogin(c) || !c.body.startsWith(RESERVATION_MARKER) || !Number.isInteger(c.id)) continue;
   const m = c.body.match(RESERVATION_RE);
   if (!m) continue; // malformed — never a reservation
   rawReservations.push({
@@ -217,7 +225,7 @@ for (const sha of reservedFullShas) {
 // ── Remediation completions (run_id-bound) ───────────────────────────────────
 const completedRunIds = new Set();
 for (const c of arr) {
-  if (!own(c) || !c.body.startsWith(REMEDIATION_MARKER)) continue;
+  if (!sameLogin(c) || !c.body.startsWith(REMEDIATION_MARKER)) continue;
   const m = c.body.match(REMEDIATION_RE);
   if (m) completedRunIds.add(m[1]);
 }

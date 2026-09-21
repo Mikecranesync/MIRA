@@ -77,11 +77,21 @@ if [ -z "$PR_NUMBER" ]; then
   exit 3
 fi
 
-PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName)" || {
+PR_JSON="$(gh pr view "$PR_NUMBER" --json number,title,body,baseRefName,headRefOid,headRefName,url)" || {
   echo "ERROR: gh could not read PR #$PR_NUMBER" >&2; exit 2; }
 PR_TITLE="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).title))')"
 BASE_REF="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).baseRefName))')"
 HEAD_SHA="$(printf '%s' "$PR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).headRefOid))')"
+BASE_REPO_OWNER="$(printf '%s' "$PR_JSON" | node -e '
+  let d="";
+  process.stdin.on("data",c=>d+=c).on("end",()=>{
+    const path=new URL(JSON.parse(d).url).pathname.split("/").filter(Boolean);
+    if(path.length < 4 || path[2] !== "pull") process.exit(1);
+    process.stdout.write(path[0]);
+  });')" || {
+  echo "ERROR: could not resolve the base repository owner from PR #$PR_NUMBER" >&2
+  exit 2
+}
 PR_BODY_SHA256="$(printf '%s' "$PR_JSON" | node -e '
   const crypto=require("node:crypto");
   let d="";
@@ -114,7 +124,8 @@ MERGE_BASE="$(git merge-base "origin/$BASE_REF" HEAD)"
 #
 # TRUST BOUNDARY (Codex F1, round 2): anyone who can comment on the PR can
 # type the marker. adversarial-review-ledger.mjs is the single validated-record
-# parser: same-account author + strict envelope, or the comment is ignored.
+# parser: base-owner User author + numeric comment id + strict envelope, or
+# the review comment is ignored.
 # Iteration derives from the MAX validated review_iteration (duplicate posts
 # cannot inflate it); the budget counts DISTINCT validated records and
 # survives restarts (Mike, 2026-08-17).
@@ -122,6 +133,11 @@ VIEWER="$(gh api user --jq .login 2>/dev/null || true)"
 if [ -z "$VIEWER" ]; then
   echo "ERROR: could not resolve the authenticated GitHub user (gh api user)" >&2
   exit 2
+fi
+if [ "$VIEWER" != "$BASE_REPO_OWNER" ]; then
+  echo "ERROR: authenticated GitHub user '$VIEWER' is not the base repository owner" \
+       "'$BASE_REPO_OWNER'; refusing to review or mutate PR #$PR_NUMBER." >&2
+  exit 3
 fi
 # Per-process cache ($$): two concurrent invocations sharing OUT_DIR must
 # never truncate each other's ledger snapshot mid-read (found by the
@@ -172,14 +188,16 @@ final_green_gate() {
   # pull_request_target event, which a new comment is not. Re-run its latest
   # run for this head so the status reflects the GREEN without a label click.
   # Best effort: a failure here never changes the review verdict.
-  local run_id
-  run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
-    --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
-    2>/dev/null || echo "")"
-  if [ -n "$run_id" ]; then
-    gh run rerun "$run_id" >/dev/null 2>&1 \
-      && echo "Re-ran Legacy UI Lifecycle Guard run $run_id for $HEAD_SHA." \
-      || echo "NOTE: could not re-run Legacy UI Lifecycle Guard run $run_id (re-run it by hand)." >&2
+  if [ "$DRY_RUN" -eq 0 ]; then
+    local run_id
+    run_id="$(gh run list --workflow ui-lifecycle-guard.yml --limit 50 \
+      --json databaseId,headSha --jq "map(select(.headSha == \"$HEAD_SHA\")) | .[0].databaseId // empty" \
+      2>/dev/null || echo "")"
+    if [ -n "$run_id" ]; then
+      gh run rerun "$run_id" >/dev/null 2>&1 \
+        && echo "Re-ran Legacy UI Lifecycle Guard run $run_id for $HEAD_SHA." \
+        || echo "NOTE: could not re-run Legacy UI Lifecycle Guard run $run_id (re-run it by hand)." >&2
+    fi
   fi
   exit 0
 }
@@ -306,11 +324,12 @@ node -e '
   const [commentsFile,marker,outFile,viewer]=process.argv.slice(1);
   const raw=fs.readFileSync(commentsFile,"utf8");
   const arr=JSON.parse("["+raw.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-  // Same trust gate as the dedupe: only OUR OWN prior reviews feed the next
-  // prompt — a third-party comment must never become reviewer instructions.
+  // Same trust gate as the dedupe: only numeric, owner-authored User review
+  // comments feed the next prompt.
   const reviews=arr.filter(c=>typeof c.body==="string"
     && c.body.startsWith(marker)
-    && c.user && c.user.login===viewer);
+    && Number.isInteger(c.id)
+    && c.user && c.user.login===viewer && c.user.type==="User");
   const text=reviews.length
     ? "A previous round exists. Verify its findings were actually fixed at the new SHA; do not re-raise its FALSE_POSITIVE entries without new evidence. Previous review (may be truncated):\n\n"+reviews[reviews.length-1].body.slice(0,6000)
     : "This is the first review of this PR.";
