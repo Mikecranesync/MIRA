@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -321,6 +323,15 @@ def test_staging_health_and_cohost_safeguards_fail_the_job():
         "127.0.0.1:4099/health",
     ):
         assert port_path in script
+    # Atlas CMMS answers 403 at "/" by design (Spring Security), so its probe
+    # accepts any HTTP answer and still STOPs on none — the first co-hosted run
+    # (35650758639) died on `curl -sf` exit 22 with every container healthy.
+    atlas = script.index("stg-atlas-api (4088)")
+    atlas_block = script[atlas : atlas + 700]
+    assert "2??|3??|401|403" in atlas_block
+    assert "did not answer HTTP" in atlas_block
+    assert "exit 1" in atlas_block
+    assert 'curl -sf -o /dev/null -w "HTTP %{http_code}\\n" http://127.0.0.1:4088/' not in script
     # The separate-host rule is retired (owner decision, #3930).
     assert "production-named containers present on the staging host" not in script
     assert "/opt/mira (production checkout) exists on the staging host" not in script
@@ -425,7 +436,33 @@ def test_nginx_workflow_brackets_certbot_and_refuses_production_hostnames():
     )
     job = wf["jobs"]["deploy-nginx"]
     refuse = _step(job, "Refuse a conf that names a production hostname")["run"]
-    assert "app\\.factorylm\\.com" in refuse and "exit 1" in refuse
+    assert "factorylm\\.com" in refuse and "exit 1" in refuse
+    # The refusal must be a whole-hostname match: the real staging conf passes,
+    # a conf naming any production hostname is caught (run 35651928676 refused
+    # the staging conf itself because `\b` matched inside `staging.factorylm.com`).
+    pattern = re.search(
+        r"grep -nE '([^']+)' deployment/nginx-staging-factorylm\.conf", refuse
+    ).group(1)
+
+    def _refused(text: str) -> bool:
+        with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as fh:
+            fh.write(text)
+        try:
+            return subprocess.run(["grep", "-qE", pattern, fh.name], check=False).returncode == 0
+        finally:
+            Path(fh.name).unlink()
+
+    staging_conf = (_ROOT / "deployment" / "nginx-staging-factorylm.conf").read_text(
+        encoding="utf-8"
+    )
+    assert not _refused(staging_conf)
+    for bad in (
+        "server_name app.factorylm.com;",
+        "server_name factorylm.com www.factorylm.com;",
+        "server_name staging.factorylm.com updates.factorylm.com;",
+        "    server_name   app.factorylm.com ;",
+    ):
+        assert _refused(bad), bad
     remote = _step(job, "Enable + test + reload nginx, then certbot if DNS points here")["run"]
     assert "return 1" in remote  # unreadable site → explicit failure
     first_check = remote.index("check_prod_sites\n")
