@@ -11,8 +11,31 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import BuildConfig from "../plugins/build-config";
 
-export const API_BASE = "https://app.factorylm.com";
+// API_BASE is determined at runtime from the Android build flavor's BuildConfig
+// or the web fallback. Initialized on first request.
+let API_BASE: string | null = null;
+let apiBasePromise: Promise<string> | null = null;
+
+async function getApiBase(): Promise<string> {
+  if (API_BASE !== null) return API_BASE;
+  if (apiBasePromise !== null) return apiBasePromise;
+  
+  apiBasePromise = BuildConfig.getApiBase()
+    .then(({ apiBase }) => {
+      API_BASE = apiBase;
+      return apiBase;
+    })
+    .catch(() => {
+      // Fallback if plugin fails (should never happen, but defensive)
+      API_BASE = "https://app.factorylm.com";
+      return API_BASE;
+    });
+  
+  return apiBasePromise;
+}
+
 const JAR_KEY = "flm.cookiejar.v1";
 
 export type ApiErrorKind =
@@ -189,6 +212,7 @@ async function rawRequest(
   requestEpoch: number = localSessionEpoch,
 ): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const method = opts.method ?? "GET";
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -205,7 +229,7 @@ async function rawRequest(
 
   if (Capacitor.isNativePlatform()) {
     const res = await CapacitorHttp.request({
-      url: API_BASE + path,
+      url: apiBase + path,
       method,
       headers,
       data: dataBody,
@@ -272,6 +296,7 @@ async function uploadMultipartRequest(
   opts: { acceptStatuses?: number[] } = {},
 ): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = {};
@@ -281,7 +306,7 @@ async function uploadMultipartRequest(
   }
   let res: Response;
   try {
-    res = await fetch(native ? API_BASE + path : path, {
+    res = await fetch(native ? apiBase + path : path, {
       method: "POST",
       headers,
       body: form,
@@ -350,6 +375,7 @@ export interface StreamOpts {
  *  request id. */
 async function requestStreamRequest(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -370,7 +396,7 @@ async function requestStreamRequest(path: string, opts: StreamOpts): Promise<Api
   try {
     let res: Response;
     try {
-      res = await fetch(native ? API_BASE + path : path, {
+      res = await fetch(native ? apiBase + path : path, {
         method: "POST",
         headers,
         body: JSON.stringify(opts.json),
@@ -467,6 +493,7 @@ export async function requestBinary(
   opts: { timeoutMs?: number } = {},
 ): Promise<{ status: number; bytes: Uint8Array; contentType: string }> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -476,7 +503,7 @@ export async function requestBinary(
     let res: Awaited<ReturnType<typeof CapacitorHttp.request>>;
     try {
       res = await CapacitorHttp.request({
-        url: API_BASE + path,
+        url: apiBase + path,
         method: "GET",
         headers,
         disableRedirects: true,

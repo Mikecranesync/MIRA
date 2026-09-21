@@ -28,6 +28,9 @@ def hasSigning = hasEnvSigning || keystorePropertiesFile.exists()
 android {
     namespace = "com.factorylm.mira"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig = true
+    }
     defaultConfig {
         applicationId "com.factorylm.mira"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -41,6 +44,31 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    flavorDimensions += "environment"
+    productFlavors {
+        production {
+            dimension "environment"
+            applicationIdSuffix ""
+            // API_BASE injected as a BuildConfig constant for src/api/client.ts
+            buildConfigField "String", "API_BASE", '"https://app.factorylm.com"'
+            manifestPlaceholders = [
+                appLabel: "@string/app_name",
+                deepLinkHost: "app.factorylm.com",
+                customScheme: "factorylm"
+            ]
+        }
+        staging {
+            dimension "environment"
+            applicationIdSuffix ".staging"
+            // Staging backend URL
+            buildConfigField "String", "API_BASE", '"https://app-staging.factorylm.com"'
+            manifestPlaceholders = [
+                appLabel: "@string/app_name_staging",
+                deepLinkHost: "app-staging.factorylm.com",
+                customScheme: "factorylmstaging"
+            ]
         }
     }
     signingConfigs {
