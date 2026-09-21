@@ -294,9 +294,19 @@ jobs:
           # (4) names: every container/network/volume this project would create must be
           # stg-/project-prefixed, and none may already exist under another project.
           PLANNED="$(cd "$STG_DIR" 2>/dev/null && doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --format json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(sorted(set([s.get("container_name","") for s in d.get("services",{}).values()] + list(d.get("networks",{}).keys()) + list(d.get("volumes",{}).keys())))))' || true)"
+          # An empty plan would make every check below pass vacuously.
+          [ -n "$PLANNED" ] || { echo "::error::could not render the staging compose plan (no container/network/volume names) — STOP (#3930 safeguard 4)"; exit 1; }
           for name in $PLANNED; do
             case "$name" in stg-*|staging-net|"$PROJECT"*|default) ;; *) echo "::error::planned staging resource '$name' is not stg-/staging- prefixed — STOP (#3930 safeguard 4)"; exit 1;; esac
-            owner="$(docker inspect "$name" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+            # Labels live at .Config.Labels on a container but at .Labels on a
+            # network or volume; the generic `docker inspect` template errored on
+            # networks and the error was swallowed, so a foreign-owned
+            # `staging-net` (created by the mira-preview project) went undetected
+            # in runs 35650758639/35653888285.
+            owner="$(docker container inspect "$name" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null \
+              || docker network inspect "$name" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null \
+              || docker volume inspect "$name" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null \
+              || true)"
             if [ -n "$owner" ] && [ "$owner" != "$PROJECT" ]; then
               echo "::error::'$name' already exists under compose project '$owner' (not $PROJECT) — STOP (#3930 safeguard 4)"
               exit 1

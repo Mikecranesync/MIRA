@@ -340,6 +340,32 @@ def test_staging_health_and_cohost_safeguards_fail_the_job():
         assert "exit 1" in script[guard : guard + 260], marker
 
 
+def test_safeguard4_inspects_every_object_type_and_refuses_an_empty_plan():
+    """Safeguard 4 must read the compose-project label where each object type
+    keeps it (.Config.Labels on containers, .Labels on networks/volumes) and
+    must not pass vacuously on an empty plan. The generic `docker inspect`
+    template errored on networks, so a `staging-net` owned by the retired
+    mira-preview project went undetected (runs 35650758639, 35653888285)."""
+    script = _deploy_script()
+    s4 = script.index("(4) names:")
+    block = script[s4 : s4 + 2200]
+    assert (
+        'docker container inspect "$name" --format \'{{index .Config.Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert (
+        'docker network inspect "$name" --format \'{{index .Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert (
+        'docker volume inspect "$name" --format \'{{index .Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert 'docker inspect "$name" --format' not in block
+    assert '[ -n "$PLANNED" ] ||' in block
+    assert "could not render the staging compose plan" in block
+
+
 def test_cohost_safeguards_run_before_any_mutation():
     """Path/Doppler/DB identity are checked before the checkout touches disk;
     name/port collisions before any docker mutation; production is snapshotted
