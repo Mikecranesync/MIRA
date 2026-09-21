@@ -107,6 +107,44 @@ export function homeSendPlan(notebooks: readonly HubNotebook[] | null): HomeSend
   return { kind: "create", body: { displayName: "General", identitySourceType: "user" } };
 }
 
+/**
+ * Addressable conversations (#3922): `/v3?notebook=<id>&thread=<id>` names ONE
+ * persisted thread, bound or unbound — the same server ids the classic notebook
+ * and the mobile adapter use, so a link copied from either resolves here. The
+ * query-string form keeps the route at `src/app/v3/page.tsx` untouched.
+ */
+export const NOTEBOOK_PARAM = "notebook";
+export const THREAD_PARAM = "thread";
+/** The server's thread-id grammar (`normalizeNotebookThreadId`) plus the legacy marker. */
+const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+
+/**
+ * The selection a URL names, or null for HOME. Unknown notebook → HOME (never a
+ * guess at another project); a notebook without a thread → its most recent
+ * thread (`initialSelection`); a malformed thread id → the same fallback. A
+ * well-formed thread id that is not (yet) in the list is kept: a fresh "New
+ * chat" has no server row until its first turn, and a reload must return to it.
+ */
+export function selectionFromSearch(search: string, notebooks: readonly HubNotebook[]): HubSelection | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const notebookId = (params.get(NOTEBOOK_PARAM) ?? "").trim();
+  if (!notebookId) return null;
+  const nb = notebooks.find((n) => n.id === notebookId);
+  if (!nb) return null;
+  const threadId = (params.get(THREAD_PARAM) ?? "").trim();
+  if (!threadId || (threadId !== LEGACY_THREAD_ID && !THREAD_ID_RE.test(threadId))) return initialSelection([nb]);
+  return { notebookId, threadId };
+}
+
+/** The query string for a selection; HOME is the bare route. */
+export function searchForSelection(sel: HubSelection | null): string {
+  if (!sel) return "";
+  const params = new URLSearchParams();
+  params.set(NOTEBOOK_PARAM, sel.notebookId);
+  params.set(THREAD_PARAM, sel.threadId);
+  return `?${params.toString()}`;
+}
+
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
