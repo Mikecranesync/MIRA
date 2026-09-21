@@ -164,7 +164,14 @@ jobs:
             echo "::error::STAGING_HOST_KEY repository variable is missing or not an ssh-ed25519 host public key"
             exit 1
           }
-          echo "Staging host: ${STAGING_HOST} ($(printf '%s\n' "$STAGING_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}'))"
+          # The key must also parse as a real public key (pipefail + set -e: a bad
+          # blob fails the assignment, not just the log line).
+          STAGING_HOST_KEY_FP="$(printf '%s\n' "$STAGING_HOST_KEY" | ssh-keygen -lf - | awk '{print $2}')"
+          [ -n "$STAGING_HOST_KEY_FP" ] || {
+            echo "::error::STAGING_HOST_KEY does not parse as an SSH public key"
+            exit 1
+          }
+          echo "Staging host: ${STAGING_HOST} (${STAGING_HOST_KEY_FP})"
           printf 'staging_host=%s\n' "$STAGING_HOST" >> "$GITHUB_OUTPUT"
 
       - name: Set up SSH

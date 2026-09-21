@@ -230,6 +230,8 @@ def test_staging_host_resolves_from_repository_variables_with_pinned_key():
     assert "deployment/known_hosts.factorylm-prod" in resolve["run"]
     assert "pinned production host" in resolve["run"]
     assert "ssh-ed25519" in resolve["run"]
+    fp_guard = resolve["run"].index("does not parse as an SSH public key")
+    assert "exit 1" in resolve["run"][fp_guard : fp_guard + 120]
     assert "staging_host=%s\\n" in resolve["run"]
 
     ssh_setup = steps[credential_index]["run"]
