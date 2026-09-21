@@ -12,7 +12,7 @@
 //   {
 //     "next_iteration": N,        // max validated review_iteration + 1 (>= 1)
 //     "consumed": N,              // durable autonomous rounds consumed (see below)
-//     "already": 0|1,             // a validated review record exists at --sha
+//     "already": 0|1,             // newest v2 review matches --sha/--body-sha256
 //     "prior_status": "NONE" | "GREEN" | "ISSUES_FOUND" | "STALE_BODY" | "MALFORMED",
 //     "reservations": N,          // valid reservation records (post-collapse)
 //     "canonical_full": N,        // canonical FULL reservations (budget slots)
@@ -149,10 +149,16 @@ let already = 0;
 let priorStatus = "NONE";
 if (headSha) {
   const atSha = reviews.filter((r) => r.sha === headSha);
-  const exact = bodySha256 === null ? [] : atSha.filter((r) => r.bodySha256 === bodySha256);
-  if (exact.length) {
+  const v2Reviews = reviews.filter((r) => r.bodySha256 !== null);
+  const latestV2 = v2Reviews.length ? v2Reviews[v2Reviews.length - 1] : null;
+  if (
+    bodySha256 !== null &&
+    latestV2 !== null &&
+    latestV2.sha === headSha &&
+    latestV2.bodySha256 === bodySha256
+  ) {
     already = 1;
-    priorStatus = exact[exact.length - 1].status;
+    priorStatus = latestV2.status;
   } else if (atSha.length) {
     priorStatus = "STALE_BODY";
   } else if (sawMalformedAtSha) {

@@ -615,7 +615,7 @@ _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 # The Codex review ledger's comment envelope, byte-for-byte the shape
-# `scripts/adversarial-review-ledger.mjs` (REVIEW_RE) accepts. Anything that
+# `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
 # be a stale one, a forged one, or a partial one; it is simply ignored.
 _CODEX_REVIEW_MARKER = "[CODEX-ADVERSARIAL-REVIEW]"

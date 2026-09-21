@@ -154,6 +154,20 @@ def test_green_at_same_head_with_old_body_hash_is_not_deduplicated(tmp_path):
     assert ledger["prior_status"] == "STALE_BODY"
 
 
+def test_newer_body_record_prevents_reusing_an_older_exact_snapshot(tmp_path):
+    ledger = run_ledger(
+        tmp_path,
+        [
+            _record(SHA_A, "GREEN", 1, body_sha256=BODY_HASH_A),
+            _record(SHA_A, "ISSUES_FOUND", 2, body_sha256=BODY_HASH_B),
+        ],
+        sha=SHA_A,
+        body_sha256=BODY_HASH_A,
+    )
+    assert ledger["already"] == 0
+    assert ledger["prior_status"] == "STALE_BODY"
+
+
 def test_renderer_requires_and_stamps_body_sha256(tmp_path):
     envelope = tmp_path / "envelope.json"
     envelope.write_text(json.dumps(GREEN_ENVELOPE), encoding="utf-8")
