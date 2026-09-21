@@ -309,3 +309,28 @@ def test_staging_health_and_separate_host_guards_fail_the_job():
         guard = script.index(marker)
         assert "exit 1" in script[guard : guard + 260], marker
     assert "doppler secrets --project factorylm --config prd --only-names" in script
+
+
+def test_separate_host_invariant_runs_before_any_mutation():
+    """The STOP must precede the first clone/reset/rm/build/up (Codex #3921 P1):
+    a production host reached by alias or a wrong variable must be refused
+    before anything on it is touched."""
+    script = _step(_workflow()["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+    first_mutation = min(
+        script.index(m)
+        for m in (
+            "git clone",
+            "git reset --hard",
+            "docker rm -f",
+            "compose build",
+            "compose -f docker-compose.staging-vps.yml up",
+        )
+    )
+    for marker in (
+        "production-named containers present on the staging host",
+        "/opt/mira (production checkout) exists on the staging host",
+        "Doppler token can read factorylm/prd",
+    ):
+        assert script.index(marker) < first_mutation, marker
+    # The pre-check happens before the working copy exists, so it must not cd into it.
+    assert script.index("production-named containers present") < script.index('cd "$STG_DIR"')

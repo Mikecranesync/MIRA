@@ -112,10 +112,11 @@ Resolve the exact current `main` SHA, then dispatch the workflow itself from
 `main` with both immutable target fields:
 
 ```bash
-MAIN_SHA="$(gh api repos/Mikecranesync/MIRA/git/ref/heads/main --jq '.object.sha')"
+# The approved release-candidate SHA (normally current main). Staging deploys
+# an exact SHA, never a moving ref.
+APPROVED_RC_SHA="$(gh api repos/Mikecranesync/MIRA/git/ref/heads/main --jq '.object.sha')"
 gh workflow run deploy-staging.yml --ref main \
-  -f target_ref=refs/heads/main \
-  -f target_sha="$MAIN_SHA"
+  -f approved_rc_sha="$APPROVED_RC_SHA"
 ```
 
 If `main` moves between authorization and credential access, the run fails and
@@ -125,7 +126,7 @@ To rebuild a single service:
 
 ```bash
 gh workflow run deploy-staging.yml --ref main \
-  -f target_ref=refs/heads/main -f target_sha="$MAIN_SHA" \
+  -f approved_rc_sha="$APPROVED_RC_SHA" \
   -f services="mira-hub"
 ```
 
@@ -133,7 +134,7 @@ To wipe the staging Atlas DB volumes (e.g., to re-seed from scratch):
 
 ```bash
 gh workflow run deploy-staging.yml --ref main \
-  -f target_ref=refs/heads/main -f target_sha="$MAIN_SHA" \
+  -f approved_rc_sha="$APPROVED_RC_SHA" \
   -f reset_volumes=true
 ```
 

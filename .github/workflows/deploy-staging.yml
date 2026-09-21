@@ -210,6 +210,25 @@ jobs:
 
           set -euo pipefail
 
+          # Separate-host invariant (#3909, PRD §5/SC3) — checked FIRST, before
+          # anything on this host is touched (Codex #3921 P1): a production host
+          # reached by an alias or a wrong STAGING_HOST must be refused before a
+          # clone, reset, container removal, build or Doppler call happens here.
+          PROD_CONTAINERS="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^mira-' | grep -v '^stg-' || true)"
+          if [ -n "$PROD_CONTAINERS" ]; then
+            echo "::error::production-named containers present on the staging host — STOP (#3909): ${PROD_CONTAINERS}"
+            exit 1
+          fi
+          if [ -e /opt/mira ]; then
+            echo "::error::/opt/mira (production checkout) exists on the staging host — STOP (#3909)"
+            exit 1
+          fi
+          if doppler secrets --project factorylm --config prd --only-names >/dev/null 2>&1; then
+            echo "::error::this host's Doppler token can read factorylm/prd — STOP (#3909)"
+            exit 1
+          fi
+          echo "Separate-host invariant holds before deploy: no production containers, no /opt/mira, no prd Doppler access"
+
           # Staging lives in its own working copy so a force-reset here never
           # touches the production checkout at /opt/mira.
           STG_DIR=/opt/mira-staging
@@ -395,8 +414,8 @@ jobs:
           PYRECEIPT
           rm -f "$BUILT_IDS" "$RUNNING_IDS"
 
-          # Separate-host invariant (#3909, PRD §5/SC3) — staging never shares a host
-          # with production. Anything production-shaped here is a STOP, not a warning.
+          # Separate-host invariant, re-checked after the deploy (the pre-check above
+          # is the gate; this catches anything production-shaped that appeared since).
           PROD_CONTAINERS="$(docker ps -a --format '{{.Names}}' | grep -E '^mira-' | grep -v '^stg-' || true)"
           if [ -n "$PROD_CONTAINERS" ]; then
             echo "::error::production-named containers present on the staging host — STOP (#3909): ${PROD_CONTAINERS}"
