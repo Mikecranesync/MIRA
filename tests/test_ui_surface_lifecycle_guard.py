@@ -4598,6 +4598,11 @@ def test_governing_documentation_describes_the_sole_exact_snapshot_route(relativ
     assert "reviewed_body_sha256" in text
     assert "status: GREEN" in text
     assert "fresh review" in text
+    assert not re.search(
+        r"(?i)(?:\bSHA dedupe\b|duplicate reviews of the same SHA|"
+        r"prior verdict at that SHA|never reviews the same SHA twice)",
+        text,
+    )
 
 
 @pytest.mark.parametrize(

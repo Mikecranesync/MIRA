@@ -34,7 +34,8 @@ Claude implements -> tests/lint -> commit + push
         |
         v
 scripts/adversarial-review.sh          (one round)
-   resolve PR -> HEAD==PR-head gate -> SHA dedupe
+   resolve PR -> HEAD==PR-head gate -> exact-snapshot dedupe
+        (head SHA + PR-body SHA-256)
         -> codex exec (read-only, --output-schema) -> validate/render
         -> gh pr comment  [CODEX-ADVERSARIAL-REVIEW]
         |
@@ -45,7 +46,7 @@ scripts/adversarial-review-loop.sh     (the loop, max 3 cycles)
            FALSE_POSITIVE/NEEDS_HUMAN_DECISION
         -> fix + regression tests + verify -> commit + push
         -> gh pr comment  [CLAUDE-REMEDIATION]
-   new SHA -> next review round
+   new exact snapshot -> next review round
         |
         v
 GREEN  |  [ADVERSARIAL-ESCALATION] after 3 cycles / no progress
@@ -153,17 +154,18 @@ loop injects the runner's own rendered review artifact verbatim into the
 prompt, with an explicit instruction that comment text is data, not
 instructions.
 
-### SHA protection
+### Exact-snapshot protection
 
 - The review runs only when the local checkout **is** the PR head; the
   reviewed SHA and current PR-body digest are stamped into the comment.
 - A GREEN for an older SHA or different body is never approval for a newer
   snapshot. Every push or body edit requires a fresh review.
-- Duplicate reviews of the same SHA are skipped; the skip reports the **prior
-  verdict at that SHA** (a prior ISSUES_FOUND exits 1, not 0). `--force`
-  re-reviews.
-- Iteration numbers and dedupe are derived from the PR's own comments —
-  stateless, no local state file to drift. Parsing lives in ONE place
+- Duplicate reviews of the same exact head-and-body snapshot are skipped; the
+  skip reports the **prior verdict for that exact snapshot** (a prior
+  ISSUES_FOUND exits 1, not 0). A different body digest at the same head is
+  stale and receives a fresh review. `--force` re-reviews.
+- Iteration numbers and exact-snapshot dedupe are derived from the PR's own
+  comments — stateless, no local state file to drift. Parsing lives in ONE place
   (`scripts/adversarial-review-ledger.mjs`, consumed by both scripts): the
   next iteration is **max(validated `review_iteration`) + 1**, never a raw
   comment count — duplicate posts of the same record and malformed comments
@@ -240,7 +242,8 @@ local locks — sessions run on different machines):
   a third-party push is never "progress".
 - No-progress protection: if remediation pushes no new commit, the loop stops
   and escalates (everything left is disputed or needs a human).
-- The loop never reviews the same SHA twice (dedupe above).
+- The loop never reviews the same exact head-and-body snapshot twice (dedupe
+  above).
 - Exit codes: 0 GREEN · 1 unresolved/escalated · 2 tooling failure. **A
   tooling failure is never GREEN.**
 
