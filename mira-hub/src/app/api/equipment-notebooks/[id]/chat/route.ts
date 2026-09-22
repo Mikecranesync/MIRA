@@ -164,6 +164,8 @@ import {
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
+  triageSemanticSafetyCheck,
+  type HazardTriageResult,
 } from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
@@ -2588,28 +2590,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Lives inside the gate: gate-off stays byte-identical legacy with zero
       // inference spend. Class/verdict/latency are logged so the real
       // invocation rate is measured, not assumed.
+      //
+      // HAZARD TRIAGE (2026-09-22, archaeology candidate d): a cheap
+      // deterministic+Jev shadow triage runs BEFORE semanticSafetyCheck to skip
+      // the expensive LLM call when clearly unnecessary. Fail-open: always
+      // proceeds to full semantic check when Jev disabled/unavailable/timeout,
+      // or when unsure. NEVER weakens safety — semantic check is bypassed only
+      // for clear non-hazard cases (refused, educational+strong-evidence, or
+      // well-grounded+no-hazard-vocabulary).
+      let triage: HazardTriageResult | null = null;
       if (gate && !outputRejected && served && !refused && answerText && semanticCheckEnabled()) {
-        // Iteration-9 F1: no finite vocabulary bounds English hazard
-        // descriptions, so classification is TELEMETRY (a class hint for the
-        // judge and the logs) — never a selection boundary. EVERY served,
-        // non-refused answer is judged while the gate is on.
-        const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
-        const semStart = Date.now();
-        const sv = await semanticSafetyCheck({ question: message, answerText, general: !docGrounded, selectedClass });
+        // Run cheap triage first
+        triage = await triageSemanticSafetyCheck({
+          question: message,
+          answerText,
+          refused,
+          general: !docGrounded,
+          evidence: retrievedChunks,
+        });
         console.log(
-          `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
+          `[notebook-chat] hazard-triage decision=${triage.decision} reason=${triage.reason} ` +
+          `jev=${triage.jev?.noul ?? "null"} in ${triage.latency_ms}ms`,
         );
-        if (sv.verdict === "unsafe") {
-          const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
-          console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
-        } else if (sv.verdict !== "safe") {
-          console.error(
-            `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
+        
+        // Only run expensive semantic check if triage says "proceed"
+        if (triage.decision === "proceed") {
+          // Iteration-9 F1: no finite vocabulary bounds English hazard
+          // descriptions, so classification is TELEMETRY (a class hint for the
+          // judge and the logs) — never a selection boundary. EVERY served,
+          // non-refused answer is judged while the gate is on.
+          const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
+          const semStart = Date.now();
+          const sv = await semanticSafetyCheck({ question: message, answerText, general: !docGrounded, selectedClass });
+          console.log(
+            `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
           );
-          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          if (sv.verdict === "unsafe") {
+            const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+            console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
+            outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+            answerText = SAFETY_STOP;
+          } else if (sv.verdict !== "safe") {
+            console.error(
+              `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
+            );
+            outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+            answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          }
+        } else {
+          console.log(
+            `[notebook-chat] semantic-check SKIPPED via triage (${triage.reason}); estimated ~4s + cascade cost saved`,
+          );
         }
       }
 

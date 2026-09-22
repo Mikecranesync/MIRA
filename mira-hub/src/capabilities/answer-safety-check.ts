@@ -20,14 +20,139 @@
  *  - Every decision is logged with class + verdict + latency so the real
  *    invocation rate and cost are MEASURED, not assumed (#3793 estimates are
  *    unadopted until staging measurements exist).
+ *
+ * Hazard Triage (2026-09-22, archaeology candidate d):
+ *  - BEFORE semanticSafetyCheck, a cheap deterministic+shadow triage can skip
+ *    the expensive LLM call when clearly unnecessary.
+ *  - Fail-open: always returns "proceed" when Jev disabled/unavailable/timeout,
+ *    or when unsure. NEVER weakens safety — the semantic check is bypassed
+ *    only for clear non-hazard cases.
+ *  - Shadow-mode only (MIRA_JEV_SHADOW=1, staging): does not gate citations/badge.
  */
 
 import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import {
+  judgeEvidenceSufficiencyShadow,
+  jevShadowEnabled,
+  type JevShadowResult,
+} from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
  *  deterministic floor and the gate itself are unaffected. */
 export function semanticCheckEnabled(): boolean {
   return process.env.NOTEBOOK_SEMANTIC_CHECK !== "0";
+}
+
+/* ------------------------------------------------------------------------ *
+ * Hazard Triage — cheap pre-check to skip semanticSafetyCheck when safe     *
+ * ------------------------------------------------------------------------ */
+
+export type HazardTriageResult = {
+  /** "skip" when clearly safe and semantic check can be bypassed;
+   *  "proceed" when unsure, hazard-adjacent, or Jev unavailable. */
+  decision: "skip" | "proceed";
+  /** Why: refused | educational | well_grounded | jev_disabled | jev_timeout | uncertain */
+  reason: string;
+  /** Jev shadow result, or null when not run. */
+  jev: JevShadowResult | null;
+  latency_ms: number;
+};
+
+/**
+ * Cheap deterministic + Jev shadow triage BEFORE semanticSafetyCheck.
+ * Returns "skip" only when clearly safe; "proceed" fail-open otherwise.
+ * NEVER weakens safety — semantic check is bypassed only for clear non-hazard cases.
+ * 
+ * Skip cases (cheap-to-expensive):
+ *  1. Refused answer — already a refusal, no hazard advice to check
+ *  2. Educational question (no asset context) + no hazard vocabulary + strong Jev
+ *  3. Well-grounded answer (doc-grounded + high Jev confidence + no hazard selector)
+ * 
+ * Proceed cases (fail-open):
+ *  - Jev disabled (MIRA_JEV_SHADOW=0)
+ *  - Jev unavailable/timeout
+ *  - Jev confidence too low (uncertain evidence)
+ *  - Hazard vocabulary detected (selector fired)
+ *  - Any other uncertainty
+ */
+export async function triageSemanticSafetyCheck(opts: {
+  question: string;
+  answerText: string;
+  refused: boolean;
+  general: boolean;
+  evidence: readonly { content: string; title?: string | null }[];
+}): Promise<HazardTriageResult> {
+  const start = Date.now();
+  
+  // 1. Refused answer — already a refusal, no hazard advice to check
+  if (opts.refused) {
+    return {
+      decision: "skip",
+      reason: "refused",
+      jev: null,
+      latency_ms: Date.now() - start,
+    };
+  }
+  
+  // 2. Cheap deterministic check: if no hazard vocabulary appears, and this is
+  //    educational (general lane), skip the semantic check ONLY if Jev says
+  //    evidence is strong. This is the "safe educational answer" fast path.
+  const selectedClass = selectForSemanticCheck(opts.answerText, opts.question);
+  
+  // If Jev shadow is disabled, always proceed to full semantic check (fail-open to safety)
+  if (!jevShadowEnabled()) {
+    return {
+      decision: "proceed",
+      reason: "jev_disabled",
+      jev: null,
+      latency_ms: Date.now() - start,
+    };
+  }
+  
+  // Run Jev shadow to judge evidence sufficiency
+  const jev = await judgeEvidenceSufficiencyShadow(opts.question, opts.evidence, {
+    timeoutMs: 1500,
+  });
+  
+  // If Jev didn't run (timeout, error, no evidence), fail-open to full semantic check
+  if (jev.noul === null) {
+    return {
+      decision: "proceed",
+      reason: jev.skipped_reason === "timeout" ? "jev_timeout" : "jev_unavailable",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+  
+  // Educational answer with no hazard vocabulary + high Jev confidence → skip
+  // Threshold 0.85: high confidence that evidence is sufficient for this question
+  if (!selectedClass && opts.general && jev.noul >= 0.85) {
+    return {
+      decision: "skip",
+      reason: "educational",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+  
+  // Well-grounded answer: doc-grounded + high Jev + no hazard vocabulary → skip
+  // This is the "cited answer with strong evidence" fast path
+  if (!selectedClass && !opts.general && jev.noul >= 0.90) {
+    return {
+      decision: "skip",
+      reason: "well_grounded",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+  
+  // Default: proceed to full semantic check (fail-open)
+  return {
+    decision: "proceed",
+    reason: selectedClass ? "hazard_vocabulary" : "uncertain",
+    jev,
+    latency_ms: Date.now() - start,
+  };
 }
 
 // Hazard-class CLASSIFIER: vocabulary per supported class, matched over the
