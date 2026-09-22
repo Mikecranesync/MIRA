@@ -87,7 +87,27 @@ codes only.
 
 ---
 
-## 4. Known rough edge
+## 4. Emulator walk (the default mobile gate)
+
+```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
+emulator -avd mira35 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &
+adb wait-for-device
+adb install -r mira-mobile/android/app/build/outputs/apk/staging/debug/app-staging-debug.apk
+adb shell am start -n com.factorylm.mira.staging/com.factorylm.mira.MainActivity
+```
+
+Drive it with `adb shell input tap/text` (spaces are `%s`) and
+`adb exec-out screencap -p > shot.png`. A curl probe of the SSE stream is NOT a
+substitute: [#3961](https://github.com/Mikecranesync/MIRA/issues/3961) — every
+answer rendering a raw JSON box — is invisible to curl and obvious on the first
+emulator turn.
+
+Physical device is reserved for cellular, real camera, and Play-signed identity
+(root `CLAUDE.md`). Everything else is emulator work.
+
+## 5. Known rough edges
 
 `unsupported-specificity:code-meaning-asserted` — [#3960](https://github.com/Mikecranesync/MIRA/issues/3960).
 Ask about a fault code with no manual loaded and the model sometimes asserts what
@@ -99,3 +119,8 @@ half of code questions. The protection is right; the replacement is too blunt.
 them ordinary general engineering ("a 120 V coil that sags to 70 V will drop
 out"). It gates nothing — it is telemetry — so it sits at P3 until the detector
 is retuned.
+
+`🕳️` and `🪜` rendered monochrome on the `mira35` emulator (a system-image font
+fallback, not a product bug — `⚡` and the rest were fine). Confirm the glyphs on
+a real Pixel before assuming the banner looks right everywhere; if any render as
+a blank box, swap that class for an older, universally supported emoji.
