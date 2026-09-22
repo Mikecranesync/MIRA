@@ -1,8 +1,36 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-11
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-11
+
+### Most actionable change for playbook
+Rockwell Automation and Augury's July 23 agentic AI partnership (Augury Reliability Agent + Fiix MAX) is the first OT-native end-to-end competitor to MIRA's grounded-diagnosis pitch — sensor → insight → AI maintenance assistant → work order, all bundled. Expected availability September 2026. Recommended MIRA counter-frame: "their stack requires buying their sensors, their CMMS, and their AI — MIRA grounds answers in your OEM docs and your machine, sensor-agnostic."
+
+### New findings
+
+**MaintainX**
+- Autodesk acquires MaintainX for $3.6B (announced May 28, completed August 3, 2026): https://investors.autodesk.com/news-releases/news-release-details/autodesk-acquire-maintainx-advancing-unified-platform-operations — MaintainX is no longer independent; now Autodesk's maintenance-operations layer
+- Bloomberg CEO interview video (May 29, 2026): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Autodesk CEO Andrew Anagnost; corporate/executive register; "exciting opportunity" framing; no product demo; hard to steal for MIRA
+
+**Augury**
+- "Industrial AI Workforce" launch (May 18, 2026): https://www.augury.com/industrial-ai/ — role-based AI agents (reliability engineer agent, maintenance scheduler agent, ops leader agent); powered by Google Gemini + AVEVA CONNECT data; style drift: sensor/hardware brand → software-agent platform
+- Machine Design video interview at AVEVA World Milan (July 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — CEO Elan Greenberg + CPTO Anoop Mohan on camera; exec-interview format; claim: "bridge the gap between insight and action for manufacturers" [transcript not verified — site egress-blocked]
+- Rockwell Automation partnership (July 23, 2026): https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html — Augury Reliability Agent integrates with Fiix MAX; stat to steal: "only 43% of collected data is being used effectively" (Rockwell State of Smart Manufacturing Report); joint offer targeting September 2026
+
+**Tractian**
+- "June 2026 Product Announcements" (June 30, 2026): https://www.youtube.com/watch?v=034-1hTrapM — Smart Trac enhancements: Sample Profiles, Expert Sample Scheduling, Always Listening™ Technology; VO/footage style [not verified — transcript not accessible]
+
+**Anthropic**
+- "Code with Claude 2026" opening keynote, San Francisco (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — first Anthropic developer conference; partners: GitHub, Vercel, Datadog, Bun; Managed Agents + Proactive Workflows; style drift: analyst/conference appearances → own conference-as-launch-vehicle; pattern worth watching
+- "Code with Claude Tokyo 2026" keynote (June 12, 2026): https://www.youtube.com/watch?v=N4efO8viXXo — global expansion of format; Claude Code remote control + redesigned desktop GUI demoed
+
+**Notion**
+- Developer Platform launch (May 13, 2026): https://www.notion.com/releases/2026-05-13 — Workers (hosted runtime), External Agents API, Database Sync; hook: workspace as AI orchestration hub; 1M+ Custom Agents created since February 2026; partners include Claude, Codex, Decagon; new pattern: "platform play" — make YOUR product a runtime for others' agents; transfers to MIRA as "FactoryLM as the maintenance context runtime for any AI, any adapter"
 
 ---
 
@@ -88,6 +116,8 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**⚠️ Acquisition (Aug 2026):** Autodesk acquired MaintainX for $3.6B (announced May 28, completed August 3, 2026). MaintainX is now Autodesk's maintenance-operations layer — part of their unified construction+operations platform. CoPilot®, OEM manual ingestion, and work-order AI are now Autodesk-branded features. Competitive implication: Autodesk's AEC distribution (BIM 360, Fusion 360 customer base) could accelerate adoption; MaintainX loses its independent scrappy identity. Bloomberg CEO interview: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+
 ---
 
 ### Fiix
@@ -120,6 +150,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Oracle Cloud Infrastructure partnership (Mar 2025): adopted OCI to support Copilot scale
 - Competitive note: hardware-first (IoT sensors + software); MIRA's counterplay is sensor-agnostic + OEM-manual-native
 
+**June 2026 product video (Jun 30, 2026)**
+- URL: https://www.youtube.com/watch?v=034-1hTrapM
+- Smart Trac enhancements: Sample Profiles, Expert Sample Scheduling, Always Listening™ Technology
+- VO/footage style: [not verified — transcript not accessible]
+- Pattern: changelog-style monthly product announcement video; consistent cadence
+
 ---
 
 ### Augury
@@ -145,6 +181,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Industrial AI Workforce pivot (May 2026)**
+- Press release + landing page: https://www.augury.com/industrial-ai/
+- Role-based AI agents: Reliability Engineer Agent, Maintenance Scheduler Agent, Operations Leader Agent, Executive Agent
+- Tech stack: Google Gemini reasoning layer + AVEVA CONNECT operational context + Augury Machine Health sensor data
+- Machine Design video at AVEVA World Milan (Jul 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — CEO + CPTO on camera; "bridge between insight and action"; exec-interview format on trade-media channel [transcript not verified — site blocked]
+- **Rockwell Automation partnership (Jul 23, 2026):** Augury Reliability Agent integrates with Fiix MAX (Rockwell's new AI maintenance assistant); joint offer expected September 2026; stat claim: "only 43% of collected data is being used effectively" — strong proof template
+- **Style drift:** Category from sensor/hardware AI brand → software-agent platform with role-persona framing. Now pitching "AI agents that think like a reliability engineer" not "sensors that detect vibration."
 
 ---
 
@@ -204,6 +248,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
+
+**Fiix MAX + Augury agentic AI partnership (Jul 23, 2026)**
+- "Fiix MAX" is now a named AI-powered maintenance assistant inside Rockwell's Fiix CMMS
+- Partnership with Augury: Reliability Agent detects machine issues → Fiix MAX translates to work orders and maintenance execution workflows
+- Press release: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+- Joint offer availability: September 2026; no standalone video confirmed
+- Stat from announcement worth tracking: "only 43% of collected data is being used effectively" (Rockwell State of Smart Manufacturing Report, 11th annual)
+- **Implication:** Rockwell now has a vertically integrated agentic maintenance stack: Ignition (SCADA) + Fiix (CMMS) + Fiix MAX (AI assistant) + Augury (sensors/Reliability Agent). MIRA's wedge: sensor-agnostic, any CMMS, grounded in YOUR docs.
 
 ---
 
@@ -304,6 +356,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 — first developer conference (May 6, 2026, San Francisco)**
+- Opening keynote: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Partners on stage: GitHub, Vercel, Datadog, Bun, AI-native startups
+- Launches: Managed Agents, Proactive Workflows, Capability Curve
+- VO register: engineering/product executives; peer register not founder
+- CTA: none explicit; ecosystem/developer awareness
+- **Style drift:** from analyst/conference appearances → own developer conference format (Stripe Sessions, Figma Config model); marks Anthropic's shift to conference-as-launch-vehicle
+
+**Code with Claude Tokyo 2026 (Jun 12, 2026)**
+- Keynote: https://www.youtube.com/watch?v=N4efO8viXXo
+- Demo content: Claude Code remote control, redesigned desktop GUI with split views
+- Pattern: global conference tour extending the SF launch; consistent format
+
 ---
 
 ### Cursor
@@ -339,6 +404,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Developer Platform 3.5 launch (May 13, 2026)**
+- Release notes: https://www.notion.com/releases/2026-05-13
+- Features: Notion Workers (hosted runtime for custom code), External Agents API, Database Sync
+- External Agents API partners: Claude, Codex, Decagon — "bring your favorite agents into Notion"
+- Proof number: 1M+ Custom Agents created since February 2026
+- Hook framing: workspace as AI orchestration hub; "write the code, deploy through the CLI, run in a secure sandbox"
+- Livestreamed product event by co-founder Ivan Zhao; third-party YouTube coverage at https://www.youtube.com/watch?v=5aLs-tWSw3s
+- **New pattern to track — "platform play":** Product becomes a runtime for other agents (not just its own). Transfers to MIRA/FactoryLM as: "FactoryLM as the maintenance context layer for any AI, any adapter, any UNS."
 
 ---
 
@@ -395,6 +469,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX** *(Aug 2026)*: acquired by Autodesk ($3.6B). Repositioned from independent scrappy CMMS → Autodesk's maintenance-operations layer. OEM manual + work-order AI now an Autodesk platform feature, not a startup differentiator.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury** *(May–Jul 2026)*: pivoted from hardware/sensor AI brand to "Industrial AI Workforce" software-agent platform. Role-persona framing (reliability engineer agent, maintenance scheduler agent). Partnered with Rockwell for distribution. Now pitching "AI that thinks like your reliability engineer" — not "sensors that detect vibration."
+- **Rockwell Automation** *(Jul 2026)*: "Fiix MAX" surfaces as a named AI maintenance assistant. First time Rockwell has branded an AI assistant inside Fiix. Combined with Augury partnership, Rockwell now has an end-to-end agentic maintenance stack (SCADA + CMMS + AI + sensors).
+- **Anthropic** *(May–Jun 2026)*: adopted conference-as-launch-vehicle model ("Code with Claude 2026" — SF + Tokyo). No longer analyst-appearance-only. Now owns a conference format, which means annual content cadence going forward.
