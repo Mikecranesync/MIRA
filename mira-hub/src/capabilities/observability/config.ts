@@ -19,6 +19,11 @@ export function anomalyChecksEnabled(): boolean {
   return process.env.MIRA_TURN_ANOMALY_CHECKS !== "0";
 }
 
+/** Shadow-mode Jev evidence-sufficiency judgment (jev-shadow.ts). Off by default. */
+export function jevShadowEnabled(): boolean {
+  return process.env.MIRA_JEV_SHADOW === "1";
+}
+
 /** Parses the W3C-Baggage-shaped `OTEL_RESOURCE_ATTRIBUTES` (`k1=v1,k2=v2`). */
 function parseResourceAttributes(raw: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};

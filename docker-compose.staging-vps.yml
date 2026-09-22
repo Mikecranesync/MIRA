@@ -401,6 +401,9 @@ services:
       - MIRA_OTEL_CAPTURE_CONTENT=${MIRA_OTEL_CAPTURE_CONTENT:-0}
       - MIRA_TURN_ANOMALY_CHECKS=${MIRA_TURN_ANOMALY_CHECKS:-1}
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
+      # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
+      - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      - JEV_API_KEY=${JEV_API_KEY:-}
     networks:
       - staging-net
     volumes:
