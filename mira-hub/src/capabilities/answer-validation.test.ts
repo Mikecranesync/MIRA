@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
-import { chunkForRelease, specificityFallback, validateAnswer } from "./answer-validation";
+import { chunkForRelease, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
   validateAnswer({ answerText, question, general: false, served: true, refused: false });
@@ -620,5 +620,54 @@ describe("gate mechanics", () => {
     const pieces = chunkForRelease(long);
     expect(pieces.join("")).toBe(long);
     expect(Math.max(...pieces.map((p) => p.length))).toBeLessThanOrEqual(121);
+  });
+});
+
+describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036aa/8906786b/ae30230b)", () => {
+  const noEvidence = (answerText: string, question = "What are the limits of this screen outdoors?") =>
+    validateAnswer({ answerText, question, general: true, served: true, refused: false, evidenceSufficient: false });
+  const withEvidence = (answerText: string) =>
+    validateAnswer({ answerText, question: "q", general: true, served: true, refused: false, evidenceSufficient: true });
+
+  it("rejects the turn-3 shape: an asserted operating range for this machine", () => {
+    const v = noEvidence("The operating temperature range is –20 °C to +60 °C, so direct sun will push it past its limit.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsupported_specificity");
+      expect(v.violation).toBe("unsupported-specificity:exact-rating");
+      expect(v.replacement).toContain("won't guess");
+    }
+  });
+
+  it("rejects an asserted nameplate rating with no photo or manual behind it", () => {
+    expect(noEvidence("The supply voltage is 24 VDC and the rated current is 0.85 A.").ok).toBe(false);
+    expect(noEvidence("Its width is 2.5 in and the maximum pressure is 250 bar.").ok).toBe(false);
+    expect(noEvidence("Ta 0 °C to +50 °C is the operating range on this unit.").ok).toBe(false);
+  });
+
+  it("the same claim passes when the turn HAS evidence (photo/manual/machine packet)", () => {
+    expect(withEvidence("The operating temperature range is –20 °C to +60 °C.").ok).toBe(true);
+    expect(withEvidence("The supply voltage is 24 VDC and the rated current is 0.85 A.").ok).toBe(true);
+  });
+
+  it("hedged, generic industry talk is not an assertion about this machine", () => {
+    expect(noEvidence("Industrial HMIs typically operate between –20 °C and +60 °C; check your manual for the exact rating.").ok).toBe(true);
+    expect(noEvidence("Many panels are rated IP65 on the front face only, for example, so shade it until you confirm.").ok).toBe(true);
+    expect(noEvidence("The rating might be around 24 V, but I can't verify that from the evidence in this conversation.").ok).toBe(true);
+  });
+
+  it("concept talk, ranges the technician supplied, and refusals pass", () => {
+    expect(noEvidence("If the label says 480V, treat it as a 480V system and isolate before opening the door.").ok).toBe(true);
+    expect(noEvidence("IP ratings describe ingress protection; the second digit is water.").ok).toBe(true);
+    expect(validateAnswer({ answerText: "I can't find a rating for this unit in the selected sources.", question: "q", general: true, served: true, refused: true, evidenceSufficient: false }).ok).toBe(true);
+  });
+
+  it("defaults to the old behaviour when evidenceSufficient is not supplied", () => {
+    expect(general("The operating temperature range is –20 °C to +60 °C.").ok).toBe(true);
+  });
+
+  it("unsupportedExactRating returns the matched excerpt", () => {
+    expect(unsupportedExactRating("The maximum speed is 1750 rpm.")).toMatch(/1750\s*rpm/i);
+    expect(unsupportedExactRating("Speed depends on the drive setting.")).toBeNull();
   });
 });

@@ -141,6 +141,27 @@ describe("withSpan / activeTraceId / activeSpanId — with a registered provider
     });
   });
 
+  describe("redaction keeps GenAI usage counters and drops empty arrays (staging trace findings)", () => {
+    it("gen_ai.usage.input_tokens / output_tokens are numeric, not [REDACTED]", async () => {
+      await withSpan("usage", { "gen_ai.usage.input_tokens": 1234, "gen_ai.usage.output_tokens": 56 }, async () => {});
+      const span = finished().find((s) => s.name === "usage")!;
+      expect(span.attributes["gen_ai.usage.input_tokens"]).toBe(1234);
+      expect(span.attributes["gen_ai.usage.output_tokens"]).toBe(56);
+    });
+    it("credential-shaped token keys are still redacted", () => {
+      for (const key of ["mira.session_token", "http.request.header.x-auth-token", "mira.token", "mira.access-token", "mira.refresh_token_value"]) {
+        expect(redactAttributeValue(key, "abc"), key).toBe("[REDACTED]");
+      }
+      expect(redactAttributeValue("mira.context.prompt_tokens", 99)).toBe(99);
+    });
+    it("an empty array attribute is omitted rather than exported as an empty arrayValue", async () => {
+      await withSpan("arrays", { "mira.retrieval.returned_doc_ids": [], "mira.context.evidence_doc_ids": ["d1"] }, async () => {});
+      const span = finished().find((s) => s.name === "arrays")!;
+      expect(span.attributes["mira.retrieval.returned_doc_ids"]).toBeUndefined();
+      expect(span.attributes["mira.context.evidence_doc_ids"]).toEqual(["d1"]);
+    });
+  });
+
   describe("setSpanAttrs — allowlist + redaction + caps", () => {
     it("drops non-allowlisted keys", async () => {
       await withSpan("filter", {}, async (span) => {
