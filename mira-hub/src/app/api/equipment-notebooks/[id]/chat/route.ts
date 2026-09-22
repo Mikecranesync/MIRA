@@ -420,7 +420,7 @@ export function isRefusal(answer: string): boolean {
   const a = answer.toLowerCase();
   return (
     /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|provided|supplied|selected|information)\b/.test(a) &&
+    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
     a.length < 400
   );
 }
@@ -2563,7 +2563,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             answerLower,
           );
         const evidencePhraseMatched =
-          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|provided|supplied|selected|information)\b/.test(answerLower);
+          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
