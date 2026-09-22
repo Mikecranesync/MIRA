@@ -617,18 +617,22 @@ def test_complete_block_inside_fenced_code_block_fails():
     assert result.allowed is False
 
 
-def test_exactly_one_live_section_with_substantive_values_passes():
+def test_exactly_one_live_section_with_substantive_values_passes(tmp_path):
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=_VALID_BODY,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
     assert result.allowed is True
 
 
-def test_exception_fields_ignore_later_work_claim_fields():
+def test_exception_fields_ignore_later_work_claim_fields(tmp_path):
     body = _VALID_BODY + textwrap.dedent(
         """
 
@@ -639,12 +643,16 @@ def test_exception_fields_ignore_later_work_claim_fields():
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is True
@@ -733,7 +741,7 @@ def test_setext_heading_boundary_cannot_supply_exception_fields(underline):
 
 
 @pytest.mark.parametrize("pseudo_boundary", ["    ## Other", "    [WORK-CLAIM]", "    ==="])
-def test_four_space_indented_pseudo_boundary_stays_inside_exception(pseudo_boundary):
+def test_four_space_indented_pseudo_boundary_stays_inside_exception(tmp_path, pseudo_boundary):
     body = textwrap.dedent(
         f"""
         ## Legacy UI exception
@@ -746,26 +754,34 @@ def test_four_space_indented_pseudo_boundary_stays_inside_exception(pseudo_bound
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is True
 
 
-def test_commonmark_indented_exception_heading_is_live():
+def test_commonmark_indented_exception_heading_is_live(tmp_path):
     body = _VALID_BODY.replace("## Legacy UI exception", "   ## Legacy UI exception")
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is True
@@ -1019,15 +1035,19 @@ def test_container_transition_cannot_close_fence_and_expose_exception(body):
     assert "body:## Legacy UI exception section" in result.missing_fields
 
 
-def test_closed_top_level_fence_before_live_exception_still_passes():
+def test_closed_top_level_fence_before_live_exception_still_passes(tmp_path):
     body = "```markdown\npasted context\n```\n" + _VALID_BODY
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is True
@@ -1136,15 +1156,19 @@ def test_non_comment_inline_html_invalidates_exception_body():
     )
 
 
-def test_standalone_html_comment_before_live_exception_is_allowed():
+def test_standalone_html_comment_before_live_exception_is_allowed(tmp_path):
     body = "<!-- reviewer context only -->\n\n" + _VALID_BODY
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is True
@@ -1236,7 +1260,7 @@ def test_non_commonmark_line_separator_cannot_shift_exception_heading_lookup(sep
     assert "body:## Legacy UI exception section" in result.missing_fields
 
 
-def test_gfm_table_cannot_supply_top_level_exception_fields():
+def test_gfm_table_cannot_supply_top_level_exception_fields(tmp_path):
     body = textwrap.dedent(
         """
         ## Legacy UI exception
@@ -1248,12 +1272,16 @@ def test_gfm_table_cannot_supply_top_level_exception_fields():
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is False
@@ -1443,7 +1471,7 @@ def test_github_math_container_cannot_hide_exception_fields(body):
     [":{alias}:", ":{alias}:x", "_:{alias}:_"],
     ids=("bare", "adjacent-letter", "markdown-underscore-delimiter"),
 )
-def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
+def test_github_emoji_aliases_are_not_substantive_field_values(tmp_path, value_template):
     reason = value_template.format(alias="heavy_check_mark")
     impact = value_template.format(alias="white_check_mark")
     rollback = value_template.format(alias="leftwards_arrow_with_hook")
@@ -1457,12 +1485,16 @@ def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is False
@@ -1474,7 +1506,7 @@ def test_github_emoji_aliases_are_not_substantive_field_values(value_template):
 
 
 @pytest.mark.parametrize("filler", ["\u115f", "\u1160", "\u3164", "\uffa0"])
-def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
+def test_invisible_unicode_fillers_are_not_substantive_field_values(tmp_path, filler):
     invisible_value = (filler * 4 + " ") * 3
     body = textwrap.dedent(
         f"""
@@ -1486,12 +1518,16 @@ def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is False
@@ -1503,7 +1539,7 @@ def test_invisible_unicode_fillers_are_not_substantive_field_values(filler):
 
 
 @pytest.mark.parametrize("overlay", ["\u0335", "\u0336", "\u0337", "\u0338"])
-def test_unicode_combining_overlays_cannot_visually_strike_field_values(overlay):
+def test_unicode_combining_overlays_cannot_visually_strike_field_values(tmp_path, overlay):
     def crossed_out(value):
         return "".join(char + overlay if char.isalnum() else char for char in value)
 
@@ -1517,12 +1553,16 @@ def test_unicode_combining_overlays_cannot_visually_strike_field_values(overlay)
         """
     )
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
 
     assert result.allowed is False
@@ -1636,7 +1676,7 @@ def test_punctuation_only_values_fail(punctuation_value):
     assert any("Reason" in f for f in result.missing_fields)
 
 
-def test_one_character_exception_values_fail_as_non_substantive():
+def test_one_character_exception_values_fail_as_non_substantive(tmp_path):
     body = textwrap.dedent(
         """
         ## Legacy UI exception
@@ -1647,7 +1687,11 @@ def test_one_character_exception_values_fail_as_non_substantive():
         """
     )
 
-    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY)
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
+    result = evaluate(_TOUCH, labels={"legacy-ui-exception"}, pr_body=body, policy=_POLICY, codex_attestation=attestation)
 
     assert result.allowed is False
     assert set(result.missing_fields) == {
@@ -1674,7 +1718,7 @@ def test_long_single_token_exception_value_fails_as_non_substantive():
     assert any("Reason" in field for field in result.missing_fields)
 
 
-def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
+def test_value_mentioning_placeholder_word_midsentence_is_still_substantive(tmp_path):
     # A real, substantive value must not be rejected just because it CONTAINS
     # a placeholder-vocabulary word away from the start of the value.
     body = textwrap.dedent(
@@ -1686,12 +1730,16 @@ def test_value_mentioning_placeholder_word_midsentence_is_still_substantive():
         Rollback: revert this commit; the legacy route is otherwise untouched
         """
     )
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     result = evaluate(
         _TOUCH,
         labels={"legacy-ui-exception"},
         pr_body=body,
         policy=_POLICY,
-        
+        codex_attestation=attestation,
     )
     assert result.allowed is True
 
@@ -3072,10 +3120,8 @@ def test_workflow_binds_exception_to_event_and_current_pull_snapshot():
     text = _workflow_text()
 
     assert "current-pull.json" in text
-    assert '--event-json-file "$GITHUB_EVENT_PATH"' in text
+    assert '--review-comments-json-file "$RUNNER_TEMP/review-comments.jsonl"' in text
     assert '--current-pull-json-file "$RUNNER_TEMP/current-pull.json"' in text
-    assert "collaborators/$APPROVER_LOGIN/permission" in text
-    assert '--approver-permission-json-file "$RUNNER_TEMP/approver-permission.json"' in text
 
 
 def test_workflow_derives_labels_from_the_same_current_pull_snapshot():
@@ -3212,7 +3258,7 @@ def test_pr_template_has_exactly_one_blank_exception_section_that_fails_closed()
     assert result.allowed is False, "the blank template scaffold must not itself satisfy the guard"
 
 
-def test_pr_template_exception_section_passes_once_filled_with_substantive_text():
+def test_pr_template_exception_section_passes_once_filled_with_substantive_text(tmp_path):
     template_path = REPO_ROOT / ".github" / "pull_request_template.md"
     body = template_path.read_text(encoding="utf-8")
     filled = body.replace(
@@ -3223,13 +3269,17 @@ def test_pr_template_exception_section_passes_once_filled_with_substantive_text(
     )
     assert filled != body, "expected the blank scaffold text to be present and replaceable"
 
+    comments_path, pull_path = _write_codex_ledger(
+        tmp_path, [_owner_comment(1, _ledger_comment(_HEAD_A, "GREEN"))]
+    )
+    attestation = load_codex_attestation(comments_path, pull_path)
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
         [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
         labels={"legacy-ui-exception"},
         pr_body=filled,
         policy=real_policy,
-        
+        codex_attestation=attestation,
     )
     assert result.allowed is True
 
@@ -4460,7 +4510,6 @@ def test_scenario_d_green_at_old_head_is_stale_and_names_both_shas(tmp_path):
     assert result.allowed is False
     assert result.message.startswith("REVIEW STALE")
     assert _HEAD_A in result.message
-    assert "no label action is needed" in result.message
 
 
 def test_scenario_d_fresh_green_at_the_new_head_restores_the_gate(tmp_path):
