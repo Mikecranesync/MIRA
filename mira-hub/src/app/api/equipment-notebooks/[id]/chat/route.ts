@@ -53,6 +53,7 @@ import {
   anomalyChecksEnabled,
 } from "@/capabilities/observability/config";
 import pool from "@/lib/db";
+import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
@@ -62,6 +63,7 @@ import {
   claimNotebookTurnRequest,
   getNotebook,
   listSources,
+  listTurns,
   normalizeNotebookThreadId,
   NotebookNotFoundError,
   recordTurn,
@@ -93,6 +95,9 @@ import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   appendManualContext,
   buildManualUserContent,
+  corpusManufacturers,
+  manufacturerFromObservationText,
+  retrieveManualChunks,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
@@ -118,6 +123,8 @@ import {
   renderVisualEvidenceSection,
   loadVisualEvidenceForPhoto,
   renderLookObservationSection,
+  renderPriorLookObservationsSection,
+  type VisualEvidenceRow,
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import {
@@ -1117,6 +1124,45 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "visual_descriptor_load_failed" }, { status: 500 });
     }
   }
+  // Evidence continuity (2026-09-22, staging trace ae30230b…): a text-only
+  // follow-up ("what voltage was it?") lost the photos from earlier turns —
+  // the client history is text-only by construction, so the server must
+  // recall them itself. Every photo turn persisted its `visual_observation
+  // {fileId}` on the turn row, and the LOOK text lives in the durable
+  // observation ledger keyed by that file id. Newest 2 distinct earlier
+  // photos of THIS thread (owner-scoped via listTurns). Fail-open: a load
+  // failure only means no prior-photo block. Skipped when the turn carries
+  // its own photo — the current observation owns that turn.
+  let priorLookRows: VisualEvidenceRow[] = [];
+  let priorLookFileIds: string[] = [];
+  if (!visualEntry) {
+    try {
+      const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
+      const seen = new Set<string>();
+      for (const t of [...recent].reverse()) {
+        for (const e of t.evidence) {
+          if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
+        }
+        if (seen.size >= 2) break;
+      }
+      priorLookFileIds = [...seen].slice(0, 2);
+      if (priorLookFileIds.length > 0) {
+        const rows = await withTenantContext(ctx.tenantId, async (c) => {
+          const out: VisualEvidenceRow[] = [];
+          for (const fid of priorLookFileIds) {
+            const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid);
+            if (row) out.push(row);
+          }
+          return out;
+        });
+        priorLookRows = rows;
+      }
+    } catch (err) {
+      console.error("[notebook-chat] prior look observations load failed (continuing without):", err instanceof Error ? err.message : err);
+      priorLookRows = [];
+    }
+  }
+
   const visualHazard = blockingLookHazard(lookRow?.hazards);
   const visualSafetyTrigger = visualHazard ? `visual:${visualHazard.code}` : null;
   // A visible structured hazard is stronger than the question classifier's
@@ -1460,13 +1506,95 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
+  // Machine-context inputs, loaded BEFORE retrieval (moved up 2026-09-22):
+  // the notebook's manufacturer/model decide whether the shared OEM corpus is
+  // in scope for a notebook that has no attached documents.
+  // Fail-open by construction (a synchronous throw inside either helper must
+  // not fail the turn either — the old `.catch` only covered rejections).
+  const [nb, srcs] = await Promise.all([
+    (async () => {
+      try {
+        return await getNotebook(ctx.tenantId, notebookId);
+      } catch {
+        return null;
+      }
+    })(),
+    (async () => {
+      try {
+        return await listSources(ctx.tenantId, notebookId);
+      } catch {
+        return [] as { filename: string | null }[];
+      }
+    })(),
+  ]);
+
   const retrievalQuery = buildRetrievalQuery(message, history);
   const retrievalSpan = tracer.startSpan("retrieval.execute", undefined, rootCtx);
-  const retrievalExecuted = !(general || nodeId === null);
-  // General mode reads nothing at all: no retrieval SQL, no doc scope. The
-  // `nodeId === null` arm is the same case — only the general path can reach
-  // here without `validated.ok`, since every other branch returned above.
-  const chunks: ManualChunk[] = general || nodeId === null
+  // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
+  //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
+  //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
+  //      hybrid tenant law, approval gate, raw pool — the same call the
+  //      asset-chat route makes; tenant fallback OFF so an unrelated question
+  //      never sweeps the whole private corpus)
+  //   3. neither                           → skipped_general_mode (unchanged)
+  // Equipment context is SERVER-derived only: a confirmed bound asset, the
+  // notebook's own manufacturer/model, or a stored photo observation (this
+  // turn's or an earlier one's) that names the manufacturer — never the
+  // client's free text (UNS gate doctrine).
+  const notebookRetrieval = !(general || nodeId === null);
+  const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
+    if (notebookRetrieval) return null; // notebook sources own the turn
+    if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
+    const photoText = [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text)].join("\n").trim();
+    if (!photoText) return null;
+    // Fail-open end to end: a corpus hiccup (or a test double without a raw
+    // pool) means "no OEM retrieval this turn", never a failed turn.
+    let client: PoolClient | null = null;
+    try {
+      client = await pool.connect();
+      const known = await corpusManufacturers(client);
+      const fromPhoto = manufacturerFromObservationText(photoText, known);
+      return fromPhoto ? { name: fromPhoto, source: "photo" } : null;
+    } catch (err) {
+      console.error("[notebook-chat] corpus manufacturer lookup failed (no OEM retrieval this turn):", err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      try {
+        client?.release();
+      } catch {
+        /* already released */
+      }
+    }
+  })();
+  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null;
+  const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  const chunks: ManualChunk[] = oemRetrieval
+    ? await (async () => {
+        // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
+        // under withTenantContext the RLS policy hides every shared OEM row.
+        // Fail-open: an OEM query failure leaves the turn general (no chunks),
+        // it never fails the request.
+        let client: PoolClient | null = null;
+        try {
+          client = await pool.connect();
+          return await retrieveManualChunks(client, ctx.tenantId, retrievalQuery, {
+            manufacturer: oemManufacturer!.name,
+            topK: 6,
+            allowTenantFallback: false,
+          });
+        } catch (err) {
+          console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
+          rec.error("retrieval", "oem_query_failed");
+          return [];
+        } finally {
+          try {
+            client?.release();
+          } catch {
+            /* already released */
+          }
+        }
+      })()
+    : !notebookRetrieval
     ? []
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
@@ -1493,19 +1621,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
   {
     const returnedDocIds = [...new Set(chunks.map((c) => c.docId).filter((d): d is string => Boolean(d)))].slice(0, 32);
-    const retrievalStrategy = retrievalExecuted ? "notebook_sources_bm25" : "skipped_general_mode";
+    const retrievalStrategy = notebookRetrieval
+      ? "notebook_sources_bm25"
+      : oemRetrieval
+        ? "oem_corpus_bm25"
+        : "skipped_general_mode";
     const zeroResultReason = retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     rec.stage("retrieval", {
       strategy: retrievalStrategy,
       executed: retrievalExecuted,
       candidate_count: chunks.length,
       returned_doc_ids: returnedDocIds,
-      oem_corpus_searched: false,
+      oem_corpus_searched: oemRetrieval,
+      oem_manufacturer_source: oemManufacturer?.source ?? null,
       zero_result_reason: zeroResultReason,
-      // `sanitizeHistory` yields plain {role, content} text turns only
-      // (notebook-query.ts) — no visual_observation entries ever reach the
-      // client-supplied history, so this is honestly always 0, not a stub.
-      prior_visual_observations_considered: 0,
+      // Server-recalled earlier-photo observations for this thread (never the
+      // client history, which is text-only by construction).
+      prior_visual_observations_considered: priorLookRows.length,
     });
     setSpanAttrs(
       {
@@ -1513,9 +1645,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         "mira.retrieval.executed": retrievalExecuted,
         "mira.retrieval.candidate_count": chunks.length,
         "mira.retrieval.returned_doc_ids": returnedDocIds,
-        "mira.retrieval.oem_corpus_searched": false,
+        "mira.retrieval.oem_corpus_searched": oemRetrieval,
+        "mira.retrieval.oem_manufacturer_source": oemManufacturer?.source ?? null,
         "mira.retrieval.zero_result_reason": zeroResultReason,
-        "mira.retrieval.prior_visual_observations_considered": 0,
+        "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
+        "mira.visual.prior_file_ids": priorLookFileIds,
       },
       retrievalSpan,
     );
@@ -1725,7 +1859,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = renderLookObservationSection(lookRow);
+  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
+    .filter(Boolean)
+    .join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
   // observation, when present, DOES reach the prompt (buildManualUserContent
   // below carries `lookContext`) — `observation_available`/`observation_in_context`
@@ -1733,18 +1869,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // VISUAL_EVIDENCE_DROPPED fires on every healthy photo turn (false positive
   // on the flagship anomaly).
   rec.stage("visual_evidence", {
-    observation_available: Boolean(lookRow?.text?.trim()),
+    observation_available: Boolean(lookRow?.text?.trim()) || priorLookRows.length > 0,
     observation_in_context: lookContext.length > 0,
+    prior_turn_observation_count: priorLookRows.length,
+    prior_file_ids: priorLookFileIds,
   });
 
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers
   // from notebook facts (identity + coverage) instead of the first excerpt, and
   // so it can flag when the loaded doc only partially covers a question.
-  const [nb, srcs] = await Promise.all([
-    getNotebook(ctx.tenantId, notebookId).catch(() => null),
-    listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
-  ]);
+  // (`nb`/`srcs` are loaded above, before retrieval — the OEM routing decision
+  // needs the notebook's manufacturer/model.)
   // `nb` (manufacturer/model) is only known here — a second tenant-scoped
   // query — so identity.resolve's packet fields AND its still-open span get
   // the real flags now, and the span ends. A second `.stage()` merges safely.
@@ -1851,7 +1987,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   {
     const contextSpan = tracer.startSpan("context.assemble", undefined, rootCtx);
     const evidenceDocIds = [...new Set(chunks.map((c) => c.docId).filter((d): d is string => Boolean(d)))];
-    const visualEvidenceCount = (lookContext ? 1 : 0) + (visualSection ? 1 : 0);
+    const visualEvidenceCount = (lookRow?.text?.trim() ? 1 : 0) + priorLookRows.length + (visualSection ? 1 : 0);
     const identityIncluded = boundAsset.state === "resolved" || identityDisputed;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
     const systemPromptKind = general ? "general" : groundedMachineEntry ? "machine" : "grounded";
@@ -2302,7 +2438,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // rejected draft is never persisted and never re-enters chat context —
       // only its bounded excerpt reaches the server log. With the gate off the
       // validator still runs detection-only so rejected shapes stay observable.
-      const validation = validateAnswer({ answerText, question: message, general, served, refused });
+      // Evidence behind THIS turn: retrieved chunks (notebook or OEM), a machine
+      // packet, or a photo observation (current or earlier). Feeds the
+      // pre-display gate so an exact equipment rating with nothing behind it is
+      // withheld, not merely recorded as evidence_sufficient=false afterwards.
+      const evidenceSufficient = chunks.length > 0 || Boolean(groundedMachineEntry) || Boolean(lookContext);
+      const validation = validateAnswer({ answerText, question: message, general, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       if (!validation.ok) {
         console.error(
@@ -2389,7 +2530,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
           : answerStatus;
-        const evidenceSufficient = chunks.length > 0 || Boolean(groundedMachineEntry) || Boolean(lookContext);
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
         rec.stage("answer_gate", {
           invoked: true,

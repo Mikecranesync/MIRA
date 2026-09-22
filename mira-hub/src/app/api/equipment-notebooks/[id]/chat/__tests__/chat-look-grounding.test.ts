@@ -30,6 +30,7 @@ const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  listTurns: vi.fn(async () => [] as unknown[]),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -69,6 +70,7 @@ const veMock = vi.hoisted(() => ({
     hazards: [] as { code: "arcing" | "exposed_conductor" | "active_fire" | "smoke"; confidence: number }[],
   })),
   renderLookObservationSection: vi.fn((row: unknown | null) => (row ? LOOK_SENTINEL : "")),
+  renderPriorLookObservationsSection: vi.fn((rows: unknown[]) => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
