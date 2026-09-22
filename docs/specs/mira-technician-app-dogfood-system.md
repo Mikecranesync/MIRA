@@ -131,6 +131,14 @@ This table separates verified reality from the intended experience.
 
 The current live-data failure is useful evidence, not a reason to weaken the gate. It proves the product needs a clear **Live unavailable — gateway data is stale/untrustworthy** state instead of displaying plausible-looking old values.
 
+### Amendment 2026-08-26 (owner decision 5 — IA)
+
+**Conversation-first launch wins.** The app opens conversation-ready with no asset prerequisite. The
+five tabs (Workorders, Schedule, Notebook, Assets, More) **remain as navigation**; the "Ask MIRA" door
+inside the Notebook tab is **transitional only**. Resume returns to the **exact conversation** — draft,
+history, attachments, citations, and asset context. This amends §7 "Navigation" where it conflicts.
+Record: `docs/decisions/2026-08-26-technician-copilot-owner-decisions.md`.
+
 ## 4. Scope boundary
 
 ### Core product
