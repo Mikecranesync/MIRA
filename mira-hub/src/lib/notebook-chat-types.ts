@@ -338,13 +338,24 @@ export type NotebookChatFrame =
   | NotebookSafetyFrame
   | NotebookUsageFrame
   | NotebookEvidenceFrame
-  | NotebookFollowupsFrame;
+  | NotebookFollowupsFrame
+  | NotebookTraceFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the
  *  client may send verbatim as the next user turn. Additive: clients that
  *  don't know the kind ignore it. */
 export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] };
+
+/**
+ * Turn Flight Recorder correlation (design §2). Emitted FIRST, before any
+ * other frame, ONLY when tracing produced a real trace id — an unconditional
+ * frame would change the wire order of every existing pinned-order test
+ * (chat-safety-stop.test.ts, chat-stop-persist.test.ts,
+ * visual-evidence-abstain.test.ts). Additive: existing clients ignore unknown
+ * kinds (mira-mobile's parseFrame if/else-if chain).
+ */
+export type NotebookTraceFrame = { kind: "trace"; traceId: string | null; turnId: string };
 
 const FRAME_KINDS = new Set([
   "sources",
@@ -354,6 +365,7 @@ const FRAME_KINDS = new Set([
   "usage",
   "evidence",
   "followups",
+  "trace",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {

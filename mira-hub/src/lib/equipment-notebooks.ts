@@ -1452,10 +1452,10 @@ export async function recordTurn(
      *  (refusals, safety stops, errors). Never inferred client-side. */
     basis?: string | null;
   },
-): Promise<void> {
+): Promise<string | null> {
   const owner = (turn.ownerUserId ?? "").trim();
   if (!owner) throw new Error("recordTurn requires ownerUserId (server-derived)");
-  await withTenantContext(tenantId, async (c) => {
+  return withTenantContext(tenantId, async (c) => {
     // Atomic with tenant ownership: the row set is SELECTed from the notebook
     // itself, scoped to (id, tenant_id). A notebook id that is not this
     // tenant's yields zero rows — nothing is written, and we fail closed —
@@ -1539,6 +1539,10 @@ export async function recordTurn(
       ],
     );
     if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
+    // Turn Flight Recorder (design §2): `mira.turn.row_id` / `persistence.turn_row_id`
+    // correlate a span/packet to this row. The INSERT/UPDATE already RETURNS id
+    // (see the CTE above) — this was previously discarded (Promise<void>).
+    return (res.rows[0]?.id as string | undefined) ?? null;
   });
 }
 
