@@ -150,14 +150,6 @@ jobs:
             > "$RUNNER_TEMP/pr-body.md"
           jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/labels.txt"
-          if jq -e '.action == "labeled" and .label.name == "legacy-ui-exception"' \
-            "$GITHUB_EVENT_PATH" > /dev/null; then
-            gh api "repos/$REPO/collaborators/$APPROVER_LOGIN/permission" \
-              > "$RUNNER_TEMP/approver-permission.json"
-          else
-            jq '{permission: "none", user: {login: .sender.login}}' \
-              "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/approver-permission.json"
-          fi
 
       # The Codex adversarial-review ledger lives in the PR's issue comments
       # (scripts/adversarial-review.sh posts it). Fetched as DATA ONLY, one
@@ -208,9 +200,7 @@ jobs:
             --head-tree-json-file "$RUNNER_TEMP/head-tree.json" \
             --labels-file "$RUNNER_TEMP/labels.txt" \
             --pr-body-file "$RUNNER_TEMP/pr-body.md" \
-            --event-json-file "$GITHUB_EVENT_PATH" \
             --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
-            --approver-permission-json-file "$RUNNER_TEMP/approver-permission.json" \
             --review-comments-json-file "$RUNNER_TEMP/review-comments.jsonl"
 
       # Runs the guard's OWN test suite only after the policy decision. Isolated
@@ -246,10 +236,10 @@ jobs:
         run: |
           if [ "$GUARD_RESULT" = "success" ]; then
             STATE=success
-            DESC="No unguarded legacy change, or an exact-head attestation (Codex ledger GREEN or fresh maintainer label) is present."
+            DESC="No unguarded legacy change, or an exact-head Codex ledger GREEN is present."
           else
             STATE=failure
-            DESC="Guarded path touched without an exact-head attestation: Codex ledger GREEN at this head, or a fresh maintainer legacy-ui-exception label (or a guard step failed)."
+            DESC="Guarded path touched without exact-head Codex ledger GREEN (or a guard step failed)."
           fi
           gh api "repos/$REPO/statuses/$HEAD_SHA" \
             -f "state=$STATE" \

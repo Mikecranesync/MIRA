@@ -12,35 +12,27 @@ or rename-out of a guarded legacy presentation path (from
 docs/architecture/convergence/REGISTRY.yaml) or a hardcoded CONTROL_PATTERNS
 control-plane file — unless the PR carries a single substantive
 `## Legacy UI exception` PR-body section (Reason / Canonical replacement
-impact / Rollback) AND one of two exact-head attestations:
+impact / Rollback) AND the exact-head Codex attestation:
 
-* the maintainer route — the `legacy-ui-exception` label plus a fresh user
-  label event bound to the current PR head/body snapshot (a true
-  architectural exception, decided by a human); or
-* the independent-review route — a `[CODEX-ADVERSARIAL-REVIEW]` comment
-  (the repository's existing Codex review ledger, `scripts/adversarial-review.sh`)
-  whose `reviewed_sha` is the current PR head and whose `status` is `GREEN`.
-  The Codex contract treats any expansion of frozen legacy presentation as
-  a finding, so a GREEN at the exact head is the independent classification
-  that the touch is migration / removal / adapter work. Any head movement
-  makes it stale; a fresh review restores it without a label action.
+A `[CODEX-ADVERSARIAL-REVIEW]` comment (the repository's existing Codex
+review ledger, `scripts/adversarial-review.sh`) whose `reviewed_sha` is the
+current PR head and whose `status` is `GREEN`. The Codex contract treats any
+expansion of frozen legacy presentation as a finding, so a GREEN at the exact
+head is the independent classification that the touch is migration / removal /
+adapter work. Any head movement makes it stale; a fresh review restores it.
 
 This module does no network access and reads no GitHub token — it is pure
 policy + text analysis, designed to run from the TRUSTED BASE revision of the
 repository (see `.github/workflows/ui-lifecycle-guard.yml`), fed only
-metadata (changed files plus one current PR snapshot containing labels, body,
-and head) fetched by a separate token-bearing step. See CLI `main()` at the
-bottom.
+metadata (changed files plus one current PR snapshot containing body and head)
+fetched by a separate token-bearing step. See CLI `main()` at the bottom.
 
     python3 tools/ui_surface_lifecycle_guard.py --base <sha> --head <sha>
     python3 tools/ui_surface_lifecycle_guard.py \\
         --changes-json-file changed-files.jsonl \\
         --expected-change-count-file expected-change-count.txt \\
-        --labels-file labels.txt \\
         --pr-body-file pr-body.md \\
-        --event-json-file "$GITHUB_EVENT_PATH" \\
         --current-pull-json-file current-pull.json \\
-        --approver-permission-json-file approver-permission.json \\
         --review-comments-json-file review-comments.jsonl
 """
 
@@ -709,15 +701,6 @@ class GuardResult:
 
 
 @dataclass(frozen=True)
-class ExceptionApproval:
-    """Fresh GitHub label attestation bound to one PR head and body snapshot."""
-
-    valid: bool
-    approver: Optional[str]
-    reason: str
-
-
-@dataclass(frozen=True)
 class CodexAttestation:
     """Latest Codex adversarial-review verdict, bound to one exact PR head.
 
@@ -1368,146 +1351,6 @@ def _load_json_object(path: Path, *, description: str) -> dict:
     return value
 
 
-def load_exception_approval(
-    event_path: Path,
-    current_pull_path: Path,
-    approver_permission_path: Path,
-) -> ExceptionApproval:
-    """Validate a fresh label act against the current PR snapshot.
-
-    The persistent label is not approval by itself. The only accepted
-    attestation is the `pull_request_target:labeled` event that applied
-    `legacy-ui-exception`, performed by a GitHub User, whose event-time head
-    SHA and PR body still match a separately fetched current pull request, and
-    whose separately fetched repository role is `maintain` or whose legacy
-    base permission is `admin`. GitHub maps Maintain to legacy `write`, so both
-    `permission` and `role_name` are checked.
-    Any later push or body edit causes the next workflow run to fail until an
-    authorized user removes/reapplies the label after reviewing the new state.
-    """
-    event = _load_json_object(event_path, description="GitHub event")
-    current = _load_json_object(current_pull_path, description="current pull request")
-    permission_record = _load_json_object(
-        approver_permission_path, description="approver repository permission"
-    )
-
-    event_pr = event.get("pull_request")
-    event_label = event.get("label")
-    sender = event.get("sender")
-
-    # A run that is not a `labeled` ACT carries no attestation to validate.
-    #
-    # That is the ordinary case for every `synchronize`/push run — GitHub only
-    # populates `event.label` on a `labeled` event — and it is NOT malformed
-    # metadata. The strict object check below was reached unconditionally
-    # (the caller passes `--event-json-file` on every invocation), so every
-    # push to every PR raised `exception approval metadata is missing required
-    # GitHub objects` and failed the guard for a reason unrelated to the PR's
-    # contents. Observed on PR #3682 at 2eb3701e, whose diff touches no
-    # guarded path at all.
-    #
-    # Returning a NON-approval here is strictly fail-closed: `valid=False`
-    # means no exception was granted, so `evaluate()` still blocks any PR that
-    # touches a guarded path (see the `exception_approval_valid` branch). It
-    # only stops the guard from erroring when no exception was ever claimed.
-    #
-    # Tamper detection is unchanged: once the event IS a `labeled` act, every
-    # object below is still required — INCLUDING `label` itself — and a missing
-    # or malformed one still raises rather than degrading to a silent
-    # non-approval. The condition deliberately tests only `action`: a genuine
-    # `labeled` act carrying a malformed `label` is malformed metadata, and must
-    # reach the strict object check below so the message says so. Folding
-    # `isinstance(event_label, dict)` in here would have reported "no
-    # attestation on this run" for a tampered label — the same class of
-    # misdirection this fix removes.
-    if event.get("action") != "labeled":
-        return ExceptionApproval(
-            valid=False,
-            approver=None,
-            reason="no GitHub label-event attestation on this run",
-        )
-
-    current_head = current.get("head")
-    current_base = current.get("base")
-    current_labels = current.get("labels")
-    permission_user = permission_record.get("user")
-    if (
-        not all(
-            isinstance(value, dict)
-            for value in (event_pr, event_label, sender, current_head, current_base)
-        )
-        or not isinstance(current_labels, list)
-        or not isinstance(permission_user, dict)
-    ):
-        raise GuardPolicyError("exception approval metadata is missing required GitHub objects")
-
-    event_head = event_pr.get("head")
-    current_base_repo = current_base.get("repo")
-    event_repo = event.get("repository")
-    if not all(isinstance(value, dict) for value in (event_head, current_base_repo, event_repo)):
-        raise GuardPolicyError("exception approval metadata is missing head/repository objects")
-
-    event_sha = event_head.get("sha")
-    current_sha = current_head.get("sha")
-    if not isinstance(event_sha, str) or not _FULL_SHA_RE.fullmatch(event_sha):
-        raise GuardPolicyError("exception approval event head SHA is missing or malformed")
-    if not isinstance(current_sha, str) or not _FULL_SHA_RE.fullmatch(current_sha):
-        raise GuardPolicyError("current pull request head SHA is missing or malformed")
-
-    event_body = event_pr.get("body")
-    current_body = current.get("body")
-    if event_body is not None and not isinstance(event_body, str):
-        raise GuardPolicyError("exception approval event PR body is not text or null")
-    if current_body is not None and not isinstance(current_body, str):
-        raise GuardPolicyError("current pull request body is not text or null")
-
-    label_names: set[str] = set()
-    for item in current_labels:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise GuardPolicyError("current pull request labels contain a malformed item")
-        label_names.add(item["name"])
-
-    approver = sender.get("login") if isinstance(sender.get("login"), str) else None
-    permission_login = (
-        permission_user.get("login") if isinstance(permission_user.get("login"), str) else None
-    )
-    permission = permission_record.get("permission")
-    role_name = permission_record.get("role_name")
-    has_maintainer_authority = permission == "admin" or (
-        permission == "write" and role_name == "maintain"
-    )
-    checks = (
-        (event.get("action") == "labeled", "workflow event is not a label application"),
-        (event_label.get("name") == _LEGACY_LABEL, "workflow event applied a different label"),
-        (_LEGACY_LABEL in label_names, "exception label is no longer present"),
-        (sender.get("type") == "User" and bool(approver), "label actor is not a GitHub User"),
-        (permission_login == approver, "permission record actor mismatches label actor"),
-        (
-            has_maintainer_authority,
-            "label actor does not have repository maintain or admin permission",
-        ),
-        (event.get("number") == current.get("number"), "pull request number changed"),
-        (event_pr.get("number") == current.get("number"), "event pull request number mismatches"),
-        (
-            event_repo.get("full_name") == current_base_repo.get("full_name"),
-            "repository identity mismatches",
-        ),
-        (event_sha == current_sha, "pull request head changed after approval"),
-        ((event_body or "") == (current_body or ""), "pull request body changed after approval"),
-    )
-    failures = [reason for passed, reason in checks if not passed]
-    if failures:
-        return ExceptionApproval(valid=False, approver=approver, reason="; ".join(failures))
-    return ExceptionApproval(
-        valid=True,
-        approver=approver,
-        reason=(
-            "fresh label event matches the current pull request head/body and "
-            "the actor has repository maintainer authority"
-        ),
-    )
-
-
 def _current_head_and_owner(current: dict) -> tuple[str, str]:
     """Return `(head_sha, base_repo_owner_login)` from a current PR snapshot,
     failing closed on anything missing or malformed."""
@@ -1919,7 +1762,6 @@ def evaluate(
     pr_body: str,
     policy: GuardPolicy,
     *,
-    exception_approval_valid: bool = False,
     codex_attestation: Optional[CodexAttestation] = None,
 ) -> GuardResult:
     """Require an audited exception for any guarded or control-plane touch.
@@ -1927,10 +1769,8 @@ def evaluate(
     For a rename, both `previous_path` and `path` are checked — a rename-out
     of a guarded tree and a rename-in to a guarded tree are both violations.
 
-    A guarded touch passes on the substantive exception body PLUS either a
-    fresh maintainer label event (`exception_approval_valid`) or a Codex
-    ledger GREEN bound to the current head (`codex_attestation.valid`). The
-    label itself is required only on the maintainer route.
+    A guarded touch passes on the substantive exception body PLUS a Codex
+    ledger GREEN bound to the current head (`codex_attestation.valid`).
     """
     touched: list[str] = []
     seen: set[str] = set()
@@ -1972,48 +1812,37 @@ def evaluate(
         )
 
     missing: list[str] = []
-    if _LEGACY_LABEL not in set(labels):
-        missing.append(f"label:{_LEGACY_LABEL}")
     missing.extend(body_missing)
-    if not missing and not exception_approval_valid:
-        missing.append("approval:fresh legacy-ui-exception label bound to current head/body")
+    if not codex_valid:
+        missing.append("codex:GREEN at exact head")
 
-    if missing:
-        if codex_attestation is not None and codex_attestation.reviewed_sha is not None:
-            if codex_attestation.status == "GREEN":
-                headline = (
-                    f"REVIEW STALE (Codex GREEN reviewed {codex_attestation.reviewed_sha}; "
-                    "the head has moved — rerun scripts/adversarial-review.sh; "
-                    "no label action is needed)"
-                )
-            else:
-                headline = (
-                    f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
-                    "remediate and re-review, or a maintainer applies the exception label)"
-                )
+    if codex_attestation is not None and codex_attestation.reviewed_sha is not None:
+        if codex_attestation.status == "GREEN":
+            headline = (
+                f"REVIEW STALE (Codex GREEN reviewed {codex_attestation.reviewed_sha}; "
+                "the head has moved — rerun scripts/adversarial-review.sh)"
+            )
         else:
             headline = (
-                "INDEPENDENT REVIEW REQUIRED (guarded path touched; run "
-                "scripts/adversarial-review.sh to GREEN at this head, or a maintainer "
-                "applies the exception label for a true architectural exception)"
+                f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
+                "remediate and re-review)"
             )
-        return GuardResult(
-            allowed=False,
-            guarded_paths=tuple(touched),
-            missing_fields=tuple(missing),
-            message=(
-                headline + ". Guarded legacy presentation or control-plane path(s) touched without "
-                f"an audited `{_LEGACY_LABEL}` exception. Touched: "
-                + ", ".join(touched)
-                + ". Missing: "
-                + ", ".join(missing)
-            ),
+    else:
+        headline = (
+            "INDEPENDENT REVIEW REQUIRED (guarded path touched; run "
+            "scripts/adversarial-review.sh to GREEN at this head)"
         )
     return GuardResult(
-        allowed=True,
+        allowed=False,
         guarded_paths=tuple(touched),
-        missing_fields=(),
-        message="Audited legacy-ui-exception approved for: " + ", ".join(touched),
+        missing_fields=tuple(missing),
+        message=(
+            headline + ". Guarded legacy presentation or control-plane path(s) touched without "
+            "exact-head Codex GREEN attestation. Touched: "
+            + ", ".join(touched)
+            + ". Missing: "
+            + ", ".join(missing)
+        ),
     )
 
 
@@ -2050,22 +1879,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--labels-file", type=Path, default=None, help="Newline-delimited label names.")
     p.add_argument("--pr-body-file", type=Path, default=None, help="Raw PR body text.")
     p.add_argument(
-        "--event-json-file",
-        type=Path,
-        default=None,
-        help="Raw pull_request_target event JSON used to bind a fresh exception label.",
-    )
-    p.add_argument(
         "--current-pull-json-file",
         type=Path,
         default=None,
-        help="Current GitHub pull-request JSON compared with the label event snapshot.",
-    )
-    p.add_argument(
-        "--approver-permission-json-file",
-        type=Path,
-        default=None,
-        help="Current GitHub repository-permission JSON for the label-event actor.",
+        help="Current GitHub pull-request JSON for review ledger binding.",
     )
     p.add_argument(
         "--review-comments-json-file",
@@ -2146,20 +1963,6 @@ def main(argv: Optional[list] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    # The label-event trio is all-or-nothing. The current-pull snapshot may
-    # also stand alone, because the review-ledger route binds to it without
-    # any label event.
-    label_event_files = (args.event_json_file, args.approver_permission_json_file)
-    if any(path is not None for path in label_event_files) and not (
-        all(path is not None for path in label_event_files)
-        and args.current_pull_json_file is not None
-    ):
-        print(
-            "error: --event-json-file, --current-pull-json-file, and "
-            "--approver-permission-json-file must be provided together",
-            file=sys.stderr,
-        )
-        return 2
     if args.review_comments_json_file is not None and args.current_pull_json_file is None:
         print(
             "error: --review-comments-json-file requires --current-pull-json-file "
@@ -2182,19 +1985,6 @@ def main(argv: Optional[list] = None) -> int:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
         labels = _read_labels(args.labels_file)
         pr_body = _read_pr_body(args.pr_body_file)
-        approval = (
-            load_exception_approval(
-                args.event_json_file,
-                args.current_pull_json_file,
-                args.approver_permission_json_file,
-            )
-            if args.event_json_file is not None
-            else ExceptionApproval(
-                valid=False,
-                approver=None,
-                reason="no GitHub label-event attestation was supplied",
-            )
-        )
         codex = (
             load_codex_attestation(args.review_comments_json_file, args.current_pull_json_file)
             if args.review_comments_json_file is not None
@@ -2209,7 +1999,6 @@ def main(argv: Optional[list] = None) -> int:
         labels,
         pr_body,
         policy,
-        exception_approval_valid=approval.valid,
         codex_attestation=codex,
     )
     if not result.allowed:

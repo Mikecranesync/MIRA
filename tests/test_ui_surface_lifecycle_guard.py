@@ -56,12 +56,13 @@ _build_arg_parser = _guard._build_arg_parser
 changed_files_between = _guard.changed_files_between
 evaluate = _guard.evaluate
 load_changed_files = _guard.load_changed_files
-load_exception_approval = _guard.load_exception_approval
 load_guard_policy = _guard.load_guard_policy
 main = _guard.main
 path_is_guarded = _guard.path_is_guarded
 read_expected_change_count = _guard.read_expected_change_count
 validate_expected_change_count = _guard.validate_expected_change_count
+CodexAttestation = _guard.CodexAttestation
+load_codex_attestation = _guard.load_codex_attestation
 
 
 def _policy(*guarded_paths: str) -> GuardPolicy:

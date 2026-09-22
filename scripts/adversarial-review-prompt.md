@@ -50,9 +50,9 @@ tests; rollback/recovery weaknesses; operational failure modes.
 
 ## Frozen legacy UI (your GREEN is the lifecycle attestation)
 
-The `Legacy UI Lifecycle Guard` accepts your `GREEN` at this exact head in
-place of a maintainer's `legacy-ui-exception` label. So when the diff touches
-a guarded legacy path, run the guard yourself and classify each flagged path:
+The `Legacy UI Lifecycle Guard` requires your `GREEN` at this exact head as
+the sole attestation for guarded legacy paths. When the diff touches a guarded
+legacy path, run the guard yourself and classify each flagged path:
 
 ```
 python3 tools/ui_surface_lifecycle_guard.py --base {{MERGE_BASE}} --head HEAD
