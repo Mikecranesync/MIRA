@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import {
   makeCitationNormalizer,
   isRefusal,
+  isCitedPartialAnswer,
+  refusalVerdict,
   citationsUsedInAnswer,
   buildProviderMessages,
   isProviderCascadeError,
@@ -168,5 +170,69 @@ describe("makeGeneralBracketStripper", () => {
   it("leaves ordinary bracketed prose alone", () => {
     const s = makeGeneralBracketStripper();
     expect(s.push("terminal [A] and [B1]") + s.flush()).toBe("terminal [A] and [B1]");
+  });
+});
+
+/**
+ * #3953 — a document-grounded answer that ANSWERS and cites, then adds a
+ * limitation sentence, was being classified as a refusal by the whole-text
+ * regex. The refusal path ships zero citations and downgrades the badge to
+ * general, so the technician lost a real citation for a real answer.
+ *
+ * Live evidence: acceptance run 35721520600 case 3, trace
+ * 7b32662ba50996561b05f58a91907a5f, staging 24197da68. Same code passed the
+ * prior run only because the model phrased the limitation differently, so this
+ * is phrasing-dependent and recurs.
+ *
+ * The rule: a limitation sentence qualifies an answer; it does not erase the
+ * cited assertion beside it. A refusal that cites nothing is still a refusal.
+ */
+describe("#3953 — a cited partial answer is not a refusal", () => {
+  const cites = [cite("1"), cite("2")];
+  const CASE_3 =
+    "The PLC exposes three tags for the conveyor VFD system: PLC-PANEL-01, VFD-LINE1, and CONV-MAIN-01 [1].  \n\n" +
+    "The reference only lists the tag names; it does not provide definitions of what each tag represents.";
+
+  it("1. grounded answer + shipped citation + limitation language → NOT a refusal", () => {
+    // The whole-text classifier still matches — that is the trap being guarded.
+    expect(isRefusal(CASE_3)).toBe(true);
+    expect(isCitedPartialAnswer(CASE_3, cites)).toBe(true);
+    expect(refusalVerdict(CASE_3, { docGrounded: true, citations: cites })).toBe(false);
+  });
+
+  it("2. a genuine refusal is still a refusal (no citation survives the limitation clause)", () => {
+    const case2 =
+      "The supplied references do not specify the TP700 Comfort panel's required supply voltage nor its operating " +
+      "temperature range; you'll need the panel's name-plate data or the full manual.";
+    expect(refusalVerdict(case2, { docGrounded: true, citations: cites })).toBe(true);
+    // A refusal that cites the document it searched is still a refusal: the
+    // citation sits INSIDE the limitation clause, so nothing is asserted.
+    expect(refusalVerdict("The supplied references [1] do not specify the voltage.", { docGrounded: true, citations: cites })).toBe(true);
+    // Refusal first, generic advice after, no citation anywhere.
+    expect(
+      refusalVerdict(
+        "I can't give an exact temperature rating without the data sheet. Generally, outdoor panels derate in direct sunlight.",
+        { docGrounded: true, citations: cites },
+      ),
+    ).toBe(true);
+  });
+
+  it("3. a non-grounded answer is unchanged — the general lane cannot cite, so refusals stand", () => {
+    // Same text, general lane: [n] points at nothing (the bracket stripper runs
+    // anyway), so the guard must not rescue it.
+    expect(refusalVerdict(CASE_3, { docGrounded: false, citations: [] })).toBe(true);
+    expect(refusalVerdict(CASE_3, { docGrounded: true, citations: [] })).toBe(true);
+    // A [9] the model invented resolves to no shipped citation → still a refusal.
+    expect(refusalVerdict("The tags are A, B and C [9]. The reference does not provide definitions.", { docGrounded: true, citations: cites })).toBe(true);
+  });
+
+  it("a plain grounded answer with no limitation clause is untouched by the guard", () => {
+    const plain = "The panel is supplied from 24 V DC [1].";
+    expect(isRefusal(plain)).toBe(false);
+    expect(refusalVerdict(plain, { docGrounded: true, citations: cites })).toBe(false);
+  });
+
+  it("the guard needs substantive cited content, not a bare marker", () => {
+    expect(refusalVerdict("[1]. The reference does not provide definitions.", { docGrounded: true, citations: cites })).toBe(true);
   });
 });
