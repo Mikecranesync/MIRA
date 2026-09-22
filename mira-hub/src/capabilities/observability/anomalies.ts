@@ -105,10 +105,16 @@ export function detectAnomalies(
   }
 
   // EQUIPMENT_ANSWER_WITH_NO_EVIDENCE — the turn looks equipment-specific
-  // (identity resolved, or a photo/machine snapshot was attached) and MIRA
-  // answered, but neither a doc chunk nor a visual observation backs it.
+  // (identity resolved, a photo/machine snapshot was attached, OR earlier
+  // turns in this thread already carried photo observations — a text-only
+  // "can you find the manual for this screen" follow-up is about the same
+  // machine) and MIRA answered, but neither a doc chunk nor a visual
+  // observation backs it.
   if (
-    (p.identity.state !== "unknown" || p.request.has_visual_evidence || p.request.has_machine_evidence) &&
+    (p.identity.state !== "unknown" ||
+      p.request.has_visual_evidence ||
+      p.request.has_machine_evidence ||
+      p.visual_evidence.prior_turn_observation_count > 0) &&
     p.answer_gate.decision === "answered" &&
     p.context.evidence_doc_ids.length === 0 &&
     p.context.visual_evidence_count === 0
@@ -120,6 +126,7 @@ export function detectAnomalies(
         identity_state: p.identity.state,
         has_visual_evidence: p.request.has_visual_evidence,
         has_machine_evidence: p.request.has_machine_evidence,
+        prior_turn_observation_count: p.visual_evidence.prior_turn_observation_count,
         evidence_doc_count: p.context.evidence_doc_ids.length,
         context_visual_evidence_count: p.context.visual_evidence_count,
       },

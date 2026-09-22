@@ -24,7 +24,7 @@
     "mode": "general",
     "message_chars": 182,
     "has_visual_evidence": false,
-    "has_machine_evidence": true,
+    "has_machine_evidence": false,
     "source_doc_count": 0
   },
   "vision": {

@@ -119,6 +119,28 @@ describe("withSpan / activeTraceId / activeSpanId — with a registered provider
     expect(span?.attributes["not.allowed.key"]).toBeUndefined();
   });
 
+  describe("MiraAttributeProcessor — enforcement at onEnd (review finding)", () => {
+    it("scrubs attributes written AFTER span start via raw span.setAttribute", async () => {
+      // Auto-instrumentation and any caller that bypasses setSpanAttrs write
+      // straight into the span; onStart never sees those. The exporter must.
+      await withSpan("late-attrs", {}, async (span) => {
+        span.setAttribute("http.request.header.authorization", "Bearer gsk_secret_value");
+        span.setAttribute("db.statement", "select 1");
+        span.setAttribute("not.allowlisted", "leak");
+        span.setAttribute("mira.file.id", "pk-lf-should-redact");
+      });
+      const span = finished().find((s) => s.name === "late-attrs");
+      expect(span).toBeDefined();
+      const attrs = span!.attributes as Record<string, unknown>;
+      expect(attrs["not.allowlisted"]).toBeUndefined();
+      expect(attrs["db.statement"]).toBe("select 1");
+      expect(attrs["http.request.header.authorization"]).toBe("[REDACTED]");
+      expect(attrs["mira.file.id"]).toBe("[REDACTED]");
+      expect(JSON.stringify(attrs)).not.toContain("gsk_secret_value");
+      expect(JSON.stringify(attrs)).not.toContain("leak");
+    });
+  });
+
   describe("setSpanAttrs — allowlist + redaction + caps", () => {
     it("drops non-allowlisted keys", async () => {
       await withSpan("filter", {}, async (span) => {

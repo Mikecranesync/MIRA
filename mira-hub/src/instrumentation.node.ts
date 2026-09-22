@@ -59,6 +59,13 @@ function startTelemetry(): void {
   }
 
   try {
+    // Traces only (design §1). NodeSDK reads OTEL_METRICS_EXPORTER /
+    // OTEL_LOGS_EXPORTER and DEFAULTS BOTH to "otlp" when unset — which would
+    // silently start periodic metrics + logs export to the same traces
+    // endpoint/headers. Pin them off unless an operator set them explicitly.
+    process.env.OTEL_METRICS_EXPORTER ||= "none";
+    process.env.OTEL_LOGS_EXPORTER ||= "none";
+
     diag.setLogger(createRateLimitedDiagLogger(60_000), DiagLogLevel.ERROR);
 
     // `defaultResource()` seeds the SDK's own attrs (telemetry.sdk.*); NodeSDK

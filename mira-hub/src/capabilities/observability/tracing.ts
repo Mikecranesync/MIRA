@@ -169,25 +169,42 @@ export async function withSpan<T>(
 }
 
 /**
- * SpanProcessor that enforces the attribute allowlist + redaction at
- * `onStart` (auto-instrumentation attaches attributes at span creation).
- * Attributes are immutable on an already-ended span in the JS SDK, so
- * `onEnd` is a no-op by design — later attribute writes go through
- * `setSpanAttrs` while the span is still active.
+ * SpanProcessor that enforces the attribute allowlist + redaction on EVERY
+ * span that reaches the exporter.
+ *
+ * `onStart` only sees creation-time attributes; the SDK's `SpanImpl` calls
+ * the processor exactly once at construction, and every later
+ * `span.setAttribute(s)` (which is how http/pg/undici auto-instrumentation
+ * attaches most of its attributes, and how a caller could bypass
+ * `setSpanAttrs`) writes straight into the span with no processor hook. So
+ * the real enforcement point is `onEnd`: the `ReadableSpan.attributes`
+ * object the SDK hands us is the span's own (mutable) attribute map, and
+ * this processor is registered BEFORE the batch processor, so scrubbing it
+ * in place here is what the exporter sees. `scrubInPlace` is exported for
+ * tests so the guarantee can be asserted on a finished span, not inferred.
  */
+export function scrubInPlace(attrs: Record<string, unknown>): void {
+  for (const key of Object.keys(attrs)) {
+    if (!isAllowedAttributeKey(key)) {
+      delete attrs[key];
+      continue;
+    }
+    const clamped = clampValue(attrs[key] as SpanAttrs[string]);
+    if (clamped === undefined) {
+      delete attrs[key];
+      continue;
+    }
+    attrs[key] = redactAttributeValue(key, clamped);
+  }
+}
+
 export class MiraAttributeProcessor implements SpanProcessor {
   onStart(span: SdkSpan): void {
-    const attrs = span.attributes as unknown as Record<string, AttributeValue | undefined>;
-    for (const key of Object.keys(attrs)) {
-      if (!isAllowedAttributeKey(key)) {
-        delete attrs[key];
-      }
-    }
-    span.setAttributes(sanitizeAttrs(attrs as SpanAttrs));
+    scrubInPlace(span.attributes as unknown as Record<string, unknown>);
   }
 
-  onEnd(_span: ReadableSpan): void {
-    // no-op — see class doc.
+  onEnd(span: ReadableSpan): void {
+    scrubInPlace(span.attributes as unknown as Record<string, unknown>);
   }
 
   forceFlush(): Promise<void> {
