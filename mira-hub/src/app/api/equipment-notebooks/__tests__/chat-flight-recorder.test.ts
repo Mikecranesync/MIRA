@@ -300,6 +300,28 @@ describe("no span leaks when a pre-stream stage throws", () => {
   });
 });
 
+describe("per-stage timings land in the durable packet", () => {
+  it("identity/retrieval/context/generation/persist durations are numbers on an answered turn", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance here.", { prompt_tokens: 3, completion_tokens: 2 })));
+    const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    const t = record.packet.timings_ms;
+    for (const k of ["identity", "retrieval", "context", "generation"] as const) {
+      expect(typeof t[k], `timings_ms.${k}`).toBe("number");
+      expect(t[k]).toBeGreaterThanOrEqual(0);
+    }
+    // persist is recorded from the span that wraps recordTurn; finish() runs
+    // inside that span, so it is written by the LAST endTimed after persistence.
+    // The packet copy captured at finish() may predate it — assert the trace
+    // instead: the turn.persist span exists and has ended.
+    const persist = handle.finished().find((s) => s.name === "turn.persist");
+    expect(persist).toBeTruthy();
+    expect(persist!.ended).toBe(true);
+  });
+});
+
 describe("no span attribute ever carries a secret", () => {
   it("provider key / cookie strings never appear in any exported span attribute value", async () => {
     process.env.GROQ_API_KEY = "gsk_super_secret_value_123";

@@ -11,12 +11,14 @@
  * route does not select those columns at all (diagnostics-read.ts's SELECT
  * list never names them).
  *
- * `viewerUrl` is always null here — I1's `config.viewerUrlFor` (the Langfuse
- * trace URL template) is wired in at integration; see design §10.
+ * `viewerUrl` is the trace-viewer link built from MIRA_TRACE_VIEWER_URL_TEMPLATE
+ * (config.viewerUrlFor); null when the template is unset or the turn has no
+ * OTel trace id.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { loadTurnDiagnostics } from "@/capabilities/observability/diagnostics-read";
+import { viewerUrlFor } from "@/capabilities/observability/config";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +50,7 @@ export async function GET(
     notebookId: diagnostics.notebookId,
     packet: diagnostics.packet,
     anomalies: diagnostics.anomalies,
-    viewerUrl: null,
+    viewerUrl: diagnostics.traceId ? viewerUrlFor(diagnostics.traceId) : null,
     ts: diagnostics.ts,
   });
 }

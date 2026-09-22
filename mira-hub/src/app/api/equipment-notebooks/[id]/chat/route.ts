@@ -41,6 +41,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
+import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import {
@@ -854,6 +855,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     serviceVersion: serviceVersion(),
     traceId: rootTraceId,
   });
+  // End a stage span and copy its measured duration into the durable packet
+  // (`timings_ms`). The trace already carries exact start/end timestamps; this
+  // is the copy that survives telemetry retention. Never throws.
+  const endTimed = (span: Span, stage: keyof TurnEvidencePacket["timings_ms"]): void => {
+    try {
+      const readable = span as unknown as { startTime?: [number, number]; endTime?: [number, number]; ended?: boolean };
+      span.end();
+      if (readable.startTime && readable.endTime) {
+        const ms = Math.round(
+          (readable.endTime[0] - readable.startTime[0]) * 1000 + (readable.endTime[1] - readable.startTime[1]) / 1e6,
+        );
+        if (ms >= 0) rec.timing(stage, ms);
+      }
+    } catch {
+      /* telemetry never changes the outcome */
+    }
+  };
   rec.stage("request", {
     mode: general ? "general" : "grounded",
     message_chars: message.length,
@@ -1501,7 +1519,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       retrievalSpan,
     );
-    retrievalSpan.end();
+    endTimed(retrievalSpan, "retrieval");
   }
 
   const enc = new TextEncoder();
@@ -1591,7 +1609,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       latencyMs: null,
     });
     setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": gateTurnRowId }, gatePersistSpan);
-    gatePersistSpan.end();
+    endTimed(gatePersistSpan, "persist");
     endRoot();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -1741,7 +1759,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
     identityResolveSpan,
   );
-  identityResolveSpan.end();
+  endTimed(identityResolveSpan, "identity");
   openChildren.delete(identityResolveSpan);
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
@@ -1857,7 +1875,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       contextSpan,
     );
-    contextSpan.end();
+    endTimed(contextSpan, "context");
   }
 
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
@@ -2140,7 +2158,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 genSpan,
               );
             }
-            genSpan.end();
+            endTimed(genSpan, "generation");
             rec.generationAttempt({
               provider: provider.name,
               model: provider.model,
@@ -2262,7 +2280,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           });
         }
         setSpanAttrs({ "mira.turn.row_id": stoppedTurnRowId }, stoppedPersistSpan);
-        stoppedPersistSpan.end();
+        endTimed(stoppedPersistSpan, "persist");
         endRoot();
         return;
       }
@@ -2477,7 +2495,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           } catch {
             // The cancelled client already owns the transport failure.
           }
-          finalPersistSpan.end();
+          endTimed(finalPersistSpan, "persist");
           // Design §4's sixth exit path: "recordTurn failure" still gets a
           // packet with `persistence.outcome='failed'`, seam on or off.
           {
@@ -2618,7 +2636,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
       }
       setSpanAttrs({ "mira.turn.row_id": finalTurnRowId, "mira.persist.outcome": "ok" }, finalPersistSpan);
-      finalPersistSpan.end();
+      endTimed(finalPersistSpan, "persist");
       endRoot();
       } catch (err) {
         req.signal?.removeEventListener("abort", onClientGone);

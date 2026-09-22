@@ -75,6 +75,37 @@ describe("GET .../turns/[turnId]/diagnostics", () => {
     expect(loadTurnDiagnostics).toHaveBeenCalledWith(TENANT, NB, TURN);
   });
 
+  it("viewerUrl is the trace-viewer link when MIRA_TRACE_VIEWER_URL_TEMPLATE is set", async () => {
+    const prev = process.env.MIRA_TRACE_VIEWER_URL_TEMPLATE;
+    process.env.MIRA_TRACE_VIEWER_URL_TEMPLATE = "https://viewer.example/p/x/traces/{traceId}";
+    try {
+      vi.mocked(loadTurnDiagnostics).mockResolvedValue({
+        traceId: "0af7651916cd43dd8448eb211c80319c",
+        turnId: TURN,
+        notebookId: NB,
+        packet: { v: "1", kind: "chat" } as never,
+        anomalies: [],
+        ts: "2026-09-22T00:17:02.000Z",
+      });
+      const body = await (await GET(req, params)).json();
+      expect(body.viewerUrl).toBe("https://viewer.example/p/x/traces/0af7651916cd43dd8448eb211c80319c");
+
+      // A turn with no OTel trace (SDK off) gets no link, template or not.
+      vi.mocked(loadTurnDiagnostics).mockResolvedValue({
+        traceId: null,
+        turnId: TURN,
+        notebookId: NB,
+        packet: { v: "1", kind: "chat" } as never,
+        anomalies: [],
+        ts: "2026-09-22T00:17:02.000Z",
+      });
+      expect((await (await GET(req, params)).json()).viewerUrl).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.MIRA_TRACE_VIEWER_URL_TEMPLATE;
+      else process.env.MIRA_TRACE_VIEWER_URL_TEMPLATE = prev;
+    }
+  });
+
   it("never leaks the technician's question or MIRA's answer text", async () => {
     const packet = {
       v: "1",
