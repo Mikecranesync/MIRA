@@ -54,6 +54,14 @@ from typing import Any
 LOW = 0.30
 HIGH = 0.70
 USD_PER_M_INPUT = 0.042  # api.typesafe.ai published rate (probe report, 2026-09-22)
+# The code's real invariant is the CHARACTER caps in jev-shadow.ts; tokens follow
+# from them. Technical text (URLs, part numbers, units) tokenizes at ~2.9 chars/
+# token, not 4 — the first estimate of ~1,200 tokens was wrong, and staging
+# measured 1,681 on a six-chunk turn (#3954, trace 9b065683ecae1912).
+MAX_QUESTION_CHARS = 600
+MAX_CHUNK_CHARS = 700
+MAX_CHUNKS = 6
+OBSERVED_MAX_INPUT_TOKENS = 1681
 LATENCY_CAP_MS = 1500  # DEFAULT_TIMEOUT_MS in jev-shadow.ts
 TARGET_JUDGED = (50, 100)
 
@@ -86,20 +94,33 @@ def rows_from_artifact(path: Path, source: str) -> list[dict[str, Any]]:
 
 
 def rows_from_runs(n: int) -> list[dict[str, Any]]:
+    """Recent acceptance runs, INCLUDING failed ones (#3954).
+
+    A failed run's turns are real measurements against a real deployed build —
+    its packets are exactly as valid as a green run's, and a run can go red on
+    one scenario while the other five produce the only judged turns available.
+    That is not hypothetical: run 35721520600 went red on a classifier defect
+    (#3953) while carrying the first three packets ever to include
+    `jev_input_tokens`, and filtering to `--status success` dropped all of them.
+    Each row is labelled with its run conclusion so a reader can tell them apart.
+    """
     runs = json.loads(
         _gh(
             "run",
             "list",
             "--workflow",
             "retrieval-acceptance.yml",
-            "--status",
-            "success",
             "--limit",
             str(n),
             "--json",
-            "databaseId,headSha,createdAt",
+            "databaseId,headSha,createdAt,conclusion,status",
         )
     )
+    runs = [
+        r
+        for r in runs
+        if r.get("status") == "completed" and r.get("conclusion") in ("success", "failure")
+    ]
     out: list[dict[str, Any]] = []
     for run in runs:
         rid = str(run["databaseId"])
@@ -112,6 +133,7 @@ def rows_from_runs(n: int) -> list[dict[str, Any]]:
             for f in Path(td).rglob("retrieval-acceptance.json"):
                 for row in rows_from_artifact(f, source=f"run:{rid}"):
                     row["git_sha"] = row.get("git_sha") or run.get("headSha")
+                    row["run_conclusion"] = run.get("conclusion")
                     out.append(row)
     return out
 
@@ -234,6 +256,7 @@ def report(
 
     L = []
     L.append("# Jev shadow vs `evidence_sufficient` — staging evidence report\n")
+    red_runs = sorted({r["source"] for r in uniq if r.get("run_conclusion") == "failure"})
     L.append(
         f"Packets: {len(uniq)} · pre-shadow builds: {len(pre_shadow)} · eligible: {len(eligible)} · judged: {len(judged)} · zero-chunk skips: {len(zero_chunk)} · config defects (`disabled`/`no_key`): {len(config_defects)}"
     )
@@ -247,7 +270,12 @@ def report(
             + ", ".join(str(r["trace_id"])[:12] for r in config_defects[:10])
             + "\n"
         )
-    L.append("## Invariants\n")
+    if red_runs:
+        L.append(
+            f"\nIncludes {len(red_runs)} acceptance run(s) that went RED ({', '.join(red_runs)}). Their turns are real "
+            "measurements against a real deployed build and are counted; rows carry `run_conclusion` in the CSV."
+        )
+    L.append("\n## Invariants\n")
     L.append(
         f"- Zero-chunk turns never call Jev: {'OK' if not zero_chunk_bad else 'VIOLATED'} ({len(zero_chunk)} skipped with chunk_count=0{'' if not zero_chunk_bad else '; ' + str(len(zero_chunk_bad)) + ' had chunks'})"
     )
@@ -268,7 +296,9 @@ def report(
         )
     else:
         L.append(
-            "- Cost: `jev_input_tokens` absent from these packets (pre-field builds); bound by construction ≤ ~1,200 input tokens/call ≈ $0.00005/call"
+            "- Cost: no judged turn in this set carries `jev_input_tokens` (packets from builds before the field shipped). "
+            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars, "
+            f"measured at up to {OBSERVED_MAX_INPUT_TOKENS:,} input tokens/call (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call)"
         )
     if baseline:
         by = {}

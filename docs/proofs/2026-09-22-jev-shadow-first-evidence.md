@@ -13,7 +13,7 @@ Progress toward the 50–100 judged-turn window: **3/50**. Real staging usage pr
 - Every judged turn had chunks: OK
 - Every judged turn has `evidence_sufficient=true` (presence law): OK
 - Jev latency ms: p50 133 · max 164 · cap 1500 (`timeout` skips: 0)
-- Cost: `jev_input_tokens` absent from these packets (pre-field builds); bound by construction ≤ ~1,200 input tokens/call ≈ $0.00005/call
+- Cost: `jev_input_tokens` had not shipped when these packets were written. Superseded by the measured figures in run 35721520600: 1,681 / 439 / 1,431 input tokens per call, i.e. ~$0.00005/call and up to $0.00007 — the ~1,200-token estimate in this file was wrong (#3954).
 - Turn total_ms, baseline (pre-Jev) vs current acceptance rows, per scenario: #1: 4792→4580; #2: 5300→3728; #3: 4809→4810; #4: 4379→4237; #5: 3796→4395
 
 ## Disagreement categories (judged turns)
