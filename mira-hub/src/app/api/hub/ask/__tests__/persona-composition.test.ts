@@ -106,13 +106,16 @@ describe("/api/hub/ask — system message composition", () => {
     expect(on).toContain("give the general answer anyway");
     expect(on).toContain("Do NOT invent machine-specific facts");
     expect(on).toContain("NEVER claim to know which machine they are standing at");
-    expect(on).toContain("4-8 short bullets max");
-    expect(on).toContain("ranked by probability");
+    expect(on).toContain("the next most likely alternatives");
+    // The 4-8 bullet QUOTA was deliberately removed (goal item 3: no mandatory
+    // template). Brevity survives as a preference, not a count.
+    expect(on).not.toContain("4-8 short bullets max");
+    expect(on).toContain("let the question set the shape, not a bullet quota");
   });
 
   it("no rule is stated twice — a duplicated instruction contradicts itself later", async () => {
     const on = await systemMessageFrom("1");
-    for (const rule of ["4-8 short bullets max", "NEVER claim to know which machine"]) {
+    for (const rule of ["let the question set the shape", "NEVER claim to know which machine"]) {
       expect(on.split(rule).length - 1, `"${rule}" appears more than once`).toBe(1);
     }
   });

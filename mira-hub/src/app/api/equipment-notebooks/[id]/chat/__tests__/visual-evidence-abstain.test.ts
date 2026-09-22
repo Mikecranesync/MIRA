@@ -116,7 +116,7 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
 
     const res = await POST(
-      req({
+      req({ mode: "source_only",
         message: "what am I looking at here",
         sourceDocIds: [DOC_A],
         visualEvidence: { fileId: PHOTO, capturedAt: "client-supplied-and-ignored" },
@@ -169,7 +169,7 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     filesMock.photoLinkedToTarget.mockResolvedValue(null);
 
     const res = await POST(
-      req({ message: "what am I looking at here", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }),
+      req({ mode: "source_only", message: "what am I looking at here", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }),
       params,
     );
     expect(res.status).toBe(200);
@@ -231,7 +231,7 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
   });
 
   it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {
-    const res = await POST(req({ message: "what am I looking at here", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(req({ mode: "source_only", message: "what am I looking at here", sourceDocIds: [DOC_A] }), params);
     const out = await frames(res);
     expect(filesMock.photoLinkedToTarget).not.toHaveBeenCalled();
     expect(out.map((f) => f.kind)).toEqual(["sources", "status"]);

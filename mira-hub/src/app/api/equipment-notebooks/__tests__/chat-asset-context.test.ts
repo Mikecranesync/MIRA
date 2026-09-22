@@ -163,7 +163,7 @@ describe("turn snapshot", () => {
   it("persists the asset on an ABSTAIN too — a refusal about a machine is still about that machine", async () => {
     domainMock.resolveBoundAsset.mockResolvedValue(RESOLVED_CONFIRMED);
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    await POST(chatReq({ message: "unanswerable", sourceDocIds: [DOC_A] }), params);
+    await POST(chatReq({ mode: "source_only", message: "unanswerable", sourceDocIds: [DOC_A] }), params);
 
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),

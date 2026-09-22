@@ -184,7 +184,7 @@ describe("grounded mode — §1.4 unchanged by any of this", () => {
   it("still abstains with sources selected but nothing retrieved — no provider call", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const res = await POST(req({ message: "what is P042" }), params);
+    const res = await POST(req({ mode: "source_only", message: "what is P042" }), params);
     const f = await frames(res);
     expect(f.find((x) => x.kind === "status")).toMatchObject({ status: "insufficient_evidence" });
     expect(fetch).not.toHaveBeenCalled();
@@ -221,7 +221,7 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
   it("a grounded refusal makes NO basis claim", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    await POST(req({ message: "unanswerable" }), params);
+    await POST(req({ mode: "source_only", message: "unanswerable" }), params);
     const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
     const turn = call?.[2] as { answerStatus?: string; basis?: string | null } | undefined;
     expect(turn?.answerStatus).toBe("insufficient_evidence");

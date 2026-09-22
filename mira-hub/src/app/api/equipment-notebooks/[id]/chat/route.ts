@@ -92,7 +92,7 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
-import { buildMiraSystemPrompt, miraContractEnabled } from "@/lib/mira-contract";
+import { buildMiraSystemPrompt, miraContractEnabled, type MiraMode } from "@/lib/mira-contract";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   appendManualContext,
@@ -833,6 +833,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // answer is labelled, and it can carry no citations. Grounded mode below is
   // untouched; with zero chunks it still abstains without calling a provider.
   const general = body.mode === "general";
+  // SOURCE-ONLY is the explicit request for strict cite-or-refuse: answer from
+  // the selected documents or abstain. It is the ONLY thing that buys the
+  // document gate below and the grounded persona.
+  //
+  // Everything else — including a turn with sources selected — is normal
+  // authenticated chat. Attaching evidence is NOT consent to document-only
+  // answers: the documents upgrade the answer when they support it and are
+  // silent when they do not (`docs/specs/mira-intelligence-contract.md` §3).
+  //
+  // BACKWARD COMPATIBILITY: the deployed APK sends `mode:"general"` when the
+  // technician has no sources selected and omits `mode` when they do
+  // (NotebookScreen.tsx:341). Under this rule BOTH produce the same persona,
+  // so the client's scope-derived inference is now inert and no new APK is
+  // needed to get this fix.
+  const sourceOnly = body.mode === "source_only";
   const message = (body.message ?? "").trim();
   if (!message) return NextResponse.json({ error: "message_required" }, { status: 400 });
   if (message.length > 4000) {
@@ -881,7 +896,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       "mira.turn.id": turnId,
       "mira.notebook.id": notebookId,
       "mira.thread.id": threadId,
-      "mira.turn.mode": general ? "general" : "grounded",
+      "mira.turn.mode": miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
       "mira.request.has_visual_evidence": Boolean(visualClaimFileId),
       "mira.request.has_machine_evidence": Boolean(machineRequest),
       "mira.request.message_chars": message.length,
@@ -918,7 +933,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     threadId,
     clientRequestId,
     ownerUserId: ctx.userId,
-    mode: general ? "general" : "grounded",
+    mode: miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
     environment: environmentName(),
     gitSha: gitSha(),
     serviceVersion: serviceVersion(),
@@ -942,7 +957,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   };
   rec.stage("request", {
-    mode: general ? "general" : "grounded",
+    mode: miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
     message_chars: message.length,
     has_visual_evidence: Boolean(visualClaimFileId),
     has_machine_evidence: Boolean(machineRequest),
@@ -1762,7 +1777,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // gate exactly as it was — and a turn with no `machineEvidence` at all can
   // never reach the third clause, which is what keeps document refusal
   // behaviour byte-identical.
-  if (chunks.length === 0 && !general && !groundedMachineEntry) {
+  // CHANGED 2026-09-22: the second clause was `!general`, which meant "the
+  // client selected sources", so merely attaching a manual turned every
+  // unmatched question into a refusal with no provider call. It is now
+  // `sourceOnly` — an EXPLICIT request to answer from the documents alone.
+  // Normal chat never reaches this gate and never abstains for lack of a chunk.
+  //
+  // The other two clauses are unchanged and still load-bearing: #3788 (a
+  // verified photo does NOT open the document gate — the photo rides the
+  // abstain) and the Sensor REPLAY correction (`groundedMachineEntry`).
+  // FLAG-GATED. With the contract OFF this is `!general` — byte-identical to
+  // what production runs today. Only with the contract ON does the abstain
+  // narrow to an explicit source-only request. The routing change and the
+  // persona change ship behind ONE flag, so production behaviour cannot drift
+  // while the flag is off.
+  const documentGateApplies = miraContractEnabled() ? sourceOnly : !general;
+  if (chunks.length === 0 && documentGateApplies && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     const abstainAnswerText = visualEntry
       ? "I saw your photo, but I couldn't find anything about it in the selected sources."
@@ -2043,8 +2073,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // flag-gated so the migration is provable on staging before it is anyone's
   // production persona — the same posture `canonicalSeamEnabled()` took. Flag off,
   // the two legacy prompts below are byte-identical to what shipped.
+  // PERSONA — decided by the REQUEST, never by whether retrieval got lucky.
+  // `docGrounded` still governs citation mechanics below (brackets, shipped
+  // citations, badge); it must not also decide who MIRA is, or a notebook whose
+  // manual happens to match would get a different assistant than one whose
+  // manual does not. Augmented handles an empty CONTEXT by design.
+  const promptMode: MiraMode = sourceOnly ? "grounded" : "augmented";
   const basePrompt = miraContractEnabled()
-    ? buildMiraSystemPrompt(docGrounded ? "grounded" : "general")
+    ? buildMiraSystemPrompt(promptMode)
     : docGrounded
       ? BASE_SYSTEM_PROMPT
       : GENERAL_SYSTEM_PROMPT;
@@ -2090,7 +2126,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const visualEvidenceCount = (lookRow?.text?.trim() ? 1 : 0) + priorLookRows.length + (visualSection ? 1 : 0);
     const identityIncluded = boundAsset.state === "resolved" || identityDisputed;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    const systemPromptKind = !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded";
+    // Report the persona that ACTUALLY served this turn. Reporting the old
+    // retrieval-derived kind while the contract serves `augmented` would make
+    // the flight recorder and the acceptance loop lie about which prompt ran.
+    const systemPromptKind = miraContractEnabled()
+      ? promptMode
+      : !docGrounded
+        ? "general"
+        : groundedMachineEntry
+          ? "machine"
+          : "grounded";
     rec.stage("context", {
       evidence_doc_ids: evidenceDocIds,
       chunk_count: chunks.length,

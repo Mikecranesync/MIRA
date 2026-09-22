@@ -412,7 +412,7 @@ describe("Gate G -- a non-empty machine window is grounding (BLOCKER-1)", () => 
 
   it("NO machineEvidence at all + zero chunks: the abstain is untouched (the document lane never changed)", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A] }), params));
+    const fr = await frames(await POST(req({ mode: "source_only", message: "x", sourceDocIds: [DOC_A] }), params));
     expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();

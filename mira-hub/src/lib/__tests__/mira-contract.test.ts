@@ -86,7 +86,7 @@ describe("MIRA contract — evidence rules differ by mode (§3)", () => {
   it("no mode permits fabricated model-specific values", () => {
     expect(MIRA_GROUNDED).toContain("never invent a correction");
     expect(MIRA_AUGMENTED).toContain("Do NOT invent machine-specific facts");
-    expect(MIRA_GENERAL).toContain("must be verified against the unit's own manual");
+    expect(MIRA_GENERAL).toContain("UNSUPPORTED SPECIFICS rule above is fully in force");
   });
 
   it("each mode contributes its own evidence block and no other", () => {
@@ -96,6 +96,60 @@ describe("MIRA contract — evidence rules differ by mode (§3)", () => {
     expect(buildMiraSystemPrompt("general")).not.toContain(MIRA_GROUNDED);
     expect(buildMiraSystemPrompt("augmented")).toContain(MIRA_AUGMENTED);
     expect(buildMiraSystemPrompt("augmented")).not.toContain(MIRA_GROUNDED);
+  });
+});
+
+describe("MIRA contract — unsupported specifics (§3.1, the hedge loophole)", () => {
+  it.each(MODES)("%s mode carries the shared unsupported-specifics rule", (mode) => {
+    expect(buildMiraSystemPrompt(mode)).toContain("UNSUPPORTED SPECIFICS");
+  });
+
+  it("names every identity class a hedge used to launder", () => {
+    // The A/B caught the contract guessing what P042 MEANS behind "typically".
+    // The rule has to name the whole class, not the one instance that was seen.
+    for (const claim of [
+      "what a numbered parameter is or does",
+      "what a fault or error code means",
+      "which terminal or pin carries which signal",
+      "a default or required setting",
+      "a torque figure",
+      "a part number",
+    ]) {
+      expect(MIRA_CORE).toContain(claim);
+    }
+  });
+
+  it("closes the hedge loophole explicitly, by name", () => {
+    expect(MIRA_CORE).toContain('do not launder a guess through "typically"');
+    expect(MIRA_CORE).toContain('"usually", "generally" or "often"');
+    expect(MIRA_CORE).toContain("A hedged invention is still an invention");
+  });
+
+  it("withholds the identifier WITHOUT withholding the engineering", () => {
+    // The failure mode in the other direction: a rule so broad MIRA stops
+    // explaining anything. The general explanation must stay explicitly allowed.
+    expect(MIRA_CORE).toContain("This never restricts the general explanation");
+    expect(MIRA_CORE).toContain("Withhold the unsupported IDENTIFIER, never the engineering");
+  });
+
+  it("the old 'say what it typically is' instruction is gone from general mode", () => {
+    expect(MIRA_GENERAL).not.toContain("Say what it typically is");
+  });
+});
+
+describe("MIRA contract — no mandatory template (§2)", () => {
+  it.each(MODES)("%s mode states no hard word count", (mode) => {
+    expect(buildMiraSystemPrompt(mode)).not.toMatch(/under about \d+ words|under \d+ words/);
+  });
+
+  it("no mode mandates a bullet quota", () => {
+    expect(MIRA_AUGMENTED).not.toContain("4-8 short bullets max");
+    expect(MIRA_GENERAL).not.toContain("under about 150 words");
+  });
+
+  it("format is explicitly told to follow the question", () => {
+    expect(MIRA_CORE).toContain("there is no fixed template");
+    expect(MIRA_CORE).toContain("Do NOT force every answer into bullets");
   });
 });
 

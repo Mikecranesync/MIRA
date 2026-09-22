@@ -99,7 +99,7 @@ describe("chat boundary", () => {
   it("abstains with structured insufficient_evidence on zero chunks — provider never called, turn persisted", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const res = await POST(chatReq({ message: "unanswerable", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(chatReq({ mode: "source_only", message: "unanswerable", sourceDocIds: [DOC_A] }), params);
     expect(res.status).toBe(200);
     const frames = await readFrames(res);
     expect(frames.some((f) => f.includes('"insufficient_evidence"'))).toBe(true);
@@ -119,7 +119,7 @@ describe("chat boundary", () => {
   it("passes the VALIDATED doc set to retrieval as docIds (SQL-enforced allowed set)", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
+    await POST(chatReq({ mode: "source_only", message: "q", sourceDocIds: [DOC_A] }), params);
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalledWith(
       expect.anything(),
       expect.any(String),

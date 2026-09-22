@@ -311,7 +311,7 @@ describe("failure paths", () => {
   it("still abstains with insufficient_evidence and calls no provider on zero chunks", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
     vi.stubGlobal("fetch", vi.fn());
-    const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    const f = await frames(await POST(chatReq({ mode: "source_only", message: "q", sourceDocIds: [DOC_A] }), params));
     expect(fetch).not.toHaveBeenCalled();
     expect(f.find((x) => x.kind === "status")?.status).toBe("insufficient_evidence");
   });

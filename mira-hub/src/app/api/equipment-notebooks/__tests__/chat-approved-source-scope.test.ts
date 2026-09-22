@@ -61,7 +61,7 @@ describe("chat route — approvedSourceDocIds is the server-derived set", () => 
   it("passes validateChatSources' derived docIds as approvedSourceDocIds (not the client's request)", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_B], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
+    await POST(chatReq({ mode: "source_only", message: "q", sourceDocIds: [DOC_A] }), params);
     expect(domainMock.validateChatSources).toHaveBeenCalledWith(expect.any(String), NB, [DOC_A]);
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalledWith(
       expect.anything(),
