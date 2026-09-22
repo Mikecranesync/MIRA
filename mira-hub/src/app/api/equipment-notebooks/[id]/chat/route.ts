@@ -2854,7 +2854,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answer_chars: served ? answerText.length : 0,
           refusal_phrase_matched: refusalPhraseMatched,
           evidence_phrase_matched: evidencePhraseMatched,
-          safety_classification: electricalHazardDirective ? "hazard_directive" : "none",
+          // A safety PAUSE is a third classification. Without it the packet says
+          // "none" for a turn that shipped a ⚡/🕳️ banner, so a sweep of the
+          // recorder cannot tell whether the warning half of "warn, do not
+          // withhold" actually reached anyone — which is exactly what
+          // tools/qa/session_issue_sweep.py needs to check.
+          safety_classification: semanticHazardClass
+            ? "hazard_pause"
+            : electricalHazardDirective
+              ? "hazard_directive"
+              : "none",
+          hazard_banner: semanticHazardClass,
           evidence_sufficient: evidenceSufficient,
           ungrounded_unit_claim: ungroundedClaim,
           jev_sufficient: jev.noul,

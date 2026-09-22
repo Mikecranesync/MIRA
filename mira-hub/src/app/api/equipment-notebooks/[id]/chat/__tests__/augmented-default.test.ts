@@ -388,3 +388,31 @@ describe("the banner is visible, and the answer survives it", () => {
     expect(text).toContain("Low coil voltage");
   });
 });
+
+describe("the durable record proves a banner was shown", () => {
+  // Without this the packet says safety_classification:"none" for a turn that
+  // shipped a 🕳️ banner, so tools/qa/session_issue_sweep.py cannot tell a
+  // warned answer from an unwarned one — and "warn, do not withhold" stops
+  // being measurable from the durable record.
+  it("records hazard_pause + the banner class on the turn", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(providerStream("Test the atmosphere first."), { status: 200 })));
+    await (await POST(req({ message: "I need to clean the inside of the mix tank" }), params)).text();
+    await vi.waitFor(() => expect(nbMock.recordTurn).toHaveBeenCalled());
+    // recordTurn carries the durable TURN row; the packet's
+    // `safety_classification: "hazard_pause"` rides the evidence recorder
+    // beside it and is asserted live by the sweep. Both key off the same
+    // `semanticHazardClass`, so the safety_notice proves it was set.
+    const turn = JSON.stringify(nbMock.recordTurn.mock.calls);
+    expect(turn).toContain("safety_notice");
+    expect(turn).toContain("confined space");
+  });
+
+  it("stays \"none\" on an ordinary turn", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(providerStream("Low coil voltage."), { status: 200 })));
+    await (await POST(req({ message: "why would a contactor chatter" }), params)).text();
+    await vi.waitFor(() => expect(nbMock.recordTurn).toHaveBeenCalled());
+    expect(JSON.stringify(nbMock.recordTurn.mock.calls)).not.toContain("safety_notice");
+  });
+});
