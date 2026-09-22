@@ -522,3 +522,92 @@ describe("no span attribute ever carries a secret", () => {
     }
   });
 });
+
+describe("Jev shadow sufficiency on the packet (MIRA_JEV_SHADOW)", () => {
+  const nb = () => ({ id: NB, displayName: "Unknown box", manufacturer: null, model: null });
+  const chunk = () => ({ docId: DOC_A, sourceUrl: "https://oem.example/tp700.pdf", title: "TP700 Comfort Operating Instructions", content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true });
+  /** A grounded turn: the notebook has an attached manual and retrieval returns one chunk. */
+  function grounded() {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk()] as never);
+    return chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] });
+  }
+  /** Route fetch by URL: the Jev endpoint gets a JSON judgment, everything else the provider stream. */
+  function splitFetch(jev: () => Promise<Response>) {
+    return vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      if (u.startsWith("https://api.typesafe.ai/")) return jev();
+      return providerStream("General guidance here.", { prompt_tokens: 3, completion_tokens: 2 });
+    });
+  }
+
+  it("off by default: the packet carries nulls and no vendor call is made", async () => {
+    delete process.env.MIRA_JEV_SHADOW;
+    process.env.JEV_API_KEY = "present-but-disabled";
+    const fetchMock = splitFetch(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    expect(record.packet.answer_gate).toMatchObject({ decision: "answered", jev_sufficient: null, jev_skipped_reason: "disabled", jev_latency_ms: null });
+    const urls = fetchMock.mock.calls.map(([u]) => (typeof u === "string" ? u : String(u)));
+    expect(urls.some((u) => u.includes("typesafe.ai"))).toBe(false);
+  });
+
+  it("on, nothing retrieved: no vendor call, packet says no_evidence", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "stg-key";
+    const fetchMock = splitFetch(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    expect(record.packet.answer_gate).toMatchObject({ decision: "answered", evidence_sufficient: false, jev_sufficient: null, jev_skipped_reason: "no_evidence" });
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("typesafe.ai"))).toBe(false);
+  });
+
+  it("on, chunks retrieved: the judgment is recorded beside evidence_sufficient and the gate decision is unchanged", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "stg-key";
+    const fetchMock = splitFetch(async () =>
+      new Response(JSON.stringify({ model: "jev-1.13.0", answers: { sufficient: { noul: 0.07 } }, usage: { input_tokens: 40 } }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(grounded(), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    // Shadow: recorded, not consulted — the presence flag says sufficient, Jev
+    // says 0.07, and the answered decision is untouched by the disagreement.
+    expect(record.packet.answer_gate.decision).toBe("answered");
+    expect(record.packet.answer_gate.evidence_sufficient).toBe(true);
+    expect(record.packet.answer_gate.jev_sufficient).toBe(0.07);
+    expect(record.packet.answer_gate.jev_skipped_reason).toBeNull();
+    expect(typeof record.packet.answer_gate.jev_latency_ms).toBe("number");
+    const jevCall = fetchMock.mock.calls.find(([u]) => String(u).includes("typesafe.ai"));
+    expect(jevCall).toBeTruthy();
+    const init = jevCall![1]!;
+    expect(JSON.parse(init.body as string).questions.sufficient.type).toBe("noul");
+    // Packet privacy: the key never lands in the packet.
+    expect(JSON.stringify(record.packet)).not.toContain("stg-key");
+  });
+
+  it("on, vendor down: fail-open — the turn is answered and the packet records the skip", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "stg-key";
+    vi.stubGlobal(
+      "fetch",
+      splitFetch(async () => {
+        throw new TypeError("fetch failed");
+      }),
+    );
+    const res = await POST(grounded(), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    expect(record.packet.answer_gate.decision).toBe("answered");
+    expect(record.packet.answer_gate).toMatchObject({ evidence_sufficient: true, jev_sufficient: null, jev_skipped_reason: "error" });
+  });
+});

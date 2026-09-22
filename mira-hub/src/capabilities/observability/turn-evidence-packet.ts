@@ -140,6 +140,12 @@ export type TurnEvidencePacketAnswerGate = {
   /** ungroundedUnitClaim(answerText) result (anomalies.ts) — the ONLY trace
    * of answer text this packet ever carries is this one boolean. */
   ungrounded_unit_claim: boolean;
+  /** SHADOW (MIRA_JEV_SHADOW=1): Jev noul probability that the retrieved
+   *  evidence suffices — recorded for comparison, never consulted by the gate.
+   *  null when not run; `jev_skipped_reason` says why. */
+  jev_sufficient: number | null;
+  jev_skipped_reason: string | null;
+  jev_latency_ms: number | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -300,6 +306,9 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       safety_classification: "none",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      jev_sufficient: null,
+      jev_skipped_reason: null,
+      jev_latency_ms: null,
     },
     persistence: {
       turn_row_id: null,

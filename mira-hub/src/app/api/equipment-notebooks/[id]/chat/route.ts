@@ -44,6 +44,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
   captureContentEnabled,
   environmentName,
@@ -2049,6 +2050,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     endTimed(contextSpan, "context");
   }
 
+  // SHADOW (MIRA_JEV_SHADOW=1, off by default): a calibrated relevance
+  // judgment over (question, retrieved chunks), started here so it overlaps
+  // generation and adds no first-token latency; awaited only when the packet's
+  // answer_gate stage is written, after the stream. Fail-open, bounded by its
+  // own timeout, and NEVER consulted by the gate — it is recorded beside
+  // `evidence_sufficient` so the two can be compared on staging traffic.
+  const jevShadow: Promise<JevShadowResult> = judgeEvidenceSufficiencyShadow(
+    message,
+    chunks.map((c) => ({ content: c.content, title: c.title })),
+  ).catch(() => ({
+    noul: null,
+    skipped_reason: "error",
+    latency_ms: null,
+    model: null,
+    input_tokens: null,
+    instructions_version: "unknown",
+  }));
+
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
   // the request signal (client aborted the fetch / socket closed) and the
   // response stream being cancelled by the runtime — both fold into ONE
@@ -2534,6 +2553,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
+      // The Jev shadow judgment (started before generation) is collected here,
+      // BEFORE the commit point, for the same reason the semantic await is: the
+      // tail below must stay await-free. Bounded by its own timeout; fail-open;
+      // read only by the packet.
+      const jev = await jevShadow;
+
       // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
       // made once, above; validation (deterministic AND semantic) is complete;
       // from here to the write the tail is synchronous and never re-reads the
@@ -2587,6 +2612,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           safety_classification: electricalHazardDirective ? "hazard_directive" : "none",
           evidence_sufficient: evidenceSufficient,
           ungrounded_unit_claim: ungroundedClaim,
+          jev_sufficient: jev.noul,
+          jev_skipped_reason: jev.skipped_reason,
+          jev_latency_ms: jev.latency_ms,
         });
         setSpanAttrs(
           {

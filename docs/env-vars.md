@@ -188,6 +188,8 @@ Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scop
 | `MIRA_APP_VERSION` | `unknown` | App version stamped at build (`deploy-staging.yml`); was a build arg only, now also a runtime env var so `instrumentation.node.ts` can set `service.version` and `/api/health` can report it. |
 | `MIRA_OTEL_CAPTURE_CONTENT` | `0` | `"1"` captures `gen_ai.input.messages`/`gen_ai.output.messages` on generation spans (sanitized, truncated to 4KB). Off in staging by default; never enabled in production by this work. |
 | `MIRA_TURN_ANOMALY_CHECKS` | `1` | `"0"` disables the deterministic per-turn anomaly checks (`PHOTO_WITH_NO_OBSERVATIONS`, `VISUAL_EVIDENCE_DROPPED`, etc. — lane I3). Diagnostics never fail the technician's request either way. |
+| `MIRA_JEV_SHADOW` | `0` | `"1"` enables the shadow-mode Jev (TypeSafe AI System One) evidence-sufficiency judgment: after retrieval, one fail-open call over the technician's question plus scrubbed chunk excerpts, recorded on the Turn Evidence Packet (`answer_gate.jev_sufficient`, `jev_skipped_reason`, `jev_latency_ms`) and span. Never consulted by the answer gate. Staging only; production unset. |
+| `JEV_API_KEY` | — | Bearer token for `api.typesafe.ai`, read at call time by `mira-hub/src/capabilities/observability/jev-shadow.ts`. Absent → `jev_skipped_reason=no_key`. Doppler-managed; never logged. |
 | `MIRA_TRACE_VIEWER_URL_TEMPLATE` | unset | Optional trace-viewer URL template with a `{traceId}` placeholder (e.g. a Langfuse trace URL), surfaced by the turn diagnostics endpoint. `null` when unset. |
 
 `/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.
