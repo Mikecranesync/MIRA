@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   environmentName,
   gitSha,
+  isProductionRoute,
   knownProductionHosts,
   productionRouteDetected,
   serviceVersion,
@@ -97,15 +98,37 @@ describe("productionRouteDetected", () => {
     expect(offending.join(",")).not.toContain("app.factorylm.com");
   });
 
-  it("detects the bare production IP host too", () => {
+  it("on the co-hosted VPS IP, only PRODUCTION ports count as production", () => {
     process.env.OTEL_RESOURCE_ATTRIBUTES = "deployment.environment.name=staging";
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://40.160.141.61:4318/v1/traces";
     delete process.env.INGEST_URL;
-    delete process.env.NEXT_PUBLIC_PIPELINE_API_URL;
     delete process.env.MIRA_HUB_URL;
     delete process.env.NEXTAUTH_URL_INTERNAL;
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
-    expect(productionRouteDetected()).toEqual(["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+    // The staging pipeline on the shared host (4xxx range) — NOT production.
+    // This exact value was flagged as a false positive on the first live
+    // traced staging turn (2026-09-22).
+    process.env.NEXT_PUBLIC_PIPELINE_API_URL = "http://40.160.141.61:4099";
+    expect(productionRouteDetected()).toEqual([]);
+
+    // The production pipeline port on the same IP IS production.
+    process.env.NEXT_PUBLIC_PIPELINE_API_URL = "http://40.160.141.61:9099";
+    expect(productionRouteDetected()).toEqual(["NEXT_PUBLIC_PIPELINE_API_URL"]);
+
+    // No port = nginx 80/443 = production.
+    process.env.NEXT_PUBLIC_PIPELINE_API_URL = "http://40.160.141.61/";
+    expect(productionRouteDetected()).toEqual(["NEXT_PUBLIC_PIPELINE_API_URL"]);
+  });
+
+  it("isProductionRoute: hostnames always, IP by port, everything else never", () => {
+    expect(isProductionRoute("https://app.factorylm.com/api/version/")).toBe(true);
+    expect(isProductionRoute("https://factorylm.com")).toBe(true);
+    expect(isProductionRoute("https://app-staging.factorylm.com")).toBe(false);
+    expect(isProductionRoute("http://40.160.141.61:4101/api/auth")).toBe(false);
+    expect(isProductionRoute("http://40.160.141.61:3101")).toBe(true);
+    expect(isProductionRoute("40.160.141.61")).toBe(true);
+    expect(isProductionRoute("http://127.0.0.1:4099")).toBe(false);
+    expect(isProductionRoute("https://us.cloud.langfuse.com/api/public/otel")).toBe(false);
   });
 });
 

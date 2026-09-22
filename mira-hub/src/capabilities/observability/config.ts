@@ -57,6 +57,38 @@ export function knownProductionHosts(): string[] {
   return ["app.factorylm.com", "factorylm.com", "40.160.141.61"];
 }
 
+/**
+ * Staging is CO-HOSTED on the production VPS (#3930): the bare IP alone does
+ * not identify production. Staging owns the 4xxx loopback ports on that host
+ * (docker-compose.staging-vps.yml); production owns these
+ * (docker-compose.saas.yml), plus 80/443 which nginx routes to production.
+ * Caught live on the first traced staging turn (2026-09-22): the staging
+ * pipeline URL http://40.160.141.61:4099 was flagged as a production route.
+ */
+const COHOSTED_VPS_IP = "40.160.141.61";
+const PRODUCTION_PORTS_ON_COHOSTED_VPS = new Set([
+  "3003", "3009", "3101", "3200", "8001", "8002", "8009", "8011", "9099", "9998",
+]);
+
+/** True when `value` (a URL or host string) resolves to production. */
+export function isProductionRoute(value: string): boolean {
+  let host = "";
+  let port = "";
+  try {
+    const url = new URL(value.includes("://") ? value : `http://${value}`);
+    host = url.hostname;
+    port = url.port;
+  } catch {
+    host = value;
+  }
+  if (host === "app.factorylm.com" || host === "factorylm.com") return true;
+  if (host === COHOSTED_VPS_IP) {
+    // No explicit port = 80/443 = nginx = production.
+    return port === "" || PRODUCTION_PORTS_ON_COHOSTED_VPS.has(port);
+  }
+  return false;
+}
+
 const PRODUCTION_ROUTE_CHECK_VARS = [
   "INGEST_URL",
   "NEXT_PUBLIC_PIPELINE_API_URL",
@@ -73,12 +105,11 @@ const PRODUCTION_ROUTE_CHECK_VARS = [
  */
 export function productionRouteDetected(): string[] {
   if (environmentName() !== "staging") return [];
-  const hosts = knownProductionHosts();
   const offending: string[] = [];
   for (const varName of PRODUCTION_ROUTE_CHECK_VARS) {
     const value = process.env[varName];
     if (!value) continue;
-    if (hosts.some((host) => value.includes(host))) {
+    if (isProductionRoute(value)) {
       offending.push(varName);
     }
   }

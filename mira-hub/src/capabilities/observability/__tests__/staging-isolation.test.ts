@@ -46,7 +46,7 @@ describe("productionRouteDetected — names var NAMES, never their values", () =
     process.env.NEXT_PUBLIC_PIPELINE_API_URL = "https://factorylm.com/api/pipeline";
     process.env.MIRA_HUB_URL = "https://app.factorylm.com";
     process.env.NEXTAUTH_URL_INTERNAL = "https://app.factorylm.com/api/auth";
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://40.160.141.61:4318/v1/traces";
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://40.160.141.61:9099/v1/traces";
 
     const offending = productionRouteDetected();
     expect([...offending].sort()).toEqual(
@@ -69,7 +69,7 @@ describe("productionRouteDetected — names var NAMES, never their values", () =
     process.env.INGEST_URL = "https://app.factorylm.com/ingest";
     process.env.MIRA_HUB_URL = "https://app.factorylm.com";
     process.env.NEXTAUTH_URL_INTERNAL = "https://app.factorylm.com/api/auth";
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://40.160.141.61:4318/v1/traces";
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://40.160.141.61:9099/v1/traces";
     expect(productionRouteDetected()).toEqual([]);
   });
 });
