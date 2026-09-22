@@ -7,7 +7,54 @@
 
 ---
 
-## Two things need you. Everything else is done.
+## STAGING IS LIVE AND PROVEN — read this first
+
+`https://app-staging.factorylm.com` is deployed and serving the contract with
+`MIRA_PERSONA_CONTRACT=1`. **Production is untouched** (flag unset ⇒ compose
+default `0`).
+
+**It was proven WITHOUT merging.** `deploy-staging.yml` accepts any SHA present in
+the repository as `approved_rc_sha` — it does not have to be on `main`. So the RC
+was deployed from the branch head three times and exercised live, which means the
+merge gate was never bypassed and staging still got proven.
+
+| deployed | run | result |
+|---|---|---|
+| `b89018c31` | CI auto-run | 2 defects found (below) |
+| `8e172f3e2` | branch script | scenario 3 still failing |
+| `076ab7371` | branch script ×5 | **1, 4, 5 → 5/5 · 2 → 4/5 · 3 → 3/5** |
+
+Live traffic caught two things **3329 green unit tests could not**:
+
+1. **The acceptance loop asserted a persona the route no longer chooses.** Also
+   learned: `retrieval-acceptance.yml` checks out the **default branch**, so CI ran
+   *main's* script against a *branch* deploy — a pre-merge RC cannot be validated
+   by the CI job alone.
+2. **The specificity rule silenced a documented identifier.** A technician attached
+   a manual and asked what the PLC tags mean; the chunk was in the prompt and MIRA
+   answered *"not grounded in this machine's documents"* with zero citations —
+   because tag names are exactly the class priority 1 withholds. **Priority 1 was
+   suppressing priority 2.** Scoped to absence-of-evidence in `076ab7371`.
+
+### The one decision live data surfaced
+
+Measured over five runs: **citing PARTIAL coverage is probabilistic (~60–80%)
+under augmented, where grounded was deterministic.** Grounded said "answer ONLY
+from the excerpts" — no judgement to make. Augmented asks the model to decide
+whether an excerpt supports the answer, and with 1–6 partial chunks that judgement
+is unstable at `temperature 0.2`.
+
+That is a direct consequence of the law you set, not carelessness. Your call:
+accept it, or route to `grounded` specifically when sources were **explicitly
+attached** and chunks came back — restoring determinism there while still never
+refusing when nothing matched. That changes the routing rule you specified, so I
+did not take it.
+
+Full data + artifacts: `docs/proofs/2026-09-22-staging-acceptance/`.
+
+## Two things still need you
+
+
 
 ### 1. Apply the `legacy-ui-exception` label to #3959
 
@@ -151,6 +198,20 @@ document gate together — one variable reverts all three, no migration, no data
 change, no client release. Full revert: back to `c2c8e44cb`. Production compose
 declares the flag at `0`; **production behaviour is unchanged and untested-against
 by design.**
+
+## Your handoff questions, answered
+
+| question | answer |
+|---|---|
+| PR | [#3959](https://github.com/Mikecranesync/MIRA/pull/3959) |
+| Review SHAs | Gate 7 rounds at `48ec938cb` (truncated), `1ead1fa5d` (full), adjudications at `1ead1fa5d`/`65738d699` |
+| Deployed to staging | `b89018c31` → `8e172f3e2` → **`076ab7371`** (current) |
+| Branch head | `801f556c5` (docs only since the last deploy) |
+| Production | **Untouched.** Flag unset in `factorylm/prd`; compose default `0` |
+| Cost | **$0.083** of the $1.00 bound (232 paid A/B calls). Gate 7 + acceptance ran on the free cascade |
+| Rollback | `doppler secrets delete MIRA_PERSONA_CONTRACT -p factorylm -c stg`, redeploy — or redeploy `ebde0ccf5`. One variable reverts prompt + routing + gate together |
+| Phone entry URL | `https://app-staging.factorylm.com` |
+| **Does the Pixel need a new APK?** | **No — not for this change.** It is server-authoritative: an old client's `mode:"general"` and a no-mode request produce the same persona, asserted in `augmented-default.test.ts`. To point the phone at *staging* you need the existing staging flavor from #3938, which is unrelated to this work |
 
 ## After you merge
 
