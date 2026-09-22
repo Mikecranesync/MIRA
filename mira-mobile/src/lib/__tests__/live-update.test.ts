@@ -24,6 +24,14 @@ const nativeHttp = vi.hoisted(() => ({
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => true },
+  // The production flavor's BuildConfig bridge, as the native plugin answers it.
+  registerPlugin: (name: string) =>
+    name === "BuildConfig"
+      ? {
+          getApiBase: async () => ({ apiBase: "https://app.factorylm.com" }),
+          getDeepLinkConfig: async () => ({ host: "app.factorylm.com", scheme: "factorylm" }),
+        }
+      : {},
   CapacitorHttp: nativeHttp,
 }));
 

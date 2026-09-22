@@ -10,8 +10,26 @@
 // The shadow suite (tag-grammar-shadow.test.ts) additionally executes the
 // REAL Hub implementation side by side and diffs the two over the corpus and
 // a deterministic fuzz corpus, per convergence Gate 8.
-import { describe, it, expect } from "vitest";
-import { extractAssetTag } from "../tags";
+import { beforeAll, describe, it, expect, vi } from "vitest";
+import { extractAssetTag, initTagParser } from "../tags";
+
+// The corpus encodes the PRODUCTION flavor's trust filter; resolve that flavor.
+vi.mock("../../plugins/build-config", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../plugins/build-config")>();
+  return {
+    ...mod,
+    default: {
+      getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
+      getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+    },
+    resolveApiBase: vi.fn(async () => "https://app.factorylm.com"),
+    resolveDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+  };
+});
+
+beforeAll(async () => {
+  await initTagParser();
+});
 import corpus from "../../../../docs/contracts/asset-tag-grammar.json";
 
 interface GrammarCase {

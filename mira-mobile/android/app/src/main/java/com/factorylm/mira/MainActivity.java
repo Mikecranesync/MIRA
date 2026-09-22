@@ -62,6 +62,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Local (app-module) Capacitor plugins are not auto-registered; without
+        // this line BuildConfig.getApiBase() rejects on device and the JS side
+        // fails closed (no backend) — it must never guess an environment.
+        registerPlugin(BuildConfigPlugin.class);
         super.onCreate(savedInstanceState);
         if (getBridge() == null) return; // no-webview fallback layout
         getBridge()
