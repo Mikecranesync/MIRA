@@ -139,3 +139,29 @@ once staging is redeployed. It refuses a production base URL. CI wiring:
 `.github/workflows/retrieval-acceptance.yml` (manual dispatch + post-staging-deploy).
 
 **Known-good state, scenarios, root causes, and mobile environment selection:** `docs/architecture/observability/2026-09-22-retrieval-acceptance-decision-log.md`.
+
+## 10. Jev shadow evidence report (staging)
+
+`tools/qa/jev_shadow_report.py` compares the shadow relevance judgment
+(`answer_gate.jev_sufficient`, #3949) with MIRA's presence-based
+`evidence_sufficient` over real staging turns and categorises every
+disagreement (D1 refused/Jev-low, D2 answered with an ungrounded unit claim/Jev-low,
+D3 answered/Jev-low, D4 refused/Jev-high; A agree; U uncertain). It reads two
+sources and merges them by trace id: recent `retrieval-acceptance.yml` artifacts
+(acceptance turns are swept from the DB with their stranger tenant, so the
+artifact is the only durable copy) and staging `decision_traces` for real usage
+across every tenant (text columns are never selected). It exits 1 on a
+`disabled`/`no_key` packet (config never reached the container — a defect, not
+evidence) or on a zero-chunk turn that called Jev.
+
+```bash
+# local: acceptance artifacts + staging DB (read-only; refuses any config but stg)
+doppler run -p factorylm -c stg -- .venv/bin/python3 tools/qa/jev_shadow_report.py \
+  --runs 10 --db --baseline-artifact <pre-Jev retrieval-acceptance.json> --out /tmp/jev-shadow-report
+```
+
+CI: `.github/workflows/jev-shadow-report.yml` (manual dispatch + daily), artifact
+`jev-shadow-report-<run>` (md + csv, 90 days). The judged-turn window and stop
+condition are in the decision log
+(`docs/architecture/observability/2026-09-22-retrieval-acceptance-decision-log.md`).
+Jev is never authoritative here; promotion is Mike's explicit decision.

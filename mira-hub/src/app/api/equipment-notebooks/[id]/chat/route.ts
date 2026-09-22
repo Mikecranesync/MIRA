@@ -2615,6 +2615,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           jev_sufficient: jev.noul,
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
+          jev_input_tokens: jev.input_tokens,
         });
         setSpanAttrs(
           {
