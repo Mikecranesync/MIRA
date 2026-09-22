@@ -408,6 +408,28 @@ const EXACT_RATING_RE = new RegExp(
   "i",
 );
 
+/** An all-zero magnitude is an energy-isolation VERIFICATION, never a machine
+ *  rating. "With the line isolated, locked out and verified at 0 V" matches the
+ *  declarative rating grammar exactly — QTY ("voltage"/"power"/"supply"),
+ *  then "at", then a unit-bearing number — and MIRA_CORE REQUIRES that clause
+ *  in the same sentence as any instruction to touch wiring.
+ *
+ *  Live staging measurement, 2026-09-22 (flag on, SHA 5c19e56c8): six drafts of
+ *  "why would a contactor chatter instead of pulling in cleanly" — FOUR were
+ *  replaced with the specificity fallback, every one of them on the LOTO clause
+ *  and nothing else. The safer the answer, the more certainly it was destroyed,
+ *  and the technician got "I can't verify that machine-specific detail" for a
+ *  question that is pure general electrical knowledge. That is the "pure refusal,
+ *  useless to a tech" failure, produced by the answer gate rather than the safety
+ *  classifier.
+ *
+ *  A range keeps both endpoints, so "the operating range is 0…+50 °C" — the real
+ *  staging fabrication this rule was built for (trace 8906786b…) — still blocks. */
+function allZeroMagnitude(match: string): boolean {
+  const nums = match.match(/[-–+]?\d[\d.,]*/g) ?? [];
+  return nums.length > 0 && nums.every((n) => Number(n.replace(/[,–+\s]/g, "")) === 0);
+}
+
 /** A sentence-level scan: the rating claim must live in a sentence that is not
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
@@ -416,7 +438,7 @@ export function unsupportedExactRating(text: string): string | null {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    if (m && !allZeroMagnitude(m[0])) return m[0].slice(0, 160);
   }
   return null;
 }
