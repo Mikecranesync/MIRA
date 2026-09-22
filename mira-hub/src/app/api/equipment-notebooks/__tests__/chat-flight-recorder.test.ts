@@ -444,6 +444,35 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect((persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].anomalies.map((a) => a.code)).not.toContain("VISUAL_EVIDENCE_DROPPED");
   });
 
+  it("6. token usage lands in the packet (staging rows showed tokens=None/None)", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("A VFD varies frequency.", { prompt_tokens: 321, completion_tokens: 45 })));
+    await (await POST(chatReq({ message: "how does a VFD work", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.generation.input_tokens).toBe(321);
+    expect(p.generation.output_tokens).toBe(45);
+  });
+
+  it("badge: a photo-grounded answer with no shipped citation is labelled as the photo, not documentation or general", async () => {
+    // Staging cf204938 (photo turn, badge 'general') / 104883fb (text follow-up,
+    // OEM chunks in context but 0 citations, badge 'manufacturer documentation').
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "SIEMENS TP700 Comfort, Supply 24 Vdc max 0.85 A", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never); // retrieved, but the answer cites nothing
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("It runs on 24 V DC per the label.")));
+    const text = await (await POST(chatReq({ message: "what does it run on", mode: "general", visualEvidence: { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" } }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const ev = framesOf(text).find((f) => f.kind === "evidence") as { basis?: string; label?: string } | undefined;
+    expect(ev?.basis).toBe("workspace_evidence");
+    expect(ev?.label).toContain("attached photo");
+    expect(framesOf(text).find((f) => f.kind === "sources")?.citations).toHaveLength(0);
+    // OEM chunks still reached the model (evidence ids recorded) — the badge
+    // just tells the truth about what the ANSWER rested on.
+    expect(packetOf().context.evidence_doc_ids).toEqual(["https://oem.example/tp700.pdf#p12"]);
+  });
+
   it("5. insufficient evidence + exact unit-bearing claim → withheld by the pre-display gate (fail closed)", async () => {
     // This suite runs with the gate OFF (detection-only) for the trace tests;
     // enforcement is the production default (NOTEBOOK_ANSWER_GATE unset).
