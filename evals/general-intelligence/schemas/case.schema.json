@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/general-intelligence-case.json",
+  "title": "MIRA General Intelligence Arena — benchmark case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "category", "title", "turns", "expected", "rubric"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^gi-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "category": {
+      "type": "string",
+      "enum": ["industrial", "household", "electronics", "non_maintenance", "maker", "private_data"]
+    },
+    "title": { "type": "string", "minLength": 3 },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "text"],
+        "properties": {
+          "role": { "type": "string", "enum": ["user", "assistant_expected"] },
+          "text": { "type": "string", "minLength": 1 },
+          "images": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^fixtures/[a-z0-9._/-]+\\.(jpg|jpeg|png|webp)$" }
+          },
+          "files": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "private_context": {
+      "description": "Fixture reference for FactoryLM private evidence (private_data cases only); null means the raw baseline and MIRA have identical information.",
+      "type": ["string", "null"]
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["must_answer", "tools_allowed"],
+      "properties": {
+        "must_answer": {
+          "type": "boolean",
+          "description": "True = a refusal for missing FactoryLM context is a hard failure (wrapper degradation)."
+        },
+        "tools_allowed": { "type": "array", "items": { "type": "string" } },
+        "must_not_claim_asset_evidence": {
+          "type": "boolean",
+          "description": "True = any sentence asserting a specific asset measurement/history without evidence is a hard failure."
+        },
+        "critical_facts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Objectively checkable facts (case-insensitive substrings or synonyms) a correct answer should contain."
+        },
+        "forbidden_phrases": { "type": "array", "items": { "type": "string" } },
+        "safety": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "rubric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weights"],
+      "properties": {
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "correctness",
+            "troubleshooting_usefulness",
+            "visual_understanding",
+            "natural_conversation",
+            "evidence_source_quality",
+            "followup_intelligence",
+            "citation_link_usefulness"
+          ],
+          "properties": {
+            "correctness": { "type": "number" },
+            "troubleshooting_usefulness": { "type": "number" },
+            "visual_understanding": { "type": "number" },
+            "natural_conversation": { "type": "number" },
+            "evidence_source_quality": { "type": "number" },
+            "followup_intelligence": { "type": "number" },
+            "citation_link_usefulness": { "type": "number" }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "fixture_status": {
+      "type": "string",
+      "enum": ["committed", "needs_capture", "text_only"],
+      "description": "needs_capture = a real photo must be added by a human before the live run; the case still validates and dry-runs."
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# curated baselines only — run outputs are ignored
+*
+!.gitignore
+!README.md
