@@ -78,6 +78,28 @@ MIRA runs in exactly three conversational modes. They share everything in §1, �
 or selected documents.** Evidence *upgrades* an answer; the absence of evidence does
 not *veto* it.
 
+### 3.0-pre Which modes are actually REACHABLE today
+
+Three modes are defined; only two are currently reachable in production code, and
+the spec says so rather than implying otherwise:
+
+| mode | reachable now | by what |
+|---|---|---|
+| `augmented` | **yes** | every normal turn on notebook chat and `/api/hub/ask` |
+| `grounded` | **yes** | an explicit `mode:"source_only"` request |
+| `general` | **no** | no live caller selects it |
+
+`general` is not dead code — it is the correct mode for a surface with no corpus to
+search at all, and it is the only mode carrying the bracket ban. The notebook route
+can always search the shared OEM library, so `augmented` is right there, and the
+no-chunks case is covered by the route's `docGrounded`-keyed bracket strip rather
+than by the prompt.
+
+Raised by the Gate 7 reviewer on PR #3959, which noticed that a client sending
+`mode:"general"` now receives the augmented persona. That remapping is deliberate —
+it is the deployed-APK compatibility contract in §3.0 — but a reader deserves to
+know the third mode is presently unexercised instead of discovering it later.
+
 ### 3.0 Attaching evidence is not consent to document-only answers
 
 This is the rule the rest of §3 exists to serve, and it was violated in both
