@@ -79,6 +79,8 @@ export type TurnEvidencePacketVisualEvidence = {
   observation_available: boolean;
   observation_in_context: boolean;
   prior_turn_observation_count: number;
+  /** File ids of the earlier-turn photos whose observations were recalled. */
+  prior_file_ids: string[];
 };
 
 export type TurnEvidencePacketIdentity = {
@@ -98,6 +100,8 @@ export type TurnEvidencePacketRetrieval = {
   candidate_count: number;
   returned_doc_ids: string[];
   oem_corpus_searched: boolean;
+  /** Where the OEM manufacturer scope came from when oem_corpus_searched. */
+  oem_manufacturer_source: "notebook" | "photo" | null;
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;
@@ -244,6 +248,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       observation_available: false,
       observation_in_context: false,
       prior_turn_observation_count: 0,
+      prior_file_ids: [],
     },
     identity: {
       ran: false,
@@ -261,6 +266,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       candidate_count: 0,
       returned_doc_ids: [],
       oem_corpus_searched: false,
+      oem_manufacturer_source: null,
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
     },

@@ -46,7 +46,14 @@ export function isAllowedAttributeKey(key: string): boolean {
   return ALLOWED_ATTRIBUTE_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
-const SECRET_KEY_PATTERN = /authorization|cookie|token|secret|password|api[_-]?key/i;
+// Key-based redaction. `token` is matched as a credential shape only — a whole
+// word or a `_token` / `-token` suffix (session_token, access-token,
+// x-auth-token) — never the plural `_tokens`, which is what the GenAI usage
+// counters are called (gen_ai.usage.input_tokens). Those counters carried
+// "[REDACTED]" to Langfuse on every generation until this was narrowed.
+const SECRET_KEY_PATTERN =
+  /authorization|cookie|secret|password|api[_-]?key|(?:^|[._-])token(?:$|[._-])|(?:^|[._-])tokens?[_-](?:id|value|secret)/i;
+const USAGE_COUNTER_PREFIX = "gen_ai.usage.";
 const SECRET_VALUE_MARKERS = [
   "Bearer ",
   "Basic ",
@@ -65,7 +72,7 @@ function valueLooksSecret(value: string): boolean {
 }
 
 export function redactAttributeValue(key: string, value: unknown): unknown {
-  if (SECRET_KEY_PATTERN.test(key)) return "[REDACTED]";
+  if (!key.startsWith(USAGE_COUNTER_PREFIX) && SECRET_KEY_PATTERN.test(key)) return "[REDACTED]";
   if (typeof value === "string") {
     return valueLooksSecret(value) ? "[REDACTED]" : value;
   }
@@ -85,6 +92,10 @@ function clampString(value: string): string {
 function clampValue(value: SpanAttrs[string]): AttributeValue | undefined {
   if (value === null || value === undefined) return undefined;
   if (Array.isArray(value)) {
+    // An empty array reaches Langfuse as the literal `{"arrayValue":{}}` (the
+    // OTLP encoding of an empty list). Omit the attribute instead; the durable
+    // packet still records `[]`, and "absent" reads as empty in the viewer.
+    if (value.length === 0) return undefined;
     return value
       .slice(0, MAX_ARRAY_LEN)
       .map((entry) => (typeof entry === "string" ? clampString(entry) : entry)) as AttributeValue;

@@ -21,6 +21,7 @@ const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
 const PHOTO = "44444444-4444-4444-8444-444444444444";
+const FILE_ID = "44444444-4444-4444-8444-444444444444";
 const ROW_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
 const sessionMock = vi.hoisted(() => ({
@@ -37,6 +38,7 @@ const domainMock = vi.hoisted(() => ({
   abandonNotebookTurnRequest: vi.fn(async () => undefined),
   // Now returns the row id (equipment-notebooks.ts fix, this lane) — the
   // packet's `persistence.turn_row_id` / `ids.turn_id` depend on it.
+  listTurns: vi.fn(async () => [] as unknown[]),
   recordTurn: vi.fn(async () => "ffffffff-ffff-4fff-8fff-ffffffffffff"),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
   getNotebook: vi.fn(async () => ({
@@ -52,6 +54,11 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
+  corpusManufacturers: vi.fn(async () => ["Siemens", "Allen-Bradley", "Automation Direct"]),
+  manufacturerFromObservationText: vi.fn((text: string, names: readonly string[]) =>
+    names.find((n) => text.toLowerCase().includes(n.toLowerCase())) ?? null,
+  ),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
@@ -60,7 +67,13 @@ vi.mock("@/lib/manual-rag", () => ragMock);
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }));
-vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
+vi.mock("@/lib/db", () => ({
+  default: {
+    query: vi.fn(async () => ({ rows: [] })),
+    // Raw-pool client for the OEM corpus path (hybrid corpus law).
+    connect: vi.fn(async () => ({ query: vi.fn(async () => ({ rows: [] })), release: vi.fn() })),
+  },
+}));
 
 const persistMock = vi.hoisted(() => ({
   persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "trace-1" })),
@@ -78,6 +91,7 @@ const veMock = vi.hoisted(() => ({
   renderVisualEvidenceSection: vi.fn(() => ""),
   loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
   renderLookObservationSection: vi.fn((row: unknown) => (row ? "## LOOK-CTX" : "")),
+  renderPriorLookObservationsSection: vi.fn((rows: unknown[]) => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
   normalizeLookHazards: vi.fn(() => []),
   recordLookObservation: vi.fn(async () => ({})),
 }));
@@ -319,6 +333,129 @@ describe("per-stage timings land in the durable packet", () => {
     const persist = handle.finished().find((s) => s.name === "turn.persist");
     expect(persist).toBeTruthy();
     expect(persist!.ended).toBe(true);
+  });
+});
+
+
+describe("retrieval routing is decided by evidence context, not by general mode alone (2026-09-22)", () => {
+  const chunk = (docId: string) => ({ docId, content: "Rated 24 VDC, 0.85 A max.", sourceTitle: "TP700 manual", page: 12, citationId: "1", fileId: null, quote: null });
+  const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+  const nb = (extra: Record<string, unknown> = {}) => ({ id: NB, displayName: "Unknown box", manufacturer: null, model: null, ...extra });
+
+  it("1. empty notebook + generic unrelated question → retrieval stays skipped", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("A VFD varies motor frequency.")));
+    await (await POST(chatReq({ message: "how does a VFD work in general", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.strategy).toBe("skipped_general_mode");
+    expect(p.retrieval.executed).toBe(false);
+    expect(p.retrieval.oem_corpus_searched).toBe(false);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+
+  it("2. empty notebook + resolved identity (manufacturer on the notebook) → OEM corpus retrieval runs, doc ids traceable", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Per the manual the supply is 24 VDC [1].")));
+    await (await POST(chatReq({ message: "what supply voltage does this panel need", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
+    expect(p.retrieval.executed).toBe(true);
+    expect(p.retrieval.oem_corpus_searched).toBe(true);
+    expect(p.retrieval.oem_manufacturer_source).toBe("notebook");
+    expect(p.retrieval.returned_doc_ids).toEqual([DOC_A]);
+    expect(p.context.evidence_doc_ids).toEqual([DOC_A]);
+    expect(p.answer_gate.evidence_sufficient).toBe(true);
+    const [, , opts] = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, unknown, string, { manufacturer: string; allowTenantFallback: boolean }];
+    void opts;
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; allowTenantFallback: boolean }];
+    expect(call[3].manufacturer).toBe("Siemens");
+    expect(call[3].allowTenantFallback).toBe(false);
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+  });
+
+  it("2b. identity from the PHOTO observation (no notebook manufacturer) → OEM retrieval scoped to the recognised vendor", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "SIEMENS TP700 Comfort 6AV2124-0GC01-0AX0, 24 VDC", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The panel takes 24 VDC [1].")));
+    await (await POST(chatReq({ message: "what does it run on", mode: "general", visualEvidence: { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" } }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
+    expect(p.retrieval.oem_manufacturer_source).toBe("photo");
+    expect(p.visual_evidence.observation_in_context).toBe(true);
+  });
+
+  it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Rated 24 VDC [1].")));
+    await (await POST(chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.strategy).toBe("notebook_sources_bm25");
+    expect(p.request.source_doc_count).toBeGreaterThan(0);
+    expect(p.retrieval.returned_doc_ids).toEqual([DOC_A]);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+
+  it("4. photo turn followed by a text-only follow-up → prior observation recalled SERVER-side", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    // The earlier turn persisted a visual_observation{fileId} on its row; the
+    // client re-sends nothing but text history.
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "t1", threadId: "th", question: "what is this", answerStatus: "answered", answerText: "…", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "general_reasoning", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
+    ] as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "Siemens TP700 Comfort, Supply 24 Vdc max 0.85 A", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("From the earlier photo it is 24 Vdc.")));
+    await (await POST(chatReq({ message: "what voltage was it?", mode: "general", history: [{ role: "user", content: "what is this" }, { role: "assistant", content: "…" }] }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.visual_evidence.prior_turn_observation_count).toBe(1);
+    expect(p.visual_evidence.prior_file_ids).toEqual([FILE_ID]);
+    expect(p.retrieval.prior_visual_observations_considered).toBe(1);
+    expect(p.context.visual_evidence_count).toBe(1);
+    expect(p.answer_gate.evidence_sufficient).toBe(true);
+    // Recognised vendor from the recalled photo also unlocks OEM retrieval.
+    expect(p.retrieval.oem_corpus_searched).toBe(true);
+    expect(p.retrieval.oem_manufacturer_source).toBe("photo");
+    // VISUAL_EVIDENCE_DROPPED must NOT fire: the evidence reached context.
+    expect((persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].anomalies.map((a) => a.code)).not.toContain("VISUAL_EVIDENCE_DROPPED");
+  });
+
+  it("5. insufficient evidence + exact unit-bearing claim → withheld by the pre-display gate (fail closed)", async () => {
+    // This suite runs with the gate OFF (detection-only) for the trace tests;
+    // enforcement is the production default (NOTEBOOK_ANSWER_GATE unset).
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The operating temperature range is -20 °C to +60 °C for this unit.")));
+    const res = await POST(chatReq({ message: "what is the operating range outdoors", mode: "general" }), params);
+    const text = await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.evidence_sufficient).toBe(false);
+    expect(p.answer_gate.decision).toBe("blocked");
+    expect(p.answer_gate.reason).toBe("unsupported-specificity:exact-rating");
+    // The unsupported number never reached the wire; the honest fallback did.
+    expect(text).not.toContain("+60");
+    expect(text).toContain("won't guess");
+  });
+
+  it("5b. with the emergency lever NOTEBOOK_ANSWER_GATE=0 the claim is served but still flagged in the packet", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The operating temperature range is -20 °C to +60 °C for this unit.")));
+    await (await POST(chatReq({ message: "what is the operating range outdoors", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.decision).toBe("answered");
+    expect(p.answer_gate.evidence_sufficient).toBe(false);
+    expect(p.answer_gate.ungrounded_unit_claim).toBe(true);
   });
 });
 
