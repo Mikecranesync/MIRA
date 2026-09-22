@@ -1156,7 +1156,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
+    // AUGMENTED IS THE DEFAULT, WITH OR WITHOUT DOCUMENTS (contract §3).
+    // `general` is the OLD client's scope-derived flag. Under the contract the
+    // prompt no longer reads it, but this gate still did — so a client that
+    // stopped sending `mode:"general"` (the natural thing once the mode is
+    // inert) got a 422 for an ordinary question in an empty notebook.
+    // Measured on staging 2026-09-22 at 5c19e56c8: no mode + no sources →
+    // `{"error":"no_sources_selected"}`, while the identical turn with the
+    // legacy `mode:"general"` answered. Attaching nothing is not a request to
+    // be refused. Flag-gated: with the contract off this reads exactly as before.
+    if (
+      (general || miraContractEnabled() || questionSafetyTrigger || visualClaimFileId) &&
+      validated.error === "no_sources_selected"
+    ) {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -1295,7 +1307,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
-  if (!validated.ok && !general && !safetyTrigger) {
+  if (!validated.ok && !general && !miraContractEnabled() && !safetyTrigger) {
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json({ error: validated.error }, { status: 422 });

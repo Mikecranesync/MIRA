@@ -315,3 +315,45 @@ describe("tenant isolation is unchanged by the mode change", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("an empty notebook is not a refusal (staging 2026-09-22, SHA 5c19e56c8)", () => {
+  // The old client signalled "nothing attached" by sending `mode:"general"`.
+  // Under the contract the prompt ignores that flag — but the zero-source gate
+  // still read it, so a client that simply stopped sending it got
+  // `{"error":"no_sources_selected"}` (422) for an ordinary question. Measured
+  // live: no mode + no sources → 422; the identical turn with `mode:"general"`
+  // answered. Attaching nothing is not a request to be refused.
+  beforeEach(() => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+  });
+
+  it("answers a no-mode turn with nothing attached", async () => {
+    const res = await POST(req({ message: "why would a contactor chatter instead of pulling in cleanly" }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(fetch).toHaveBeenCalled();
+    expect(sentSystemPrompt()).toContain(MIRA_AUGMENTED);
+  });
+
+  it("the legacy mode:\"general\" turn is identical — the flag is inert, not a second path", async () => {
+    const res = await POST(req({ message: "why would a contactor chatter", mode: "general" }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(sentSystemPrompt()).toContain(MIRA_AUGMENTED);
+  });
+
+  it("with the contract OFF the 422 is byte-identical to before", async () => {
+    process.env.MIRA_PERSONA_CONTRACT = "0";
+    const res = await POST(req({ message: "why would a contactor chatter" }), params);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: "no_sources_selected" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a foreign notebook is still a 404, contract on — ownership is not loosened", async () => {
+    nbMock.getNotebook.mockResolvedValue(null);
+    const res = await POST(req({ message: "q" }), params);
+    expect(res.status).toBe(404);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

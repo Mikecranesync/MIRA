@@ -84,6 +84,11 @@ describe("chat boundary", () => {
   });
 
   it("rejects empty source selection with 422 (no silent global fallback)", async () => {
+    // LEGACY path (contract OFF). The retrieval BOUNDARY this suite owns is
+    // unchanged either way — an unauthorized doc id still fails closed above.
+    // What moves under MIRA_PERSONA_CONTRACT=1 is only the empty selection:
+    // attaching nothing is not a request to be refused (augmented-default.test.ts).
+    delete process.env.MIRA_PERSONA_CONTRACT;
     domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     const res = await POST(chatReq({ message: "q", sourceDocIds: [] }), params);
     expect(res.status).toBe(422);

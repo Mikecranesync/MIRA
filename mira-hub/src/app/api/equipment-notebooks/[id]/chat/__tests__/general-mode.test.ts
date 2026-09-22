@@ -175,6 +175,10 @@ describe("general mode — §1.1 the technician with nothing configured", () => 
 
 describe("grounded mode — §1.4 unchanged by any of this", () => {
   it("still refuses a source-free notebook rather than answering generally", async () => {
+    // LEGACY path (contract OFF). Under MIRA_PERSONA_CONTRACT=1 a no-mode turn
+    // is augmented with or without documents and ANSWERS — pinned in
+    // augmented-default.test.ts ("an empty notebook is not a refusal").
+    delete process.env.MIRA_PERSONA_CONTRACT;
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     const res = await POST(req({ message: "drive trips" }), params); // no mode
     expect(res.status).toBe(422);
