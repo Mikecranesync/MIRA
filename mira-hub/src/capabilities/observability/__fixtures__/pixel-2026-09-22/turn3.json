@@ -1,0 +1,119 @@
+{
+  "fixture": true,
+  "v": "1",
+  "kind": "chat",
+  "trace_id": null,
+  "vision_trace_id": null,
+  "environment": "staging",
+  "git_sha": "dd41c7f8e3bac27fc0b8f2bcdbbbc4ebdb5bbf2c",
+  "service_version": "v3.351.7",
+  "ids": {
+    "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+    "notebook_id": "93d8c68e-d252-451d-8b52-e0a830543437",
+    "thread_id": "thrd_7370fb970c8149f2a586984c3f917955",
+    "turn_id": "040e80f4-755d-4fb3-ab15-71bbd5e28d2f",
+    "client_request_id": null,
+    "owner_user_id": "02808f0e-f1da-4319-a64a-47645bdef065",
+    "file_ids": [],
+    "visual_observation_ids": [],
+    "asset_id": null,
+    "equipment_entity_id": null,
+    "asset_uns_path": null
+  },
+  "request": {
+    "mode": "general",
+    "message_chars": 182,
+    "has_visual_evidence": false,
+    "has_machine_evidence": true,
+    "source_doc_count": 0
+  },
+  "vision": {
+    "ran": false,
+    "provider": null,
+    "model": null,
+    "latency_ms": null,
+    "observation_chars": 0,
+    "hazard_count": 0,
+    "ok": false
+  },
+  "visual_evidence": {
+    "file_id": null,
+    "link_verified": false,
+    "observation_available": false,
+    "observation_in_context": false,
+    "prior_turn_observation_count": 2
+  },
+  "identity": {
+    "ran": false,
+    "state": "unknown",
+    "candidate_count": 0,
+    "selected_entity_id": null,
+    "manufacturer_present": false,
+    "model_present": false,
+    "order_number_present": false,
+    "unresolved_reason": null
+  },
+  "retrieval": {
+    "strategy": "skipped_general_mode",
+    "executed": false,
+    "candidate_count": 0,
+    "returned_doc_ids": [],
+    "oem_corpus_searched": false,
+    "zero_result_reason": "general_mode_no_sources",
+    "prior_visual_observations_considered": 2
+  },
+  "context": {
+    "evidence_doc_ids": [],
+    "chunk_count": 0,
+    "visual_evidence_count": 0,
+    "identity_included": false,
+    "history_turns": 3,
+    "prompt_chars": 3400
+  },
+  "generation": {
+    "attempts": [
+      {
+        "provider": "Groq",
+        "model": "openai/gpt-oss-120b",
+        "outcome": "served",
+        "latency_ms": 4100,
+        "route_reason": "primary",
+        "response_id": null
+      }
+    ],
+    "served_provider": "Groq",
+    "served_model": "openai/gpt-oss-120b",
+    "input_tokens": 910,
+    "output_tokens": 380,
+    "has_image_input": false,
+    "has_observation_text": false
+  },
+  "answer_gate": {
+    "invoked": true,
+    "decision": "answered",
+    "reason": "served",
+    "answer_chars": 1454,
+    "refusal_phrase_matched": false,
+    "evidence_phrase_matched": false,
+    "safety_classification": "none",
+    "evidence_sufficient": false,
+    "ungrounded_unit_claim": true
+  },
+  "persistence": {
+    "turn_row_id": "040e80f4-755d-4fb3-ab15-71bbd5e28d2f",
+    "evidence_entries": 0,
+    "outcome": "ok",
+    "error_code": null
+  },
+  "timings_ms": {
+    "total": null,
+    "vision": null,
+    "identity": null,
+    "retrieval": 5,
+    "context": 20,
+    "generation_ttfb": 950,
+    "generation": 4100,
+    "persist": 35
+  },
+  "errors": []
+}
