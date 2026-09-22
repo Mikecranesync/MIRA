@@ -36,6 +36,26 @@ Live traffic caught two things **3329 green unit tests could not**:
    because tag names are exactly the class priority 1 withholds. **Priority 1 was
    suppressing priority 2.** Scoped to absence-of-evidence in `076ab7371`.
 
+### Proven on a device too
+
+Built the staging-flavor app from this branch (`com.factorylm.mira.staging` 1.2.0,
+`API_BASE=app-staging`), installed it **alongside production** on AVD `mira35` /
+Android 15, and drove it through its **own WebView network stack**.
+
+Blank chat — no project, no machine, no sources — returned **HTTP 200**, the full
+frame sequence, trace `e8a9033030324e78d8b13a004511c75b`, and 1649 chars of real
+engineering opening:
+
+> "**With the VFD output isolated, locked out and the motor terminals verified at
+> 0 V**, the most common cause of overheating at low speed is excessive slip
+> causing high stator current…"
+
+Energy-isolation clause in the first sentence, cause first, ordered checks with a
+concrete threshold, no fabricated identifiers. That rule was reachable from one of
+nine Hub surfaces before this work.
+
+Detail: `docs/proofs/2026-09-22-device-acceptance/`. Build needs **JDK 21**.
+
 ### The one decision live data surfaced
 
 Measured over five runs: **citing PARTIAL coverage is probabilistic (~60–80%)
@@ -210,7 +230,7 @@ by design.**
 | Production | **Untouched.** Flag unset in `factorylm/prd`; compose default `0` |
 | Cost | **$0.083** of the $1.00 bound (232 paid A/B calls). Gate 7 + acceptance ran on the free cascade |
 | Rollback | `doppler secrets delete MIRA_PERSONA_CONTRACT -p factorylm -c stg`, redeploy — or redeploy `ebde0ccf5`. One variable reverts prompt + routing + gate together |
-| Phone entry URL | `https://app-staging.factorylm.com` |
+| Phone entry URL | `https://app-staging.factorylm.com` — staging flavor `com.factorylm.mira.staging`, installs beside prod |
 | **Does the Pixel need a new APK?** | **No — not for this change.** It is server-authoritative: an old client's `mode:"general"` and a no-mode request produce the same persona, asserted in `augmented-default.test.ts`. To point the phone at *staging* you need the existing staging flavor from #3938, which is unrelated to this work |
 
 ## After you merge
