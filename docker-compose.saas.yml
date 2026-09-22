@@ -805,6 +805,11 @@ services:
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
       - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # MIRA Intelligence Contract — one persona, augmented by default.
+      # OFF unless explicitly set to "1". With it unset the notebook-chat route
+      # keeps the pre-existing prompts AND the pre-existing document gate, so
+      # this line changes nothing in production until someone flips it.
+      - MIRA_PERSONA_CONTRACT=${MIRA_PERSONA_CONTRACT:-0}
       # Server-authoritative rollout/rollback for the mobile ChatV2 surface.
       # Default OFF: /api/me omits chat_v2 and every client stays on legacy.
       - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}
