@@ -144,3 +144,82 @@ def test_artifact_rows_carry_trace_and_scenario(tmp_path: Path):
     assert not any(
         k in rows[0] for k in ("content_head", "message", "user_question", "recommendation")
     )
+
+
+def test_failed_acceptance_runs_are_included_and_labelled(monkeypatch, tmp_path: Path):
+    """#3954 — a red acceptance run's turns are real measurements.
+
+    Run 35721520600 went red on an unrelated classifier defect (#3953) while
+    carrying the only three packets that had `jev_input_tokens`. Filtering to
+    `--status success` dropped exactly the evidence the report exists to collect.
+    """
+    listed = {
+        "calls": [],
+        "runs": [
+            {
+                "databaseId": 2,
+                "headSha": "b" * 40,
+                "createdAt": "2026-09-22T12:00:00Z",
+                "conclusion": "failure",
+                "status": "completed",
+            },
+            {
+                "databaseId": 1,
+                "headSha": "a" * 40,
+                "createdAt": "2026-09-22T09:36:00Z",
+                "conclusion": "success",
+                "status": "completed",
+            },
+            {
+                "databaseId": 3,
+                "headSha": "c" * 40,
+                "createdAt": "2026-09-22T13:00:00Z",
+                "conclusion": None,
+                "status": "in_progress",
+            },
+        ],
+    }
+
+    def fake_gh(*args):
+        listed["calls"].append(args)
+        if args[0] == "run" and args[1] == "list":
+            return json.dumps(listed["runs"])
+        # `run download <id> -D <dir>` → drop one artifact with one judged turn
+        rid, dest = args[2], args[4]
+        d = Path(dest) / f"retrieval-acceptance-{rid}"
+        d.mkdir(parents=True)
+        (d / "retrieval-acceptance.json").write_text(
+            json.dumps(
+                {
+                    "ran_at": "2026-09-22T12:00:00Z",
+                    "rows": [
+                        {
+                            "scenario": "2 x",
+                            "trace_id": rid * 8,
+                            "wire": {"status": "answered"},
+                            "packet": packet(chunks=6, decision="answered", jev=0.05, tokens=1681),
+                        }
+                    ],
+                }
+            )
+        )
+        return ""
+
+    monkeypatch.setattr(mod, "_gh", fake_gh)
+    rows = mod.rows_from_runs(10)
+    # The list call must NOT filter on success.
+    list_args = next(a for a in listed["calls"] if a[1] == "list")
+    assert "--status" not in list_args, "failed runs must be listed too"
+    # Both completed runs contribute; the in-progress one does not.
+    assert {r["run_conclusion"] for r in rows} == {"failure", "success"}
+    assert len(rows) == 2
+
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0
+    assert "judged: 2" in md
+    assert "went RED" in md and "run:2" in md
+    # Measured cost is reported from the real token counts, not the stale estimate.
+    assert "3362 input tokens" in md.replace(",", "")
+    assert "1,200" not in md
+    assert "run_conclusion" in (tmp_path / "r.csv").read_text()
