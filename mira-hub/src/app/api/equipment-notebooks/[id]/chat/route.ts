@@ -381,6 +381,29 @@ export function makeCitationNormalizer(): { push: (delta: string) => string; flu
 /** A prose refusal ("I could not find that in the selected sources") must NOT
  *  ship citations — otherwise unrelated retrieved pages render as false proof
  *  (the anti-pattern this closes). Detect the model's own honest-refusal phrasing. */
+/**
+ * Ledger usage for a turn served by the LEGACY inline cascade (seam off).
+ * Token counts and cost are UNKNOWN on that path — never 0 — so they stay
+ * null (persist-usage.ts's own rule); only the served provider/model and
+ * the provider-call status are known.
+ */
+export function legacyCascadeUsage(
+  active: { name: string; model: string } | null,
+  status: TurnUsage["status"],
+): TurnUsage {
+  return {
+    provider: active?.name ?? null,
+    model: active?.model ?? null,
+    routeReason: "legacy_cascade",
+    inputTokens: null,
+    cachedInputTokens: null,
+    outputTokens: null,
+    costUsdEstimate: null,
+    status,
+    attempted: [],
+  };
+}
+
 export function isRefusal(answer: string): boolean {
   const a = answer.toLowerCase();
   return (
@@ -2173,37 +2196,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             );
           });
         }
-        // Design §4 asks for persistence on EVERY completed path, including
-        // the legacy (non-seam) cascade. This lane keeps the pre-existing
-        // `if (seam)` gate here deliberately: chat-stop-persist.test.ts:218
-        // and chat-canonical-seam.test.ts:415 (both out of this lane's
-        // ownership) pin `persistTurnUsage` as NOT called when the seam is
-        // off, for exactly this path. Extending it to the legacy path is a
-        // real, deliberate product decision, not a mechanical one — reported
-        // as a cross-lane follow-up rather than silently overridden here.
-        if (seam) {
-          const stoppedUsage: TurnUsage = activeProvider
-            ? {
-                ...usageFromRaw(
-                  activeProvider.name,
-                  activeProvider.model,
-                  rawUsage as never,
-                  routeReasonFor(attempted),
-                  attempted,
-                  "error",
-                ),
-                // The provider `usage` block rides the FINAL chunk, which a
-                // stopped turn never receives — so on a stop the token counts
-                // are UNKNOWN, not zero. estimateCostUsd() turns all-null
-                // counts into 0.000000, which is a positive claim that a turn
-                // that really did burn tokens was free: it disappears into
-                // SUM(cost_usd_estimate) and is NOT caught by
-                // tenantSpendSince's `unpriced_turns` (… IS NULL) filter.
-                // Unknown cost stays NULL — persist-usage.ts's own rule.
-                ...(rawUsage ? {} : { costUsdEstimate: null }),
-              }
-            : exhaustedUsage(attempted);
-          logTurnUsage({ tenantId: ctx.tenantId, notebookId }, stoppedUsage);
+        // Turn Flight Recorder (design §4): the packet is persisted on EVERY
+        // completed path, seam on or off. The seam still decides how much
+        // SPEND detail the ledger row carries — on the legacy cascade token
+        // counts and cost are UNKNOWN (null), never zero, and routeReason is
+        // 'legacy_cascade'. The `usage` SSE frame stays seam-only (wire
+        // contract unchanged).
+        {
+          const stoppedUsage: TurnUsage = seam
+            ? activeProvider
+              ? {
+                  ...usageFromRaw(
+                    activeProvider.name,
+                    activeProvider.model,
+                    rawUsage as never,
+                    routeReasonFor(attempted),
+                    attempted,
+                    "error",
+                  ),
+                  // The provider `usage` block rides the FINAL chunk, which a
+                  // stopped turn never receives — so on a stop the token counts
+                  // are UNKNOWN, not zero. estimateCostUsd() turns all-null
+                  // counts into 0.000000, which is a positive claim that a turn
+                  // that really did burn tokens was free: it disappears into
+                  // SUM(cost_usd_estimate) and is NOT caught by
+                  // tenantSpendSince's `unpriced_turns` (… IS NULL) filter.
+                  // Unknown cost stays NULL — persist-usage.ts's own rule.
+                  ...(rawUsage ? {} : { costUsdEstimate: null }),
+                }
+              : exhaustedUsage(attempted)
+            : legacyCascadeUsage(activeProvider, "error");
+          if (seam) logTurnUsage({ tenantId: ctx.tenantId, notebookId }, stoppedUsage);
           await finishAndPersist(stoppedTurnRowId, stoppedUsage, {
             answerText: partialText,
             citationsPresent: false,
@@ -2428,21 +2451,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
           finalPersistSpan.end();
           // Design §4's sixth exit path: "recordTurn failure" still gets a
-          // packet, `persistence.outcome='failed'` — same `seam` gating as
-          // every other persistTurnUsage call site in this lane (see the
-          // stopped-path comment above for why).
-          if (seam) {
-            const failedUsage: TurnUsage = {
-              provider: null,
-              model: null,
-              routeReason: "legacy_cascade",
-              inputTokens: null,
-              cachedInputTokens: null,
-              outputTokens: null,
-              costUsdEstimate: null,
-              status: "error",
-              attempted,
-            };
+          // packet with `persistence.outcome='failed'`, seam on or off.
+          {
+            const failedUsage: TurnUsage = seam
+              ? { ...exhaustedUsage(attempted), status: "error" }
+              : legacyCascadeUsage(activeProvider, "error");
             await finishAndPersist(null, failedUsage, {
               answerText: null,
               citationsPresent: false,
@@ -2560,15 +2573,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // result and logs a distinct `turn.usage.persist_failed` event, so a
       // spend gap stays diagnosable without becoming a chat outage.
       //
-      // `if (pendingUsage)` — i.e. `if (seam)` — is the SAME pre-existing gate
-      // as before (chat-canonical-seam.test.ts:415 pins "does NOT persist when
-      // the seam is off" for this exact path, out of this lane's ownership).
-      if (pendingUsage) {
+      // Persisted on EVERY completed turn (design §4). With the seam on the
+      // row carries the canonical spend; on the legacy cascade it carries the
+      // served provider/model with UNKNOWN (null) tokens and cost.
+      {
+        const ledgerUsage: TurnUsage =
+          pendingUsage ?? legacyCascadeUsage(activeProvider, served ? "ok" : "error");
         // Yield once after close so the consumer observes its terminal body
         // before telemetry starts. A ledger exception is non-fatal and must
         // never turn an already-closed, valid answer into a transport error.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        await finishAndPersist(finalTurnRowId, pendingUsage, {
+        await finishAndPersist(finalTurnRowId, ledgerUsage, {
           answerText: served ? answerText : null,
           citationsPresent: emittedCitations.length > 0,
           latencyMs: Date.now() - turnStartedAt,

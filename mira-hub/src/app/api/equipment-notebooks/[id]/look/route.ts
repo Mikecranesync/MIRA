@@ -33,18 +33,25 @@
  * recorder.md §3/§4, lane I2): a `mira.turn` root span (kind="look") wraps the
  * whole request, with `attachment.persist` and a per-vision-call `chat <model>`
  * child. `x-mira-trace-id` is set and `traceId` rides in the JSON body
- * (additive). A packet is BUILT (TurnRecorder) but deliberately NOT persisted
- * via `persistTurnUsage` here — `__tests__/look.test.ts:371-372` pins
- * `pool.query`/`pool.connect` as NEVER called on the success path this route's
- * own test suite owns, and `persistTurnUsage` always touches that shared pool
- * (via `withTenantContext`). Reported as a cross-lane follow-up, not
- * worked around.
+ * (additive). The `kind:"look"` Turn Evidence Packet is persisted through the
+ * same single ledger writer as chat (`persistTurnUsage`, platform
+ * `hub_notebook_look`, empty question) — last and non-fatal, after the
+ * response body is fixed. Observations remain conversation context, never a
+ * citable source: nothing here writes knowledge_entries or touches identity.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { context, trace, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder } from "@/capabilities/observability/turn-recorder";
-import { anomalyChecksEnabled, environmentName, gitSha, serviceVersion } from "@/capabilities/observability/config";
+import {
+  anomalyChecksEnabled,
+  environmentName,
+  gitSha,
+  productionRouteDetected,
+  serviceVersion,
+} from "@/capabilities/observability/config";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
@@ -197,18 +204,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     serviceVersion: serviceVersion(),
     traceId: rootTraceId,
   });
-  // No `persistTurnUsage` call for /look — see file header. The packet is
-  // still built (and its anomalies logged) so the recorder's own contract is
-  // exercised even though this route doesn't persist it yet.
-  const finishLook = (): void => {
-    const { packet, anomalies } = rec.finish({ anomalyChecks: anomalyChecksEnabled() });
-    setSpanAttrs({ "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
-    if (anomalies.length > 0) {
-      console.log(
-        JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
+  // Finish the packet and persist it through the one ledger writer. Fail-open:
+  // `persistTurnUsage` returns rather than throws, and this wrapper swallows
+  // anything else — a telemetry outage never changes the /look response.
+  const finishLook = async (vision: { provider: string | null; model: string | null; ok: boolean }): Promise<void> => {
+    try {
+      const { packet, anomalies } = rec.finish({
+        productionRouteVars: productionRouteDetected(),
+        anomalyChecks: anomalyChecksEnabled(),
+      });
+      setSpanAttrs({ "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
+      if (anomalies.length > 0) {
+        console.log(
+          JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
+        );
+      }
+      const usage: TurnUsage = {
+        provider: vision.provider,
+        model: vision.model,
+        routeReason: "vision",
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        costUsdEstimate: null,
+        status: vision.ok ? "ok" : "error",
+        attempted: [],
+      };
+      await persistTurnUsage(
+        {
+          tenantId: ctx.tenantId,
+          notebookId,
+          question: "",
+          answerText: null,
+          citationsPresent: false,
+          latencyMs: Date.now() - rec.startedAt,
+          platform: "hub_notebook_look",
+        },
+        usage,
+        {
+          packet,
+          anomalies,
+          otelTraceId: rootTraceId,
+          turnRowId: null,
+          clientRequestId: null,
+          notebookId,
+          environment: environmentName(),
+          gitSha: gitSha(),
+        },
       );
+    } catch (err) {
+      console.error("[notebook-look] flight recorder persist failed:", err instanceof Error ? err.message : err);
     }
-    void packet; // built for parity/logging; not persisted (see file header)
   };
   const traceHeaders: Record<string, string> = rootTraceId ? { "x-mira-trace-id": rootTraceId } : {};
   // ─────────────────────────────────────────────────────────────────────────
@@ -251,7 +297,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Honest failure — the photo is already retained and viewable in the notebook.
   if (!isRecognizerConfigured()) {
-    finishLook();
+    await finishLook({ provider: null, model: null, ok: false });
     endRoot();
     return NextResponse.json(
       {
@@ -326,7 +372,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       hazard_count: inspection.hazards.length,
       ok: true,
     });
-    finishLook();
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: reply.model, ok: true });
     endRoot();
     return NextResponse.json({
       ...retained,
@@ -351,7 +397,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ok: false,
     });
     rec.error("vision", "provider_error");
-    finishLook();
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: null, ok: false });
     endRoot();
     return NextResponse.json(
       {

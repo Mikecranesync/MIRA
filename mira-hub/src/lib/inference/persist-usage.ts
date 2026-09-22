@@ -38,6 +38,9 @@ export type PersistUsageScope = {
   citationsPresent: boolean;
   /** Wall time for the whole turn, if measured. */
   latencyMs?: number | null;
+  /** Ledger platform tag. Defaults to the chat surface; `/look` writes
+   *  `hub_notebook_look` so a vision turn is never mistaken for a chat spend row. */
+  platform?: "hub_notebook_chat" | "hub_notebook_look";
 };
 
 /**
@@ -96,7 +99,7 @@ export async function persistTurnUsage(
          RETURNING trace_id`,
         [
           scope.tenantId, // TEXT — see note above
-          "hub_notebook_chat",
+          scope.platform ?? "hub_notebook_chat",
           scope.question,
           scope.answerText,
           scope.citationsPresent,

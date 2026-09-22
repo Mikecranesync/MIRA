@@ -43,8 +43,13 @@ vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/nameplate/passes")>();
   return { ...real, togetherVisionCall: vi.fn() };
 });
-// The raw DB pool must never be touched by this route (no knowledge_entries write).
+// The raw DB pool must never be touched by this route for product data (no
+// knowledge_entries write). The Turn Flight Recorder's ledger write is the one
+// legitimate side effect and is mocked here so the suite stays hermetic.
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(), connect: vi.fn() } }));
+vi.mock("@/lib/inference/persist-usage", () => ({
+  persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "00000000-0000-4000-8000-000000000000" })),
+}));
 
 import { POST, INSPECTION_PROMPT } from "../route";
 import { sessionOr401 } from "@/lib/session";
@@ -368,8 +373,14 @@ describe("observations are conversation context, not citable sources", () => {
     armVision("Burn mark visible on the lower-left terminal.");
     const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
-    expect(pool.query).not.toHaveBeenCalled();
-    expect(pool.connect).not.toHaveBeenCalled();
+    // The observation is conversation context, never a citable source: no
+    // SQL touching knowledge_entries may run. (The Turn Flight Recorder's
+    // ledger row — decision_traces via persistTurnUsage — is mocked in this
+    // suite and is the one legitimate write this route makes.)
+    const sqlTexts = [...vi.mocked(pool.query).mock.calls, ...vi.mocked(pool.connect).mock.calls]
+      .map((c) => String((c as unknown[])[0] ?? ""))
+      .join("\n");
+    expect(sqlTexts).not.toMatch(/knowledge_entries/i);
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
     expect(updateNotebook).not.toHaveBeenCalled();
   });

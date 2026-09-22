@@ -5,12 +5,9 @@
  * §3/§7. One happy path: root `mira.turn` (kind="look") span + its
  * `attachment.persist` and `chat <model>` children, a `kind:"look"` packet.
  *
- * `persistTurnUsage` is deliberately NOT called here — see the route file's
- * header comment: `[id]/look/__tests__/look.test.ts:371-372` (out of this
- * lane's ownership) pins `pool.query`/`pool.connect` as NEVER touched on the
- * success path, and `persistTurnUsage` always reaches that shared pool.
- *
- * Run: npx vitest run src/app/api/equipment-notebooks/__tests__/look-flight-recorder.test.ts
+ * The `kind:"look"` packet is persisted through the one ledger writer
+ * (`persistTurnUsage`, platform `hub_notebook_look`), mocked here; the raw
+ * pool must still never see a knowledge_entries write.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
@@ -53,6 +50,12 @@ vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   return { ...real, togetherVisionCall: vi.fn() };
 });
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(), connect: vi.fn() } }));
+const persistMock = vi.hoisted(() => ({
+  persistTurnUsage: vi.fn<typeof import("@/lib/inference/persist-usage").persistTurnUsage>(
+    async () => ({ persisted: true, traceId: "00000000-0000-4000-8000-000000000000" }) as const,
+  ),
+}));
+vi.mock("@/lib/inference/persist-usage", () => persistMock);
 
 import { POST } from "../[id]/look/route";
 import { sessionOr401 } from "@/lib/session";
@@ -92,6 +95,7 @@ beforeAll(() => {
 beforeEach(() => {
   vi.resetAllMocks();
   handle.reset();
+  persistMock.persistTurnUsage.mockResolvedValue({ persisted: true, traceId: "00000000-0000-4000-8000-000000000000" });
   vi.mocked(sessionOr401).mockResolvedValue(session);
   vi.mocked(getNotebook).mockResolvedValue(notebook);
   vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: FILE_ID, reused: false, uploadId: null });
@@ -113,16 +117,30 @@ beforeEach(() => {
 });
 
 describe("mira.turn (kind=look) span tree", () => {
-  it("root span + attachment.persist + chat <model>, and a kind:look packet — no DB write", async () => {
+  it("root span + attachment.persist + chat <model>, and a persisted kind:look packet — no product-data write", async () => {
     const res = await POST(makeReq() as never, makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.observation.text).toContain("Green indicator lit");
 
-    // The out-of-lane invariant this route's own test suite owns
-    // (look.test.ts:371-372) — persistTurnUsage must never be wired in here.
-    expect(pool.query).not.toHaveBeenCalled();
-    expect(pool.connect).not.toHaveBeenCalled();
+    // Observations are conversation context, never a citable source: the raw
+    // pool never sees a knowledge_entries write. The ledger row is the one
+    // legitimate side effect and goes through persistTurnUsage (mocked).
+    const sql = [...vi.mocked(pool.query).mock.calls, ...vi.mocked(pool.connect).mock.calls]
+      .map((c) => String((c as unknown[])[0] ?? ""))
+      .join("\n");
+    expect(sql).not.toMatch(/knowledge_entries/i);
+    expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
+    const call = persistMock.persistTurnUsage.mock.calls[0]!;
+    const [scope, usage, record] = call;
+    expect(scope.platform).toBe("hub_notebook_look");
+    expect(scope.question).toBe("");
+    expect(usage.provider).toBe("together");
+    expect(usage.status).toBe("ok");
+    expect(record?.packet.kind).toBe("look");
+    expect(record?.packet.vision.ran).toBe(true);
+    expect(record?.packet.vision.observation_chars).toBeGreaterThan(0);
+    expect(record?.otelTraceId).toBe(res.headers.get("x-mira-trace-id"));
 
     const traceId = res.headers.get("x-mira-trace-id");
     expect(traceId).toMatch(/^[0-9a-f]{32}$/);
