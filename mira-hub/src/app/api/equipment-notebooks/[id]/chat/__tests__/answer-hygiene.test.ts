@@ -64,8 +64,15 @@ describe("isRefusal", () => {
     expect(isRefusal("The provided document does not state the torque value; consult the manual.")).toBe(true);
     expect(isRefusal("These excerpts don't list the fault codes.")).toBe(true);
   });
+  it("flags the live case-5 refusal shapes: can't give the rating without the data sheet / don't have the specific rating (staging 2026-09-22)", () => {
+    expect(isRefusal("I can't give an exact temperature rating without the specific data sheet for this unit. Check the full user manual or the name-plate on the screen.")).toBe(true);
+    expect(isRefusal("I'm sorry, but I don't have the specific rating for that unit. The exact outdoor operating temperature range is listed in the product data sheet.")).toBe(true);
+    expect(isRefusal("I can't give an exact temperature rating without the machine's specific documentation.")).toBe(true);
+  });
   it("still does not flag a grounded answer that uses those verbs affirmatively", () => {
     expect(isRefusal("The manual specifies 24 VDC on page 12 [1] and lists the fault codes in section 7 [2].")).toBe(false);
+    expect(isRefusal("The data sheet rates the supply at 24 VDC and the front face at IP65 [1].")).toBe(false);
+    expect(isRefusal("You can give it 24 VDC per the specification on page 3 [1].")).toBe(false);
   });
 });
 

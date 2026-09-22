@@ -137,3 +137,5 @@ Run it after any change to `[id]/chat/route.ts`, `manual-rag.ts`,
 `visual-evidence-context.ts`, `answer-validation.ts`, or the flight recorder,
 once staging is redeployed. It refuses a production base URL. CI wiring:
 `.github/workflows/retrieval-acceptance.yml` (manual dispatch + post-staging-deploy).
+
+**Known-good state, scenarios, root causes, and mobile environment selection:** `docs/architecture/observability/2026-09-22-retrieval-acceptance-decision-log.md`.
