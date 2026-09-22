@@ -25,6 +25,8 @@
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
+import type { Anomaly } from "@/capabilities/observability/anomalies";
+import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 
 export type PersistUsageScope = {
   tenantId: string;
@@ -36,6 +38,28 @@ export type PersistUsageScope = {
   citationsPresent: boolean;
   /** Wall time for the whole turn, if measured. */
   latencyMs?: number | null;
+  /** Ledger platform tag. Defaults to the chat surface; `/look` writes
+   *  `hub_notebook_look` so a vision turn is never mistaken for a chat spend row. */
+  platform?: "hub_notebook_chat" | "hub_notebook_look";
+};
+
+/**
+ * Turn Flight Recorder output (turn-recorder.ts `finish()`), optionally
+ * attached to a usage write. Design:
+ * docs/architecture/observability/2026-09-22-turn-flight-recorder.md §4.
+ * Omitting this argument entirely is what keeps every pre-existing caller
+ * and test unchanged — the eight new columns simply write NULL (or, for the
+ * NOT-NULL `anomalies` column, the empty array).
+ */
+export type TurnRecord = {
+  packet: TurnEvidencePacket;
+  anomalies: Anomaly[];
+  otelTraceId: string | null;
+  turnRowId?: string | null;
+  clientRequestId?: string | null;
+  notebookId: string;
+  environment: string;
+  gitSha: string;
 };
 
 /** Result is returned (not thrown) so callers can assert without try/catch. */
@@ -52,6 +76,7 @@ export type PersistUsageResult =
 export async function persistTurnUsage(
   scope: PersistUsageScope,
   usage: TurnUsage,
+  record?: TurnRecord,
 ): Promise<PersistUsageResult> {
   try {
     return await withTenantContext(scope.tenantId, async (c) => {
@@ -61,16 +86,20 @@ export async function persistTurnUsage(
             model_used, latency_ms,
             provider, route_reason, principal,
             input_tokens, cached_input_tokens, output_tokens,
-            cost_usd_estimate, status)
+            cost_usd_estimate, status,
+            otel_trace_id, turn_id, client_request_id, notebook_id,
+            environment, git_sha, evidence_packet, anomalies)
          VALUES ($1, $2, $3, $4, $5,
                  $6, $7,
                  $8, $9, $10,
                  $11, $12, $13,
-                 $14, $15)
+                 $14, $15,
+                 $16, $17::uuid, $18, $19::uuid,
+                 $20, $21, $22::jsonb, $23::jsonb)
          RETURNING trace_id`,
         [
           scope.tenantId, // TEXT — see note above
-          "hub_notebook_chat",
+          scope.platform ?? "hub_notebook_chat",
           scope.question,
           scope.answerText,
           scope.citationsPresent,
@@ -90,6 +119,20 @@ export async function persistTurnUsage(
           // every spend rollup built on this column.
           usage.costUsdEstimate,
           usage.status,
+          // Turn Flight Recorder columns (090). `record` is optional so every
+          // pre-090 caller keeps writing exactly the row it always did; these
+          // seven are NULL without it. `anomalies` is the one NOT-NULL column
+          // among the eight (090 default '[]'::jsonb) — pass the literal
+          // empty array rather than NULL, or the insert would violate that
+          // constraint on every caller that hasn't adopted the recorder yet.
+          record?.otelTraceId ?? null,
+          record?.turnRowId ?? null,
+          record?.clientRequestId ?? null,
+          record ? record.notebookId : null,
+          record?.environment ?? null,
+          record?.gitSha ?? null,
+          record ? JSON.stringify(record.packet) : null,
+          JSON.stringify(record?.anomalies ?? []),
         ],
       );
       const traceId = res.rows[0]?.trace_id as string | undefined;
@@ -114,6 +157,9 @@ export async function persistTurnUsage(
         // 42501 = privilege -> grant drift. Both are operator-actionable.
         code: code ?? null,
         error: message,
+        // null (not omitted) when unknown, so a grep for "traceId" never has
+        // to guess whether the field is missing or genuinely untraced.
+        traceId: record?.otelTraceId ?? null,
       }),
     );
     return { persisted: false, reason: code ?? "error" };

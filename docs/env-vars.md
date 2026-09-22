@@ -171,3 +171,23 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 
 Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
 See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.
+
+## Telemetry (staging-first)
+
+Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scope: **staging only** for now (`docker-compose.staging-vps.yml`); production compose is not touched by this work. No `OTEL_EXPORTER_OTLP_ENDPOINT` (or `_TRACES_ENDPOINT`) set ⇒ the SDK never starts — `@opentelemetry/api` hands every call site a no-op tracer, zero overhead. See `docs/architecture/observability/2026-09-22-turn-flight-recorder.md`.
+
+| Var | Default | Meaning |
+|---|---|---|
+| `OTEL_SERVICE_NAME` | `mira-hub` | Resource `service.name`. Standard OTel var. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (**disabled**) | OTLP/HTTP collector base URL (e.g. Langfuse's `https://us.cloud.langfuse.com/api/public/otel`). Presence of this OR `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is what turns tracing on. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | unset | Standard OTel var, e.g. `http/protobuf`. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset | Standard OTel var, e.g. `Authorization=Basic <base64(pk:sk)>`. Doppler-managed; never logged, never surfaced by `/api/health`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | unset | Standard OTel var, comma-separated `k=v` pairs. `deployment.environment.name=staging` is how `environmentName()` (`src/capabilities/observability/config.ts`) knows which environment it's running in — parsed, not duplicated by app code; the SDK merges it into the resource automatically. |
+| `OTEL_TRACES_SAMPLER` | unset | Standard OTel sampler, e.g. `parentbased_always_on` (staging: 100%). |
+| `OTEL_TRACES_SAMPLER_ARG` | unset | Standard OTel sampler argument (ratio for `parentbased_traceidratio`). Unused with `parentbased_always_on`. |
+| `MIRA_APP_VERSION` | `unknown` | App version stamped at build (`deploy-staging.yml`); was a build arg only, now also a runtime env var so `instrumentation.node.ts` can set `service.version` and `/api/health` can report it. |
+| `MIRA_OTEL_CAPTURE_CONTENT` | `0` | `"1"` captures `gen_ai.input.messages`/`gen_ai.output.messages` on generation spans (sanitized, truncated to 4KB). Off in staging by default; never enabled in production by this work. |
+| `MIRA_TURN_ANOMALY_CHECKS` | `1` | `"0"` disables the deterministic per-turn anomaly checks (`PHOTO_WITH_NO_OBSERVATIONS`, `VISUAL_EVIDENCE_DROPPED`, etc. — lane I3). Diagnostics never fail the technician's request either way. |
+| `MIRA_TRACE_VIEWER_URL_TEMPLATE` | unset | Optional trace-viewer URL template with a `{traceId}` placeholder (e.g. a Langfuse trace URL), surfaced by the turn diagnostics endpoint. `null` when unset. |
+
+`/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.

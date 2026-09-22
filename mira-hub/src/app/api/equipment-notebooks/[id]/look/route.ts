@@ -28,8 +28,30 @@
  *   `quality` (assessCapture) is deliberately absent: assessCapture is pure
  *   over DECODED grayscale pixels and the Hub has no image decoder, so the
  *   retake hint is a client-side call (see capture-quality.ts header).
+ *
+ * TURN FLIGHT RECORDER (docs/architecture/observability/2026-09-22-turn-flight-
+ * recorder.md §3/§4, lane I2): a `mira.turn` root span (kind="look") wraps the
+ * whole request, with `attachment.persist` and a per-vision-call `chat <model>`
+ * child. `x-mira-trace-id` is set and `traceId` rides in the JSON body
+ * (additive). The `kind:"look"` Turn Evidence Packet is persisted through the
+ * same single ledger writer as chat (`persistTurnUsage`, platform
+ * `hub_notebook_look`, empty question) — last and non-fatal, after the
+ * response body is fixed. Observations remain conversation context, never a
+ * citable source: nothing here writes knowledge_entries or touches identity.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { context, trace, type Span } from "@opentelemetry/api";
+import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
+import { startTurnRecorder } from "@/capabilities/observability/turn-recorder";
+import {
+  anomalyChecksEnabled,
+  environmentName,
+  gitSha,
+  productionRouteDetected,
+  serviceVersion,
+} from "@/capabilities/observability/config";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
@@ -152,7 +174,93 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Server receipt time: the phone's clock is not trusted as evidence time.
   const capturedAt = new Date().toISOString();
 
+  // ── Turn Flight Recorder (file header) ──────────────────────────────────
+  const tracer = getTracer();
+  const turnId = clientKey ?? crypto.randomUUID();
+  const rootSpan = tracer.startSpan("mira.turn");
+  const rootCtx = trace.setSpan(context.active(), rootSpan);
+  const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
+  setSpanAttrs(
+    { "mira.turn.kind": "look", "mira.turn.id": turnId, "mira.notebook.id": notebookId, "mira.file.mime": mime, "mira.file.bytes": buffer.length },
+    rootSpan,
+  );
+  let rootEnded = false;
+  const endRoot = (extra?: SpanAttrs): void => {
+    if (rootEnded) return;
+    rootEnded = true;
+    try {
+      if (extra) setSpanAttrs(extra, rootSpan);
+    } finally {
+      rootSpan.end();
+    }
+  };
+  const rec = startTurnRecorder({
+    kind: "look",
+    tenantId: ctx.tenantId,
+    notebookId,
+    ownerUserId: ctx.userId ?? null,
+    environment: environmentName(),
+    gitSha: gitSha(),
+    serviceVersion: serviceVersion(),
+    traceId: rootTraceId,
+  });
+  // Finish the packet and persist it through the one ledger writer. Fail-open:
+  // `persistTurnUsage` returns rather than throws, and this wrapper swallows
+  // anything else — a telemetry outage never changes the /look response.
+  const finishLook = async (vision: { provider: string | null; model: string | null; ok: boolean }): Promise<void> => {
+    try {
+      const { packet, anomalies } = rec.finish({
+        productionRouteVars: productionRouteDetected(),
+        anomalyChecks: anomalyChecksEnabled(),
+      });
+      setSpanAttrs({ "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
+      if (anomalies.length > 0) {
+        console.log(
+          JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
+        );
+      }
+      const usage: TurnUsage = {
+        provider: vision.provider,
+        model: vision.model,
+        routeReason: "vision",
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        costUsdEstimate: null,
+        status: vision.ok ? "ok" : "error",
+        attempted: [],
+      };
+      await persistTurnUsage(
+        {
+          tenantId: ctx.tenantId,
+          notebookId,
+          question: "",
+          answerText: null,
+          citationsPresent: false,
+          latencyMs: Date.now() - rec.startedAt,
+          platform: "hub_notebook_look",
+        },
+        usage,
+        {
+          packet,
+          anomalies,
+          otelTraceId: rootTraceId,
+          turnRowId: null,
+          clientRequestId: null,
+          notebookId,
+          environment: environmentName(),
+          gitSha: gitSha(),
+        },
+      );
+    } catch (err) {
+      console.error("[notebook-look] flight recorder persist failed:", err instanceof Error ? err.message : err);
+    }
+  };
+  const traceHeaders: Record<string, string> = rootTraceId ? { "x-mira-trace-id": rootTraceId } : {};
+  // ─────────────────────────────────────────────────────────────────────────
+
   // ── Park FIRST. Everything below may fail; the bytes must not. ─────────────
+  const attachSpan = tracer.startSpan("attachment.persist", undefined, rootCtx);
   const parked = await parkOrReuseFile({
     tenantId: ctx.tenantId,
     filename,
@@ -173,9 +281,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? { linkId: attached.links[0]?.linkId ?? null, notebookId }
     : { linkId: null, notebookId };
   const retained = { fileId: parked.fileId, attachment, ...(clientKey ? { clientKey } : {}) };
+  rec.stage("ids", { file_ids: [parked.fileId] });
+  setSpanAttrs(
+    {
+      "mira.file.id": parked.fileId,
+      "mira.file.mime": mime,
+      "mira.file.bytes": buffer.length,
+      "mira.file.sha256_present": true,
+      "mira.file.dedup_hit": parked.reused,
+      "mira.file.link_ok": attached.ok,
+    },
+    attachSpan,
+  );
+  attachSpan.end();
 
   // Honest failure — the photo is already retained and viewable in the notebook.
   if (!isRecognizerConfigured()) {
+    await finishLook({ provider: null, model: null, ok: false });
+    endRoot();
     return NextResponse.json(
       {
         error: "recognizer_not_configured",
@@ -183,12 +306,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         message: "Visual inspection is not available. The photo has been saved to this notebook.",
         ...retained,
         observation: null,
+        traceId: rootTraceId,
       },
-      { status: 503 },
+      { status: 503, headers: traceHeaders },
     );
   }
 
   const vision: VisionCall = fixtureSelected() ? fixtureVisionCall : togetherVisionCall;
+  const visionStartedAt = Date.now();
+  const visionSpan = tracer.startSpan("chat (vision)", undefined, rootCtx);
   try {
     // Same read-only working pixels as recognize: the detector may crop, the
     // ORIGINAL is what was parked. A question, if given, rides along as
@@ -224,12 +350,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
     }
+    visionSpan.updateName(`chat ${reply.model}`);
+    setSpanAttrs(
+      {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.response.model": reply.model,
+        "mira.vision.observation_chars": inspection.text.length,
+        "mira.vision.hazard_count": inspection.hazards.length,
+        "mira.vision.ok": true,
+      },
+      visionSpan,
+    );
+    visionSpan.end();
+    rec.stage("vision", {
+      ran: true,
+      provider: fixtureSelected() ? "fixture" : "together",
+      model: reply.model,
+      latency_ms: Date.now() - visionStartedAt,
+      observation_chars: inspection.text.length,
+      hazard_count: inspection.hazards.length,
+      ok: true,
+    });
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: reply.model, ok: true });
+    endRoot();
     return NextResponse.json({
       ...retained,
       observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
-    });
+      traceId: rootTraceId,
+    }, { headers: traceHeaders });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "vision_failed";
+    setSpanAttrs(
+      {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "mira.vision.ok": false,
+      },
+      visionSpan,
+    );
+    visionSpan.end();
+    rec.stage("vision", {
+      ran: true,
+      provider: fixtureSelected() ? "fixture" : "together",
+      latency_ms: Date.now() - visionStartedAt,
+      ok: false,
+    });
+    rec.error("vision", "provider_error");
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: null, ok: false });
+    endRoot();
     return NextResponse.json(
       {
         // Scrub any query-string credentials from provider error text (PRD §20).
@@ -238,8 +407,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         message: "Could not describe the photo. The photo has been saved to this notebook.",
         ...retained,
         observation: null,
+        traceId: rootTraceId,
       },
-      { status: 502 },
+      { status: 502, headers: traceHeaders },
     );
   }
 }

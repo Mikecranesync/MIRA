@@ -408,11 +408,22 @@ describe("telemetry persistence through the real route", () => {
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
   });
 
-  it("does NOT persist when the seam is off (legacy path writes no spend rows)", async () => {
+  it("seam off: the ledger row is still written (flight recorder) but carries UNKNOWN spend, and no usage frame is streamed", async () => {
     delete process.env.MIRA_CANONICAL_SEAM;
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("answer [1]")));
-    await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
-    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    // Wire contract unchanged: the canonical `usage` frame is seam-only.
+    expect(f.find((x) => x.kind === "usage")).toBeUndefined();
+    // Design §4: every completed turn persists a packet, seam on or off.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, usage, record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as Parameters<
+      typeof import("@/lib/inference/persist-usage").persistTurnUsage
+    >;
+    expect(usage.routeReason).toBe("legacy_cascade");
+    expect(usage.inputTokens).toBeNull();
+    expect(usage.outputTokens).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
+    expect(record?.packet?.answer_gate?.decision).toBe("answered");
   });
 
   it("persists an exhausted turn too — a failed turn is still a turn", async () => {

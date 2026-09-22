@@ -33,8 +33,9 @@ const poolMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { persistTurnUsage, tenantSpendSince } from "../persist-usage";
+import { persistTurnUsage, tenantSpendSince, type TurnRecord } from "../persist-usage";
 import type { TurnUsage } from "../canonical-cascade";
+import { emptyPacket } from "@/capabilities/observability/turn-evidence-packet";
 
 const TENANT = "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe";
 const NB = "bc8a9bf6-8f36-4c2f-8b9f-f3465188d13a";
@@ -226,5 +227,127 @@ describe("tenantSpendSince — the rollup ADR-0037 needs", () => {
     } as never);
     const out = await tenantSpendSince(TENANT, new Date());
     expect(out[0]).toEqual({ provider: "Unknown", turns: 3, costUsd: null });
+  });
+});
+
+describe("persistTurnUsage — Turn Flight Recorder columns (migration 090)", () => {
+  const NOTEBOOK = "93d8c68e-d252-451d-8b52-e0a830543437";
+  const TURN_ID = "8345ea5e-ad86-4d7f-a686-313b7b170adc";
+
+  function buildRecord(): TurnRecord {
+    const packet = emptyPacket({
+      kind: "chat",
+      environment: "staging",
+      git_sha: "dd41c7f8e3bac27fc0b8f2bcdbbbc4ebdb5bbf2c",
+      service_version: "v3.351.7",
+      tenant_id: TENANT,
+      notebook_id: NOTEBOOK,
+      turn_id: TURN_ID,
+    });
+    packet.answer_gate.decision = "answered";
+    return {
+      packet,
+      anomalies: [{ code: "VISUAL_EVIDENCE_DROPPED", stage: "context", detail: {} }],
+      otelTraceId: "0af7651916cd43dd8448eb211c80319c",
+      turnRowId: TURN_ID,
+      clientRequestId: "cr-1",
+      notebookId: NOTEBOOK,
+      environment: "staging",
+      gitSha: "dd41c7f8e3bac27fc0b8f2bcdbbbc4ebdb5bbf2c",
+    };
+  }
+
+  it("without a record, the eight new columns write NULL (anomalies excepted)", async () => {
+    await persistTurnUsage(scope, usage);
+    const { sql, params } = calls[0];
+    for (const col of [
+      "otel_trace_id",
+      "turn_id",
+      "client_request_id",
+      "notebook_id",
+      "environment",
+      "git_sha",
+      "evidence_packet",
+      "anomalies",
+    ]) {
+      expect(sql).toContain(col);
+    }
+    // Exactly 7 nulls belong to the new nullable columns (plus whatever
+    // pre-existing nulls the base scope/usage produced) — assert presence,
+    // not position, since the base test above already pins the base 15.
+    expect(params).toContain(null);
+    // anomalies is NOT NULL (090 default '[]'::jsonb) — never pass null for it.
+    expect(params).not.toContain(undefined);
+    expect(params[params.length - 1]).toBe("[]"); // anomalies -> stringified []
+  });
+
+  it("with a record, writes otelTraceId/turnRowId/clientRequestId/notebookId/environment/gitSha", async () => {
+    const record = buildRecord();
+    await persistTurnUsage(scope, usage, record);
+    const { params } = calls[0];
+    expect(params).toEqual(
+      expect.arrayContaining([
+        record.otelTraceId,
+        record.turnRowId,
+        record.clientRequestId,
+        record.notebookId,
+        record.environment,
+        record.gitSha,
+      ]),
+    );
+  });
+
+  it("with a record, the packet is serialized as JSON and included in the params", async () => {
+    const record = buildRecord();
+    await persistTurnUsage(scope, usage, record);
+    const { params } = calls[0];
+    const packetParam = params.find(
+      (p) => typeof p === "string" && p.includes('"answer_gate"') && p.includes('"answered"'),
+    );
+    expect(packetParam).toBeDefined();
+    expect(JSON.parse(packetParam as string).answer_gate.decision).toBe("answered");
+  });
+
+  it("with a record, anomalies are serialized as a JSON array, never dropped", async () => {
+    const record = buildRecord();
+    await persistTurnUsage(scope, usage, record);
+    const { params } = calls[0];
+    const anomaliesParam = params.find(
+      (p) => typeof p === "string" && p.includes("VISUAL_EVIDENCE_DROPPED"),
+    );
+    expect(anomaliesParam).toBeDefined();
+    expect(JSON.parse(anomaliesParam as string)).toEqual([
+      { code: "VISUAL_EVIDENCE_DROPPED", stage: "context", detail: {} },
+    ]);
+  });
+
+  it("without a record, anomalies still writes the literal empty array, never NULL", async () => {
+    await persistTurnUsage(scope, usage);
+    const { params } = calls[0];
+    expect(params[params.length - 1]).toBe("[]");
+    expect(params[params.length - 1]).not.toBeNull();
+  });
+
+  it("includes the traceId in the persist_failed log when a record is present", async () => {
+    insertBehaviour = () => {
+      throw Object.assign(new Error("boom"), { code: "42P01" });
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const record = buildRecord();
+    await persistTurnUsage(scope, usage, record);
+    const logged = String(spy.mock.calls[0][0]);
+    expect(logged).toContain(record.otelTraceId as string);
+    spy.mockRestore();
+  });
+
+  it("logs traceId: null in the persist_failed event when no record was given", async () => {
+    insertBehaviour = () => {
+      throw new Error("boom");
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await persistTurnUsage(scope, usage);
+    const logged = JSON.parse(String(spy.mock.calls[0][0]));
+    expect(logged.traceId).toBeNull();
+    spy.mockRestore();
   });
 });
