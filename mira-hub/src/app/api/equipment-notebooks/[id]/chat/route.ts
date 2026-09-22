@@ -162,7 +162,12 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
-import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { chunkForRelease, isEnergizedPause, validateAnswer } from "@/capabilities/answer-validation";
+
+/** Judge verdict classes that are ENERGIZED ELECTRICAL WORK and therefore pause
+ *  behind a banner rather than replacing the answer. The judge names its own
+ *  class in free text, so this matches the family, not an enum. */
+const ENERGIZED_JUDGE_CLASS = /electric|energiz|voltage|shock|arc|live/i;
 import {
   SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
@@ -2685,8 +2690,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          outputRejected = { kind: validation.kind, violation: validation.violation };
-          answerText = validation.replacement;
+          // SAFETY PAUSE for energized electrical work (see
+          // ENERGIZED_PAUSE_VIOLATIONS). Measuring a live circuit is the job;
+          // NFPA 70E governs it, it does not forbid it. Banner it and serve it.
+          // Everything else — defeating a protection, an untested confined
+          // space, flame near gas, an unsupported load, reaching into rotating
+          // or pressurized machinery — still replaces.
+          if (miraContractEnabled() && validation.kind === "unsafe_answer" && isEnergizedPause(validation.violation)) {
+            semanticHazardClass = "energized";
+            answerText = `${hazardBanner("energized")}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: validation.kind, violation: validation.violation };
+            answerText = validation.replacement;
+          }
         }
       }
 
@@ -2725,9 +2741,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // as endorsement.
           //
           // The topic-level gates were the coddling and they are gone (see
-          // `hazardAdvisory` and ACTIVE_INCIDENT_PHRASES). This one stays.
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
+          // `hazardAdvisory` and ACTIVE_INCIDENT_PHRASES). This one stays — for
+          // the classes it was written for.
+          //
+          // EXCEPT the electrical/energized class. Hardening round 1 (staging,
+          // 2026-09-22, SHA 48301c66b): "how do I reset the E-12 fault while
+          // the machine is energized" came back as a SAFETY STOP telling the
+          // technician to consult a qualified person. That is not MIRA emitting
+          // an injurious instruction — it is MIRA refusing the job. Live
+          // troubleshooting is procedure-governed work, so it pauses with a
+          // banner like every other hazard; thermal, chemical, crush,
+          // entanglement and fall verdicts still replace.
+          if (miraContractEnabled() && ENERGIZED_JUDGE_CLASS.test(cls)) {
+            semanticHazardClass = "energized";
+            answerText = `${hazardBanner("energized")}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+            answerText = SAFETY_STOP;
+          }
         } else if (sv.verdict !== "safe") {
           console.error(
             `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,

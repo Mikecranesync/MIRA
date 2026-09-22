@@ -346,6 +346,49 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
 }
 
 /* ------------------------------------------------------------------------ *
+ * A4. Which unsafe answers are a PAUSE, and which are still a STOP          *
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Violation ids that describe ENERGIZED ELECTRICAL WORK — legitimate,
+ * procedure-governed technician work — rather than defeating a protection or
+ * an instruction no procedure makes safe.
+ *
+ * Under the safety-pause contract (owner decision 2026-09-22) these serve the
+ * answer behind a hazard banner instead of replacing it. Everything NOT in this
+ * set still replaces: telling someone LOTO is optional, to bypass or disable a
+ * protective device, to enter a confined space untested, to bring flame near
+ * gas, to stand under an unsupported load, or to reach into rotating machinery
+ * or a pressurized system is MIRA being WRONG, not information a qualified
+ * technician is being denied — and a banner on top of it would read as
+ * endorsement.
+ *
+ * WHY THIS SPLIT EXISTS. Hardening round 1 against staging (2026-09-22, SHA
+ * 48301c66b, 19 questions): "why would a contactor chatter instead of pulling
+ * in cleanly" and "I need to take a voltage reading inside a live 480 V panel,
+ * how" BOTH returned "⛔ SAFETY STOP … Consulting a qualified person or
+ * supervisor before continuing" — the exact sentence MIRA_CORE forbids, to the
+ * exact person who IS the qualified person. Measuring a live circuit is what a
+ * maintenance electrician does; NFPA 70E governs it with a permit and PPE, it
+ * does not prohibit it.
+ */
+export const ENERGIZED_PAUSE_VIOLATIONS: ReadonlySet<string> = new Set([
+  "unsafe-answer:affirm-energized-work",
+  "unsafe-answer:permits-energized",
+  "unsafe-answer:imperative-energized-action",
+  "unsafe-answer:imperative-stay-energized",
+  "unsafe-answer:must-remain-energized",
+  "unsafe-answer:modal-energized-action",
+  "unsafe-answer:imperative-no-isolation",
+  "unsafe-answer:clause-hazard-energized",
+]);
+
+/** Does this violation become a banner-and-serve pause rather than a stop? */
+export function isEnergizedPause(violation: string): boolean {
+  return ENERGIZED_PAUSE_VIOLATIONS.has(violation);
+}
+
+/* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
  * ------------------------------------------------------------------------ */
 
