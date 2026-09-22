@@ -112,3 +112,28 @@ Today: SDK → Langfuse, direct OTLP/HTTP, no Collector (design §1, Option A).
 To insert one later: point `OTEL_EXPORTER_OTLP_ENDPOINT` at the Collector
 instead of Langfuse, and have the Collector forward to Langfuse (or wherever).
 **One env var. No code change.**
+
+## 9. Retrieval acceptance suite (automated, staging)
+
+`tools/qa/retrieval_acceptance.py` runs the six evidence/retrieval scenarios
+against a deployed Hub using the exact requests the mobile app sends, reads each
+turn's durable packet via the diagnostics endpoint, and asserts the contract as
+machine checks (retrieval strategy/execution, evidence reaching the provider,
+citation-backed badges, server-side prior-photo recall, no escaped exact ratings,
+token usage, no secrets/text in packets). Exit 0 = all pass. Every row carries
+its trace id, so a failure is one Langfuse open away.
+
+```bash
+# session cookie: the beta-gate provisioner mints one for a throwaway stranger
+( cd mira-hub && doppler run --project factorylm --config stg -- bun run scripts/provision-beta-gate.ts ) > /tmp/env.out
+set -a; . <(grep '^ENV:' /tmp/env.out | sed 's/^ENV://'); set +a
+ACCEPT_BASE=https://app-staging.factorylm.com ACCEPT_COOKIE="$BETA_GATE_COOKIE" \
+  python3 tools/qa/retrieval_acceptance.py \
+    --photo docs/proofs/2026-09-22-pixel9a-staging-session/turn2-photo-siemens-tp700-nameplate.jpg \
+    --manual tools/demo-3tag-plc-vfd-conveyor.pdf --out /tmp/retrieval-acceptance.json
+```
+
+Run it after any change to `[id]/chat/route.ts`, `manual-rag.ts`,
+`visual-evidence-context.ts`, `answer-validation.ts`, or the flight recorder,
+once staging is redeployed. It refuses a production base URL. CI wiring:
+`.github/workflows/retrieval-acceptance.yml` (manual dispatch + post-staging-deploy).
