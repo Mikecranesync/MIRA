@@ -5,6 +5,10 @@ Answers one question over real staging turns: when the Jev shadow judgment
 (`answer_gate.jev_sufficient`, PR #3949) disagrees with MIRA's presence-based
 `evidence_sufficient`, are the disagreements consistently useful?
 
+Exp B (chunk choice, this PR): also records which chunk Jev selected as best
+via `answer_gate.jev_best_chunk*` fields, enabling analysis of whether Jev's
+chunk ranking aligns with what the model actually cited.
+
 Sources (merged, de-duplicated by trace id):
   --runs N          the last N successful `retrieval-acceptance.yml` runs' artifacts
                     (downloaded with `gh`). Acceptance turns are SWEPT from the
@@ -32,6 +36,12 @@ possible disagreement is "MIRA says sufficient, Jev says low". Categories:
   D4 refused_jev_high       refused AND jev ≥ HIGH → retrieval fine, generation didn't use it.
   A  agree                  answered AND jev ≥ HIGH.
   U  uncertain              LOW ≤ jev < HIGH.
+
+Exp B categories (chunk choice, when jev_best_chunk is non-null):
+  B_agree                   jev_best_chunk matches first citation (BM25 order confirmed)
+  B_reorder                 jev_best_chunk differs from first citation (suggests reordering retrieval)
+  B_no_choice               jev_best_chunk is 0 (no chunk was adequate)
+  B_uncertain               jev_best_chunk_confidence < HIGH (low confidence in choice)
 
 Never prints question or answer text; the packet holds none and the DB text
 columns are never selected. Cost uses the vendor's published $/M input rate;
@@ -197,6 +207,12 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
         "jev_skipped_reason": ag.get("jev_skipped_reason"),
         "jev_latency_ms": ag.get("jev_latency_ms"),
         "jev_input_tokens": ag.get("jev_input_tokens"),
+        "jev_best_chunk": ag.get("jev_best_chunk"),
+        "jev_best_chunk_confidence": ag.get("jev_best_chunk_confidence"),
+        "jev_best_chunk_index": ag.get("jev_best_chunk_index"),
+        "jev_best_chunk_skipped_reason": ag.get("jev_best_chunk_skipped_reason"),
+        "jev_best_chunk_latency_ms": ag.get("jev_best_chunk_latency_ms"),
+        "jev_choice_instructions_version": ag.get("jev_choice_instructions_version"),
         "served_provider": gen.get("served_provider"),
         "generation_ms": tm.get("generation"),
         "total_ms": tm.get("total"),
@@ -209,15 +225,32 @@ def categorize(r: dict[str, Any]) -> str:
     if j is None:
         return "skipped:" + str(r.get("jev_skipped_reason")) if r.get("jev_aware") else "pre_shadow"
     refused = r.get("decision") == "insufficient_evidence"
+    
+    # Primary categorization (Exp A: sufficiency)
     if j < LOW:
         if refused:
-            return "D1 refused_jev_low"
-        return (
-            "D2 answered_claim_jev_low" if r.get("ungrounded_unit_claim") else "D3 answered_jev_low"
-        )
-    if j >= HIGH:
-        return "D4 refused_jev_high" if refused else "A agree"
-    return "U uncertain"
+            base = "D1 refused_jev_low"
+        else:
+            base = "D2 answered_claim_jev_low" if r.get("ungrounded_unit_claim") else "D3 answered_jev_low"
+    elif j >= HIGH:
+        base = "D4 refused_jev_high" if refused else "A agree"
+    else:
+        base = "U uncertain"
+    
+    # Secondary categorization (Exp B: chunk choice) — only when best_chunk is present
+    best_chunk = r.get("jev_best_chunk")
+    best_chunk_conf = r.get("jev_best_chunk_confidence")
+    if best_chunk is not None:
+        if best_chunk == 0:
+            return f"{base} + B_no_choice"
+        elif best_chunk_conf is not None and best_chunk_conf < HIGH:
+            return f"{base} + B_uncertain"
+        # Note: we can't determine B_agree vs B_reorder without citation data,
+        # which isn't in the packet. Those require wire.citations analysis.
+        # For now, just flag that chunk choice was made.
+        return f"{base} + B_chosen"
+    
+    return base
 
 
 def report(
