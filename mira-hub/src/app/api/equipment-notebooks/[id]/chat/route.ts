@@ -426,6 +426,62 @@ export function isRefusal(answer: string): boolean {
   );
 }
 
+/** The refusal pattern applied to ONE sentence, without `isRefusal`'s
+ *  whole-answer length bound. Used to separate a limitation clause from the
+ *  rest of an answer (#3953). */
+function sentenceIsRefusal(sentence: string): boolean {
+  const a = sentence.toLowerCase();
+  return (
+    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
+    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a)
+  );
+}
+
+/** Minimum characters of cited, non-limitation prose before a turn counts as
+ *  having answered something. A bare "[1]." is not an answer. */
+const MIN_CITED_ANSWER_CHARS = 25;
+
+/**
+ * #3953 — does this answer ASSERT something and cite a shipped source, beside
+ * its limitation sentence? Drop every sentence that trips the refusal pattern;
+ * if what remains is substantive AND uses an `[n]` that resolves to a citation
+ * actually being shipped, the turn answered and then qualified itself. That is
+ * not a refusal.
+ *
+ * Live case (acceptance run 35721520600, trace 7b32662ba5099656): "The PLC
+ * exposes three tags … [1]. The reference only lists the tag names; it does not
+ * provide definitions." The second sentence tripped the whole-text regex, so
+ * the turn was recorded as `insufficient_evidence`, its citation stripped and
+ * its badge downgraded to general — for an answer that was genuinely grounded.
+ *
+ * The citation requirement is what protects genuine refusals: a refusal whose
+ * only `[n]` sits INSIDE the limitation clause has nothing left after the drop,
+ * and an invented `[9]` resolves to no shipped citation. Exported for tests.
+ */
+export function isCitedPartialAnswer(answer: string, citations: EvidenceCitation[]): boolean {
+  const kept = answer
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !sentenceIsRefusal(sentence))
+    .join(" ")
+    .trim();
+  if (kept.replace(/\s*\[\d+\]/g, "").trim().length < MIN_CITED_ANSWER_CHARS) return false;
+  return citationsUsedInAnswer(kept, citations).length > 0;
+}
+
+/**
+ * The turn-level refusal decision (#3953). `isRefusal` stays the pure
+ * whole-text classifier it was — the observability mirror and every existing
+ * caller keep their meaning — and this wraps it with the one exception the
+ * live traces showed it needs. Exported for tests.
+ */
+export function refusalVerdict(
+  answer: string,
+  ctx: { docGrounded: boolean; citations: EvidenceCitation[] },
+): boolean {
+  if (!isRefusal(answer)) return false;
+  return !(ctx.docGrounded && isCitedPartialAnswer(answer, ctx.citations));
+}
+
 /** Assemble the provider messages: system prompt, then the sanitized
  *  conversation history (so a follow-up has memory of the thread), then the
  *  current user turn carrying the fresh grounding excerpts. Prior turns are plain
@@ -2487,7 +2543,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as
       // insufficient_evidence; a grounded answer ships only the [n] it used.
-      const refused = served && isRefusal(answerText);
+      // #3953: a doc-grounded answer that asserts something and cites a
+      // shipped source is not a refusal just because it also states a
+      // limitation. `isRefusal` itself is unchanged (the observability mirror
+      // below still reports the raw phrase match).
+      const refused = served && refusalVerdict(answerText, { docGrounded, citations });
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
