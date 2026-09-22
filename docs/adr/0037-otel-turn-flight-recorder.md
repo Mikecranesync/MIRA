@@ -54,7 +54,7 @@ what did this turn cost) — both of which stay exactly as they are.
    it also scrubs whatever auto-instrumentation (`http`/`pg`/`undici`)
    attaches. Auto-instrumentation header capture is never enabled as a second
    line of defense, not a substitute for the processor.
-6. **Five deterministic anomaly checks run over the packet** (pure functions,
+6. **Six deterministic anomaly checks run over the packet** (pure functions,
    no I/O) so a bad answer's likely cause is flagged without Mike having to
    re-derive it from the raw packet by eye every time.
 7. **Mobile v1 is unchanged.** The server ingress span is the trace root. A

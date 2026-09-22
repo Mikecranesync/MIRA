@@ -38,7 +38,7 @@
  * what the seam removes (P0004 map §10 Q4).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { context, trace, type Context, type Span } from "@opentelemetry/api";
+import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
@@ -820,10 +820,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     rootSpan,
   );
   let rootEnded = false;
+  // Child spans that may still be open when an early exit path ends the root
+  // (identity.resolve stays open until the notebook row is loaded). endRoot()
+  // drains them so no span ever leaks un-ended.
+  const openChildren = new Set<Span>();
   const endRoot = (extra?: SpanAttrs): void => {
     if (rootEnded) return;
     rootEnded = true;
     try {
+      for (const child of openChildren) {
+        try {
+          child.end();
+        } catch {
+          /* already ended */
+        }
+      }
+      openChildren.clear();
       if (extra) setSpanAttrs(extra, rootSpan);
     } finally {
       rootSpan.end();
@@ -983,6 +995,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           releaseErr instanceof Error ? releaseErr.message : releaseErr,
         );
       });
+      // Every pre-stream failure funnels through here: the root span must not
+      // leak un-ended, and the trace must say which stage threw.
+      try {
+        rootSpan.recordException(err instanceof Error ? err : new Error(String(err)));
+        rootSpan.setStatus({ code: SpanStatusCode.ERROR });
+      } catch {
+        /* telemetry never changes the outcome */
+      }
+      endRoot({ "mira.turn.aborted": true });
       throw err;
     }
   };
@@ -1123,6 +1144,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
   const identityResolveSpan = tracer.startSpan("identity.resolve", undefined, rootCtx);
+  openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
   );
@@ -1141,15 +1163,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       "mira.identity.ran": true,
       "mira.identity.state": boundAsset.state === "resolved" ? "verified" : "unknown",
       "mira.asset.id": boundAsset.state === "resolved" ? boundAsset.entityId : null,
-      "mira.identity.manufacturer_present": false,
-      "mira.identity.model_present": false,
       "mira.identity.candidate_count": 0,
       "mira.identity.unresolved_reason":
         boundAsset.state === "unbound" ? "not_bound" : boundAsset.state === "unresolvable" ? "unresolvable" : null,
     },
     identityResolveSpan,
   );
-  identityResolveSpan.end();
+  // manufacturer_present / model_present come from the notebook row, which is
+  // loaded further down (nb) — the span stays open until then so the exported
+  // span and the persisted packet never disagree about the same turn.
   // Private conversations §3: a client-supplied asset id is a REQUEST, not
   // truth. Machine history / live evidence is served only for the notebook's
   // SERVER-resolved binding — tenant-authorized (resolveBoundAsset) and
@@ -1705,16 +1727,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     getNotebook(ctx.tenantId, notebookId).catch(() => null),
     listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
   ]);
-  // Late correction to the identity.resolve packet fields: `nb` (manufacturer/
-  // model) is not available until this point (a second tenant-scoped query),
-  // so the earlier `identity.resolve` span/stage call left these at their
-  // honest default (false) rather than guessing. The span itself was already
-  // ended (mirroring is best-effort per turn-recorder.ts); the packet is the
-  // source of truth and a second `.stage()` call merges into it safely.
+  // `nb` (manufacturer/model) is only known here — a second tenant-scoped
+  // query — so identity.resolve's packet fields AND its still-open span get
+  // the real flags now, and the span ends. A second `.stage()` merges safely.
   rec.stage("identity", {
     manufacturer_present: Boolean(nb?.manufacturer),
     model_present: Boolean(nb?.model),
   });
+  setSpanAttrs(
+    {
+      "mira.identity.manufacturer_present": Boolean(nb?.manufacturer),
+      "mira.identity.model_present": Boolean(nb?.model),
+    },
+    identityResolveSpan,
+  );
+  identityResolveSpan.end();
+  openChildren.delete(identityResolveSpan);
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
     : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";

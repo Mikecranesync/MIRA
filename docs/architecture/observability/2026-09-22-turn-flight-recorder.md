@@ -11,7 +11,7 @@
 Pixel (MIRA Staging app)                          mira-hub (Next.js 16, Node 22, standalone)
   POST /look  ──(photo)──────────────────────▶  instrumentation.ts → NodeSDK (OTel JS)
   POST /chat  ──(question + visualEvidence)──▶     ├─ auto: http (inbound), undici (provider fetch), pg
-                                                   ├─ manual domain spans (mira.turn + 9 children)
+                                                   ├─ manual domain spans (mira.turn + 10 children)
                                                    ├─ BatchSpanProcessor → OTLP/HTTP protobuf ──▶ Langfuse (staging project)
                                                    └─ TurnRecorder → decision_traces (packet + otel_trace_id + anomalies)
                                                             ▲ single writer: persist-usage.ts

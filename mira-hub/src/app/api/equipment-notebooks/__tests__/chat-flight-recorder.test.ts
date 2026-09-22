@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { SpanStatusCode } from "@opentelemetry/api";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { __testing__installInMemoryExporter } from "@/capabilities/observability/tracing";
 import type { TurnRecord } from "@/lib/inference/persist-usage";
@@ -251,6 +252,51 @@ describe("recordTurn throwing still persists a packet", () => {
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
     expect(record.packet.persistence.outcome).toBe("failed");
+  });
+});
+
+describe("no span leaks when a pre-stream stage throws", () => {
+  it("resolveBoundAsset throwing ends the root span with ERROR status and ends identity.resolve", async () => {
+    domainMock.resolveBoundAsset.mockRejectedValueOnce(new Error("db offline"));
+    vi.stubGlobal("fetch", vi.fn());
+    await expect(POST(chatReq({ message: "how do VFDs work", mode: "general" }), params)).rejects.toThrow("db offline");
+
+    const spans = handle.finished();
+    const root = spans.find((s) => s.name === "mira.turn");
+    expect(root).toBeTruthy();
+    expect(root!.status.code).toBe(SpanStatusCode.ERROR);
+    expect(root!.attributes["mira.turn.aborted"]).toBe(true);
+    // identity.resolve was started before the throw and must not leak open.
+    const identity = spans.find((s) => s.name === "identity.resolve");
+    expect(identity).toBeTruthy();
+    expect(identity!.ended).toBe(true);
+    // Nothing was persisted for a turn that never reached the stream.
+    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+  });
+
+  it("identity.resolve carries the notebook's real manufacturer/model flags on span AND packet", async () => {
+    // Default mock notebook: manufacturer "Allen-Bradley", model "PowerFlex 525".
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance here.", { prompt_tokens: 3, completion_tokens: 2 })));
+    const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const identity = handle.finished().find((s) => s.name === "identity.resolve");
+    expect(identity!.attributes["mira.identity.manufacturer_present"]).toBe(true);
+    expect(identity!.attributes["mira.identity.model_present"]).toBe(true);
+    const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+    expect(record.packet.identity.manufacturer_present).toBe(true);
+    expect(record.packet.identity.model_present).toBe(true);
+
+    // Negative control: a notebook with no identity yields false on both.
+    handle.reset();
+    persistMock.persistTurnUsage.mockClear();
+    domainMock.getNotebook.mockResolvedValueOnce({ id: NB, displayName: "Unknown box", manufacturer: null, model: null } as never);
+    const res2 = await POST(chatReq({ message: "what is this", mode: "general" }), params);
+    await res2.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const identity2 = handle.finished().find((s) => s.name === "identity.resolve");
+    expect(identity2!.attributes["mira.identity.manufacturer_present"]).toBe(false);
+    expect(identity2!.attributes["mira.identity.model_present"]).toBe(false);
   });
 });
 

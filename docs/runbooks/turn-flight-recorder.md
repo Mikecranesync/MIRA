@@ -38,7 +38,7 @@ the right traffic. A dedicated staging project is a follow-up (see the ADR).
 
 ## 3. Read the span tree top-down
 
-Root span `mira.turn` has 9 children in order: `request.receive` →
+Root span `mira.turn` has these children in order: `request.receive` →
 `attachment.persist` (look only) → `vision.analyze` (look only) →
 `evidence.materialize` → `identity.resolve` → `retrieval.execute` →
 `context.assemble` → `chat <model>` (one per cascade attempt) →
@@ -48,7 +48,7 @@ Root span `mira.turn` has 9 children in order: `request.receive` →
 
 | The technician says… | Look at | What you're checking |
 |---|---|---|
-| "It describes a photo but got the details wrong" | `evidence.materialize`, `chat <model>` | `mira.chat.has_image_input=false` + `mira.visual.observation_in_context=false` — the model answered from text, not the photo |
+| "It describes a photo but got the details wrong" | `evidence.materialize`, `chat <model>` | `mira.gen.has_image_input=false` + `mira.visual.observation_in_context=false` — the model answered from text, not the photo |
 | "It says there's no manual for this" | `retrieval.execute` | `mira.retrieval.strategy` / `.executed` — was retrieval even attempted, and why not (`zero_result_reason`) |
 | "The answer sounds confident but generic" | `answer_gate.evaluate` | `mira.answer_gate.reason` — look for `GENERIC_ANSWER_UNGROUNDED_CLAIM` in `mira.anomalies` on the root span |
 | "It never figured out which drive I'm looking at" | `identity.resolve` | `mira.identity.unresolved_reason` — look for anomaly `IDENTITY_PIPELINE_DROPPED` (identity had signal — an observation or candidates — and dropped it silently) |
