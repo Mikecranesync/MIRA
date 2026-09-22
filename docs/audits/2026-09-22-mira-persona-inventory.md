@@ -223,3 +223,40 @@ next migration and is deliberately not attempted here.
 5. Safety classification stays where it is — `safety-classifier.ts`, before retrieval,
    before inference. The contract describes safety *posture in prose*; it never becomes
    the safety *gate*.
+
+
+---
+
+## 5. Remaining forks (the drift guard's allowlist, in words)
+
+Enforced by `mira-hub/src/lib/__tests__/mira-contract-drift.test.ts`. Migrating one
+means deleting its line there; the list can only shrink.
+
+| Route | Mode it should take | Note |
+|---|---|---|
+| `equipment-notebooks/[id]/chat` | grounded / general | **Migrated.** Literals retained as the flag-off rollback path |
+| `hub/ask` | augmented | **Migrated.** Same |
+| `assets/[id]/chat` | grounded + augmented fallback | Two personas in one file; the `:548` branch is the no-manual case |
+| `namespace/node/[id]/chat` | grounded + **needs** general | Has no general escape hatch — a thin node is a dead end (§2.6) |
+| `mira/ask` | grounded | Kiosk; no safety prose today |
+| `quickstart/ask` | grounded | Public funnel — cite-or-refuse is correct here and should stay |
+
+Python (`mira-bots/`) is a separate runtime and a separate arc: `active.yaml` +
+four `engine.py` personas, plus the `GSD` fail-open fallback (§2.1).
+
+## 6. Recommended next migration
+
+1. **`namespace/node/[id]/chat` → grounded + general.** Highest product value: it is
+   the only live surface with a hard dead end and no general fallback, which is the
+   golden rule's clearest remaining violation in the Hub.
+2. **`assets/[id]/chat` → grounded + augmented.** Retires two personas in one file and
+   brings the energy-state rule to the V3 machine-scope door.
+3. **Narrow the general-mode speculation rule** before either — see the flagged case in
+   `docs/proofs/2026-09-22-mira-intelligence-contract-acceptance.md`: forbid guessing
+   what a specific numbered parameter ID *means*, with its own A/B.
+4. **`mira/ask`** (kiosk) — currently carries no safety prose at all.
+5. **Python runtime** — `active.yaml` becomes the extension over a shared core, and the
+   `GSD` fail-open fallback is deleted rather than left contradicting doctrine.
+
+`quickstart/ask` should **not** be migrated to augmented: it is anonymous and pinned to
+the public OEM tenant, so cite-or-refuse is the correct contract there.

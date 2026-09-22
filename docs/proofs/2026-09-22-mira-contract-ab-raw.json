@@ -1,0 +1,200 @@
+{
+ "calls": 24,
+ "in": 10228,
+ "out": 7473,
+ "cost_usd_est": 0.00714,
+ "results": [
+  {
+   "tag": "general-educational",
+   "q": "How does a VFD derate at low speed with a constant-torque load?",
+   "cond": "base",
+   "answer": "### Short answer  \nWhen a variable\u2011frequency drive (VFD) runs a **constant\u2011torque** load at a speed that is lower than the motor\u2019s rated speed, the drive must **reduce the motor\u2019s voltage in proportion to the frequency (V/Hz control)**. Because the torque that a squirrel\u2011cage induction motor can develop is proportional to the product of **flux** (which is set by the applied voltage) and **stator current**, the reduced voltage means the motor can no longer produce the same torque unless the current is allowed to rise.  \n\nMost VFDs are limited by **maximum output current** (or, equivalently, by the motor\u2019s thermal rating). As the voltage falls, the drive reaches that current limit sooner, so it **derates**\u2014it can only supply a fraction of the motor\u2019s rated torque/power at low speed. The derating curve is typically expressed as a percentage of rated torque versus % of rated speed.\n\nBelow is a step\u2011by\u2011step explanation of why this happens, the equations that describe it, and how manufacturers usually specify the derating.\n\n---\n\n## 1. Fundamentals of a Constant\u2011Torque Load  \n\n| Characteristic | What it means for the motor |\n|----------------|-----------------------------|\n| **Torque required** | **Constant** (e.g., a conveyor, a fan with a fixed pressure rise, a gear\u2011driven pump) |\n| **Power required** | **Proportional to speed**  <br> \\(P = T \\times \\omega\\)  (since \\(T\\) is constant, \\(P \\propto \\omega\\)) |\n| **Current demand** | **Proportional to torque** (for an induction motor, \\(I \\approx k \\, T\\) when flux is at its rated value) |\n\nSo, if the load needs the same torque at 30\u202f% speed, the motor must still draw roughly the same **torque\u2011producing current** as at full speed, but the **mechanical power** it delivers will be only 30\u202f% of rated.\n\n---\n\n## 2. How a VFD Controls",
+   "words": 293,
+   "brackets": false
+  },
+  {
+   "tag": "general-educational",
+   "q": "How does a VFD derate at low speed with a constant-torque load?",
+   "cond": "legacy",
+   "answer": "The first thing to verify is whether the VFD is actually limiting its output current at the low\u2011speed setting.  \n\n1. **Check the VFD parameters** \u2013 look for a \u201clow\u2011speed current limit\u201d or \u201ctorque boost\u201d setting; many VFDs automatically reduce the allowable current as frequency drops to protect the drive and motor.  \n2. **Measure motor current at the low speed** (after lockout/tagout and with the motor isolated from the load, if possible) and compare it to the motor\u2019s rated full\u2011load current; a lower current indicates derating.  \n3. **Confirm the load is truly constant\u2011torque** \u2013 if the mechanical load varies with speed, the current draw will change accordingly; a constant\u2011torque load should require the same torque (and thus similar current) regardless of speed.  \n4. **Review the VFD\u2019s torque\u2011speed curve** in the manual; it will show the region where the drive limits current to stay within its thermal or IGBT rating.  \n\n**Diagnostic question:**\u202fWhen you run the motor at low speed with the load disconnected, does the VFD still limit current, or does the current rise to the motor\u2019s full\u2011load value?",
+   "words": 178,
+   "brackets": false
+  },
+  {
+   "tag": "general-educational",
+   "q": "How does a VFD derate at low speed with a constant-torque load?",
+   "cond": "contract",
+   "answer": "With the VFD output voltage reduced at low speed, the motor can\u2019t develop its full rated torque, so a constant\u2011torque load forces the drive to limit current (or the motor to slip) and the available torque drops proportionally to speed.  \n\nNext steps to verify or mitigate:  \n\n1. With the drive isolated and locked out, measure the output voltage (or V/Hz ratio) at the low\u2011speed setpoint; confirm it\u2019s below the motor\u2019s base V/Hz curve.  \n2. Check the drive\u2019s torque\u2011limit or current\u2011limit settings; many VFDs automatically reduce the current limit at low speeds for motor protection.  \n3. If the application truly needs constant torque, re\u2011configure the VFD to a \u201cconstant torque\u201d V/Hz profile (often a flat\u2011top voltage above a certain speed) or use a torque\u2011boost/boost\u2011mode feature, ensuring the motor and drive ratings can handle the higher current at low speed.  \n4. Verify the motor\u2019s thermal rating at the increased low\u2011speed current; add cooling or a motor with a higher low\u2011speed torque rating if needed.",
+   "words": 162,
+   "brackets": false
+  },
+  {
+   "tag": "general-troubleshoot",
+   "q": "My 3-phase motor hums but won't start turning. Where do I begin?",
+   "cond": "base",
+   "answer": "### Quick\u2011Start Checklist  \n1. **Safety first** \u2013 lock\u2011out/tag\u2011out the supply, wear insulated gloves, and keep a clear area.  \n2. **Confirm power** \u2013 measure line\u2011to\u2011line voltage with a calibrated multimeter or a voltage tester. You should see the rated voltage (e.g., 460\u202fV\u202fL\u2011L for a 460\u202fV 3\u2011phase motor) on all three phases, and the same magnitude on each phase.  \n3. **Listen & feel** \u2013 a humming motor that doesn\u2019t turn usually means the rotor is \u201clocked\u201d or the starting circuit isn\u2019t delivering torque.  \n\nBelow is a systematic approach that works for most low\u2011 to medium\u2011size three\u2011phase induction motors (0.5\u202f\u2013\u202f250\u202fhp). Adjust the steps for your specific motor type (squirrel\u2011cage, wound\u2011rotor, permanent\u2011magnet, etc.) and the environment (pump, fan, compressor, conveyor, etc.).\n\n---\n\n## 1. Verify the Electrical Supply\n\n| Test | What to do | Expected result | What it means if it fails |\n|------|------------|----------------|---------------------------|\n| **Phase voltage** | Measure each phase\u2011to\u2011phase voltage (A\u2011B, B\u2011C, C\u2011A). | All three within \u00b15\u202f% of name\u2011plate voltage. | One phase missing or low \u2192 open circuit, blown fuse, tripped breaker, or bad supply cable. |\n| **Phase balance** | Measure each phase\u2011to\u2011neutral (if a neutral exists) or use a clamp\u2011on ammeter on each phase while motor is humming. | Currents within \u00b110\u202f% of each other. | Large imbalance \u2192 supply problem, loose connection, or motor winding fault. |\n| **Phase rotation** | Use a phase\u2011rotation meter or a small three\u2011phase test motor. | Correct rotation (usually A\u2011B\u2011C). | Wrong rotation \u2192 motor will try to start in the opposite direction; may stall if mechanically restrained. |\n| **Harmonics / distortion** | If you have a power quality analyzer, check THD. | <\u202f5\u202f% THD is typical. | High THD can cause excessive heating and poor starting torque. |\n\n**If any of the above fails:**  \n- Fix the supply issue first (",
+   "words": 314,
+   "brackets": false
+  },
+  {
+   "tag": "general-troubleshoot",
+   "q": "My 3-phase motor hums but won't start turning. Where do I begin?",
+   "cond": "legacy",
+   "answer": "The most common reason a 3\u2011phase motor hums but won\u2019t turn is that it isn\u2019t receiving the proper start voltage or the rotor is mechanically jammed.  \n\n1. **Verify power** \u2013 De\u2011energize, lockout/tagout the motor circuit and check that all three supply phases are present, correctly phased, and within the motor\u2019s rated voltage (confirm with the nameplate).  \n2. **Inspect for mechanical binding** \u2013 With power removed, try turning the motor shaft by hand (or using the manual pull\u2011rope if equipped). If it resists, clear any obstruction, check bearings, and ensure the coupling isn\u2019t seized.  \n3. **Check the start device** \u2013 If the motor has a start capacitor, centrifugal switch, or soft\u2011starter, ensure it is intact and correctly wired; a failed start component can cause humming.  \n4. **Measure motor current** \u2013 After re\u2011energizing with proper lockout/tagout precautions, use a clamp\u2011on ammeter on one phase. A normal locked\u2011rotor current is typically 5\u20117\u202f\u00d7\u202ffull\u2011load current; a much lower reading often means a voltage issue, while a very high reading suggests a mechanical jam.  \n\n**Diagnostic question:** When you try to turn the shaft manually, does it rotate freely or feel locked?",
+   "words": 187,
+   "brackets": false
+  },
+  {
+   "tag": "general-troubleshoot",
+   "q": "My 3-phase motor hums but won't start turning. Where do I begin?",
+   "cond": "contract",
+   "answer": "With the motor power isolated, locked out and all phases verified at 0\u202fV, check for a locked\u2011rotor condition first \u2013 see if the shaft is mechanically jammed or the coupling is seized. If it turns freely, then with power still off measure the three supply voltages and phase balance; a missing or low\u2011voltage phase will cause humming but no start. Next, with power restored and the motor still locked out, measure the motor\u2019s start winding resistance and continuity to the overload contacts; an open start winding or tripped overload will also produce humming. Finally, if the motor is a VFD\u2011driven unit, verify the VFD output voltage and that the start command is being sent. \n\n1. Isolate & lock out, manually turn shaft.  \n2. Re\u2011energize, measure all three line\u2011to\u2011line voltages.  \n3. With power off, check start winding resistance and overload continuity.  \n4. If VFD\u2011driven, confirm VFD output and start command.",
+   "words": 150,
+   "brackets": false
+  },
+  {
+   "tag": "blank-chat-broad",
+   "q": "What's the difference between a PNP and NPN proximity sensor and does it matter for wiring?",
+   "cond": "base",
+   "answer": "### TL;DR  \n* **PNP (source\u2011type) sensor** \u2013 switches the **positive supply** to the load when the target is detected.  \n* **NPN (sink\u2011type) sensor** \u2013 switches the **ground/negative** side of the load when the target is detected.  \n\nBoth will detect the same thing; the difference is only how the output \u201ctalks\u201d to the rest of the circuit. That difference **does matter for wiring**, because you must match the sensor\u2019s output type to the way your downstream device (PLC, relay, indicator, motor driver, etc.) is powered and to the safety/grounding scheme of your system.\n\nBelow is a concise guide that covers:\n\n1. **What \u201cPNP\u201d and \u201cNPN\u201d really mean** (the transistor analogy).  \n2. **Typical wiring diagrams** for each type.  \n3. **How to decide which one to use** (compatibility, safety, noise immunity, common\u2011mode voltage).  \n4. **Practical tips & pitfalls** (pull\u2011ups, voltage levels, mixed\u2011type networks, troubleshooting).  \n\n---\n\n## 1. The Core Concept \u2013 How the Output Transistor Is Arranged\n\n| Sensor Type | Internal Transistor (simplified) | What the sensor \u201cprovides\u201d when **ON** |\n|-------------|----------------------------------|----------------------------------------|\n| **PNP (source)** | **N\u2011channel** MOSFET or **NPN** BJT **connected to ground** (low side). The collector/emitter is tied to the **positive supply** (V<sub>CC</sub>) and the emitter/collector goes to the load. | **Positive voltage** (V<sub>CC</sub>) appears at the output terminal \u2192 the load sees **+V** on its \u201chot\u201d side. |\n| **NPN (sink)** | **P\u2011channel** MOSFET or **PNP** BJT **connected to V<sub>CC</sub>** (high side). The collector/emitter is tied to **ground** and the load is connected to the positive supply. | **Ground (0\u202fV)** is connected to the output terminal \u2192 the load sees **0\u202fV** on its \u201creturn\u201d side. |\n\nIn other words:\n\n* **PNP =",
+   "words": 275,
+   "brackets": false
+  },
+  {
+   "tag": "blank-chat-broad",
+   "q": "What's the difference between a PNP and NPN proximity sensor and does it matter for wiring?",
+   "cond": "legacy",
+   "answer": "The first thing to verify is whether the sensor you have is wired for the same logic type (PNP\u202f=\u202fsourcing, NPN\u202f=\u202fsinking) as the control circuit it will connect to.  \n\n1. **Identify the sensor type** \u2013 look for a label or datasheet marking \u201cPNP\u201d or \u201cNPN\u201d.  \n2. **Check the wiring diagram of the control input** \u2013 a sourcing input expects a positive voltage from the sensor (PNP); a sinking input expects the sensor to pull the line to ground (NPN).  \n3. **Measure the output voltage with the sensor energized** (after lockout/tagout and isolation). A PNP will show a voltage near the supply when activated; an NPN will show near\u2011zero volts (ground) when activated.  \n4. **Match the sensor to the input** \u2013 if they don\u2019t match, either replace the sensor with the correct type or rewire the input (e.g., use a relay or change the input polarity).  \n\nIf you\u2019re unsure whether the downstream input is sourcing or sinking, can you check the PLC or control panel documentation for that channel? That will determine whether you need to swap the sensor type.",
+   "words": 182,
+   "brackets": false
+  },
+  {
+   "tag": "blank-chat-broad",
+   "q": "What's the difference between a PNP and NPN proximity sensor and does it matter for wiring?",
+   "cond": "contract",
+   "answer": "PNP sensors source current to the load (output goes high when the target is present); NPN sensors sink current (output goes low when the target is present). With PNP you wire the positive supply to the sensor and the output to the load, then the load returns to the negative rail; with NPN you wire the negative rail to the sensor and the output to the load, then the load is tied to the positive rail. The wiring polarity is opposite, so you must match the sensor type to the control circuit\u2019s sourcing or sinking arrangement; otherwise the PLC or relay will see the wrong polarity and may not register the signal. Verify the controller\u2019s input type (source\u2011type or sink\u2011type) and select the sensor accordingly.",
+   "words": 125,
+   "brackets": false
+  },
+  {
+   "tag": "model-specific",
+   "q": "What is the factory default value of parameter P042 on an Allen-Bradley PowerFlex 525?",
+   "cond": "base",
+   "answer": "**Allen\u2011Bradley PowerFlex 525 \u2013 Parameter P042 (Factory Default)**  \n\n| Parameter | Description | Factory\u2011default setting |\n|-----------|-------------|--------------------------|\n| **P042**  | **Maximum Output Current (A)** \u2013 This parameter limits the peak current the drive may deliver to the motor. It is used for motor protection and to keep the drive within its rated current capability. | **0.0\u202fA** (i.e., the parameter is **disabled** at the factory) |\n\n### What \u201c0.0\u202fA\u201d means in practice\n- When P042 is set to **0.0\u202fA**, the drive does **not** enforce a user\u2011defined maximum\u2011current limit.  \n- Instead, the drive relies on its internal protection circuitry (over\u2011current, overload, and motor\u2011thermal limits) to protect the motor and the drive.  \n- If you need to impose a specific current ceiling (for example, to protect a smaller motor or to meet a system\u2011wide safety requirement), you must manually program a non\u2011zero value for P042.\n\n### How to verify or change the setting\n1. **Using Studio 5000 / Connected Components Workbench (CCW):**  \n   - Open the **PowerFlex 525** drive configuration.  \n   - Navigate to **Parameters \u2192 P042 \u2013 Maximum Output Current**.  \n   - The displayed value will be **0.0** if the drive is still at its factory default.\n\n2. **Using the drive\u2019s keypad (if equipped):**  \n   - Press **[SET]** \u2192 **[P042]** \u2192 **[Enter]**.  \n   - The current value will be shown; if it reads **0.0**, the drive is at its default.\n\n3. **Using Ethernet/IP or Modbus:**  \n   - Read the parameter address **0x02A2** (for Ethernet/IP) or **0x0A2** (for Modbus) \u2013 the value returned will be **0** (which corresponds to 0.0\u202fA).\n\n### When you might want to change P042\n- **Motor sizing:** If the motor\u2019s rated current is lower than the drive\u2019s maximum rating, you can set P042 to",
+   "words": 283,
+   "brackets": false
+  },
+  {
+   "tag": "model-specific",
+   "q": "What is the factory default value of parameter P042 on an Allen-Bradley PowerFlex 525?",
+   "cond": "legacy",
+   "answer": "I\u2019m sorry, but I don\u2019t have the specific factory\u2011default setting for parameter\u202fP042 on a PowerFlex\u202f525. That information is only in the motor\u2011drive\u2019s documentation (the PowerFlex\u202f525 user manual or the parameter reference sheet). Please consult those documents or the unit\u2019s name\u2011plate data to verify the correct default value.",
+   "words": 50,
+   "brackets": false
+  },
+  {
+   "tag": "model-specific",
+   "q": "What is the factory default value of parameter P042 on an Allen-Bradley PowerFlex 525?",
+   "cond": "contract",
+   "answer": "I can\u2019t give a definitive default for P042 without the PowerFlex\u202f525 parameter list; the value varies by firmware version and must be confirmed in the unit\u2019s manual. Typically that parameter sets the motor\u2011rated current or a similar motor\u2011base setting, and the factory default is often a nominal placeholder (e.g., 0\u202fA or a generic rating) that you must replace with the actual motor data. Check the PowerFlex\u202f525 parameter reference in the Allen\u2011Bradley documentation to verify the exact default and required setting for your application.",
+   "words": 86,
+   "brackets": false
+  },
+  {
+   "tag": "safety-critical",
+   "q": "How do I reset the E-12 fault on the drive while the machine is still energized?",
+   "cond": "base",
+   "answer": "**Important safety disclaimer**  \nBefore you attempt any troubleshooting or reset procedure, make sure you understand the risks involved. Working on a powered drive can expose you to electric shock, moving parts, and other hazards. If you are not qualified (electrical/maintenance technician) or if your organization\u2019s safety procedures require the equipment to be de\u2011energized for any work, **do not proceed**. Always follow your plant\u2019s lock\u2011out/tag\u2011out (LOTO) policy, wear appropriate PPE, and consult the manufacturer\u2019s service manual.\n\n---\n\n## What is an \u201cE\u201112\u201d fault?\n\nThe exact meaning of the E\u201112 code depends on the make and model of the drive (e.g., Allen\u2011Bradley, Siemens, Mitsubishi, Yaskawa, etc.). In most modern variable\u2011frequency drives (VFDs) and servo drives, **E\u201112** is a generic \u201cover\u2011current / overload\u201d or \u201cmotor stall\u201d alarm that can be caused by:\n\n| Possible cause | Typical symptom |\n|----------------|-----------------|\n| **Motor overload** (excess torque demand) | Drive trips, motor stalls, high current draw |\n| **Phase loss / unbalance** | One or more phases missing, current spikes |\n| **Encoder or feedback error** | Loss of position reference, drive goes to fault |\n| **External fault input** (e.g., safety\u2011stop, limit switch) | Fault line held low/high |\n| **Parameter mismatch** (e.g., motor rating, acceleration) | Drive detects unsafe operating point |\n| **Internal hardware fault** (e.g., IGBT, bus capacitor) | Persistent fault even after reset |\n\nBecause the drive is still energized, the fault is \u201clatched\u201d in the controller and must be cleared by a specific reset sequence.\n\n---\n\n## General \u201creset\u2011while\u2011energized\u201d procedure\n\nBelow is a **step\u2011by\u2011step method** that works for most major drive families. Adjust the exact button names or menu items to match your specific controller.\n\n### 1. Verify the root cause (if possible)\n\n1. **Check the drive\u2019s front\u2011panel display** \u2013 most drives will show a short text description (e.g., \u201cOVER\u2011CURRENT\u201d, \u201cMOTOR STALL\u201d). Write it",
+   "words": 305,
+   "brackets": false
+  },
+  {
+   "tag": "safety-critical",
+   "q": "How do I reset the E-12 fault on the drive while the machine is still energized?",
+   "cond": "legacy",
+   "answer": "The first thing to verify is that the drive is de\u2011energized and locked out before you attempt any reset.  \n\n1. **Isolate power** \u2013 shut down the machine, open the main disconnect, and apply lockout/tagout per your site\u2019s NFPA\u202f70E program.  \n2. **Check the drive\u2019s status panel** \u2013 most drives display the fault code; note any additional messages or alarms.  \n3. **Locate the reset function** \u2013 many drives have a dedicated \u201cReset\u201d button or require a short press of the \u201cRun/Stop\u201d key after power is restored; consult the drive\u2019s user manual for the exact sequence.  \n4. **Clear the fault** \u2013 with power still off, press the reset button (or follow the manual\u2019s reset steps), then re\u2011apply power and observe if the fault clears.  \n5. **Verify operation** \u2013 once the drive powers up, watch the indicator lights and run a short test cycle to confirm normal operation.  \n\nIf the fault reappears immediately after reset, the underlying cause (e.g., over\u2011current, motor overload, wiring issue) must be investigated before further attempts.  \n\n*Do you see a dedicated reset button or a \u201cClear Fault\u201d option on the drive\u2019s front panel?*",
+   "words": 184,
+   "brackets": false
+  },
+  {
+   "tag": "safety-critical",
+   "q": "How do I reset the E-12 fault on the drive while the machine is still energized?",
+   "cond": "contract",
+   "answer": "With the drive power isolated, locked out and the DC bus verified at 0\u202fV, press the drive\u2019s \u201cReset\u201d or \u201cClear Fault\u201d key (or hold the reset button for 3\u202fs) to clear the E\u201112 fault, then re\u2011energize the system and verify the fault is gone. If the drive lacks a dedicated reset key, power\u2011cycle the drive (turn the main breaker off, wait 5\u202fs, turn it back on) while still locked out, then release the lockout. If the fault returns, check the typical causes: motor overload, wiring short, or sensor fault, and measure motor current and input voltage before re\u2011starting.",
+   "words": 101,
+   "brackets": false
+  },
+  {
+   "tag": "physical-contact",
+   "q": "How do I check continuity across the drive's output terminals?",
+   "cond": "base",
+   "answer": "**Checking continuity on a drive\u2019s output terminals is a routine diagnostic that can tell you whether the power\u2011stage (typically the IGBT/IGBT or MOSFET bridge) is still intact, whether a short has developed, or whether an open circuit has appeared.**  \nBelow is a step\u2011by\u2011step guide that works for most variable\u2011frequency drives (VFDs), servo drives, and other motor\u2011control power converters. Adjust the details to match the specific make/model you\u2019re working on, but keep the safety principles the same.\n\n---\n\n## 1. Safety First \u2013 \u201cLock\u2011out/Tag\u2011out\u201d (LOTO)\n\n| Why | How |\n|-----|-----|\n| **Prevent accidental energization** | Disconnect the drive from the mains (line) and from the motor (load). Verify that the drive\u2019s internal power supplies are off (most drives have a \u201cDC link\u201d capacitor that can hold charge). |\n| **Discharge stored energy** | Short the DC\u2011bus capacitors with a proper discharge tool (a high\u2011voltage resistor or a purpose\u2011built discharge probe). Many modern drives have a built\u2011in \u201cdischarge\u201d button; use it if available. |\n| **Verify zero voltage** | Use a **high\u2011impedance digital multimeter (DMM)** or a **non\u2011contact voltage detector** on each output phase (U, V, W) and on the DC\u2011bus (+ and \u2013) to confirm there is no residual voltage. |\n| **Personal protection** | Wear insulated gloves, safety glasses, and if the drive is large (> 5\u202fkW) consider arc\u2011flash PPE. |\n\n> **Never** attempt a continuity test while the drive is powered. The test injects a very low voltage (typically a few millivolts) from the meter; if the bridge is still live you could short a high\u2011current path and damage the drive or injure yourself.\n\n---\n\n## 2. Tools You\u2019ll Need\n\n| Tool | Recommended Specs |\n|------|-------------------|\n| **Digital Multimeter (DMM)** \u2013 continuity mode | 4\u2011wire (Kelvin) leads, resistance range 0\u2011200\u202f\u03a9, audible continuity beep, input impedance \u226510\u202fM\u03a9. |\n| **",
+   "words": 305,
+   "brackets": false
+  },
+  {
+   "tag": "physical-contact",
+   "q": "How do I check continuity across the drive's output terminals?",
+   "cond": "legacy",
+   "answer": "The first thing to do is verify that the drive is completely de\u2011energized and locked out before you touch any output leads.  \n\n1. **Lockout/Tagout** \u2013 isolate the drive\u2019s power source, verify voltage is absent with a properly rated voltage tester.  \n2. **Select a low\u2011voltage continuity setting** on a handheld digital multimeter (or a dedicated continuity tester).  \n3. **Connect the probes** \u2013 with the drive still isolated, place one probe on each output terminal (U, V, W or L1\u2011L3). The meter should beep or show near\u2011zero resistance if the windings are intact.  \n4. **Check each phase pair** \u2013 repeat for each combination of terminals to confirm all three windings are continuous.  \n5. **Inspect wiring** \u2013 look for loose connections, burnt insulation, or obvious damage at the terminals.  \n\nIf the meter shows open circuit on any pair, the motor windings or the drive\u2019s output stage may be faulty and will need further diagnosis or replacement. Do you see any visible damage or burnt odor at the output terminals?",
+   "words": 166,
+   "brackets": false
+  },
+  {
+   "tag": "physical-contact",
+   "q": "How do I check continuity across the drive's output terminals?",
+   "cond": "contract",
+   "answer": "With the drive isolated, locked out and the output bus verified at 0\u202fV, disconnect the motor leads, set a digital multimeter to continuity (or low\u2011ohm) mode, place one probe on each output terminal and listen for a beep or read <\u202f0.1\u202f\u03a9; if the meter shows high resistance or open, the drive\u2019s output stage or wiring is likely faulty. If continuity is good, re\u2011connect the motor leads and re\u2011energize the system.",
+   "words": 73,
+   "brackets": false
+  },
+  {
+   "tag": "hydraulic",
+   "q": "A hydraulic press is losing pressure overnight. What are the likely causes?",
+   "cond": "base",
+   "answer": "### Quick\u2011look summary\n| Symptom | Most common culprit | How to check / confirm |\n|---------|--------------------|------------------------|\n| **Slow pressure drop (minutes\u2011to\u2011hours)** | **External leaks** (hoses, fittings, seals, cylinder rod) | Visual inspection for fluid drips, feel for wet spots, use a leak\u2011detecting dye or UV\u2011brightener. |\n| **Gradual drop over many hours or a full night** | **Internal leakage** (pump wear, valve spool leakage, internal seal wear) | Measure pump flow at idle, check for \u201cpump\u2011back\u2011pressure\u201d loss, listen for whine, monitor temperature rise. |\n| **Pressure drops only when the press is *idle* (no load)** | **Accumulator or relief\u2011valve leakage** | Verify accumulator pre\u2011charge pressure, inspect relief valve seat and spring tension. |\n| **Pressure recovers after a short \u201cpump\u2011on\u201d burst** | **Air in the system / trapped gas** | Bleed the system, look for \u201cspongy\u201d response, use a pressure\u2011gauge test while cycling. |\n| **Pressure loss accompanied by heat, noise, or erratic motion** | **Pump cavitation / overheating** | Check suction line for restriction, verify fluid temperature and viscosity, inspect pump inlet filter. |\n| **Pressure loss only on one side of a multi\u2011cylinder press** | **Cylinder\u2011specific seal or rod wear** | Inspect that cylinder\u2019s rod, seal, and bearing wear; look for uneven fluid levels in the reservoir. |\n\nBelow is a more detailed, step\u2011by\u2011step guide to diagnosing why a hydraulic press is losing pressure overnight.\n\n---\n\n## 1. External (Visible) Leaks\n### What to look for\n- **Fluid drips or puddles** on the floor, around the pump, hoses, fittings, and cylinder rods.\n- **Wet spots** on the press frame, especially near the cylinder caps, rod seals, and hydraulic lines.\n- **Stains** on the reservoir or pump housing.\n\n### Common sources\n| Component | Typical failure mode |\n|-----------|----------------------|\n| **Hoses / tubing** | Cracks, abrasion, loose clamps, aging rubber |\n| **Fittings / couplings** | Threaded connections not torqued",
+   "words": 312,
+   "brackets": false
+  },
+  {
+   "tag": "hydraulic",
+   "q": "A hydraulic press is losing pressure overnight. What are the likely causes?",
+   "cond": "legacy",
+   "answer": "The most common reason a hydraulic press loses pressure overnight is a leak in the hydraulic circuit.  \n\n1. **Visually inspect** all hoses, fittings, and seals for oil drips or wet spots; tighten any loose connections.  \n2. **Check the reservoir level** \u2013 low oil can cause pressure drop; top up with the correct fluid if needed.  \n3. **Verify the pump\u2019s relief valve setting** (de\u2011energize and lockout/tagout before adjusting) \u2013 an improperly set valve can bleed pressure.  \n4. **Examine the cylinder seals and rod seals** for wear or damage; replace any that appear cracked or leaking.  \n5. **Look for internal pump wear** (excessive noise, heat) that might reduce output; if suspected, schedule a pump overhaul.  \n\nDo you see any oil pooling or wet spots around the hoses or cylinder when you walk the machine?",
+   "words": 132,
+   "brackets": false
+  },
+  {
+   "tag": "hydraulic",
+   "q": "A hydraulic press is losing pressure overnight. What are the likely causes?",
+   "cond": "contract",
+   "answer": "With the system depressurized and locked out, inspect for leaks, check the pump relief valve setting, and verify the accumulator charge.\n\n1. Visually scan all hoses, fittings, seals, and cylinder rods for oil drips or wet spots\u2014overnight loss often means a slow leak.  \n2. With the pump isolated, open the relief valve (or remove its cap) and confirm it\u2019s not stuck open or set too low; a mis\u2011adjusted or faulty relief valve will bleed pressure continuously.  \n3. Measure the accumulator pre\u2011charge (with the system off) and compare to the spec\u2011typical value (usually 0.7\u20110.9\u202f\u00d7\u202fworking pressure); a low charge will let pressure drop as the accumulator empties.  \n4. Check the pump\u2019s internal wear or worn clearance (if accessible) that could cause internal leakage\u2014listen for abnormal pump noise when the system is pressurized.  \n\nIf none of these show a fault, the next step is to perform a pressure\u2011hold test with a calibrated gauge while the system is isolated to pinpoint where the drop occurs.",
+   "words": 163,
+   "brackets": false
+  },
+  {
+   "tag": "continuity-followup",
+   "q": "Why would a contactor chatter instead of pulling in cleanly?",
+   "cond": "base",
+   "answer": "**Short answer:**  \nA contactor \u201cchattering\u201d (rapidly opening and closing instead of pulling in and staying closed) is almost always a symptom of **insufficient or unstable coil power** or **excessive demand on the contacts** that the device cannot satisfy. The symptom is the same whether the cause is electrical, mechanical, or environmental, so the troubleshooting process is to check the power\u2011supply side first, then the load side, then the contactor itself.\n\nBelow is a systematic, step\u2011by\u2011step guide that covers the most common reasons a contactor will chatter, why each reason produces the symptom, and how to verify/fix it.\n\n---\n\n## 1. Electrical Causes \u2013 Coil Power Problems  \n\n| # | Possible Issue | Why It Causes Chatter | How to Test / Verify | Typical Fix |\n|---|----------------|----------------------|----------------------|-------------|\n| 1A | **Undersized or sagging supply voltage** (e.g., 480\u202fV line\u2011to\u2011line dropping to 430\u202fV under load) | The coil sees less magnetizing force, so the magnetic pull\u2011in force is marginal. When the contacts close, the load draws current, causing a further voltage dip that releases the coil \u2192 repeat. | \u2022 Measure line voltage at the contactor terminals with a high\u2011impedance digital multimeter (DMM) while the coil is energized **and** while the load is drawing current. <br>\u2022 Use a power quality analyzer to watch for dips or flicker. | \u2022 Upgrade feeder size, tighten connections, or add a dedicated transformer/voltage regulator. |\n| 1B | **Excessive coil resistance / bad wiring** (corroded terminals, loose screws, undersized wire) | Same effect as low voltage: reduced ampere\u2011turns \u2192 pull\u2011in force drops below the holding force needed when the contacts close. | \u2022 Measure coil resistance (should match name\u2011plate, typically 10\u201130\u202f\u03a9). <br>\u2022 Inspect all terminals for corrosion, tightness, and correct gauge. | \u2022 Clean/tighten terminals, replace damaged wire, or replace the coil if it\u2019s internally damaged. |\n| 1C | **Incorrect coil voltage rating** (e.g., 120\u202fV coil",
+   "words": 315,
+   "brackets": false
+  },
+  {
+   "tag": "continuity-followup",
+   "q": "Why would a contactor chatter instead of pulling in cleanly?",
+   "cond": "legacy",
+   "answer": "The most common reason a contactor \u201cchats\u201d is insufficient coil voltage or a weak coil supply causing it to open and close repeatedly.  \n\n1. Verify the control voltage at the coil terminals with the power off and the circuit isolated \u2013 measure with a multimeter after lockout/tagout.  \n2. Check that the supply wiring and any fuses or circuit breakers feeding the coil are intact, properly sized, and not loose or corroded.  \n3. Inspect the coil resistance (de\u2011energized) and compare it to the typical value for that coil type; a high resistance may indicate a winding problem.  \n4. Look for a stuck or dirty mechanical latch or a worn contactor spring that could prevent the armature from staying latched.  \n5. Ensure the control circuit\u2019s overload or short\u2011circuit protection isn\u2019t tripping intermittently (reset and observe).  \n\n**Diagnostic question:** When you hear the chatter, does the voltage at the coil drop noticeably (or disappear) each time it attempts to pull in?",
+   "words": 157,
+   "brackets": false
+  },
+  {
+   "tag": "continuity-followup",
+   "q": "Why would a contactor chatter instead of pulling in cleanly?",
+   "cond": "contract",
+   "answer": "A chatter\u2011type pull\u2011in usually means the coil isn\u2019t getting a solid, steady voltage or the magnetic circuit can\u2019t develop enough force.  \n\n1. With power isolated and locked out, measure the coil voltage while the control circuit is trying to energize it; verify it\u2019s at the rated value and not sagging under load.  \n2. With the coil still de\u2011energized, check coil resistance for an open or high\u2011resistance winding (measure with the coil isolated).  \n3. With power restored and the coil energized (keep safe distance), listen/feel for a rapid make\u2011break; if present, inspect the contacts for wear, pitting, or debris that could prevent a firm latch.  \n4. Verify the control circuit\u2019s supply (e.g., 24\u202fV or 120\u202fV) is stable and not being pulled down by a faulty relay, overload, or short.  \n\nIf voltage and coil resistance are good and the contacts are clean, the chatter is likely a weak coil or a failing auxiliary contact that isn\u2019t holding the latch.",
+   "words": 159,
+   "brackets": false
+  }
+ ]
+}
