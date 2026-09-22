@@ -92,6 +92,7 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
+import { buildMiraSystemPrompt, miraContractEnabled } from "@/lib/mira-contract";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   appendManualContext,
@@ -2038,7 +2039,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  // PERSONA. One definition of who MIRA is (`docs/specs/mira-intelligence-contract.md`),
+  // flag-gated so the migration is provable on staging before it is anyone's
+  // production persona — the same posture `canonicalSeamEnabled()` took. Flag off,
+  // the two legacy prompts below are byte-identical to what shipped.
+  const basePrompt = miraContractEnabled()
+    ? buildMiraSystemPrompt(docGrounded ? "grounded" : "general")
+    : docGrounded
+      ? BASE_SYSTEM_PROMPT
+      : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
