@@ -1787,15 +1787,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // verified photo does NOT open the document gate — the photo rides the
   // abstain) and the Sensor REPLAY correction (`groundedMachineEntry`).
   // FLAG-GATED. With the contract OFF this is `!general` — byte-identical to
-  // what production runs today. With the contract ON, the gate applies when
-  // sources are selected (docIds.length > 0) OR when explicit source-only mode
-  // is requested. Contract §0.1: "When a technician has selected sources and
-  // asks a question *of those sources*, cite-or-refuse is the contract, and
-  // zero retrieved chunks returns `insufficient_evidence` **without a provider
-  // call**. That gate is defended by a live staging acceptance loop and is out
-  // of scope for any prompt change."
+  // what production runs today. With the contract ON, the gate applies ONLY
+  // when explicit source-only mode is requested. Contract §3.0: "Normal chat
+  // is augmented whether or not documents are attached and whether or not they
+  // matched. Strict cite-or-refuse is `mode:"source_only"` — something the
+  // technician asks for." Just selecting sources does NOT opt you into
+  // cite-or-refuse (§3.0: "Attaching evidence is not consent to document-only
+  // answers").
   const documentGateApplies = miraContractEnabled() 
-    ? (sourceOnly || docIds.length > 0)  // Contract ON: explicit source-only OR any sources selected
+    ? sourceOnly                          // Contract ON: ONLY explicit source-only mode
     : !general;                           // Contract OFF: legacy (!general means sources selected)
   if (chunks.length === 0 && documentGateApplies && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
