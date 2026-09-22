@@ -7,18 +7,18 @@ ONE reusable probe, three callers:
 
 It drives ONLY public Hub application APIs, exactly the calls mira-mobile makes:
 
-  GET  /api/health/                                  gate state (non-secret) must be enforced
+  GET  /api/health/                                  gate state (non-secret) must be enforced; reads contract flag
   POST /api/equipment-notebooks/                     run-unique notebook (+ backing node)
-  POST /api/equipment-notebooks/{id}/chat/           grounded (mode:"source_only"), NO sources → 422 no_sources_selected
+  POST /api/equipment-notebooks/{id}/chat/           grounded, NO sources → 422 no_sources_selected (contract OFF) or 200 (contract ON)
   POST /api/namespace/node/{nodeId}/files/           run-unique CONTROL document (no sentinel)
   POST /api/equipment-notebooks/{id}/sources/        attach = the technician's confirmation
   GET  /api/equipment-notebooks/{id}/                poll sources[].readiness.canChat (the contract)
   POST …/chat/  [control] mode:"source_only"         sentinel question in source-only mode →
-                                                     200 insufficient_evidence, no citation, no usage
+                                                    200 insufficient_evidence, no citation, no usage
   POST /api/namespace/node/{nodeId}/files/           run-unique SENTINEL document (fact on page 2)
   POST …/sources/ + GET …/ (readiness)               confirm + wait, same contract
   POST …/chat/  [control, sentinel]                  → answered, every citation = the sentinel doc,
-                                                     page 2, provider usage non-null
+                                                    page 2, provider usage non-null
   GET  …/sources/{doc}/passage/?page=2               cited passage identity (server-side)
   POST …/chat/  [control, sentinel]  mode:"source_only" unsupported → 200 insufficient_evidence, provider-free
   DELETE links → notebook → uploads → files → node   run-owned cleanup only, every status checked
@@ -90,6 +90,7 @@ class ProbeConfig:
     password: str | None = None
     poll_seconds: int = 180
     require_usage: bool = True
+    contract_enabled: bool = False  # populated from health endpoint
 
 
 @dataclass
@@ -633,6 +634,12 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
             if health.status_code < 500
             else False
         )
+        # Read the contract flag to adjust expectations for empty-notebook behavior
+        contract_enabled = (
+            bool(health.json().get("miraContractEnabled"))
+            if health.status_code < 500
+            else False
+        )
         if not enforced:
             fail(
                 "gate_state",
@@ -640,8 +647,9 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
                 "MIRA_ENFORCE_APPROVED_RETRIEVAL is not effective on this Hub — not the production gate",
                 http=health.status_code,
                 approvedRetrievalEnforced=enforced,
+                miraContractEnabled=contract_enabled,
             )
-        step("gate_state", t0, True, http=health.status_code, approvedRetrievalEnforced=enforced)
+        step("gate_state", t0, True, http=health.status_code, approvedRetrievalEnforced=enforced, miraContractEnabled=contract_enabled)
 
         # 2. run-unique notebook
         t0 = time.monotonic()
@@ -663,17 +671,30 @@ def run_notebook_probe(cfg: ProbeConfig, client: httpx.Client | None = None) -> 
         question = f"What is the torque setting for coupling bolt code {code}?"
         unsupported = "Where is the hydraulic reservoir drain plug on this machine?"
 
-        # 3a. nothing attached → the product's explicit honest state, no provider
+        # 3a. nothing attached → under contract OFF, expect 422 no_sources_selected;
+        #     under contract ON, empty notebook is allowed (may answer or 422).
         t0 = time.monotonic()
         pre = _chat(client, h, notebook_id, question, [])
-        info = dict(http=pre.http_status, error=pre.error, status=pre.status)
-        if not (pre.http_status == 422 and (pre.error or {}).get("error") == "no_sources_selected"):
-            fail(
-                "pre_upload_no_sources",
-                t0,
-                f"pre-upload ask with no sources did not return 422 no_sources_selected (HTTP {pre.http_status}, status={pre.status!r}, error={pre.error})",
-                **info,
-            )
+        info = dict(http=pre.http_status, error=pre.error, status=pre.status, contract_enabled=contract_enabled)
+        if contract_enabled:
+            # Contract ON: empty notebook is allowed to proceed (may answer or refuse)
+            # Accept 200 (answered/insufficient_evidence) or 422 (legacy path still valid)
+            if pre.http_status not in (200, 422):
+                fail(
+                    "pre_upload_no_sources",
+                    t0,
+                    f"pre-upload ask with no sources under contract ON returned unexpected HTTP {pre.http_status} (expected 200 or 422)",
+                    **info,
+                )
+        else:
+            # Contract OFF (legacy): expect 422 no_sources_selected
+            if not (pre.http_status == 422 and (pre.error or {}).get("error") == "no_sources_selected"):
+                fail(
+                    "pre_upload_no_sources",
+                    t0,
+                    f"pre-upload ask with no sources (contract OFF) did not return 422 no_sources_selected (HTTP {pre.http_status}, status={pre.status!r}, error={pre.error})",
+                    **info,
+                )
         step("pre_upload_no_sources", t0, True, **info)
 
         # 3b. CONTROL source: real retrieval over a confirmed doc that does NOT

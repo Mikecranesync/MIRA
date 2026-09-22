@@ -30,6 +30,10 @@ export function GET() {
   // of inferring it from a compose default (#3328 is what that costs).
   const approvedRetrievalEnforced = process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
 
+  // Effective contract flag — whether MIRA Intelligence Contract is active.
+  // Surfaced so the beta probe can adjust expectations for empty-notebook behavior.
+  const miraContractEnabled = process.env.MIRA_PERSONA_CONTRACT === "1";
+
   const required = ["NEON_DATABASE_URL", "INGEST_URL"] as const;
   const missing = required.filter((k) => !process.env[k]);
 
@@ -54,6 +58,7 @@ export function GET() {
     service: "mira-hub",
     ...identity,
     approvedRetrievalEnforced,
+    miraContractEnabled,
     telemetry,
     ts: Date.now(),
   });
