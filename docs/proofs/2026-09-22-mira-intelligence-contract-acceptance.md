@@ -159,6 +159,47 @@ drift test that has never gone red is a reading, not a gate.
 
 ---
 
+## Two corrections found in post-review (both landed)
+
+### 1. The bracket-ban rationale was wrong about the mechanism
+
+The first draft of the spec, audit, module and tests all stated that a stray `[n]` in
+an ungrounded answer "renders a chip pointing at nothing". It does not.
+`mira-mobile/src/lib/remark-citation-marks.ts` returns early when `knownIds` is empty,
+and `citation-marks.ts` skips any id outside that set — an unknown `[1]` renders as
+**literal text**.
+
+The ban is still correct: plain `[1]` reads as a citation to a technician scanning an
+answer. But the harm is **representational, not a broken widget**, and stating the
+wrong mechanism would have sent the next reader to "fix" the renderer instead of
+keeping the prompt rule. Corrected in all four places.
+
+Consequence for the design: teaching `[n]` in `MIRA_AUGMENTED` is safe on **every**
+client including mobile, because a chip renders only for an id the client holds. No
+bracket-policy parameter is needed when `namespace/node` and `assets/[id]` adopt
+augmented next.
+
+### 2. `hub/ask` green flag-on was a vacuous pass
+
+`hub/ask/__tests__/hybrid-corpus.test.ts` never inspects the system message, so it
+passes identically with the flag on or off. "The hub suite is green flag-on" was
+therefore evidence that *the tests do not look at the prompt* — not evidence that the
+persona migration preserved behaviour.
+
+Added `hub/ask/__tests__/persona-composition.test.ts` (6 tests), which asserts the
+exact system message under both flag states, that the two states differ, that every
+behavioural rule survived the `SYSTEM_PROMPT → MIRA_AUGMENTED + SCOPE_EXTENSION`
+split, and that no rule is stated twice.
+
+**Negative control:** mutating the route to send `general` instead of
+`augmented + SCOPE_EXTENSION` turns **4 of the 6** red. Route restored, 6/6 green.
+
+Its non-empty assertion also caught a real staleness bug while being written: calling
+the helper twice reused the first import, so the second `doMock` never applied and the
+comparison was `"" === ""`. Fixed by resetting modules per call.
+
+Full suite after both corrections: **3296/3296 green, flag OFF and flag ON.**
+
 ## Not done
 
 - **No deployment.** Default OFF; not enabled in any environment.

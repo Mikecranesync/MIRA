@@ -2,9 +2,10 @@
  * Property tests for the MIRA Intelligence Contract.
  *
  * These assert the invariants that a prompt-unification refactor is most likely to
- * break silently — above all the general-mode bracket ban, which is load-bearing
- * (the mobile client renders `[n]` as a tappable citation chip, so a bracket in an
- * ungrounded answer is model reasoning wearing the costume of an OEM citation).
+ * break silently — above all the general-mode bracket ban. Precisely: the mobile
+ * renderer does NOT emit a dangling chip for an unknown id, so a stray `[1]` renders
+ * as literal text; the harm is representational (plain `[1]` reads as a citation to a
+ * technician), not a broken widget.
  *
  * Spec: `docs/specs/mira-intelligence-contract.md`
  * Audit: `docs/audits/2026-09-22-mira-persona-inventory.md`
@@ -45,9 +46,9 @@ describe("MIRA contract — the general-mode bracket ban (§3.2)", () => {
   });
 
   it("the shared core NEVER teaches citation syntax", () => {
-    // THE load-bearing assertion. Anything taught in MIRA_CORE is inherited by
-    // general mode; a citation rule there would re-teach the exact syntax the
-    // general block bans, and the two would fight inside one prompt.
+    // Anything taught in MIRA_CORE is inherited by general mode; a citation rule
+    // there would re-teach the exact syntax the general block bans, and the two
+    // would fight inside one prompt.
     expect(MIRA_CORE).not.toMatch(/\[1\]|\[2\]|\[n\]/);
     expect(MIRA_CORE.toLowerCase()).not.toContain("cite");
   });

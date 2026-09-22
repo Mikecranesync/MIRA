@@ -99,10 +99,16 @@ and it is exactly the "no chunks = no intelligence" behavior the goal names.
 
 ### 2.3 Citation-bracket semantics are prompt-local and mutually unsafe
 
-P1 teaches `[n]` citation markers. P2 **bans them outright** — the mobile client
-renders `[n]` as a tappable citation chip, so a bracket in an ungrounded answer
-renders a chip pointing at nothing. The route carries a second strip-guard because
-the prompt rule alone was not trusted.
+P1 teaches `[n]` citation markers. P2 **bans them outright**. The route carries a
+second strip-guard because the prompt rule alone was not trusted.
+
+**Mechanism check (correction).** An earlier draft of this audit asserted that a stray
+bracket renders a chip pointing at nothing. It does not: `remark-citation-marks.ts`
+returns early when `knownIds` is empty and `citation-marks.ts` skips any id outside
+that set, so an unknown `[1]` renders as literal text. The ban is still right — plain
+`[1]` reads as a citation to a technician — but the harm is representational, not a
+broken widget. Stating the wrong mechanism would have made the next reader "fix" the
+renderer instead of keeping the prompt rule.
 
 P3, P8, P6, P9 each independently re-teach `[n]`. Six prompts, six hand-written
 statements of one contract. Any shared persona core that teaches `[n]` unconditionally

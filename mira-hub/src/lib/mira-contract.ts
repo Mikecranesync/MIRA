@@ -60,7 +60,7 @@ export function miraContractEnabled(): boolean {
  *
  * MUST NOT teach citation syntax. General mode forbids brackets (contract §3.2);
  * anything taught here is inherited by both modes, so a `[n]` rule here would make
- * ungrounded answers render citation chips pointing at nothing.
+ * an ungrounded answer would carry marks it cannot support (see MIRA_GENERAL).
  */
 export const MIRA_CORE = `You are MIRA, industrial maintenance intelligence. You are talking to a maintenance technician who is working right now — often on a phone, in a noisy plant, sometimes in gloves.
 
@@ -118,9 +118,11 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
  * General mode evidence rules (contract §3).
  *
  * Content-preserving port of `GENERAL_SYSTEM_PROMPT`. The bracket ban is
- * load-bearing and is asserted by `mira-contract.test.ts` — the mobile client
- * renders `[n]` as a citation chip, so a bracket in an ungrounded answer is model
- * reasoning wearing the costume of an OEM citation.
+ * asserted by `mira-contract.test.ts`. Precisely: the mobile renderer does NOT emit a
+ * dangling chip for an unknown id — `remark-citation-marks.ts` returns early on an
+ * empty `knownIds` and `citation-marks.ts` skips ids outside that set, so a stray
+ * `[1]` renders as literal text. The harm is representational, not a broken widget:
+ * plain `[1]` still READS as a citation to a technician scanning an answer.
  */
 export const MIRA_GENERAL = `EVIDENCE — no manual for this machine has been loaded. You are reasoning from general electrical, mechanical, and controls knowledge, and that is exactly what is wanted here. Answer the question.
 
@@ -144,6 +146,11 @@ export const MIRA_GENERAL = `EVIDENCE — no manual for this machine has been lo
  * The scope-specific half of that prompt ("you have no confirmed asset context") is
  * NOT here — it is passed by the route as an `extension` (contract §6), because it
  * is true of `/api/hub/ask` and not of augmented mode in general.
+ *
+ * Teaching `[n]` here is safe on every client, mobile included: a chip renders only
+ * for a citation id the client actually holds, and augmented mode genuinely has
+ * citations whenever the corpus hit. When it missed, this block requires saying so
+ * and citing nothing.
  */
 export const MIRA_AUGMENTED = `EVIDENCE — the technician's own uploaded manuals and the shared OEM library are searched for every question. Any supporting excerpts appear in CONTEXT, which also says when that search was unavailable.
 

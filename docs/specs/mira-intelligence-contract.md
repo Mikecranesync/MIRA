@@ -94,10 +94,16 @@ The contract names it, gives it one source, and puts a test under the property.
 
 ### 3.2 Why general mode forbids brackets — and augmented does not
 
-The mobile client renders `[n]` as a tappable citation chip. A general answer has no
-sources, so a bracket would render a chip pointing at nothing — model reasoning
-wearing the costume of an OEM citation. The prompt ban is the first guard; the
-route's strip-guard is the second. **Both are required.** Any shared persona text is
+A general answer has no sources, so a bracket in one is model reasoning wearing the
+costume of an OEM citation.
+
+**Mechanism, stated precisely** (an earlier draft of this spec overstated it): the
+mobile renderer does **not** produce a dangling chip. `remark-citation-marks.ts`
+returns early when `knownIds` is empty, and `citation-marks.ts` skips any id not in
+that set — so a stray `[1]` renders as **literal text**. The harm is therefore
+representational, not a broken widget: plain `[1]` still *reads* as a citation to a
+technician scanning an answer. That is what the ban prevents. The prompt ban is the
+first guard; the route's strip-guard is the second. Any shared persona text is
 therefore forbidden from teaching citation syntax — citation syntax lives in the
 grounded and augmented mode blocks only.
 
