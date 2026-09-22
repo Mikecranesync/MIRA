@@ -185,3 +185,94 @@ Never: cookies, `Authorization`/provider keys, next-auth tokens, signed evidence
 | **I4 tests / security / docs** (wave 2) | `…/observability/__tests__/{redaction,propagation,exporter-down,staging-isolation}.test.ts`, `docs/runbooks/turn-flight-recorder.md`, `docs/adr/0037-otel-turn-flight-recorder.md`, staging validation plan section, `docs/observability/README` pointer |
 
 Interfaces between lanes are the exports named in §4 and `tracing.ts`: `getTracer()`, `withSpan(name, attrs, fn)`, `setSpanAttrs(attrs)`, `activeTraceId()`, `addSpanLink(traceId, spanId)`, and `startTurnRecorder(...)`/`TurnRecorder`. I1 and I3 ship those signatures exactly; I2 consumes them.
+
+## 11. Staging acceptance plan
+
+The 14-point proof that closes this claim. Each point names the exact
+command/URL/query that proves it — "I ran it and it looked fine" is not
+evidence (root `CLAUDE.md` Law 1). Record the results per point 14.
+
+1. **CI green on the exact PR head.** `gh pr checks <n>` — confirm the "Hub
+   Unit Tests" run (picks up `src/**/*.test.ts`, including this lane's four
+   new files) is green, and `gh pr view <n> --json headRefOid` matches the
+   SHA the green run actually ran against (per the verification-discipline
+   rule: a badge from a stale SHA is not green).
+2. **Independent exact-head review passes.** The multi-session-protocol
+   adversarial-review gate posts `[CODEX-REVIEW] PASS` (or the current
+   carve-out's equivalent) naming this exact head SHA — a new commit after
+   that comment voids it.
+3. **Human merge to `main`.** No auto-merge — `.claude/rules/multi-session-protocol.md`
+   §7 hard human gate. Record the merge commit SHA.
+4. **Doppler `factorylm/stg` — set the six vars.** Names and value SHAPES
+   only (never a real value in any doc or commit):
+
+   | Var | Shape |
+   |---|---|
+   | `OTEL_SERVICE_NAME` | literal `mira-hub` |
+   | `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://us.cloud.langfuse.com/api/public/otel` |
+   | `OTEL_EXPORTER_OTLP_PROTOCOL` | literal `http/protobuf` |
+   | `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Basic <base64(pk:sk)>` — recipe: `printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" \| base64` (no trailing newline in the input, or the header decodes with a stray `\n`), keys pulled from Doppler `factorylm/stg`, never typed literally |
+   | `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment.name=staging` |
+   | `OTEL_TRACES_SAMPLER` / `_ARG` | `parentbased_always_on` / unset |
+
+   Set via `doppler secrets set -p factorylm -c stg <VAR>` (interactive, value
+   never lands in shell history) — agent can set per design §9; Mike informed.
+5. **Migration `090` dry-run.** `gh workflow run apply-migrations.yml -f
+   mode=dry-run -f migrations=090 -f environment=staging` — confirm the dry-run
+   output shows the 8 `ADD COLUMN IF NOT EXISTS` + 3 `CREATE INDEX IF NOT
+   EXISTS` statements against `decision_traces`, nothing else.
+6. **Migration `090` apply.** Same workflow, `-f mode=apply` — confirm it
+   reports success and is idempotent (a second apply run is a no-op, matching
+   `.claude/rules/mira-hub-migrations.md` §5).
+7. **Verify the migration landed** via the read-only `db-inspect.yml`
+   workflow (never a direct staging `psql` from a code session for anything
+   beyond what that workflow exposes) — query `information_schema.columns`
+   for `decision_traces` and confirm all 8 new columns exist with the right
+   types (`otel_trace_id text`, `turn_id uuid`, `anomalies jsonb not null`,
+   etc.) and the 3 new indexes exist.
+8. **Deploy staging on the merged SHA.** `gh workflow run deploy-staging.yml`
+   targeting the merge commit from point 3 — staging-only deploy is Mike's
+   standing authorization per design §9 once gates 1–3 passed.
+9. **Confirm the deployed build is the merged SHA and telemetry is live.**
+   `curl https://<staging-hub-host>/api/health` — `gitSha` equals the merge
+   commit, `telemetry.tracing == "enabled"`, `telemetry.exporter ==
+   "otlp-http"`, `telemetry.environment == "staging"`, and the response body
+   contains neither the OTLP endpoint host nor any header value (this is
+   `staging-isolation.test.ts`'s own assertion, re-proven live, not just in
+   CI).
+10. **Confirm the SDK can actually reach Langfuse from staging** (not just
+    that config parsing looks right) — the design's own verification
+    (§1: `POST https://us.cloud.langfuse.com/api/public/otel/v1/traces` with
+    the staging `Authorization: Basic base64(pk:sk)` returns 200; without
+    auth, 401) re-run from the staging host or a container shell on it, so
+    network egress from that specific host to Langfuse is proven, not
+    assumed.
+11. **Real Pixel turn.** On the MIRA Staging app: open a notebook, send a
+    photo (`/look`), then ask a follow-up question about it (`/chat`).
+    Capture the `x-mira-trace-id` response header (or the first SSE `trace`
+    frame) from the network tab.
+12. **Query the diagnostics endpoint for that turn.** `GET
+    /api/equipment-notebooks/{notebookId}/turns/{turnId}/diagnostics`
+    (session cookie) — confirm the response's `traceId` matches step 11's
+    captured id, `packet` is fully shaped (not a fallback/empty packet), and
+    `packet.vision.ran == true` / `packet.visual_evidence.observation_available
+    == true` for the photo turn.
+13. **Confirm `STAGING_TO_PROD_ROUTE` is ABSENT from this real turn's
+    anomalies** — proves staging's actual configured routes (not just a unit
+    test's synthetic env vars) don't resolve to a production host. If it
+    IS present, this is a real incident (staging traffic reaching
+    production) — stop and fix the offending var named in the anomaly detail
+    before continuing.
+14. **Record the evidence.** A new file
+    `docs/proofs/<YYYY-MM-DD>-pixel9a-otel-turn-flight-recorder-staging-acceptance.md`
+    (following the naming + structure of
+    `docs/proofs/2026-09-22-pixel9a-staging-first-session-log.md`), containing:
+    the merge commit SHA, the migration-090 dry-run + apply workflow run URLs,
+    the deploy-staging.yml run URL, the `/api/health` response (secrets
+    already excluded by construction), the captured trace id + turn id, the
+    full diagnostics-endpoint JSON response, screenshots of the Pixel session
+    (per the Screenshot Rule, saved to `docs/promo-screenshots/` too if any
+    are UI-visible), and the Langfuse trace URL if `MIRA_TRACE_VIEWER_URL_TEMPLATE`
+    was set. A companion `persisted-turns.json` if the diagnostics response is
+    large enough to warrant a separate file, matching the existing session-log
+    pattern.
