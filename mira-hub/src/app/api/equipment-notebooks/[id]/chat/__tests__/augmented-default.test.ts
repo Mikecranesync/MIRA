@@ -210,3 +210,78 @@ describe("flag OFF — production behaviour is untouched", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("hazards still hard-gate on the new default path", () => {
+  // NOTE ON WHICH LAYER OWNS WHAT. MIRA has two safety gates and they catch
+  // different things. `matchSafetyStop` is an INPUT-side keyword gate that runs
+  // before retrieval and before inference. The semantic judge is an OUTPUT-side
+  // gate that inspects the generated answer (trigger
+  // `unsafe-answer:imperative-energized-action`, owned by
+  // chat-answer-gate.test.ts). Verified directly while writing this file:
+  // matchSafetyStop("Reset the E-12 fault while the machine is energized") is
+  // NULL — that phrase is caught on the way OUT, not on the way in. Asserting
+  // the input gate catches it would have been asserting a contract that has
+  // never existed.
+  it("the INPUT-side gate stops a hazard question in augmented mode, before any provider call", async () => {
+    const f = await frames(await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [DOC_A] }), params));
+    expect(f.find((x) => x.kind === "safety")).toBeDefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["arc flash", "I need to bypass the arc flash protection"],
+    ["loto", "skip LOTO and just jump the contactor"],
+    ["confined space", "enter the confined space to check the auger"],
+  ])("stops %s on the new default path with sources attached", async (_t, message) => {
+    await (await POST(req({ message, sourceDocIds: [DOC_A] }), params)).text();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("stops with NO sources selected too — safety does not depend on mode", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    await (await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [] }), params)).text();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("persona survives provider fallback", () => {
+  it("the same system prompt is sent to the second provider when the first fails", async () => {
+    // Persona is a property of the contract, not the provider (spec §7). A
+    // cascade fallback must not change who MIRA is mid-turn.
+    seamMock.canonicalProviders.mockReturnValue([
+      { name: "groq", url: "https://a/x", key: "k", model: "m1" },
+      { name: "cerebras", url: "https://b/x", key: "k", model: "m2" },
+    ] as never);
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      n += 1;
+      if (n === 1) return new Response("boom", { status: 500 });
+      return new Response(providerStream("Check the pump."), { status: 200 });
+    }));
+    await (await POST(req({ message: "hydraulics", sourceDocIds: [DOC_A] }), params)).text();
+    const calls = seamMock.buildRequestBody.mock.calls as unknown as [unknown, { role: string; content: string }[]][];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    const first = calls[0][1].find((m) => m.role === "system")?.content;
+    const second = calls[1][1].find((m) => m.role === "system")?.content;
+    expect(second).toBe(first);
+    expect(first).toContain(MIRA_AUGMENTED);
+  });
+});
+
+describe("tenant isolation is unchanged by the mode change", () => {
+  it("retrieval is scoped to the session tenant, not to anything on the request", async () => {
+    await (await POST(req({ message: "q", sourceDocIds: [DOC_A], tenantId: "99999999-9999-4999-8999-999999999999" }), params)).text();
+    const call = ragMock.retrieveNodeChunks.mock.calls[0] as unknown as unknown[];
+    expect(JSON.stringify(call)).toContain(TENANT);
+    expect(JSON.stringify(call)).not.toContain("99999999-9999-4999-8999-999999999999");
+  });
+
+  it("an unapproved source still rejects the turn — authorization is orthogonal to mode", async () => {
+    // Source AUTHORIZATION was deliberately NOT loosened: only the evidence
+    // gate moved. An unapproved doc must still fail closed in augmented mode.
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "unauthorized_source" });
+    const res = await POST(req({ message: "q", sourceDocIds: [DOC_A] }), params);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
