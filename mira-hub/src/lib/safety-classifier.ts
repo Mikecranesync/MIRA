@@ -337,6 +337,33 @@ export function detectHazardAdvisory(text: string | null | undefined): string | 
   return null;
 }
 
+/**
+ * Classes worth detecting in the ANSWER as well as the question.
+ *
+ * Deliberately EXCLUDES energized / LOTO / arc flash. MIRA_CORE already
+ * requires the isolation state in the same sentence as any instruction to touch
+ * something ("With the drive isolated, locked out and the DC bus verified at
+ * 0 V, …"), so nearly every answer contains that phrasing — banner it and the
+ * banner appears on everything and stops meaning anything. The inline clause IS
+ * the warning for that class.
+ *
+ * The classes below have no such mandated inline clause, and the answer is
+ * often the first place they appear: a question about stuck product can be
+ * answered with "enter the tank", and nothing in the question said so.
+ */
+const ANSWER_SIDE_CLASSES: ReadonlySet<string> = new Set([
+  "confined space", "hot work", "pressure", "chemical", "fall", "rotating",
+]);
+
+/**
+ * A hazard class named by the ANSWER rather than the question, or null.
+ * Same cues, narrower class set — see ANSWER_SIDE_CLASSES for why.
+ */
+export function detectAnswerHazard(text: string | null | undefined): string | null {
+  const cls = detectHazardAdvisory(text);
+  return cls && ANSWER_SIDE_CLASSES.has(cls) ? cls : null;
+}
+
 export function hazardBanner(trigger: string | null | undefined): string {
   if (!trigger) return "";
   const t = trigger.toLowerCase();

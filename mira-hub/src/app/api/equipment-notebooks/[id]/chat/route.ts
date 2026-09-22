@@ -79,6 +79,7 @@ import {
   ENERGIZED_ELECTRICAL_HAZARD,
   matchSafetyStop,
   SAFETY_STOP,
+  detectAnswerHazard,
   detectHazardAdvisory,
   hazardBanner,
   matchActiveIncident,
@@ -2790,10 +2791,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // in full ("warn, do not withhold"). Skipped when a banner is already
       // there (the energized pause or the judge put one on), and never on a
       // refusal or an empty answer.
-      if (miraContractEnabled() && hazardAdvisory && !semanticHazardClass && served && !refused && answerText.trim()) {
-        const banner = hazardBanner(hazardAdvisory);
+      // The question names the work the technician is ABOUT to do; the answer
+      // sometimes names work they were not asking about ("drain and enter the
+      // tank" in reply to "why is product sticking"). Fall back to the answer
+      // for the classes the ENERGY STATE clause does not already cover inline.
+      const hazardClassForTurn = hazardAdvisory ?? (served && !refused ? detectAnswerHazard(answerText) : null);
+      if (miraContractEnabled() && hazardClassForTurn && !semanticHazardClass && served && !refused && answerText.trim()) {
+        const banner = hazardBanner(hazardClassForTurn);
         if (banner && !answerText.startsWith(banner)) {
-          semanticHazardClass = hazardAdvisory;
+          semanticHazardClass = hazardClassForTurn;
           answerText = `${banner}\n\n${answerText}`;
         }
       }

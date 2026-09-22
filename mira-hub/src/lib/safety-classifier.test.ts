@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
+  detectAnswerHazard,
   detectHazardAdvisory,
   hazardBanner,
   HAZARD_BANNERS,
@@ -236,5 +237,33 @@ describe("detectHazardAdvisory — advisory only, never a gate", () => {
     // matches must not start stopping turns.
     expect(matchSafetyStop("can I weld a bracket onto the frame near the hydraulic lines")).toBeNull();
     expect(matchSafetyStop("I need to clean the inside of the mix tank")).toBeNull();
+  });
+});
+
+describe("detectAnswerHazard — the answer can name work the question did not", () => {
+  // Photo benchmark, staging 2026-09-22 (bearing label in context, "it is
+  // chattering, what do I check first"): every answer instructed drive work and
+  // none carried a banner, because the QUESTION had no hazard cue.
+  it("catches a class the answer introduces", () => {
+    expect(detectAnswerHazard("Drain it, then enter the tank with an attendant.")).toBe("confined space");
+    expect(detectAnswerHazard("You will need to weld a new bracket on.")).toBe("hot work");
+    expect(detectAnswerHazard("Bleed down the accumulator before removing the hose.")).toBe("pressure");
+  });
+
+  it("does NOT banner the isolation clause MIRA_CORE mandates on nearly every answer", () => {
+    // If this ever returns a class, the banner appears on almost every turn and
+    // stops carrying information — the inline clause IS the warning here.
+    for (const s of [
+      "With the drive isolated, locked out and the DC bus verified at 0 V, measure the supply voltage.",
+      "With the control power isolated, locked out and the coil terminals verified at 0 V, check resistance.",
+      "Lock out the feeder before you open the panel.",
+    ]) {
+      expect(detectAnswerHazard(s)).toBeNull();
+    }
+  });
+
+  it("stays silent on an ordinary answer", () => {
+    expect(detectAnswerHazard("Low coil voltage is the usual cause of chatter.")).toBeNull();
+    expect(detectAnswerHazard("")).toBeNull();
   });
 });
