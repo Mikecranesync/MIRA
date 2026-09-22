@@ -585,6 +585,7 @@ describe("Jev shadow sufficiency on the packet (MIRA_JEV_SHADOW)", () => {
     expect(record.packet.answer_gate.evidence_sufficient).toBe(true);
     expect(record.packet.answer_gate.jev_sufficient).toBe(0.07);
     expect(record.packet.answer_gate.jev_skipped_reason).toBeNull();
+    expect(record.packet.answer_gate.jev_input_tokens).toBe(40);
     expect(typeof record.packet.answer_gate.jev_latency_ms).toBe("number");
     const jevCall = fetchMock.mock.calls.find(([u]) => String(u).includes("typesafe.ai"));
     expect(jevCall).toBeTruthy();

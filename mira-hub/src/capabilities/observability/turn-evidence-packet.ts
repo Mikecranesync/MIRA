@@ -146,6 +146,8 @@ export type TurnEvidencePacketAnswerGate = {
   jev_sufficient: number | null;
   jev_skipped_reason: string | null;
   jev_latency_ms: number | null;
+  /** Jev `usage.input_tokens` for the shadow call — the cost basis ($/M input; output is free). */
+  jev_input_tokens: number | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -309,6 +311,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_sufficient: null,
       jev_skipped_reason: null,
       jev_latency_ms: null,
+      jev_input_tokens: null,
     },
     persistence: {
       turn_row_id: null,
