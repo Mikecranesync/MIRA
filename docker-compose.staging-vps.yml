@@ -384,6 +384,23 @@ services:
       # /hub/admin/review filesystem source root (see volume mounts).
       - REVIEW_REPO_ROOT=${REVIEW_REPO_ROOT:-/app}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-harperhousebuyers@gmail.com,mike@cranesync.com}
+      # Runtime service identity for the OTel resource (build-arg MIRA_APP_VERSION
+      # above only reaches build time — the SDK reads it from process.env at
+      # startup). See docs/architecture/observability/2026-09-22-turn-flight-recorder.md.
+      - MIRA_APP_VERSION=${MIRA_APP_VERSION:-unknown}
+      # Turn Flight Recorder (OTel) — staging-first, see
+      # docs/architecture/observability/2026-09-22-turn-flight-recorder.md §6.
+      # No OTEL_EXPORTER_OTLP_ENDPOINT => the SDK never starts (zero overhead).
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-}
+      - OTEL_TRACES_SAMPLER=${OTEL_TRACES_SAMPLER:-}
+      - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-}
+      - MIRA_OTEL_CAPTURE_CONTENT=${MIRA_OTEL_CAPTURE_CONTENT:-0}
+      - MIRA_TURN_ANOMALY_CHECKS=${MIRA_TURN_ANOMALY_CHECKS:-1}
+      - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
     networks:
       - staging-net
     volumes:
