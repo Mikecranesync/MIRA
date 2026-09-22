@@ -95,6 +95,31 @@ affordance at all. A technician at a machine cannot photograph the nameplate in 
 The `nameplate()` step logs this rather than hiding it. When the defect is fixed, that branch
 should start failing — which is the point.
 
+## Proving which backend the installed app talks to (`env-proof.mjs`)
+
+The staging flavor (`com.factorylm.mira.staging`) and production coexist on one
+device and look identical on the launcher. Before reading any trace, prove the
+phone is on the backend you think it is — from inside the running app, not from
+a screenshot:
+
+```bash
+export MIRA_PKG=com.factorylm.mira.staging          # open MIRA Staging in the foreground first
+python3 tools/mobile-e2e/device.py cdp              # forwards tcp:9222 → the app's WebView devtools
+node tools/mobile-e2e/env-proof.mjs                 # exit 0 iff apiBase host == app-staging.factorylm.com
+```
+
+Prints one JSON line: package, versionCode, the flavor's own
+`BuildConfig.getApiBase()`, deep-link host/scheme, and the `gitSha`/`version` the
+backend returned to the app's own HTTP request. No cookies or tokens. Pair the
+`gitSha` with the staging `/api/health/` SHA and the trace ids from
+`tools/qa/retrieval_acceptance.py` for an end-to-end device proof. Debug builds
+only (devtools); `--expect-host app.factorylm.com` proves the production flavor.
+
+Last recorded proof (2026-09-22 00:15Z, Pixel 9a, APK a705c976…): staging package
+v1.2.0 (11), apiBase `https://app-staging.factorylm.com`, scheme
+`factorylmstaging`, backend `dd41c7f8e`. `mira-mobile/` is unchanged since that
+APK was built, so it needs no rebuild for any Hub-only change.
+
 ## Requirements
 
 - Android SDK with `platform-tools` and `emulator`, plus at least one AVD
