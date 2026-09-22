@@ -153,6 +153,37 @@ describe("MIRA contract — no mandatory template (§2)", () => {
   });
 });
 
+describe("MIRA contract — augmented must USE retrieved evidence (staging regression)", () => {
+  // Live staging acceptance run 35750048153, scenario 3: a technician attached a
+  // manual, retrieval returned the chunk, the chunk reached the provider — and
+  // the answer shipped ZERO citations badged "General guidance — not grounded in
+  // this machine's documents." Augmented was answering AROUND evidence that was
+  // right in front of it, which is the exact inverse of the golden rule.
+  it("tells the model to lead with and cite retrieved excerpts", () => {
+    expect(MIRA_AUGMENTED).toContain("USE THE EVIDENCE YOU WERE GIVEN");
+    expect(MIRA_AUGMENTED).toContain("Lead with what they support and cite it");
+  });
+
+  it("forbids telling a technician their documents miss when an excerpt speaks to it", () => {
+    expect(MIRA_AUGMENTED).toContain("never tell a technician their documents do not cover something");
+    expect(MIRA_AUGMENTED).toContain("they attached that manual on purpose");
+  });
+
+  it("treats partial coverage as coverage rather than an excuse to go general", () => {
+    expect(MIRA_AUGMENTED).toContain("Partial coverage is still coverage");
+    expect(MIRA_AUGMENTED).toContain(
+      'only true when nothing in CONTEXT speaks to the question at all',
+    );
+  });
+
+  it("still permits a general answer when CONTEXT genuinely has nothing", () => {
+    // The fix must not swing into the opposite failure — a cite-or-refuse
+    // augmented mode would re-create the dead end this whole change removed.
+    expect(MIRA_AUGMENTED).toContain("never a refusal");
+    expect(MIRA_AUGMENTED).toContain("give the general answer anyway");
+  });
+});
+
 describe("MIRA contract — safety posture (§4)", () => {
   it.each(MODES)("%s mode carries the energy-state rule", (mode) => {
     // Before the contract this rule existed in ONE of nine Hub surfaces. The
