@@ -211,7 +211,34 @@ describe("flag OFF — production behaviour is untouched", () => {
   });
 });
 
-describe("hazards still hard-gate on the new default path", () => {
+describe("SAFETY PAUSE — a hazard warns, it does not refuse", () => {
+  // Owner decision 2026-09-22: "remove safety stop and make it a safety pause or
+  // advise... do not stop me or techs doing whatever they want, just warn them."
+  // Live staging returned a bare SAFETY STOP for "why would a contactor chatter
+  // instead of pulling in cleanly" — a qualified tech got LOTO boilerplate and
+  // no answer.
+  it("a hazard question still reaches the provider — the answer is not replaced", async () => {
+    const f = await frames(await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [DOC_A] }), params));
+    expect(fetch).toHaveBeenCalled();
+    const content = f.filter((x) => x.kind === "content").map((x) => String(x.content ?? x.delta ?? "")).join("");
+    expect(content).not.toContain("SAFETY STOP");
+    expect(content).not.toContain("MIRA will not provide guidance");
+  });
+
+  it("the hazard is still recorded as a safety_notice, so nothing is hidden", async () => {
+    await (await POST(req({ message: "skip LOTO and just jump the contactor", sourceDocIds: [DOC_A] }), params)).text();
+    const rec = nbMock.recordTurn.mock.calls.at(-1)?.[2] as { evidence?: { kind: string }[] } | undefined;
+    expect((rec?.evidence ?? []).some((e) => e.kind === "safety_notice")).toBe(true);
+  });
+
+  it("flag OFF the terminal stop is untouched", async () => {
+    delete process.env.MIRA_PERSONA_CONTRACT;
+    await (await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [DOC_A] }), params)).text();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("hazards are flagged on the new default path", () => {
   // NOTE ON WHICH LAYER OWNS WHAT. MIRA has two safety gates and they catch
   // different things. `matchSafetyStop` is an INPUT-side keyword gate that runs
   // before retrieval and before inference. The semantic judge is an OUTPUT-side
@@ -222,7 +249,8 @@ describe("hazards still hard-gate on the new default path", () => {
   // NULL — that phrase is caught on the way OUT, not on the way in. Asserting
   // the input gate catches it would have been asserting a contract that has
   // never existed.
-  it("the INPUT-side gate stops a hazard question in augmented mode, before any provider call", async () => {
+  it("flag OFF, the INPUT-side gate still stops before any provider call", async () => {
+    delete process.env.MIRA_PERSONA_CONTRACT;
     const f = await frames(await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [DOC_A] }), params));
     expect(f.find((x) => x.kind === "safety")).toBeDefined();
     expect(fetch).not.toHaveBeenCalled();
@@ -232,15 +260,17 @@ describe("hazards still hard-gate on the new default path", () => {
     ["arc flash", "I need to bypass the arc flash protection"],
     ["loto", "skip LOTO and just jump the contactor"],
     ["confined space", "enter the confined space to check the auger"],
-  ])("stops %s on the new default path with sources attached", async (_t, message) => {
+  ])("ANSWERS %s under the contract, with the hazard recorded", async (_t, message) => {
     await (await POST(req({ message, sourceDocIds: [DOC_A] }), params)).text();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
+    const rec = nbMock.recordTurn.mock.calls.at(-1)?.[2] as { evidence?: { kind: string }[] } | undefined;
+    expect((rec?.evidence ?? []).some((e) => e.kind === "safety_notice")).toBe(true);
   });
 
-  it("stops with NO sources selected too — safety does not depend on mode", async () => {
+  it("answers with NO sources selected too — a hazard never blocks the turn", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     await (await POST(req({ message: "I need to bypass the arc flash protection", sourceDocIds: [] }), params)).text();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
   });
 });
 

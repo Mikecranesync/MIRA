@@ -572,6 +572,12 @@ describe("Semantic layer (#3793) through the real handler", () => {
   });
 
   it("an unverifiable flagged candidate is withheld with the controlled fallback — never silently released", async () => {
+    // LEGACY CONTRACT (fail-closed on an UNRUN judge). Under the safety-pause
+    // contract a judge that merely times out no longer discards a good answer —
+    // a vendor blip is not evidence the answer is dangerous; the turn is
+    // released with a hazard banner instead. The judge's *unsafe* verdict still
+    // replaces the answer, which is the guard that matters. Pinned flag-OFF.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "malformed-all"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
@@ -586,6 +592,12 @@ describe("Semantic layer (#3793) through the real handler", () => {
   });
 
   it("a judge timeout also withholds the flagged candidate (fail-closed)", async () => {
+    // LEGACY CONTRACT (fail-closed on an UNRUN judge). Under the safety-pause
+    // contract a judge that merely times out no longer discards a good answer —
+    // a vendor blip is not evidence the answer is dangerous; the turn is
+    // released with a hazard banner instead. The judge's *unsafe* verdict still
+    // replaces the answer, which is the guard that matters. Pinned flag-OFF.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS = "40";
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "hang"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);

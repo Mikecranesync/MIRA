@@ -79,6 +79,9 @@ import {
   ENERGIZED_ELECTRICAL_HAZARD,
   matchSafetyStop,
   SAFETY_STOP,
+  hazardBanner,
+  matchActiveIncident,
+  isIncidentTrigger,
 } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
@@ -1245,7 +1248,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // A visible structured hazard is stronger than the question classifier's
   // non-terminal energized-work directive and therefore owns the turn.
   const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
+  // SAFETY PAUSE, NOT SAFETY STOP (owner decision 2026-09-22).
+  // #3763 proved the pattern on ONE hazard class: the answer streams, framed by
+  // a directive, and the turn persists a `safety_notice`. Every detected hazard
+  // now takes that path. A technician asking why a contactor chatters is going
+  // to open the panel either way — refusing removes the information, not the
+  // hazard, and sends them in less informed.
+  //
+  // `hazardAdvisory` is non-null whenever ANY hazard was detected, so the
+  // banner is always shown; `electricalHazardDirective` keeps the fuller NFPA
+  // 70E framing for the energized-electrical class specifically.
+  const hazardAdvisory =
+    miraContractEnabled() && !matchActiveIncident(message) && !isIncidentTrigger(visualSafetyTrigger)
+      ? (safetyTrigger ?? null)
+      : null;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+  // Hazard class the OUTPUT judge flags on a KEPT answer (safety pause).
+  let semanticHazardClass: string | null = null;
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -1350,7 +1369,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // way a hard stop does — a persisted safety_notice entry, never only prose.
   const hazardEntries: SafetyNoticeEntry[] = electricalHazardDirective
     ? [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]
-    : [];
+    : hazardAdvisory
+      ? [{ kind: "safety_notice", trigger: hazardAdvisory }]
+      : [];
+  // A hazard the OUTPUT judge flags on a kept answer is persisted the same way,
+  // so a reload shows the same warning the technician saw live. Appended at
+  // write time because the judge runs after this point.
+  const semanticHazardEntries = (): SafetyNoticeEntry[] =>
+    semanticHazardClass && !hazardEntries.length
+      ? [{ kind: "safety_notice", trigger: semanticHazardClass }]
+      : [];
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -1364,7 +1392,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
-  if (safetyTrigger && !electricalHazardDirective) {
+  // SAFETY PAUSE: with the contract ON this terminal branch is skipped entirely.
+  // A detected hazard now rides `hazardAdvisory` — banner first, then the real
+  // answer — instead of replacing the answer with SAFETY_STOP and never calling
+  // a provider. Flag OFF, the branch is exactly as it shipped.
+  // An incident is either reported in the message OR seen in a verified photo.
+  const activeIncident = matchActiveIncident(message) ?? isIncidentTrigger(visualSafetyTrigger);
+  if (
+    safetyTrigger &&
+    !electricalHazardDirective &&
+    (!miraContractEnabled() || activeIncident)
+  ) {
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
     const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
@@ -2629,6 +2667,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // contract, exactly like a notebook-grounded one).
       const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+
       if (!validation.ok) {
         console.error(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
@@ -2661,14 +2700,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
+          // KEPT DELIBERATELY, even under the safety-pause contract.
+          //
+          // This branch does NOT gate the technician's question — it gates what
+          // MIRA just wrote. The cases it catches are the model emitting an
+          // injurious instruction: "touch the 200 C steam pipe with your bare
+          // hand", "put your arm inside the running conveyor", "drink a small
+          // amount of the cleaning fluid", "step beneath the elevated ram".
+          // Those are not information a qualified technician needs and is being
+          // denied; they are MIRA being WRONG. Shipping them behind a warning
+          // banner would be worse than replacing them, because the banner reads
+          // as endorsement.
+          //
+          // The topic-level gates were the coddling and they are gone (see
+          // `hazardAdvisory` and ACTIVE_INCIDENT_PHRASES). This one stays.
           outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
           answerText = SAFETY_STOP;
         } else if (sv.verdict !== "safe") {
           console.error(
             `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
           );
-          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          // FAIL OPEN under the contract. The judge failing to RUN is not
+          // evidence the answer is dangerous — a vendor timeout used to discard
+          // a good answer. Keep it, flag it, move on.
+          if (miraContractEnabled()) {
+            semanticHazardClass = selectedClass;
+            answerText = `${hazardBanner(selectedClass)}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+            answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          }
         }
       }
 
@@ -2832,7 +2893,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+              : [...hazardEntries, ...semanticHazardEntries(), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,

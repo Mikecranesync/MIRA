@@ -186,6 +186,118 @@ export function matchSafetyStop(text: string): string | null {
 }
 
 /** Shared hard-stop reply — one copy, both chat routes render it. */
+/**
+ * ACTIVE INCIDENT — the ONLY thing that still stops a turn.
+ *
+ * Tier-1 conflated two different situations. Someone reporting "I got shocked"
+ * or "smoke coming from the panel" is an emergency: answering their
+ * troubleshooting question is the wrong response, and escalation is the right
+ * one. But "cut power", "isolate power", "live panel", "safe to work" and
+ * "which wire to pull" are ORDINARY TECHNICIAN SPEECH — stopping on them is
+ * what made MIRA useless. "isolate power" triggering a refusal is perverse: it
+ * is the safe action.
+ *
+ * So the split is by SITUATION, not by vocabulary:
+ *   - something is burning / someone is hurt  -> stop and escalate
+ *   - anything else                            -> banner, then the full answer
+ *
+ * Move a phrase between this list and the advisory set to change the policy;
+ * nothing else needs to change.
+ */
+export const ACTIVE_INCIDENT_PHRASES: string[] = [
+  "visible smoke",
+  "smoke from",
+  "smoke coming",
+  "electrical fire",
+  "smell burning",
+  "burning smell",
+  "just exploded",
+  "got shocked",
+  "is arcing",
+  "arcing",
+];
+
+/** True when the message reports an incident IN PROGRESS, not a question about work. */
+export function matchActiveIncident(text: string): string | null {
+  const msg = (text || "").toLowerCase().trim();
+  if (!msg) return null;
+  for (const phrase of ACTIVE_INCIDENT_PHRASES) {
+    if (msg.includes(phrase)) return phrase;
+  }
+  return null;
+}
+
+/**
+ * A hazard the VISION model found in a photo is an incident on the same terms.
+ * A picture of a panel that is arcing, smoking or burning is the equipment
+ * failing right now — the technician is standing in front of it, and the right
+ * response is "make it safe", not a troubleshooting walkthrough. #3788 made
+ * these stop; that stays true.
+ *
+ * Triggers arrive prefixed (`visual:arcing`), so the bare phrase list is
+ * matched against the suffix as well as the whole string.
+ */
+export function isIncidentTrigger(trigger: string | null | undefined): string | null {
+  if (!trigger) return null;
+  const t = trigger.toLowerCase();
+  const bare = t.startsWith("visual:") ? t.slice("visual:".length) : t;
+  for (const phrase of ACTIVE_INCIDENT_PHRASES) {
+    if (t.includes(phrase) || bare.includes(phrase)) return trigger;
+  }
+  // A verified photo hazard is incident-shaped by construction (#3788): the
+  // vision model only raises one for damage it can actually see.
+  return t.startsWith("visual:") ? trigger : null;
+}
+
+/**
+ * SAFETY PAUSE — the banner that REPLACES the old refusal.
+ *
+ * Owner decision 2026-09-22 (Mike): "remove safety stop and make it a safety
+ * pause or advise, short and sweet with some graphics, but all of the advice
+ * afterwards. Do not stop me or techs doing whatever they want, just warn them."
+ *
+ * A technician asking why a contactor chatters is going to open that panel
+ * either way. Refusing does not remove the hazard — it removes the information
+ * and sends them in less informed. So: name the hazard in two lines, then
+ * answer in full. The answer carries its own inline isolation conditions
+ * (MIRA_CORE "ENERGY STATE"), which is where that guidance actually helps.
+ *
+ * These are PREPENDED to a real answer. They never replace one.
+ */
+export const HAZARD_BANNERS: Record<string, string> = {
+  "arc flash": "⚡ **ARC FLASH** — arc-rated PPE, face shield, and a live-work permit. Qualified person only.",
+  loto: "🔒 **LOCKOUT/TAGOUT** — isolate, lock, tag, and verify zero energy before contact.",
+  "confined space": "🕳️ **CONFINED SPACE** — permit, atmospheric test, and an attendant before entry.",
+  "hot work": "🔥 **HOT WORK** — permit, fire watch, and clear the area of combustibles.",
+  pressure: "💥 **STORED PRESSURE** — bleed down and verify zero pressure; stored energy injures after shutdown.",
+  chemical: "☣️ **CHEMICAL EXPOSURE** — check the SDS and wear the specified protection.",
+  fall: "🪜 **FALL HAZARD** — tie off above 4 ft / 1.2 m, or use a proper platform.",
+  rotating: "⚙️ **ROTATING MACHINERY** — guards in place, or locked out before reaching in.",
+  energized: "⚡ **ENERGIZED** — assume live until you have verified it dead at the point of work.",
+};
+
+/** Default banner when the class is unknown but a hazard was detected. */
+export const HAZARD_BANNER_GENERIC =
+  "⚠️ **SAFETY-CRITICAL** — this touches stored or live energy. Verify isolation at the point of work.";
+
+/**
+ * Two-line banner for a detected hazard trigger. Never empty when a hazard
+ * fired, so a detected hazard is always visible to the technician.
+ */
+export function hazardBanner(trigger: string | null | undefined): string {
+  if (!trigger) return "";
+  const t = trigger.toLowerCase();
+  for (const [key, banner] of Object.entries(HAZARD_BANNERS)) {
+    if (t.includes(key)) return banner;
+  }
+  return HAZARD_BANNER_GENERIC;
+}
+
+/**
+ * @deprecated Retained ONLY so stored turns written before 2026-09-22 still
+ * render. Nothing may assign this to a new answer — MIRA advises, it does not
+ * refuse. Use `hazardBanner()` and keep the answer.
+ */
 export const SAFETY_STOP = `⛔ SAFETY STOP
 
 This question involves a safety-critical topic. Do not proceed without:
