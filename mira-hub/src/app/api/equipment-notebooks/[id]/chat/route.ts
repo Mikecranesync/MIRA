@@ -590,7 +590,7 @@ function replayBasisLabel(basis: EvidenceBasis): string {
     case "identified_component":
       return "Grounded in the identified component.";
     case "workspace_evidence":
-      return "Grounded in workspace evidence.";
+      return "Grounded in an attached photo — an unconfirmed reading.";
   }
 }
 
@@ -2007,7 +2007,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   );
   {
     const contextSpan = tracer.startSpan("context.assemble", undefined, rootCtx);
-    const evidenceDocIds = [...new Set(chunks.map((c) => c.docId).filter((d): d is string => Boolean(d)))];
+    // Same identity rule as retrieval.returned_doc_ids: doc id for notebook
+    // chunks, source_url#page for shared-OEM chunks (which carry no doc id) —
+    // so "what reached the model" is never empty when chunks did.
+    const evidenceDocIds = [
+      ...new Set(
+        chunks
+          .map((c) => c.docId || (c.sourceUrl ? `${c.sourceUrl}#p${c.sourcePage ?? "?"}` : null))
+          .filter((d): d is string => Boolean(d)),
+      ),
+    ];
     const visualEvidenceCount = (lookRow?.text?.trim() ? 1 : 0) + priorLookRows.length + (visualSection ? 1 : 0);
     const identityIncluded = boundAsset.state === "resolved" || identityDisputed;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
@@ -2330,7 +2339,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
         }
       }
-      rec.stage("generation", { has_image_input: false, has_observation_text: Boolean(lookContext) });
+      {
+        const u = rawUsage as { prompt_tokens?: number; completion_tokens?: number } | null;
+        rec.stage("generation", {
+          has_image_input: false,
+          has_observation_text: Boolean(lookContext),
+          input_tokens: served ? (u?.prompt_tokens ?? null) : null,
+          output_tokens: served ? (u?.completion_tokens ?? null) : null,
+        });
+      }
 
       // STRM-2: the technician stopped the answer. Nothing more is written to
       // the (already cancelled) stream. The partial text is persisted as an
@@ -2495,7 +2512,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // non-refused answer is judged while the gate is on.
         const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
         const semStart = Date.now();
-        const sv = await semanticSafetyCheck({ question: message, answerText, general, selectedClass });
+        const sv = await semanticSafetyCheck({ question: message, answerText, general: !docGrounded, selectedClass });
         console.log(
           `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`,
         );
@@ -2608,19 +2625,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   ? "Grounded in recorded machine history and the manufacturer's documentation — not live."
                   : "Grounded in recorded machine history and this notebook's sources — not live.",
             }
-        : !docGrounded
+        : docGrounded && emittedCitations.length > 0
           ? {
-              kind: "evidence",
-              basis: "general_reasoning",
-              label: "General guidance — not grounded in this machine's documents.",
-            }
-          : {
               kind: "evidence",
               basis: "oem_documentation",
               label: oemRetrieval
                 ? "Grounded in the manufacturer's documentation (shared library)."
                 : "Grounded in this notebook's sources.",
-            };
+            }
+          : lookContext
+            ? {
+                // The answer rests on a photo the technician attached (this turn
+                // or an earlier one in the thread) — the tenant's own captured
+                // evidence, not a document. Staging traces cf204938… / 104883fb…
+                // (2026-09-22) answered "24 V DC" straight from the nameplate
+                // photo and were labelled general / documentation respectively.
+                kind: "evidence",
+                basis: "workspace_evidence",
+                label: priorLookRows.length > 0 && !lookRow
+                  ? "Grounded in a photo attached earlier in this conversation — an unconfirmed reading."
+                  : "Grounded in the attached photo — an unconfirmed reading.",
+              }
+            : {
+                kind: "evidence",
+                basis: "general_reasoning",
+                label: "General guidance — not grounded in this machine's documents.",
+              };
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
