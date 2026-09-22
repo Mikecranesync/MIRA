@@ -59,6 +59,14 @@ describe("isRefusal", () => {
   it("does not flag a grounded answer that happens to mention 'find'", () => {
     expect(isRefusal("You can find the decel ramp under P042 [Decel Time 1] [1].")).toBe(false);
   });
+  it("flags 'the references do not specify/state/list …' (staging trace d324d936, 2026-09-22)", () => {
+    expect(isRefusal("The supplied references do not specify the TP700 Comfort panel's required supply voltage nor its operating temperature range.")).toBe(true);
+    expect(isRefusal("The provided document does not state the torque value; consult the manual.")).toBe(true);
+    expect(isRefusal("These excerpts don't list the fault codes.")).toBe(true);
+  });
+  it("still does not flag a grounded answer that uses those verbs affirmatively", () => {
+    expect(isRefusal("The manual specifies 24 VDC on page 12 [1] and lists the fault codes in section 7 [2].")).toBe(false);
+  });
 });
 
 describe("citationsUsedInAnswer", () => {

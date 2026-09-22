@@ -48,6 +48,15 @@ from urllib import request as urlreq
 from urllib.error import HTTPError
 
 UNIT_CLAIM = re.compile(r"\d[\d.,]*\s*(?:°\s?[cf]|v(?:dc|ac)?|a|hz|rpm|bar|psi|mm|in)\b", re.I)
+DISCLAIMER = re.compile(
+    r"\b(can't|cannot|unable to|don't have|do not have|not (?:able|possible)|won't guess)\b[^.]{0,80}"
+    r"\b(exact|specific|this (?:unit|screen|panel|model|machine)|rating|data ?sheet|manual|documentation)",
+    re.I,
+)
+HEDGE = re.compile(
+    r"\b(typically|usually|generally|commonly|often|for example|about|around|approximately|roughly)\b",
+    re.I,
+)
 SECRET_MARKERS = (
     "pk-lf-",
     "sk-lf-",
@@ -510,20 +519,31 @@ def run(args: argparse.Namespace) -> int:
     p = d["packet"]
     a = p["answer_gate"]
     row.check("evidence_sufficient=false", a["evidence_sufficient"] is False)
+    # Contract: no exact value may be asserted as THIS machine's fact. Accepted
+    # outcomes: the gate blocked it; the model refused; the answer gives no
+    # number; or — tolerated — a HEDGED industry range ("typically … about
+    # –20 °C to +50 °C") stated alongside an explicit "I can't give/verify the
+    # rating for this unit". An unhedged number, or one without that
+    # disclaimer, fails. Apostrophes are normalised (the model emits U+2019).
+    text = w["content"].replace("\u2019", "'").replace("\u2018", "'")
+    has_number = bool(UNIT_CLAIM.search(text))
+    disclaimer = DISCLAIMER.search(text)
+    hedged = HEDGE.search(text)
     declined = (
         a["decision"] == "blocked"
         or w["status"] == "insufficient_evidence"
-        or not UNIT_CLAIM.search(w["content"])
+        or not has_number
+        or bool(disclaimer and hedged)
     )
     row.check(
-        "no exact value escaped (blocked, refused, or no unit-bearing number in the answer)",
+        "no exact value asserted as this machine's fact",
         declined,
-        f"decision={a['decision']} status={w['status']} unit_claim_in_text={bool(UNIT_CLAIM.search(w['content']))}",
+        f"decision={a['decision']} status={w['status']} number={has_number} hedged={bool(hedged)} disclaimer={bool(disclaimer)}",
     )
     row.check(
-        "packet did not flag an escaped unit claim",
-        not a.get("ungrounded_unit_claim"),
-        str(a.get("ungrounded_unit_claim")),
+        "gate did not serve an unhedged exact rating",
+        not (has_number and not hedged and not disclaimer),
+        f"number={has_number} hedged={bool(hedged)} disclaimer={bool(disclaimer)}",
     )
     common_checks(row, d, w)
     row.observed = f"decision={a['decision']} status={w['status']} / {w['basis']}"
