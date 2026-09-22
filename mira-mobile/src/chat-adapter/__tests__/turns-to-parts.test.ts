@@ -8,7 +8,7 @@
 //
 // Run: cd mira-mobile && bunx vitest run src/chat-adapter
 import { describe, expect, it } from "vitest";
-import { parseChatSse, type ChatTurn } from "../../lib/sse";
+import { ENERGIZED_ELECTRICAL_HAZARD, parseChatSse, type ChatTurn } from "../../lib/sse";
 import type { NotebookServerTurn } from "../../api/resources";
 import {
   comparableProjection,
@@ -159,7 +159,7 @@ describe("live turns", () => {
       frame({ kind: "status", status: "answered" }) +
       DONE;
     const a = liveTurnMessages("is it safe?", parseChatSse(safety), 0)[1];
-    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash" });
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash", terminal: true });
     expect(textOf(a)).toMatch(/^STOP\./);
   });
 
@@ -355,7 +355,36 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(hydrated.parts.some((p) => p.type === "observation")).toBe(true);
   });
 
-  it("keeps a non-terminal electrical directive as a cited, basis-bearing answer", () => {
+  it("#3893: a persisted energized directive hydrates as a NON-terminal warning that KEEPS the cited, basis-bearing answer", () => {
+    // The directive rides the persisted row as a `safety_notice` with the
+    // ENERGIZED sentinel and NO `safety_stop` entry, so `terminalSafetyNotice`
+    // returns null and `directiveSafetyNotice` claims it. Unlike a hard stop it
+    // is an ANSWER framed by an NFPA 70E warning: the banner is non-terminal and
+    // every piece of success chrome (citations, basis) stays. This is the
+    // hydration half of the same gap #3893 closes on the live wire.
+    const a = hydrateMessages([
+      {
+        ...PERSISTED[0],
+        evidence: [
+          ...CITATIONS,
+          { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD },
+        ],
+      },
+    ])[1];
+
+    // The warning IS present — and it is non-terminal (terminal:false), never a stop.
+    expect(a.parts.some((p) => p.type === "safety_notice" && p.terminal === false)).toBe(true);
+    expect(a.parts.some((p) => p.type === "safety_notice" && p.terminal === true)).toBe(false);
+    // Chrome is PRESERVED — this is the whole point vs a hard stop.
+    expect(citationsOf(a)).toHaveLength(2);
+    expect(a.parts.some((p) => p.type === "basis" && p.basis === "oem_documentation")).toBe(true);
+  });
+
+  it("#3893 control: a NON-sentinel safety_notice trigger is NOT treated as the directive", () => {
+    // Only the exact ENERGIZED sentinel is the non-terminal directive; any other
+    // safety_notice trigger on an answered, basis-bearing row is not a hard stop
+    // (no safety_stop, non-null basis) AND not the directive → no banner, chrome
+    // preserved. Proves the directive reader is an exact match, not a substring.
     const a = hydrateMessages([
       {
         ...PERSISTED[0],
@@ -369,6 +398,76 @@ describe("live ≡ hydrated parity (the invariant)", () => {
     expect(a.parts.some((p) => p.type === "safety_notice")).toBe(false);
     expect(citationsOf(a)).toHaveLength(2);
     expect(a.parts.some((p) => p.type === "basis" && p.basis === "oem_documentation")).toBe(true);
+  });
+
+  it("#3893: a LIVE energized directive on the evidence frame renders a NON-terminal warning WITH the answer, never a hard stop", () => {
+    // The Hub streams the directive on the EVIDENCE frame's `hazardEntries`
+    // (NEVER a `{kind:"safety"}` frame — pinned by the hub's own
+    // chat-electrical-hazard-live-stream.test.ts). So the live turn is answered:
+    // content + citations + basis + a non-terminal warning banner.
+    const directive =
+      frame({ kind: "content", content: "De-energize first, then measure." }) +
+      frame({ kind: "sources", citations: CITATIONS }) +
+      frame({
+        kind: "evidence",
+        basis: "oem_documentation",
+        label: "From the manual",
+        hazardEntries: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }],
+      }) +
+      frame({ kind: "status", status: "answered" }) +
+      frame({ kind: "followups", suggestions: ["What PPE do I need?"] }) +
+      DONE;
+    const turn = parseChatSse(directive);
+    // Parser: the directive lands in `safetyDirective`, NOT `safetyTrigger`.
+    expect(turn.safetyDirective).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    expect(turn.safetyTrigger).toBeUndefined();
+
+    const a = liveTurnMessages("can I clamp-meter it live?", turn, 0)[1];
+    // Non-terminal warning present; NOT a terminal stop.
+    expect(a.parts.some((p) => p.type === "safety_notice" && p.terminal === false)).toBe(true);
+    expect(a.parts.some((p) => p.type === "safety_notice" && p.terminal === true)).toBe(false);
+    // Every piece of success chrome the answer earned is retained.
+    expect(citationsOf(a)).toHaveLength(2);
+    expect(a.parts.some((p) => p.type === "basis")).toBe(true);
+    expect(a.parts.some((p) => p.type === "followups")).toBe(true);
+    expect(a.lifecycle).toBe("completed");
+    expect(textOf(a)).toMatch(/^De-energize/);
+  });
+
+  it("#3893 parity (criterion 6): a directive projects identically live and hydrated", () => {
+    // The live wire (evidence-frame `hazardEntries`) and the persisted row
+    // (`safety_notice` with the ENERGIZED sentinel) must land on the SAME
+    // semantic parts — otherwise the directive would show live and vanish on
+    // reload (or vice-versa), the exact drift `comparableProjection` guards.
+    const live = liveTurnMessages(
+      "can I clamp-meter it live?",
+      parseChatSse(
+        frame({ kind: "content", content: "De-energize first, then measure." }) +
+          frame({ kind: "sources", citations: CITATIONS }) +
+          frame({
+            kind: "evidence",
+            basis: "oem_documentation",
+            label: "From the manual",
+            hazardEntries: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }],
+          }) +
+          frame({ kind: "status", status: "answered" }) +
+          DONE,
+      ),
+      0,
+    )[1];
+    const hydrated = hydrateMessages([
+      {
+        id: "t-directive",
+        question: "can I clamp-meter it live?",
+        answerStatus: "answered",
+        answerText: "De-energize first, then measure.",
+        evidence: [...CITATIONS, { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }],
+        basis: "oem_documentation",
+      },
+    ])[1];
+    expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
+    // And the shared projection carries the safety identity (not dropped).
+    expect(comparableProjection(live).safetyNotice).toBe(true);
   });
 
   it("recognizes safety_stop as a terminal discriminator, not unknown evidence", () => {
@@ -386,7 +485,7 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       },
     ])[1];
 
-    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto", terminal: true });
     expect(a.parts.some((p) => p.type === "unknown")).toBe(false);
   });
 
@@ -405,7 +504,7 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       },
     ])[1];
 
-    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "exposed conductor" });
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "exposed conductor", terminal: true });
   });
 
   it("a persisted safety stop hydrates as the same safety notice, never a citation", () => {
@@ -432,8 +531,8 @@ describe("live ≡ hydrated parity (the invariant)", () => {
         basis: null,
       },
     ])[1];
-    expect(live.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
-    expect(hydrated.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(live.parts[0]).toEqual({ type: "safety_notice", trigger: "loto", terminal: true });
+    expect(hydrated.parts[0]).toEqual({ type: "safety_notice", trigger: "loto", terminal: true });
     expect(hydrated.parts.some((p) => p.type === "source")).toBe(false);
     expect(comparableProjection(live)).toEqual(comparableProjection(hydrated));
   });
@@ -477,7 +576,7 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       ),
       0,
     )[1];
-    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto" });
+    expect(a.parts[0]).toEqual({ type: "safety_notice", trigger: "loto", terminal: true });
     expect(a.parts.some((p) => p.type === "source")).toBe(false);
     expect(a.parts.some((p) => p.type === "basis")).toBe(false);
     expect(a.parts.some((p) => p.type === "followups")).toBe(false);
@@ -585,7 +684,7 @@ describe("live ≡ hydrated parity (the invariant)", () => {
       safetyTrigger: "arc flash",
     })[1];
     expect(mid.lifecycle).toBe("running");
-    expect(mid.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash" });
+    expect(mid.parts[0]).toEqual({ type: "safety_notice", trigger: "arc flash", terminal: true });
   });
 
   it("FLEET-003: an ordinary in-flight turn gets NO banner", () => {
