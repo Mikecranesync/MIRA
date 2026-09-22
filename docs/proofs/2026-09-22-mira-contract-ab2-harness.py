@@ -9,10 +9,28 @@ Conditions:
   general   contract general mode (post-fix)
   augmented contract augmented mode (post-fix) = the NEW DEFAULT for normal chat
 """
-import json, os, re, sys, urllib.request
+import json, os, re, subprocess, sys, urllib.request
 
-KEY=os.environ["GROQ_API_KEY"]; MODEL="openai/gpt-oss-120b"; MAXTOK=500
-W="/Users/charlienode/MIRA/.claude/worktrees/mira-contract-night"
+def _require_optin() -> str:
+    """This harness SPENDS MONEY. It must never run by accident — not from CI,
+    not from a stray import, not from a directory walk. Gate 7 flagged the
+    unchecked key read; this is the fix: explicit opt-in plus a present key.
+    """
+    if os.environ.get("MIRA_AB_CONFIRM") != "yes":
+        raise SystemExit(
+            "refusing to run: this harness makes PAID provider calls.\n"
+            "Re-run with MIRA_AB_CONFIRM=yes once you have read the declared budget."
+        )
+    key = os.environ.get("GROQ_API_KEY")
+    if not key:
+        raise SystemExit("GROQ_API_KEY is not set (use: doppler run -p factorylm -c dev -- ...)")
+    return key
+
+
+KEY = _require_optin(); MODEL="openai/gpt-oss-120b"; MAXTOK=500
+W = os.environ.get("MIRA_REPO") or subprocess.run(
+    ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+).stdout.strip()
 src=open(W+"/mira-hub/src/lib/mira-contract.ts").read()
 def blk(n): return re.search(r"export const %s = `(.*?)`;"%n, src, re.S).group(1)
 CORE=blk("MIRA_CORE")

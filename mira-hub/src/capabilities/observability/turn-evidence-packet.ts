@@ -56,7 +56,10 @@ export type TurnEvidencePacketIds = {
 };
 
 export type TurnEvidencePacketRequest = {
-  mode: "general" | "grounded";
+  /** Contract modes (2026-09-22) widen this: normal chat is `augmented`,
+   *  explicit cite-or-refuse is `source_only`. Legacy values retained so old
+   *  packets still parse. */
+  mode: "general" | "grounded" | "augmented" | "source_only";
   message_chars: number;
   has_visual_evidence: boolean;
   has_machine_evidence: boolean;
@@ -115,7 +118,7 @@ export type TurnEvidencePacketContext = {
   history_turns: number;
   prompt_chars: number;
   /** Which system prompt the model received: general (no documents), grounded (documents), machine (machine packet). */
-  system_prompt_kind: "general" | "grounded" | "machine" | null;
+  system_prompt_kind: "general" | "grounded" | "machine" | "augmented" | "source_only" | null;
 };
 
 export type TurnEvidencePacketGeneration = {

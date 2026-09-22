@@ -48,7 +48,7 @@ export type TurnRecorderInit = {
   threadId?: string | null;
   clientRequestId?: string | null;
   ownerUserId?: string | null;
-  mode?: "general" | "grounded";
+  mode?: "general" | "grounded" | "augmented" | "source_only";
   environment?: string;
   gitSha?: string;
   serviceVersion?: string;
