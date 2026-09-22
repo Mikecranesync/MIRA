@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
+  // Production flavor's BuildConfig bridge (these suites predate the flavor split).
+  registerPlugin: (name: string) =>
+    name === "BuildConfig"
+      ? {
+          getApiBase: async () => ({ apiBase: "https://app.factorylm.com" }),
+          getDeepLinkConfig: async () => ({ host: "app.factorylm.com", scheme: "factorylm" }),
+        }
+      : {},
   Capacitor: { isNativePlatform: () => false },
   CapacitorHttp: { request: vi.fn() },
 }));
