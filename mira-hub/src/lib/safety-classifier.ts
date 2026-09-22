@@ -284,6 +284,59 @@ export const HAZARD_BANNER_GENERIC =
  * Two-line banner for a detected hazard trigger. Never empty when a hazard
  * fired, so a detected hazard is always visible to the technician.
  */
+/**
+ * ADVISORY-ONLY hazard cues. These NEVER gate a turn — they only decide which
+ * banner rides above an answer that is being served anyway.
+ *
+ * Why a second vocabulary: `SAFETY_PHRASES_IMMEDIATE` is the STOP list, and
+ * widening it to get better banner coverage would widen what stops. Hardening
+ * round 2 (staging, 2026-09-22, SHA a32a73130) measured the cost of not having
+ * this: all six hazardous questions — megger a 480 V motor, lockout order on a
+ * hydraulic accumulator, clean the inside of a mix tank, weld near hydraulic
+ * lines, take a live reading in a 480 V panel — were answered in full with NO
+ * banner at all. The answers were right; the warning half of "warn, do not
+ * withhold" simply was not firing.
+ *
+ * First match wins, so the most specific class is listed first. Cues are
+ * deliberately narrow: a conceptual question ("why would a contactor chatter")
+ * must NOT collect a banner it did not earn.
+ */
+const HAZARD_ADVISORY_CUES: readonly (readonly [string, readonly string[]])[] = [
+  ["confined space", ["confined space", "inside the tank", "inside the vessel", "inside the silo",
+                      "inside the mix tank", "inside the hopper", "enter the tank", "enter the vessel",
+                      "manway", "manhole", "clean the inside"]],
+  ["hot work", ["hot work", "weld", "welding", "cutting torch", "oxy-acetylene", "brazing",
+                "grinding sparks", "torch cut"]],
+  ["pressure", ["accumulator", "pressurized", "pressure vessel", "air receiver", "stored pressure",
+                "bleed down", "hydraulic line", "charged line"]],
+  ["chemical", ["caustic", "solvent", "sulfuric", "acid ", "sds sheet", "safety data sheet",
+                "cleaning fluid", "degreaser", "ammonia"]],
+  ["fall", ["scaffold", "step ladder", "extension ladder", "catwalk", "mezzanine", "work at height",
+            "on the roof", "tie off"]],
+  ["rotating", ["reach into", "reach in while", "rotating shaft", "rotating machinery", "coupling guard",
+                "remove the guard", "drive chain", "sheave", "nip point"]],
+  // NO bare voltage classes here. "The 480V supply to the MCC reads low on the
+  // display" is an observation, not hazardous work, and a banner on it is the
+  // boy-who-cried-wolf failure that makes technicians stop reading banners.
+  ["arc flash", ["arc flash", "arc rated", "switchgear", "bus bar", "busbar"]],
+  ["energized", ["energized", "energised", "live panel", "live circuit", "megger", "megohmmeter",
+                 "insulation resistance", "voltage reading", "while it is running", "while running"]],
+  ["loto", ["lockout", "lock out", "tagout", "tag out", "loto", "zero energy", "isolation procedure"]],
+];
+
+/**
+ * Which hazard banner, if any, belongs above this answer. Advisory only — it
+ * never stops a turn and never changes what MIRA says.
+ */
+export function detectHazardAdvisory(text: string | null | undefined): string | null {
+  const t = (text || "").toLowerCase();
+  if (!t) return null;
+  for (const [cls, cues] of HAZARD_ADVISORY_CUES) {
+    if (cues.some((c) => t.includes(c))) return cls;
+  }
+  return null;
+}
+
 export function hazardBanner(trigger: string | null | undefined): string {
   if (!trigger) return "";
   const t = trigger.toLowerCase();

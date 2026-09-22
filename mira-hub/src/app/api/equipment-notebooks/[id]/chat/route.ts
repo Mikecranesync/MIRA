@@ -79,6 +79,7 @@ import {
   ENERGIZED_ELECTRICAL_HAZARD,
   matchSafetyStop,
   SAFETY_STOP,
+  detectHazardAdvisory,
   hazardBanner,
   matchActiveIncident,
   isIncidentTrigger,
@@ -1275,9 +1276,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // `hazardAdvisory` is non-null whenever ANY hazard was detected, so the
   // banner is always shown; `electricalHazardDirective` keeps the fuller NFPA
   // 70E framing for the energized-electrical class specifically.
+  //
+  // `safetyTrigger` only fires on the STOP vocabulary, which is narrow by
+  // design. Round 2 measured the consequence: six hazardous questions answered
+  // in full with no banner at all. `detectHazardAdvisory` is the advisory-only
+  // second pass — it never gates, it only decides which banner rides above an
+  // answer that is being served anyway.
   const hazardAdvisory =
     miraContractEnabled() && !matchActiveIncident(message) && !isIncidentTrigger(visualSafetyTrigger)
-      ? (safetyTrigger ?? null)
+      ? (safetyTrigger ?? detectHazardAdvisory(message) ?? null)
       : null;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
   // Hazard class the OUTPUT judge flags on a KEPT answer (safety pause).
@@ -2773,6 +2780,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
             answerText = SEMANTIC_UNVERIFIED_FALLBACK;
           }
+        }
+      }
+
+      // THE BANNER. `hazardAdvisory` persisted a `safety_notice` on the turn but
+      // never put anything in front of the technician — round 2 answered six
+      // hazardous questions with no visible warning at all. Prepend it here, on
+      // the finished answer, so the hazard is named first and the answer follows
+      // in full ("warn, do not withhold"). Skipped when a banner is already
+      // there (the energized pause or the judge put one on), and never on a
+      // refusal or an empty answer.
+      if (miraContractEnabled() && hazardAdvisory && !semanticHazardClass && served && !refused && answerText.trim()) {
+        const banner = hazardBanner(hazardAdvisory);
+        if (banner && !answerText.startsWith(banner)) {
+          semanticHazardClass = hazardAdvisory;
+          answerText = `${banner}\n\n${answerText}`;
         }
       }
 

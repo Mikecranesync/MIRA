@@ -357,3 +357,34 @@ describe("an empty notebook is not a refusal (staging 2026-09-22, SHA 5c19e56c8)
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("the banner is visible, and the answer survives it", () => {
+  // "put a little warning banner then give the answers that i need"
+  // (owner, 2026-09-22). Round 2 persisted a safety_notice on the turn but put
+  // NOTHING in front of the technician, so the warning half of "warn, do not
+  // withhold" was not actually shipping.
+  it("names the hazard first, then answers in full", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(providerStream("Test the atmosphere, then ventilate before anyone goes in."), { status: 200 })));
+    const f = await frames(await POST(
+      req({ message: "I need to clean the inside of the mix tank, what do I need to do first" }), params));
+    const text = f.filter((x) => x.kind === "content").map((x) => String(x.content ?? x.delta ?? "")).join("");
+
+    expect(text).toContain("CONFINED SPACE");
+    expect(text).toContain("🕳️");
+    // The answer is still there, after the banner — not replaced by it.
+    expect(text).toContain("ventilate before anyone goes in");
+    expect(text.indexOf("CONFINED SPACE")).toBeLessThan(text.indexOf("ventilate"));
+    expect(f.find((x) => x.kind === "status")).toMatchObject({ status: "answered" });
+  });
+
+  it("puts no banner on an ordinary question", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(providerStream("Low coil voltage is the usual cause."), { status: 200 })));
+    const f = await frames(await POST(
+      req({ message: "why would a contactor chatter instead of pulling in cleanly" }), params));
+    const text = f.filter((x) => x.kind === "content").map((x) => String(x.content ?? x.delta ?? "")).join("");
+    expect(text).not.toMatch(/⚡|🔒|🕳️|🔥|💥|☣️|🪜|⚙️/);
+    expect(text).toContain("Low coil voltage");
+  });
+});

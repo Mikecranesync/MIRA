@@ -56,6 +56,8 @@ describe("GET /api/health approvedRetrievalEnforced", () => {
         "approvedRetrievalEnforced",
         "builtAt",
         "gitSha",
+        // Added by a2701ebf5 (the beta probe reads it to know which
+        // empty-notebook behaviour to expect). A boolean, not a secret.
         "miraContractEnabled",
         "service",
         "status",
