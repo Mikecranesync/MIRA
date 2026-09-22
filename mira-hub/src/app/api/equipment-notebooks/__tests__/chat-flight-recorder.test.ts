@@ -338,7 +338,9 @@ describe("per-stage timings land in the durable packet", () => {
 
 
 describe("retrieval routing is decided by evidence context, not by general mode alone (2026-09-22)", () => {
-  const chunk = (docId: string) => ({ docId, content: "Rated 24 VDC, 0.85 A max.", sourceTitle: "TP700 manual", page: 12, citationId: "1", fileId: null, quote: null });
+  const chunk = (docId: string | null, sourceUrl = "https://oem.example/tp700.pdf") => ({ docId, sourceUrl, title: "TP700 Comfort Operating Instructions", content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true });
+  const oemChunk = () => chunk(null);
+  const framesOf = (text: string) => text.split("\n\n").filter((l) => l.startsWith("data: {")).map((l) => JSON.parse(l.slice(6)) as { kind: string; [k: string]: unknown });
   const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
   const nb = (extra: Record<string, unknown> = {}) => ({ id: NB, displayName: "Unknown box", manufacturer: null, model: null, ...extra });
 
@@ -354,20 +356,34 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
-  it("2. empty notebook + resolved identity (manufacturer on the notebook) → OEM corpus retrieval runs, doc ids traceable", async () => {
+  it("2. empty notebook + resolved identity (manufacturer on the notebook) → OEM corpus retrieval runs, doc ids traceable, and the OEM chunks GROUND the turn", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
-    ragMock.retrieveManualChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
-    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Per the manual the supply is 24 VDC [1].")));
-    await (await POST(chatReq({ message: "what supply voltage does this panel need", mode: "general" }), params)).text();
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
+    const fetchMock = vi.fn(async () => providerStream("Per the manual the supply is 24 VDC [1]."));
+    vi.stubGlobal("fetch", fetchMock);
+    const text = await (await POST(chatReq({ message: "what supply voltage does this panel need", mode: "general" }), params)).text();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const p = packetOf();
     expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
     expect(p.retrieval.executed).toBe(true);
     expect(p.retrieval.oem_corpus_searched).toBe(true);
     expect(p.retrieval.oem_manufacturer_source).toBe("notebook");
-    expect(p.retrieval.returned_doc_ids).toEqual([DOC_A]);
-    expect(p.context.evidence_doc_ids).toEqual([DOC_A]);
+    // Shared-OEM chunks have no doc id; their durable identity is source URL + page.
+    expect(p.retrieval.returned_doc_ids).toEqual(["https://oem.example/tp700.pdf#p12"]);
     expect(p.answer_gate.evidence_sufficient).toBe(true);
+    // Staging trace abea7c10… regression: the chunks must REACH the model and
+    // the wire, not be discarded by general-mode downstream. Grounded system
+    // prompt (grounding rules appended), [1] preserved in the answer, citation
+    // shipped, and the evidence badge says OEM documentation.
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body) as { messages: { role: string; content: string }[] };
+    expect(body.messages[0].content).not.toContain("No manual for this machine has been loaded");
+    expect(p.context.system_prompt_kind).toBe("grounded");
+    const frames = framesOf(text);
+    expect(frames.find((f) => f.kind === "sources")?.citations).toHaveLength(1);
+    const ev = frames.find((f) => f.kind === "evidence") as { basis?: string; label?: string } | undefined;
+    expect(ev?.basis).toBe("oem_documentation");
+    expect(ev?.label).toContain("manufacturer's documentation");
+    expect(text).toContain("[1]");
     const [, , opts] = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, unknown, string, { manufacturer: string; allowTenantFallback: boolean }];
     void opts;
     const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; allowTenantFallback: boolean }];
@@ -379,7 +395,7 @@ describe("retrieval routing is decided by evidence context, not by general mode 
   it("2b. identity from the PHOTO observation (no notebook manufacturer) → OEM retrieval scoped to the recognised vendor", async () => {
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "SIEMENS TP700 Comfort 6AV2124-0GC01-0AX0, 24 VDC", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
-    ragMock.retrieveManualChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" });
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("The panel takes 24 VDC [1].")));
     await (await POST(chatReq({ message: "what does it run on", mode: "general", visualEvidence: { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" } }), params)).text();
@@ -392,7 +408,7 @@ describe("retrieval routing is decided by evidence context, not by general mode 
 
   it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb() as never);
-    ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk(DOC_A)] as never);
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk(DOC_A, "")] as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("Rated 24 VDC [1].")));
     await (await POST(chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] }), params)).text();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));

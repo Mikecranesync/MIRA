@@ -114,6 +114,8 @@ export type TurnEvidencePacketContext = {
   identity_included: boolean;
   history_turns: number;
   prompt_chars: number;
+  /** Which system prompt the model received: general (no documents), grounded (documents), machine (machine packet). */
+  system_prompt_kind: "general" | "grounded" | "machine" | null;
 };
 
 export type TurnEvidencePacketGeneration = {
@@ -277,6 +279,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       identity_included: false,
       history_turns: 0,
       prompt_chars: 0,
+      system_prompt_kind: null,
     },
     generation: {
       attempts: [],

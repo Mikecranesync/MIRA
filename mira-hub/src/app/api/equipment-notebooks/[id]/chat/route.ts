@@ -1620,7 +1620,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ),
       );
   {
-    const returnedDocIds = [...new Set(chunks.map((c) => c.docId).filter((d): d is string => Boolean(d)))].slice(0, 32);
+    // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
+    // source URL + page, which is their durable identity in knowledge_entries.
+    // Record whichever the chunk has so "which document, which page" is
+    // answerable for BOTH strategies (ids only — never content).
+    const returnedDocIds = [
+      ...new Set(
+        chunks
+          .map((c) => c.docId || (c.sourceUrl ? `${c.sourceUrl}#p${c.sourcePage ?? "?"}` : null))
+          .filter((d): d is string => Boolean(d)),
+      ),
+    ].slice(0, 32);
     const retrievalStrategy = notebookRetrieval
       ? "notebook_sources_bm25"
       : oemRetrieval
@@ -1655,6 +1665,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
     endTimed(retrievalSpan, "retrieval");
   }
+
+  // Once retrieval has produced chunks — from the notebook's own sources OR the
+  // shared OEM corpus — the turn is DOCUMENT-GROUNDED for everything
+  // downstream: grounding rules in the system prompt, [n] citation markers,
+  // shipped citations, the evidence badge, and the specificity gate. `general`
+  // keeps its request-shape meaning (the client selected no sources) for the
+  // source-validation and Gate-G checks above. Before 2026-09-22 the two were
+  // conflated, so OEM chunks were retrieved and then discarded on the way to
+  // the model (staging trace abea7c10…: 6 Siemens candidates, 0 citations,
+  // "general reasoning" badge).
+  const docGrounded = chunks.length > 0;
 
   const enc = new TextEncoder();
 
@@ -1956,7 +1977,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
-  const basePrompt = general ? GENERAL_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
+  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
@@ -1966,9 +1987,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = general
-    ? withVisual + machineContext
-    : appendManualContext(withVisual, chunks) + machineContext + coverageDirective;
+  const systemPrompt = docGrounded
+    ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
+    : withVisual + machineContext;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -1990,7 +2011,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const visualEvidenceCount = (lookRow?.text?.trim() ? 1 : 0) + priorLookRows.length + (visualSection ? 1 : 0);
     const identityIncluded = boundAsset.state === "resolved" || identityDisputed;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    const systemPromptKind = general ? "general" : groundedMachineEntry ? "machine" : "grounded";
+    const systemPromptKind = !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded";
     rec.stage("context", {
       evidence_doc_ids: evidenceDocIds,
       chunk_count: chunks.length,
@@ -1998,6 +2019,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       identity_included: identityIncluded,
       history_turns: history.length,
       prompt_chars: promptChars,
+      system_prompt_kind: systemPromptKind,
     });
     setSpanAttrs(
       {
@@ -2184,7 +2206,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 if (parsed.id && !genResponseId) genResponseId = parsed.id;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
-                  const norm = general ? stripBrackets.push(normalize.push(delta)) : normalize.push(delta);
+                  const norm = !docGrounded ? stripBrackets.push(normalize.push(delta)) : normalize.push(delta);
                   if (norm) {
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
@@ -2209,7 +2231,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
           }
           if (responseBuffer.length > 0) {
-            const tail = general
+            const tail = !docGrounded
               ? stripBrackets.push(normalize.flush()) + stripBrackets.flush()
               : normalize.flush();
             if (tail) {
@@ -2327,7 +2349,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         let partial = responseBuffer.join("");
         // Same second bracket guard as the answered path: a general partial
         // must not carry [n] markers that resolve to no document.
-        if (general) partial = partial.replace(/\s*\[\d+\]/g, "");
+        if (!docGrounded) partial = partial.replace(/\s*\[\d+\]/g, "");
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
@@ -2430,7 +2452,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
       // ship a chip that resolves to no document.
-      if (general) answerText = answerText.replace(/\s*\[\d+\]/g, "");
+      if (!docGrounded) answerText = answerText.replace(/\s*\[\d+\]/g, "");
 
       // B2/B3 (#3790/#3787, PR #3791): pre-display validation on the COMPLETE
       // candidate. Under the gate nothing has been released yet, so a rejected
@@ -2443,7 +2465,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // pre-display gate so an exact equipment rating with nothing behind it is
       // withheld, not merely recorded as evidence_sufficient=false afterwards.
       const evidenceSufficient = chunks.length > 0 || Boolean(groundedMachineEntry) || Boolean(lookContext);
-      const validation = validateAnswer({ answerText, question: message, general, served, refused, evidenceSufficient });
+      // The specificity lane keys on "no documents behind the answer", which
+      // is `!docGrounded` (an OEM-grounded turn is held to the citation
+      // contract, exactly like a notebook-grounded one).
+      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       if (!validation.ok) {
         console.error(
@@ -2499,7 +2524,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.
       const emittedCitations =
-        general || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
+        !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
@@ -2568,18 +2593,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? {
               kind: "evidence",
               basis: "live_machine_evidence",
-              label: general
+              label: !docGrounded
                 ? "Grounded in live machine evidence — no documents for this machine."
-                : "Grounded in live machine evidence and this notebook's sources.",
+                : oemRetrieval
+                  ? "Grounded in live machine evidence and the manufacturer's documentation."
+                  : "Grounded in live machine evidence and this notebook's sources.",
             }
           : {
               kind: "evidence",
               basis: "machine_history",
-              label: general
+              label: !docGrounded
                 ? "Grounded in recorded machine history — not live, no documents for this machine."
-                : "Grounded in recorded machine history and this notebook's sources — not live.",
+                : oemRetrieval
+                  ? "Grounded in recorded machine history and the manufacturer's documentation — not live."
+                  : "Grounded in recorded machine history and this notebook's sources — not live.",
             }
-        : general
+        : !docGrounded
           ? {
               kind: "evidence",
               basis: "general_reasoning",
@@ -2588,7 +2617,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : {
               kind: "evidence",
               basis: "oem_documentation",
-              label: "Grounded in this notebook's sources.",
+              label: oemRetrieval
+                ? "Grounded in the manufacturer's documentation (shared library)."
+                : "Grounded in this notebook's sources.",
             };
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
