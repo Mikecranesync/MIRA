@@ -413,10 +413,14 @@ export function legacyCascadeUsage(
 }
 
 export function isRefusal(answer: string): boolean {
+  // Verb list extended 2026-09-22 (staging trace d324d936…): "the supplied
+  // references do not SPECIFY the supply voltage" is an honest refusal too,
+  // and was persisted as `answered` with a general badge. The refusal regex
+  // is the ONLY thing that turns a served refusal into insufficient_evidence.
   const a = answer.toLowerCase();
   return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see)\b/.test(a) &&
-    /\b(excerpt|source|reference|document|manual|provided|selected|information)\b/.test(a) &&
+    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
+    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|provided|supplied|selected|information)\b/.test(a) &&
     a.length < 400
   );
 }
@@ -2555,11 +2559,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // without changing isRefusal's own result (design §3 answer_gate
         // fields `refusal_phrase_matched` / `evidence_phrase_matched`).
         const refusalPhraseMatched =
-          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see)\b/.test(
+          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(
             answerLower,
           );
         const evidencePhraseMatched =
-          /\b(excerpt|source|reference|document|manual|provided|selected|information)\b/.test(answerLower);
+          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|provided|supplied|selected|information)\b/.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
