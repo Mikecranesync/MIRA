@@ -1,72 +1,85 @@
-# Autonomous Run Plan — Baseline Defect Discovery & Remediation
+# Autonomous Run Plan — MIRA Intelligence Contract, real-path proof
 
-**Date:** 2026-09-13 (overnight)
-**Branch:** `evals/baseline-testing-standard` (PR #3760)
-**Base:** `origin/main`
-**Tested SHA:** `f06922ac6` (deployed prod) / eval scripts at branch HEAD
-**Goal doc:** `~/Downloads/FactoryLM Baseline Defect Discovery and Remediation Goal.md`
-**Policy:** `evals/BASELINE_TESTING_STANDARD.md`
-**Device:** Pixel 9a `55081JEBF07026`, build com.factorylm.mira 1.1.0(10), our debug cert.
+**Date:** 2026-09-22 (overnight, ≤5h) · **Branch:** `feat/mira-intelligence-contract`
+**Base SHA (rollback point R0):** `c2c8e44cb` · **origin/main:** `ebde0ccf5`
+**Worktree:** `.claude/worktrees/mira-contract-night`
+**Prior work:** `docs/specs/mira-intelligence-contract.md`,
+`docs/audits/2026-09-22-mira-persona-inventory.md`,
+`docs/proofs/2026-09-22-mira-intelligence-contract-acceptance.md`
 
 ## Objective
-Exhaust the currently-runnable baseline until no untriaged failures remain. Loop:
-TEST → EVIDENCE → TRIAGE → ISSUE → FIX → PR → RE-TEST → EXPAND. Convert what the
-baseline discovers into reproducible tests, tracked GitHub issues, and evidence-backed
-fixes — not merely a greener score.
+Make the contract real on the phone/web chat paths and prove it on STAGING.
+Not another audit, not a dormant flag.
 
-## In-scope (numbered)
-1. **Re-run technician + safety cases at full embedding coverage.** Poll the eval notebook
-   until its manuals are chat_ready with high coverage; re-run all 40 cases; re-judge.
-   Success: fresh `evals/results/<run>/` with grounded_correctness reflecting real coverage.
-2. **Triage every failure by evidence** into: PRODUCT / SAFETY / GROUNDING-CORPUS /
-   TEST-RUBRIC / JUDGE / ENV-INFRA. Success: each of the 30+10 cases has a written
-   classification; safety FAIL cases individually adjudicated (dangerous vs missing-framing).
-3. **Durable issues for confirmed defects.** Search first; create focused GitHub issues with
-   reproduction, expected/actual, SHA, severity, evidence, acceptance criteria. Success:
-   every confirmed distinct defect has an issue number.
-4. **Judge/rubric correctness pass.** Determine whether the safety judge conflates
-   "missing NFPA 70E framing" with "actively dangerous" (advisor flagged safety-05 as a
-   probable FP). If the judge is demonstrably miscalibrated, fix the rubric/judge as a
-   *documented* change and RE-RUN (never override a run). Success: a documented judge
-   decision + re-run, or evidence the judge is correct as-is.
-5. **Run the remaining product-parity workflows on the Pixel** (wf-06,07,08,10,11,12,13,14)
-   + the Golden Conversation end-to-end. Success: product.json finalized 15/15 with real
-   device evidence, or honest NOT RUN with a concrete blocker per item.
-6. **Architecture-drift check** must pass (already green — re-confirm at HEAD).
-7. **Focused fix PRs** for confirmed TEST/RUBRIC/JUDGE/GROUNDING defects that are safely
-   fixable in-session (eval harness + case corpus are ours to fix). Each PR: regression
-   coverage, failing-before evidence, prove-at-head, re-run affected cases.
+## Product law (the test every change is judged against)
+MIRA amplifies technicians through model intelligence, evidence, tools and
+guardrails. Blank chat + question, optionally photos/files, with no project or
+machine prerequisite. Manuals and Jev SUPPORT intelligence; they are not the
+product.
 
-## OUT-of-scope (do NOT touch)
-- **Product-code fixes to MIRA's safety/answer behavior** (mira-bots engine, prompts,
-  guardrails). A SAFETY/PRODUCT DEFECT gets a durable ISSUE with evidence — the *fix* is a
-  separate reviewed slice, not an overnight change to the diagnostic engine. Scope here is
-  the eval regime + corpus + issue-filing.
-- Migrations, `mira-hub/db/**`, guarded legacy UI trees, `packages/factorylm-ui/**`
-  product code, `.github/workflows/**`.
-- Merging/deploying anything. No push to main/develop/dev. No prod psql/SSH/OTA.
-- The 3 uncommitted android build-sync files (`capacitor.build.gradle`,
-  `capacitor.settings.gradle`, `gradlew`) — local artifacts, never staged.
+## IN SCOPE — numbered, with success criteria
 
-## Success criteria (goal COMPLETE)
-- Every runnable baseline test executed at the best-available corpus coverage.
-- Every failure explained + classified.
-- Every confirmed product/safety defect has a GitHub issue.
-- Every in-scope (harness/corpus/judge) defect has a PR with regression evidence.
-- Reruns expose no untriaged failures.
-- Remaining NOT RUN/BLOCKED items have concrete external blockers + GitHub tracking.
+1. **Parameter speculation.** "Typically" must not launder an invented parameter
+   identity, fault meaning, terminal assignment or exact setting. Withhold the
+   unsupported specific, keep the useful general explanation.
+   *Done when:* mode blocks updated; tests cover ≥4 distinct fabrication classes
+   (parameter identity, fault-code meaning, terminal assignment, exact setting);
+   A/B rerun shows no fabricated specifics and no loss of general usefulness.
 
-## Hard stops → write HANDOFF.md
-- Any OUT-of-scope path would need editing → stop, file issue, handoff.
-- A product/safety fix is genuinely required (engine behavior) → issue + handoff (human-gated).
-- Device becomes unavailable / not foreground / another app in front.
-- 5 consecutive turns stuck on one failure.
-- Token budget > 70% or turn count > 200.
-- Judge recalibration would *flip* the safety gate to PASS → that's the tell it's weakening
-  the test; stop and handoff for human review.
+2. **Mode routing.** Normal authenticated chat is **augmented** WITH or WITHOUT
+   attached/selected documents. Attaching evidence is NOT consent to
+   document-only answers. Strict cite-or-refuse (**grounded**) requires an
+   explicit source-only request.
+   *Done when:* notebook chat selects augmented by default; grounded only on
+   explicit source-only intent; source authorization, citation entailment and
+   machine-evidence boundaries all preserved; contract + tests updated.
 
-## Evidence & etiquette
-- Real device only; check `mCurrentFocus` before every tap batch; restore rotation at end;
-  one clearly-named test notebook; never delete tenant data.
-- Every result keyed to exact SHA. No PASS from partial execution (§10.1).
-- Commit every 20–30 turns; push to this branch only.
+3. **Trace UI → adapter → route → prompt → gates → rendered answer.** Fix the
+   EARLIEST wrong decision, not the prompt text. Remove mandatory
+   diagnostic/bullet/word-count templates. Context must report actual search
+   results/skips/failures and never imply a tool ran when it did not.
+   *Done when:* the trace is written down with file:line per hop; the earliest
+   wrong decision is identified and fixed; template mandates removed.
+
+4. **Ship to STAGING only.** Independent exact-head review + required CI, then
+   merge and deploy the pinned SHA to staging and enable the flag THERE.
+   *Done when:* deployed SHA recorded, staging flag on, container config
+   verified, rollback preserved, **production flag OFF**.
+
+5. **Proof.** Suites flag OFF/ON; full live staging retrieval acceptance; real-path
+   cases (blank chat; photo+question and follow-up; irrelevant/empty attached
+   sources still allow general help; citations; explicit source-only miss;
+   unsupported specifics; hazards; tenant isolation; provider-fallback persona).
+   Exercise changed branches, not lucky wording. Capture web + phone/emulator
+   evidence, traces, prompt hash, model used.
+
+## OUT OF SCOPE — do not touch
+- **Production deploy or production flag enable.** Prod flag stays OFF.
+- **OT / PLC / fieldbus writes** of any kind.
+- **New services.**
+- **Jev promotion** — Jev stays shadow-only. Do not edit Jev gating.
+- **Secondary-route migration** — `assets/[id]/chat`, `namespace/node/[id]/chat`,
+  `mira/ask`, `quickstart/ask`, `manual-rag.ts`, and the whole Python
+  `mira-bots/` runtime stay on their current personas this run.
+- Review/gate bypasses (`MIRA_SKIP_STOP_GATE`, `MIRA_ALLOW_PROD`, `--force`).
+- Deleting any existing protection to make a test pass.
+
+## Budget
+Evaluation spend **≤ $1.00** total (prior run used $0.0071). Every paid lane
+declares its bound before it runs and hard-stops at it.
+
+## Coordination risk (checked, not assumed)
+Open PRs **#3957** and **#3958** (Jev shadow) both modify
+`mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts`, the same file item
+2 rewrites — different region (semantic safety / chunk choice vs prompt
+composition + mode selection). If either merges first, rebase onto it; do not
+touch their Jev code. #3917 has no overlap.
+
+## Rollback
+R0 = `c2c8e44cb`. Every commit pushed to the branch. Staging rollback = redeploy
+previous staging SHA and unset `MIRA_PERSONA_CONTRACT`.
+
+## Stop conditions
+All PLAN rows done · >70% budget · >200 turns · 5 turns on one failing test ·
+architecture/security decision needed · any OUT-of-scope path required ·
+remaining work human-gated → write HANDOFF once and stop.

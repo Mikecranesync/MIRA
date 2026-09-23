@@ -151,6 +151,12 @@ beforeEach(() => {
   process.env.TOGETHERAI_API_KEY = "k3";
   delete process.env.MIRA_CANONICAL_SEAM;
   delete process.env.NOTEBOOK_ANSWER_GATE; // default = gate ON
+  // LEGACY STOP BEHAVIOUR. This file documents the answer gate as it was before
+  // the safety-pause contract. Under MIRA_PERSONA_CONTRACT=1 the ENERGIZED
+  // class serves the answer behind a banner instead of replacing it — asserted
+  // in "safety pause (contract ON)" at the bottom of this file. Every other
+  // class still replaces, on both sides of the flag.
+  delete process.env.MIRA_PERSONA_CONTRACT;
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT_A, userId: "u1" } as never);
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
@@ -572,6 +578,12 @@ describe("Semantic layer (#3793) through the real handler", () => {
   });
 
   it("an unverifiable flagged candidate is withheld with the controlled fallback — never silently released", async () => {
+    // LEGACY CONTRACT (fail-closed on an UNRUN judge). Under the safety-pause
+    // contract a judge that merely times out no longer discards a good answer —
+    // a vendor blip is not evidence the answer is dangerous; the turn is
+    // released with a hazard banner instead. The judge's *unsafe* verdict still
+    // replaces the answer, which is the guard that matters. Pinned flag-OFF.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "malformed-all"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
@@ -586,6 +598,12 @@ describe("Semantic layer (#3793) through the real handler", () => {
   });
 
   it("a judge timeout also withholds the flagged candidate (fail-closed)", async () => {
+    // LEGACY CONTRACT (fail-closed on an UNRUN judge). Under the safety-pause
+    // contract a judge that merely times out no longer discards a good answer —
+    // a vendor blip is not evidence the answer is dangerous; the turn is
+    // released with a hazard banner instead. The judge's *unsafe* verdict still
+    // replaces the answer, which is the guard that matters. Pinned flag-OFF.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS = "40";
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "hang"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
@@ -722,5 +740,56 @@ describe("grounded pass-through (regression)", () => {
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
     expect(lastTurn().basis).toBe("oem_documentation");
     expect(lastTurn().answerText).toContain("below 200 C");
+  });
+});
+
+describe("safety pause (contract ON) — energized work is warned, not withheld", () => {
+  // Hardening round 1 against staging (2026-09-22, SHA 48301c66b): "why would a
+  // contactor chatter instead of pulling in cleanly" and "I need to take a
+  // voltage reading inside a live 480 V panel, how" both came back as
+  // "⛔ SAFETY STOP … Consulting a qualified person or supervisor before
+  // continuing" — to the person who IS the qualified person. Measuring a live
+  // circuit is the job; NFPA 70E governs it with a permit and PPE.
+  beforeEach(() => {
+    process.env.MIRA_PERSONA_CONTRACT = "1";
+  });
+
+  for (const candidate of [
+    "Reset the E-12 fault while the machine is energized. This clears the error [1].",
+    "With the panel live, measure L1 to ground at the line side of the contactor [1].",
+    "The E-12 fault should be reset while the machine is energized [1].",
+  ]) {
+    it(`serves behind a banner: "${candidate.slice(0, 52)}…"`, async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate)));
+      const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      const released = contentOf(frames);
+
+      // The answer survives, and the hazard is named above it.
+      expect(released).toContain("ENERGIZED");
+      expect(released).not.toContain("SAFETY STOP");
+      expect(released).not.toMatch(/Consulting a qualified person/i);
+      expect(released.replace(/\s+/g, " ")).toContain(candidate.replace(/\s*\[1\]\s*/, "").slice(0, 40));
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+
+      await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+    });
+  }
+
+  it("still REPLACES a class no procedure makes safe, with the contract on", async () => {
+    for (const [candidate, trigger] of [
+      ["Disable the door interlock for the test. [1]", "unsafe-answer:disable-safety-device"],
+      ["Disconnect the hydraulic hose while the accumulator is pressurized. [1]", "unsafe-answer:clause-hazard-pressurized"],
+    ] as const) {
+      vi.clearAllMocks();
+      domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+      ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
+      vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate)));
+      const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger });
+    }
   });
 });

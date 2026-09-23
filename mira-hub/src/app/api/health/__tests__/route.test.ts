@@ -28,6 +28,23 @@ describe("GET /api/health approvedRetrievalEnforced", () => {
     }
   });
 
+  it("miraContractEnabled is true only when MIRA_PERSONA_CONTRACT is exactly '1'", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://x";
+    process.env.INGEST_URL = "http://ingest";
+    for (const [value, expected] of [
+      ["1", true],
+      ["0", false],
+      ["true", false],
+      [undefined, false],
+    ] as const) {
+      if (value === undefined) delete process.env.MIRA_PERSONA_CONTRACT;
+      else process.env.MIRA_PERSONA_CONTRACT = value;
+      const body = await GET().json();
+      expect(body.status).toBe("ok");
+      expect(body.miraContractEnabled).toBe(expected);
+    }
+  });
+
   it("exposes no secret values", async () => {
     process.env.NEON_DATABASE_URL = "postgres://user:hunter2@host/db";
     process.env.INGEST_URL = "http://ingest";
@@ -39,6 +56,9 @@ describe("GET /api/health approvedRetrievalEnforced", () => {
         "approvedRetrievalEnforced",
         "builtAt",
         "gitSha",
+        // Added by a2701ebf5 (the beta probe reads it to know which
+        // empty-notebook behaviour to expect). A boolean, not a secret.
+        "miraContractEnabled",
         "service",
         "status",
         "telemetry",

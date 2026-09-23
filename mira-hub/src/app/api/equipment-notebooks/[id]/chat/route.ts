@@ -79,6 +79,11 @@ import {
   ENERGIZED_ELECTRICAL_HAZARD,
   matchSafetyStop,
   SAFETY_STOP,
+  detectAnswerHazard,
+  detectHazardAdvisory,
+  hazardBanner,
+  matchActiveIncident,
+  isIncidentTrigger,
 } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
@@ -92,7 +97,9 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
+import { buildMiraSystemPrompt, miraContractEnabled, type MiraMode } from "@/lib/mira-contract";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -158,7 +165,12 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
-import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { chunkForRelease, isEnergizedPause, validateAnswer } from "@/capabilities/answer-validation";
+
+/** Judge verdict classes that are ENERGIZED ELECTRICAL WORK and therefore pause
+ *  behind a banner rather than replacing the answer. The judge names its own
+ *  class in free text, so this matches the family, not an enum. */
+const ENERGIZED_JUDGE_CLASS = /electric|energiz|voltage|shock|arc|live/i;
 import {
   SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
@@ -832,6 +844,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // answer is labelled, and it can carry no citations. Grounded mode below is
   // untouched; with zero chunks it still abstains without calling a provider.
   const general = body.mode === "general";
+  // SOURCE-ONLY is the explicit request for strict cite-or-refuse: answer from
+  // the selected documents or abstain. It is the ONLY thing that buys the
+  // document gate below and the grounded persona.
+  //
+  // Everything else — including a turn with sources selected — is normal
+  // authenticated chat. Attaching evidence is NOT consent to document-only
+  // answers: the documents upgrade the answer when they support it and are
+  // silent when they do not (`docs/specs/mira-intelligence-contract.md` §3).
+  //
+  // BACKWARD COMPATIBILITY: the deployed APK sends `mode:"general"` when the
+  // technician has no sources selected and omits `mode` when they do
+  // (NotebookScreen.tsx:341). Under this rule BOTH produce the same persona,
+  // so the client's scope-derived inference is now inert and no new APK is
+  // needed to get this fix.
+  const sourceOnly = body.mode === "source_only";
   const message = (body.message ?? "").trim();
   if (!message) return NextResponse.json({ error: "message_required" }, { status: 400 });
   if (message.length > 4000) {
@@ -880,7 +907,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       "mira.turn.id": turnId,
       "mira.notebook.id": notebookId,
       "mira.thread.id": threadId,
-      "mira.turn.mode": general ? "general" : "grounded",
+      "mira.turn.mode": miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
       "mira.request.has_visual_evidence": Boolean(visualClaimFileId),
       "mira.request.has_machine_evidence": Boolean(machineRequest),
       "mira.request.message_chars": message.length,
@@ -908,8 +935,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (extra) setSpanAttrs(extra, rootSpan);
     } finally {
       rootSpan.end();
+      if (!lifecycleSettled) closeLifecycle(lifecycleOutcome ?? "error");
     }
   };
+  // TURN LIFECYCLE (091). The start record is written HERE — the turn has been
+  // authenticated and validated, so it is an ACCEPTED turn; nothing downstream
+  // has run yet. Before this, the ledger only ever heard about a turn that
+  // survived to the end, so a timeout, a cancel, or a dead provider cascade
+  // produced no row at all and was indistinguishable from a turn that never
+  // happened. Fire-and-forget: `openTurn` never throws and never blocks the
+  // technician's answer; a failed start is counted, not raised.
+  const openedTurn = openTurn({
+    tenantId: ctx.tenantId,
+    notebookId,
+    platform: "hub_notebook_chat",
+    clientRequestId,
+    otelTraceId: rootTraceId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  });
+  let lifecycleOutcome: TurnOutcome | null = null;
+  let lifecycleClosed = false;
+  /**
+   * Close the start record. Idempotent. Called from `endRoot` so EVERY exit
+   * path closes — including the ones that return a bare 4xx long before any
+   * turn row exists. An exit that never classified itself closes as `error`,
+   * which is the honest reading of an unclassified early return and is far
+   * better than the row sitting `started` forever and counting as an orphan.
+   */
+  const closeLifecycle = (outcome: TurnOutcome): void => {
+    if (lifecycleClosed) return;
+    lifecycleClosed = true;
+    void openedTurn
+      .then((o) =>
+        // The happy path already closed this row inside persistTurnUsage (it
+        // UPDATEs on attempt_id). `closeTurn` then matches nothing and returns
+        // matched:false without touching it — which is why `answered` must not
+        // be double-counted: see `lifecycleSettled`.
+        closeTurn({ tenantId: ctx.tenantId, attemptId: o.attemptId, outcome }),
+      )
+      .catch(() => {
+        /* counted inside closeTurn; never fails a turn */
+      });
+  };
+  /** Set once the usage write has already closed the row. */
+  let lifecycleSettled = false;
+
   const rec: TurnRecorder = startTurnRecorder({
     kind: "chat",
     tenantId: ctx.tenantId,
@@ -917,7 +988,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     threadId,
     clientRequestId,
     ownerUserId: ctx.userId,
-    mode: general ? "general" : "grounded",
+    mode: miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
     environment: environmentName(),
     gitSha: gitSha(),
     serviceVersion: serviceVersion(),
@@ -941,7 +1012,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   };
   rec.stage("request", {
-    mode: general ? "general" : "grounded",
+    mode: miraContractEnabled() ? (sourceOnly ? "source_only" : "augmented") : general ? "general" : "grounded",
     message_chars: message.length,
     has_visual_evidence: Boolean(visualClaimFileId),
     has_machine_evidence: Boolean(machineRequest),
@@ -977,6 +1048,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     try {
+      const opened = await openedTurn;
       await persistTurnUsage(
         {
           tenantId: ctx.tenantId,
@@ -985,6 +1057,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerText: opts.answerText,
           citationsPresent: opts.citationsPresent,
           latencyMs: opts.latencyMs,
+          // ONE ROW PER ACCEPTED TURN: this UPDATEs the start record rather
+          // than inserting beside it.
+          attemptId: opened.attemptId,
+          outcome: lifecycleOutcome ?? "answered",
         },
         usage,
         {
@@ -1003,6 +1079,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // last-resort guard so the Turn Flight Recorder can never fail a turn.
       console.error("[notebook-chat] flight-recorder persistTurnUsage failed:", err instanceof Error ? err.message : err);
     }
+    // The usage write owns the close from here; endRoot must not re-close.
+    lifecycleSettled = true;
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1137,7 +1215,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
+    // AUGMENTED IS THE DEFAULT, WITH OR WITHOUT DOCUMENTS (contract §3).
+    // `general` is the OLD client's scope-derived flag. Under the contract the
+    // prompt no longer reads it, but this gate still did — so a client that
+    // stopped sending `mode:"general"` (the natural thing once the mode is
+    // inert) got a 422 for an ordinary question in an empty notebook.
+    // Measured on staging 2026-09-22 at 5c19e56c8: no mode + no sources →
+    // `{"error":"no_sources_selected"}`, while the identical turn with the
+    // legacy `mode:"general"` answered. Attaching nothing is not a request to
+    // be refused. Flag-gated: with the contract off this reads exactly as before.
+    if (
+      (general || miraContractEnabled() || questionSafetyTrigger || visualClaimFileId) &&
+      validated.error === "no_sources_selected"
+    ) {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -1229,7 +1319,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // A visible structured hazard is stronger than the question classifier's
   // non-terminal energized-work directive and therefore owns the turn.
   const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
+  // SAFETY PAUSE, NOT SAFETY STOP (owner decision 2026-09-22).
+  // #3763 proved the pattern on ONE hazard class: the answer streams, framed by
+  // a directive, and the turn persists a `safety_notice`. Every detected hazard
+  // now takes that path. A technician asking why a contactor chatters is going
+  // to open the panel either way — refusing removes the information, not the
+  // hazard, and sends them in less informed.
+  //
+  // `hazardAdvisory` is non-null whenever ANY hazard was detected, so the
+  // banner is always shown; `electricalHazardDirective` keeps the fuller NFPA
+  // 70E framing for the energized-electrical class specifically.
+  //
+  // `safetyTrigger` only fires on the STOP vocabulary, which is narrow by
+  // design. Round 2 measured the consequence: six hazardous questions answered
+  // in full with no banner at all. `detectHazardAdvisory` is the advisory-only
+  // second pass — it never gates, it only decides which banner rides above an
+  // answer that is being served anyway.
+  const hazardAdvisory =
+    miraContractEnabled() && !matchActiveIncident(message) && !isIncidentTrigger(visualSafetyTrigger)
+      ? (safetyTrigger ?? detectHazardAdvisory(message) ?? null)
+      : null;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+  // Hazard class the OUTPUT judge flags on a KEPT answer (safety pause).
+  let semanticHazardClass: string | null = null;
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -1260,7 +1372,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
-  if (!validated.ok && !general && !safetyTrigger) {
+  if (!validated.ok && !general && !miraContractEnabled() && !safetyTrigger) {
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json({ error: validated.error }, { status: 422 });
@@ -1334,7 +1446,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // way a hard stop does — a persisted safety_notice entry, never only prose.
   const hazardEntries: SafetyNoticeEntry[] = electricalHazardDirective
     ? [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]
-    : [];
+    : hazardAdvisory
+      ? [{ kind: "safety_notice", trigger: hazardAdvisory }]
+      : [];
+  // A hazard the OUTPUT judge flags on a kept answer is persisted the same way,
+  // so a reload shows the same warning the technician saw live. Appended at
+  // write time because the judge runs after this point.
+  const semanticHazardEntries = (): SafetyNoticeEntry[] =>
+    semanticHazardClass && !hazardEntries.length
+      ? [{ kind: "safety_notice", trigger: semanticHazardClass }]
+      : [];
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -1348,7 +1469,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // The stop is persisted like any other turn so it survives the technician
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
-  if (safetyTrigger && !electricalHazardDirective) {
+  // SAFETY PAUSE: with the contract ON this terminal branch is skipped entirely.
+  // A detected hazard now rides `hazardAdvisory` — banner first, then the real
+  // answer — instead of replacing the answer with SAFETY_STOP and never calling
+  // a provider. Flag OFF, the branch is exactly as it shipped.
+  // An incident is either reported in the message OR seen in a verified photo.
+  const activeIncident = matchActiveIncident(message) ?? isIncidentTrigger(visualSafetyTrigger);
+  if (
+    safetyTrigger &&
+    !electricalHazardDirective &&
+    (!miraContractEnabled() || activeIncident)
+  ) {
+    lifecycleOutcome = "safety_stop";
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
     const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
@@ -1761,12 +1893,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // gate exactly as it was — and a turn with no `machineEvidence` at all can
   // never reach the third clause, which is what keeps document refusal
   // behaviour byte-identical.
-  if (chunks.length === 0 && !general && !groundedMachineEntry) {
+  // CHANGED 2026-09-22: the second clause was `!general`, which meant "the
+  // client selected sources", so merely attaching a manual turned every
+  // unmatched question into a refusal with no provider call. It is now
+  // `sourceOnly` — an EXPLICIT request to answer from the documents alone.
+  // Normal chat never reaches this gate and never abstains for lack of a chunk.
+  //
+  // The other two clauses are unchanged and still load-bearing: #3788 (a
+  // verified photo does NOT open the document gate — the photo rides the
+  // abstain) and the Sensor REPLAY correction (`groundedMachineEntry`).
+  // FLAG-GATED. With the contract OFF this is `!general` — byte-identical to
+  // what production runs today. With the contract ON, the gate applies ONLY
+  // when explicit source-only mode is requested. Contract §3.0: "Normal chat
+  // is augmented whether or not documents are attached and whether or not they
+  // matched. Strict cite-or-refuse is `mode:"source_only"` — something the
+  // technician asks for." Just selecting sources does NOT opt you into
+  // cite-or-refuse (§3.0: "Attaching evidence is not consent to document-only
+  // answers").
+  const documentGateApplies = miraContractEnabled() 
+    ? sourceOnly                          // Contract ON: ONLY explicit source-only mode
+    : !general;                           // Contract OFF: legacy (!general means sources selected)
+  if (chunks.length === 0 && documentGateApplies && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     const abstainAnswerText = visualEntry
       ? "I saw your photo, but I couldn't find anything about it in the selected sources."
       : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
@@ -2038,7 +2191,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  // PERSONA. One definition of who MIRA is (`docs/specs/mira-intelligence-contract.md`),
+  // flag-gated so the migration is provable on staging before it is anyone's
+  // production persona — the same posture `canonicalSeamEnabled()` took. Flag off,
+  // the two legacy prompts below are byte-identical to what shipped.
+  // PERSONA — decided by the REQUEST, never by whether retrieval got lucky.
+  // `docGrounded` still governs citation mechanics below (brackets, shipped
+  // citations, badge); it must not also decide who MIRA is, or a notebook whose
+  // manual happens to match would get a different assistant than one whose
+  // manual does not. Augmented handles an empty CONTEXT by design.
+  const promptMode: MiraMode = sourceOnly ? "grounded" : "augmented";
+  const basePrompt = miraContractEnabled()
+    ? buildMiraSystemPrompt(promptMode)
+    : docGrounded
+      ? BASE_SYSTEM_PROMPT
+      : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
@@ -2081,7 +2248,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const visualEvidenceCount = (lookRow?.text?.trim() ? 1 : 0) + priorLookRows.length + (visualSection ? 1 : 0);
     const identityIncluded = boundAsset.state === "resolved" || identityDisputed;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    const systemPromptKind = !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded";
+    // Report the persona that ACTUALLY served this turn. Reporting the old
+    // retrieval-derived kind while the contract serves `augmented` would make
+    // the flight recorder and the acceptance loop lie about which prompt ran.
+    const systemPromptKind = miraContractEnabled()
+      ? promptMode
+      : !docGrounded
+        ? "general"
+        : groundedMachineEntry
+          ? "machine"
+          : "grounded";
     rec.stage("context", {
       evidence_doc_ids: evidenceDocIds,
       chunk_count: chunks.length,
@@ -2132,7 +2308,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // is created once and never awaited on its own, so it can't leak as an
   // unhandled rejection.
   const clientAbort = new AbortController();
-  const onClientGone = () => clientAbort.abort();
+  const onClientGone = () => {
+    // The technician closed the app / lost signal. Classify it before the
+    // abort unwinds, so the ledger says `cancelled` rather than the `error`
+    // an unclassified exit would default to.
+    lifecycleOutcome = "cancelled";
+    clientAbort.abort();
+  };
   req.signal?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
@@ -2570,13 +2752,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // contract, exactly like a notebook-grounded one).
       const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+
       if (!validation.ok) {
         console.error(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          outputRejected = { kind: validation.kind, violation: validation.violation };
-          answerText = validation.replacement;
+          // SAFETY PAUSE for energized electrical work (see
+          // ENERGIZED_PAUSE_VIOLATIONS). Measuring a live circuit is the job;
+          // NFPA 70E governs it, it does not forbid it. Banner it and serve it.
+          // Everything else — defeating a protection, an untested confined
+          // space, flame near gas, an unsupported load, reaching into rotating
+          // or pressurized machinery — still replaces.
+          if (miraContractEnabled() && validation.kind === "unsafe_answer" && isEnergizedPause(validation.violation)) {
+            semanticHazardClass = "energized";
+            answerText = `${hazardBanner("energized")}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: validation.kind, violation: validation.violation };
+            answerText = validation.replacement;
+          }
         }
       }
 
@@ -2602,14 +2796,71 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
+          // KEPT DELIBERATELY, even under the safety-pause contract.
+          //
+          // This branch does NOT gate the technician's question — it gates what
+          // MIRA just wrote. The cases it catches are the model emitting an
+          // injurious instruction: "touch the 200 C steam pipe with your bare
+          // hand", "put your arm inside the running conveyor", "drink a small
+          // amount of the cleaning fluid", "step beneath the elevated ram".
+          // Those are not information a qualified technician needs and is being
+          // denied; they are MIRA being WRONG. Shipping them behind a warning
+          // banner would be worse than replacing them, because the banner reads
+          // as endorsement.
+          //
+          // The topic-level gates were the coddling and they are gone (see
+          // `hazardAdvisory` and ACTIVE_INCIDENT_PHRASES). This one stays — for
+          // the classes it was written for.
+          //
+          // EXCEPT the electrical/energized class. Hardening round 1 (staging,
+          // 2026-09-22, SHA 48301c66b): "how do I reset the E-12 fault while
+          // the machine is energized" came back as a SAFETY STOP telling the
+          // technician to consult a qualified person. That is not MIRA emitting
+          // an injurious instruction — it is MIRA refusing the job. Live
+          // troubleshooting is procedure-governed work, so it pauses with a
+          // banner like every other hazard; thermal, chemical, crush,
+          // entanglement and fall verdicts still replace.
+          if (miraContractEnabled() && ENERGIZED_JUDGE_CLASS.test(cls)) {
+            semanticHazardClass = "energized";
+            answerText = `${hazardBanner("energized")}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+            answerText = SAFETY_STOP;
+          }
         } else if (sv.verdict !== "safe") {
           console.error(
             `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
           );
-          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          // FAIL OPEN under the contract. The judge failing to RUN is not
+          // evidence the answer is dangerous — a vendor timeout used to discard
+          // a good answer. Keep it, flag it, move on.
+          if (miraContractEnabled()) {
+            semanticHazardClass = selectedClass;
+            answerText = `${hazardBanner(selectedClass)}\n\n${answerText}`;
+          } else {
+            outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+            answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          }
+        }
+      }
+
+      // THE BANNER. `hazardAdvisory` persisted a `safety_notice` on the turn but
+      // never put anything in front of the technician — round 2 answered six
+      // hazardous questions with no visible warning at all. Prepend it here, on
+      // the finished answer, so the hazard is named first and the answer follows
+      // in full ("warn, do not withhold"). Skipped when a banner is already
+      // there (the energized pause or the judge put one on), and never on a
+      // refusal or an empty answer.
+      // The question names the work the technician is ABOUT to do; the answer
+      // sometimes names work they were not asking about ("drain and enter the
+      // tank" in reply to "why is product sticking"). Fall back to the answer
+      // for the classes the ENERGY STATE clause does not already cover inline.
+      const hazardClassForTurn = hazardAdvisory ?? (served && !refused ? detectAnswerHazard(answerText) : null);
+      if (miraContractEnabled() && hazardClassForTurn && !semanticHazardClass && served && !refused && answerText.trim()) {
+        const banner = hazardBanner(hazardClassForTurn);
+        if (banner && !answerText.startsWith(banner)) {
+          semanticHazardClass = hazardClassForTurn;
+          answerText = `${banner}\n\n${answerText}`;
         }
       }
 
@@ -2662,6 +2913,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        // The LEDGER outcome, mapped from the gate decision. Distinct from
+        // `gateDecision` on purpose: the gate answers "what did we decide about
+        // the answer", the lifecycle answers "how did this accepted turn end" —
+        // and a blocked answer that still shipped a replacement is a `refused`
+        // turn, not an error.
+        lifecycleOutcome = outputRejected
+          ? outputRejected.kind === "unsafe_answer"
+            ? "safety_stop"
+            : "refused"
+          : gateDecision === "insufficient_evidence"
+            ? "abstained"
+            : gateDecision === "error"
+              ? "error"
+              : refused
+                ? "refused"
+                : "answered";
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
@@ -2669,7 +2936,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answer_chars: served ? answerText.length : 0,
           refusal_phrase_matched: refusalPhraseMatched,
           evidence_phrase_matched: evidencePhraseMatched,
-          safety_classification: electricalHazardDirective ? "hazard_directive" : "none",
+          // A safety PAUSE is a third classification. Without it the packet says
+          // "none" for a turn that shipped a ⚡/🕳️ banner, so a sweep of the
+          // recorder cannot tell whether the warning half of "warn, do not
+          // withhold" actually reached anyone — which is exactly what
+          // tools/qa/session_issue_sweep.py needs to check.
+          safety_classification: semanticHazardClass
+            ? "hazard_pause"
+            : electricalHazardDirective
+              ? "hazard_directive"
+              : "none",
+          hazard_banner: semanticHazardClass,
           evidence_sufficient: evidenceSufficient,
           ungrounded_unit_claim: ungroundedClaim,
           jev_sufficient: jev.noul,
@@ -2773,7 +3050,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+              : [...hazardEntries, ...semanticHazardEntries(), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,

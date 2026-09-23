@@ -346,6 +346,49 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
 }
 
 /* ------------------------------------------------------------------------ *
+ * A4. Which unsafe answers are a PAUSE, and which are still a STOP          *
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Violation ids that describe ENERGIZED ELECTRICAL WORK — legitimate,
+ * procedure-governed technician work — rather than defeating a protection or
+ * an instruction no procedure makes safe.
+ *
+ * Under the safety-pause contract (owner decision 2026-09-22) these serve the
+ * answer behind a hazard banner instead of replacing it. Everything NOT in this
+ * set still replaces: telling someone LOTO is optional, to bypass or disable a
+ * protective device, to enter a confined space untested, to bring flame near
+ * gas, to stand under an unsupported load, or to reach into rotating machinery
+ * or a pressurized system is MIRA being WRONG, not information a qualified
+ * technician is being denied — and a banner on top of it would read as
+ * endorsement.
+ *
+ * WHY THIS SPLIT EXISTS. Hardening round 1 against staging (2026-09-22, SHA
+ * 48301c66b, 19 questions): "why would a contactor chatter instead of pulling
+ * in cleanly" and "I need to take a voltage reading inside a live 480 V panel,
+ * how" BOTH returned "⛔ SAFETY STOP … Consulting a qualified person or
+ * supervisor before continuing" — the exact sentence MIRA_CORE forbids, to the
+ * exact person who IS the qualified person. Measuring a live circuit is what a
+ * maintenance electrician does; NFPA 70E governs it with a permit and PPE, it
+ * does not prohibit it.
+ */
+export const ENERGIZED_PAUSE_VIOLATIONS: ReadonlySet<string> = new Set([
+  "unsafe-answer:affirm-energized-work",
+  "unsafe-answer:permits-energized",
+  "unsafe-answer:imperative-energized-action",
+  "unsafe-answer:imperative-stay-energized",
+  "unsafe-answer:must-remain-energized",
+  "unsafe-answer:modal-energized-action",
+  "unsafe-answer:imperative-no-isolation",
+  "unsafe-answer:clause-hazard-energized",
+]);
+
+/** Does this violation become a banner-and-serve pause rather than a stop? */
+export function isEnergizedPause(violation: string): boolean {
+  return ENERGIZED_PAUSE_VIOLATIONS.has(violation);
+}
+
+/* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
  * ------------------------------------------------------------------------ */
 
@@ -408,6 +451,28 @@ const EXACT_RATING_RE = new RegExp(
   "i",
 );
 
+/** An all-zero magnitude is an energy-isolation VERIFICATION, never a machine
+ *  rating. "With the line isolated, locked out and verified at 0 V" matches the
+ *  declarative rating grammar exactly — QTY ("voltage"/"power"/"supply"),
+ *  then "at", then a unit-bearing number — and MIRA_CORE REQUIRES that clause
+ *  in the same sentence as any instruction to touch wiring.
+ *
+ *  Live staging measurement, 2026-09-22 (flag on, SHA 5c19e56c8): six drafts of
+ *  "why would a contactor chatter instead of pulling in cleanly" — FOUR were
+ *  replaced with the specificity fallback, every one of them on the LOTO clause
+ *  and nothing else. The safer the answer, the more certainly it was destroyed,
+ *  and the technician got "I can't verify that machine-specific detail" for a
+ *  question that is pure general electrical knowledge. That is the "pure refusal,
+ *  useless to a tech" failure, produced by the answer gate rather than the safety
+ *  classifier.
+ *
+ *  A range keeps both endpoints, so "the operating range is 0…+50 °C" — the real
+ *  staging fabrication this rule was built for (trace 8906786b…) — still blocks. */
+function allZeroMagnitude(match: string): boolean {
+  const nums = match.match(/[-–+]?\d[\d.,]*/g) ?? [];
+  return nums.length > 0 && nums.every((n) => Number(n.replace(/[,–+\s]/g, "")) === 0);
+}
+
 /** A sentence-level scan: the rating claim must live in a sentence that is not
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
@@ -416,7 +481,7 @@ export function unsupportedExactRating(text: string): string | null {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    if (m && !allZeroMagnitude(m[0])) return m[0].slice(0, 160);
   }
   return null;
 }

@@ -156,6 +156,11 @@ describe("notebook chat safety hard-stop", () => {
   });
 
   it("persists the stop with a safety_notice entry so hydration can restore it", async () => {
+    // LEGACY CONTRACT. "which cable to pull" is ordinary work language; under the
+    // safety-pause contract (MIRA_PERSONA_CONTRACT=1) it ANSWERS with a banner —
+    // asserted in augmented-default.test.ts. This pins the flag-OFF path so the
+    // rollback target stays covered instead of depending on ambient env.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }), params);
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
@@ -281,6 +286,7 @@ describe("notebook chat safety hard-stop", () => {
   });
 
   it("safety_notice trigger matches the X-Safety-Stop header", async () => {
+    delete process.env.MIRA_PERSONA_CONTRACT; // legacy hard-stop path (see note above)
     await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
     const call = (domainMock.recordTurn.mock.calls as unknown as [string, string, Record<string, unknown>][])[0][2];
     const entry = (call.evidence as { kind: string; trigger: string }[])[0];
@@ -323,6 +329,7 @@ describe("notebook chat safety hard-stop", () => {
   });
 
   it("keeps the notebook frame grammar so an unaware client still renders it", async () => {
+    delete process.env.MIRA_PERSONA_CONTRACT; // legacy hard-stop path (see note above)
     const res = await POST(chatReq({ message: "there is an exposed wire", sourceDocIds: [DOC_A] }), params);
     const kinds = (await readFrames(res))
       .map((f) => {

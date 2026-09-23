@@ -670,4 +670,29 @@ describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036
     expect(unsupportedExactRating("The maximum speed is 1750 rpm.")).toMatch(/1750\s*rpm/i);
     expect(unsupportedExactRating("Speed depends on the drive setting.")).toBeNull();
   });
+
+  // Live staging, 2026-09-22 (flag on, SHA 5c19e56c8): four of six drafts of
+  // "why would a contactor chatter instead of pulling in cleanly" were replaced
+  // with the specificity fallback, every one on the energy-isolation clause that
+  // MIRA_CORE requires. Zero is a verification of ABSENCE, never a rating.
+  it("does not treat an energy-isolation verification as a rating claim", () => {
+    for (const s of [
+      "With the line isolated, locked out and verified at 0 V, disconnect the coil leads.",
+      "**What to check next (with the power isolated, locked out, and verified at 0 V):**",
+      "With the contactor isolated, locked out, and the coil voltage verified at 0 V, reconnect power.",
+      "Confirm the DC bus voltage is 0 VDC before touching the terminals.",
+    ]) {
+      expect(unsupportedExactRating(s)).toBeNull();
+    }
+    expect(
+      noEvidence("With the line isolated, locked out and verified at 0 V, measure coil resistance.").ok,
+    ).toBe(true);
+  });
+
+  // The fabrication this rule exists for keeps blocking: a range carries a
+  // non-zero endpoint, so a zero LOWER bound never buys an invented spec a pass.
+  it("still blocks an invented rating whose range starts at zero", () => {
+    expect(unsupportedExactRating("The operating range is 0 to 50 °C.")).toMatch(/0\s*to\s*50/i);
+    expect(unsupportedExactRating("Operating temperature is 0…+50 °C.")).not.toBeNull();
+  });
 });

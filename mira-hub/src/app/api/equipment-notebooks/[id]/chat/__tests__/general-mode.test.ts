@@ -175,6 +175,10 @@ describe("general mode — §1.1 the technician with nothing configured", () => 
 
 describe("grounded mode — §1.4 unchanged by any of this", () => {
   it("still refuses a source-free notebook rather than answering generally", async () => {
+    // LEGACY path (contract OFF). Under MIRA_PERSONA_CONTRACT=1 a no-mode turn
+    // is augmented with or without documents and ANSWERS — pinned in
+    // augmented-default.test.ts ("an empty notebook is not a refusal").
+    delete process.env.MIRA_PERSONA_CONTRACT;
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     const res = await POST(req({ message: "drive trips" }), params); // no mode
     expect(res.status).toBe(422);
@@ -184,7 +188,7 @@ describe("grounded mode — §1.4 unchanged by any of this", () => {
   it("still abstains with sources selected but nothing retrieved — no provider call", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const res = await POST(req({ message: "what is P042" }), params);
+    const res = await POST(req({ mode: "source_only", message: "what is P042" }), params);
     const f = await frames(res);
     expect(f.find((x) => x.kind === "status")).toMatchObject({ status: "insufficient_evidence" });
     expect(fetch).not.toHaveBeenCalled();
@@ -221,7 +225,7 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
   it("a grounded refusal makes NO basis claim", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    await POST(req({ message: "unanswerable" }), params);
+    await POST(req({ mode: "source_only", message: "unanswerable" }), params);
     const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
     const turn = call?.[2] as { answerStatus?: string; basis?: string | null } | undefined;
     expect(turn?.answerStatus).toBe("insufficient_evidence");

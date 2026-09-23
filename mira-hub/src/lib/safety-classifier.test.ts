@@ -15,6 +15,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
+  detectAnswerHazard,
+  detectHazardAdvisory,
+  hazardBanner,
+  HAZARD_BANNERS,
   SAFETY_PHRASES_IMMEDIATE,
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
@@ -188,5 +192,78 @@ describe("matchSafetyStop with energized-electrical hazard-intent", () => {
   it("benign electrical questions return null or other phrase, not the sentinel", () => {
     expect(matchSafetyStop("480V supply dropping voltage")).toBeNull();
     expect(matchSafetyStop("my drive won't start")).toBeNull();
+  });
+});
+
+describe("detectHazardAdvisory — advisory only, never a gate", () => {
+  // Hardening round 2 (staging 2026-09-22, SHA a32a73130): six hazardous
+  // questions were answered in full with NO banner. The STOP vocabulary is
+  // narrow by design, so the banner needed its own, wider, non-gating pass.
+  it("names the class for real hazardous work", () => {
+    expect(detectHazardAdvisory("I need to clean the inside of the mix tank, what do I need to do first")).toBe("confined space");
+    expect(detectHazardAdvisory("can I weld a bracket onto the frame near the hydraulic lines")).toBe("hot work");
+    expect(detectHazardAdvisory("what is the right lockout order for a conveyor with a hydraulic accumulator")).toBe("pressure");
+    expect(detectHazardAdvisory("how do I megger a 480 V motor that keeps tripping the overload")).toBe("energized");
+    expect(detectHazardAdvisory("I need to take a voltage reading inside a live 480 V panel, how")).toBe("energized");
+    expect(detectHazardAdvisory("do I need to tie off on the scaffold to reach the drive")).toBe("fall");
+    expect(detectHazardAdvisory("can I remove the guard to see the coupling while it is running")).toBe("rotating");
+  });
+
+  it("stays silent on ordinary questions — a banner nobody earned is a banner nobody reads", () => {
+    for (const q of [
+      "why would a contactor chatter instead of pulling in cleanly",
+      "what causes nuisance overcurrent trips on a VFD driving a conveyor",
+      "what is the difference between a PNP and an NPN proximity sensor",
+      "a motor bearing is running hot on one end only, what would cause that",
+      // A voltage class stated as an observation is not hazardous work.
+      "The 480V supply to the MCC reads low on the display. What does that mean?",
+      "how does a decel ramp behave when the load is overhauling",
+    ]) {
+      expect(detectHazardAdvisory(q)).toBeNull();
+    }
+    expect(detectHazardAdvisory("")).toBeNull();
+    expect(detectHazardAdvisory(null)).toBeNull();
+  });
+
+  it("every class it can return has a real banner behind it", () => {
+    for (const cls of ["confined space", "hot work", "pressure", "chemical", "fall", "rotating", "arc flash", "energized", "loto"]) {
+      expect(hazardBanner(cls)).toBe(HAZARD_BANNERS[cls]);
+      expect(hazardBanner(cls)).not.toBe("");
+    }
+  });
+
+  it("is advisory ONLY — it never reports a stop", () => {
+    // The stop list is a different function. A phrase that only this pass
+    // matches must not start stopping turns.
+    expect(matchSafetyStop("can I weld a bracket onto the frame near the hydraulic lines")).toBeNull();
+    expect(matchSafetyStop("I need to clean the inside of the mix tank")).toBeNull();
+  });
+});
+
+describe("detectAnswerHazard — the answer can name work the question did not", () => {
+  // Photo benchmark, staging 2026-09-22 (bearing label in context, "it is
+  // chattering, what do I check first"): every answer instructed drive work and
+  // none carried a banner, because the QUESTION had no hazard cue.
+  it("catches a class the answer introduces", () => {
+    expect(detectAnswerHazard("Drain it, then enter the tank with an attendant.")).toBe("confined space");
+    expect(detectAnswerHazard("You will need to weld a new bracket on.")).toBe("hot work");
+    expect(detectAnswerHazard("Bleed down the accumulator before removing the hose.")).toBe("pressure");
+  });
+
+  it("does NOT banner the isolation clause MIRA_CORE mandates on nearly every answer", () => {
+    // If this ever returns a class, the banner appears on almost every turn and
+    // stops carrying information — the inline clause IS the warning here.
+    for (const s of [
+      "With the drive isolated, locked out and the DC bus verified at 0 V, measure the supply voltage.",
+      "With the control power isolated, locked out and the coil terminals verified at 0 V, check resistance.",
+      "Lock out the feeder before you open the panel.",
+    ]) {
+      expect(detectAnswerHazard(s)).toBeNull();
+    }
+  });
+
+  it("stays silent on an ordinary answer", () => {
+    expect(detectAnswerHazard("Low coil voltage is the usual cause of chatter.")).toBeNull();
+    expect(detectAnswerHazard("")).toBeNull();
   });
 });

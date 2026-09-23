@@ -12,6 +12,7 @@ import {
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import { buildMiraSystemPrompt, miraContractEnabled } from "@/lib/mira-contract";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
@@ -124,6 +125,20 @@ const SYSTEM_PROMPT = [
   "  specific corrective step, then 2-3 alternatives ranked by probability.",
 ].join("\n");
 
+/**
+ * Scope-specific extension under the canonical contract (spec §6). This route's
+ * persona and evidence rules now come from `buildMiraSystemPrompt("augmented")` —
+ * this is the part that is true of THIS route and not of augmented mode generally:
+ * the caller is signed in, and no asset context is confirmed.
+ */
+const SCOPE_EXTENSION = [
+  "SCOPE — you are answering a signed-in maintenance technician asking a GENERAL",
+  "question, one not yet bound to a specific machine in their namespace.",
+  "- NEVER claim to know which machine they are standing at. You have no",
+  "  confirmed asset context here. If the answer would differ by machine,",
+  "  say which detail you would need.",
+].join("\n");
+
 export async function POST(req: Request) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -226,7 +241,14 @@ export async function POST(req: Request) {
 
   const context = buildGroundedContext(chunks);
   const messages: CascadeMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      // One persona definition (`docs/specs/mira-intelligence-contract.md`),
+      // flag-gated. Flag off, SYSTEM_PROMPT is byte-identical to what shipped.
+      content: miraContractEnabled()
+        ? buildMiraSystemPrompt("augmented", SCOPE_EXTENSION)
+        : SYSTEM_PROMPT,
+    },
     {
       role: "user",
       content: context

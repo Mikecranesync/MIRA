@@ -1,0 +1,1159 @@
+{
+ "base": "https://app-staging.factorylm.com",
+ "ran_at": "20260922-121259",
+ "rows": [
+  {
+   "scenario": "1 empty notebook + generic question",
+   "pass": true,
+   "trace_id": "10fd67b3540b5ea7adca0fd206e741fe",
+   "turn_id": "9de6b252-e724-4d8f-b89b-0e892f847d05",
+   "expected": "retrieval skipped_general_mode; general badge; answered",
+   "observed": "skipped_general_mode / general_reasoning / answered",
+   "checks": [
+    {
+     "name": "strategy skipped_general_mode",
+     "ok": true,
+     "detail": "skipped_general_mode"
+    },
+    {
+     "name": "OEM corpus not searched",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "general badge",
+     "ok": true,
+     "detail": "general_reasoning"
+    },
+    {
+     "name": "answered",
+     "ok": true,
+     "detail": "answered"
+    },
+    {
+     "name": "trace id on header == packet == diagnostics",
+     "ok": true,
+     "detail": "hdr=10fd67b3540b5ea7adca0fd206e741fe pkt=10fd67b3540b5ea7adca0fd206e741fe frame=10fd67b3540b5ea7adca0fd206e741fe"
+    },
+    {
+     "name": "first SSE frame is the trace frame",
+     "ok": true,
+     "detail": "['trace', 'content', 'content']"
+    },
+    {
+     "name": "environment attribution",
+     "ok": true,
+     "detail": "staging"
+    },
+    {
+     "name": "provider/model recorded",
+     "ok": true,
+     "detail": "Groq/openai/gpt-oss-120b"
+    },
+    {
+     "name": "token usage recorded",
+     "ok": true,
+     "detail": "1827/185"
+    },
+    {
+     "name": "no secrets in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no answer text in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "general badge \u21d2 no documents in context",
+     "ok": true,
+     "detail": "chunks=0 cit=0"
+    }
+   ],
+   "packet": {
+    "v": "1",
+    "ids": {
+     "turn_id": "9de6b252-e724-4d8f-b89b-0e892f847d05",
+     "asset_id": null,
+     "file_ids": [],
+     "tenant_id": "79e06a41-4f17-4c09-9f18-2725c83cd102",
+     "thread_id": null,
+     "notebook_id": "73c2a55c-075a-4f07-beff-1e7e7bbd6dcc",
+     "owner_user_id": "d5004d2d-007b-4df9-92f8-d17024fa9c97",
+     "asset_uns_path": null,
+     "client_request_id": "4abc8fa7-401e-4bcf-b15e-79b960d24952",
+     "equipment_entity_id": null,
+     "visual_observation_ids": []
+    },
+    "kind": "chat",
+    "errors": [],
+    "vision": {
+     "ok": false,
+     "ran": false,
+     "model": null,
+     "provider": null,
+     "latency_ms": null,
+     "hazard_count": 0,
+     "observation_chars": 0
+    },
+    "context": {
+     "chunk_count": 0,
+     "prompt_chars": 8156,
+     "history_turns": 0,
+     "evidence_doc_ids": [],
+     "identity_included": false,
+     "system_prompt_kind": "augmented",
+     "visual_evidence_count": 0
+    },
+    "git_sha": "076ab737138abdaac4114f5543f3f763df334441",
+    "request": {
+     "mode": "augmented",
+     "message_chars": 30,
+     "source_doc_count": 0,
+     "has_visual_evidence": false,
+     "has_machine_evidence": false
+    },
+    "identity": {
+     "ran": true,
+     "state": "unknown",
+     "model_present": false,
+     "candidate_count": 0,
+     "unresolved_reason": "not_bound",
+     "selected_entity_id": null,
+     "manufacturer_present": false,
+     "order_number_present": false
+    },
+    "trace_id": "10fd67b3540b5ea7adca0fd206e741fe",
+    "retrieval": {
+     "executed": false,
+     "strategy": "skipped_general_mode",
+     "candidate_count": 0,
+     "returned_doc_ids": [],
+     "zero_result_reason": null,
+     "oem_corpus_searched": false,
+     "oem_manufacturer_source": null,
+     "prior_visual_observations_considered": 0
+    },
+    "generation": {
+     "attempts": [
+      {
+       "model": "openai/gpt-oss-120b",
+       "outcome": "served",
+       "provider": "Groq",
+       "latency_ms": 656,
+       "response_id": "chatcmpl-852bf4ab-126d-4114-8bd9-eed4a39b9f70",
+       "route_reason": "primary"
+      }
+     ],
+     "input_tokens": 1827,
+     "served_model": "openai/gpt-oss-120b",
+     "output_tokens": 185,
+     "has_image_input": false,
+     "served_provider": "Groq",
+     "has_observation_text": false
+    },
+    "timings_ms": {
+     "total": 3528,
+     "vision": null,
+     "context": 0,
+     "persist": null,
+     "identity": 958,
+     "retrieval": 0,
+     "generation": 656,
+     "generation_ttfb": null
+    },
+    "answer_gate": {
+     "reason": "unsupported-specificity:exact-rating",
+     "invoked": true,
+     "decision": "blocked",
+     "answer_chars": 667,
+     "jev_latency_ms": null,
+     "jev_sufficient": null,
+     "jev_input_tokens": null,
+     "jev_skipped_reason": "no_evidence",
+     "evidence_sufficient": false,
+     "safety_classification": "none",
+     "ungrounded_unit_claim": false,
+     "refusal_phrase_matched": false,
+     "evidence_phrase_matched": true
+    },
+    "environment": "staging",
+    "persistence": {
+     "outcome": "ok",
+     "error_code": null,
+     "turn_row_id": "9de6b252-e724-4d8f-b89b-0e892f847d05",
+     "evidence_entries": 0
+    },
+    "service_version": "unknown",
+    "vision_trace_id": null,
+    "visual_evidence": {
+     "file_id": null,
+     "link_verified": false,
+     "prior_file_ids": [],
+     "observation_available": false,
+     "observation_in_context": false,
+     "prior_turn_observation_count": 0
+    }
+   },
+   "wire": {
+    "http": 200,
+    "kinds": [
+     "trace",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "sources",
+     "evidence",
+     "usage",
+     "status"
+    ],
+    "trace_frame": {
+     "kind": "trace",
+     "traceId": "10fd67b3540b5ea7adca0fd206e741fe",
+     "turnId": "4abc8fa7-401e-4bcf-b15e-79b960d24952"
+    },
+    "citations": 0,
+    "basis": "general_reasoning",
+    "label": "General guidance \u2014 not grounded in this machine's documents.",
+    "status": "answered",
+    "content_head": "I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.\n\nWhat I can tell you honestly:\n- Confirm the exact code and any text shown on the display \u2014 fault"
+   }
+  },
+  {
+   "scenario": "2 empty notebook + resolved Siemens identity",
+   "pass": false,
+   "trace_id": "d50a889f19834b83e8b22e48f2973607",
+   "turn_id": "7b2288de-a9ce-404d-b1d9-97c6b8e8c87d",
+   "expected": "oem_corpus_bm25 executed; chunks reach provider; citations>0 with OEM badge OR honest insufficient_evidence",
+   "observed": "oem_corpus_bm25 n=6 / general_reasoning cit=0 / answered",
+   "checks": [
+    {
+     "name": "strategy oem_corpus_bm25 executed",
+     "ok": true,
+     "detail": "oem_corpus_bm25"
+    },
+    {
+     "name": "manufacturer source = notebook",
+     "ok": true,
+     "detail": "notebook"
+    },
+    {
+     "name": "candidates traceable (source_url#page ids)",
+     "ok": true,
+     "detail": "6 / 6"
+    },
+    {
+     "name": "cited answer OR honest refusal (never uncited documentation claim)",
+     "ok": false,
+     "detail": "status=answered cit=0 basis=general_reasoning"
+    },
+    {
+     "name": "trace id on header == packet == diagnostics",
+     "ok": true,
+     "detail": "hdr=d50a889f19834b83e8b22e48f2973607 pkt=d50a889f19834b83e8b22e48f2973607 frame=d50a889f19834b83e8b22e48f2973607"
+    },
+    {
+     "name": "first SSE frame is the trace frame",
+     "ok": true,
+     "detail": "['trace', 'content', 'content']"
+    },
+    {
+     "name": "environment attribution",
+     "ok": true,
+     "detail": "staging"
+    },
+    {
+     "name": "provider/model recorded",
+     "ok": true,
+     "detail": "Groq/openai/gpt-oss-120b"
+    },
+    {
+     "name": "token usage recorded",
+     "ok": true,
+     "detail": "3781/134"
+    },
+    {
+     "name": "no secrets in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no answer text in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "retrieved chunks reached the provider (context ids, grounded prompt)",
+     "ok": true,
+     "detail": "chunks=6 ids=6 prompt=augmented"
+    },
+    {
+     "name": "general badge \u21d2 no documents in context",
+     "ok": true,
+     "detail": "chunks=6 cit=0"
+    }
+   ],
+   "packet": {
+    "v": "1",
+    "ids": {
+     "turn_id": "7b2288de-a9ce-404d-b1d9-97c6b8e8c87d",
+     "asset_id": null,
+     "file_ids": [],
+     "tenant_id": "79e06a41-4f17-4c09-9f18-2725c83cd102",
+     "thread_id": null,
+     "notebook_id": "ed492c55-793d-4546-b8bd-d7fbd45b3ea9",
+     "owner_user_id": "d5004d2d-007b-4df9-92f8-d17024fa9c97",
+     "asset_uns_path": null,
+     "client_request_id": "c880471a-6143-4455-9905-d0f1312459e6",
+     "equipment_entity_id": null,
+     "visual_observation_ids": []
+    },
+    "kind": "chat",
+    "errors": [],
+    "vision": {
+     "ok": false,
+     "ran": false,
+     "model": null,
+     "provider": null,
+     "latency_ms": null,
+     "hazard_count": 0,
+     "observation_chars": 0
+    },
+    "context": {
+     "chunk_count": 6,
+     "prompt_chars": 15466,
+     "history_turns": 0,
+     "evidence_doc_ids": [
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p175",
+      "https://support.industry.siemens.com/cs/attachments/60279172/manual_SIRIUS_circuit_breaker_3RV_en-US.pdf#p98",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p90",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p289",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p883",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p239"
+     ],
+     "identity_included": false,
+     "system_prompt_kind": "augmented",
+     "visual_evidence_count": 0
+    },
+    "git_sha": "076ab737138abdaac4114f5543f3f763df334441",
+    "request": {
+     "mode": "augmented",
+     "message_chars": 97,
+     "source_doc_count": 0,
+     "has_visual_evidence": false,
+     "has_machine_evidence": false
+    },
+    "identity": {
+     "ran": true,
+     "state": "unknown",
+     "model_present": true,
+     "candidate_count": 0,
+     "unresolved_reason": "not_bound",
+     "selected_entity_id": null,
+     "manufacturer_present": true,
+     "order_number_present": false
+    },
+    "trace_id": "d50a889f19834b83e8b22e48f2973607",
+    "retrieval": {
+     "executed": true,
+     "strategy": "oem_corpus_bm25",
+     "candidate_count": 6,
+     "returned_doc_ids": [
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p175",
+      "https://support.industry.siemens.com/cs/attachments/60279172/manual_SIRIUS_circuit_breaker_3RV_en-US.pdf#p98",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p90",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p289",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p883",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p239"
+     ],
+     "zero_result_reason": null,
+     "oem_corpus_searched": true,
+     "oem_manufacturer_source": "notebook",
+     "prior_visual_observations_considered": 0
+    },
+    "generation": {
+     "attempts": [
+      {
+       "model": "openai/gpt-oss-120b",
+       "outcome": "served",
+       "provider": "Groq",
+       "latency_ms": 888,
+       "response_id": "chatcmpl-7c1e0e8b-7016-4670-a646-2bdfd36206f1",
+       "route_reason": "primary"
+      }
+     ],
+     "input_tokens": 3781,
+     "served_model": "openai/gpt-oss-120b",
+     "output_tokens": 134,
+     "has_image_input": false,
+     "served_provider": "Groq",
+     "has_observation_text": false
+    },
+    "timings_ms": {
+     "total": 4935,
+     "vision": null,
+     "context": 0,
+     "persist": null,
+     "identity": 1203,
+     "retrieval": 243,
+     "generation": 888,
+     "generation_ttfb": null
+    },
+    "answer_gate": {
+     "reason": "served",
+     "invoked": true,
+     "decision": "answered",
+     "answer_chars": 317,
+     "jev_latency_ms": 159,
+     "jev_sufficient": 0.07,
+     "jev_input_tokens": 1681,
+     "jev_skipped_reason": null,
+     "evidence_sufficient": true,
+     "safety_classification": "none",
+     "ungrounded_unit_claim": true,
+     "refusal_phrase_matched": false,
+     "evidence_phrase_matched": true
+    },
+    "environment": "staging",
+    "persistence": {
+     "outcome": "ok",
+     "error_code": null,
+     "turn_row_id": "7b2288de-a9ce-404d-b1d9-97c6b8e8c87d",
+     "evidence_entries": 0
+    },
+    "service_version": "unknown",
+    "vision_trace_id": null,
+    "visual_evidence": {
+     "file_id": null,
+     "link_verified": false,
+     "prior_file_ids": [],
+     "observation_available": false,
+     "observation_in_context": false,
+     "prior_turn_observation_count": 0
+    }
+   },
+   "wire": {
+    "http": 200,
+    "kinds": [
+     "trace",
+     "content",
+     "content",
+     "content",
+     "sources",
+     "evidence",
+     "usage",
+     "status"
+    ],
+    "trace_frame": {
+     "kind": "trace",
+     "traceId": "d50a889f19834b83e8b22e48f2973607",
+     "turnId": "c880471a-6143-4455-9905-d0f1312459e6"
+    },
+    "citations": 0,
+    "basis": "general_reasoning",
+    "label": "General guidance \u2014 not grounded in this machine's documents.",
+    "status": "answered",
+    "content_head": "The panel is powered from a 24\u202fV\u202fDC supply (24\u202fV\u202fDC nominal, 20.4\u202f\u2026\u202f28.8\u202fV allowed).  \n\nIts ambient\u2011temperature rating is \u201310\u202f\u00b0C to +50\u202f\u00b0C (continuous operation).  \n\n(Your retrieved docs didn\u2019t contai"
+   }
+  },
+  {
+   "scenario": "3 notebook with attached manual",
+   "pass": true,
+   "trace_id": "65a43621eb3944b28e8026008f252fd5",
+   "turn_id": "c0325799-8583-4e2e-80df-a9bb26a0d718",
+   "expected": "notebook_sources_bm25; source_doc_count>0; \u22651 citation; notebook badge",
+   "observed": "notebook_sources_bm25 n=1 / cit=1 / Grounded in this notebook's sources.",
+   "checks": [
+    {
+     "name": "strategy notebook_sources_bm25 executed",
+     "ok": true,
+     "detail": "notebook_sources_bm25"
+    },
+    {
+     "name": "source_doc_count > 0",
+     "ok": true,
+     "detail": "1"
+    },
+    {
+     "name": "attached doc among returned ids",
+     "ok": true,
+     "detail": "['b11f4674-42a5-4035-83d2-073f19f1ef23']"
+    },
+    {
+     "name": "\u22651 citation shipped with notebook badge",
+     "ok": true,
+     "detail": "cit=1 label=\"Grounded in this notebook's sources.\""
+    },
+    {
+     "name": "trace id on header == packet == diagnostics",
+     "ok": true,
+     "detail": "hdr=65a43621eb3944b28e8026008f252fd5 pkt=65a43621eb3944b28e8026008f252fd5 frame=65a43621eb3944b28e8026008f252fd5"
+    },
+    {
+     "name": "first SSE frame is the trace frame",
+     "ok": true,
+     "detail": "['trace', 'content', 'content']"
+    },
+    {
+     "name": "environment attribution",
+     "ok": true,
+     "detail": "staging"
+    },
+    {
+     "name": "provider/model recorded",
+     "ok": true,
+     "detail": "Groq/openai/gpt-oss-120b"
+    },
+    {
+     "name": "token usage recorded",
+     "ok": true,
+     "detail": "2082/305"
+    },
+    {
+     "name": "no secrets in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no answer text in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "retrieved chunks reached the provider (context ids, grounded prompt)",
+     "ok": true,
+     "detail": "chunks=1 ids=1 prompt=augmented"
+    },
+    {
+     "name": "documentation badge is backed by \u22651 shipped citation",
+     "ok": true,
+     "detail": "citations=1"
+    }
+   ],
+   "packet": {
+    "v": "1",
+    "ids": {
+     "turn_id": "c0325799-8583-4e2e-80df-a9bb26a0d718",
+     "asset_id": null,
+     "file_ids": [],
+     "tenant_id": "79e06a41-4f17-4c09-9f18-2725c83cd102",
+     "thread_id": null,
+     "notebook_id": "9feb3741-5ee9-4f7b-ab42-5d3f557f1b63",
+     "owner_user_id": "d5004d2d-007b-4df9-92f8-d17024fa9c97",
+     "asset_uns_path": null,
+     "client_request_id": "3629179f-dfdf-4d71-9be1-d3e0d5ccd91d",
+     "equipment_entity_id": null,
+     "visual_observation_ids": []
+    },
+    "kind": "chat",
+    "errors": [],
+    "vision": {
+     "ok": false,
+     "ran": false,
+     "model": null,
+     "provider": null,
+     "latency_ms": null,
+     "hazard_count": 0,
+     "observation_chars": 0
+    },
+    "context": {
+     "chunk_count": 1,
+     "prompt_chars": 9191,
+     "history_turns": 0,
+     "evidence_doc_ids": [
+      "b11f4674-42a5-4035-83d2-073f19f1ef23"
+     ],
+     "identity_included": false,
+     "system_prompt_kind": "augmented",
+     "visual_evidence_count": 0
+    },
+    "git_sha": "076ab737138abdaac4114f5543f3f763df334441",
+    "request": {
+     "mode": "augmented",
+     "message_chars": 78,
+     "source_doc_count": 1,
+     "has_visual_evidence": false,
+     "has_machine_evidence": false
+    },
+    "identity": {
+     "ran": true,
+     "state": "unknown",
+     "model_present": false,
+     "candidate_count": 0,
+     "unresolved_reason": "not_bound",
+     "selected_entity_id": null,
+     "manufacturer_present": false,
+     "order_number_present": false
+    },
+    "trace_id": "65a43621eb3944b28e8026008f252fd5",
+    "retrieval": {
+     "executed": true,
+     "strategy": "notebook_sources_bm25",
+     "candidate_count": 1,
+     "returned_doc_ids": [
+      "b11f4674-42a5-4035-83d2-073f19f1ef23"
+     ],
+     "zero_result_reason": null,
+     "oem_corpus_searched": false,
+     "oem_manufacturer_source": null,
+     "prior_visual_observations_considered": 0
+    },
+    "generation": {
+     "attempts": [
+      {
+       "model": "openai/gpt-oss-120b",
+       "outcome": "served",
+       "provider": "Groq",
+       "latency_ms": 1247,
+       "response_id": "chatcmpl-3395919a-5595-465f-9db9-e7bd13abde9a",
+       "route_reason": "primary"
+      }
+     ],
+     "input_tokens": 2082,
+     "served_model": "openai/gpt-oss-120b",
+     "output_tokens": 305,
+     "has_image_input": false,
+     "served_provider": "Groq",
+     "has_observation_text": false
+    },
+    "timings_ms": {
+     "total": 6541,
+     "vision": null,
+     "context": 0,
+     "persist": null,
+     "identity": 2261,
+     "retrieval": 586,
+     "generation": 1247,
+     "generation_ttfb": null
+    },
+    "answer_gate": {
+     "reason": "served",
+     "invoked": true,
+     "decision": "answered",
+     "answer_chars": 950,
+     "jev_latency_ms": 134,
+     "jev_sufficient": 0.06,
+     "jev_input_tokens": 439,
+     "jev_skipped_reason": null,
+     "evidence_sufficient": true,
+     "safety_classification": "none",
+     "ungrounded_unit_claim": false,
+     "refusal_phrase_matched": false,
+     "evidence_phrase_matched": true
+    },
+    "environment": "staging",
+    "persistence": {
+     "outcome": "ok",
+     "error_code": null,
+     "turn_row_id": "c0325799-8583-4e2e-80df-a9bb26a0d718",
+     "evidence_entries": 0
+    },
+    "service_version": "unknown",
+    "vision_trace_id": null,
+    "visual_evidence": {
+     "file_id": null,
+     "link_verified": false,
+     "prior_file_ids": [],
+     "observation_available": false,
+     "observation_in_context": false,
+     "prior_turn_observation_count": 0
+    }
+   },
+   "wire": {
+    "http": 200,
+    "kinds": [
+     "trace",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "content",
+     "sources",
+     "evidence",
+     "usage",
+     "status"
+    ],
+    "trace_frame": {
+     "kind": "trace",
+     "traceId": "65a43621eb3944b28e8026008f252fd5",
+     "turnId": "3629179f-dfdf-4d71-9be1-d3e0d5ccd91d"
+    },
+    "citations": 1,
+    "basis": "oem_documentation",
+    "label": "Grounded in this notebook's sources.",
+    "status": "answered",
+    "content_head": "The PLC\u2019s tag list for the VFD\u2011driven conveyor is:\n\n| Tag | What it represents |\n|-----|---------------------|\n| **PLC\u2011PANEL\u201101** | The I/O panel that houses the PLC\u2019s local I/O modules and communicat"
+   }
+  },
+  {
+   "scenario": "4 photo turn \u2192 text-only follow-up",
+   "pass": true,
+   "trace_id": "bbdbd82dee3dcfe1adcd91f0c435310f",
+   "turn_id": "a67cbfb8-d583-448a-b8db-52591c8c2635",
+   "expected": "follow-up recalls the earlier photo server-side: prior_visual_observations_considered \u2265 1, visual evidence in context, answer not general",
+   "observed": "prior=1 files=['127f1627-c5e0-4e91-af1b-055461b93560'] / workspace_evidence / answered",
+   "checks": [
+    {
+     "name": "photo turn: observation in context",
+     "ok": true,
+     "detail": "1"
+    },
+    {
+     "name": "photo turn: badge is the photo (workspace_evidence) or documentation with citations",
+     "ok": true,
+     "detail": "workspace_evidence cit=0"
+    },
+    {
+     "name": "prior_visual_observations_considered \u2265 1",
+     "ok": true,
+     "detail": "1"
+    },
+    {
+     "name": "prior file id recalled == the photo's file id",
+     "ok": true,
+     "detail": "['127f1627-c5e0-4e91-af1b-055461b93560']"
+    },
+    {
+     "name": "visual evidence in context on the follow-up",
+     "ok": true,
+     "detail": "1"
+    },
+    {
+     "name": "follow-up badge is not bare general",
+     "ok": true,
+     "detail": "workspace_evidence"
+    },
+    {
+     "name": "VISUAL_EVIDENCE_DROPPED did not fire",
+     "ok": true,
+     "detail": "[]"
+    },
+    {
+     "name": "trace id on header == packet == diagnostics",
+     "ok": true,
+     "detail": "hdr=bbdbd82dee3dcfe1adcd91f0c435310f pkt=bbdbd82dee3dcfe1adcd91f0c435310f frame=bbdbd82dee3dcfe1adcd91f0c435310f"
+    },
+    {
+     "name": "first SSE frame is the trace frame",
+     "ok": true,
+     "detail": "['trace', 'content', 'sources']"
+    },
+    {
+     "name": "environment attribution",
+     "ok": true,
+     "detail": "staging"
+    },
+    {
+     "name": "provider/model recorded",
+     "ok": true,
+     "detail": "Groq/openai/gpt-oss-120b"
+    },
+    {
+     "name": "token usage recorded",
+     "ok": true,
+     "detail": "4056/52"
+    },
+    {
+     "name": "no secrets in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no answer text in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "retrieved chunks reached the provider (context ids, grounded prompt)",
+     "ok": true,
+     "detail": "chunks=6 ids=6 prompt=augmented"
+    }
+   ],
+   "packet": {
+    "v": "1",
+    "ids": {
+     "turn_id": "a67cbfb8-d583-448a-b8db-52591c8c2635",
+     "asset_id": null,
+     "file_ids": [],
+     "tenant_id": "79e06a41-4f17-4c09-9f18-2725c83cd102",
+     "thread_id": "thrd_5682074d945e48dc9eb48b10696da376",
+     "notebook_id": "901dcf28-ca4e-4470-99dd-99bcecffabc6",
+     "owner_user_id": "d5004d2d-007b-4df9-92f8-d17024fa9c97",
+     "asset_uns_path": null,
+     "client_request_id": "02ff8f00-b6d5-45fa-a736-e6b740929ff1",
+     "equipment_entity_id": null,
+     "visual_observation_ids": []
+    },
+    "kind": "chat",
+    "errors": [],
+    "vision": {
+     "ok": false,
+     "ran": false,
+     "model": null,
+     "provider": null,
+     "latency_ms": null,
+     "hazard_count": 0,
+     "observation_chars": 0
+    },
+    "context": {
+     "chunk_count": 6,
+     "prompt_chars": 17170,
+     "history_turns": 2,
+     "evidence_doc_ids": [
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p160",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p239",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p247",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p14",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p222",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p184"
+     ],
+     "identity_included": false,
+     "system_prompt_kind": "augmented",
+     "visual_evidence_count": 1
+    },
+    "git_sha": "076ab737138abdaac4114f5543f3f763df334441",
+    "request": {
+     "mode": "augmented",
+     "message_chars": 20,
+     "source_doc_count": 0,
+     "has_visual_evidence": false,
+     "has_machine_evidence": false
+    },
+    "identity": {
+     "ran": true,
+     "state": "unknown",
+     "model_present": false,
+     "candidate_count": 0,
+     "unresolved_reason": "not_bound",
+     "selected_entity_id": null,
+     "manufacturer_present": false,
+     "order_number_present": false
+    },
+    "trace_id": "bbdbd82dee3dcfe1adcd91f0c435310f",
+    "retrieval": {
+     "executed": true,
+     "strategy": "oem_corpus_bm25",
+     "candidate_count": 6,
+     "returned_doc_ids": [
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p160",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p239",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p247",
+      "https://cache.industry.siemens.com/dl/files/000/99673000/att_51983/v1/GH6_0414_eng_en-US.pdf#p14",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p222",
+      "https://cache.industry.siemens.com/dl/files/056/104426056/att_70877/v1/v20_operating_instructions_complete_en-US_en-US.pdf#p184"
+     ],
+     "zero_result_reason": null,
+     "oem_corpus_searched": true,
+     "oem_manufacturer_source": "photo",
+     "prior_visual_observations_considered": 1
+    },
+    "generation": {
+     "attempts": [
+      {
+       "model": "openai/gpt-oss-120b",
+       "outcome": "served",
+       "provider": "Groq",
+       "latency_ms": 628,
+       "response_id": "chatcmpl-bca7a2be-14e9-47e9-a6b9-7dd10554afd3",
+       "route_reason": "primary"
+      }
+     ],
+     "input_tokens": 4056,
+     "served_model": "openai/gpt-oss-120b",
+     "output_tokens": 52,
+     "has_image_input": false,
+     "served_provider": "Groq",
+     "has_observation_text": true
+    },
+    "timings_ms": {
+     "total": 4477,
+     "vision": null,
+     "context": 0,
+     "persist": null,
+     "identity": 1073,
+     "retrieval": 89,
+     "generation": 628,
+     "generation_ttfb": null
+    },
+    "answer_gate": {
+     "reason": "served",
+     "invoked": true,
+     "decision": "answered",
+     "answer_chars": 50,
+     "jev_latency_ms": 124,
+     "jev_sufficient": 0.13,
+     "jev_input_tokens": 1431,
+     "jev_skipped_reason": null,
+     "evidence_sufficient": true,
+     "safety_classification": "none",
+     "ungrounded_unit_claim": true,
+     "refusal_phrase_matched": false,
+     "evidence_phrase_matched": false
+    },
+    "environment": "staging",
+    "persistence": {
+     "outcome": "ok",
+     "error_code": null,
+     "turn_row_id": "a67cbfb8-d583-448a-b8db-52591c8c2635",
+     "evidence_entries": 0
+    },
+    "service_version": "unknown",
+    "vision_trace_id": null,
+    "visual_evidence": {
+     "file_id": null,
+     "link_verified": false,
+     "prior_file_ids": [
+      "127f1627-c5e0-4e91-af1b-055461b93560"
+     ],
+     "observation_available": true,
+     "observation_in_context": true,
+     "prior_turn_observation_count": 1
+    }
+   },
+   "wire": {
+    "http": 200,
+    "kinds": [
+     "trace",
+     "content",
+     "sources",
+     "evidence",
+     "usage",
+     "status"
+    ],
+    "trace_frame": {
+     "kind": "trace",
+     "traceId": "bbdbd82dee3dcfe1adcd91f0c435310f",
+     "turnId": "02ff8f00-b6d5-45fa-a736-e6b740929ff1"
+    },
+    "citations": 0,
+    "basis": "workspace_evidence",
+    "label": "Grounded in a photo attached earlier in this conversation \u2014 an unconfirmed reading.",
+    "status": "answered",
+    "content_head": "The label specifies a 24\u202fV\u202fDC supply (max\u202f0.85\u202fA).",
+    "photo_turn_trace": "f99d1252cec780b2a6629f229ab9f3e4"
+   }
+  },
+  {
+   "scenario": "5 no evidence + exact rating requested",
+   "pass": true,
+   "trace_id": "90f019b195ec447fa4052342b5667909",
+   "turn_id": "ccf85942-cd12-4ba1-83bc-bcee9d20dfed",
+   "expected": "no unit-bearing value asserted as this machine's fact; gate blocks or model declines",
+   "observed": "decision=answered status=answered / general_reasoning",
+   "checks": [
+    {
+     "name": "evidence_sufficient=false",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no exact value asserted as this machine's fact",
+     "ok": true,
+     "detail": "decision=answered status=answered number=False hedged=False disclaimer=True"
+    },
+    {
+     "name": "gate did not serve an unhedged exact rating",
+     "ok": true,
+     "detail": "number=False hedged=False disclaimer=True"
+    },
+    {
+     "name": "trace id on header == packet == diagnostics",
+     "ok": true,
+     "detail": "hdr=90f019b195ec447fa4052342b5667909 pkt=90f019b195ec447fa4052342b5667909 frame=90f019b195ec447fa4052342b5667909"
+    },
+    {
+     "name": "first SSE frame is the trace frame",
+     "ok": true,
+     "detail": "['trace', 'content', 'content']"
+    },
+    {
+     "name": "environment attribution",
+     "ok": true,
+     "detail": "staging"
+    },
+    {
+     "name": "provider/model recorded",
+     "ok": true,
+     "detail": "Groq/openai/gpt-oss-120b"
+    },
+    {
+     "name": "token usage recorded",
+     "ok": true,
+     "detail": "1839/125"
+    },
+    {
+     "name": "no secrets in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no answer text in packet",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "general badge \u21d2 no documents in context",
+     "ok": true,
+     "detail": "chunks=0 cit=0"
+    }
+   ],
+   "packet": {
+    "v": "1",
+    "ids": {
+     "turn_id": "ccf85942-cd12-4ba1-83bc-bcee9d20dfed",
+     "asset_id": null,
+     "file_ids": [],
+     "tenant_id": "79e06a41-4f17-4c09-9f18-2725c83cd102",
+     "thread_id": null,
+     "notebook_id": "bbe38f62-dcce-4031-9cf9-79bbc60d88ea",
+     "owner_user_id": "d5004d2d-007b-4df9-92f8-d17024fa9c97",
+     "asset_uns_path": null,
+     "client_request_id": "e679a029-7da9-41e9-b64a-1fc112d04793",
+     "equipment_entity_id": null,
+     "visual_observation_ids": []
+    },
+    "kind": "chat",
+    "errors": [],
+    "vision": {
+     "ok": false,
+     "ran": false,
+     "model": null,
+     "provider": null,
+     "latency_ms": null,
+     "hazard_count": 0,
+     "observation_chars": 0
+    },
+    "context": {
+     "chunk_count": 0,
+     "prompt_chars": 8235,
+     "history_turns": 0,
+     "evidence_doc_ids": [],
+     "identity_included": false,
+     "system_prompt_kind": "augmented",
+     "visual_evidence_count": 0
+    },
+    "git_sha": "076ab737138abdaac4114f5543f3f763df334441",
+    "request": {
+     "mode": "augmented",
+     "message_chars": 109,
+     "source_doc_count": 0,
+     "has_visual_evidence": false,
+     "has_machine_evidence": false
+    },
+    "identity": {
+     "ran": true,
+     "state": "unknown",
+     "model_present": false,
+     "candidate_count": 0,
+     "unresolved_reason": "not_bound",
+     "selected_entity_id": null,
+     "manufacturer_present": false,
+     "order_number_present": false
+    },
+    "trace_id": "90f019b195ec447fa4052342b5667909",
+    "retrieval": {
+     "executed": false,
+     "strategy": "skipped_general_mode",
+     "candidate_count": 0,
+     "returned_doc_ids": [],
+     "zero_result_reason": null,
+     "oem_corpus_searched": false,
+     "oem_manufacturer_source": null,
+     "prior_visual_observations_considered": 0
+    },
+    "generation": {
+     "attempts": [
+      {
+       "model": "openai/gpt-oss-120b",
+       "outcome": "served",
+       "provider": "Groq",
+       "latency_ms": 555,
+       "response_id": "chatcmpl-67b84f80-23dc-405c-bf6f-c5c93857785f",
+       "route_reason": "primary"
+      }
+     ],
+     "input_tokens": 1839,
+     "served_model": "openai/gpt-oss-120b",
+     "output_tokens": 125,
+     "has_image_input": false,
+     "served_provider": "Groq",
+     "has_observation_text": false
+    },
+    "timings_ms": {
+     "total": 4270,
+     "vision": null,
+     "context": 0,
+     "persist": null,
+     "identity": 1408,
+     "retrieval": 0,
+     "generation": 556,
+     "generation_ttfb": null
+    },
+    "answer_gate": {
+     "reason": "served",
+     "invoked": true,
+     "decision": "answered",
+     "answer_chars": 423,
+     "jev_latency_ms": null,
+     "jev_sufficient": null,
+     "jev_input_tokens": null,
+     "jev_skipped_reason": "no_evidence",
+     "evidence_sufficient": false,
+     "safety_classification": "none",
+     "ungrounded_unit_claim": false,
+     "refusal_phrase_matched": false,
+     "evidence_phrase_matched": true
+    },
+    "environment": "staging",
+    "persistence": {
+     "outcome": "ok",
+     "error_code": null,
+     "turn_row_id": "ccf85942-cd12-4ba1-83bc-bcee9d20dfed",
+     "evidence_entries": 0
+    },
+    "service_version": "unknown",
+    "vision_trace_id": null,
+    "visual_evidence": {
+     "file_id": null,
+     "link_verified": false,
+     "prior_file_ids": [],
+     "observation_available": false,
+     "observation_in_context": false,
+     "prior_turn_observation_count": 0
+    }
+   },
+   "wire": {
+    "http": 200,
+    "kinds": [
+     "trace",
+     "content",
+     "content",
+     "content",
+     "content",
+     "sources",
+     "evidence",
+     "usage",
+     "status"
+    ],
+    "trace_frame": {
+     "kind": "trace",
+     "traceId": "90f019b195ec447fa4052342b5667909",
+     "turnId": "e679a029-7da9-41e9-b64a-1fc112d04793"
+    },
+    "citations": 0,
+    "basis": "general_reasoning",
+    "label": "General guidance \u2014 not grounded in this machine's documents.",
+    "status": "answered",
+    "content_head": "I don\u2019t have a spec sheet for that particular screen, so I can\u2019t give you the exact outdoor\u2011in\u2011sun temperature rating. Check the full user manual or the product data sheet\u2014look for the \u201coperating temp"
+   }
+  }
+ ]
+}

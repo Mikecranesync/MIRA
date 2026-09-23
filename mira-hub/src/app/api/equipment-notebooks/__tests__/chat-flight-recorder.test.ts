@@ -209,7 +209,7 @@ describe("Gate-G abstain persists a packet with the honest reason", () => {
   it("insufficient_evidence / gate_g_no_evidence, no provider call", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(chatReq({ mode: "source_only", message: "what is F004", sourceDocIds: [DOC_A] }), params);
     await res.text();
     expect(fetchMock).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
@@ -377,7 +377,16 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     // shipped, and the evidence badge says OEM documentation.
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body) as { messages: { role: string; content: string }[] };
     expect(body.messages[0].content).not.toContain("No manual for this machine has been loaded");
-    expect(p.context.system_prompt_kind).toBe("grounded");
+    // The chunks still GROUND the answer — citation shipped, badge
+    // oem_documentation, [1] preserved (all asserted below). What changed on
+    // 2026-09-22 is that they no longer decide the PERSONA: under the contract a
+    // normal turn is `augmented` whether or not retrieval got lucky, so a
+    // notebook whose manual happens to match cannot get a different assistant
+    // than one whose manual does not. Grounded is now reserved for an explicit
+    // source-only request. Flag off, the old retrieval-derived kind is intact.
+    expect(p.context.system_prompt_kind).toBe(
+      process.env.MIRA_PERSONA_CONTRACT === "1" ? "augmented" : "grounded",
+    );
     const frames = framesOf(text);
     expect(frames.find((f) => f.kind === "sources")?.citations).toHaveLength(1);
     const ev = frames.find((f) => f.kind === "evidence") as { basis?: string; label?: string } | undefined;

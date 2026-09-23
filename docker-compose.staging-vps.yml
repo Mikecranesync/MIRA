@@ -373,6 +373,12 @@ services:
       # without this line a Doppler factorylm/stg value can never reach the
       # container, because compose passes only what it lists here.
       - MIRA_CANONICAL_SEAM=${MIRA_CANONICAL_SEAM:-0}
+      # MIRA Intelligence Contract — one persona, augmented by default
+      # (docs/specs/mira-intelligence-contract.md). Same declaration + default
+      # as docker-compose.saas.yml. Staging proves it before production;
+      # without this line a Doppler factorylm/stg value can never reach the
+      # container, because compose passes only what it lists here.
+      - MIRA_PERSONA_CONTRACT=${MIRA_PERSONA_CONTRACT:-0}
       # Same default-off ChatV2 rollout gate as production. Staging must prove
       # the capability before a production Doppler value is enabled.
       - MIRA_CHAT_V2_ENABLED=${MIRA_CHAT_V2_ENABLED:-0}

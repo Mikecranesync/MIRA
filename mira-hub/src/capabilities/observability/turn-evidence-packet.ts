@@ -56,7 +56,10 @@ export type TurnEvidencePacketIds = {
 };
 
 export type TurnEvidencePacketRequest = {
-  mode: "general" | "grounded";
+  /** Contract modes (2026-09-22) widen this: normal chat is `augmented`,
+   *  explicit cite-or-refuse is `source_only`. Legacy values retained so old
+   *  packets still parse. */
+  mode: "general" | "grounded" | "augmented" | "source_only";
   message_chars: number;
   has_visual_evidence: boolean;
   has_machine_evidence: boolean;
@@ -115,7 +118,7 @@ export type TurnEvidencePacketContext = {
   history_turns: number;
   prompt_chars: number;
   /** Which system prompt the model received: general (no documents), grounded (documents), machine (machine packet). */
-  system_prompt_kind: "general" | "grounded" | "machine" | null;
+  system_prompt_kind: "general" | "grounded" | "machine" | "augmented" | "source_only" | null;
 };
 
 export type TurnEvidencePacketGeneration = {
@@ -135,7 +138,13 @@ export type TurnEvidencePacketAnswerGate = {
   answer_chars: number;
   refusal_phrase_matched: boolean;
   evidence_phrase_matched: boolean;
-  safety_classification: "none" | "hazard_directive" | "safety_stop";
+  safety_classification: "none" | "hazard_directive" | "hazard_pause" | "safety_stop";
+  /** Which hazard banner rode above the answer ("confined space", "energized",
+   *  …), or null. A safety PAUSE serves the answer and names the hazard above
+   *  it; without this field a sweep of the recorder cannot tell a warned answer
+   *  from an unwarned one. Never answer text — a class name from
+   *  HAZARD_BANNERS. */
+  hazard_banner?: string | null;
   evidence_sufficient: boolean;
   /** ungroundedUnitClaim(answerText) result (anomalies.ts) — the ONLY trace
    * of answer text this packet ever carries is this one boolean. */

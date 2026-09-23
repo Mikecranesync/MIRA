@@ -199,6 +199,9 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
   });
 
   it("preserves the zero-source refusal for an unverified photo claim", async () => {
+    // LEGACY path (contract OFF). The property that matters — an UNVERIFIED
+    // photo is never loaded — is asserted under the contract in the next test.
+    delete process.env.MIRA_PERSONA_CONTRACT;
     filesMock.photoLinkedToTarget.mockResolvedValue(null);
 
     const res = await POST(
@@ -210,6 +213,27 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(await res.json()).toEqual({ error: "no_sources_selected" });
     expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("contract ON: the turn is answered, and the unverified photo is STILL never loaded", async () => {
+    // The contract removes the 422 (an empty notebook is not a refusal) — it
+    // does not weaken photo verification. A claimed-but-unlinked file id must
+    // never reach the observation ledger, on either side of the flag.
+    process.env.MIRA_PERSONA_CONTRACT = "1";
+    filesMock.photoLinkedToTarget.mockResolvedValue(null);
+
+    const res = await POST(
+      req({ message: "what am I looking at here", visualEvidence: { fileId: PHOTO } }),
+      params,
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      PHOTO,
+    );
   });
 
   it("a server-stored photo hazard overrides a non-terminal energized-question directive", async () => {

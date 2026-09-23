@@ -237,7 +237,7 @@ describe("every persisted turn is owned by the authenticated technician", () => 
   });
 
   it("grounded abstain (Gate G) is owned by the session user", async () => {
-    const res = await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(req({ mode: "source_only", message: "Which coil?", sourceDocIds: [DOC_A] }), params);
     expect(res.status).toBe(200);
     await frames(res);
     expect(fetch).not.toHaveBeenCalled();
@@ -472,7 +472,7 @@ describe("a disputed identity is on the wire FIRST on every path — live ≡ hy
   });
 
   it("abstention (Gate G): dispute frame first, no basis, then the honest insufficient_evidence status", async () => {
-    const res = await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A], machineEvidence: mismatch }), params);
+    const res = await POST(req({ mode: "source_only", message: "Which coil?", sourceDocIds: [DOC_A], machineEvidence: mismatch }), params);
     expect(res.status).toBe(200);
     const fr = await frames(res);
     expect(fetch).not.toHaveBeenCalled();
@@ -499,10 +499,12 @@ describe("a disputed identity is on the wire FIRST on every path — live ≡ hy
 
   it("control: an UNDISPUTED safety stop and abstention emit no evidence frame at all (wire unchanged)", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    // Safety stop needs no mode — a hazard stops the turn on every path.
     const stop = await frames(await POST(req({ message: SMOKE, sourceDocIds: [] }), params));
     expect(stop.some((f) => f.kind === "evidence")).toBe(false);
     notebookOwnedByTenant();
-    const abstain = await frames(await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A] }), params));
+    // The abstain is the source-only lane now: normal chat never abstains.
+    const abstain = await frames(await POST(req({ mode: "source_only", message: "Which coil?", sourceDocIds: [DOC_A] }), params));
     expect(abstain.some((f) => f.kind === "evidence")).toBe(false);
   });
 });

@@ -277,7 +277,17 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
             "retrieved chunks reached the provider (context ids, grounded prompt)",
             c["chunk_count"] == r["candidate_count"]
             and len(c["evidence_doc_ids"]) > 0
-            and c.get("system_prompt_kind") in ("grounded", "machine"),
+            # The assertion is that retrieved chunks REACHED the provider, which
+            # is proved by chunk_count and evidence_doc_ids above. The prompt
+            # kind names the PERSONA, and since 2026-09-22 the persona is chosen
+            # by the request, not by whether retrieval got lucky
+            # (docs/specs/mira-intelligence-contract.md §3) — a normal turn
+            # carrying chunks now reports `augmented`, and an explicit
+            # source-only turn reports `source_only`. Pinning this to the two
+            # pre-contract values would have failed this loop on the first
+            # staging turn after the flag went on, while nothing was wrong.
+            and c.get("system_prompt_kind")
+            in ("grounded", "machine", "augmented", "source_only"),
             f"chunks={c['chunk_count']} ids={len(c['evidence_doc_ids'])} prompt={c.get('system_prompt_kind')}",
         )
     # badge truthfulness

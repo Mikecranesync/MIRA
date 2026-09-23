@@ -167,10 +167,17 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 | `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
 | `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
+| `MIRA_PERSONA_CONTRACT` | unset / `0` (**off**) | Exact `"1"` serves the MIRA Intelligence Contract — one persona for every Hub chat surface — and, in the same flag, makes normal authenticated chat **augmented**: documents upgrade an answer and their absence no longer vetoes it. Strict cite-or-refuse becomes `mode:"source_only"`. Off, the route keeps BOTH the pre-existing prompts and the pre-existing document gate, byte-identical. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
 
 Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
 See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.
+
+Rollback for `MIRA_PERSONA_CONTRACT`: unset it (or set `0`) and restart the Hub.
+It gates prompt selection, mode routing and the document gate together, so one
+variable reverts all three. No migration, no data change, no client release —
+an old APK's `mode:"general"` and a no-mode request behave identically either
+way. Spec: `docs/specs/mira-intelligence-contract.md`.
 
 ## Telemetry (staging-first)
 
