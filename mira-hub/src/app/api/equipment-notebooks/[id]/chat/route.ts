@@ -1112,6 +1112,14 @@ async function handleChatTurn(
         requestPayload: body,
       });
       if (claim.status === "replay") {
+        // An idempotent replay is `superseded`, not `error`. Measured on
+        // staging 2026-09-23: sending the same clientRequestId twice produced
+        // `closed/error` for the second, because the replay path reaches
+        // `endRoot` without ever classifying itself and the fallback is `error`.
+        // The union already has the right word for "a duplicate/retry the
+        // server discarded", and a ledger that files healthy idempotency under
+        // errors teaches an operator to ignore errors.
+        lifecycleOutcome = "superseded";
         // Idempotent replay of an already-terminal turn — no new work, no new
         // packet. `finish` was never reached; note it on the span and close.
         endRoot({ "mira.turn.replay": true });
