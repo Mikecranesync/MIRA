@@ -11,6 +11,11 @@
  *     visual-context arg (the turn still completes);
  *   - unverified fileId ⇒ no lookup, no block (arg empty), turn still completes.
  *
+ * #3967 — LOOK itself must leave a server-recallable turn: when listTurns
+ * returns a prior `visual_observation {fileId}` and THIS turn carries no
+ * rider, priorLookRows still loads the observation (negative control: empty
+ * listTurns ⇒ no prior observation block).
+ *
  * Run: npx vitest run src/app/api/equipment-notebooks/[id]/chat/__tests__/chat-look-grounding
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -324,5 +329,71 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
         ]),
       }),
     );
+  });
+});
+
+
+describe("#3967 — LOOK turn is server-recallable without the client rider", () => {
+  it("POSITIVE: prior LOOK visual_observation in listTurns → observation loaded with no rider", async () => {
+    // Simulates what LOOK's new recordTurn writes; the follow-up chat sends
+    // text only (the harness shape that originally filed #3967).
+    nbMock.listTurns.mockResolvedValueOnce([
+      {
+        id: "look-turn-1",
+        threadId: "legacy",
+        question: "LOOK",
+        answerStatus: "answered",
+        answerText: null,
+        evidence: [
+          {
+            kind: "visual_observation",
+            fileId: PHOTO,
+            capturedAt: CAPTURED_AT,
+            provenance: "phone_photo",
+          },
+        ],
+        basis: null,
+        createdAt: "2026-09-23T12:00:00.000Z",
+        ownerUserId: "u1",
+      },
+    ]);
+
+    const res = await POST(
+      req({
+        message: "what is the part number on this panel",
+        mode: "general",
+        // deliberately NO visualEvidence rider
+      }),
+      params,
+    );
+    expect(res.status).toBe(200);
+
+    expect(nbMock.listTurns).toHaveBeenCalled();
+    expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), TENANT, PHOTO);
+    expect(veMock.renderPriorLookObservationsSection).toHaveBeenCalled();
+    const priorArg = vi.mocked(veMock.renderPriorLookObservationsSection).mock.calls.at(-1)?.[0] as unknown[];
+    expect(priorArg?.length).toBeGreaterThan(0);
+
+    const call = vi.mocked(ragMock.buildManualUserContent).mock.calls.at(-1) as unknown as [string, unknown[], string?];
+    // Current-photo section empty (no rider); prior section contributes context.
+    expect(String(call[2] ?? "")).toContain("PRIOR-LOOK-CTX");
+  });
+
+  it("NEGATIVE CONTROL: no prior LOOK turn and no rider → observation NOT available", async () => {
+    nbMock.listTurns.mockResolvedValueOnce([]);
+
+    const res = await POST(
+      req({ message: "what is the part number on this panel", mode: "general" }),
+      params,
+    );
+    expect(res.status).toBe(200);
+
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    const priorCalls = vi.mocked(veMock.renderPriorLookObservationsSection).mock.calls;
+    // Called with empty rows (or not with loaded observations).
+    const lastPrior = priorCalls.at(-1)?.[0] as unknown[] | undefined;
+    expect(!lastPrior || lastPrior.length === 0).toBe(true);
+    const call = vi.mocked(ragMock.buildManualUserContent).mock.calls.at(-1) as unknown as [string, unknown[], string?];
+    expect(call[2] ?? "").toBe("");
   });
 });
