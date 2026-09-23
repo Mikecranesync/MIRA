@@ -181,6 +181,9 @@ async function handleLookTurn(
   }
   const question = optionalString(form?.get("question") ?? null, MAX_QUESTION_CHARS);
   const clientKey = optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS);
+  // Same reason as chat: the arrival row predates the multipart parse, so the
+  // client's own key reaches the ledger on the response row or not at all.
+  ingress.clientRequestId = clientKey;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
   const capturedAt = new Date().toISOString();

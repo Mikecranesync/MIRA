@@ -864,6 +864,12 @@ async function handleChatTurn(
   if (body.clientRequestId != null && !clientRequestId) {
     return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
   }
+  // Carry the CLIENT's own key into the ingress ledger (093). The arrival row
+  // is written before the body is parsed, so it cannot have this; the response
+  // row can, and without it a client attempt that never produced a ledger start
+  // is unjoinable to anything the server saw — which is the difference between
+  // "never arrived" and "arrived and was lost".
+  ingress.clientRequestId = clientRequestId;
   // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
   // pass it to the model for continuity, and use it to rewrite the retrieval
   // query so a referential follow-up ("what about Ethernet?", "the other one")
