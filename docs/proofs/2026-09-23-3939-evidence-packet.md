@@ -27,10 +27,35 @@ against a database holding lifecycle data fails. This blocks PR CI — see
 |---|---|
 | Android package | `com.factorylm.mira.staging` (prod flavour `com.factorylm.mira` also installed) |
 | version | `1.2.0`, versionCode `11`, installed 2026-09-21, updated 2026-09-22 |
-| device | **AVD `mira35`, Android 15.** No physical Pixel 9a is attached to CHARLIE (`adb devices` → emulator only) |
+| device | **AVD `mira35`, Android 15** |
+| physical Pixel 9a | **NOT REACHABLE** — three independent probes, below |
 
 The app build predates this work and that is fine: the recorder is **server-side**,
 so an older client still exercises the capture path end to end.
+
+### Why the Pixel run is unrun — evidenced, not asserted
+
+Three independent probes from CHARLIE, all negative:
+
+```
+adb devices           → emulator-5554 only
+adb mdns services     → "List of discovered mdns services" (empty)
+nc :5555 across 192.168.1.2-40 → no open adb port
+```
+
+So the handset is not attached by USB, not advertising wireless debugging, and
+not listening on adb anywhere on this subnet. It cannot be driven from here by
+any means available to this session — this is a hardware-availability fact, not a
+test that was skipped.
+
+**What the emulator does and does not substitute for.** Root `CLAUDE.md` makes the
+emulator the *default* mobile gate and reserves a handset for exactly three
+things: cellular behaviour, real camera capture, and release-signed Play identity.
+The capture path touches none of those — it is server-side, exercised through the
+app's own WebView network stack, and the emulator ran the real
+`com.factorylm.mira.staging` build through the real Android photo picker. So the
+capture matrix is genuinely covered; **cellular, camera and Play-identity are
+not**, and no claim here depends on them.
 
 ## Coverage matrix — every attempt accounted for
 
@@ -124,7 +149,9 @@ answer text to a third party, which the shipped shadow deliberately never does.*
    concept, so a slow provider closes `error`. An empty bucket is **not** evidence
    of no timeouts. Producing it means adding a provider timeout — a behaviour
    change, not a capture fix.
-2. **No physical Pixel 9a.** Cellular, real-camera and Play-signed identity unrun.
+2. **No physical Pixel 9a** — three probes negative (USB, mDNS, LAN adb scan).
+   Cellular, real-camera and Play-signed identity unrun. The capture path itself
+   is server-side and was exercised on the real staging-flavour app.
 3. **Client acknowledgement unbuilt** — see above.
 4. **Content references unbuilt.** The packet reconstructs the decision path, not
    inputs/outputs, because it stores neither. Full reconstruction needs
