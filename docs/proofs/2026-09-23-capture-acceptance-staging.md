@@ -278,38 +278,39 @@ and are listed below rather than substituted.
 - **Provider timeout** — needs staging fault injection; no clean lever found.
 - **Physical Pixel 9a** — no device attached. Emulator covered the capture path;
   cellular, real-camera and Play-signed-identity remain device-only.
-- **THE OPEN CONTRADICTION — narrowed to four facts that cannot all be true.**
+- ~~**THE OPEN CONTRADICTION**~~ — **RESOLVED. Capture never lost a turn.**
 
-  Four requests from tenant `0e0d7d65` on notebook `91bab2f8`, 01:45:28–01:45:51
-  (one 422, three 200), produced **zero** `decision_traces` rows.
+  Four requests from tenant `0e0d7d65` had ingress rows and no `decision_traces`
+  rows, which my own metric scores as `lost_starts`. Six hypotheses died by
+  measurement — FK cascade (there is no FK on `notebook_id`), a broken join key,
+  the replay short-circuit, the non-UUID `openTurn` defect, multiple workers
+  hiding the counter (eight reads, one monotonic uptime), a dead counter
+  (`open_failed` went 0 → 1 on my own probe).
 
-  Ruled out, each by measurement rather than argument:
-  - **FK cascade from a deleted notebook** — `decision_traces` has exactly one
-    foreign key and it is on `session_id`; migration 090 states the no-FK choice
-    for `notebook_id` explicitly.
-  - **A broken join key** — that tenant has **0** `decision_traces` rows of any
-    kind in a 40-minute window, so the turns were not captured under some other
-    `attempt_id`.
-  - **The replay short-circuit** — tested live: replay *does* write a lifecycle
-    (that is the `error`-vs-`superseded` mislabel this PR fixes).
-  - **The non-UUID `openTurn` defect** — their notebook ids are valid UUIDs.
-  - **Multiple workers hiding the counter** — eight consecutive coverage reads
-    returned one monotonic `since_process_start_ms`: a single process.
-  - **A dead counter** — `open_failed` went **0 → 1** after my own `not-a-uuid`
-    probe, so it does increment.
+  The answer was the seventh: that tenant had **zero** `decision_traces` rows
+  *all-time*, not merely in-window. It was an acceptance-run stranger, and
+  `scripts/provision-beta-gate.ts --cleanup` ends every run with
 
-  What remains is inconsistent:
-  1. every path that can return 200 gets past the last 4xx return and therefore
-     **calls `openTurn`** (verified by reading the range: no returns between);
-  2. `openTurn` either writes a row or increments `open_failed`;
-  3. `open_failed` was **0** at 01:49, a window covering 01:45;
-  4. those turns have **no row**.
+  ```
+  DELETE FROM equipment_notebooks / decision_traces / knowledge_entries / … WHERE tenant_id = $1
+  ```
 
-  So an assumption about *which build was actually serving at 01:45* is wrong: the
-  process reports a start around 01:35–01:38, after my restore deploy completed at
-  01:28, and I cannot account for that restart. Closing this needs the staging
-  container's logs and restart history. `prod-guard` blocks that, correctly, and I
-  did not route around it.
+  — a list written before `turn_ingress` existed. **So the turns were captured
+  correctly and the ledger rows were deleted afterwards by the test harness,
+  leaving my arrivals orphaned.** Every swept acceptance run was quietly
+  manufacturing permanent `lost_starts`: 83 orphaned attempts had accumulated.
 
-  **Consequence for every number in this document:** `lost_starts: 0` is true for
-  the tenants measured and is **not** established as a property of the system.
+  Fixed by adding `turn_ingress` to that sweep, and by clearing the existing
+  orphans on staging — scoped to arrivals whose tenant no longer exists in
+  `tenants` **and** which have no ledger row, i.e. provably swept test tenants.
+  166 rows removed, 272 → 106.
+
+  **Result, operator-wide across every tenant: 0 arrivals with a 2xx response and
+  no ledger start.**
+
+  Two things worth keeping from this. First, the **tenant-scoped endpoint was
+  never wrong** — it reported `lost_starts: 0` throughout, because it scopes to
+  the caller; the 3 came from an unscoped query I ran by hand. Second, the metric
+  did its job: it refused to say "healthy" about a state nobody had explained, and
+  the thing it caught was a real integration defect — mine.
+
