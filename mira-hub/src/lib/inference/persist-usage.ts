@@ -25,6 +25,7 @@
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
+import type { TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import type { Anomaly } from "@/capabilities/observability/anomalies";
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 
@@ -41,6 +42,17 @@ export type PersistUsageScope = {
   /** Ledger platform tag. Defaults to the chat surface; `/look` writes
    *  `hub_notebook_look` so a vision turn is never mistaken for a chat spend row. */
   platform?: "hub_notebook_chat" | "hub_notebook_look";
+  /**
+   * The attempt id from `openTurn` (091 turn lifecycle). When present this
+   * write CLOSES the start record that was already written for this turn
+   * instead of inserting a second ledger row — one accepted turn, one row
+   * (materialized-evidence rule 15). Absent, the behaviour is the pre-091
+   * INSERT, byte for byte, which is what keeps every other caller unchanged.
+   */
+  attemptId?: string | null;
+  /** Lifecycle outcome recorded alongside the usage. Defaults to "answered"
+   *  when an attemptId is supplied, since a usage write means a served turn. */
+  outcome?: TurnOutcome | null;
 };
 
 /**
@@ -80,6 +92,10 @@ export async function persistTurnUsage(
 ): Promise<PersistUsageResult> {
   try {
     return await withTenantContext(scope.tenantId, async (c) => {
+      // APPEND the outcome row for a turn that opened a start record (091).
+      // decision_traces is append-only by design (032: "the app role may read +
+      // insert, never mutate or delete"), so the close is an INSERT carrying
+      // `attempt_id` + lifecycle='closed', NOT an update of the start row.
       const res = await c.query(
         `INSERT INTO decision_traces
            (tenant_id, platform, user_question, recommendation, citations_present,
@@ -88,14 +104,22 @@ export async function persistTurnUsage(
             input_tokens, cached_input_tokens, output_tokens,
             cost_usd_estimate, status,
             otel_trace_id, turn_id, client_request_id, notebook_id,
-            environment, git_sha, evidence_packet, anomalies)
+            environment, git_sha, evidence_packet, anomalies,
+            attempt_id, lifecycle, outcome, started_at, finished_at)
          VALUES ($1, $2, $3, $4, $5,
                  $6, $7,
                  $8, $9, $10,
                  $11, $12, $13,
                  $14, $15,
                  $16, $17::uuid, $18, $19::uuid,
-                 $20, $21, $22::jsonb, $23::jsonb)
+                 $20, $21, $22::jsonb, $23::jsonb,
+                 $24::uuid,
+                 'closed',
+                 $25,
+                 (SELECT started_at FROM decision_traces
+                   WHERE attempt_id = $24::uuid AND lifecycle = 'started'),
+                 CASE WHEN $24 IS NULL THEN NULL ELSE now() END)
+         ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING
          RETURNING trace_id`,
         [
           scope.tenantId, // TEXT — see note above
@@ -133,6 +157,8 @@ export async function persistTurnUsage(
           record?.gitSha ?? null,
           record ? JSON.stringify(record.packet) : null,
           JSON.stringify(record?.anomalies ?? []),
+          scope.attemptId ?? null,
+          scope.attemptId ? (scope.outcome ?? "answered") : null,
         ],
       );
       const traceId = res.rows[0]?.trace_id as string | undefined;
