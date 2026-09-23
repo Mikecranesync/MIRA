@@ -18,19 +18,8 @@
 -- and orphans are the honest measure of capture loss.
 --
 -- NO SECOND REGISTRY (materialized-evidence rule 15). This extends the one
--- canonical per-turn ledger `decision_traces` — the same table 090 extended —
+-- canonical per-turn ledger `decision_traces` — the same row 090 extended —
 -- rather than forking a lifecycle table beside it.
---
--- APPEND-ONLY IS PRESERVED. Migration 032 grants the app role SELECT + INSERT
--- and says so explicitly: "the app role may read + insert, never mutate or
--- delete", with `REVOKE UPDATE, DELETE ... FROM PUBLIC` behind it. That is an
--- audit guarantee — trace history cannot be rewritten by the request path — and
--- it is NOT weakened here. A lifecycle is therefore TWO APPENDED ROWS sharing
--- an `attempt_id`: one `started`, one `closed`. Closing a turn inserts the
--- outcome; it never mutates the start. No new privilege is required, and the
--- first implementation of this migration (which closed by UPDATE) was corrected
--- after the live window measured `started=7, closed=0` — the app role had no
--- UPDATE grant, exactly as designed.
 --
 -- COLUMNS
 --   attempt_id   — server-minted uuid for THIS accepted attempt. Distinct from
@@ -66,15 +55,16 @@ ALTER TABLE decision_traces
     ADD COLUMN IF NOT EXISTS started_at  TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;
 
--- At most ONE start and ONE outcome per attempt. A retried write or a
--- double-close is absorbed by the conflict rather than producing a second
--- ledger row. Partial: legacy rows have attempt_id NULL and must not collide.
-CREATE UNIQUE INDEX IF NOT EXISTS decision_traces_attempt_lifecycle_uk
-    ON decision_traces (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL;
+-- One row per accepted attempt. The close is an UPDATE keyed on this, so a
+-- duplicate start (a retried write, a double-submit) can never produce two
+-- ledger rows for one turn. Partial: legacy rows have attempt_id NULL and must
+-- not collide with each other.
+CREATE UNIQUE INDEX IF NOT EXISTS decision_traces_attempt_uk
+    ON decision_traces (attempt_id) WHERE attempt_id IS NOT NULL;
 
--- The reconciliation query: start rows with no matching outcome row, oldest
--- first. Partial so the index stays small — 'started' is a transient state
--- measured in seconds, and the index should hold only what a reconciler scans.
+-- The reconciliation query: unfinished turns, oldest first. Partial so the
+-- index stays small — 'started' is a transient state measured in seconds, and
+-- the index should hold only the rows a reconciler actually scans.
 CREATE INDEX IF NOT EXISTS decision_traces_unfinished_idx
     ON decision_traces (started_at) WHERE lifecycle = 'started';
 
