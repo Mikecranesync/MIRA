@@ -297,14 +297,17 @@ Said plainly rather than dressed up as a device result.
 unaccounted (2xx with no ledger): 0
 ```
 
-Eight of the thirteen show `status=NONE ledger=NONE`, clustered at 02:01:29–37
-and 02:05:31–43 — both immediately after a force-stop/relaunch. They are arrivals
-whose response row never landed because the app was killed with requests in
-flight, and they sit in `no_response_recorded`. That is the honest bucket, but
-**eight of thirteen is a high rate and is not explained**, only classified. It is
-worth its own look: the likely cause is the app firing startup requests that are
-cancelled before the handler returns, which would mean the client is making calls
-it does not need.
+Eight rows show `status=NONE ledger=NONE`. **They are not my test attempts.**
+They sit on notebooks `9ccd3bb0` and `5184ac8b`; the emulator was using
+`22a0a1c8` ("Mike staging check") throughout. They arrive in two bursts of four,
+three seconds apart — a client retry pattern — from concurrent traffic on staging.
+
+So the accounting is exact: **every one of the five turns I drove is accounted
+for**, and the eight are third-party arrivals correctly parked in
+`no_response_recorded` — the bucket for an attempt that genuinely cannot be
+judged, because neither its response row nor its ledger row was ever written.
+That shape means the request was torn down before the handler could finish; the
+bucket says so instead of guessing.
 
 ```
 device attempts in the last 5 minutes: 7
@@ -334,7 +337,18 @@ and are listed below rather than substituted.
 
 ## What is still not proven live
 
-- **Provider timeout** — needs staging fault injection; no clean lever found.
+- **Provider timeout — NOT a missing test, a missing implementation.** Looking for
+  a fault-injection lever turned up something better: `"timeout"` is declared in
+  the `TurnOutcome` union and **never written by anything**. Verified across both
+  routes, `persist-usage` and the lifecycle module — the outcomes actually
+  assigned are `answered`, `refused`, `abstained`, `safety_stop`, `error`,
+  `cancelled`, `superseded`, `abandoned`. A provider timeout falls through
+  `endRoot` and closes as `error`.
+
+  So timeouts are **not distinguishable in the ledger**, and an empty `timeout`
+  bucket must not be read as "we had no timeouts". Marked as such in the union
+  rather than deleted, because the gap is the finding. Decision owed: wire it to a
+  real cascade timeout signal, or remove the value.
 - **Physical Pixel 9a** — no device attached. Emulator covered the capture path;
   cellular, real-camera and Play-signed-identity remain device-only.
 - ~~**THE OPEN CONTRADICTION**~~ — **RESOLVED. Capture never lost a turn.**

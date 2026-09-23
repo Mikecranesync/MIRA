@@ -50,6 +50,17 @@ export type TurnOutcome =
   | "abstained"
   | "safety_stop"
   | "error"
+  /**
+   * ⚠️ DECLARED BUT NEVER WRITTEN. Verified 2026-09-23 across both routes,
+   * `persist-usage` and this module: nothing assigns `"timeout"`. A provider
+   * timeout today falls through `endRoot` and closes as `"error"`, so timeouts
+   * are NOT distinguishable in the ledger.
+   *
+   * Left in the union deliberately rather than deleted, because the gap is the
+   * point: an outcome the schema advertises and the code cannot produce would
+   * otherwise be read as "we had no timeouts". Either wire it to a real cascade
+   * timeout signal or remove it — but do not read its absence as evidence.
+   */
   | "timeout"
   | "cancelled"
   | "superseded"
