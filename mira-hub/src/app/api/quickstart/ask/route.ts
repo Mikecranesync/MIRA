@@ -13,6 +13,7 @@ import {
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import { validateAnswer } from "@/capabilities/answer-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -195,11 +196,46 @@ export async function POST(req: Request) {
     );
   }
 
+  // #3977 — validate the ANSWER, not just the question.
+  //
+  // `matchSafetyStop` above gates the QUESTION, and it needs
+  // LETHAL_VOLTAGE_CONTEXT AND ENERGIZED_WORK_INTENT — so "The MCC is humming
+  // weird, what should I check?" returns null and generates freely. Until this
+  // call there was nothing between the model's output and the reader on the
+  // surface a stranger is most likely to land on first. That is #3973's shape
+  // one step earlier: the hazard is in the ANSWER, not the ask.
+  //
+  // Pre-emission by construction here — this route returns a single
+  // `NextResponse.json`, so the candidate is complete and unsent when the floor
+  // runs. (The streaming routes in #3977 enqueue deltas as they arrive; adding
+  // this call there would be a post-stream check, which is not enforcement.
+  // They need the buffer-then-release shape first.)
+  //
+  // `general` is true when retrieval returned nothing, matching the notebook
+  // route's `!docGrounded`.
+  let answerText = result.content;
+  let answerRejected: string | null = null;
+  const validation = validateAnswer({
+    answerText,
+    question,
+    general: chunks.length === 0,
+    served: true,
+    refused: isRefusalAnswer(answerText),
+    evidenceSufficient: chunks.length > 0,
+  });
+  if (!validation.ok) {
+    console.error(`[quickstart-ask] answer withheld ${validation.violation}: ${validation.detail}`);
+    answerText = validation.replacement;
+    answerRejected = validation.violation;
+  }
+
   // Suppress phantom citation cards on a refusal: chunks render 1:1, so an
   // answer that says "I don't have manuals for that" would otherwise ship with
   // up-to-6 citation cards — the contradiction reported in PR #1875. When the
   // model refuses, it cited nothing, so the citation list is a lie. (#1875)
-  const citations: ManualSource[] = isRefusalAnswer(result.content)
+  // A WITHHELD answer is the same case for a stronger reason: the citations
+  // were proof of a draft the reader never sees.
+  const citations: ManualSource[] = answerRejected || isRefusalAnswer(result.content)
     ? []
     : chunks.map((c, i) => ({
         index: i + 1,
@@ -211,9 +247,14 @@ export async function POST(req: Request) {
         verified: c.verified === true,
       }));
 
-  return NextResponse.json({
-    answer: result.content,
-    citations,
-    provider: result.provider,
-  } as AskResponse);
+  return NextResponse.json(
+    {
+      answer: answerText,
+      citations,
+      provider: result.provider,
+    } as AskResponse,
+    // Same signal the question-gate stop uses, so a client that already
+    // handles one handles both.
+    answerRejected ? { headers: { "X-Safety-Stop": answerRejected } } : undefined,
+  );
 }
