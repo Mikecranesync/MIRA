@@ -30,6 +30,23 @@
  * So a mismatch is only reported when the subject's identifiers are ALL absent
  * AND the answer commits to a DIFFERENT equipment class than the evidence did.
  *
+ * ⚠️ MEASURED INEFFECTIVE, 2026-09-23. Against 5 real live divergences from
+ * staging this rule caught ZERO (recall 0.00, false-positive rate 0.00 over 3
+ * controls). Root cause is the "overlap" clause below: every one of those
+ * answers led with "a loose or worn drive coupling" and mentioned "bearing" once
+ * in a list far beneath it, so the class sets overlapped and the answer was
+ * called consistent. A passing mention buys immunity from a check about what the
+ * answer is ABOUT.
+ *
+ * It is retained because it is free, has no false positives, and its signals
+ * (`subject_identifiers_in_answer`, the class sets) are recorded either way —
+ * but do NOT read a `consistent` verdict as evidence the answer followed the
+ * evidence. The redesign is a LEAD-SUBJECT rule (judge the answer's opening
+ * recommendation, not token presence anywhere in it), and it must be validated
+ * on a FRESH sample: the 8 pairs that exposed this weakness also defined the
+ * ground-truth label, so scoring that redesign against them would be circular.
+ * Experiment: docs/proofs/2026-09-23-3962-detector-comparison.md
+ *
  * NO TEXT IS EVER STORED. Like `ungroundedUnitClaim`, this runs in-route on the
  * raw strings and only the verdict, the version and small counts reach the
  * packet. (A consequence worth stating: it cannot be recomputed later over
