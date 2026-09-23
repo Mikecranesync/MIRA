@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -49,14 +50,34 @@ PROD_HOSTS = ("app.factorylm.com", "factorylm.com")
 
 @dataclass
 class Attempt:
-    """One pre-registered attempt. Written BEFORE the request is sent."""
+    """One pre-registered attempt. Written BEFORE the request is sent.
+
+    The lifecycle fields below are the point of this file. #3939 asks that
+    `attempted`, `accepted`, `generated`, `persisted`, `sent`, `received` and
+    `failed before acceptance` be told APART — because a turn can be generated
+    and never persisted, or persisted and never delivered, and a single
+    pass/fail hides exactly the states worth knowing.
+
+    `received` is recorded CLIENT-SIDE, by this process, because nothing else
+    can honestly claim it: the server knows what it sent, not what arrived.
+    """
     scenario: str
     client_request_id: str
+    expectation: str = ""
+    # --- client-side facts, known without asking the server ------------------
+    attempted: bool = True          # this row existing IS the attempt
     sent_at: float | None = None
     http_status: int | None = None
     trace_id: str | None = None
     transport_error: str | None = None
-    expectation: str = ""
+    stream_frames: list[str] = field(default_factory=list)
+    received_chars: int = 0         # bytes this client actually read back
+    # --- server-side facts, reconciled afterwards ----------------------------
+    accepted: bool | None = None            # a durable start row exists
+    generated: bool | None = None           # the provider served an answer
+    persisted: bool | None = None           # the packet/turn row was written
+    terminal_outcome: str | None = None
+    failed_before_acceptance: bool | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -93,7 +114,13 @@ class Harness:
             with urllib.request.urlopen(req, timeout=120) as r:
                 attempt.http_status = r.status
                 attempt.trace_id = r.headers.get("x-mira-trace-id")
-                return r.read(read_bytes) if read_bytes else r.read()
+                raw = r.read(read_bytes) if read_bytes else r.read()
+                # CLIENT-SIDE receipt. Not "the server sent it" — what this
+                # process actually read off the socket.
+                text = raw.decode(errors="replace")
+                attempt.stream_frames = re.findall(r'"kind":"([a-z_]+)"', text)
+                attempt.received_chars = len(text)
+                return raw
         except urllib.error.HTTPError as e:
             attempt.http_status = e.code
             attempt.trace_id = e.headers.get("x-mira-trace-id")
@@ -136,6 +163,73 @@ class Harness:
             b"".join(parts),
             {"Content-Type": f"multipart/form-data; boundary={b}"},
         )
+
+    def diagnostics_for(self, trace_id: str) -> dict[str, Any] | None:
+        """The durable packet for one trace, or None if the ledger never saw it."""
+        try:
+            req = urllib.request.Request(
+                f"{self.base}/api/equipment-notebooks/{self.notebook}/turns/diagnostics/?limit=25",
+                headers={"Cookie": self.cookie},
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                rows = json.loads(r.read()).get("turns", [])
+            hit = next((t for t in rows if t.get("traceId") == trace_id), None)
+            if not hit:
+                return None
+            req2 = urllib.request.Request(
+                f"{self.base}/api/equipment-notebooks/{self.notebook}/turns/{hit['turnId']}/diagnostics/",
+                headers={"Cookie": self.cookie},
+            )
+            with urllib.request.urlopen(req2, timeout=60) as r:
+                return json.loads(r.read())
+        except Exception:  # noqa: BLE001 — a read failure is "unknown", not "absent"
+            return None
+
+    def reconcile(self) -> None:
+        """Fill the server-side lifecycle states for every pre-registered attempt.
+
+        Uses the tenant-scoped per-attempt endpoint rather than inferring from
+        the HTTP status. Inference was wrong: a 422 `no_sources_selected` is
+        raised well AFTER the start record is written, so treating every 4xx as
+        a pre-accept failure reported four accepted turns as never-accepted —
+        this harness inventing a capture failure out of its own blind spot.
+
+        Matched on `clientRequestId`, which is the id THIS process minted before
+        sending. That is what makes the accounting the client's, not the
+        server's: an attempt the server never heard of still has a row here.
+        """
+        try:
+            req = urllib.request.Request(
+                f"{self.base}/api/observability/coverage/?window_min=60&attempts=100",
+                headers={"Cookie": self.cookie},
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                rows = json.loads(r.read()).get("attempts") or []
+        except Exception as e:  # noqa: BLE001
+            print(f"  (per-attempt lookup unavailable: {e}); states stay unknown")
+            rows = []
+        by_crid = {r.get("client_request_id"): r for r in rows if r.get("client_request_id")}
+
+        for a in self.ledger:
+            row = by_crid.get(a.client_request_id)
+            if row is None:
+                # The server has no record of this attempt under our id. For an
+                # unauthenticated call that is CORRECT and expected (middleware
+                # rejects before the route, so nothing is ever written); for
+                # anything else it is genuinely unknown, and says so.
+                a.accepted = False if a.http_status == 401 else None
+                a.generated = False if a.http_status == 401 else None
+                a.persisted = False if a.http_status == 401 else None
+                a.failed_before_acceptance = a.http_status == 401 or None
+                continue
+            a.accepted = bool(row.get("accepted"))
+            a.terminal_outcome = row.get("outcome")
+            a.persisted = bool(row.get("has_packet"))
+            # "Generated" means a provider produced an answer. A packet is the
+            # durable evidence of that; an accepted turn that closed without one
+            # (refusal, cancel) did not generate.
+            a.generated = bool(row.get("has_packet")) and row.get("outcome") in {"answered", "refused"}
+            a.failed_before_acceptance = not a.accepted
 
     # ---- the server's own independent count -------------------------------
     def coverage(self, window_min: int = 60) -> dict[str, Any]:
@@ -196,7 +290,8 @@ def main() -> int:
     g.client_request_id = f.client_request_id
     h.chat(g, "explain bearing preload in detail")
 
-    time.sleep(5)  # let the fire-and-forget response rows land
+    time.sleep(6)  # let the fire-and-forget response rows land
+    h.reconcile()
     cov = h.coverage()
 
     report = {
@@ -214,9 +309,26 @@ def main() -> int:
     with open(args.out, "w") as fh:
         json.dump(report, fh, indent=2)
 
+    def mark(v: bool | None) -> str:
+        return "·" if v is None else ("yes" if v else " no")
+
     print(f"\nclient attempts registered: {len(h.ledger)}")
+    print("  ('·' = unknown to this client, not 'no' — per-attempt acceptance needs a ledger lookup the harness does not have)")
+    print(f"  {'scenario':24} {'http':>5} {'att':>4}{'acc':>5}{'gen':>5}{'per':>5}{'sent':>6}{'recv':>6}  outcome")
     for x in h.ledger:
-        print(f"  {x.scenario:22} status={x.http_status} trace={x.trace_id} err={x.transport_error}")
+        # `sent` is the SERVER's claim (it emitted frames); `recv` is THIS
+        # client's own fact (bytes read back). They are printed side by side
+        # because conflating them is the thing #3939 asks us not to do.
+        sent = bool(x.stream_frames) or (x.http_status is not None)
+        recv = x.received_chars > 0
+        state = (
+            x.terminal_outcome
+            or ("pre-accept" if x.failed_before_acceptance else ("unknown" if x.accepted is None else "-"))
+        )
+        print(
+            f"  {x.scenario:24} {str(x.http_status):>5} {mark(x.attempted):>4}{mark(x.accepted):>5}"
+            f"{mark(x.generated):>5}{mark(x.persisted):>5}{mark(sent):>6}{mark(recv):>6}  {state}"
+        )
     print("\nserver reconciliation (independent of the recorder):")
     print(json.dumps(cov.get("reconciliation"), indent=2))
     print(f"\nartifact: {args.out}")

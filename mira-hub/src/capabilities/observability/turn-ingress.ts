@@ -298,3 +298,78 @@ export async function ingressReconciliation(opts: {
     starts_without_arrival: Number((mirror.rows[0] as Record<string, unknown>)?.n ?? 0),
   };
 }
+
+export type AttemptRow = {
+  attempt_id: string;
+  client_request_id: string | null;
+  route: string;
+  http_status: number | null;
+  /** A durable start record exists for this attempt. */
+  accepted: boolean;
+  /** It reached a terminal outcome. */
+  closed: boolean;
+  outcome: string | null;
+  /** A Turn Evidence Packet was persisted with the outcome. */
+  has_packet: boolean;
+  at: string;
+};
+
+/**
+ * Recent attempts for one tenant, each with its lifecycle state.
+ *
+ * #3939 asks for "authorized session lookup by account/time without requiring
+ * the user to supply an inaccessible trace ID". This is that: a technician (or
+ * an operator helping one) can ask "what happened to the thing I just sent"
+ * without knowing a trace id they never saw.
+ *
+ * It is also what makes per-attempt accounting possible from OUTSIDE the
+ * database. Without it, a client can only see the aggregate, and an attempt that
+ * opened a turn but never produced a packet — a validation refusal, a cancel —
+ * is indistinguishable from one that was never accepted at all. That is the gap
+ * that made the acceptance harness report four of seven attempts as "unknown".
+ *
+ * Tenant-scoped by an explicit predicate on the owner pool: an attempt that
+ * never authenticated has no tenant and is deliberately NOT visible here.
+ */
+export async function listAttempts(opts: {
+  tenantId: string;
+  windowMs?: number;
+  limit?: number;
+}): Promise<AttemptRow[]> {
+  const windowMs = opts.windowMs ?? 60 * 60_000;
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const res = await pool.query(
+    `SELECT a.attempt_id, a.route, a.at,
+            r.http_status,
+            COALESCE(r.client_request_id, a.client_request_id) AS client_request_id,
+            EXISTS (SELECT 1 FROM decision_traces d
+                     WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'started') AS accepted,
+            (SELECT d.outcome FROM decision_traces d
+              WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'closed' LIMIT 1) AS outcome,
+            EXISTS (SELECT 1 FROM decision_traces d
+                     WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'closed') AS closed,
+            EXISTS (SELECT 1 FROM decision_traces d
+                     WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'closed'
+                       AND d.evidence_packet IS NOT NULL) AS has_packet
+       FROM turn_ingress a
+       LEFT JOIN turn_ingress r
+         ON r.attempt_id = a.attempt_id AND r.phase = 'responded'
+      WHERE a.phase = 'arrived'
+        AND a.at > now() - ($1 || ' seconds')::interval
+        AND COALESCE(a.tenant_id, r.tenant_id) = $2
+      ORDER BY a.at DESC
+      LIMIT $3`,
+    [windowMs / 1000, opts.tenantId, limit],
+  );
+  return (res.rows as Record<string, unknown>[]).map((r) => ({
+    attempt_id: String(r.attempt_id),
+    client_request_id: (r.client_request_id as string) ?? null,
+    route: String(r.route),
+    http_status: r.http_status === null ? null : Number(r.http_status),
+    accepted: Boolean(r.accepted),
+    closed: Boolean(r.closed),
+    outcome: (r.outcome as string) ?? null,
+    has_packet: Boolean(r.has_packet),
+    at: new Date(r.at as string).toISOString(),
+  }));
+}

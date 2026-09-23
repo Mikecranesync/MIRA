@@ -32,6 +32,7 @@ import {
 import {
   ingressFailureCounters,
   ingressReconciliation,
+  listAttempts,
 } from "@/capabilities/observability/turn-ingress";
 
 export const dynamic = "force-dynamic";
@@ -100,6 +101,11 @@ export async function GET(req: NextRequest) {
   // table, written before any of that machinery ran, so a lost start is a
   // NUMBER here instead of a silence there.
   let reconciliation: Awaited<ReturnType<typeof ingressReconciliation>> | null = null;
+  // `?attempts=N` — per-attempt accounting, so a caller can tell an attempt that
+  // opened a turn and refused from one that was never accepted. The aggregate
+  // alone cannot separate those (#3939 "account for every test attempt").
+  const wantAttempts = Number.parseInt(sp.get("attempts") ?? "", 10);
+  let attempts: Awaited<ReturnType<typeof listAttempts>> | null = null;
   // A read that fails is itself a coverage fact — reported rather than 500ing,
   // so the caller can tell "no data" from "the query broke". SEPARATELY per
   // read: these are three independent queries against two different tables, and
@@ -127,6 +133,12 @@ export async function GET(req: NextRequest) {
     (await attempt("reconciliation", () =>
       ingressReconciliation({ tenantId: ctx.tenantId, windowMs, staleAfterMs: staleMs }),
     )) ?? null;
+  if (Number.isFinite(wantAttempts) && wantAttempts > 0) {
+    attempts =
+      (await attempt("attempts", () =>
+        listAttempts({ tenantId: ctx.tenantId, windowMs, limit: wantAttempts }),
+      )) ?? null;
+  }
   const readError = Object.keys(errs).length
     ? Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join(" | ")
     : null;
@@ -163,6 +175,7 @@ export async function GET(req: NextRequest) {
     coverage,
     // Coverage measured against something that is NOT the recorder (#3939).
     reconciliation,
+    attempts,
     // Stated next to the numbers, not only in a doc: middleware rejects an
     // unauthenticated /api/* call before the route wrapper runs, and it runs in
     // the edge runtime where a durable write is impossible.
