@@ -162,6 +162,15 @@ async function handleLookTurn(
   }
 
   const form = await req.formData().catch(() => null);
+  // Read the CLIENT's key before any upload validation, not after. A rejected
+  // upload is exactly the attempt a technician most wants accounted for, and
+  // with this read below the mime/size checks a 413 or 415 reached the ledger
+  // with no client id at all — unjoinable to the attempt that caused it.
+  // Measured on staging 2026-09-23: the failed-upload row came back `unknown`
+  // for that reason and no other.
+  // The body value wins when present; a null must NOT erase a good header key.
+  ingress.clientRequestId =
+    optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS) ?? ingress.clientRequestId;
   const file = form?.get("image");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "image_required" }, { status: 400 });
@@ -180,10 +189,7 @@ async function handleLookTurn(
     );
   }
   const question = optionalString(form?.get("question") ?? null, MAX_QUESTION_CHARS);
-  const clientKey = optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS);
-  // Same reason as chat: the arrival row predates the multipart parse, so the
-  // client's own key reaches the ledger on the response row or not at all.
-  ingress.clientRequestId = clientKey;
+  const clientKey = ingress.clientRequestId;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
   const capturedAt = new Date().toISOString();
@@ -484,10 +490,17 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   } catch {
     notebookId = null;
   }
+  // The client's own key, read from a HEADER before any parsing. The body is
+  // where it normally travels, but a malformed body is precisely the attempt
+  // that most needs accounting for and its id is unreachable in there — so a
+  // request that fails to parse can still be joined to the client that sent it.
+  // Shape-checked: this lands in a TEXT column that operators read.
+  const headerKey = req.headers.get("x-client-request-id");
   const ingress: IngressRecord = {
     attemptId,
     route: "hub_notebook_look",
     tenantId: null,
+    clientRequestId: headerKey && UUID_RE.test(headerKey) ? headerKey : null,
     notebookId,
     environment: environmentName(),
     gitSha: gitSha(),

@@ -869,7 +869,8 @@ async function handleChatTurn(
   // row can, and without it a client attempt that never produced a ledger start
   // is unjoinable to anything the server saw — which is the difference between
   // "never arrived" and "arrived and was lost".
-  ingress.clientRequestId = clientRequestId;
+  // Body wins when present; a null must not erase a good header key.
+  ingress.clientRequestId = clientRequestId ?? ingress.clientRequestId;
   // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
   // pass it to the model for continuity, and use it to rewrite the retrieval
   // query so a referential follow-up ("what about Ethernet?", "the other one")
@@ -3127,10 +3128,17 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   } catch {
     notebookId = null;
   }
+  // The client's own key, read from a HEADER before any parsing. The body is
+  // where it normally travels, but a malformed body is precisely the attempt
+  // that most needs accounting for and its id is unreachable in there — so a
+  // request that fails to parse can still be joined to the client that sent it.
+  // Shape-checked: this lands in a TEXT column that operators read.
+  const headerKey = req.headers.get("x-client-request-id");
   const ingress: IngressRecord = {
     attemptId,
     route: "hub_notebook_chat",
     tenantId: null,
+    clientRequestId: headerKey && INGRESS_UUID_RE.test(headerKey) ? headerKey : null,
     notebookId,
     environment: environmentName(),
     gitSha: gitSha(),

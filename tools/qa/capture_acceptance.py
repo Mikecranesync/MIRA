@@ -106,6 +106,9 @@ class Harness:
         read_bytes: int | None = None,
     ) -> bytes:
         h = dict(headers)
+        # The attempt id travels in a HEADER as well as the body, so an attempt
+        # whose body never parses is still joinable to the client that sent it.
+        h["X-Client-Request-Id"] = attempt.client_request_id
         if authed:
             h["Cookie"] = self.cookie
         req = urllib.request.Request(self.base + path, data=body, method="POST", headers=h)
