@@ -213,3 +213,71 @@ TEST_DATABASE_URL=… npx vitest run --config vitest.integration.config.ts   # 8
 export ACCEPT_BASE=https://app-staging.factorylm.com ACCEPT_COOKIE='next-auth.session-token=…'
 python3 tools/qa/capture_acceptance.py --notebook <uuid> --photo <jpg>
 ```
+
+---
+
+# FINAL STATE — 2026-09-23 02:12Z
+
+**Head:** `0a1370a036681fc140e5d5607fc1ae67b54e3c23` · **PR #3964** · staging `8919c6979…`
+**Suite:** 3291/3291 · integration 10/10 · staging acceptance 6/6 · **production untouched**
+
+## Proven live
+
+| scenario | surface | evidence |
+|---|---|---|
+| photo | **device UI** | Android picker → `756aded2` look + `3b91f71c` chat, both `closed/answered`; MIRA identified the bearing from the label |
+| follow-up | device UI | two turns, one thread, both captured |
+| cancel | device UI | force-stop 3 s into the stream → **`closed/cancelled`** |
+| reconnect | device UI | relaunch; prior outcome already durable |
+| process crash | staging | `abandoned=7`, 0 stale starts |
+| exporter outage | staging | 2 turns, 2 distinct attempts, no duplicates, restored byte-for-byte |
+| failed upload | API | 415, bucketed pre-accept, no phantom lost start |
+| real website | **real browser** | Playwright signup → composer, trace `7d44f29bb812cce6ef4f0d888dad8db5` |
+
+**Accounting:** operator-wide, **0 arrivals with a 2xx response and no ledger start.**
+All five turns I drove are accounted for; the eight no-response arrivals are on
+notebooks my emulator never touched (`9ccd3bb0`/`5184ac8b` vs `22a0a1c8`), arriving
+in four-request retry bursts — concurrent third-party traffic, parked in
+`no_response_recorded`.
+
+## Defects found by probing, not by reading
+
+1. `openTurn` dropped the whole start record on a non-UUID notebook id.
+2. A 5xx with no start was filed as a pre-accept rejection — now `server_error_no_start`.
+3. An idempotent replay was recorded as `error` — now `superseded`.
+4. `provision-beta-gate.ts --cleanup` deleted `decision_traces` but not `turn_ingress`,
+   manufacturing phantom `lost_starts` on every swept run (83 accumulated).
+5. `"timeout"` is declared in `TurnOutcome` and **written by nothing** — pinned by
+   `outcome-reachability.test.ts` so it cannot be misread as "no timeouts occurred".
+
+Each has a regression test; 1, 2 and 4 were found only because the metric refused
+to call an unexplained state healthy.
+
+## HARD BLOCKERS — I am not re-attempting these
+
+Per `.claude/skills/autonomous-run` § "Human-gated goals — stop once, do not loop"
+(issue #1811): all agent-side work is done; what follows needs you, and
+re-prompting on it is the bug rather than the fix.
+
+1. **Migration replay.** `migration-verify` re-applies **091** directly against
+   staging Neon, which now holds two rows per attempt — exactly what **092**
+   changed the model to — so `UNIQUE(attempt_id)` can never be created there
+   again. Not a production risk (prod has no such rows). Doctrine's remedy (a new
+   next-numbered migration) cannot work: 091 runs first and fails first.
+   → **amend 091** (breaks immutability; note 066 is not applied on staging so the
+   drift detector would not catch it — a reason to ask, not to do it quietly),
+   **move 091+092 to #3959** (creates a merge-order dependency), or
+   **make the verifier honour the ledger** (editing a release gate to pass a PR,
+   which I will not do unasked).
+2. **`legacy-ui-exception` label** on #3964. The body carries the full section; an
+   agent cannot clear it by design.
+3. **Independent review lane.** Gate 7 ran at exact head and produced four findings
+   (one refuted with evidence, three fixed). Codex is out until Sep 26 and the
+   Claude-reviews-Claude carve-out expired 2026-09-13, so the lane choice is yours.
+4. **Provider timeout.** Add one and wire `timeout`, or remove it from the union.
+   Producing it means changing what a technician experiences mid-answer.
+5. **Physical Pixel 9a.** No device is attached to CHARLIE. Cellular, real-camera
+   and Play-signed-identity scenarios cannot be run from here at all.
+6. **Production.** Migration/config/deploy/rollback are prepared above and
+   **not executed**. Prod also still needs a build containing the recorder — the
+   live prod SHA `0178b1b07` (2026-09-15) has `capabilities/observability/` absent.
