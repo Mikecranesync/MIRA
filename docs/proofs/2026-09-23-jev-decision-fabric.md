@@ -127,13 +127,42 @@ Detector comparison on the same eleven live divergences
 Seven scenarios, real turns through the deployed route, **7/7 evaluated**
 (`tools/qa/jev_decision_acceptance.py`, artifact `/tmp/jev-acc-smoke.json`).
 
-**Scenarios 1 and 2 did not reproduce their bugs.** Every turn came back
-`citations_shipped: 0`, `evidence_sufficient: false` — the fresh stranger tenant
-in `mode: "general"` retrieved nothing, so the OEM-scoping path that causes
-#3966 never ran. Reading the answers blind, both were on-subject and correct.
-**Jev scoring them `none` is therefore right, not a miss** — and this run does
-**not** constitute a live test of the detector on those shapes. It is reported as
-an elicit-miss rather than as a pass.
+**Scenarios 1 and 2 did not reproduce their bugs, and the reason is now known
+exactly.** Every turn came back `citations_shipped: 0`,
+`evidence_sufficient: false`. The packets say why:
+
+```json
+"retrieval":       { "executed": false, "strategy": "skipped_general_mode",
+                     "oem_corpus_searched": false, "oem_manufacturer_source": null }
+"visual_evidence": { "observation_available": false, "observation_in_context": false,
+                     "prior_turn_observation_count": 0 }
+```
+
+Reading the answers blind, both were on-subject and correct. **Jev scoring them
+`none` is therefore right, not a miss** — and this run is an **ELICIT-MISS**, not
+a live test of the detector on those shapes. The #3962/#3966 detector evidence
+in §3 rests on reconstructed states, and is labelled as such.
+
+### A separate live finding, filed rather than chased
+
+`oemRetrieval` fires on `!notebookRetrieval && oemManufacturer !== null`, and in
+general mode `notebookRetrieval` is false — so OEM retrieval *was* reachable.
+It did not fire because `oemManufacturer` resolves from the photo observation
+text, and **the observation never attached to the chat turn.**
+
+That is not a harness mistake. A LOOK against this notebook returns 200 with a
+rich observation (verbatim: `SIEMENS`, `TP700 Comfort`,
+`1P 6AV2124-0GC01-0AX0`), and a chat sent ~30 s later still reports
+`observation_available: false`, `prior_turn_observation_count: 0`. Grounded mode
+is not an alternative on a source-less notebook — it returns
+`422 no_sources_selected`.
+
+So on this staging build, for a fresh source-less notebook, **a photo a
+technician just took does not reach the next question**. That is the same class
+of gap #3962 is about, reached from the other direction, and it is worth its own
+investigation rather than a guess at the end of this one. It is NOT caused by
+anything in this change: the capture layer reported it accurately, which is what
+the capture layer is for.
 
 ### The finding that justified running it live at all
 
@@ -234,6 +263,9 @@ counterfactual, propose gating separately.
    body; the label is a maintainer action and cannot be self-awarded.
 2. **One `apply-migrations.yml mode=seed-ledger` dispatch against staging**, to
    re-stamp 091's `content_sha256` after the correction (see that file's header).
-3. **Approve or decline production enablement** of `MIRA_JEV_DECISION`, after the
+3. **Investigate the photo-observation attachment gap** described in §4 — a LOOK
+   succeeds and its observation does not reach the following chat turn on a
+   source-less notebook. Independent of this change; surfaced by it.
+4. **Approve or decline production enablement** of `MIRA_JEV_DECISION`, after the
    vendor-retention question in the privacy note is answered. Staging is enabled;
    production is not requested.
