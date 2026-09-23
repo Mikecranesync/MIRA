@@ -20,6 +20,30 @@ export function anomalyChecksEnabled(): boolean {
 }
 
 /** Shadow-mode Jev evidence-sufficiency judgment (jev-shadow.ts). Off by default. */
+/**
+ * The stale-turn reconciler (093). OFF by default: it is the only writer of the
+ * `abandoned` outcome, and a background writer that turns itself on in every
+ * environment the moment the code lands is not a staging-first rollout.
+ */
+export function turnReconcilerEnabled(): boolean {
+  return process.env.MIRA_TURN_RECONCILER === "1";
+}
+
+/** How long a start record may stay open before the reconciler calls it
+ *  abandoned. Must comfortably exceed the slowest real turn: sweeping a turn
+ *  still in flight would BOTH invent an `abandoned` and lose the real outcome
+ *  to the (attempt_id, lifecycle) conflict. */
+export function turnReconcilerStaleMs(): number {
+  const raw = Number.parseInt(process.env.MIRA_TURN_RECONCILER_STALE_MIN ?? "", 10);
+  return (Number.isFinite(raw) && raw >= 5 ? raw : 15) * 60_000;
+}
+
+/** Sweep cadence. */
+export function turnReconcilerIntervalMs(): number {
+  const raw = Number.parseInt(process.env.MIRA_TURN_RECONCILER_INTERVAL_MIN ?? "", 10);
+  return (Number.isFinite(raw) && raw >= 1 ? raw : 5) * 60_000;
+}
+
 export function jevShadowEnabled(): boolean {
   return process.env.MIRA_JEV_SHADOW === "1";
 }

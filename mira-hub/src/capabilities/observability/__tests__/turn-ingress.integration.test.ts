@@ -131,11 +131,25 @@ d("turn_ingress reconciles against the ledger on real Postgres", () => {
     expect(ledgerOnlyDenominator).toBeLessThan(3); // the 3 that should have opened
   });
 
+  it("notices the OPPOSITE failure: a ledger start with no arrival behind it", async () => {
+    const { ingressReconciliation } = await import("../turn-ingress");
+    const F = "ffffffff-0000-4000-8000-000000000006";
+    // A start the recorder wrote while the ingress write failed. Without the
+    // mirror query this attempt is invisible to reconciliation AND to every
+    // bucket derived from `arrived` — the block would read healthy.
+    await ledger(F, "started", "30 minutes");
+    const r = await ingressReconciliation({ tenantId: TENANT });
+    expect(r.starts_without_arrival).toBe(1);
+    expect(r.arrived).toBe(5); // unchanged — F never arrived, by construction
+    await client.query("DELETE FROM decision_traces WHERE attempt_id = $1::uuid", [F]);
+  });
+
   it("does not attribute another tenant's arrivals", async () => {
     const { ingressReconciliation } = await import("../turn-ingress");
     const other = await ingressReconciliation({ tenantId: "99999999-9999-4999-8999-999999999999" });
     expect(other.arrived).toBe(0);
     expect(other.lost_starts).toBe(0);
+    expect(other.starts_without_arrival).toBe(0);
   });
 
   it("the reconciler closes a stale start by APPENDING abandoned, never mutating it", async () => {

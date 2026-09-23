@@ -50,6 +50,22 @@ export type ArrivalInit = {
 export type ResponseInit = ArrivalInit & { httpStatus: number };
 
 /**
+ * The per-request record the ingress wrapper threads into the handler.
+ *
+ * `tenantId` starts null — at arrival there is no tenant — and the handler
+ * fills it once auth succeeds, so a lost start is still attributable.
+ *
+ * `closeOnUnhandled` is the handler's own escape hatch: a turn that throws
+ * somewhere its `endRoot`/`finally` cannot reach would otherwise leave a start
+ * record open until the reconciler swept it, reported as `abandoned` when it
+ * was really an error. The handler installs this once a start exists.
+ */
+export type IngressRecord = ArrivalInit & {
+  tenantId: string | null;
+  closeOnUnhandled?: (outcome: "error") => void;
+};
+
+/**
  * Process-local failure counters. Deliberately process-local: a restart zeroing
  * them is itself reported via `since_process_start_ms`, and the DURABLE measure
  * is the reconciliation query, not these.
@@ -150,6 +166,20 @@ export type IngressReconciliation = {
   close_rate: number | null;
   /** lost_starts / (arrived - pre_accept_rejections - no_response_recorded). */
   start_capture_rate: number | null;
+  /**
+   * THE MIRROR. Ledger starts in the window with no arrival row behind them.
+   *
+   * Everything above detects the ledger failing while ingress works. This
+   * detects the opposite, and without it the pair is not mutually checking: if
+   * `recordArrival` fails systematically — owner-pool exhaustion, a bad deploy,
+   * the table missing — then `arrived` is 0, every derived bucket is 0, and the
+   * whole block reads PERFECTLY HEALTHY while counting nothing at all.
+   *
+   * `arrival_write_failed` notices that too, but it is process-local and dies on
+   * restart, which is exactly the weakness that disqualified process counters
+   * from measuring starts. This number is durable.
+   */
+  starts_without_arrival: number;
 };
 
 /**
@@ -199,6 +229,20 @@ export async function ingressReconciliation(opts: {
       WHERE $3::text IS NULL OR tenant_id = $3::text`,
     [windowMs / 1000, stale / 1000, opts.tenantId ?? null],
   );
+  // Asked of the OTHER ledger, so a total ingress failure cannot hide behind
+  // its own zero. Scoped by decision_traces.tenant_id, which a started row
+  // always has.
+  const mirror = await pool.query(
+    `SELECT COUNT(*)::int AS n
+       FROM decision_traces d
+      WHERE d.lifecycle = 'started'
+        AND d.attempt_id IS NOT NULL
+        AND d.started_at > now() - ($1 || ' seconds')::interval
+        AND ($2::text IS NULL OR d.tenant_id = $2::text)
+        AND NOT EXISTS (SELECT 1 FROM turn_ingress a
+                         WHERE a.attempt_id = d.attempt_id AND a.phase = 'arrived')`,
+    [windowMs / 1000, opts.tenantId ?? null],
+  );
   const r = (res.rows[0] ?? {}) as Record<string, unknown>;
   const n = (k: string) => Number(r[k] ?? 0);
   const arrived = n("arrived");
@@ -223,5 +267,6 @@ export async function ingressReconciliation(opts: {
     accepted_unfinished: n("accepted_unfinished"),
     close_rate: accepted > 0 ? acceptedClosed / accepted : null,
     start_capture_rate: startable > 0 ? (startable - lost) / startable : null,
+    starts_without_arrival: Number((mirror.rows[0] as Record<string, unknown>)?.n ?? 0),
   };
 }

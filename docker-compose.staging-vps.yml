@@ -403,6 +403,12 @@ services:
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      # 093 stale-turn reconciler: the only writer of the `abandoned` outcome.
+      # A start record whose container was SIGKILLed mid-turn can be closed from
+      # nowhere else. Default 0 so it is enabled per environment, not by merge.
+      - MIRA_TURN_RECONCILER=${MIRA_TURN_RECONCILER:-0}
+      - MIRA_TURN_RECONCILER_STALE_MIN=${MIRA_TURN_RECONCILER_STALE_MIN:-15}
+      - MIRA_TURN_RECONCILER_INTERVAL_MIN=${MIRA_TURN_RECONCILER_INTERVAL_MIN:-5}
       - JEV_API_KEY=${JEV_API_KEY:-}
     networks:
       - staging-net

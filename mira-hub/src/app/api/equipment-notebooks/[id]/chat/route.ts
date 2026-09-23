@@ -97,7 +97,7 @@ import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observabil
 import {
   recordArrival,
   recordResponse,
-  type ArrivalInit,
+  type IngressRecord,
 } from "@/capabilities/observability/turn-ingress";
 import {
   appendManualContext,
@@ -782,7 +782,7 @@ async function verifyVisualEntry(
 async function handleChatTurn(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-  ingress: ArrivalInit & { tenantId: string | null },
+  ingress: IngressRecord,
 ) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -970,6 +970,10 @@ async function handleChatTurn(
   };
   /** Set once the usage write has already closed the row. */
   let lifecycleSettled = false;
+  // Available to the ingress wrapper from here on: a start record exists and
+  // `closeLifecycle` is declared, so a throw that escapes every `endRoot` still
+  // lands an `error` outcome instead of an eventual, misleading `abandoned`.
+  ingress.closeOnUnhandled = (outcome) => closeLifecycle(outcome);
 
   const rec: TurnRecorder = startTurnRecorder({
     kind: "chat",
@@ -3098,7 +3102,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   } catch {
     notebookId = null;
   }
-  const ingress: ArrivalInit & { tenantId: string | null } = {
+  const ingress: IngressRecord = {
     attemptId,
     route: "hub_notebook_chat",
     tenantId: null,
@@ -3106,12 +3110,23 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
     environment: environmentName(),
     gitSha: gitSha(),
   };
-  const arrival = recordArrival(ingress);
+  // A SNAPSHOT, deliberately. `handleChatTurn` sets `ingress.tenantId` once
+  // auth succeeds, and this call is not awaited — so passing the live object
+  // would make "did the arrival row get a tenant" a race that COALESCE hides
+  // from every assertion while leaving the tenant index unreliable. The arrival
+  // row has no tenant because at arrival there is no tenant.
+  const arrival = recordArrival({ ...ingress });
   let status = 500;
   try {
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
     return res;
+  } catch (err) {
+    // A throw that escaped every `endRoot` would leave the start record open
+    // until the reconciler swept it — reported as `abandoned` when it was in
+    // fact an error, which is a worse lie than no record at all.
+    ingress.closeOnUnhandled?.("error");
+    throw err;
   } finally {
     // `ingress.tenantId` is populated by now on every authenticated path.
     void arrival

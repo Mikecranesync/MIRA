@@ -401,3 +401,59 @@ export async function reconcileStaleTurns(opts: {
     attemptIds: (res.rows as Record<string, unknown>[]).map((r) => String(r.attempt_id)),
   };
 }
+
+/**
+ * Start the background reconciler.
+ *
+ * `reconcileStaleTurns` is the only thing that can close a turn whose process
+ * died, and a function with no caller closes nothing — so this is what makes
+ * the sweeper real. It runs in-process, on an interval, from the Next.js
+ * instrumentation hook: the same place the dead processes lived, needing no new
+ * service (materialized-evidence rule 15 — no second queue).
+ *
+ * Several replicas sweeping at once is fine and expected: the insert is
+ * idempotent under (attempt_id, lifecycle), so a duplicate sweep is absorbed
+ * rather than double-counted.
+ *
+ * `unref()` so a sweep timer can never hold a container open through shutdown.
+ */
+export function startTurnReconciler(opts: {
+  intervalMs: number;
+  staleAfterMs: number;
+  limit?: number;
+}): () => void {
+  let running = false;
+  const tick = async () => {
+    if (running) return; // a slow sweep must not overlap itself
+    running = true;
+    try {
+      const { abandoned } = await reconcileStaleTurns({
+        olderThanMs: opts.staleAfterMs,
+        limit: opts.limit,
+      });
+      if (abandoned > 0) {
+        console.log(
+          JSON.stringify({
+            service: "mira-hub",
+            component: "turn-reconciler",
+            event: "turn.abandoned",
+            count: abandoned,
+            stale_after_ms: opts.staleAfterMs,
+          }),
+        );
+      }
+    } catch (err) {
+      // A reconciler that throws on a schedule would crash the server it is
+      // supposed to be measuring.
+      console.error(
+        "[turn-lifecycle] reconciler sweep failed:",
+        err instanceof Error ? err.message : err,
+      );
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => void tick(), opts.intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  return () => clearInterval(timer);
+}
