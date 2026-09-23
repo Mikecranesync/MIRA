@@ -1640,8 +1640,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (notebookRetrieval) return null;
     if (nb?.model?.trim()) return { value: nb.model.trim(), source: "notebook" };
     if (!photoTextForOem) return null;
-    const fromPhoto = modelFromObservationText(photoTextForOem);
-    return fromPhoto ? { value: fromPhoto, source: "photo" } : null;
+    // Fail-open, exactly like the manufacturer resolution above it: identity
+    // extraction is an ENRICHMENT of retrieval scope, never a precondition for
+    // answering. A throw here (a bad pattern, a module seam that isn't loaded)
+    // must degrade the turn to unbound retrieval, not fail the technician's
+    // question. Losing the model only widens scope; losing the turn loses the
+    // answer.
+    try {
+      const fromPhoto = modelFromObservationText(photoTextForOem);
+      return fromPhoto ? { value: fromPhoto, source: "photo" } : null;
+    } catch (err) {
+      console.error(
+        "[notebook-chat] identity model extraction failed (retrieval not identity-bound this turn):",
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    }
   })();
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })

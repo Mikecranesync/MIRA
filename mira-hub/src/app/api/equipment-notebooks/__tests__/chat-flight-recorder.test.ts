@@ -484,6 +484,32 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect((persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].anomalies.map((a) => a.code)).not.toContain("VISUAL_EVIDENCE_DROPPED");
   });
 
+  it("4b. #3966 NEGATIVE CONTROL: identity extraction that THROWS degrades scope, it does not fail the turn", async () => {
+    // The guarantee under test is the fail-open asymmetry fixed alongside #3966:
+    // model extraction is an enrichment of retrieval scope, never a precondition
+    // for answering. Before the fix a throw here 500'd the technician's question.
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "t1", threadId: "th", question: "what is this", answerStatus: "answered", answerText: "…", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "general_reasoning", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
+    ] as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "Siemens TP700 Comfort, Supply 24 Vdc max 0.85 A", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.modelFromObservationText.mockImplementationOnce(() => {
+      throw new Error("identity seam unavailable");
+    });
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("From the earlier photo it is 24 Vdc.")));
+    const res = await POST(chatReq({ message: "what voltage was it?", mode: "general", history: [{ role: "user", content: "what is this" }, { role: "assistant", content: "…" }] }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    // The turn survived and still recalled the photo …
+    expect(p.visual_evidence.prior_turn_observation_count).toBe(1);
+    // … it simply was not identity-bound this time.
+    expect(p.retrieval.oem_model).toBeNull();
+    expect(p.retrieval.oem_model_source).toBeNull();
+  });
+
   it("6. token usage lands in the packet (staging rows showed tokens=None/None)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("A VFD varies frequency.", { prompt_tokens: 321, completion_tokens: 45 })));
