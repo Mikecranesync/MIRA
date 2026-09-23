@@ -92,50 +92,10 @@ export async function persistTurnUsage(
 ): Promise<PersistUsageResult> {
   try {
     return await withTenantContext(scope.tenantId, async (c) => {
-      // CLOSE the start record when this turn opened one (091). A matched
-      // UPDATE is the whole write: the row already carries tenant/platform/ids
-      // from `openTurn`, and this fills in what only the finished turn knows.
-      // Zero rows matched means the start never landed (a capture defect the
-      // lifecycle counters already recorded) — fall through to the INSERT so
-      // the spend row is never lost on top of it.
-      if (scope.attemptId) {
-        const upd = await c.query(
-          `UPDATE decision_traces
-              SET user_question = $2, recommendation = $3, citations_present = $4,
-                  model_used = $5, latency_ms = $6, provider = $7, route_reason = $8,
-                  input_tokens = $9, cached_input_tokens = $10, output_tokens = $11,
-                  cost_usd_estimate = $12, status = $13,
-                  otel_trace_id = COALESCE($14, otel_trace_id),
-                  turn_id = COALESCE($15::uuid, turn_id),
-                  evidence_packet = COALESCE($16::jsonb, evidence_packet),
-                  anomalies = $17::jsonb,
-                  lifecycle = 'closed', outcome = $18, finished_at = now()
-            WHERE attempt_id = $1::uuid
-            RETURNING trace_id`,
-          [
-            scope.attemptId,
-            scope.question,
-            scope.answerText,
-            scope.citationsPresent,
-            usage.model,
-            scope.latencyMs ?? null,
-            usage.provider,
-            usage.routeReason,
-            usage.inputTokens,
-            usage.cachedInputTokens,
-            usage.outputTokens,
-            usage.costUsdEstimate,
-            usage.status,
-            record?.otelTraceId ?? null,
-            record?.turnRowId ?? null,
-            record ? JSON.stringify(record.packet) : null,
-            JSON.stringify(record?.anomalies ?? []),
-            scope.outcome ?? "answered",
-          ],
-        );
-        const updatedId = upd.rows[0]?.trace_id as string | undefined;
-        if (updatedId) return { persisted: true, traceId: updatedId } as const;
-      }
+      // APPEND the outcome row for a turn that opened a start record (091).
+      // decision_traces is append-only by design (032: "the app role may read +
+      // insert, never mutate or delete"), so the close is an INSERT carrying
+      // `attempt_id` + lifecycle='closed', NOT an update of the start row.
       const res = await c.query(
         `INSERT INTO decision_traces
            (tenant_id, platform, user_question, recommendation, citations_present,
@@ -144,14 +104,22 @@ export async function persistTurnUsage(
             input_tokens, cached_input_tokens, output_tokens,
             cost_usd_estimate, status,
             otel_trace_id, turn_id, client_request_id, notebook_id,
-            environment, git_sha, evidence_packet, anomalies)
+            environment, git_sha, evidence_packet, anomalies,
+            attempt_id, lifecycle, outcome, started_at, finished_at)
          VALUES ($1, $2, $3, $4, $5,
                  $6, $7,
                  $8, $9, $10,
                  $11, $12, $13,
                  $14, $15,
                  $16, $17::uuid, $18, $19::uuid,
-                 $20, $21, $22::jsonb, $23::jsonb)
+                 $20, $21, $22::jsonb, $23::jsonb,
+                 $24::uuid,
+                 'closed',
+                 $25,
+                 (SELECT started_at FROM decision_traces
+                   WHERE attempt_id = $24::uuid AND lifecycle = 'started'),
+                 CASE WHEN $24 IS NULL THEN NULL ELSE now() END)
+         ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING
          RETURNING trace_id`,
         [
           scope.tenantId, // TEXT — see note above
@@ -189,6 +157,8 @@ export async function persistTurnUsage(
           record?.gitSha ?? null,
           record ? JSON.stringify(record.packet) : null,
           JSON.stringify(record?.anomalies ?? []),
+          scope.attemptId ?? null,
+          scope.attemptId ? (scope.outcome ?? "answered") : null,
         ],
       );
       const traceId = res.rows[0]?.trace_id as string | undefined;

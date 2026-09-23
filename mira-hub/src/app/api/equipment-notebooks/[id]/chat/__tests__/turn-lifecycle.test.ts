@@ -56,8 +56,15 @@ function req(body: unknown) {
     headers: { "Content-Type": "application/json" },
   });
 }
-const starts = () => sql.filter((s) => /INSERT INTO decision_traces/.test(s.text) && /'started'/.test(s.text));
-const closes = () => sql.filter((s) => /UPDATE decision_traces/.test(s.text) && /lifecycle\s*=\s*'closed'/.test(s.text));
+// decision_traces is APPEND-ONLY (032): both the start and the outcome are
+// INSERTs, distinguished by the lifecycle literal. A close that were an UPDATE
+// would be denied by the grant — which is exactly what the first live window
+// measured (started=7, closed=0).
+// NB: the close statement also mentions 'started' — in its WHERE, selecting the
+// start row forward — so the start filter keys on the VALUES form specifically.
+const starts = () => sql.filter((s) => /INSERT INTO decision_traces/.test(s.text) && /'started',\s*now\(\)/.test(s.text));
+const closes = () => sql.filter((s) => /INSERT INTO decision_traces/.test(s.text) && /'closed'/.test(s.text));
+const mutations = () => sql.filter((s) => /UPDATE decision_traces|DELETE FROM decision_traces/.test(s.text));
 
 const ORIGINAL = process.env.MIRA_PERSONA_CONTRACT;
 beforeEach(() => {
@@ -93,9 +100,8 @@ describe("the start record", () => {
     // The close is fire-and-forget by design — it must never block the
     // technician's answer — so the assertion waits for it rather than racing it.
     await vi.waitFor(() => expect(closes().length).toBeGreaterThanOrEqual(1));
-    // One accepted turn, one ledger row: the close is an UPDATE keyed on the
-    // attempt, never a second INSERT.
-    expect(sql.filter((x) => /INSERT INTO decision_traces/.test(x.text)).length).toBe(1);
+    // Append-only: the ledger is never mutated from the request path.
+    expect(mutations()).toEqual([]);
   });
 });
 
@@ -114,8 +120,9 @@ describe("an exit that never reached generation still closes", () => {
     const res = await POST(req({ message: "q" }), params);
     expect(res.status).toBe(404);
     expect(starts().length).toBe(1);
-    expect(closes().length).toBe(1);
+    await vi.waitFor(() => expect(closes().length).toBe(1));
     // Unclassified early exits close as `error` — honest, and never an orphan.
     expect(closes()[0].values).toContain("error");
+    expect(mutations()).toEqual([]);
   });
 });
