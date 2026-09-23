@@ -310,8 +310,11 @@ describe("ChatV2 (default surface)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Photo/ }));
     await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
 
-    const body = askNotebook.mock.calls[0][2] as { visualEvidence?: { fileId?: string } };
-    expect(body?.visualEvidence?.fileId).toBe("look-file-99");
+    // askNotebook(notebookId, message, sourceDocIds, opts) — the rider rides in
+    // `opts`, argument 3. (Written against argument 2 first; CI caught it, which
+    // is the point of having the test actually execute rather than assuming.)
+    const opts = askNotebook.mock.calls[0][3] as { visualEvidence?: { fileId?: string } };
+    expect(opts?.visualEvidence?.fileId).toBe("look-file-99");
   });
 
   it("offers a message-level Copy action for a completed answer", async () => {
