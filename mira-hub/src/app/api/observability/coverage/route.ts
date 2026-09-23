@@ -29,7 +29,6 @@ import {
   gitSha,
   serviceVersion,
 } from "@/capabilities/observability/config";
-import { miraContractEnabled } from "@/lib/mira-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +72,6 @@ export async function GET(req: NextRequest) {
       exporter_configured: exporterConfigured,
       content_capture: captureContentEnabled(),
     },
-    persona_contract: miraContractEnabled(),
   };
 
   let coverage: Awaited<ReturnType<typeof lifecycleCoverage>> | null = null;
