@@ -121,6 +121,34 @@ jobs:
             --manual tools/demo-3tag-plc-vfd-conveyor.pdf \
             --out /tmp/retrieval-acceptance.json --verbose
 
+      # Capture acceptance runs BESIDE the retrieval scenarios, on the same
+      # provisioned stranger and the same pinned SHA. It answers a different
+      # question - not "was the answer right" but "is every attempt accounted
+      # for" - and a deploy that silently stopped recording turns would pass the
+      # six scenarios while failing this. Unit tests cannot cover it: the defects
+      # it found (a rejected upload with no client id, a 5xx filed as a
+      # pre-accept rejection, four accepted turns reported as never-accepted)
+      # were each only visible against a live deployment.
+      - name: Provision a notebook for capture acceptance
+        id: capnb
+        run: |
+          python3 tools/qa/make_notebook.py >> "$GITHUB_OUTPUT"
+
+      - name: Capture acceptance - every attempt accounted for
+        run: |
+          python3 tools/qa/capture_acceptance.py \
+            --notebook "${{ steps.capnb.outputs.notebook }}" \
+            --photo docs/proofs/2026-09-22-pixel9a-staging-session/turn1-photo-bearing-box-label.jpg \
+            --out /tmp/capture-acceptance.json
+
+      - name: Upload the capture-acceptance artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-acceptance-${{ github.run_id }}
+          path: /tmp/capture-acceptance.json
+          retention-days: 30
+
       # A SHA is a contract: re-confirm it at VERDICT time, not only at start.
       # A deploy that lands mid-run means this verdict describes a tree that is
       # no longer serving, which is worse than no verdict at all.
