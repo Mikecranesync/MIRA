@@ -81,6 +81,43 @@ read `arrived=0` — perfectly healthy, counting nothing. Closed by
 
 ---
 
+## BLOCKER — #3964 cannot go green without a governance decision
+
+`migration-verify` applies **every migration the PR touched, in order, directly
+against staging Neon** (`NEON_STG_DATABASE_URL`), consulting no ledger. So it
+re-runs **091**, which creates `UNIQUE (attempt_id)`. Staging now holds two rows
+per attempt (`started` + `closed`) — which is precisely what **092** changed the
+model to — so that index **can never be created there again**:
+
+```
+ERROR: could not create unique index "decision_traces_attempt_uk"
+DETAIL: Key (attempt_id)=(7c33f143-…) is duplicated.
+```
+
+`apply-and-verify` fails, and `staging-gate` then refuses to grade a schema it
+knows is incomplete. Both are correct behaviour. Note this is **not** a
+production risk: prod has no `attempt_id` rows, so 091→092 applies there cleanly.
+It is a replay-onto-populated-data problem, and it is permanent.
+
+The doctrine (`.claude/rules/mira-hub-migrations.md` §8) says an applied migration
+is immutable and the remedy is a new next-numbered file. That remedy **cannot
+work here**, because 091 runs *before* any new migration and fails first.
+
+Three options, all requiring a human:
+
+1. **Amend 091** to drop the doomed index creation (092 removes it two files
+   later, so the net schema is unchanged). Violates the immutability rule —
+   though note migration 066 is **not applied on staging**, so the content-sha
+   drift detector is currently skipped there and would not catch it. That is an
+   argument for asking, not for doing it quietly.
+2. **Exclude 091/092 from this PR** and let them ride with #3959, where they were
+   authored. Creates a merge-order dependency: #3964's code needs their columns.
+3. **Change `migration-verify` to honour the ledger** (skip already-applied
+   files). That is editing a release gate to make a PR pass, which I will not do
+   unasked.
+
+I did not pick one. Every path changes either an immutability rule or a gate.
+
 ## Gaps — open, with owners
 
 1. **Client acknowledgement + offline retry (goal item 3).** Not implemented. The
@@ -93,10 +130,18 @@ read `arrived=0` — perfectly healthy, counting nothing. Closed by
    forbids without separate approval. The correct design — content in tenant-scoped
    FactoryLM storage, only references to the exporter — is a design + approval ask,
    not a code change I should make unilaterally.
-3. **#3962's prompt half.** Detection is not the fix. Anchoring the recalled
-   observation as the SUBJECT of the turn lives in the prompt-composition region of
-   `chat/route.ts` — #3959's territory — and interacts with the open
-   augmented-vs-grounded decision, which is Mike's.
+3. **#3962 — ROOT CAUSE FOUND, fix not taken.** Six runs, one variable: without
+   client `history` the follow-up answers about a drive 3/3; with it, about the
+   bearing 3/3. The observation reaches the model (`observation_in_context: true`)
+   but it describes a *label* — the word "bearing" appears in **0 of 4** identical
+   LOOK calls, because the label is truncated at "Bea…". The identification lived
+   in turn 1's **answer**, and `history_turns: 0` is where it is lost. `history`
+   is entirely client-supplied; the server recalls the observation but not the
+   interpretation. Fix: carry the established subject with the recalled
+   observation, via `listTurns`, already on that path. Own PR, own regression test
+   that withholds history. Full evidence:
+   `docs/proofs/2026-09-23-3962-root-cause.md`. (Superseded note: detection is not
+   the fix.)
 4. **Live proof.** The staging deploy and the capture-acceptance run are the
    remaining evidence. Commands below.
 5. ~~Process-crash and exporter-outage scenarios~~ — **both now proven live.**
