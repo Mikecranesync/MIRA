@@ -52,7 +52,35 @@ const UNGROUNDED_UNIT_CLAIM_RE = /\d+(\.\d+)?\s*(in|mm|cm|°C|V|A)\b/;
  * function itself is pure text -> boolean and keeps no state.
  */
 export function ungroundedUnitClaim(answerText: string): boolean {
-  return UNGROUNDED_UNIT_CLAIM_RE.test(answerText);
+  for (const m of answerText.matchAll(UNGROUNDED_UNIT_CLAIM_GLOBAL)) {
+    if (!isZeroMagnitude(m[0])) return true;
+  }
+  return false;
+}
+
+/** Global twin of the regex above, so every match can be judged rather than
+ *  the first one deciding the whole answer. */
+const UNGROUNDED_UNIT_CLAIM_GLOBAL = new RegExp(UNGROUNDED_UNIT_CLAIM_RE.source, "g");
+
+/**
+ * "verified at 0 V", "confirm the bus is at 0 V" — an ENERGY-ISOLATION
+ * VERIFICATION, which MIRA_CORE requires in the same sentence as any
+ * instruction to touch wiring. Zero is a statement that something is DEAD; it
+ * is never a rating claim about the machine.
+ *
+ * Issue #3963: this detector fired on 25 of 40 turns in the 2026-09-22 sweep
+ * and on a photo-benchmark answer whose only unit-bearing number was `0 V`.
+ * The identical false positive was fixed in the ANSWER GATE by `a0318b21b`
+ * (`allZeroMagnitude` in answer-validation.ts); the anomaly detector was not
+ * touched, so the noise survived in telemetry. Same rule, same reasoning.
+ *
+ * This exempts NOTHING unsafe and nothing unsupported: a non-zero rating still
+ * flags, and the gate — not this counter — is what actually withholds a
+ * fabricated claim.
+ */
+function isZeroMagnitude(match: string): boolean {
+  const num = match.match(/\d+(\.\d+)?/)?.[0];
+  return num !== undefined && Number(num) === 0;
 }
 
 /**
