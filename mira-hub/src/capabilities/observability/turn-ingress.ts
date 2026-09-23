@@ -224,7 +224,19 @@ export async function ingressReconciliation(opts: {
     `WITH arrivals AS (
        SELECT a.attempt_id,
               r.http_status,
-              COALESCE(a.tenant_id, r.tenant_id) AS tenant_id,
+              -- TENANT AUTHORITY (Gate 7 round 2, finding 2). turn_ingress rows
+              -- are written by the request path and self-report their tenant.
+              -- decision_traces is written inside withTenantContext, so for any
+              -- attempt that reached the ledger THAT is the stronger provenance
+              -- and it wins. The ingress value is only a fallback for attempts
+              -- the ledger never saw, which by definition have no stronger
+              -- source. Not externally exploitable today (nothing but
+              -- ctx.tenantId ever reaches ingress.tenantId), but a scoping
+              -- predicate should not rest on the least-authoritative row.
+              COALESCE(
+                (SELECT d.tenant_id FROM decision_traces d
+                  WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'started' LIMIT 1),
+                a.tenant_id, r.tenant_id) AS tenant_id,
               EXISTS (SELECT 1 FROM decision_traces d
                        WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'started') AS started,
               EXISTS (SELECT 1 FROM decision_traces d
@@ -356,7 +368,11 @@ export async function listAttempts(opts: {
          ON r.attempt_id = a.attempt_id AND r.phase = 'responded'
       WHERE a.phase = 'arrived'
         AND a.at > now() - ($1 || ' seconds')::interval
-        AND COALESCE(a.tenant_id, r.tenant_id) = $2
+        -- Same authority order as the reconciliation: the ledger's tenant wins.
+        AND COALESCE(
+              (SELECT d.tenant_id FROM decision_traces d
+                WHERE d.attempt_id = a.attempt_id AND d.lifecycle = 'started' LIMIT 1),
+              a.tenant_id, r.tenant_id) = $2
       ORDER BY a.at DESC
       LIMIT $3`,
     [windowMs / 1000, opts.tenantId, limit],
