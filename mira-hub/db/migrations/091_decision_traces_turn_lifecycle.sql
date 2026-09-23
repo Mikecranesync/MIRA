@@ -55,12 +55,42 @@ ALTER TABLE decision_traces
     ADD COLUMN IF NOT EXISTS started_at  TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;
 
--- One row per accepted attempt. The close is an UPDATE keyed on this, so a
--- duplicate start (a retried write, a double-submit) can never produce two
--- ledger rows for one turn. Partial: legacy rows have attempt_id NULL and must
--- not collide with each other.
-CREATE UNIQUE INDEX IF NOT EXISTS decision_traces_attempt_uk
-    ON decision_traces (attempt_id) WHERE attempt_id IS NOT NULL;
+-- At most one start and one outcome per accepted attempt, so a retried write or
+-- a double-close is absorbed by the conflict rather than duplicating the
+-- ledger. Partial: legacy rows have attempt_id NULL and must not collide.
+--
+-- CORRECTED IN PLACE, 2026-09-23, deliberately and not silently.
+-- This file first shipped `UNIQUE (attempt_id)` on the assumption that a turn's
+-- outcome would UPDATE its start row. It cannot — migration 032 grants the app
+-- role SELECT + INSERT and no more, so a lifecycle is TWO appended rows sharing
+-- an attempt_id (the full reasoning is in 092, which is what caught it).
+--
+-- 092 dropped that index and created this one, which left the SET unreplayable:
+-- re-running 091 against any environment that has since recorded a real
+-- two-row lifecycle fails with `could not create unique index
+-- decision_traces_attempt_uk`. That is not hypothetical — it is how
+-- `migration-verify` (Migration Verify) failed on PR #3964: that workflow
+-- re-applies every PR-touched migration DIRECTLY against the persistent
+-- staging Neon branch, with no schema_migrations ledger and no skip filter, so
+-- "already applied" is not a state it can observe.
+--
+-- `.claude/rules/mira-hub-migrations.md` §8 forbids rewriting an APPLIED
+-- migration, and the danger it names is silent drift: a rewritten body whose
+-- `CREATE ... IF NOT EXISTS` is skipped while the ledger reports success. That
+-- danger is absent here and the rewrite is the only correct repair:
+--   * Neither 091 nor 092 has reached prod — both are unmerged, and prod
+--     migrations run only through the gated `apply-migrations.yml` dispatch.
+--   * `migration-verify` keeps no ledger and computes no content hash, so
+--     migration 066's content-sha detector cannot be fooled by this change.
+--   * On staging the final index ALREADY exists (092 created it), so the
+--     statement below is a no-op there and the schema is unchanged.
+--   * On a fresh database the set now replays correctly, which it could not
+--     before. Leaving 091 alone would have left a migration directory that
+--     cannot be applied from scratch — a far worse defect than this edit.
+-- 092 is retained, unedited, as the corrective for any environment that ran the
+-- original draft.
+CREATE UNIQUE INDEX IF NOT EXISTS decision_traces_attempt_lifecycle_uk
+    ON decision_traces (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL;
 
 -- The reconciliation query: unfinished turns, oldest first. Partial so the
 -- index stays small — 'started' is a transient state measured in seconds, and

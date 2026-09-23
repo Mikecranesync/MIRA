@@ -45,6 +45,8 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
+import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
   captureContentEnabled,
   environmentName,
@@ -953,6 +955,12 @@ async function handleChatTurn(
     gitSha: gitSha(),
   });
   let lifecycleOutcome: TurnOutcome | null = null;
+  // SHADOW (MIRA_JEV_DECISION=1, off by default). Filled at the commit point,
+  // where the DELIVERED answer, the evidence behind it and the deterministic
+  // gate outcomes all exist at once; consumed in `finishAndPersist`, which runs
+  // after `controller.close()`. Held in a variable rather than passed as an
+  // argument because the persist helper is defined before these values exist.
+  let decisionState: TurnDecisionState | null = null;
   let lifecycleClosed = false;
   /**
    * Close the start record. Idempotent. Called from `endRoot` so EVERY exit
@@ -1043,6 +1051,16 @@ async function handleChatTurn(
     // confirm it) succeed — the recordTurn-failure exit path passes it
     // explicitly as null; every other call site passes the real row id.
     packet.persistence.outcome = turnRowId ? "ok" : "failed";
+    // SHADOW (MIRA_JEV_DECISION=1, off by default). The one metered judgment
+    // call for this turn. It runs HERE, and only here, because every caller of
+    // `finishAndPersist` has already closed the stream — so by construction a
+    // Jev timeout, outage or 4xx cannot delay or fail answer delivery. It is
+    // also never awaited on a path that can still reject the turn: the helper
+    // is fail-open and returns a record carrying `skipped_reason` instead of
+    // throwing, so an outage shows up as a value in the data rather than a gap.
+    if (decisionState) {
+      packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
+    }
     setSpanAttrs({ "mira.turn.row_id": turnRowId, "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
     if (anomalies.length > 0) {
       console.log(
@@ -2179,7 +2197,7 @@ async function handleChatTurn(
       identity_included: identityIncluded,
       history_turns: history.length,
       prompt_chars: promptChars,
-      system_prompt_kind: systemPromptKind,
+      system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
     });
     setSpanAttrs(
       {
@@ -2796,6 +2814,42 @@ async function handleChatTurn(
           jev_input_tokens: jev.input_tokens,
           citations_shipped: emittedCitations.length,
           evidence_followed: evidenceFollowed,
+        });
+        // SHADOW. Assemble the judgeable view of this turn while the text still
+        // exists. The packet deliberately stores no question and no answer, so
+        // this can never be reconstructed afterwards — but only the VERDICTS
+        // are kept, never the text (see turn-decision-state.ts for the audited
+        // payload). Assembly is pure and cannot throw the turn; the metered call
+        // happens later, after the stream is closed.
+        decisionState = buildTurnDecisionState({
+          question: message,
+          answer: answerText,
+          // The strongest identity the turn actually resolved, in the order the
+          // retrieval layer trusts them. `null` is a real answer here — an
+          // unresolved subject is exactly the #3962 shape and the judge should
+          // see it as unresolved rather than be handed a guess.
+          assetIdentity:
+            chunks.length > 0 && chunks[0].manufacturer
+              ? [chunks[0].manufacturer, chunks[0].modelNumber].filter(Boolean).join(" ")
+              : null,
+          observations: [lookContext],
+          evidence: chunks.map((c) => ({
+            source: c.title,
+            // The mismatch signal for #3966: the family the SOURCE belongs to,
+            // which is what diverged from the panel in the photo.
+            family: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || null,
+            content: c.content,
+          })),
+          gates: {
+            decision: gateDecision,
+            evidence_sufficient: evidenceSufficient,
+            citations_shipped: emittedCitations.length,
+            ungrounded_unit_claim: ungroundedClaim,
+            system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
+            retrieval_strategy: oemRetrieval ? "oem_corpus" : "notebook",
+          },
+          traceId: rootTraceId,
+          attemptId: null,
         });
         setSpanAttrs(
           {

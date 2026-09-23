@@ -373,10 +373,12 @@ describe("#3962 — evidence in context that the answer never used", () => {
       subject_identifiers_in_answer: 0,
       evidence_classes: ["bearing"],
       answer_classes: ["drive"],
+      lead_classes: ["bearing"],
+      lead_verdict: "unverified_mismatch",
     };
     expect(codesOf(p)).toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
 
-    p.answer_gate.evidence_followed.verdict = "consistent";
+    p.answer_gate.evidence_followed!.verdict = "consistent";
     expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
     p.answer_gate.evidence_followed = null;
     expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");

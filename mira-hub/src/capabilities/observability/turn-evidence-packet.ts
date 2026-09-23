@@ -24,6 +24,8 @@
 
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
+import type { JevDecisionRecord } from "./jev-decision";
+
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
 export type TurnKind = "chat" | "look";
@@ -206,6 +208,21 @@ export type TurnEvidencePacket = {
   persistence: TurnEvidencePacketPersistence;
   timings_ms: TurnEvidencePacketTimingsMs;
   errors: TurnEvidencePacketError[];
+  /**
+   * SHADOW. The Jev Decision Fabric's verdicts for this turn, stamped after
+   * `finish()` on the same pattern as `persistence.turn_row_id`, because the
+   * judgment needs the DELIVERED answer and so cannot be a stage.
+   *
+   * Optional on purpose: absent means the evaluator never ran for this turn
+   * (flag off, or a packet written before the fabric existed). `null` inside a
+   * present record's `signals` never happens — a failed call is a record with
+   * `skipped_reason` set, so an outage is a value rather than a silence.
+   *
+   * NOTHING reads this. It is not consulted by the answer gate, the safety
+   * gate, the lifecycle ledger, or any release gate (ADR-0029 rule 9: model
+   * output never self-promotes).
+   */
+  jev_decision?: JevDecisionRecord | null;
 };
 
 /** What is known at request.receive, before any stage has run. */

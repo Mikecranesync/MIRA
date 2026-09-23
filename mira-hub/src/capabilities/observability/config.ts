@@ -48,6 +48,15 @@ export function jevShadowEnabled(): boolean {
   return process.env.MIRA_JEV_SHADOW === "1";
 }
 
+/** The 12-question decision fabric (jev-decision.ts). Deliberately a SEPARATE
+ *  flag from the sufficiency shadow above: it sends a strictly larger payload
+ *  (the delivered answer and photo observations, not just the question and
+ *  retrieved excerpts), so enabling one must never silently enable the other.
+ *  Staging only until the privacy note is approved for production. */
+export function jevDecisionEnabled(): boolean {
+  return process.env.MIRA_JEV_DECISION === "1";
+}
+
 /** Parses the W3C-Baggage-shaped `OTEL_RESOURCE_ATTRIBUTES` (`k1=v1,k2=v2`). */
 function parseResourceAttributes(raw: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
