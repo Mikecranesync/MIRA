@@ -181,6 +181,30 @@ d("turn_ingress reconciles against the ledger on real Postgres", () => {
     await client.query("DELETE FROM decision_traces WHERE attempt_id = $1::uuid", [F]);
   });
 
+  it("accounts for each attempt individually — accepted vs never-accepted", async () => {
+    const { listAttempts } = await import("../turn-ingress");
+    const rows = await listAttempts({ tenantId: TENANT, windowMs: 60 * 60_000, limit: 50 });
+    const by = (p: string) => rows.find((r) => r.attempt_id.startsWith(p));
+
+    // A: accepted, closed, answered — the healthy shape.
+    expect(by("aaaaaaaa")).toMatchObject({ accepted: true, closed: true, outcome: "answered" });
+    // B: accepted and STILL OPEN at this point (the reconciler test below is
+    // what later closes it). The aggregate cannot tell an open turn from one
+    // that was never accepted — both are "no packet" from outside the DB — and
+    // that is exactly the distinction this function exists to make.
+    expect(by("bbbbbbbb")).toMatchObject({ accepted: true, closed: false, outcome: null });
+    // C: a 400 that never opened a turn — genuinely never accepted.
+    expect(by("cccccccc")).toMatchObject({ accepted: false, closed: false, http_status: 400 });
+    // D: served 200 and never opened — the capture defect, visible per attempt.
+    expect(by("dddddddd")).toMatchObject({ accepted: false, http_status: 200 });
+  });
+
+  it("does not leak another tenant's attempts", async () => {
+    const { listAttempts } = await import("../turn-ingress");
+    const rows = await listAttempts({ tenantId: "99999999-9999-4999-8999-999999999999" });
+    expect(rows).toEqual([]);
+  });
+
   it("does not attribute another tenant's arrivals", async () => {
     const { ingressReconciliation } = await import("../turn-ingress");
     const other = await ingressReconciliation({ tenantId: "99999999-9999-4999-8999-999999999999" });
