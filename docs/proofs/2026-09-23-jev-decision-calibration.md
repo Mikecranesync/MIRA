@@ -111,6 +111,17 @@ cleanly — but that is a rule to *test*, not one to adopt from ten states.
 | questions per request | 12 |
 | turn-latency impact | zero — the call runs after `controller.close()` |
 
+## Superseded in part by the first LIVE run
+
+Everything above is constructed states. The first run against real staging
+traffic found a defect none of them could show: `JEV_NOT_FOLLOWING_EVIDENCE`
+fired on **6 of 7** real turns, all with zero retrieved evidence, three of them
+correct answers. The ten states here never exposed it because each either had
+evidence or was an explicit refusal. `follows_evidence`'s in-sample acc=1.00
+above is therefore **conditional on evidence being present**, which this table
+does not say and the live data does. See
+`docs/proofs/2026-09-23-jev-decision-fabric.md` §4.
+
 ## What this does not establish
 
 1. **n = 10.** Four divergent states, six sound. Any accuracy figure here has an
