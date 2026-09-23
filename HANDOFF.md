@@ -45,12 +45,12 @@ lost, but its RC is no longer the deployed one.
 | 3 | bounded offline retry, dedup, backpressure, visible unrecoverable failure | **NOT DONE** | see gaps — this is client-side and was not reached |
 | 4 | tenant-scoped content references, access control, redaction, retention, integrity | **NOT DONE — design decision owed** | nothing new stored; `contentCapture` still `false`; see gaps |
 | 5 | #3962 evidence/answer consistency checks | **DONE (detection)** | `DOCUMENTS_IN_CONTEXT_UNCITED` + `ANSWER_IGNORED_VISUAL_EVIDENCE`; **prompt anchoring NOT done** |
-| 5 | #3962 repeated bearing-photo follow-up tests | **NOT DONE live** | harness written; needs the staging run |
+| 5 | #3962 repeated bearing-photo follow-up tests | **DONE — 3/3 reproduced live; detector caught 1/3** | traces `36cda615…`/`5e370d24…`/`d4c53a8a…`. Sensitivity is bounded by vision variance: "bearing" appears in **0 of 4** identical LOOK calls |
 | 5 | #3963 zero exemption cannot hide unsupported settings/ratings | **DONE + MEASURED** | strict narrowing verified; 57.5% → 20.0% |
 | 6 | environment/build indicators + Copy diagnostics | **DONE** | `/api/observability/coverage` `copy_text`, now incl. ingress + capture rates |
-| 6 | exporter outage preserves durable records, replays without duplicate turns | **PARTIAL** | `exporter-down.test.ts` proves it never blocks a turn; **live outage not yet run** |
+| 6 | exporter outage preserves durable records, replays without duplicate turns | **DONE — proven live** | endpoint pointed at `192.0.2.1:4318`, redeployed, 2 turns: both answered, 2 distinct attempts, 1 start + 1 close each, packets persisted, no duplicates. Restored + verified |
 | 7 | Jev adopt/defer/reject with measured benefit/cost/latency/privacy | **DONE** | `docs/proofs/2026-09-23-jev-evaluation-for-capture.md` |
-| 8 | real website + Pixel acceptance, every attempt accounted for | **NOT DONE** | harness written (`tools/qa/capture_acceptance.py`); needs the deploy + a device |
+| 8 | real website + Pixel acceptance, every attempt accounted for | **PARTIAL — server side PASS, device NOT done** | live acceptance PASS (`lost_starts: 0`, mirror positive-controlled 0→1→cleaned); **Pixel 9a not run** |
 | 8 | automated deployment acceptance | **DONE** | acceptance now audits the DEPLOYED SHA and re-confirms at verdict time |
 
 ---
@@ -99,8 +99,10 @@ read `arrived=0` — perfectly healthy, counting nothing. Closed by
    augmented-vs-grounded decision, which is Mike's.
 4. **Live proof.** The staging deploy and the capture-acceptance run are the
    remaining evidence. Commands below.
-5. **Process-crash and exporter-outage scenarios** need a container restart /
-   a redirected OTLP endpoint on staging. Both safe there, neither run yet.
+5. ~~Process-crash and exporter-outage scenarios~~ — **both now proven live.**
+   Process crash came free from the redeploys: `answered=24, error=9,
+   abandoned=7`, zero stale starts open. Exporter outage ran with the endpoint
+   pointed at a black hole and was restored byte for byte afterwards.
 6. **Pixel 9a.** Must use `com.factorylm.mira.staging` — the production flavour
    points at `app.factorylm.com`, which has **no recorder**. A Pixel test on the
    prod flavour produces zero capture evidence, which is exactly how the original
@@ -127,6 +129,28 @@ Nothing production-facing was touched. To roll this out later:
   `capabilities/observability/` **absent**.
 
 ---
+
+## The three claims of mine that were wrong
+
+Recorded because each would have shipped as a result if I had not checked.
+
+1. **"`arrived: 6` because the unauthenticated attempt is tenant-less."** No —
+   it produced no rows at all. `middleware.ts` 401s `/api/*` before the route
+   wrapper runs, and middleware is the edge runtime, where a `pg` write is
+   impossible. The denominator is "requests that reached the route handler", now
+   stated in the module, in `copy_text`, and beside the numbers in the response.
+2. **"#3962 is unreachable on main-based code."** True of the sequence I ran,
+   false as a claim — I had skipped the middle photo-bearing chat turn that the
+   issue's own reproduction contains. Run correctly it reproduces 3/3.
+3. **"#3962 reproduced under `mode:general`."** The packet said
+   `observation_in_context: false` — the model had no evidence to ignore. That
+   would have been a fabricated confirmation of my own detector.
+
+And one process failure worth the same treatment: I dispatched a deploy with a
+40-character SHA I **typed out from a 9-character prefix** instead of reading
+`git rev-parse`. The workflow's authorization step rejected it and nothing
+deployed. I have a standing note about exactly this; the gate caught what I did
+not.
 
 ## Reproduce
 
