@@ -159,8 +159,8 @@ is not an alternative on a source-less notebook — it returns
 
 So on this staging build, for a fresh source-less notebook, **a photo a
 technician just took does not reach the next question**. That is the same class
-of gap #3962 is about, reached from the other direction, and it is worth its own
-investigation rather than a guess at the end of this one. It is NOT caused by
+of gap #3962 is about, reached from the other direction, and is filed as **#3967**
+rather than guessed at here. It is NOT caused by
 anything in this change: the capture layer reported it accurately, which is what
 the capture layer is for.
 
@@ -263,9 +263,8 @@ counterfactual, propose gating separately.
    body; the label is a maintainer action and cannot be self-awarded.
 2. **One `apply-migrations.yml mode=seed-ledger` dispatch against staging**, to
    re-stamp 091's `content_sha256` after the correction (see that file's header).
-3. **Investigate the photo-observation attachment gap** described in §4 — a LOOK
-   succeeds and its observation does not reach the following chat turn on a
-   source-less notebook. Independent of this change; surfaced by it.
+3. **Triage #3967** — the photo-observation attachment gap described in §4.
+   Independent of this change; surfaced by it.
 4. **Approve or decline production enablement** of `MIRA_JEV_DECISION`, after the
    vendor-retention question in the privacy note is answered. Staging is enabled;
    production is not requested.
