@@ -325,3 +325,60 @@ describe("#3963 — the LOTO clause is not an ungrounded unit claim", () => {
     ).toBe(true);
   });
 });
+
+describe("#3962 — evidence in context that the answer never used", () => {
+  it("flags chunks in context with zero citations shipped on an ANSWERED turn", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag an abstain — refusing on unsupportive chunks is correct", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "insufficient_evidence";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag an answer that shipped a citation", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 1;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag a turn that retrieved nothing", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 0;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("surfaces an unverified visual mismatch, and only that verdict", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.visual_evidence.observation_in_context = true;
+    p.answer_gate.evidence_followed = {
+      version: "1",
+      verdict: "unverified_mismatch",
+      subject_identifiers: 1,
+      subject_identifiers_in_answer: 0,
+      evidence_classes: ["bearing"],
+      answer_classes: ["drive"],
+    };
+    expect(codesOf(p)).toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+
+    p.answer_gate.evidence_followed.verdict = "consistent";
+    expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+    p.answer_gate.evidence_followed = null;
+    expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+  });
+});

@@ -20,7 +20,9 @@ export type AnomalyCode =
   | "EQUIPMENT_ANSWER_WITH_NO_EVIDENCE"
   | "IDENTITY_PIPELINE_DROPPED"
   | "STAGING_TO_PROD_ROUTE"
-  | "GENERIC_ANSWER_UNGROUNDED_CLAIM";
+  | "GENERIC_ANSWER_UNGROUNDED_CLAIM"
+  | "DOCUMENTS_IN_CONTEXT_UNCITED"
+  | "ANSWER_IGNORED_VISUAL_EVIDENCE";
 
 export type Anomaly = {
   code: AnomalyCode;
@@ -213,6 +215,55 @@ export function detectAnomalies(
         retrieval_executed: p.retrieval.executed,
         has_image_input: p.generation.has_image_input,
         ungrounded_unit_claim: p.answer_gate.ungrounded_unit_claim,
+      },
+    });
+  }
+
+  // #3962 — "evidence supplied" is not "evidence followed", document case.
+  //
+  // Chunks were put in front of the model and the answer shipped none of them.
+  // Fully deterministic: no text, no semantics, no vocabulary to go stale. This
+  // is the exact shape the live acceptance loop produced twice on 2026-09-23 —
+  // 6 OEM chunks retrieved, `general_reasoning`, zero citations — on runs whose
+  // earlier repeats had cited correctly, which is what makes it a SILENT
+  // failure rather than a visible one.
+  //
+  // An abstain is excluded on purpose: refusing when the chunks do not support
+  // an answer is the correct behaviour, not this defect.
+  if (
+    p.context.chunk_count > 0 &&
+    p.answer_gate.invoked &&
+    p.answer_gate.decision === "answered" &&
+    p.answer_gate.citations_shipped === 0
+  ) {
+    anomalies.push({
+      code: "DOCUMENTS_IN_CONTEXT_UNCITED",
+      stage: "answer_gate",
+      detail: {
+        chunk_count: p.context.chunk_count,
+        citations_shipped: p.answer_gate.citations_shipped,
+        system_prompt_kind: p.context.system_prompt_kind,
+        retrieval_strategy: p.retrieval.strategy,
+      },
+    });
+  }
+
+  // #3962 — the photo case. A recalled observation was in context and the
+  // answer committed to a DIFFERENT equipment class without referencing any of
+  // the subject's identifiers. Reported as `unverified_mismatch` by the
+  // assessment itself; this only surfaces it. Never fires without an
+  // observation in context, and never on a single-sided signal.
+  if (p.answer_gate.evidence_followed?.verdict === "unverified_mismatch") {
+    anomalies.push({
+      code: "ANSWER_IGNORED_VISUAL_EVIDENCE",
+      stage: "answer_gate",
+      detail: {
+        assessment_version: p.answer_gate.evidence_followed.version,
+        evidence_classes: p.answer_gate.evidence_followed.evidence_classes.join(","),
+        answer_classes: p.answer_gate.evidence_followed.answer_classes.join(","),
+        subject_identifiers: p.answer_gate.evidence_followed.subject_identifiers,
+        observation_in_context: p.visual_evidence.observation_in_context,
+        prior_turn_observation_count: p.visual_evidence.prior_turn_observation_count,
       },
     });
   }

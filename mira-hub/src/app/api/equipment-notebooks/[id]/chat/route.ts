@@ -94,6 +94,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
+import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
 import {
   recordArrival,
   recordResponse,
@@ -2742,6 +2743,12 @@ async function handleChatTurn(
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
+        // the packet deliberately carries no answer text and so this can never
+        // be recomputed later from stored packets. Only the verdict, its version
+        // and small counts are kept.
+        const evidenceFollowed =
+          served && !refused && lookContext ? assessEvidenceFollowed(lookContext, answerText) : null;
         // The LEDGER outcome, mapped from the gate decision. Distinct from
         // `gateDecision` on purpose: the gate answers "what did we decide about
         // the answer", the lifecycle answers "how did this accepted turn end" —
@@ -2772,6 +2779,8 @@ async function handleChatTurn(
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          citations_shipped: emittedCitations.length,
+          evidence_followed: evidenceFollowed,
         });
         setSpanAttrs(
           {
@@ -2783,6 +2792,8 @@ async function handleChatTurn(
             "mira.answer_gate.evidence_phrase_matched": evidencePhraseMatched,
             "mira.safety.classification": electricalHazardDirective ? "hazard_directive" : "none",
             "mira.evidence.sufficient": evidenceSufficient,
+            "mira.answer_gate.citations_shipped": emittedCitations.length,
+            "mira.evidence.followed": evidenceFollowed?.verdict ?? "not_applicable",
           },
           finalAnswerGateSpan,
         );
