@@ -15,7 +15,16 @@
  * this harness on purpose — the point is that the DETERMINISTIC floor now
  * holds the line without it.
  *
- * Run: cd mira-hub && npx vitest run src/app/api/equipment-notebooks/__tests__/chat-energized-procedure-withheld
+ * WHY IT LIVES HERE. This is a route test, and its natural home is
+ * `src/app/api/equipment-notebooks/__tests__/` beside
+ * `chat-electrical-hazard-live-stream.test.ts`. The Legacy UI Lifecycle Guard
+ * treats any ADDITION under `mira-hub/src/app/**` as a guarded-path change —
+ * existing files there are grandfathered, a new one is not — and clearing that
+ * needs an audited `legacy-ui-exception`. A safety regression test is not what
+ * that exception is for, so the test moved to the allowed `src/capabilities/**`
+ * root instead and imports the route by alias.
+ *
+ * Run: cd mira-hub && npx vitest run src/capabilities/energized-procedure-wire
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -51,7 +60,7 @@ vi.mock("@/lib/tenant-context", () => ({
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { POST } from "../[id]/chat/route";
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ENERGIZED_PROCEDURE_WITHHELD } from "@/capabilities/answer-validation";
 
 const NB = "22222222-2222-4222-8222-222222222222";

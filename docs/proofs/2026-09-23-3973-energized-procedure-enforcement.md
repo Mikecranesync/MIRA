@@ -72,7 +72,10 @@ consequence of that, not a separate cause.
 
 The floor runs inside the answer gate on the **complete buffered candidate**, before any byte is
 released (`route.ts` "Under the gate nothing has been released yet"). Route tests assert the wire
-directly: no `content` frame matches `/re-?energi[sz]e/`, `/live conductors/` or
+directly (`src/capabilities/energized-procedure-wire.test.ts` — it lives in `capabilities/`
+rather than beside the route because the Legacy UI Lifecycle Guard treats any ADDITION under
+`mira-hub/src/app/**` as a guarded-path change, and a safety regression test is not what the
+`legacy-ui-exception` is for): no `content` frame matches `/re-?energi[sz]e/`, `/live conductors/` or
 `/repeat the clamp measurement/`, and the persisted `answerText` does not either.
 
 ## Advisory vs terminal
@@ -89,7 +92,7 @@ and after a cold launch. Both are pinned by tests here.
 | Suite | Result |
 |---|---|
 | `answer-validation-energized-procedure` (14 rejections + controls) | red-first 9 failed → **15 passed** |
-| `chat-energized-procedure-withheld` (wire + persistence + terminal + safe control) | **6 passed** |
+| `energized-procedure-wire` (wire + persistence + terminal + safe control) | **6 passed** |
 | `answer-validation`, `answer-safety-check`, all `equipment-notebooks` routes | **541 passed / 32 files**, no regressions |
 
 Paraphrases, the uncategorised path, permit vocabulary, concept questions, reading interpretation
