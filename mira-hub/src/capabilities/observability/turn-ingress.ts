@@ -163,9 +163,17 @@ export type IngressReconciliation = {
    *  failed response append). Not a capture defect by itself — reported so it
    *  cannot be quietly folded into either of the buckets below. */
   no_response_recorded: number;
-  /** Arrived, responded 4xx/5xx, never opened a turn. EXPECTED — a malformed
-   *  body or a 401 is not a lost turn. Its own population, its own denominator. */
+  /** Arrived, responded **4xx**, never opened a turn. EXPECTED — a malformed
+   *  body is not a lost turn. Its own population, its own denominator. */
   pre_accept_rejections: number;
+  /**
+   * Arrived, responded **5xx**, never opened a turn. NOT expected, and not a
+   * pre-accept rejection: a 5xx means the turn was accepted and then something
+   * broke, so counting it beside malformed input would hide a recorder failure
+   * inside a healthy-looking bucket. Measured on staging 2026-09-23 —
+   * `/chat/not-a-uuid` produced exactly this shape.
+   */
+  server_error_no_start: number;
   /** Arrived, responded 2xx, and the ledger has NO start row. THE capture
    *  defect this whole table exists to make visible. */
   lost_starts: number;
@@ -231,7 +239,9 @@ export async function ingressReconciliation(opts: {
      SELECT
        COUNT(*)                                                             AS arrived,
        COUNT(*) FILTER (WHERE http_status IS NULL AND NOT started)          AS no_response_recorded,
-       COUNT(*) FILTER (WHERE http_status >= 400 AND NOT started)           AS pre_accept_rejections,
+       COUNT(*) FILTER (WHERE http_status >= 400 AND http_status < 500
+                          AND NOT started)                                   AS pre_accept_rejections,
+       COUNT(*) FILTER (WHERE http_status >= 500 AND NOT started)            AS server_error_no_start,
        COUNT(*) FILTER (WHERE http_status IS NOT NULL
                           AND http_status < 400 AND NOT started)            AS lost_starts,
        COUNT(*) FILTER (WHERE started)                                      AS accepted,
@@ -263,23 +273,28 @@ export async function ingressReconciliation(opts: {
   const acceptedClosed = n("accepted_closed");
   const lost = n("lost_starts");
   const rejected = n("pre_accept_rejections");
+  const serverErrNoStart = n("server_error_no_start");
   const noResponse = n("no_response_recorded");
   // The start-capture denominator is arrivals that SHOULD have opened a turn:
   // a 4xx never should have, and an arrival with no recorded response cannot be
   // judged either way. Folding either into the denominator would flatter the
   // number, which is the failure mode this whole module exists to prevent.
+  // A 5xx is NOT subtracted: the turn was accepted, so it should have opened,
+  // and excusing it would flatter exactly the number that must not be flattered.
   const startable = arrived - rejected - noResponse;
   return {
     window_ms: windowMs,
     arrived,
     no_response_recorded: noResponse,
     pre_accept_rejections: rejected,
+    server_error_no_start: serverErrNoStart,
     lost_starts: lost,
     accepted,
     accepted_closed: acceptedClosed,
     accepted_unfinished: n("accepted_unfinished"),
     close_rate: accepted > 0 ? acceptedClosed / accepted : null,
-    start_capture_rate: startable > 0 ? (startable - lost) / startable : null,
+    start_capture_rate:
+      startable > 0 ? (startable - lost - serverErrNoStart) / startable : null,
     starts_without_arrival: Number((mirror.rows[0] as Record<string, unknown>)?.n ?? 0),
   };
 }

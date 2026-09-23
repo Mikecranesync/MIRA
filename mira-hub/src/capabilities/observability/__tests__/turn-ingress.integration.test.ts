@@ -131,6 +131,43 @@ d("turn_ingress reconciles against the ledger on real Postgres", () => {
     expect(ledgerOnlyDenominator).toBeLessThan(3); // the 3 that should have opened
   });
 
+  it("a 5xx with no start is a RECORDER failure, not a pre-accept rejection", async () => {
+    const { ingressReconciliation } = await import("../turn-ingress");
+    const G = "99999999-0000-4000-8000-000000000007";
+    // Staging produced exactly this: POST /chat/not-a-uuid -> 500, arrival and
+    // response recorded, ledger=NONE, because openTurn's ::uuid cast threw. If
+    // 5xx sits in `pre_accept_rejections` the recorder's own failure hides
+    // inside the bucket that means "working as intended".
+    await arrival(G, "30 minutes");
+    await responded(G, 500, "30 minutes");
+    const r = await ingressReconciliation({ tenantId: TENANT });
+    expect(r.server_error_no_start).toBe(1);
+    expect(r.pre_accept_rejections).toBe(1); // still just C, the 400
+    // and it must DEPRESS the capture rate, not be excused from it
+    expect(r.start_capture_rate).toBeLessThan(1);
+    await client.query("DELETE FROM turn_ingress WHERE attempt_id = $1::uuid", [G]);
+  });
+
+  it("records a turn whose notebook id is not a UUID instead of dropping it", async () => {
+    const { openTurn } = await import("../turn-lifecycle");
+    const o = await openTurn({
+      tenantId: TENANT,
+      notebookId: "not-a-uuid",
+      platform: "hub_notebook_chat",
+    });
+    // The whole point: a malformed path segment must cost the notebook id, not
+    // the entire start record.
+    expect(o.durable).toBe(true);
+    const row = await client.query(
+      "SELECT notebook_id, lifecycle FROM decision_traces WHERE attempt_id = $1::uuid",
+      [o.attemptId],
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].notebook_id).toBeNull();
+    expect(row.rows[0].lifecycle).toBe("started");
+    await client.query("DELETE FROM decision_traces WHERE attempt_id = $1::uuid", [o.attemptId]);
+  });
+
   it("notices the OPPOSITE failure: a ledger start with no arrival behind it", async () => {
     const { ingressReconciliation } = await import("../turn-ingress");
     const F = "ffffffff-0000-4000-8000-000000000006";

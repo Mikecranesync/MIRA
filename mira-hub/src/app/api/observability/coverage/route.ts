@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
     "limit         : `arrived` counts requests that REACHED THE ROUTE; middleware",
     "                401s (unauthenticated) are rejected before it and are in no number here",
     reconciliation
-      ? `ingress ${windowMs / 60000}m: arrived=${reconciliation.arrived} accepted=${reconciliation.accepted} pre_accept_rejected=${reconciliation.pre_accept_rejections} LOST_STARTS=${reconciliation.lost_starts} no_response=${reconciliation.no_response_recorded}`
+      ? `ingress ${windowMs / 60000}m: arrived=${reconciliation.arrived} accepted=${reconciliation.accepted} pre_accept_4xx=${reconciliation.pre_accept_rejections} LOST_STARTS=${reconciliation.lost_starts} SERVER_ERR_NO_START=${reconciliation.server_error_no_start} no_response=${reconciliation.no_response_recorded}`
       : `ingress      : UNREADABLE (${errs.reconciliation ?? "no data"})`,
     reconciliation
       ? `capture rate : starts=${pct(reconciliation.start_capture_rate)} closes=${pct(reconciliation.close_rate)}`

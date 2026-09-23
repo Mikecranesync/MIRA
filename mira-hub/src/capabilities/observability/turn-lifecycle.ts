@@ -106,9 +106,18 @@ export function lifecycleFailureCounters() {
   };
 }
 
+/** A notebook id reaches this from the URL path and lands in a UUID column. A
+ *  non-UUID path segment made the INSERT throw, so the turn got NO START RECORD
+ *  — the recorder failing exactly where it is supposed to be watching. Found by
+ *  probing staging, not by reading this file: `/chat/not-a-uuid` returned 500
+ *  with `ledger=NONE`. The turn is still real and still worth recording, so the
+ *  malformed id is dropped rather than the whole row. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Write the start record. Never throws; a failed write returns durable:false. */
 export async function openTurn(init: OpenTurnInit): Promise<OpenTurn> {
   const attemptId = init.attemptId ?? randomUUID();
+  const notebookId = UUID_RE.test(init.notebookId) ? init.notebookId : null;
   try {
     await withTenantContext(init.tenantId, async (c) => {
       await c.query(
@@ -126,7 +135,7 @@ export async function openTurn(init: OpenTurnInit): Promise<OpenTurn> {
           attemptId,
           init.otelTraceId ?? null,
           init.clientRequestId ?? null,
-          init.notebookId,
+          notebookId,
           init.environment ?? null,
           init.gitSha ?? null,
         ],
