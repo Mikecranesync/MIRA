@@ -120,12 +120,29 @@ def look(base, cookie, notebook, path):
         f"{base}/api/equipment-notebooks/{notebook}/look/", cookie, body,
         {"Content-Type": f"multipart/form-data; boundary={b}", "X-Client-Request-Id": str(uuid.uuid4())},
     )
-    return st, hdr.get("x-mira-trace-id")
+    file_id = None
+    try:
+        file_id = json.loads(raw).get("fileId")
+    except Exception:
+        pass
+    return st, hdr.get("x-mira-trace-id"), file_id
 
 
-def chat(base, cookie, notebook, message):
-    body = json.dumps({"message": message, "mode": "general", "sourceDocIds": [],
-                       "clientRequestId": str(uuid.uuid4())}).encode()
+def chat(base, cookie, notebook, message, visual_file_id=None):
+    """Sends the SAME body the mobile client sends.
+
+    `visualEvidence.fileId` is not optional decoration — it is how a photo
+    reaches the question. `attachPhotoAndAsk` in NotebookScreen.tsx does
+    `lookAtPhoto(...)` then `sendQuestion(..., {visualEvidence:{fileId}})`, and a
+    harness that omits it exercises a path no shipping client takes. Omitting it
+    is what made the first acceptance run measure an evidence-free turn and
+    conclude, wrongly, that a captured photo never reaches the next question.
+    """
+    payload = {"message": message, "mode": "general", "sourceDocIds": [],
+               "clientRequestId": str(uuid.uuid4())}
+    if visual_file_id:
+        payload["visualEvidence"] = {"fileId": visual_file_id}
+    body = json.dumps(payload).encode()
     st, raw, hdr = _req(f"{base}/api/equipment-notebooks/{notebook}/chat/", cookie, body,
                         {"Content-Type": "application/json"})
     text = raw.decode(errors="replace")
@@ -169,12 +186,13 @@ def main() -> int:
     rows = []
     for sc in SCENARIOS:
         for rep in range(a.repeats):
+            vfid = None
             if sc["photo"]:
-                lst, ltrace = look(a.base, a.cookie, a.notebook, sc["photo"])
-                if lst != 200:
-                    print(f"{sc['id']} r{rep}: LOOK {lst} — skipping")
+                lst, ltrace, vfid = look(a.base, a.cookie, a.notebook, sc["photo"])
+                if lst != 200 or not vfid:
+                    print(f"{sc['id']} r{rep}: LOOK {lst} fileId={vfid} — skipping")
                     continue
-            st, answer, trace = chat(a.base, a.cookie, a.notebook, sc["turns"][0])
+            st, answer, trace = chat(a.base, a.cookie, a.notebook, sc["turns"][0], vfid)
             time.sleep(1.0)
             pkt = packet(a.base, a.cookie, a.notebook, trace) if trace else None
             jd = (pkt or {}).get("jev_decision")
@@ -183,6 +201,10 @@ def main() -> int:
                 "scenario": sc["id"], "issue": sc.get("issue"), "expect": sc["expect"], "why": sc["why"],
                 "rep": rep, "http": st, "trace": trace,
                 "answer": answer, "answer_chars": len(answer),
+                "visual_file_id": vfid,
+                "observation_in_context": ((pkt or {}).get("visual_evidence") or {}).get("observation_in_context"),
+                "retrieval_strategy": ((pkt or {}).get("retrieval") or {}).get("strategy"),
+                "chunk_count": ((pkt or {}).get("context") or {}).get("chunk_count"),
                 "gate_decision": gate.get("decision"),
                 "evidence_sufficient": gate.get("evidence_sufficient"),
                 "citations_shipped": gate.get("citations_shipped"),
