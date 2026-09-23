@@ -1,1 +1,1 @@
-PLACEHOLDER
+@file:///tmp/mira-3967/mira-hub/src/app/api/equipment-notebooks/[id]/look/route.ts
