@@ -93,6 +93,7 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -908,8 +909,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (extra) setSpanAttrs(extra, rootSpan);
     } finally {
       rootSpan.end();
+      if (!lifecycleSettled) closeLifecycle(lifecycleOutcome ?? "error");
     }
   };
+  // TURN LIFECYCLE (091). The start record is written HERE — the turn has been
+  // authenticated and validated, so it is an ACCEPTED turn; nothing downstream
+  // has run yet. Before this, the ledger only ever heard about a turn that
+  // survived to the end, so a timeout, a cancel, or a dead provider cascade
+  // produced no row at all and was indistinguishable from a turn that never
+  // happened. Fire-and-forget: `openTurn` never throws and never blocks the
+  // technician's answer; a failed start is counted, not raised.
+  const openedTurn = openTurn({
+    tenantId: ctx.tenantId,
+    notebookId,
+    platform: "hub_notebook_chat",
+    clientRequestId,
+    otelTraceId: rootTraceId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  });
+  let lifecycleOutcome: TurnOutcome | null = null;
+  let lifecycleClosed = false;
+  /**
+   * Close the start record. Idempotent. Called from `endRoot` so EVERY exit
+   * path closes — including the ones that return a bare 4xx long before any
+   * turn row exists. An exit that never classified itself closes as `error`,
+   * which is the honest reading of an unclassified early return and is far
+   * better than the row sitting `started` forever and counting as an orphan.
+   */
+  const closeLifecycle = (outcome: TurnOutcome): void => {
+    if (lifecycleClosed) return;
+    lifecycleClosed = true;
+    void openedTurn
+      .then((o) =>
+        // The happy path already closed this row inside persistTurnUsage (it
+        // UPDATEs on attempt_id). `closeTurn` then matches nothing and returns
+        // matched:false without touching it — which is why `answered` must not
+        // be double-counted: see `lifecycleSettled`.
+        closeTurn({ tenantId: ctx.tenantId, attemptId: o.attemptId, outcome }),
+      )
+      .catch(() => {
+        /* counted inside closeTurn; never fails a turn */
+      });
+  };
+  /** Set once the usage write has already closed the row. */
+  let lifecycleSettled = false;
+
   const rec: TurnRecorder = startTurnRecorder({
     kind: "chat",
     tenantId: ctx.tenantId,
@@ -977,6 +1022,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     try {
+      const opened = await openedTurn;
       await persistTurnUsage(
         {
           tenantId: ctx.tenantId,
@@ -985,6 +1031,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerText: opts.answerText,
           citationsPresent: opts.citationsPresent,
           latencyMs: opts.latencyMs,
+          // ONE ROW PER ACCEPTED TURN: this UPDATEs the start record rather
+          // than inserting beside it.
+          attemptId: opened.attemptId,
+          outcome: lifecycleOutcome ?? "answered",
         },
         usage,
         {
@@ -1003,6 +1053,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // last-resort guard so the Turn Flight Recorder can never fail a turn.
       console.error("[notebook-chat] flight-recorder persistTurnUsage failed:", err instanceof Error ? err.message : err);
     }
+    // The usage write owns the close from here; endRoot must not re-close.
+    lifecycleSettled = true;
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1349,6 +1401,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger && !electricalHazardDirective) {
+    lifecycleOutcome = "safety_stop";
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
     const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
@@ -1767,6 +1820,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? "I saw your photo, but I couldn't find anything about it in the selected sources."
       : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
@@ -2132,7 +2186,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // is created once and never awaited on its own, so it can't leak as an
   // unhandled rejection.
   const clientAbort = new AbortController();
-  const onClientGone = () => clientAbort.abort();
+  const onClientGone = () => {
+    // The technician closed the app / lost signal. Classify it before the
+    // abort unwinds, so the ledger says `cancelled` rather than the `error`
+    // an unclassified exit would default to.
+    lifecycleOutcome = "cancelled";
+    clientAbort.abort();
+  };
   req.signal?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
@@ -2662,6 +2722,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        // The LEDGER outcome, mapped from the gate decision. Distinct from
+        // `gateDecision` on purpose: the gate answers "what did we decide about
+        // the answer", the lifecycle answers "how did this accepted turn end" —
+        // and a blocked answer that still shipped a replacement is a `refused`
+        // turn, not an error.
+        lifecycleOutcome = outputRejected
+          ? outputRejected.kind === "unsafe_answer"
+            ? "safety_stop"
+            : "refused"
+          : gateDecision === "insufficient_evidence"
+            ? "abstained"
+            : gateDecision === "error"
+              ? "error"
+              : refused
+                ? "refused"
+                : "answered";
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,

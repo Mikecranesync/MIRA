@@ -300,3 +300,28 @@ describe("detectAnomalies — determinism and safety", () => {
     expect(codesOf(p)).toEqual(codesOf(p));
   });
 });
+
+describe("#3963 — the LOTO clause is not an ungrounded unit claim", () => {
+  // 25 of 40 turns in the 2026-09-22 sweep, and the photo benchmark's only
+  // unit-bearing number, were "0 V" inside the energy-isolation clause that
+  // MIRA_CORE REQUIRES in the same sentence as any instruction to touch wiring.
+  it("exempts an all-zero magnitude", () => {
+    for (const s of [
+      "With the drive isolated, locked out and the DC bus verified at 0 V, measure the coil.",
+      "Confirm the bus is at 0 V before touching the terminals.",
+      "With power isolated, locked out and the line voltage verified at 0 V, listen for the chatter.",
+    ]) {
+      expect(ungroundedUnitClaim(s)).toBe(false);
+    }
+  });
+
+  it("still flags a real rating claim, including one in the same answer as the clause", () => {
+    expect(ungroundedUnitClaim("The operating range is 50 °C.")).toBe(true);
+    expect(ungroundedUnitClaim("Its width is 2.5 in.")).toBe(true);
+    // The exemption is per-match, not per-answer: a LOTO clause must not
+    // launder a rating claim that appears beside it.
+    expect(
+      ungroundedUnitClaim("With the bus verified at 0 V, note the panel is rated 50 °C."),
+    ).toBe(true);
+  });
+});

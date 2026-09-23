@@ -25,6 +25,7 @@
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
+import type { TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import type { Anomaly } from "@/capabilities/observability/anomalies";
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 
@@ -41,6 +42,17 @@ export type PersistUsageScope = {
   /** Ledger platform tag. Defaults to the chat surface; `/look` writes
    *  `hub_notebook_look` so a vision turn is never mistaken for a chat spend row. */
   platform?: "hub_notebook_chat" | "hub_notebook_look";
+  /**
+   * The attempt id from `openTurn` (091 turn lifecycle). When present this
+   * write CLOSES the start record that was already written for this turn
+   * instead of inserting a second ledger row — one accepted turn, one row
+   * (materialized-evidence rule 15). Absent, the behaviour is the pre-091
+   * INSERT, byte for byte, which is what keeps every other caller unchanged.
+   */
+  attemptId?: string | null;
+  /** Lifecycle outcome recorded alongside the usage. Defaults to "answered"
+   *  when an attemptId is supplied, since a usage write means a served turn. */
+  outcome?: TurnOutcome | null;
 };
 
 /**
@@ -80,6 +92,50 @@ export async function persistTurnUsage(
 ): Promise<PersistUsageResult> {
   try {
     return await withTenantContext(scope.tenantId, async (c) => {
+      // CLOSE the start record when this turn opened one (091). A matched
+      // UPDATE is the whole write: the row already carries tenant/platform/ids
+      // from `openTurn`, and this fills in what only the finished turn knows.
+      // Zero rows matched means the start never landed (a capture defect the
+      // lifecycle counters already recorded) — fall through to the INSERT so
+      // the spend row is never lost on top of it.
+      if (scope.attemptId) {
+        const upd = await c.query(
+          `UPDATE decision_traces
+              SET user_question = $2, recommendation = $3, citations_present = $4,
+                  model_used = $5, latency_ms = $6, provider = $7, route_reason = $8,
+                  input_tokens = $9, cached_input_tokens = $10, output_tokens = $11,
+                  cost_usd_estimate = $12, status = $13,
+                  otel_trace_id = COALESCE($14, otel_trace_id),
+                  turn_id = COALESCE($15::uuid, turn_id),
+                  evidence_packet = COALESCE($16::jsonb, evidence_packet),
+                  anomalies = $17::jsonb,
+                  lifecycle = 'closed', outcome = $18, finished_at = now()
+            WHERE attempt_id = $1::uuid
+            RETURNING trace_id`,
+          [
+            scope.attemptId,
+            scope.question,
+            scope.answerText,
+            scope.citationsPresent,
+            usage.model,
+            scope.latencyMs ?? null,
+            usage.provider,
+            usage.routeReason,
+            usage.inputTokens,
+            usage.cachedInputTokens,
+            usage.outputTokens,
+            usage.costUsdEstimate,
+            usage.status,
+            record?.otelTraceId ?? null,
+            record?.turnRowId ?? null,
+            record ? JSON.stringify(record.packet) : null,
+            JSON.stringify(record?.anomalies ?? []),
+            scope.outcome ?? "answered",
+          ],
+        );
+        const updatedId = upd.rows[0]?.trace_id as string | undefined;
+        if (updatedId) return { persisted: true, traceId: updatedId } as const;
+      }
       const res = await c.query(
         `INSERT INTO decision_traces
            (tenant_id, platform, user_question, recommendation, citations_present,
