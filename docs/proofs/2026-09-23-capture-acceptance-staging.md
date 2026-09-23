@@ -278,6 +278,33 @@ Driven by real taps and text entry on the emulator, then reconciled:
 | S1 | **follow-up** | two turns typed into the composer in one thread | both captured, `started` + `closed` |
 | S2 | **cancel / process kill** | send, then `am force-stop` **3 s into the stream** | `closed/cancelled` — `d7171412` |
 | S3 | **reconnect** | relaunch the app | prior turn's outcome already durable |
+| S4 | **photo** | Add attachment → Photo → Android picker → send | `756aded2` **look** `closed/answered` + `3b91f71c` **chat** `closed/answered` |
+
+S4 is the real thing, not a simulated upload: the Android system photo picker,
+the app's own attachment flow, and MIRA answered *"The item is most likely a
+**tapered-roller bearing** (the label shows 'Tapered Roller Bea…' and a part
+number)"* — correct identification, on a device, captured on both routes.
+
+**Failed upload** is proven at the API layer instead (`text/plain` posted to
+`/look` → **415**, bucketed as a pre-accept rejection, no phantom lost start).
+The device file picker did not surface the pushed `.txt` under Documents, and the
+server-side behaviour — which is what capture is about — is identical either way.
+Said plainly rather than dressed up as a device result.
+
+### Accounting, 13 device attempts
+
+```
+unaccounted (2xx with no ledger): 0
+```
+
+Eight of the thirteen show `status=NONE ledger=NONE`, clustered at 02:01:29–37
+and 02:05:31–43 — both immediately after a force-stop/relaunch. They are arrivals
+whose response row never landed because the app was killed with requests in
+flight, and they sit in `no_response_recorded`. That is the honest bucket, but
+**eight of thirteen is a high rate and is not explained**, only classified. It is
+worth its own look: the likely cause is the app firing startup requests that are
+cancelled before the handler returns, which would mean the client is making calls
+it does not need.
 
 ```
 device attempts in the last 5 minutes: 7
