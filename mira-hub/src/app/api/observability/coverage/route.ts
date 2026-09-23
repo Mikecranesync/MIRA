@@ -33,6 +33,14 @@ import { miraContractEnabled } from "@/lib/mira-contract";
 
 export const dynamic = "force-dynamic";
 
+/** Behind nginx, `req.nextUrl.origin` is the internal bind address. */
+function publicOrigin(req: NextRequest): string | null {
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (!host) return req.nextUrl?.origin ?? null;
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  return `${proto}://${host}`;
+}
+
 function num(sp: URLSearchParams, key: string, dflt: number, max: number): number {
   const raw = Number.parseInt(sp.get(key) ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? Math.min(raw, max) : dflt;
@@ -51,7 +59,11 @@ export async function GET(req: NextRequest) {
     environment: environmentName(),
     git_sha: gitSha(),
     service_version: serviceVersion(),
-    origin: req.nextUrl?.origin ?? null,
+    // The PUBLIC origin, not the container's bind address. The first live
+    // window printed `https://0.0.0.0:3000`, which is worse than useless in a
+    // "which backend am I on" block — it is the one field a technician would
+    // read to answer exactly that question.
+    origin: publicOrigin(req),
     tenant_id: ctx.tenantId,
     recorder: {
       // The recorder writes the durable ledger row regardless of the exporter.

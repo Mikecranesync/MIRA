@@ -17,9 +17,16 @@
  * `closeTurn`. A row still `started` well past any plausible turn duration is
  * an ORPHAN, and orphans are the honest measure of capture loss.
  *
- * NO SECOND REGISTRY (materialized-evidence rule 15): this writes the same
- * `decision_traces` row `persistTurnUsage` writes, and the happy path CLOSES
- * the row it opened rather than inserting a second one.
+ * NO SECOND REGISTRY (materialized-evidence rule 15): this writes into the same
+ * `decision_traces` ledger `persistTurnUsage` writes.
+ *
+ * APPEND-ONLY. Migration 032 grants the app role SELECT + INSERT and no more —
+ * "the app role may read + insert, never mutate or delete" — because trace
+ * history must not be rewritable from the request path. So a lifecycle is TWO
+ * APPENDED ROWS sharing an `attempt_id`: one `started`, one `closed`. Closing
+ * appends the outcome; it never mutates the start. The first cut of this module
+ * closed by UPDATE and the live window measured `started=7, closed=0` — the
+ * grant was doing exactly its job.
  *
  * WHAT IT NEVER STORES: no credentials, no cookies, no prompt text, no answer
  * text, no model chain-of-thought. The start record is tenant + notebook + ids
@@ -101,7 +108,7 @@ export async function openTurn(init: OpenTurnInit): Promise<OpenTurn> {
          VALUES ($1, $2, '', '', false,
                  $3::uuid, 'started', now(),
                  $4, $5, $6::uuid, $7, $8, '[]'::jsonb)
-         ON CONFLICT (attempt_id) WHERE attempt_id IS NOT NULL DO NOTHING`,
+         ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING`,
         [
           init.tenantId, // TEXT — decision_traces.tenant_id is TEXT since 070
           init.platform,
@@ -148,30 +155,39 @@ export type CloseTurnInit = {
 export async function closeTurn(init: CloseTurnInit): Promise<{ closed: boolean; matched: boolean }> {
   try {
     return await withTenantContext(init.tenantId, async (c) => {
+      // APPEND the outcome. `SELECT ... FROM decision_traces` pulls the start
+      // row's identity forward so the outcome carries the same correlation keys
+      // without the caller having to re-supply them; if the start never landed
+      // (a capture defect the counters already recorded) the insert selects
+      // nothing and `matched` is false — a fact worth reporting, not a silent
+      // no-op. ON CONFLICT absorbs a double-close.
       const res = await c.query(
-        `UPDATE decision_traces
-            SET lifecycle       = 'closed',
-                outcome         = $2,
-                finished_at     = now(),
-                turn_id         = COALESCE($3::uuid, turn_id),
-                evidence_packet = COALESCE($4::jsonb, evidence_packet),
-                anomalies       = COALESCE($5::jsonb, anomalies),
-                latency_ms      = COALESCE($6, latency_ms),
-                user_question   = COALESCE($7, user_question),
-                recommendation  = COALESCE($8, recommendation),
-                citations_present = COALESCE($9, citations_present)
-          WHERE attempt_id = $1::uuid
-          RETURNING trace_id`,
+        `INSERT INTO decision_traces
+           (tenant_id, platform, user_question, recommendation, citations_present,
+            attempt_id, lifecycle, outcome, started_at, finished_at,
+            otel_trace_id, client_request_id, notebook_id, environment, git_sha,
+            turn_id, evidence_packet, anomalies, latency_ms)
+         SELECT tenant_id, platform, COALESCE($3, ''), COALESCE($4, ''), COALESCE($5, false),
+                attempt_id, 'closed', $2, started_at, now(),
+                otel_trace_id, client_request_id, notebook_id, environment, git_sha,
+                COALESCE($6::uuid, turn_id),
+                COALESCE($7::jsonb, evidence_packet),
+                COALESCE($8::jsonb, anomalies),
+                $9
+           FROM decision_traces
+          WHERE attempt_id = $1::uuid AND lifecycle = 'started'
+         ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING
+         RETURNING trace_id`,
         [
           init.attemptId,
           init.outcome,
+          init.question ?? null,
+          init.answerText ?? null,
+          init.citationsPresent ?? null,
           init.turnRowId ?? null,
           init.evidencePacket === undefined ? null : JSON.stringify(init.evidencePacket),
           init.anomalies === undefined ? null : JSON.stringify(init.anomalies),
           init.latencyMs ?? null,
-          init.question ?? null,
-          init.answerText ?? null,
-          init.citationsPresent ?? null,
         ],
       );
       const matched = (res.rowCount ?? 0) > 0;
@@ -216,18 +232,21 @@ export async function listUnfinishedTurns(opts: {
   const stale = opts.staleAfterMs ?? 5 * 60_000;
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
   const params: unknown[] = [stale / 1000, limit];
-  let where = `lifecycle = 'started' AND started_at < now() - ($1 || ' seconds')::interval`;
+  let where = `d.lifecycle = 'started'
+                 AND d.started_at < now() - ($1 || ' seconds')::interval
+                 AND NOT EXISTS (SELECT 1 FROM decision_traces c
+                                  WHERE c.attempt_id = d.attempt_id AND c.lifecycle = 'closed')`;
   if (opts.tenantId) {
     params.push(opts.tenantId);
-    where += ` AND tenant_id = $3`;
+    where += ` AND d.tenant_id = $3`;
   }
   const res = await pool.query(
-    `SELECT attempt_id, otel_trace_id, notebook_id, platform, started_at,
-            environment, git_sha,
-            EXTRACT(EPOCH FROM (now() - started_at)) * 1000 AS age_ms
-       FROM decision_traces
+    `SELECT d.attempt_id, d.otel_trace_id, d.notebook_id, d.platform, d.started_at,
+            d.environment, d.git_sha,
+            EXTRACT(EPOCH FROM (now() - d.started_at)) * 1000 AS age_ms
+       FROM decision_traces d
       WHERE ${where}
-      ORDER BY started_at ASC
+      ORDER BY d.started_at ASC
       LIMIT $2`,
     params,
   );
@@ -272,19 +291,23 @@ export async function lifecycleCoverage(opts: {
   if (opts.tenantId) {
     params.push(opts.tenantId);
     outcomeParams.push(opts.tenantId);
-    scope = " AND tenant_id = $3";
+    scope = " AND d.tenant_id = $3";
     outcomeScope = " AND tenant_id = $2";
   }
   const res = await pool.query(
     `SELECT
-       COUNT(*)                                                      AS started,
-       COUNT(*) FILTER (WHERE lifecycle = 'closed')                  AS closed,
-       COUNT(*) FILTER (WHERE lifecycle = 'started'
-                          AND started_at < now() - ($2 || ' seconds')::interval) AS orphaned,
-       COUNT(*) FILTER (WHERE evidence_packet IS NOT NULL)           AS with_packet
-     FROM decision_traces
-     WHERE started_at IS NOT NULL
-       AND started_at > now() - ($1 || ' seconds')::interval${scope}`,
+       COUNT(*) FILTER (WHERE d.lifecycle = 'started')                AS started,
+       COUNT(*) FILTER (WHERE d.lifecycle = 'closed')                 AS closed,
+       COUNT(*) FILTER (WHERE d.lifecycle = 'started'
+                          AND d.started_at < now() - ($2 || ' seconds')::interval
+                          AND NOT EXISTS (SELECT 1 FROM decision_traces c
+                                           WHERE c.attempt_id = d.attempt_id
+                                             AND c.lifecycle = 'closed'))  AS orphaned,
+       COUNT(*) FILTER (WHERE d.lifecycle = 'closed'
+                          AND d.evidence_packet IS NOT NULL)          AS with_packet
+     FROM decision_traces d
+     WHERE d.started_at IS NOT NULL
+       AND d.started_at > now() - ($1 || ' seconds')::interval${scope}`,
     params,
   );
   const outcomes = await pool.query(
