@@ -53,7 +53,7 @@ export type AnswerValidation =
 // Negations are excluded by lookbehind or by requiring the affirmative form
 // contiguously. Tested against both directions in answer-validation.test.ts.
 const HAZARD_ACTIONS =
-  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?)";
+  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?|clamp(?:ing|ed|s)?(?![-\\s]?meter))";
 const ENERGIZED_STATE = "(?:energized|live|hot|powered(?:\\s+on)?|running)";
 // Iteration-3: "when"/"whilst"/"during" work as energized connectors exactly
 // like "while"/"with" ("Reset the fault WHEN the machine is energized").
@@ -251,8 +251,27 @@ const HAZARD_ACTION_ANY_SRC =
 const HAZARD_ACTION_ANY = new RegExp("\\b" + HAZARD_ACTION_ANY_SRC + "\\b", "i");
 // `(?<![\w-])energized` keeps "de-energized"/"re-energized" out — a hyphen
 // before the state word means isolation prose, not an energized instruction.
+// #3973: a TRAILING hyphen is the mirror case. "an energized-work permit" and
+// "a live-work permit" are safety vocabulary — naming the control, not
+// instructing the hazard — and both sit next to `work`, a hazard action. The
+// `(?![-\w])` guards keep the compound nouns out while "while it is energized"
+// and "on the live conductors" still match. An unhyphenated "live work permit"
+// is a known residual.
+// #3973: the link set above is all TEMPORAL ("while/when/during it is live").
+// A contact preposition carries the same instruction spatially — "repeat the
+// clamp measurement ON THE LIVE CONDUCTORS" — and shipped to a technician on
+// 2026-09-23 because no relation matched it. There is no legitimate reading of
+// an instruction to act on a named live conductor, so this is unconditional,
+// not scoped to a hazard category. It joins ENERGIZED_RELATION_SRC rather than
+// standing alone so BOUND_PROHIBITION exempts the CORRECT sentence
+// ("never measure on live conductors") by the same grammar.
+const ENERGIZED_CONTACT_SRC =
+  "(?:on|onto|across|at)\\s+(?:the\\s+|a\\s+|each\\s+|all\\s+(?:the\\s+)?)?" +
+  "\\b(?:live|energi[sz]ed|hot|powered)\\b\\s+" +
+  "(?:conductor|bus(?:bar)?|terminal|part|circuit|wire|phase|cable|lead|connection|equipment)s?";
 const ENERGIZED_RELATION_SRC =
-  ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)";
+  "(?:" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized(?![-\\w])|\\blive\\b(?![-\\w])|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)" +
+  "|" + ENERGIZED_CONTACT_SRC + ")";
 const ENERGIZED_RELATION = new RegExp("\\b" + ENERGIZED_RELATION_SRC, "i");
 const NO_ISOLATION_RELATION = new RegExp("\\b" + NO_ISOLATION, "i");
 // 2026-09-14 coverage audit: the same coupling logic extends to other
@@ -300,7 +319,15 @@ const BOUND_PROHIBITION = new RegExp(
     "|\\b" + NEG_HEAD_SRC + "\\s+(?:" + ENERGIZED_RELATION_SRC + "|" + PRESSURIZED_RELATION_SRC + "|" + MOTION_PROXIMITY_SRC + "|" + NO_ISOLATION + ")" +
     "|\\b" + HAZARD_ACTION_ANY_SRC +
     "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|banned|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended|advisable)|never\\s+(?:safe|allowed|permitted|acceptable)|against\\s)" +
-    "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b",
+    "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b" +
+    // #3973 (5): CLASSIFYING the task is not instructing it. "this is energized
+    // work under NFPA 70E", "that counts as live work" name the control regime
+    // — the sentence a correct refusal uses. Without this the generic relation
+    // reads the copular complement as an energized instruction (the bare word
+    // `work` is a hazard action), and replaces a correct answer with a hard
+    // stop. Only the copular/classificatory form is exempted; an imperative
+    // ("do the work while energized") has no linking verb and still rejects.
+    "|\\b(?:is|are|becomes|remains|counts\\s+as|considered|qualifies\\s+as)\\s+(?:an?\\s+)?(?:energi[sz]ed|live)[-\\s]work\\b",
   "i",
 );
 
@@ -344,6 +371,75 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
   }
   return null;
 }
+
+/* ------------------------------------------------------------------------ *
+ * A4. Energized-electrical category: restoring power in order to measure    *
+ * ------------------------------------------------------------------------ */
+
+// #3973. The route already CLASSIFIES this turn (`matchSafetyStop` returns
+// ENERGIZED_ELECTRICAL_HAZARD on LETHAL_VOLTAGE_CONTEXT ∧ ENERGIZED_WORK_INTENT)
+// and, until this rule, did exactly two things with that knowledge: append an
+// advisory paragraph to the system prompt, and put a banner on the evidence
+// frame. Neither constrains the answer. On 2026-09-23 a Pixel received, twice,
+// a procedure that isolates correctly and THEN restores power to take the
+// reading. The deterministic floor returned ok; the semantic judge returned
+// `{"verdict":"safe","reason":"instructs isolation and verification before
+// measurement"}` — it weighed the opening and not the last step.
+//
+// Scope is deliberate. "Re-energize" is NOT hazardous on its own — "only after
+// the work is complete may the feeder be re-energized" is the correct sentence
+// and must survive. What is prohibited is restoring energy IN ORDER TO
+// measure, and only inside a turn the conjunction gate already identified as
+// lethal-voltage energized work. Outside that category this rule does not run;
+// the unconditional contact-preposition relation above still does.
+const RESTORE_ENERGY_SRC =
+  "(?:re[-\\s]?energi[sz]\\w*|restore\\s+(?:the\\s+)?power|" +
+  "power\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up)|" +
+  "(?:turn|switch|bring|put)\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up))";
+const RESTORE_ENERGY = new RegExp("\\b" + RESTORE_ENERGY_SRC, "i");
+// A narrower action set than HAZARD_ACTIONS on purpose: "work", "replace" and
+// "service" all appear in the legitimate restore-power sentence.
+const MEASURE_ACTION_SRC =
+  "(?:measur\\w+|clamp(?:ing|ed|s)?(?![-\\s]?meter)|probe|probing|reading|\\bread\\b|" +
+  "record\\s+(?:the\\s+|each\\s+)?(?:current|phase|amp\\w*|reading|voltage)|" +
+  "check\\s+(?:the\\s+|each\\s+)?(?:current|amp\\w*|voltage|phase)|" +
+  "take\\s+(?:the\\s+|a\\s+)?(?:reading|measurement))";
+const MEASURE_ACTION = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+
+/** Returns the offending sentence, or null. Sentence-scoped detection with the
+ *  same clause-scoped prohibition exemption the A2 rule uses, so
+ *  "never re-energize just to take a reading" is not itself a violation. */
+function restoreEnergyToMeasure(text: string): string | null {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!RESTORE_ENERGY.test(sentence) || !MEASURE_ACTION.test(sentence)) continue;
+    const bearing = sentence
+      .split(CLAUSE_BOUNDARY)
+      .filter((c) => RESTORE_ENERGY.test(c) || MEASURE_ACTION.test(c));
+    const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
+    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
+    if (!reassured && prohibited) continue;
+    return sentence;
+  }
+  return null;
+}
+
+/** The permitted response for this hazard category. Not a bare refusal: a
+ *  clamp-meter current reading has no de-energized form, so "de-energize
+ *  first" would be useless advice. It names why, hands the work to the people
+ *  NFPA 70E puts it with, and gives routes to the same number that do not put
+ *  the technician inside an arc-flash boundary. */
+export const ENERGIZED_PROCEDURE_WITHHELD = `I can't walk you through taking that reading.
+
+A clamp-meter current measurement only exists while the conductor is carrying load, so there is no de-energized version of it. On a 480 V feeder that makes this energized work under NFPA 70E: a qualified person, an energized-work permit, an arc-flash risk assessment and the PPE that assessment specifies. That is not something to work through from a chat answer.
+
+Ways to get the same number without opening the enclosure:
+- Read the current off equipment that already measures it — the VFD or soft-starter display, the MCC's metering, or an installed power monitor.
+- Have a qualified electrician take the reading, or fit permanent CTs / a power monitor so the value is available without live work.
+- If an IR window is fitted, a thermal scan often finds a loose or failing connection on a humming feeder before a current reading does.
+
+What you can safely gather right now: when the hum started, whether it tracks load, what was worked on recently, and anything visible or audible from outside the enclosure.
+
+Give me those, or the reading once someone qualified has it, and I'll help you work out what it means.`;
 
 /* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
@@ -519,6 +615,11 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
+  /** #3973: the route classified this turn as the energized-electrical hazard
+   *  category (`matchSafetyStop` → ENERGIZED_ELECTRICAL_HAZARD). Enables the
+   *  A4 restore-power-to-measure rule. Defaults to false, so every caller that
+   *  does not classify keeps its existing behaviour. */
+  energizedHazard?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -542,6 +643,26 @@ export function validateAnswer(opts: {
         violation: `unsafe-answer:${p.id}`,
         detail: m[0].slice(0, 160),
         replacement: SAFETY_STOP,
+      };
+    }
+  }
+
+  // A4 — energized-electrical category only (#3973): restoring power in order
+  // to take a reading. Runs BEFORE the generic clause rule because the same
+  // sentence usually satisfies both, and inside this category the category's
+  // own response is the useful one — "de-energize first" is not actionable
+  // advice for a measurement that only exists while the conductor is live.
+  // Only reachable when the caller classified the turn, so no pinned
+  // clause-hazard id changes for any existing caller.
+  if (opts.energizedHazard) {
+    const restore = restoreEnergyToMeasure(scanText);
+    if (restore) {
+      return {
+        ok: false,
+        kind: "unsafe_answer",
+        violation: "unsafe-answer:energized-procedure",
+        detail: restore.slice(0, 160),
+        replacement: ENERGIZED_PROCEDURE_WITHHELD,
       };
     }
   }
