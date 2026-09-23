@@ -329,3 +329,42 @@ export async function semanticSafetyCheck(opts: {
   }
   return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
 }
+
+/**
+ * SHADOW-contract orchestrator (testable negative control for #3957 / #3969).
+ * ALWAYS awaits semanticSafetyCheck after observational triage — including
+ * when triage.decision === "would_skip". Optional deps injectables exist only
+ * so unit tests can prove the call; production callers omit them.
+ */
+export async function runSemanticSafetyCheckWithShadowTriage(
+  opts: {
+    question: string;
+    answerText: string;
+    refused: boolean;
+    general: boolean;
+    evidence: readonly { content: string; title?: string | null }[];
+    selectedClass: string;
+  },
+  deps?: {
+    triage?: typeof triageSemanticSafetyCheck;
+    check?: typeof semanticSafetyCheck;
+  },
+): Promise<{ triage: HazardTriageResult; verdict: SemanticVerdict }> {
+  const triageFn = deps?.triage ?? triageSemanticSafetyCheck;
+  const checkFn = deps?.check ?? semanticSafetyCheck;
+  const triage = await triageFn({
+    question: opts.question,
+    answerText: opts.answerText,
+    refused: opts.refused,
+    general: opts.general,
+    evidence: opts.evidence,
+  });
+  // NEGATIVE CONTROL: would_skip does NOT suppress the real safety call.
+  const verdict = await checkFn({
+    question: opts.question,
+    answerText: opts.answerText,
+    general: opts.general,
+    selectedClass: opts.selectedClass,
+  });
+  return { triage, verdict };
+}

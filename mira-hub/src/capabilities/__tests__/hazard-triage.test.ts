@@ -19,6 +19,7 @@ import {
   triageSemanticSafetyCheck,
   semanticSafetyCheck,
   semanticCheckEnabled,
+  runSemanticSafetyCheckWithShadowTriage,
 } from "../answer-safety-check";
 
 describe("Hazard triage — SHADOW ONLY would-skip classification", () => {
@@ -201,3 +202,51 @@ describe("Hazard triage — SHADOW ONLY would-skip classification", () => {
     else process.env.NOTEBOOK_SEMANTIC_CHECK = prev;
   });
 });
+
+describe("NEGATIVE CONTROL — would_skip still runs semanticSafetyCheck", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("refused would_skip path STILL invokes semanticSafetyCheck", async () => {
+    const check = vi.fn(async () => ({
+      verdict: "safe" as const,
+      hazardClass: null,
+      reason: "mocked",
+    }));
+
+    const { triage, verdict } = await runSemanticSafetyCheckWithShadowTriage(
+      {
+        question: "reset E-12 while energized",
+        answerText: "I cannot help with that.",
+        refused: true,
+        general: false,
+        evidence: [],
+        selectedClass: "unclassified",
+      },
+      { check },
+    );
+
+    expect(triage.decision).toBe("would_skip");
+    expect(triage.reason).toBe("refused");
+    // NEGATIVE CONTROL: semantic check invoked despite would_skip.
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(verdict.verdict).toBe("safe");
+  });
+
+  it("old gating vocabulary skip/proceed is gone from triage decisions", async () => {
+    const refused = await triageSemanticSafetyCheck({
+      question: "x",
+      answerText: "y",
+      refused: true,
+      general: false,
+      evidence: [],
+    });
+    expect(refused.decision).toBe("would_skip");
+    // @ts-expect-error old gating token must not be a valid decision
+    expect(refused.decision === "skip").toBe(false);
+    // @ts-expect-error old gating token must not be a valid decision
+    expect(refused.decision === "proceed").toBe(false);
+  });
+});
+
