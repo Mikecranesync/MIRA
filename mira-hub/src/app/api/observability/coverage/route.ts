@@ -40,14 +40,21 @@ export const dynamic = "force-dynamic";
 function publicOrigin(req: NextRequest): string | null {
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   if (!host) return req.nextUrl?.origin ?? null;
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  // Both headers are client-supplied. This value is read by a human deciding
+  // "which backend am I on" and is pasted into issues via `copy_text`, so an
+  // attacker-chosen string here is a small but real way to make a diagnostic
+  // card lie. Accept only something shaped like a host, and say so when it is
+  // not, rather than echoing whatever arrived. (Gate 7 finding 3, PR #3964.)
+  if (!/^[A-Za-z0-9.-]{1,253}(:\d{1,5})?$/.test(host)) return "untrusted-host-header";
+  const rawProto = req.headers.get("x-forwarded-proto") ?? "https";
+  const proto = rawProto === "http" || rawProto === "https" ? rawProto : "https";
   return `${proto}://${host}`;
 }
 
 /** A rate we could not compute is "n/a", never 0% — a missing measurement and
  *  a total failure must not read the same on a diagnostics card. */
-function pct(v: number | null): string {
-  return v === null ? "n/a" : `${(v * 100).toFixed(1)}%`;
+function pct(v: number | null | undefined): string {
+  return typeof v === "number" && Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : "n/a";
 }
 
 function num(sp: URLSearchParams, key: string, dflt: number, max: number): number {
@@ -93,20 +100,36 @@ export async function GET(req: NextRequest) {
   // table, written before any of that machinery ran, so a lost start is a
   // NUMBER here instead of a silence there.
   let reconciliation: Awaited<ReturnType<typeof ingressReconciliation>> | null = null;
-  let readError: string | null = null;
-  try {
-    coverage = await lifecycleCoverage({ tenantId: ctx.tenantId, windowMs, staleAfterMs: staleMs });
-    unfinished = await listUnfinishedTurns({ tenantId: ctx.tenantId, staleAfterMs: staleMs, limit: 25 });
-    reconciliation = await ingressReconciliation({
-      tenantId: ctx.tenantId,
-      windowMs,
-      staleAfterMs: staleMs,
-    });
-  } catch (err) {
-    // A coverage read that fails is itself a coverage fact — report it rather
-    // than 500ing, so the caller can tell "no data" from "the query broke".
-    readError = err instanceof Error ? err.message : String(err);
-  }
+  // A read that fails is itself a coverage fact — reported rather than 500ing,
+  // so the caller can tell "no data" from "the query broke". SEPARATELY per
+  // read: these are three independent queries against two different tables, and
+  // a single shared catch marked the ingress block unreadable whenever the
+  // ledger block failed, hiding healthy data behind an unrelated fault. That is
+  // the same conflation this whole PR exists to remove. (Gate 7 finding 2.)
+  const errs: Record<string, string> = {};
+  const attempt = async <T,>(name: string, fn: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await fn();
+    } catch (err) {
+      errs[name] = err instanceof Error ? err.message : String(err);
+      return undefined;
+    }
+  };
+  coverage =
+    (await attempt("coverage", () =>
+      lifecycleCoverage({ tenantId: ctx.tenantId, windowMs, staleAfterMs: staleMs }),
+    )) ?? null;
+  unfinished =
+    (await attempt("unfinished", () =>
+      listUnfinishedTurns({ tenantId: ctx.tenantId, staleAfterMs: staleMs, limit: 25 }),
+    )) ?? [];
+  reconciliation =
+    (await attempt("reconciliation", () =>
+      ingressReconciliation({ tenantId: ctx.tenantId, windowMs, staleAfterMs: staleMs }),
+    )) ?? null;
+  const readError = Object.keys(errs).length
+    ? Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join(" | ")
+    : null;
 
   const copy_text = [
     "FactoryLM diagnostics",
@@ -118,12 +141,12 @@ export async function GET(req: NextRequest) {
     `recorder      : ledger=on exporter=${exporterConfigured ? "configured" : "OFF"} content_capture=${env.recorder.content_capture}`,
     coverage
       ? `capture ${windowMs / 60000}m : started=${coverage.started} closed=${coverage.closed} orphaned=${coverage.orphaned} with_packet=${coverage.with_packet}`
-      : `capture      : UNREADABLE (${readError})`,
+      : `capture      : UNREADABLE (${errs.coverage ?? "no data"})`,
     "limit         : `arrived` counts requests that REACHED THE ROUTE; middleware",
     "                401s (unauthenticated) are rejected before it and are in no number here",
     reconciliation
       ? `ingress ${windowMs / 60000}m: arrived=${reconciliation.arrived} accepted=${reconciliation.accepted} pre_accept_rejected=${reconciliation.pre_accept_rejections} LOST_STARTS=${reconciliation.lost_starts} no_response=${reconciliation.no_response_recorded}`
-      : `ingress      : UNREADABLE (${readError})`,
+      : `ingress      : UNREADABLE (${errs.reconciliation ?? "no data"})`,
     reconciliation
       ? `capture rate : starts=${pct(reconciliation.start_capture_rate)} closes=${pct(reconciliation.close_rate)}`
       : "capture rate : unknown",
@@ -145,6 +168,8 @@ export async function GET(req: NextRequest) {
     // the edge runtime where a durable write is impossible.
     reconciliation_denominator: "requests that reached the route handler; pre-route middleware rejections are excluded",
     coverage_read_error: readError,
+    // Which read failed, not merely that one did.
+    read_errors: errs,
     unfinished,
     failure_counters: { ...lifecycleFailureCounters(), ...ingressFailureCounters() },
     copy_text,
