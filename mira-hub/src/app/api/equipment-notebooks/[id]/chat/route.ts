@@ -2568,14 +2568,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
-      // #3973: the turn's own hazard classification reaches the validator. Until
-      // now `electricalHazardDirective` only appended an advisory paragraph to
-      // the system prompt and put a banner on the evidence frame — the detected
-      // hazard placed no constraint on what could be emitted, and a procedure
-      // that isolates first and then restores power to take the reading shipped
-      // to a Pixel twice on 2026-09-23. The floor runs BEFORE release, so the
-      // replacement reaches the technician instead of the procedure.
-      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient, energizedHazard: electricalHazardDirective });
+      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       if (!validation.ok) {
         console.error(

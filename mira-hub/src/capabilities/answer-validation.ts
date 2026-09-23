@@ -386,12 +386,10 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
 // `{"verdict":"safe","reason":"instructs isolation and verification before
 // measurement"}` — it weighed the opening and not the last step.
 //
-// Scope is deliberate. "Re-energize" is NOT hazardous on its own — "only after
+// "Re-energize" is NOT hazardous on its own — "only after
 // the work is complete may the feeder be re-energized" is the correct sentence
 // and must survive. What is prohibited is restoring energy IN ORDER TO
-// measure, and only inside a turn the conjunction gate already identified as
-// lethal-voltage energized work. Outside that category this rule does not run;
-// the unconditional contact-preposition relation above still does.
+// measure. That coupling is what the narrow MEASURE_ACTION set below encodes.
 const RESTORE_ENERGY_SRC =
   "(?:re[-\\s]?energi[sz]\\w*|restore\\s+(?:the\\s+)?power|" +
   "power\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up)|" +
@@ -430,7 +428,7 @@ function restoreEnergyToMeasure(text: string): string | null {
  *  the technician inside an arc-flash boundary. */
 export const ENERGIZED_PROCEDURE_WITHHELD = `I can't walk you through taking that reading.
 
-A clamp-meter current measurement only exists while the conductor is carrying load, so there is no de-energized version of it. On a 480 V feeder that makes this energized work under NFPA 70E: a qualified person, an energized-work permit, an arc-flash risk assessment and the PPE that assessment specifies. That is not something to work through from a chat answer.
+A clamp-meter current measurement only exists while the conductor is carrying load, so there is no de-energized version of it. Taking it means working on an energized conductor, which is energized work under NFPA 70E: a qualified person, an energized-work permit, an arc-flash risk assessment and the PPE that assessment specifies. That is not something to work through from a chat answer.
 
 Ways to get the same number without opening the enclosure:
 - Read the current off equipment that already measures it — the VFD or soft-starter display, the MCC's metering, or an installed power monitor.
@@ -615,11 +613,6 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
-  /** #3973: the route classified this turn as the energized-electrical hazard
-   *  category (`matchSafetyStop` → ENERGIZED_ELECTRICAL_HAZARD). Enables the
-   *  A4 restore-power-to-measure rule. Defaults to false, so every caller that
-   *  does not classify keeps its existing behaviour. */
-  energizedHazard?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -647,24 +640,35 @@ export function validateAnswer(opts: {
     }
   }
 
-  // A4 — energized-electrical category only (#3973): restoring power in order
-  // to take a reading. Runs BEFORE the generic clause rule because the same
-  // sentence usually satisfies both, and inside this category the category's
-  // own response is the useful one — "de-energize first" is not actionable
-  // advice for a measurement that only exists while the conductor is live.
-  // Only reachable when the caller classified the turn, so no pinned
-  // clause-hazard id changes for any existing caller.
-  if (opts.energizedHazard) {
-    const restore = restoreEnergyToMeasure(scanText);
-    if (restore) {
-      return {
-        ok: false,
-        kind: "unsafe_answer",
-        violation: "unsafe-answer:energized-procedure",
-        detail: restore.slice(0, 160),
-        replacement: ENERGIZED_PROCEDURE_WITHHELD,
-      };
-    }
+  // A4 (#3973): restoring power in order to take a reading. Runs BEFORE the
+  // generic clause rule because the same sentence usually satisfies both, and
+  // this rule's response is the useful one — "de-energize first" is not
+  // actionable advice for a measurement that only exists while the conductor
+  // is live.
+  //
+  // UNCONDITIONAL, after measuring the alternative. It was first written to
+  // fire only when the caller had classified the turn
+  // (`matchSafetyStop` → ENERGIZED_ELECTRICAL_HAZARD), on the theory that
+  // "re-energize" needs the category's blast radius to be safe. Both halves of
+  // that were checked and the gate lost: the classifier is a QUESTION test and
+  // returns null for "The MCC is humming weird. What should I check?", so a
+  // gated rule would miss a hazardous ANSWER to an innocuous question — the
+  // exact shape of #3973 one step earlier. And the feared false positives do
+  // not occur: "only after the work is complete may the feeder be
+  // re-energized", "after the repair, re-energize and confirm the drive comes
+  // up", "turn the disconnect back on and verify the contactor pulls in" all
+  // pass, because the narrow MEASURE_ACTION set below excludes work/replace/
+  // service/verify. Pinned as controls in
+  // answer-validation-energized-procedure.test.ts.
+  const restore = restoreEnergyToMeasure(scanText);
+  if (restore) {
+    return {
+      ok: false,
+      kind: "unsafe_answer",
+      violation: "unsafe-answer:energized-procedure",
+      detail: restore.slice(0, 160),
+      replacement: ENERGIZED_PROCEDURE_WITHHELD,
+    };
   }
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs

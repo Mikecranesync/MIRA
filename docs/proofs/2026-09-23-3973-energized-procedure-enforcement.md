@@ -52,10 +52,15 @@ consequence of that, not a separate cause.
   (`on|onto|across|at` + `live|energized|hot|powered` + `conductor|bus|terminal|phase|…`) is an
   energized relation. It joins `ENERGIZED_RELATION_SRC` rather than standing alone, so
   `BOUND_PROHIBITION` still exempts the correct sentence *"never measure on live conductors"*.
-- **Category-scoped** (`restoreEnergyToMeasure`, new rule A4, only when the route classified the
-  turn): restoring power in order to take a reading. Scoped because "re-energize" alone is not
-  hazardous — *"only after the work is complete may the feeder be re-energized"* is the correct
-  sentence and is a pinned control.
+- **Also unconditional** (`restoreEnergyToMeasure`, new rule A4): restoring power in order to take a
+  reading. This was first written to fire only when the route had classified the turn. **Both halves
+  of that theory were measured and the gate lost.** `matchSafetyStop` is a QUESTION test and returns
+  `null` for *"The MCC is humming weird. What should I check?"* — so a gated rule would miss a
+  hazardous ANSWER to an innocuous question, which is #3973 one step earlier. And the feared false
+  positives do not occur: *"only after the work is complete may the feeder be re-energized"*,
+  *"after the repair, re-energize and confirm the drive comes up"*, *"turn the disconnect back on and
+  verify the contactor pulls in"* all pass, because the narrow `MEASURE_ACTION` set excludes
+  work/replace/service/verify. All pinned as controls.
 - `clamp` is a **verb** (`clamp(?:ing|ed|s)?(?![-\s]?meter)`) so the instrument noun "clamp meter"
   is not an action.
 - Trailing-hyphen guards on `energized`/`live` and a classificatory exemption, so
@@ -66,7 +71,10 @@ consequence of that, not a separate cause.
   clamp-meter reading has no de-energized form, so "de-energize first" would be useless. It names
   why, hands the work to a qualified person under NFPA 70E, and gives three routes to the same
   number that stay outside the arc-flash boundary.
-- One line in the route passes `energizedHazard: electricalHazardDirective` to the validator.
+- **No route change.** An earlier draft passed `energizedHazard: electricalHazardDirective` into the
+  validator; un-gating removed the need, and the diff is now entirely inside the shared floor. Any
+  route that adopts `validateAnswer` inherits both rules with no classification of its own — which
+  matters, because four other answer routes have no floor at all (#3977).
 
 ## Why this is pre-emission, not a warning
 
@@ -91,9 +99,10 @@ and after a cold launch. Both are pinned by tests here.
 
 | Suite | Result |
 |---|---|
-| `answer-validation-energized-procedure` (14 rejections + controls) | red-first 9 failed → **15 passed** |
+| `answer-validation-energized-procedure` | red-first 9 failed → **22 passed** |
 | `energized-procedure-wire` (wire + persistence + terminal + safe control) | **6 passed** |
-| `answer-validation`, `answer-safety-check`, all `equipment-notebooks` routes | **541 passed / 32 files**, no regressions |
+| full `mira-hub` suite | **3285 passed / 284 files**, no regressions |
+| `tsc --noEmit` | 29 errors, across 6 unrelated test files; **none** in any file this branch touches (intersection of changed-files × error-files is empty) |
 
 Paraphrases, the uncategorised path, permit vocabulary, concept questions, reading interpretation
 and the legitimate restore-power sentence are all covered as named controls.
@@ -123,3 +132,13 @@ that field belongs to the observability lane: `turn-evidence-packet.ts` is curre
 The route tests prove the wire. **Proving it on the real website and the real Pixel requires the fix
 to be on staging**, which needs an explicit GO — see the request on the PR. Until then #3973 is
 fixed in code and unproven in the product.
+
+## Coverage of the other answer surfaces (#3977)
+
+Five routes call `matchSafetyStop`; only `equipment-notebooks` calls `validateAnswer`. The other four
+(`assets/[id]/chat`, `namespace/node/[id]/chat`, `quickstart/ask`, `hub/ask`) hard-stop when the
+QUESTION trips the conjunction gate — but that gate returns `null` for an innocuous question, and
+those routes then have nothing between the model's output and the technician. Filed as #3977 after
+correcting a first version of that issue which had the conclusion backwards. Because the rules here
+are unconditional and live in the shared floor, adopting them on those routes is adoption, not
+re-derivation.
