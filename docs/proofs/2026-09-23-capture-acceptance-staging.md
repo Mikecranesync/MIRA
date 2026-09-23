@@ -163,12 +163,73 @@ samples at 01:20 in the morning, which is how a detector becomes #3963.
 - `DOCUMENTS_IN_CONTEXT_UNCITED` is unaffected: it reads counts, not prose, and
   has no equivalent failure mode.
 
+## Exporter outage — PROVEN live
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` in `factorylm/stg` was pointed at `http://192.0.2.1:4318`
+— an RFC 5737 documentation address that routes nowhere, so the exporter fails the way a
+real backend outage fails rather than the way a disabled feature does — and staging was
+redeployed on `8919c69793e85cff2ee6a9f74951c8fe7c4cd210`.
+
+Two turns during the outage:
+
+| turn | http | latency | trace on header | answer |
+|---|---|---|---|---|
+| 1 | 200 | 5.27 s | `a394d9d5924de83981439361e521f1ec` | 1204 chars |
+| 2 | 200 | 4.75 s | `9cb84061b35bfddfadf87104178b4212` | 407 chars |
+
+Chat was **unaffected** — normal latency, real answers, trace ids still minted and
+returned on the header.
+
+The durable side, read straight from the database:
+
+```
+  78a5a98a  started  -           trace=a394d9d5924de839  packet=false
+  78a5a98a  closed   answered    trace=a394d9d5924de839  packet=true
+  6d911afb  started  -           trace=9cb84061b35bfddf  packet=false
+  6d911afb  closed   safety_stop trace=9cb84061b35bfddf  packet=true
+
+  78a5a98a  arrived    status=-    crid=-
+  78a5a98a  responded  status=200  crid=00322906
+  6d911afb  arrived    status=-    crid=-
+  6d911afb  responded  status=200  crid=fe627a49
+
+distinct attempts=2  starts=2  closes=2
+EXPORTER OUTAGE: durable records PRESERVED, exactly one lifecycle per turn, NO DUPLICATES
+```
+
+**Records preserved, packets persisted, exactly one lifecycle per turn, no duplicate
+turns.** The two failures are genuinely separate: the exporter was dead and the ledger
+did not notice. Turn 2 closing as `safety_stop` also shows a non-answered outcome being
+captured rather than only the happy path.
+
+It also confirms the client-key threading works live: the arrival row has no
+`client_request_id` (it predates the body parse, by construction) and the response row
+carries it.
+
+**Restored**: the endpoint was set back to the captured original and verified byte for
+byte, then redeployed.
+
+## Process crash — PROVEN live, as a side effect
+
+`abandoned` is written by nothing except `reconcileStaleTurns`. Staging, over the three
+hours spanning the two redeploys:
+
+```
+closed outcomes, last 3h: [{"answered":24},{"error":9},{"abandoned":7}]
+stale starts still open (>15m): 0
+```
+
+**Seven turns were open when their container was killed by a redeploy, and the
+reconciler closed every one of them.** No start record was left dangling. That is the
+process-death path the goal asks about — `endRoot` could not have run for those turns,
+because the process that would have called it no longer existed.
+
+The 24/9/7 split is also the point of the lifecycle in the first place: before this
+work, the 9 errors and the 7 abandoned turns wrote **no row at all** and were
+indistinguishable from turns that never happened.
+
 ## What is still not proven live
 
-- **Process crash** — needs a container kill mid-turn; the reconciler's behaviour is
-  proven against real Postgres, its behaviour against a real crash is not.
-- **Exporter outage** — `exporter-down.test.ts` proves an outage never blocks a turn;
-  a live outage with replay-without-duplicates has not been run.
 - **Provider timeout** — needs staging fault injection.
 - **Pixel 9a** — must be `com.factorylm.mira.staging`; the production flavour has no
   recorder.
