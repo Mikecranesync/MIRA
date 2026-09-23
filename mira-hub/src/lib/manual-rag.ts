@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { inferEquipmentType } from "@/lib/equipment-type";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
@@ -214,6 +215,15 @@ const MODEL_PATTERNS: RegExp[] = [
   /\bacs\s*(\d{3,4})\b/i, //              ACS355 → 355
   /\b(gs\d{1,2}[a-z]?)\b/i, //            GS10 → GS10
   /\b([auvj]1000)\b/i, //                 A1000/V1000/U1000/J1000
+  // #3966 — HMI / Comfort / Siemens catalog + SINAMICS V20 family tokens.
+  // Capture the discriminating token (TP700, 6AV…, COMFORT, V20) so identity-
+  // bound OEM retrieval can scope (or refuse) instead of manufacturer-only BM25.
+  /\b(tp\s*\d{3,4})\b/i, //              TP700 / TP 1200
+  /\b(ktp\s*\d{2,4})\b/i, //             KTP700
+  /\b(6av[0-9a-z.-]+)\b/i, //             6AV2124-0GC01-0AX0
+  /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
+  /\b(v20)\b/i, //                        V20 (drive family)
+  /\b(comfort)\b/i, //                    Comfort panel family
 ];
 
 /**
@@ -229,6 +239,15 @@ export function extractModelNumber(query: string): string | null {
   return null;
 }
 
+/**
+ * Model / family token from a LOOK / nameplate observation (#3966).
+ * Reuses extractModelNumber patterns so notebook.model and photo text share one
+ * detector. Null ⇒ no model/family evidence in the observation.
+ */
+export function modelFromObservationText(text: string): string | null {
+  return extractModelNumber(text);
+}
+
 // #2178 — ordered retrieval scopes, most-specific first. When a model is named we
 // try {model (+vendor)} FIRST so citations match the asked model; if that model
 // isn't in the corpus the pass returns nothing and we degrade to vendor-only then
@@ -239,11 +258,25 @@ function scopeCascade(
   mfr: string | null,
   model: string | null,
   allowTenantFallback: boolean,
+  /**
+   * #3966 — when the caller already resolved equipment identity (notebook.model
+   * or LOOK observation), do NOT silently expand to manufacturer-only /
+   * tenant-wide scopes for citation. Empty model-scoped results become an
+   * honest refuse-to-cite rather than a wrong-family Siemens VFD manual.
+   * Query-extracted models (#2178) keep the vendor fallback.
+   */
+  identityBound = false,
 ): Array<{ mfr: string | null; model: string | null }> {
   const scopes: Array<{ mfr: string | null; model: string | null }> = [];
   if (model) scopes.push({ mfr, model }); // model (+ vendor if known) — most specific
-  if (mfr) scopes.push({ mfr, model: null }); // vendor only
-  if (allowTenantFallback || (!mfr && !model)) scopes.push({ mfr: null, model: null }); // tenant-wide
+  if (!identityBound) {
+    if (mfr) scopes.push({ mfr, model: null }); // vendor only
+    if (allowTenantFallback || (!mfr && !model)) scopes.push({ mfr: null, model: null }); // tenant-wide
+  } else if (!model && mfr) {
+    // Identity bound by equipment type only (no model token) — allow vendor
+    // scope; retrieveManualChunks will filter wrong-family hits.
+    scopes.push({ mfr, model: null });
+  }
   if (scopes.length === 0) scopes.push({ mfr: null, model: null }); // never empty
   return scopes;
 }
@@ -336,21 +369,56 @@ export async function retrieveManualChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { manufacturer?: string | null; topK?: number; allowTenantFallback?: boolean } = {},
+  opts: {
+    manufacturer?: string | null;
+    /** Caller-resolved model/family (notebook.model or LOOK). Preferred over query extraction. */
+    model?: string | null;
+    /** Optional UNS equipment class for wrong-family filtering (#3966). */
+    equipmentType?: string | null;
+    topK?: number;
+    allowTenantFallback?: boolean;
+  } = {},
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
-  const model = extractModelNumber(q); // #2178 — null for most queries
+  const callerModel = (opts.model ?? "").trim() || null;
+  // Prefer identity-bound model from notebook/LOOK over query extraction (#3966).
+  const model = callerModel || extractModelNumber(q); // #2178 — null for most queries
+  const identityBound = callerModel !== null;
 
   // Walk the scopes most-specific-first, stopping at the first non-empty result.
   // For a model-free query this is identical to the old vendor→tenant behavior.
-  const scopes = scopeCascade(mfr || null, model, allowTenantFallback);
+  // Identity-bound calls skip vendor/tenant expansion when a model token is set.
+  const scopes = scopeCascade(mfr || null, model, allowTenantFallback, identityBound);
+
+  const assetType =
+    (opts.equipmentType ?? "").trim() ||
+    (model ? inferEquipmentType({ modelNumber: model, title: model }) : "") ||
+    null;
+
+  const rejectWrongFamily = (hits: ManualChunk[]): ManualChunk[] => {
+    if (!assetType || assetType === "Other") return hits;
+    return hits.filter((c) => {
+      const hitType = inferEquipmentType({
+        modelNumber: c.modelNumber,
+        title: c.title,
+        sourceUrl: c.sourceUrl,
+        manufacturer: c.manufacturer,
+      });
+      // Unclassified hits stay (don't over-refuse); classified disagreements go.
+      if (hitType === "Other") return true;
+      return hitType === assetType;
+    });
+  };
+
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
-      const hits = await runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+      const hits = rejectWrongFamily(
+        await runBm25Query(client, tenantId, text, topK, s.mfr, s.model),
+      );
       if (hits.length > 0) return hits;
     }
     return [];

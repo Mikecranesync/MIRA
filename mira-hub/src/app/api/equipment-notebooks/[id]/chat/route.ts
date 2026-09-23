@@ -98,10 +98,12 @@ import {
   buildManualUserContent,
   corpusManufacturers,
   manufacturerFromObservationText,
+  modelFromObservationText,
   retrieveManualChunks,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
   buildRetrievalQuery,
@@ -1603,18 +1605,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
+  // Shared LOOK / prior-LOOK text for OEM identity (manufacturer + model).
+  // Server-derived only — never the client's free-text history (#3966).
+  const photoTextForOem = notebookRetrieval
+    ? ""
+    : [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text)].join("\n").trim();
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
-    const photoText = [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text)].join("\n").trim();
-    if (!photoText) return null;
+    if (!photoTextForOem) return null;
     // Fail-open end to end: a corpus hiccup (or a test double without a raw
     // pool) means "no OEM retrieval this turn", never a failed turn.
     let client: PoolClient | null = null;
     try {
       client = await pool.connect();
       const known = await corpusManufacturers(client);
-      const fromPhoto = manufacturerFromObservationText(photoText, known);
+      const fromPhoto = manufacturerFromObservationText(photoTextForOem, known);
       return fromPhoto ? { name: fromPhoto, source: "photo" } : null;
     } catch (err) {
       console.error("[notebook-chat] corpus manufacturer lookup failed (no OEM retrieval this turn):", err instanceof Error ? err.message : err);
@@ -1627,6 +1633,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
   })();
+  // #3966 — resolve model/family alongside manufacturer. Prefer notebook.model;
+  // else parse LOOK observation. Identity-bound retrieval must not fall through
+  // to manufacturer-only BM25 (HMI photo → SINAMICS V20).
+  const oemModel: { value: string; source: "notebook" | "photo" } | null = (() => {
+    if (notebookRetrieval) return null;
+    if (nb?.model?.trim()) return { value: nb.model.trim(), source: "notebook" };
+    if (!photoTextForOem) return null;
+    const fromPhoto = modelFromObservationText(photoTextForOem);
+    return fromPhoto ? { value: fromPhoto, source: "photo" } : null;
+  })();
+  const oemEquipmentType = oemModel
+    ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
+    : null;
   const oemRetrieval = !notebookRetrieval && oemManufacturer !== null;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   const chunks: ManualChunk[] = oemRetrieval
@@ -1640,6 +1659,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           client = await pool.connect();
           return await retrieveManualChunks(client, ctx.tenantId, retrievalQuery, {
             manufacturer: oemManufacturer!.name,
+            model: oemModel?.value ?? null,
+            equipmentType:
+              oemEquipmentType && oemEquipmentType !== "Other" ? oemEquipmentType : null,
             topK: 6,
             allowTenantFallback: false,
           });
@@ -1705,6 +1727,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       returned_doc_ids: returnedDocIds,
       oem_corpus_searched: oemRetrieval,
       oem_manufacturer_source: oemManufacturer?.source ?? null,
+      oem_model: oemModel?.value ?? null,
+      oem_model_source: oemModel?.source ?? null,
       zero_result_reason: zeroResultReason,
       // Server-recalled earlier-photo observations for this thread (never the
       // client history, which is text-only by construction).
@@ -1718,6 +1742,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         "mira.retrieval.returned_doc_ids": returnedDocIds,
         "mira.retrieval.oem_corpus_searched": oemRetrieval,
         "mira.retrieval.oem_manufacturer_source": oemManufacturer?.source ?? null,
+        "mira.retrieval.oem_model": oemModel?.value ?? null,
+        "mira.retrieval.oem_model_source": oemModel?.source ?? null,
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
         "mira.visual.prior_file_ids": priorLookFileIds,

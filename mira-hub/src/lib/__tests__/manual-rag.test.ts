@@ -8,6 +8,7 @@ import {
   chunksToSources,
   extractFaultCodes,
   extractModelNumber,
+  modelFromObservationText,
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
@@ -187,6 +188,129 @@ describe("retrieveManualChunks model scoping (#2178)", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).not.toContain("model_number ILIKE");
     expect(calls[0].params).toEqual(["tenant-1", "what is the torque", "%Allen-Bradley%", 4]);
+  });
+});
+
+describe("extractModelNumber / modelFromObservationText (#3966 HMI+V20)", () => {
+  it("recognizes TP###, 6AV catalog, Comfort, and SINAMICS V20 family tokens", () => {
+    expect(extractModelNumber("Siemens TP700 Comfort panel")).toBe("TP700");
+    expect(extractModelNumber("nameplate TP 1200 Comfort")).toBe("TP1200");
+    expect(extractModelNumber("6AV2124-0GC01-0AX0")).toMatch(/^6AV2124/);
+    expect(extractModelNumber("SINAMICS V20 operating instructions")).toMatch(/V20|SINAMICSV20/);
+    expect(extractModelNumber("a Comfort HMI on the line")).toBe("COMFORT");
+  });
+
+  it("modelFromObservationText mirrors extractModelNumber for LOOK text", () => {
+    const look =
+      "SIEMENS TP700 Comfort 1P 6AV2124-0GC01-0AX0 24VDC — no drive language";
+    expect(modelFromObservationText(look)).toBe("TP700");
+  });
+});
+
+describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
+  const v20 = () =>
+    row({
+      manufacturer: "Siemens",
+      model_number: "SINAMICS V20",
+      title: "SINAMICS V20 Operating Instructions",
+      source_url: "https://oem.example/v20_operating_instructions_complete_en-US.pdf",
+      content: "Isolate the drive and verify DC bus is at 0 V. Read parameter r0949.",
+    });
+  const tp700 = () =>
+    row({
+      manufacturer: "Siemens",
+      model_number: "TP700 Comfort",
+      title: "TP700 Comfort Operating Instructions",
+      source_url: "https://oem.example/tp700_comfort.pdf",
+      content: "Rated 24 VDC, 0.85 A max. Check the 24 V supply if the panel reboots.",
+    });
+
+  it("NEGATIVE CONTROL: identity-bound TP700 does not fall through to Siemens V20 when model scope is empty", async () => {
+    // Model-scoped AND+OR empty. Pre-fix, vendor fallthrough would return V20.
+    // Post-fix, identityBound skips vendor scope → honest empty / refuse-to-cite.
+    const { client, calls } = makeClient([[], [], [v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toEqual([]);
+    // Only the model-scoped pass ran (AND + OR). No manufacturer-only query.
+    expect(calls.length).toBe(2);
+    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
+    expect(calls.every((c) => c.params.includes("%TP700%"))).toBe(true);
+  });
+
+  it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
+    const { client } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("returns same-family HMI docs when model scope hits", async () => {
+    const { client, calls } = makeClient([[tp700()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toMatch(/TP700/i);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("COMPAT: manufacturer-only (no identity model) still allows vendor path", async () => {
+    const { client, calls } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toMatch(/V20/i);
+    // No model clause on the vendor-only pass
+    expect(calls[0].sql).not.toContain("model_number ILIKE");
+  });
+
+  it("query-extracted model (#2178) still falls back to vendor when model scope is empty", async () => {
+    const { client, calls } = makeClient([[], [], [v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "SINAMICS V20 fault F1",
+      {
+        manufacturer: "Siemens",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(calls.some((c) => !c.sql.includes("model_number ILIKE"))).toBe(true);
   });
 });
 

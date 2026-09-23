@@ -59,6 +59,11 @@ const ragMock = vi.hoisted(() => ({
   manufacturerFromObservationText: vi.fn((text: string, names: readonly string[]) =>
     names.find((n) => text.toLowerCase().includes(n.toLowerCase())) ?? null,
   ),
+  // #3966 — identity model from LOOK text (mirror of extractModelNumber patterns).
+  modelFromObservationText: vi.fn((text: string) => {
+    const m = text.match(/\b(TP\s*\d{3,4}|KTP\s*\d{2,4}|6AV[\w.-]+|COMFORT|SINAMICS\s*V\s*20|V20)\b/i);
+    return m ? m[1].replace(/\s+/g, "").toUpperCase() : null;
+  }),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
@@ -386,9 +391,12 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(text).toContain("[1]");
     const [, , opts] = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, unknown, string, { manufacturer: string; allowTenantFallback: boolean }];
     void opts;
-    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; allowTenantFallback: boolean }];
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; model?: string | null; allowTenantFallback: boolean }];
     expect(call[3].manufacturer).toBe("Siemens");
+    expect(call[3].model).toBe("TP700 Comfort");
     expect(call[3].allowTenantFallback).toBe(false);
+    expect(p.retrieval.oem_model).toBe("TP700 Comfort");
+    expect(p.retrieval.oem_model_source).toBe("notebook");
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
   });
 
@@ -404,6 +412,38 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
     expect(p.retrieval.oem_manufacturer_source).toBe("photo");
     expect(p.visual_evidence.observation_in_context).toBe(true);
+  });
+
+
+  it("2c. #3966 NEGATIVE CONTROL: TP700 identity passes model so retrieval cannot manufacturer-fall-through to V20", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    // Empty retrieval is the honest refuse-to-cite outcome when no TP700 manual
+    // is in corpus — the invariant under test is that opts carry model/type.
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => providerStream("I don't have a matching manual for this TP700.")),
+    );
+    await (
+      await POST(
+        chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }),
+        params,
+      )
+    ).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.oem_corpus_searched).toBe(true);
+    expect(p.retrieval.oem_model).toBe("TP700 Comfort");
+    expect(p.retrieval.oem_model_source).toBe("notebook");
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      string,
+      { manufacturer: string; model?: string | null; equipmentType?: string | null },
+    ];
+    expect(call[3].manufacturer).toBe("Siemens");
+    expect(call[3].model).toBe("TP700 Comfort");
+    expect(call[3].equipmentType).toBe("HMIs");
   });
 
   it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {

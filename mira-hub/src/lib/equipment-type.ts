@@ -39,7 +39,7 @@ const MODEL_HINTS: Hint[] = [
   // HMIs / panels
   { test: /\bpanelview\b|\bcompactview\b/i, type: "HMIs" },
   { test: /\btia[ -]?portal\b/i, type: "Software" },
-  { test: /\bktp\d{2,4}\b|\btp\d{3,4}\b|\bcomfort\s*panel\b/i, type: "HMIs" },
+  { test: /\bktp\d{2,4}\b|\btp\d{3,4}\b|\bcomfort(\s*panel)?\b/i, type: "HMIs" },
   { test: /\bgot\d{4}\b|\bnb\d[a-z]?\b|\bns\d[a-z]?\b/i, type: "HMIs" }, // Mitsu/Omron
 
   // Servos / motion
