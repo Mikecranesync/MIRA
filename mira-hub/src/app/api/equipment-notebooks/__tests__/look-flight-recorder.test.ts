@@ -23,6 +23,9 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
   updateNotebook: vi.fn(),
   markNameplateDocVerified: vi.fn(),
+  recordTurn: vi.fn(async () => "ffffffff-ffff-4fff-8fff-ffffffffffff"),
+  normalizeNotebookThreadId: (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null,
 }));
 vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
@@ -43,7 +46,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => {
 vi.mock("@/lib/nameplate", () => ({
   isRecognizerConfigured: vi.fn(),
   fixtureSelected: vi.fn(),
-}));
+});
 vi.mock("@/lib/nameplate/detect", () => ({ resolveRecognitionImage: vi.fn() }));
 vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/nameplate/passes")>();
