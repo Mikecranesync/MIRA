@@ -38,6 +38,17 @@
  * called consistent. A passing mention buys immunity from a check about what the
  * answer is ABOUT.
  *
+ * The lead-subject variant added alongside it scores 0.00 too, on a second,
+ * independent sample (#3966): it identified the answer's lead correctly as
+ * "drive" and still returned `consistent`, because the EVIDENCE side had no
+ * recognised class — an HMI panel is not in the vocabulary. Combined over both
+ * samples: 0 of 11 live divergences caught by either rule; a Jev shadow judge
+ * caught 11 of 11 with 0 of 3 false positives.
+ *
+ * So the binding constraint is the CLOSED VOCABULARY, not the comparison rule.
+ * Adding "hmi" fixes one photo and fails on the next unlisted class. Do not
+ * treat this as a tuning task.
+ *
  * It is retained because it is free, has no false positives, and its signals
  * (`subject_identifiers_in_answer`, the class sets) are recorded either way —
  * but do NOT read a `consistent` verdict as evidence the answer followed the
@@ -66,6 +77,17 @@ export type EvidenceFollowedVerdict =
    *  Named `unverified` because it is a signal to inspect, never a finding. */
   | "unverified_mismatch";
 
+/**
+ * How many characters of the answer count as its LEAD.
+ *
+ * The lead is where an answer states what it thinks the problem is; everything
+ * after is usually a checklist that name-drops many components. Measured on
+ * staging, five divergent answers each mentioned the photographed part exactly
+ * once, in that checklist, while leading with something else entirely — which is
+ * how the whole-answer rule below scored 0.00 recall.
+ */
+const LEAD_CHARS = 220;
+
 export type EvidenceFollowedAssessment = {
   version: typeof EVIDENCE_CONSISTENCY_VERSION;
   verdict: EvidenceFollowedVerdict;
@@ -77,6 +99,19 @@ export type EvidenceFollowedAssessment = {
   evidence_classes: string[];
   /** Equipment classes the ANSWER names. */
   answer_classes: string[];
+  /**
+   * SECOND OPINION, recorded beside the first and deliberately not replacing it.
+   *
+   * `verdict` above asks "are the class sets disjoint", which a single passing
+   * mention defeats. This asks a narrower question — "what does the answer LEAD
+   * with, and is that something the evidence named?" — because an answer's
+   * subject is its opening claim, not its vocabulary.
+   *
+   * Both are kept so they can be compared on live traffic before either is
+   * trusted. Neither gates anything.
+   */
+  lead_classes: string[];
+  lead_verdict: EvidenceFollowedVerdict;
 };
 
 /**
@@ -147,6 +182,8 @@ export function assessEvidenceFollowed(
     subject_identifiers_in_answer: 0,
     evidence_classes: [] as string[],
     answer_classes: [] as string[],
+    lead_classes: [] as string[],
+    lead_verdict: "not_applicable" as EvidenceFollowedVerdict,
   };
   if (!obs || !ans) return { ...base, verdict: "not_applicable" };
 
@@ -156,12 +193,25 @@ export function assessEvidenceFollowed(
   const evidenceClasses = equipmentClassesOf(obs);
   const answerClasses = equipmentClassesOf(ans);
 
+  // The lead verdict, computed independently of the overlap rule below.
+  const leadClasses = equipmentClassesOf(ans.slice(0, LEAD_CHARS));
+  const leadVerdict: EvidenceFollowedVerdict =
+    matched.length > 0
+      ? "consistent"
+      : evidenceClasses.length === 0 || leadClasses.length === 0
+        ? "consistent"
+        : leadClasses.some((c) => evidenceClasses.includes(c))
+          ? "consistent"
+          : "unverified_mismatch";
+
   const signals = {
     ...base,
     subject_identifiers: ids.length,
     subject_identifiers_in_answer: matched.length,
     evidence_classes: evidenceClasses,
     answer_classes: answerClasses,
+    lead_classes: leadClasses,
+    lead_verdict: leadVerdict,
   };
 
   // Side 1: the answer referenced the subject by identifier. Consistent,

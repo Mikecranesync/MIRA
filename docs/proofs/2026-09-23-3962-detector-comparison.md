@@ -77,3 +77,55 @@ second, post-generation call. The good news is where it lands: the answer has
 already streamed to the technician by then, so the call would add latency to the
 persist path, not to anything a human waits on. Smallest integration point, reusing
 the existing module: one more question, one more call, after generation, shadow-only.
+
+
+---
+
+# Second sample: a different photo, a worse failure (2026-09-23)
+
+The first sample was one photo and one symptom. This is an independent one —
+Siemens **TP700 Comfort HMI panel** nameplate, *"it keeps rebooting, what do I
+check first"*, six runs (three with conversation history, three without).
+
+## Result
+
+| detector | recall on divergence |
+|---|---|
+| `ANSWER_IGNORED_VISUAL_EVIDENCE` (class-set overlap) | **0 / 6** |
+| lead-subject variant (added today) | **0 / 6** |
+| Jev, threshold 0.12 | **6 / 6** (`noul` 0.04–0.07) |
+
+Combined over both samples: **Jev 11/11 divergences, 0/3 false positives.
+Both deterministic rules 0/11.**
+
+## The lead-subject fix does not work either, and the reason matters
+
+It was the obvious redesign and it is worth recording that it failed:
+
+```
+evidence_classes = []            ← no HMI/panel class exists in the vocabulary
+lead_classes     = ["drive"]     ← the lead was identified CORRECTLY
+verdict          = consistent    ← short-circuits when the evidence side is empty
+```
+
+The rule read the answer's lead perfectly. It still said `consistent`, because the
+**evidence** side had no recognised class — the closed vocabulary covers bearing,
+drive, motor, contactor, encoder, valve, pump, gearbox, belt, sensor, breaker and
+cylinder, and an HMI panel is none of them.
+
+Adding `hmi` fixes this photo and fails on the next unlisted class. **The binding
+constraint is the closed vocabulary, not the comparison rule** — which is a
+structural argument against the approach rather than a tuning note, and it is why
+neither rule is marked "improve later".
+
+## The failure itself is more severe than #3962
+
+All six answers instruct the technician to isolate a **drive**, verify a **DC bus
+at 0 V**, and read drive parameter **r0949** — on a touch panel that has none of
+those — **with citation markers**. Conversation history does not mitigate it
+(6/6 either way), unlike the bearing case where history fixed it 3/3.
+
+Root cause is in retrieval, not the prompt: `manufacturer_src: photo` with
+`strategy: oem_corpus_bm25` — the OEM corpus was scoped on **manufacturer alone**,
+so "SIEMENS" returned SINAMICS drive manuals for an HMI question. Filed as
+**#3966**.
