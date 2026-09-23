@@ -57,10 +57,20 @@ export type JevCandidate = {
  */
 export function jevCandidates(
   rec: JevDecisionRecord | null | undefined,
-  thresholds: Partial<typeof PROVISIONAL_THRESHOLDS> = {},
+  opts: {
+    thresholds?: Partial<Record<keyof typeof PROVISIONAL_THRESHOLDS, number>>;
+    /**
+     * Was anything actually retrieved for this turn? REQUIRED for the
+     * evidence-relative rules, and the reason is a measured one — see the
+     * EVIDENCE PRECONDITION note below. Defaults to `true` only so existing
+     * callers keep compiling; a caller that knows should always pass it.
+     */
+    evidencePresent?: boolean;
+  } = {},
 ): JevCandidate[] {
   if (!rec || rec.skipped_reason) return [];
-  const t = { ...PROVISIONAL_THRESHOLDS, ...thresholds };
+  const t = { ...PROVISIONAL_THRESHOLDS, ...(opts.thresholds ?? {}) };
+  const evidencePresent = opts.evidencePresent ?? true;
   const s = rec.signals;
   const out: JevCandidate[] = [];
   const over = (code: string, key: keyof typeof s, limit: number) => {
@@ -82,7 +92,23 @@ export function jevCandidates(
   // #3963 — a specific setting with nothing behind it.
   over("JEV_UNSUPPORTED_NUMERIC", "unsupported_numerics", t.unsupported_numerics);
   over("JEV_OVER_SPECIFIC", "over_specificity", t.over_specificity);
-  under("JEV_NOT_FOLLOWING_EVIDENCE", "follows_evidence", t.follows_evidence_floor);
+  // EVIDENCE PRECONDITION — measured on live staging traffic, 2026-09-23.
+  // `follows_evidence` asks "do the claims follow from the retrieved evidence".
+  // When NOTHING was retrieved that question is vacuous, and the judge answers
+  // it low because it is honestly unsupported — not because the answer is bad.
+  // On the first live run this rule fired on SIX OF SEVEN turns, all of them
+  // `citations_shipped: 0`, including three turns whose answers were correct
+  // and appropriately hedged. An 86% false-positive rate, from a rule that
+  // looked clean on ten constructed states where evidence was always present
+  // or the turn was an explicit refusal.
+  //
+  // So the evidence-relative questions are gated on evidence actually existing.
+  // A turn with no evidence is not thereby a good turn — it is a turn this
+  // particular question cannot speak to, and the honest handling is silence
+  // rather than a confident flag.
+  if (evidencePresent) {
+    under("JEV_NOT_FOLLOWING_EVIDENCE", "follows_evidence", t.follows_evidence_floor);
+  }
   // DELIBERATELY NOT A RULE: `answered_the_request`.
   // Measured 0.70 accuracy — the worst of the eleven — and the reason is
   // structural, not statistical: a CORRECT REFUSAL does not answer the request.
@@ -129,6 +155,7 @@ export function buildReplayFixture(input: {
   jev: JevDecisionRecord;
   traceId?: string | null;
   capturedSha?: string | null;
+  evidencePresent?: boolean;
   now?: () => Date;
 }): ReplayFixture {
   if (!input.confirmedBy.trim()) {
@@ -147,7 +174,7 @@ export function buildReplayFixture(input: {
     question: input.question,
     expectation: input.expectation.trim(),
     jev_at_capture: input.jev,
-    candidates_at_capture: jevCandidates(input.jev),
+    candidates_at_capture: jevCandidates(input.jev, { evidencePresent: input.evidencePresent ?? true }),
     trace_id: input.traceId ?? null,
     captured_sha: input.capturedSha ?? null,
   };

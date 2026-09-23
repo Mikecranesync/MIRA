@@ -52,7 +52,30 @@ describe("candidates", () => {
   it("honours an overridden threshold, because the defaults are provisional", () => {
     const r = rec({ wrong_family_grounding: 0.6 });
     expect(jevCandidates(r)).toHaveLength(1);
-    expect(jevCandidates(r, { wrong_family_grounding: 0.9 })).toHaveLength(0);
+    expect(jevCandidates(r, { thresholds: { wrong_family_grounding: 0.9 } })).toHaveLength(0);
+  });
+});
+
+describe("the evidence precondition (found on live traffic, not in the fixtures)", () => {
+  // The first live run fired JEV_NOT_FOLLOWING_EVIDENCE on 6 of 7 turns, all
+  // with citations_shipped: 0 — including correct, hedged answers. With nothing
+  // retrieved the question is vacuous, so the rule must stay silent.
+  const noEvidenceTurn = rec({ follows_evidence: 0.27, family_match: 0.11, over_specificity: 0.2 });
+
+  it("stays silent about following evidence when there was none", () => {
+    expect(jevCandidates(noEvidenceTurn, { evidencePresent: false })).toEqual([]);
+  });
+
+  it("still fires when evidence WAS retrieved", () => {
+    expect(jevCandidates(noEvidenceTurn, { evidencePresent: true }).map((c) => c.code))
+      .toContain("JEV_NOT_FOLLOWING_EVIDENCE");
+  });
+
+  it("does not suppress the evidence-INDEPENDENT rules", () => {
+    // Over-specificity and invented numerics are judgeable with no evidence at
+    // all — indeed that is exactly when they matter most.
+    const c = jevCandidates(rec({ over_specificity: 0.9, unsupported_numerics: 0.8, follows_evidence: 0.1 }), { evidencePresent: false });
+    expect(c.map((x) => x.code).sort()).toEqual(["JEV_OVER_SPECIFIC", "JEV_UNSUPPORTED_NUMERIC"]);
   });
 });
 
