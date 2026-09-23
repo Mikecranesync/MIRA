@@ -17,6 +17,9 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
   updateNotebook: vi.fn(),
   markNameplateDocVerified: vi.fn(),
+  recordTurn: vi.fn(async () => "turn-row-look-1"),
+  normalizeNotebookThreadId: (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null,
 }));
 vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
@@ -53,7 +56,7 @@ vi.mock("@/lib/inference/persist-usage", () => ({
 
 import { POST, INSPECTION_PROMPT } from "../route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, updateNotebook, markNameplateDocVerified } from "@/lib/equipment-notebooks";
+import { getNotebook, updateNotebook, markNameplateDocVerified, recordTurn } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { recordLookObservation } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
@@ -88,6 +91,7 @@ function makeReq(
     content?: Uint8Array;
     question?: string;
     clientKey?: string;
+    threadId?: string;
   } = {},
 ) {
   const fd = new FormData();
@@ -99,6 +103,7 @@ function makeReq(
   );
   if (opts.question) fd.append("question", opts.question);
   if (opts.clientKey) fd.append("clientKey", opts.clientKey);
+  if (opts.threadId) fd.append("threadId", opts.threadId);
   return new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/look`, {
     method: "POST",
     body: fd,
@@ -374,14 +379,77 @@ describe("observations are conversation context, not citable sources", () => {
     const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
     // The observation is conversation context, never a citable source: no
-    // SQL touching knowledge_entries may run. (The Turn Flight Recorder's
-    // ledger row — decision_traces via persistTurnUsage — is mocked in this
-    // suite and is the one legitimate write this route makes.)
+    // SQL touching knowledge_entries may run. (persistTurnUsage + recordTurn
+    // are mocked here; neither writes knowledge_entries.)
     const sqlTexts = [...vi.mocked(pool.query).mock.calls, ...vi.mocked(pool.connect).mock.calls]
       .map((c) => String((c as unknown[])[0] ?? ""))
       .join("\n");
     expect(sqlTexts).not.toMatch(/knowledge_entries/i);
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
     expect(updateNotebook).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("#3967 durable LOOK → priorLookRows recall index", () => {
+  it("LOOK 200 calls recordTurn with visual_observation {fileId} (server-recallable)", async () => {
+    armVision("SIEMENS TP700 Comfort nameplate visible.", "vision-test");
+    const CLIENT_KEY = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const res = await POST(
+      makeReq({ clientKey: CLIENT_KEY, question: "what is this panel", threadId: THREAD }),
+      makeParams(NOTEBOOK_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(recordTurn).toHaveBeenCalledTimes(1);
+    expect(recordTurn).toHaveBeenCalledWith(
+      TENANT_ID,
+      NOTEBOOK_ID,
+      expect.objectContaining({
+        ownerUserId: "u_1",
+        threadId: THREAD,
+        clientRequestId: CLIENT_KEY,
+        question: "what is this panel",
+        answerStatus: "answered",
+        answerText: null,
+        evidence: [
+          expect.objectContaining({
+            kind: "visual_observation",
+            fileId: FILE_ID,
+            provenance: "phone_photo",
+          }),
+        ],
+        model: "vision-test",
+      }),
+    );
+    // VisualSession path still runs — observation text lives there.
+    expect(recordLookObservation).toHaveBeenCalledWith(
+      expect.objectContaining({ fileId: FILE_ID, text: "SIEMENS TP700 Comfort nameplate visible." }),
+    );
+  });
+
+  it("NEGATIVE CONTROL: vision failure does NOT recordTurn — nothing server-recallable", async () => {
+    vi.mocked(togetherVisionCall).mockRejectedValue(new Error("provider_down"));
+    const res = await POST(makeReq({ clientKey: "ck-fail" }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(502);
+    expect(recordLookObservation).not.toHaveBeenCalled();
+    expect(recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("NEGATIVE CONTROL: blank observation does NOT recordTurn", async () => {
+    vi.mocked(togetherVisionCall).mockResolvedValue({ text: "   ", model: "m" });
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(502);
+    expect(recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("recordTurn failure is fail-open — LOOK still returns 200 with observation", async () => {
+    armVision("Green LED lit.");
+    vi.mocked(recordTurn).mockRejectedValueOnce(new Error("db unavailable"));
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.observation.text).toBe("Green LED lit.");
+    expect(body.fileId).toBe(FILE_ID);
   });
 });
