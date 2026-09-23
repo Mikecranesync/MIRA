@@ -83,7 +83,17 @@ export function jevCandidates(
   over("JEV_UNSUPPORTED_NUMERIC", "unsupported_numerics", t.unsupported_numerics);
   over("JEV_OVER_SPECIFIC", "over_specificity", t.over_specificity);
   under("JEV_NOT_FOLLOWING_EVIDENCE", "follows_evidence", t.follows_evidence_floor);
-  under("JEV_UNRESPONSIVE", "answered_the_request", t.answered_the_request_floor);
+  // DELIBERATELY NOT A RULE: `answered_the_request`.
+  // Measured 0.70 accuracy — the worst of the eleven — and the reason is
+  // structural, not statistical: a CORRECT REFUSAL does not answer the request.
+  // "I do not have the torque spec for this panel, check the manual" is the
+  // right answer and scores low on responsiveness, so the question conflates
+  // "MIRA failed" with "MIRA correctly declined". At the provisional floor it
+  // caught 1 of 4 real divergences while being wrong about refusals — a rule
+  // that would teach the corpus to punish honesty. The signal is still
+  // RECORDED on the packet; it just does not generate candidates until the
+  // question is re-worded (which is a question-set-version change).
+  // Measurement: docs/proofs/2026-09-23-jev-decision-calibration.md.
   return out;
 }
 

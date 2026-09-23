@@ -28,6 +28,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -154,7 +155,11 @@ def main() -> int:
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--out", default="/tmp/jev-acceptance.json")
     a = ap.parse_args()
-    if any(p in a.base for p in PROD):
+    # HOST-exact, not substring: "app-staging.factorylm.com" CONTAINS
+    # "factorylm.com", so a substring test refuses the very environment this
+    # harness exists to drive (it did, on the first run).
+    host = (urllib.parse.urlparse(a.base).hostname or "").lower()
+    if host in PROD:
         print("refusing production", file=sys.stderr)
         return 2
     if not a.cookie:

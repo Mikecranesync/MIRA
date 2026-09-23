@@ -75,18 +75,36 @@ ALTER TABLE decision_traces
 -- "already applied" is not a state it can observe.
 --
 -- `.claude/rules/mira-hub-migrations.md` §8 forbids rewriting an APPLIED
--- migration, and the danger it names is silent drift: a rewritten body whose
--- `CREATE ... IF NOT EXISTS` is skipped while the ledger reports success. That
--- danger is absent here and the rewrite is the only correct repair:
---   * Neither 091 nor 092 has reached prod — both are unmerged, and prod
---     migrations run only through the gated `apply-migrations.yml` dispatch.
---   * `migration-verify` keeps no ledger and computes no content hash, so
---     migration 066's content-sha detector cannot be fooled by this change.
---   * On staging the final index ALREADY exists (092 created it), so the
---     statement below is a no-op there and the schema is unchanged.
---   * On a fresh database the set now replays correctly, which it could not
---     before. Leaving 091 alone would have left a migration directory that
---     cannot be applied from scratch — a far worse defect than this edit.
+-- migration, and the danger it names is SILENT drift: a rewritten body whose
+-- `CREATE ... IF NOT EXISTS` is skipped while the ledger reports success. This
+-- rewrite is the opposite of silent, and it is the only repair that makes the
+-- directory applicable at all — leaving 091 alone leaves a migration set that
+-- cannot be applied from scratch, which is a worse defect than this edit.
+--
+-- THE LEDGER CONSEQUENCE, MEASURED RATHER THAN ASSUMED
+-- An earlier draft of this header claimed 066's content-sha detector could not
+-- be affected. That was WRONG, and the query settles it. Staging's ledger on
+-- 2026-09-23 holds:
+--     091_decision_traces_turn_lifecycle.sql | 02d151078b8b1b32...b667e68
+-- — a real, non-null `content_sha256`. So the next ledgered
+-- `apply-migrations.yml` run against STAGING will fail loudly on this file,
+-- which is 066 doing exactly its job.
+--
+-- That is accepted deliberately, and the follow-up is explicit rather than
+-- implied: staging needs one `apply-migrations.yml mode=seed-ledger` dispatch
+-- to re-stamp this row, which is the operation 066 shipped for precisely this
+-- case. It is a HUMAN-GATED dispatch and is listed as such in the handoff.
+--
+-- PROD IS UNAFFECTED. Neither 091 nor 092 has ever reached production: both are
+-- unmerged, and prod migrations run only through that same gated dispatch,
+-- which has not been run for them. Prod will therefore apply the CORRECTED
+-- bytes once, cleanly, and be stamped with the sha of what actually ran.
+--
+-- `migration-verify` — the CI job this failed on — is a separate, unledgered
+-- raw replay (`git diff` of PR-touched migrations, applied straight to the
+-- persistent staging branch with no skip filter). It is why the defect had to
+-- be fixed here at all, and it computes no hash.
+--
 -- 092 is retained, unedited, as the corrective for any environment that ran the
 -- original draft.
 CREATE UNIQUE INDEX IF NOT EXISTS decision_traces_attempt_lifecycle_uk

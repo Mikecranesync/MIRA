@@ -1052,9 +1052,30 @@ async function handleChatTurn(
     // explicitly as null; every other call site passes the real row id.
     packet.persistence.outcome = turnRowId ? "ok" : "failed";
     // SHADOW (MIRA_JEV_DECISION=1, off by default). The one metered judgment
-    // call for this turn. It runs HERE, and only here, because every caller of
-    // `finishAndPersist` has already closed the stream — so by construction a
-    // Jev timeout, outage or 4xx cannot delay or fail answer delivery. It is
+    // call for this turn.
+    //
+    // WHY THIS CANNOT DELAY DELIVERY — the precise version.
+    // `finishAndPersist` has FIVE call sites and they are NOT all post-close:
+    // the safety-stop path awaits it and only then returns its Response, and
+    // the gate-abstain path runs before its `controller.close()`. The guarantee
+    // is narrower than "the helper is always late": `decisionState` is assigned
+    // at exactly ONE place — inside the final answer-gate block — and the only
+    // two call sites downstream of that assignment (the recordTurn-failure path
+    // and the final path) both sit after a `controller.close()`. The three
+    // earlier call sites reach this line with `decisionState` still null and
+    // make no call at all.
+    //
+    // That invariant is load-bearing and easy to break by populating
+    // `decisionState` earlier, which would silently put a ~280 ms vendor call
+    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins it.
+    //
+    // The cost of the invariant is real and is stated rather than hidden:
+    // safety_stop, abstained and client-cancelled turns carry NO jev_decision.
+    // Shadow coverage is answered turns only. Extending it to the safety path
+    // would mean awaiting a vendor call before a hazard stop reaches the
+    // technician, which is not a trade worth making for a shadow signal.
+    //
+    // It is
     // also never awaited on a path that can still reject the turn: the helper
     // is fail-open and returns a record carrying `skipped_reason` instead of
     // throwing, so an outage shows up as a value in the data rather than a gap.
