@@ -95,6 +95,11 @@ import {
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import {
+  recordArrival,
+  recordResponse,
+  type ArrivalInit,
+} from "@/capabilities/observability/turn-ingress";
+import {
   appendManualContext,
   buildManualUserContent,
   corpusManufacturers,
@@ -774,9 +779,17 @@ async function verifyVisualEntry(
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function handleChatTurn(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  ingress: ArrivalInit & { tenantId: string | null },
+) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // The arrival row was written before auth and therefore carries no tenant.
+  // Attribute it now, so a lost start is still countable against the tenant it
+  // belonged to instead of only in the unscoped operator view.
+  ingress.tenantId = ctx.tenantId;
   const { id: notebookId } = await params;
 
   let body: {
@@ -920,6 +933,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // happened. Fire-and-forget: `openTurn` never throws and never blocks the
   // technician's answer; a failed start is counted, not raised.
   const openedTurn = openTurn({
+    // The SAME id the ingress row was written with, so "arrived but never
+    // opened" is an exact join rather than a guess from timestamps.
+    attemptId: ingress.attemptId,
     tenantId: ctx.tenantId,
     notebookId,
     platform: "hub_notebook_chat",
@@ -3043,4 +3059,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
     },
   });
+}
+
+
+/**
+ * INGRESS WRAPPER (093) — the outermost thing in this route, on purpose.
+ *
+ * Everything below `handleChatTurn` is the recorder's world: it starts after
+ * `sessionOr401`, after body parsing, after validation. So every 401, every
+ * `invalid_json`, every `message_too_long` returned before `openTurn` left NO
+ * TRACE OF ANY KIND — and, worse, a turn that was accepted but whose start
+ * record failed to write was equally invisible, because the only thing that
+ * could have reported it was the write that failed.
+ *
+ * This wrapper writes "a request arrived" into a DIFFERENT table before any of
+ * that runs, and "a response left, with this status" in a `finally` that no
+ * early return can skip. Reconciling the two against the ledger turns a silence
+ * into a number:
+ *
+ *   responded 4xx, never opened  → a pre-accept rejection (expected, own denominator)
+ *   responded 2xx, never opened  → a LOST START (the capture defect)
+ *
+ * Both writes are fire-and-forget and neither can fail a turn; the response
+ * write is chained onto the arrival so the two rows cannot be written out of
+ * order under load.
+ */
+/** The notebook id goes into a UUID column; a non-UUID path segment (a 404 on
+ *  its way) must be recorded as an arrival with no notebook, not crash the
+ *  counter that exists to notice it. */
+const INGRESS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: string }> }) {
+  const attemptId = crypto.randomUUID();
+  let notebookId: string | null = null;
+  try {
+    const p = await routeCtx.params;
+    notebookId = typeof p?.id === "string" && INGRESS_UUID_RE.test(p.id) ? p.id : null;
+  } catch {
+    notebookId = null;
+  }
+  const ingress: ArrivalInit & { tenantId: string | null } = {
+    attemptId,
+    route: "hub_notebook_chat",
+    tenantId: null,
+    notebookId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  };
+  const arrival = recordArrival(ingress);
+  let status = 500;
+  try {
+    const res = await handleChatTurn(req, routeCtx, ingress);
+    status = res.status;
+    return res;
+  } finally {
+    // `ingress.tenantId` is populated by now on every authenticated path.
+    void arrival
+      .then(() => recordResponse({ ...ingress, httpStatus: status }))
+      .catch(() => {
+        /* counted inside the module; never fails a turn */
+      });
+  }
 }

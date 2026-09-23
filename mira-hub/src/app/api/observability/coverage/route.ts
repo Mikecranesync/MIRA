@@ -29,6 +29,10 @@ import {
   gitSha,
   serviceVersion,
 } from "@/capabilities/observability/config";
+import {
+  ingressFailureCounters,
+  ingressReconciliation,
+} from "@/capabilities/observability/turn-ingress";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,12 @@ function publicOrigin(req: NextRequest): string | null {
   if (!host) return req.nextUrl?.origin ?? null;
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   return `${proto}://${host}`;
+}
+
+/** A rate we could not compute is "n/a", never 0% — a missing measurement and
+ *  a total failure must not read the same on a diagnostics card. */
+function pct(v: number | null): string {
+  return v === null ? "n/a" : `${(v * 100).toFixed(1)}%`;
 }
 
 function num(sp: URLSearchParams, key: string, dflt: number, max: number): number {
@@ -76,10 +86,22 @@ export async function GET(req: NextRequest) {
 
   let coverage: Awaited<ReturnType<typeof lifecycleCoverage>> | null = null;
   let unfinished: Awaited<ReturnType<typeof listUnfinishedTurns>> = [];
+  // The INDEPENDENT count (093). `coverage` above is computed from the ledger,
+  // so it can only describe turns the recorder wrote a start for; a turn whose
+  // start never landed is absent from both its numerator and its denominator
+  // and coverage reads 100%. `reconciliation` counts arrivals in a different
+  // table, written before any of that machinery ran, so a lost start is a
+  // NUMBER here instead of a silence there.
+  let reconciliation: Awaited<ReturnType<typeof ingressReconciliation>> | null = null;
   let readError: string | null = null;
   try {
     coverage = await lifecycleCoverage({ tenantId: ctx.tenantId, windowMs, staleAfterMs: staleMs });
     unfinished = await listUnfinishedTurns({ tenantId: ctx.tenantId, staleAfterMs: staleMs, limit: 25 });
+    reconciliation = await ingressReconciliation({
+      tenantId: ctx.tenantId,
+      windowMs,
+      staleAfterMs: staleMs,
+    });
   } catch (err) {
     // A coverage read that fails is itself a coverage fact — report it rather
     // than 500ing, so the caller can tell "no data" from "the query broke".
@@ -93,11 +115,16 @@ export async function GET(req: NextRequest) {
     `build (sha)   : ${env.git_sha}`,
     `version       : ${env.service_version}`,
     `tenant        : ${env.tenant_id}`,
-    `persona       : ${env.persona_contract ? "contract" : "legacy"}`,
     `recorder      : ledger=on exporter=${exporterConfigured ? "configured" : "OFF"} content_capture=${env.recorder.content_capture}`,
     coverage
       ? `capture ${windowMs / 60000}m : started=${coverage.started} closed=${coverage.closed} orphaned=${coverage.orphaned} with_packet=${coverage.with_packet}`
       : `capture      : UNREADABLE (${readError})`,
+    reconciliation
+      ? `ingress ${windowMs / 60000}m: arrived=${reconciliation.arrived} accepted=${reconciliation.accepted} pre_accept_rejected=${reconciliation.pre_accept_rejections} LOST_STARTS=${reconciliation.lost_starts} no_response=${reconciliation.no_response_recorded}`
+      : `ingress      : UNREADABLE (${readError})`,
+    reconciliation
+      ? `capture rate : starts=${pct(reconciliation.start_capture_rate)} closes=${pct(reconciliation.close_rate)}`
+      : "capture rate : unknown",
     unfinished.length > 0
       ? `unfinished   : ${unfinished.map((u) => `${u.attemptId}@${u.ageMs}ms`).join(", ")}`
       : "unfinished   : none",
@@ -109,9 +136,11 @@ export async function GET(req: NextRequest) {
     window_ms: windowMs,
     stale_after_ms: staleMs,
     coverage,
+    // Coverage measured against something that is NOT the recorder (#3939).
+    reconciliation,
     coverage_read_error: readError,
     unfinished,
-    failure_counters: lifecycleFailureCounters(),
+    failure_counters: { ...lifecycleFailureCounters(), ...ingressFailureCounters() },
     copy_text,
   });
 }

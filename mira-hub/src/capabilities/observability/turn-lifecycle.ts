@@ -52,7 +52,12 @@ export type TurnOutcome =
   | "error"
   | "timeout"
   | "cancelled"
-  | "superseded";
+  | "superseded"
+  /** Appended by the RECONCILER, never by the request path: a start that was
+   *  still open long past any plausible turn, whose process is gone. `endRoot`
+   *  cannot close this — the process that would have called it is dead — so
+   *  closure has to come from outside the request. */
+  | "abandoned";
 
 export type OpenTurnInit = {
   tenantId: string;
@@ -63,6 +68,12 @@ export type OpenTurnInit = {
   otelTraceId?: string | null;
   environment?: string | null;
   gitSha?: string | null;
+  /**
+   * Pre-minted by the caller at INGRESS, before auth or validation, so the
+   * ingress row and this ledger row share an exact join key (093). Omitted, the
+   * id is minted here and reconciliation can only fall back to heuristics.
+   */
+  attemptId?: string | null;
 };
 
 export type OpenTurn = {
@@ -97,7 +108,7 @@ export function lifecycleFailureCounters() {
 
 /** Write the start record. Never throws; a failed write returns durable:false. */
 export async function openTurn(init: OpenTurnInit): Promise<OpenTurn> {
-  const attemptId = randomUUID();
+  const attemptId = init.attemptId ?? randomUUID();
   try {
     await withTenantContext(init.tenantId, async (c) => {
       await c.query(
@@ -329,5 +340,64 @@ export async function lifecycleCoverage(opts: {
     by_outcome: Object.fromEntries(
       (outcomes.rows as Record<string, unknown>[]).map((r) => [String(r.outcome), Number(r.n)]),
     ),
+  };
+}
+
+/**
+ * Close start records whose process is never coming back.
+ *
+ * `endRoot()` closes a turn on every exit path the request actually reaches —
+ * but a process that is SIGKILLed, OOM-killed, or redeployed mid-turn reaches
+ * none of them. Those starts stay `started` forever and are counted as orphans
+ * in perpetuity, which is honest but not actionable: nothing distinguishes "the
+ * recorder is broken" from "the container restarted at 02:00 last Tuesday".
+ *
+ * So closure for those comes from OUTSIDE the request, as `abandoned`. This is
+ * the only writer of that outcome; the request path can never produce it.
+ *
+ * Append-only like every other close: it inserts a `closed` row alongside the
+ * start and never mutates it, so the evidence that the turn was abandoned —
+ * and when it was noticed — is itself preserved.
+ *
+ * `olderThanMs` should be comfortably longer than the slowest real turn; a
+ * sweeper that closes a turn still in flight would manufacture a false
+ * `abandoned` AND lose the real outcome to the (attempt_id, lifecycle) conflict.
+ */
+export async function reconcileStaleTurns(opts: {
+  tenantId?: string | null;
+  olderThanMs?: number;
+  limit?: number;
+}): Promise<{ abandoned: number; attemptIds: string[] }> {
+  const olderThan = opts.olderThanMs ?? 15 * 60_000;
+  const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
+  const params: unknown[] = [olderThan / 1000, limit];
+  let scope = "";
+  if (opts.tenantId) {
+    params.push(opts.tenantId);
+    scope = " AND d.tenant_id = $3";
+  }
+  const res = await pool.query(
+    `INSERT INTO decision_traces
+       (tenant_id, platform, user_question, recommendation, citations_present,
+        attempt_id, lifecycle, outcome, started_at, finished_at,
+        otel_trace_id, client_request_id, notebook_id, environment, git_sha, anomalies)
+     SELECT d.tenant_id, d.platform, '', '', false,
+            d.attempt_id, 'closed', 'abandoned', d.started_at, now(),
+            d.otel_trace_id, d.client_request_id, d.notebook_id, d.environment, d.git_sha,
+            '[]'::jsonb
+       FROM decision_traces d
+      WHERE d.lifecycle = 'started'
+        AND d.started_at < now() - ($1 || ' seconds')::interval
+        AND NOT EXISTS (SELECT 1 FROM decision_traces c
+                         WHERE c.attempt_id = d.attempt_id AND c.lifecycle = 'closed')${scope}
+      ORDER BY d.started_at ASC
+      LIMIT $2
+     ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING
+     RETURNING attempt_id`,
+    params,
+  );
+  return {
+    abandoned: res.rowCount ?? 0,
+    attemptIds: (res.rows as Record<string, unknown>[]).map((r) => String(r.attempt_id)),
   };
 }
