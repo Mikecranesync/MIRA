@@ -1544,13 +1544,21 @@ jobs:
           # reports a skipped run as "Tests  12 skipped (12)" — it never prints
           # "0 passed" — so a naive `0 passed` check silently misses it. That
           # exact mistake was made and caught while writing this job.
-          if grep -qiE "no test files found" /tmp/reconciliation.out; then
+          # STRIP ANSI FIRST. vitest colourises in CI, and the escapes land
+          # BETWEEN the label and the count:
+          #   ESC[2m      Tests ESC[22m ESC[1mESC[32m12 passedESC[39m
+          # so `Tests +[0-9]+ passed` does NOT match a real CI run. The first
+          # version of this guard failed a green 12/12 run for exactly that
+          # reason. Every clause below was then replayed against the actual
+          # captured CI output rather than a guessed shape.
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/reconciliation.out > /tmp/reconciliation.plain
+          if grep -qiE "no test files found" /tmp/reconciliation.plain; then
             echo "::error::no test file matched — the gate proved nothing"; exit 1
           fi
-          if grep -qE "Tests +[0-9]+ skipped" /tmp/reconciliation.out; then
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/reconciliation.plain; then
             echo "::error::reconciliation suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
           fi
-          grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.out || {
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.plain || {
             echo "::error::could not confirm a positive passing test count"; exit 1; }
 
   ci-gate:
