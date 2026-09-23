@@ -279,6 +279,41 @@ describe("ChatV2 (default surface)", () => {
     expect(askNotebook.mock.calls[0][1]).toBe("Is this bearing housing damaged?");
   });
 
+  // #3967 — THE HANDOFF, pinned. A photo reaches the question ONLY because this
+  // screen carries the LOOK's fileId forward as `visualEvidence.fileId`. The
+  // server has no other way to connect them: `/look/` writes the flight-recorder
+  // ledger but never calls `recordTurn`, so it leaves NO notebook turn for the
+  // server-side `priorLookRows` recall to find — that recall scans prior turns
+  // for a persisted `visual_observation {fileId}`, which only a chat turn
+  // carrying this rider creates.
+  //
+  // Drop the rider and nothing looks broken: LOOK returns 200, the question is
+  // asked, an answer comes back. It is just answered blind. Measured on staging
+  // 2026-09-23, same photo and question, the only variable being the rider:
+  //   without -> observation_in_context: false, strategy "skipped_general_mode",
+  //              0 chunks, answered from the model's priors
+  //   with    -> observation_in_context: true,  strategy "oem_corpus_bm25",
+  //              oem_manufacturer_source "photo", 6 chunks
+  // No existing test noticed the difference, which is how a silent regression
+  // here would ship.
+  it("carries the LOOK fileId into the question as visualEvidence (#3967)", async () => {
+    const file = new File(["photo"], "panel.jpg", { type: "image/jpeg" });
+    pickPhoto.mockResolvedValue(file);
+    lookAtPhoto.mockResolvedValue({
+      fileId: "look-file-99",
+      observation: { capturedAt: "2026-09-23T10:00:00.000Z" },
+    });
+    askNotebook.mockResolvedValue({ answer: "Check the supply.", citations: [], status: "answered" });
+    mount();
+    await type("the screen is blank, what do I check");
+    fireEvent.click(await screen.findByTestId("v2-attach"));
+    fireEvent.click(await screen.findByRole("button", { name: /Photo/ }));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(1));
+
+    const body = askNotebook.mock.calls[0][2] as { visualEvidence?: { fileId?: string } };
+    expect(body?.visualEvidence?.fileId).toBe("look-file-99");
+  });
+
   it("offers a message-level Copy action for a completed answer", async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", {
