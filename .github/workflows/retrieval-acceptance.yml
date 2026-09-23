@@ -45,14 +45,47 @@ jobs:
     env:
       ACCEPT_BASE: ${{ inputs.base || 'https://app-staging.factorylm.com' }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
       - name: Refuse anything that is not staging
         run: |
           case "$ACCEPT_BASE" in
             https://app-staging.factorylm.com|https://app-staging.factorylm.com/) ;;
             *) echo "::error::acceptance runs against staging only (got $ACCEPT_BASE)"; exit 1 ;;
           esac
+
+      # The acceptance contract belongs to the tree that is RUNNING, not to the
+      # default branch. `workflow_run` checks out the DEFAULT branch, so a green
+      # deploy of a non-main RC was audited by main's script — and failed on a
+      # difference that was not a defect (2026-09-23: main asserted a `grounded`
+      # prompt against a deploy that legitimately reports `augmented`).
+      # Read the SHA off the deployment itself and audit THAT tree.
+      - name: Resolve the SHA actually deployed to staging
+        id: deployed
+        run: |
+          body="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/")" || {
+            echo "::error::cannot read $ACCEPT_BASE/api/health/ — refusing to accept an unidentified deploy"
+            exit 1
+          }
+          sha="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')"
+          case "$sha" in
+            ????????????????????????????????????????) ;;
+            *) echo "::error::health reported no full 40-char gitSha (got \"$sha\") — cannot pin the audit"; exit 1 ;;
+          esac
+          case "$sha" in
+            *[!0-9a-f]*) echo "::error::gitSha is not hexadecimal: $sha"; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "staging is running $sha — auditing that tree" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.deployed.outputs.sha }}
+
+      - name: The deployed tree must carry the harness it is audited by
+        run: |
+          test -f tools/qa/retrieval_acceptance.py || {
+            echo "::error::${{ steps.deployed.outputs.sha }} has no tools/qa/retrieval_acceptance.py — that deploy predates the acceptance contract"
+            exit 1
+          }
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -87,6 +120,21 @@ jobs:
             --photo docs/proofs/2026-09-22-pixel9a-staging-session/turn2-photo-siemens-tp700-nameplate.jpg \
             --manual tools/demo-3tag-plc-vfd-conveyor.pdf \
             --out /tmp/retrieval-acceptance.json --verbose
+
+      # A SHA is a contract: re-confirm it at VERDICT time, not only at start.
+      # A deploy that lands mid-run means this verdict describes a tree that is
+      # no longer serving, which is worse than no verdict at all.
+      - name: The deploy must not have moved under the audit
+        if: always()
+        run: |
+          now="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/" \
+                 | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')" || {
+            echo "::warning::could not re-read health at verdict time"; exit 0; }
+          if [ "$now" != "${{ steps.deployed.outputs.sha }}" ]; then
+            echo "::error::staging moved ${{ steps.deployed.outputs.sha }} -> $now during the run; this verdict is SUPERSEDED"
+            exit 1
+          fi
+          echo "verdict pinned to $now" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the evidence artifact (trace ids + packets, no content)
         if: always()
