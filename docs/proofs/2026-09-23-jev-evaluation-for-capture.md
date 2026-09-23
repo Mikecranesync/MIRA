@@ -113,3 +113,61 @@ thing — which is exactly what a general judge is good at.
 
 **Decision: ADOPT-CANDIDATE, blocked on (1).** Worth Mike's approval to try,
 because it addresses the exact weakness measured in the deterministic detector.
+
+---
+
+# Experiment record — evidence-vs-answer consistency (2026-09-23, final)
+
+The format #3939 asks for: baseline, Jev output, improvement, FP/FN, latency,
+cost, privacy, decision.
+
+| | |
+|---|---|
+| **Question asked of Jev** | "Does the ANSWER address the specific equipment described in the OBSERVATION?" (`noul`) |
+| **Sample** | **14 labelled live staging turns** — 11 divergences across two independent photos (bearing label, TP700 HMI nameplate), 3 controls |
+| **Baseline (no Jev)** | class-set overlap rule: **0 / 11** divergences caught. Lead-subject variant: **0 / 11**. Both 0 false positives — because neither ever fires |
+| **Jev output** | `noul` 0.04–0.07 on every divergence; 0.16 / 0.31 / 0.47 on the controls |
+| **Improvement** | **11 / 11 vs 0 / 11.** It is the only signal that detects the defect this issue was filed about |
+| **False negatives** | 0 of 11 at threshold 0.12 |
+| **False positives** | 0 of 3 at 0.12; **1 of 3 at 0.30** (a correct bearing answer scored 0.16) |
+| **Latency** | p50 **216 ms**, max 377 ms. Non-blocking if run after the answer streams |
+| **Cost** | **$0.000029 / call** measured (2 866–5 527 input tokens across runs) |
+| **Privacy** | ⚠️ requires sending **ANSWER TEXT** to a third party. The shipped shadow sends question + scrubbed chunk excerpts and deliberately never the answer |
+| **Decision** | **ADOPT for shadow — blocked on the content-export approval** |
+
+## Why this is ADOPT and the sufficiency judge is not
+
+Same vendor, same model, same call shape, opposite results:
+
+| question | result on our data |
+|---|---|
+| "is the retrieved evidence sufficient?" (shipped) | 19/19 disagreements, **zero** agreements — no discriminative power |
+| "does this answer address this observation?" | **11/11**, clean separation, 0 FP at 0.12 |
+
+Sufficiency needs domain grounding Jev does not have — judging whether six Siemens
+chunks contain a specific value is a maintenance-engineering question.
+Consistency needs only "are these two texts about the same thing", which is what a
+general judge is actually good at. **The lesson is to pick the question, not the
+vendor.**
+
+## Threshold, stated as unfinished
+
+0.12 separates 14 points. That is where 0.07 and 0.16 happen to sit, not a
+calibrated boundary. Before any threshold ships it needs the 50–100 turn window
+the sufficiency report already asks for.
+
+## Integration shape if approved
+
+The existing shadow starts at `chat/route.ts:2205` — **before** generation, which
+is why it costs nothing today, and also why it **cannot see the answer**. A
+consistency judge needs a second call after generation. It lands well: the answer
+has already streamed to the technician, so the ~216 ms falls on the persist path,
+not on anything a human waits for. One more call, one more question, shadow-only,
+recorded beside the deterministic verdicts that currently score zero.
+
+## Still REJECT, unchanged
+
+Lifecycle and accounting, tenant isolation, privacy, dedup/idempotency, safety
+gates and release gates. Note **#3957 proposes Jev triage that can SKIP
+`semanticSafetyCheck`** — fail-open, but it is Jev influencing a safety path, and
+#3939 puts that off-limits. Flagged for that PR's owner rather than changed here.
