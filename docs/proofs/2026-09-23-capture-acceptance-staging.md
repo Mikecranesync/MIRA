@@ -269,6 +269,38 @@ lifecycle:  f4a1c988 started / closed/answered, packet=true,
 
 A 422 in the same window bucketed correctly as a pre-accept rejection.
 
+### Device-gesture scenarios — every attempt accounted for
+
+Driven by real taps and text entry on the emulator, then reconciled:
+
+| # | scenario | how | result |
+|---|---|---|---|
+| S1 | **follow-up** | two turns typed into the composer in one thread | both captured, `started` + `closed` |
+| S2 | **cancel / process kill** | send, then `am force-stop` **3 s into the stream** | `closed/cancelled` — `d7171412` |
+| S3 | **reconnect** | relaunch the app | prior turn's outcome already durable |
+
+```
+device attempts in the last 5 minutes: 7
+  ac90eda9 02:01:29 status=NONE ledger=NONE      ← no_response_recorded (in-flight at force-stop)
+  0ab7c7d7 02:01:32 status=NONE ledger=NONE      ←   "
+  5c078b42 02:01:34 status=NONE ledger=NONE      ←   "
+  b8e324e9 02:01:37 status=NONE ledger=NONE      ←   "
+  b8642668 02:01:55 status=200  closed/safety_stop, started/-
+  3532f3e8 02:02:18 status=200  closed/safety_stop, started/-
+  d7171412 02:02:43 status=200  closed/cancelled,   started/-
+
+unaccounted (2xx with no ledger): 0
+```
+
+The four `status=NONE` rows are the honest case, not a gap: arrivals whose
+response row never landed because the app was force-stopped with requests in
+flight. They sit in `no_response_recorded` — the bucket that exists precisely
+because such an attempt **cannot** be judged either way, and folding it into
+either healthy or lost would be a guess. Every one of them is visible.
+
+`closed/cancelled` on S2 is the important row: a client that vanishes mid-stream
+still reaches a terminal outcome, which is the whole claim of the lifecycle.
+
 **No physical Pixel 9a is attached to this machine** (`adb devices` shows only the
 emulator). Cellular, camera and Play-identity scenarios therefore remain unrun,
 and are listed below rather than substituted.
