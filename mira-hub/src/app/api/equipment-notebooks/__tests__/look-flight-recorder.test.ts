@@ -46,7 +46,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => {
 vi.mock("@/lib/nameplate", () => ({
   isRecognizerConfigured: vi.fn(),
   fixtureSelected: vi.fn(),
-});
+}));
 vi.mock("@/lib/nameplate/detect", () => ({ resolveRecognitionImage: vi.fn() }));
 vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/nameplate/passes")>();
