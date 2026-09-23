@@ -228,8 +228,62 @@ The 24/9/7 split is also the point of the lifecycle in the first place: before t
 work, the 9 errors and the 7 abandoned turns wrote **no row at all** and were
 indistinguishable from turns that never happened.
 
+## Real website — PROVEN in a real browser
+
+Not curl. Playwright drove `https://app-staging.factorylm.com` as a stranger
+would: signed up a brand-new account through the signup form, created a notebook
+from the UI prompt, typed a question into the composer and pressed Enter.
+
+Answer (real, and good): *"The most common cause of chatter in a tapered-roller
+bearing is insufficient preload or a loss of axial support…"* with preload,
+spalling, alignment and lubrication checks under a lockout/tagout heading, badged
+**"General guidance — not grounded in this machine's documents."** — which is the
+honest badge for a notebook with no sources.
+
+Captured end to end:
+
+```
+ingress:    154c38ef arrived   -    crid=-
+            154c38ef responded 200  crid=bf978ba4
+lifecycle:  154c38ef started   -          trace=7d44f29bb812cce6ef4f0d888dad8db5 packet=false
+            154c38ef closed    answered   trace=7d44f29bb812cce6ef4f0d888dad8db5 packet=true
+```
+
+Notebook `30048da4-333b-464d-9169-f9386bb81931`. Screenshot:
+`docs/promo-screenshots/2026-09-23_web-capture-acceptance-notebook-chat_desktop.png`.
+
+## Mobile — PROVEN on the emulator; physical Pixel NOT available
+
+Root `CLAUDE.md` makes the emulator the **default** mobile regression gate and
+reserves a physical handset for cellular behaviour, real camera capture and
+release-signed Play identity — none of which this capture work touches.
+
+`com.factorylm.mira.staging` on AVD `mira35` / Android 15, launched via its real
+`MainActivity`, driven through its own WebView network stack:
+
+```
+ingress:    f4a1c988 arrived   -    → responded 200
+lifecycle:  f4a1c988 started / closed/answered, packet=true,
+            trace=a82d6917603a4914…, platform=hub_notebook_chat
+```
+
+A 422 in the same window bucketed correctly as a pre-accept rejection.
+
+**No physical Pixel 9a is attached to this machine** (`adb devices` shows only the
+emulator). Cellular, camera and Play-identity scenarios therefore remain unrun,
+and are listed below rather than substituted.
+
 ## What is still not proven live
 
-- **Provider timeout** — needs staging fault injection.
-- **Pixel 9a** — must be `com.factorylm.mira.staging`; the production flavour has no
-  recorder.
+- **Provider timeout** — needs staging fault injection; no clean lever found.
+- **Physical Pixel 9a** — no device attached. Emulator covered the capture path;
+  cellular, real-camera and Play-signed-identity remain device-only.
+- **THE OPEN CONTRADICTION.** While driving the emulator, three requests from a
+  DIFFERENT tenant (`0e0d7d65`) returned **200 with no lifecycle row** — which my
+  own metric scores as `lost_starts: 3`, against a headline of 0. `open_failed`
+  was 0 in that container, and replay is not the cause (tested: replay does write
+  a lifecycle). Their notebook ids were valid UUIDs, so the non-UUID defect fixed
+  in this PR is not the cause either. **Unresolved.** Resolving it needs staging
+  container logs, which prod-guard correctly blocks. Until it is explained,
+  `lost_starts: 0` should be read as "0 for the tenant measured", not as a
+  property of the system.
