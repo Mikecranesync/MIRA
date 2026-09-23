@@ -119,6 +119,8 @@ export async function GET(req: NextRequest) {
     coverage
       ? `capture ${windowMs / 60000}m : started=${coverage.started} closed=${coverage.closed} orphaned=${coverage.orphaned} with_packet=${coverage.with_packet}`
       : `capture      : UNREADABLE (${readError})`,
+    "limit         : `arrived` counts requests that REACHED THE ROUTE; middleware",
+    "                401s (unauthenticated) are rejected before it and are in no number here",
     reconciliation
       ? `ingress ${windowMs / 60000}m: arrived=${reconciliation.arrived} accepted=${reconciliation.accepted} pre_accept_rejected=${reconciliation.pre_accept_rejections} LOST_STARTS=${reconciliation.lost_starts} no_response=${reconciliation.no_response_recorded}`
       : `ingress      : UNREADABLE (${readError})`,
@@ -138,6 +140,10 @@ export async function GET(req: NextRequest) {
     coverage,
     // Coverage measured against something that is NOT the recorder (#3939).
     reconciliation,
+    // Stated next to the numbers, not only in a doc: middleware rejects an
+    // unauthenticated /api/* call before the route wrapper runs, and it runs in
+    // the edge runtime where a durable write is impossible.
+    reconciliation_denominator: "requests that reached the route handler; pre-route middleware rejections are excluded",
     coverage_read_error: readError,
     unfinished,
     failure_counters: { ...lifecycleFailureCounters(), ...ingressFailureCounters() },

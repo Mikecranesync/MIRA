@@ -40,11 +40,28 @@ Server reconciliation, read from `/api/observability/coverage` — computed from
 
 **Read the numbers, because they are the proof and two of them look wrong at a glance.**
 
-- `arrived: 6` against 7 client attempts. Correct: attempt **E was never
-  authenticated**, so its arrival row carries no tenant and it is invisible to a
-  *tenant-scoped* view — exactly as the module documents ("an attempt that never
-  authenticated has neither, and is visible only in the unscoped operator view").
-  It is not lost; it belongs to no tenant.
+- `arrived: 6` against 7 client attempts. **My first explanation of this was
+  wrong and the real one is a limitation worth knowing.** I wrote that attempt E
+  was counted but tenant-less and therefore operator-view only. The direct query
+  says otherwise:
+
+  ```
+  TOTALS: {"arrivals":"42","responses":"42","responses_no_tenant":"0"}
+  ```
+
+  Perfectly paired arrivals and responses, and **not one** response row with a
+  NULL tenant. E produced **no ingress rows at all** — because
+  `src/middleware.ts` returns 401 JSON for an unauthenticated `/api/*` call
+  BEFORE the route handler, so the ingress wrapper never ran.
+
+  This cannot be patched where the wrapper lives: middleware runs in the EDGE
+  runtime, which has no `pg`, so a durable write from there is impossible. So
+  the honest statement of the denominator is **"requests that reached the route
+  handler"**, not "HTTP requests", and pre-route rejections are outside every
+  number this module reports. That is now said in the module header, in
+  `copy_text`, and in a `reconciliation_denominator` field next to the numbers —
+  because a limit that lives only in a proof document is a limit nobody reading
+  the dashboard will ever see.
 - `pre_accept_rejections: 2` = C (415) and D (400). Both return **before**
   `openTurn` exists, so before this table they left no trace at all.
 - `accepted: 4` = A, B, F, G. The 422s reach the recorder and then fail
@@ -56,51 +73,95 @@ Server reconciliation, read from `/api/observability/coverage` — computed from
 
 Artifact: `/tmp/capture-acceptance.json`.
 
+### Positive control — the mirror detects, it does not merely run
+
+`starts_without_arrival: 0` on a healthy window proves the query executes; it does
+not prove it can ever be non-zero. Every arrival in that window was written by the
+same code path that wrote the starts, so the zero is vacuous as evidence.
+
+Injected one `decision_traces` row with a fresh `attempt_id`, `lifecycle='started'`
+and no matching arrival, on the stranger tenant:
+
+```
+starts_without_arrival BEFORE: 0
+starts_without_arrival AFTER : 1    (injected attempt c0c3ee93-bfac-4e6d-906b-d956ae06dd96)
+cleaned up  : yes
+POSITIVE CONTROL PASSED — the mirror detects, it does not merely run
+```
+
+## Acceptance loop — ALL SIX PASS on this SHA
+
+Run `35805223597`, auditing `defadf5e35…` (the SHA-pin fix resolving the deployed
+tree, as intended). 1 ✓ · 2 ✓ · 3 ✓ (`cit=1`, notebook badge) · 4 ✓ (`prior=1`,
+`workspace_evidence`) · 5 ✓.
+
+Scenario 4 passing is what corrected my next claim.
+
 **Packet v2 confirmed live**: a fetched packet reports `"v": "2"` with
 `answer_gate.citations_shipped` and `answer_gate.evidence_followed` present.
 
-## #3962 repeat: NOT reproducible on this branch, and that is the finding
+## #3962 — reproduced live 3/3, and my detector caught 1 of the 3
 
-I ran the bearing-photo → text-only-follow-up sequence three times. The LOOK read the
-label correctly every time, matching the issue verbatim:
-
-> "32906X Tapered Roller Bea…", "Width 2pcs", "MADE IN CHINA"
-
-**The follow-up cannot run at all on main-based code.** A text-only follow-up returns:
+**Correction to my own earlier conclusion.** I first wrote that #3962 was
+unreachable on main-based code, because a text-only follow-up returned
+`{"error":"no_sources_selected"}` (HTTP 422). That was true of the sequence I ran
+and false as a general claim: acceptance scenario 4 passes on this very SHA. The
+difference is that **the issue's own reproduction has a middle turn** which I had
+skipped — a chat turn carrying the photo, between the LOOK and the text-only
+follow-up:
 
 ```
-{"error":"no_sources_selected"}   HTTP 422
+POST /look/    bearing-box label photo
+POST /chat/    {"message":"what is this and what would make it fail", "visualEvidence":{"fileId":…}}
+POST /chat/    {"message":"it is chattering, what do I check first"}     ← no photo
 ```
 
-— with the photo linked to the notebook, and also with the photo explicitly re-sent as
-`visualEvidence.fileId`. That is main's pre-contract behaviour; #3959 is what stops an
-evidence-bearing notebook being refused for having no *document* sources.
+Run exactly that way, three times:
 
-### A wrong turn I took, recorded because it would have been a false result
+| run | observation in context | prior obs | answer subject | names `32906X` | verdict | anomaly |
+|---|---|---|---|---|---|---|
+| 1 | **true** | 1 | drive coupling / motor | no | `consistent` | — |
+| 2 | **true** | 1 | drive coupling / motor | no | `consistent` | — |
+| 3 | **true** | 1 | drive coupling / belt / motor | no | `unverified_mismatch` | **`ANSWER_IGNORED_VISUAL_EVIDENCE`** |
 
-To get past the 422 I first re-ran with `"mode": "general"`. All three answers came back
-about a drive coupling and none named `32906X`, which looks exactly like #3962 — and I
-briefly read it that way. The packet says otherwise:
+**#3962 reproduces 3/3.** The photo *was* recalled server-side and *was* in the
+prompt (`observation_in_context: true`, `prior_turn_observation_count: 1`), and all
+three answers were about a drive coupling. Traces `36cda615ce71f64f…`,
+`5e370d2453e204e8…`, `d4c53a8acb5227f0…`.
 
-```json
-"visual_evidence": { "observation_in_context": false, "prior_turn_observation_count": 0 }
-"retrieval":       { "strategy": "skipped_general_mode" }
-```
+**My detector fired on 1 of 3.** That is the measurement, and it is not a good one.
 
-General mode does not recall the prior observation, so the model had **no evidence to
-ignore**. A generic answer with no evidence in context is not "evidence supplied but not
-followed" — it is a different, far less alarming thing. Reporting it as a reproduction
-would have been a fabricated confirmation of my own detector.
+### Why it missed — measured, not guessed
 
-### Consequence
+The two misses recorded `evidence_classes: []`: the recalled observation named no
+equipment class my closed vocabulary recognises. The cause is the photo itself.
+Four identical LOOK calls on the same image:
 
-`ANSWER_IGNORED_VISUAL_EVIDENCE` is **unit-proven against the verbatim strings from the
-issue and not yet live-proven**, because the failure it detects is unreachable on the
-branch it ships on. It becomes live-testable when #3959 lands, or on a build with
-`MIRA_PERSONA_CONTRACT=1`. Stated rather than quietly left as "shipped".
+| | contains "bearing" | contains "tapered roller" |
+|---|---|---|
+| 4 runs | **0 / 4** | **3 / 4** |
 
-`DOCUMENTS_IN_CONTEXT_UNCITED` is reachable here — it needs only a notebook with sources —
-and is exercised by the acceptance loop.
+The label is physically truncated — the vision model reads
+`"32906X Tapered Roller Bea..."`, so the word *bearing* never appears, and even
+*tapered roller* is present only three times in four on **identical input**.
+
+**A detector keyed on vision prose inherits vision's nondeterminism.** That is the
+real finding, and it is a limitation of the approach rather than a tuning problem:
+widening the vocabulary to catch this specific label would be fitting three
+samples at 01:20 in the morning, which is how a detector becomes #3963.
+
+### What this changes
+
+- `ANSWER_IGNORED_VISUAL_EVIDENCE` is **live-proven to fire on a real #3962 turn**
+  (run 3, with the full anomaly payload) and **measured at 1/3 sensitivity** on
+  three live reproductions. Both facts belong in any decision about it; quoting
+  only the first would be the overclaim this whole PR exists to prevent.
+- The principled improvement is to anchor the assessment on something more stable
+  than vision prose — MIRA's own turn-1 answer established the subject
+  ("tapered-roller bearing") far more reliably than the observation did. That is a
+  follow-up, deliberately not done tonight on three samples.
+- `DOCUMENTS_IN_CONTEXT_UNCITED` is unaffected: it reads counts, not prose, and
+  has no equivalent failure mode.
 
 ## What is still not proven live
 

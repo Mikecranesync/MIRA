@@ -28,6 +28,19 @@
  * FAIL-OPEN. A counter that can break a chat turn is worse than a counter that
  * misses one. Every failure increments a visible counter instead of throwing.
  *
+ * KNOWN LIMIT — THE DENOMINATOR IS "REACHED THE ROUTE HANDLER", NOT "HTTP
+ * REQUESTS". `src/middleware.ts` returns 401 JSON for an unauthenticated
+ * `/api/*` call BEFORE the route runs, so this wrapper never executes for it and
+ * no arrival is recorded. That is not an oversight that can be patched here:
+ * middleware runs in the EDGE runtime, which has no `pg`, so a durable write
+ * from there is impossible. Measured on staging 2026-09-23 — an unauthenticated
+ * attempt produced zero rows in either phase.
+ *
+ * So `arrived` counts requests that reached the handler. Pre-route rejections
+ * (unauthenticated, trial-gated) are outside every number this module reports,
+ * and saying otherwise would be the "physically impossible universal capture"
+ * #3939 §4 warns against promising.
+ *
  * Schema: `db/migrations/093_turn_ingress.sql`.
  */
 import pool from "@/lib/db";
