@@ -278,12 +278,38 @@ and are listed below rather than substituted.
 - **Provider timeout** — needs staging fault injection; no clean lever found.
 - **Physical Pixel 9a** — no device attached. Emulator covered the capture path;
   cellular, real-camera and Play-signed-identity remain device-only.
-- **THE OPEN CONTRADICTION.** While driving the emulator, three requests from a
-  DIFFERENT tenant (`0e0d7d65`) returned **200 with no lifecycle row** — which my
-  own metric scores as `lost_starts: 3`, against a headline of 0. `open_failed`
-  was 0 in that container, and replay is not the cause (tested: replay does write
-  a lifecycle). Their notebook ids were valid UUIDs, so the non-UUID defect fixed
-  in this PR is not the cause either. **Unresolved.** Resolving it needs staging
-  container logs, which prod-guard correctly blocks. Until it is explained,
-  `lost_starts: 0` should be read as "0 for the tenant measured", not as a
-  property of the system.
+- **THE OPEN CONTRADICTION — narrowed to four facts that cannot all be true.**
+
+  Four requests from tenant `0e0d7d65` on notebook `91bab2f8`, 01:45:28–01:45:51
+  (one 422, three 200), produced **zero** `decision_traces` rows.
+
+  Ruled out, each by measurement rather than argument:
+  - **FK cascade from a deleted notebook** — `decision_traces` has exactly one
+    foreign key and it is on `session_id`; migration 090 states the no-FK choice
+    for `notebook_id` explicitly.
+  - **A broken join key** — that tenant has **0** `decision_traces` rows of any
+    kind in a 40-minute window, so the turns were not captured under some other
+    `attempt_id`.
+  - **The replay short-circuit** — tested live: replay *does* write a lifecycle
+    (that is the `error`-vs-`superseded` mislabel this PR fixes).
+  - **The non-UUID `openTurn` defect** — their notebook ids are valid UUIDs.
+  - **Multiple workers hiding the counter** — eight consecutive coverage reads
+    returned one monotonic `since_process_start_ms`: a single process.
+  - **A dead counter** — `open_failed` went **0 → 1** after my own `not-a-uuid`
+    probe, so it does increment.
+
+  What remains is inconsistent:
+  1. every path that can return 200 gets past the last 4xx return and therefore
+     **calls `openTurn`** (verified by reading the range: no returns between);
+  2. `openTurn` either writes a row or increments `open_failed`;
+  3. `open_failed` was **0** at 01:49, a window covering 01:45;
+  4. those turns have **no row**.
+
+  So an assumption about *which build was actually serving at 01:45* is wrong: the
+  process reports a start around 01:35–01:38, after my restore deploy completed at
+  01:28, and I cannot account for that restart. Closing this needs the staging
+  container's logs and restart history. `prod-guard` blocks that, correctly, and I
+  did not route around it.
+
+  **Consequence for every number in this document:** `lost_starts: 0` is true for
+  the tenants measured and is **not** established as a property of the system.
