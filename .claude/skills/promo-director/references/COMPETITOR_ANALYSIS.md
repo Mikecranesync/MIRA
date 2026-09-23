@@ -1,8 +1,33 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-23
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-23
+
+*7 new or materially updated entries across 6 vendors. Post-cutoff date: 2026-05-03.*
+
+### Most actionable pattern for MIRA playbook
+
+**Augury's "Industrial AI Workforce" pivot is a direct entry into MIRA's diagnostic lane.** Augury launched role-based AI agents that convert "insight to action" — built on AVEVA CONNECT + Google Gemini, grounded in 1.1B hours of machine data. This is no longer a predictive-maintenance sensor company: it's claiming the same "AI that bridges the human-machine gap" territory MIRA occupies. Rockwell confirmed an "agentic AI" partnership alongside this launch. Differentiation lever: MIRA grounds answers in OEM-cited documents the technician can verify; Augury grounds answers in ML-inferred sensor patterns the technician cannot audit. The citation transparency advantage is MIRA's only clear moat against this pivot.
+
+### New findings
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" launch (May 18, 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — role-based AI agents; "insight to action" frame; AVEVA CONNECT + Google Gemini; 1.1B hours machine data; Rockwell agentic-AI partnership announced same week [transcript not verified]
+
+**Dev tools / AI (B2B SaaS pattern transfer)**
+- **Anthropic** — Code with Claude 2026 conference keynote (May 6, 2026, SF): https://www.youtube.com/watch?v=GMIWm5y90xA — Managed Agents, Proactive Workflows, Capability Curve; London: https://www.youtube.com/watch?v=6amLO7I9xdg; Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo — conference-as-launch-vehicle repeating Figma Config pattern [transcripts not verified]
+- **Figma** — Config 2026 keynote (Jun 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — Code Layers (code on canvas), Figma Motion (animation), Figma Agent (connectors to Notion/Slack/GitHub) [transcript not verified]
+- **Stripe** — Sessions 2026 opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8; dev keynote: https://www.youtube.com/watch?v=m2omCJcrkE0 — "agentic commerce"; "payments evolving from infrastructure for humans into programmable, continuous infrastructure for machines"; 288 launches; Agent wallet, Checkout Studio [transcripts not verified]
+- **Notion** — Agents iOS app (Jul 8, 2026): https://www.notion.com/releases/2026-07-08 — "A voice note. A napkin sketch. A question at 11pm. All handled before you're back at your desk."; no standalone YouTube video confirmed
+- **Notion 3.7** — "Agent skills for your whole team" (Sep 15, 2026): https://www.notion.com/releases/2026-09-15 — "skills" = shareable instruction bundles teaching AI how your team works; 1M+ custom agents built; first vendor to use "skills as expertise transfer" frame; no standalone YouTube video confirmed
+
+**Automation / SCADA**
+- **Inductive Automation** — ICC 2026 (Sep 22–24, 2026): Ignition 2027 + AI integration previewed; "The Ignition Effect" video series ongoing; full recordings expected post-Sep-24 — monitor for new hook patterns
 
 ---
 
@@ -146,6 +171,18 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
 
+**Industrial AI Workforce launch (May 18, 2026)**
+- URL: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce
+- Title: "A New Agent in Town: Inside the Industrial AI Workforce"
+- Hook: role-based AI agents that bridge "insight to action" [transcript not verified — from press coverage]
+- Stack: AVEVA CONNECT + Google Gemini; grounded in 1.1B hours of machine learning data
+- Partnership: Rockwell Automation announced "agentic AI" collaboration same week
+- Footage style: likely press-event + screen demo [not verified]
+- VO register: product executive / solutions
+- Key claims: moves beyond prediction into guided action; agents specialized by role (maintenance, reliability, operations)
+- CTA: contact for demo
+- **Competitive significance:** direct pivot into MIRA's diagnostic-and-action-guidance lane; differentiation lever is OEM-citation transparency vs. black-box sensor-ML
+
 ---
 
 ### Senseye (now Siemens)
@@ -186,7 +223,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 **Ignition 8.3 release (fall 2025)**
 - Called "biggest LinkedIn post of all time" for the brand
 - Video format: release announcement, likely screen capture + narration
-- ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
+- ICC 2025 session recordings: free from Jan 2, 2026 — extended content tail
+
+**ICC 2026 (Sep 22–24, 2026)**
+- Ignition 2027 + AI integration plans previewed at conference; "The Ignition Effect" video series ongoing
+- Full session recordings expected post-Sep-24 — monitor for new hook/positioning patterns on AI+SCADA
+- No specific video URL confirmed at refresh time
 
 ---
 
@@ -204,6 +246,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
+
+**ROKStudios 2026 seasons (new content post-May 2026)**
+- Jun 2026: OEM Leaders at Interpack episode
+- Sep 8, 2026: Cybersecurity resilience season announced — https://www.prnewswire.com/news-releases/rockwell-automation-announces-new-cybersecurity-season-of-rokstudios-video-series-302867790.html
+- Format unchanged: executive interview series; no product demos; thought-leadership/soft-CTA
+- **Augury partnership (May 2026):** Rockwell + Augury announced "agentic AI" collaboration — Rockwell's field presence + Augury's ML engine; Rockwell is now a channel for the Augury Industrial AI Workforce agents
 
 ---
 
@@ -254,9 +302,15 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 opening keynote**
+- URL: https://www.youtube.com/watch?v=Nadf3MdJS-8 (opening); https://www.youtube.com/watch?v=m2omCJcrkE0 (dev keynote); https://www.youtube.com/watch?v=e13-s0p1tfE (alternate/archive URL)
+- Theme: "agentic commerce" — payments evolving from infrastructure for humans to programmable, continuous infrastructure for machines
+- 288 product launches at the conference
+- Key launches: Agent wallet (payments for autonomous agents), Link agent payments, Checkout Studio
+- Hook: "The question isn't whether agents will buy things. It's whether you're ready for when they do." [description-derived — not verified]
+- VO register: founder/exec
+- CTA: "available now" callouts in dev keynote
+- **Pattern note:** Stripe's "infrastructure for machines" frame is the same architectural pivot MIRA needs to make — from "AI tool for humans" to "intelligence layer the factory runs on"
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -304,6 +358,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 conference keynotes**
+- SF (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA
+- London: https://www.youtube.com/watch?v=6amLO7I9xdg
+- Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo
+- Theme: Managed Agents, Proactive Workflows, Capability Curve [description-derived — transcripts not verified]
+- Claude Fable 5.1 (Sep 1, 2026) positioned for "long-running agents + document-heavy professional work"
+- Pattern: conference-as-launch-vehicle; multi-city format mirrors Figma Config; developer community as primary distribution
+- VO register: founder/exec + developer demos
+- CTA: API/product signups
+
 ---
 
 ### Cursor
@@ -340,6 +404,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Agents iOS app (Jul 8, 2026)**
+- URL: https://www.notion.com/releases/2026-07-08
+- Hook: "A voice note. A photo of a napkin sketch. A question at 11pm. All handled before you're back at your desk. A team of agents, in your pocket." [release notes — no standalone YouTube video confirmed]
+- Key frame: ambient, always-available intelligence — agents work while you're away
+- Transfer to MIRA: "A fault alarm at 3am. MIRA already has the answer when your tech arrives at the machine."
+
+**Notion 3.7 — Agent skills (Sep 15, 2026)**
+- URL: https://www.notion.com/releases/2026-09-15
+- Hook: "Skills" = shareable instruction bundles that teach AI how your team works [release notes — no standalone YouTube video confirmed]
+- 1M+ custom agents built on Notion
+- New frame: "skills as expertise transfer" — not just automation, but replicable institutional knowledge
+- Transfer to MIRA: OEM fault libraries + technician-confirmed procedures as "MIRA Skills" for each asset type
+
 ---
 
 ### Figma
@@ -354,6 +431,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Launches: Code Layers (code annotations directly on canvas), Figma Motion (animation timeline), Shaders, Weave Tools (AI creative assistant), Figma Agent (connectors to Notion/Slack/GitHub)
+- Key new pattern: "Figma Agent" embeds AI connectors into the design canvas — same "agent as teammate" framing as Notion 3.0 but for designers [transcript not verified]
+- VO register: founder/CEO
+- CTA: none explicit; awareness + organic signup
+- Conference-as-launch-vehicle pattern: Config is now Figma's primary annual distribution event; all major product news reserved for it
 
 ---
 
@@ -385,6 +470,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Ambient availability: "handled while you were away" | Notion Agents iOS: "A question at 11pm. All handled before you're back at your desk." | "A fault at 3am. MIRA already has the answer when your tech arrives." |
+| "Infrastructure for machines" (not infrastructure for humans) | Stripe Sessions 2026: "payments evolving into programmable infrastructure for machines" | "maintenance intelligence that runs the line, not just assists the technician" |
+| Skills as expertise transfer | Notion 3.7: "shareable instruction bundles that teach AI how your team works" | "MIRA Skills: your team's best fault procedures, available on every asset, forever" |
 
 ### Anti-patterns (avoid)
 
@@ -396,5 +484,7 @@ No video content surfaced for 2025–2026.
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel. ICC 2026 previews AI integration; SCADA + AI narrative incoming.
+- **Augury** ⚠️: pivoted from sensor-hardware / B2B-tech VO to "Industrial AI Workforce" — role-based agents for insight-to-action (May 2026). Now directly competing in MIRA's diagnostic-and-guidance lane. Uses Rockwell's field presence as distribution. Differentiation lever for MIRA: OEM-citation transparency vs. black-box sensor ML.
+- **Stripe**: shifted from "infrastructure for humans" to "infrastructure for machines" framing (Sessions 2026). "Agentic commerce" signals the B2B SaaS category is rebranding around agent-native use cases — Stripe is the bellwether; MIRA should mirror this pivot for the industrial context.
+- **Notion**: expanded from "agents do your work" (3.0) to "skills as expertise transfer" (3.7) — institutional knowledge packaged as reusable AI instructions. 1M+ custom agents signal the pattern is landing at scale.
