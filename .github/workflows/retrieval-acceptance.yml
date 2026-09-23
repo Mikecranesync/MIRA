@@ -132,9 +132,19 @@ jobs:
       - name: Provision a notebook for capture acceptance
         id: capnb
         run: |
+          # The audited tree is the DEPLOYED one (see the SHA-pin above), so a
+          # deploy that predates this harness genuinely does not contain it.
+          # Skip LOUDLY rather than fail: the step is meaningless against a build
+          # that never shipped it, and silently passing would be worse than both.
+          if [ ! -f tools/qa/make_notebook.py ] || [ ! -f tools/qa/capture_acceptance.py ]; then
+            echo "::notice::deployed SHA ${{ steps.deployed.outputs.sha }} predates capture acceptance — skipping (not a pass)"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           python3 tools/qa/make_notebook.py >> "$GITHUB_OUTPUT"
 
       - name: Capture acceptance - every attempt accounted for
+        if: steps.capnb.outputs.skipped != 'true'
         run: |
           python3 tools/qa/capture_acceptance.py \
             --notebook "${{ steps.capnb.outputs.notebook }}" \
@@ -142,7 +152,7 @@ jobs:
             --out /tmp/capture-acceptance.json
 
       - name: Upload the capture-acceptance artifact
-        if: always()
+        if: always() && steps.capnb.outputs.skipped != 'true' 
         uses: actions/upload-artifact@v4
         with:
           name: capture-acceptance-${{ github.run_id }}
