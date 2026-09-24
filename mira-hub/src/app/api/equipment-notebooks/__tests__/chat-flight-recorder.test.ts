@@ -551,12 +551,15 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     const olderFile = "55555555-5555-4555-8555-555555555555";
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     domainMock.listTurns.mockResolvedValueOnce([
-      { id: "old", threadId: "th", evidence: [{ kind: "visual_observation", fileId: olderFile, capturedAt: "2026-09-22T04:00:00Z", provenance: "phone_photo" }] },
-      { id: "new", threadId: "th", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:00:00Z", provenance: "phone_photo" }] },
+      { id: "old", threadId: "th", answerStatus: "answered", answerText: "A panel.", evidence: [{ kind: "visual_observation", fileId: olderFile, capturedAt: "2026-09-22T04:00:00Z", provenance: "phone_photo" }] },
+      { id: "new", threadId: "th", answerStatus: "answered", answerText: "A drive.", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:00:00Z", provenance: "phone_photo" }] },
     ] as never);
+    filesMock.photoLinkedToTarget
+      .mockResolvedValueOnce({ fileId: FILE_ID, capturedAt: "2026-09-22T05:00:00Z" })
+      .mockResolvedValueOnce({ fileId: olderFile, capturedAt: "2026-09-22T04:00:00Z" });
     veMock.loadVisualEvidenceForPhoto
-      .mockResolvedValueOnce({ text: "Siemens SINAMICS V20 drive", fileId: FILE_ID } as never)
-      .mockResolvedValueOnce({ text: "Siemens TP700 Comfort panel", fileId: olderFile } as never);
+      .mockResolvedValueOnce({ text: "Siemens SINAMICS V20 drive", fileId: FILE_ID, observedAt: "2026-09-22T05:00:00Z" } as never)
+      .mockResolvedValueOnce({ text: "Siemens TP700 Comfort panel", fileId: olderFile, observedAt: "2026-09-22T04:00:00Z" } as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("I need the matching manual.")));
     await (await POST(chatReq({ message: "what should I check on the last photo?", mode: "general" }), params)).text();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
@@ -588,6 +591,7 @@ describe("retrieval routing is decided by evidence context, not by general mode 
   it("4b. #3966 NEGATIVE CONTROL: identity extraction failure skips OEM citation but answers the turn", async () => {
     // A parser failure cannot turn a TP700 observation into Siemens-wide BM25:
     // a V20 chunk would be a wrong-machine citation. The turn still answers.
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" });
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     domainMock.listTurns.mockResolvedValueOnce([
       { id: "t1", threadId: "th", question: "what is this", answerStatus: "answered", answerText: "…", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "general_reasoning", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
