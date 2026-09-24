@@ -686,6 +686,14 @@ describe("LOOK conversation-scoped descriptions", () => {
     const query = vi.fn(async () => ({ rows: [{ ...own, ...difference }] }));
     expect(await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, scope)).toBeNull();
   });
+  it("does not select another owner's newer unscoped legacy description", async () => {
+    const ownLegacy = { ...own, notebook_id: null, thread_id: null };
+    const foreign = { ...ownLegacy, owner_user_id: "another-user", text: "foreign description" };
+    const query = vi.fn(async () => ({ rows: [foreign, ownLegacy] }));
+    expect((await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, { ...scope, allowLegacy: true }))?.text).toBe(own.text);
+    query.mockResolvedValueOnce({ rows: [foreign] });
+    expect(await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, { ...scope, allowLegacy: true })).toBeNull();
+  });
   it("allows an old unscoped description only for a previously persisted photo-turn reference", async () => {
     const query = vi.fn(async () => ({ rows: [{ ...own, notebook_id: null, thread_id: null }] }));
     expect(await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, scope)).toBeNull();

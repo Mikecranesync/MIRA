@@ -697,7 +697,7 @@ export async function loadVisualEvidenceForPhoto(
     ? res.rows.find((r) => r.notebook_id === scope.notebookId
       && r.owner_user_id === scope.ownerUserId
       && r.thread_id === (scope.threadId ?? "legacy"))
-      ?? (scope.allowLegacy ? res.rows.find((r) => r.notebook_id == null) : undefined)
+      ?? (scope.allowLegacy ? res.rows.find((r) => r.notebook_id == null && r.owner_user_id === scope.ownerUserId) : undefined)
     : res.rows[0];
   if (!latest) return null;
   

@@ -337,6 +337,7 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
 
 describe("#3967 — historical photo-answer turn remains recallable without the rider", () => {
   it("POSITIVE: prior LOOK visual_observation in listTurns → observation loaded with no rider", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     // A historical actual photo-answer turn remains recallable; follow-up sends
     // text only (the harness shape that originally filed #3967).
     nbMock.listTurns.mockResolvedValueOnce([

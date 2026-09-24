@@ -420,8 +420,26 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { answerStatus: "answered", answerText: null, linked: true },
+    { answerStatus: "answered", answerText: "   ", linked: true },
+    { answerStatus: "insufficient_evidence", answerText: "No supporting evidence.", linked: true },
+    { answerStatus: "answered", answerText: "Photo answer", linked: false },
+  ])("does not recall an ineligible historical photo: %j", async ({ answerStatus, answerText, linked }) => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "old", answerStatus, answerText, evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z", provenance: "phone_photo" }] },
+    ] as never);
+    veMock.loadRecentLookObservations.mockResolvedValueOnce([]);
+    filesMock.photoLinkedToTarget.mockResolvedValue(linked ? { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" } : null);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Please attach the photo again.")));
+    await (await POST(chatReq({ message: "what voltage was it?", mode: "general" }), params)).text();
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+  });
+
   it("4. photo turn followed by a text-only follow-up → prior observation recalled SERVER-side", async () => {
     domainMock.getNotebook.mockResolvedValue(nb() as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" });
     // The earlier turn persisted a visual_observation{fileId} on its row; the
     // client re-sends nothing but text history.
     domainMock.listTurns.mockResolvedValueOnce([

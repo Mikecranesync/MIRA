@@ -1328,6 +1328,7 @@ async function handleChatTurn(
       const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
+        if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
         for (const e of t.evidence) {
           if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
         }
@@ -1340,6 +1341,7 @@ async function handleChatTurn(
         const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
         for (const fid of [...seen].slice(0, 2)) {
           if (out.some((row) => row.fileId === fid)) continue;
+          if (!await verifyVisualEntry(ctx.tenantId, notebookId, fid)) continue;
           const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true });
           if (row) out.push(row);
         }
