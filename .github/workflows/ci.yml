@@ -1154,6 +1154,19 @@ jobs:
       - name: Validator rule tests (incl. negative fixtures)
         run: pytest tests/test_capability_closure.py -q
 
+      - name: Evidence provenance + observation-proof rules (negative controls)
+        # Runs inside the EXISTING capability-closure job on purpose: the
+        # provenance checks are part of the same registry's validation, and a
+        # separate job would imply a separate source of truth about closure.
+        run: |
+          set -euo pipefail
+          pytest tests/test_evidence_provenance.py -q
+          # Anti-skip: pytest exits 0 on an empty collection, so a rename would
+          # silently stop gating. Demand a known rule test by name.
+          pytest tests/test_evidence_provenance.py --collect-only -q \
+            | grep -q "test_inconclusive_cannot_prove_an_enabled_capability" \
+            || { echo "::error::provenance controls not collected — not gating"; exit 1; }
+
       - name: Approved-retrieval gate is plumbed and enforced (#3328)
         run: pytest tests/test_approved_retrieval_plumbing.py -q
 
