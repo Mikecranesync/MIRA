@@ -89,7 +89,7 @@ def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest, 
     m["release"]["state"] = "RELEASED"
     m["blockers"] = []
     m["device_parity"]["receipts"] = [{
-        "serial": "4A111FDEE0012B", "device": "Pixel 9a", "app_version_code": 11,
+        "serial": "4A111FDEE0012B", "device": "Pixel 9a", "app_version_code": m["components"]["android"]["expected"]["version_code"],
         "backend_sha": m["components"]["backend_hub"]["expected"]["sha"],
         "flows": [fl["id"] for fl in m["acceptance"]["flows"] if fl["device"]], "date": "2026-09-24",
         "evidence": "docs/proofs/x.md",
@@ -163,7 +163,7 @@ def test_an_emulator_receipt_is_refused(tmp_path, manifest):
     m = copy.deepcopy(manifest)
     m["release"]["state"] = "DEVICE_PARITY"
     m["device_parity"]["receipts"] = [{
-        "serial": "emulator-5554", "device": "sdk_gphone64_arm64", "app_version_code": 11,
+        "serial": "emulator-5554", "device": "sdk_gphone64_arm64", "app_version_code": m["components"]["android"]["expected"]["version_code"],
         "backend_sha": "f" * 40, "flows": ["sign_in"], "date": "2026-09-24",
         "evidence": "x",
     }]
