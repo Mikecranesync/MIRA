@@ -284,3 +284,12 @@ describe("review: the display must be the reading source", () => {
     "Re-energize the panel. Read current from the VFD display with the test leads not connected.",
   ])("accepts a display with explicitly disconnected leads: %s", (text) => expect(judge(text).ok).toBe(true));
 });
+
+
+describe("review: external readings can be viewed on a remote screen", () => {
+  it.each([
+    "Re-energize the panel. Read current on the remote screen from the installed power monitor display.",
+    "Re-energize the panel. Read current on the laptop from the VFD display.",
+    "Re-energize the panel. Read current on the phone screen from the VFD display.",
+  ])("accepts: %s", (text) => expect(judge(text).ok).toBe(true));
+});
