@@ -252,3 +252,12 @@ describe("review: coordinated prohibitions and display alternatives", () => {
     "Restore power. Never clamp each phase; use the VFD display to read current instead.",
   ])("accepts the safe alternative: %s", (text) => expect(judge(text).ok).toBe(true));
 });
+
+
+describe("review: a later display comparison cannot excuse physical contact", () => {
+  it.each([
+    "Re-energize the panel. Take a voltage reading from the exposed lugs and use the VFD display for comparison.",
+    "Re-energize the panel. Take a voltage reading with test leads inside the open panel and use the VFD display for comparison.",
+    "Re-energize the panel. Read current from the exposed lugs and from the VFD display for comparison.",
+  ])("rejects: %s", (text) => expect(judge(text).ok).toBe(false));
+});
