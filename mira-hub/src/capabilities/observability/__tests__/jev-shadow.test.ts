@@ -88,10 +88,18 @@ describe("buildJevRequest — Exp A + Exp B bundled", () => {
         "[2] Generic mounting instructions.",
       questions: {
         sufficient: { type: "noul", instructions: JEV_INSTRUCTIONS },
-        best_chunk: { type: "noul", instructions: JEV_CHOICE_INSTRUCTIONS },
+        best_chunk: {
+          type: "choice",
+          instructions: JEV_CHOICE_INSTRUCTIONS,
+          criteria: {
+            c1: "Evidence chunk [1] in the state",
+            c2: "Evidence chunk [2] in the state",
+            none: "No evidence chunk adequately answers the question",
+          },
+        },
       },
     });
-    expect(JEV_CHOICE_INSTRUCTIONS_VERSION).toBe("chunk-select-v1");
+    expect(JEV_CHOICE_INSTRUCTIONS_VERSION).toBe("chunk-select-v2");
   });
 
   it("has the same state and caps as the single-question version", () => {
@@ -101,6 +109,9 @@ describe("buildJevRequest — Exp A + Exp B bundled", () => {
     const bundled = buildJevRequest(question, evidence);
     expect(bundled.state).toBe(single.state);
     expect(bundled.model).toBe(single.model);
+    expect(Object.keys((bundled.questions.best_chunk as { criteria: Record<string, string> }).criteria)).toEqual([
+      "c1", "c2", "c3", "c4", "c5", "c6", "none",
+    ]);
   });
 });
 
@@ -150,7 +161,10 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
         model: "jev-1.13.0",
-        answers: { sufficient: { noul: 0.91 }, best_chunk: { noul: 0.85 } },
+        answers: {
+          sufficient: { type: "noul", noul: 0.91 },
+          best_chunk: { type: "choice", choice: "c1", confidence: 0.85, probabilities: { c1: 0.9, none: 0.1 } },
+        },
         usage: { input_tokens: 123, output_tokens: 1 },
       }),
     );
@@ -162,7 +176,9 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     expect(r.input_tokens).toBe(123);
     expect(r.skipped_reason).toBeNull();
     expect(r.best_chunk_confidence).toBe(0.85);
-    expect(r.best_chunk_skipped_reason).toBe("no_choice"); // placeholder until we extract actual chunk number
+    expect(r.best_chunk).toBe(1);
+    expect(r.best_chunk_index).toBe(0);
+    expect(r.best_chunk_skipped_reason).toBeNull();
     expect(typeof r.latency_ms).toBe("number");
     expect(typeof r.best_chunk_latency_ms).toBe("number");
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
@@ -174,7 +190,49 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     );
     expect(body.questions).toHaveProperty("sufficient");
     expect(body.questions).toHaveProperty("best_chunk");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(init.body as string).not.toContain("test-key-never-logged");
+  });
+
+  it("records a selected later chunk and an explicit no-match separately", async () => {
+    enable();
+    const evidence = [{ content: "wrong manual" }, { content: "matching manual" }];
+    const selected = await judgeEvidenceSufficiencyShadow("q", evidence, {
+      fetchImpl: (async () => jsonResponse({
+        answers: {
+          sufficient: { type: "noul", noul: 0.8 },
+          best_chunk: { type: "choice", choice: "c2", confidence: 0.72, probabilities: { c1: 0.18, c2: 0.72, none: 0.1 } },
+        },
+      })) as never,
+      apiKey: "mock",
+    });
+    expect(selected).toMatchObject({ best_chunk: 2, best_chunk_index: 1, best_chunk_confidence: 0.72, best_chunk_skipped_reason: null });
+
+    const noMatch = await judgeEvidenceSufficiencyShadow("q", evidence, {
+      fetchImpl: (async () => jsonResponse({
+        answers: {
+          sufficient: { type: "noul", noul: 0.1 },
+          best_chunk: { type: "choice", choice: "none", confidence: 0.95, probabilities: { c1: 0.02, c2: 0.03, none: 0.95 } },
+        },
+      })) as never,
+      apiKey: "mock",
+    });
+    expect(noMatch).toMatchObject({ best_chunk: 0, best_chunk_index: null, best_chunk_confidence: 0.95, best_chunk_skipped_reason: "no_choice" });
+  });
+
+  it.each([
+    { bestChunk: { type: "choice", choice: "c3", confidence: 0.8, probabilities: { c1: 0.5, c2: 0.4, none: 0.1 } }, caseName: "unoffered label" },
+    { bestChunk: { type: "choice", choice: "c1", confidence: 2, probabilities: { c1: 0.8, c2: 0.1, none: 0.1 } }, caseName: "out-of-range confidence" },
+    { bestChunk: { type: "choice", choice: "c1", confidence: "0.8", probabilities: { c1: 0.8, c2: 0.1, none: 0.1 } }, caseName: "non-numeric confidence" },
+    { bestChunk: { type: "noul", noul: 0.8 }, caseName: "wrong answer type" },
+    { bestChunk: undefined, caseName: "missing choice answer" },
+  ])("preserves Exp A and marks Exp B malformed for $caseName", async ({ bestChunk }) => {
+    enable();
+    const r = await judgeEvidenceSufficiencyShadow("q", [{ content: "a" }, { content: "b" }], {
+      fetchImpl: (async () => jsonResponse({ answers: { sufficient: { type: "noul", noul: 0.9 }, best_chunk: bestChunk } })) as never,
+      apiKey: "mock",
+    });
+    expect(r).toMatchObject({ noul: 0.9, skipped_reason: null, best_chunk: null, best_chunk_confidence: null, best_chunk_index: null, best_chunk_skipped_reason: "malformed" });
   });
 
   it("maps a non-2xx to http_<status> with both noul and best_chunk null", async () => {

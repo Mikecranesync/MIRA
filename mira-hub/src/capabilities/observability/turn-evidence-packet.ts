@@ -152,6 +152,16 @@ export type TurnEvidencePacketAnswerGate = {
   jev_latency_ms: number | null;
   /** Jev `usage.input_tokens` for the shadow call — the cost basis ($/M input; output is free). */
   jev_input_tokens: number | null;
+  /** SHADOW ONLY: selected 1-based retrieved chunk, or 0 for explicit none. */
+  jev_best_chunk: number | null;
+  /** Choice confidence from the shared Jev request, never a gate input. */
+  jev_best_chunk_confidence: number | null;
+  /** Zero-based position in the retrieved chunk array, null for none or unavailable. */
+  jev_best_chunk_index: number | null;
+  jev_best_chunk_skipped_reason: string | null;
+  /** Elapsed time of the shared request, not separate Choice latency. */
+  jev_best_chunk_latency_ms: number | null;
+  jev_choice_instructions_version: string | null;
   /**
    * How many citations the answer actually SHIPPED (#3962). Distinct from
    * `context.chunk_count`, which is what was put in front of the model: chunks
@@ -345,6 +355,12 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_skipped_reason: null,
       jev_latency_ms: null,
       jev_input_tokens: null,
+      jev_best_chunk: null,
+      jev_best_chunk_confidence: null,
+      jev_best_chunk_index: null,
+      jev_best_chunk_skipped_reason: null,
+      jev_best_chunk_latency_ms: null,
+      jev_choice_instructions_version: null,
       citations_shipped: 0,
       evidence_followed: null,
     },

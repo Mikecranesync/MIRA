@@ -41,11 +41,11 @@ export const JEV_INSTRUCTIONS =
   "Answer no if the evidence is generic, is about a different model, does not contain the asked-for quantity, or is absent.";
 
 /** Exp B: chunk selection instructions */
-export const JEV_CHOICE_INSTRUCTIONS_VERSION = "chunk-select-v1";
+export const JEV_CHOICE_INSTRUCTIONS_VERSION = "chunk-select-v2";
 export const JEV_CHOICE_INSTRUCTIONS =
   "Which single evidence chunk (by its bracket number) is the BEST source to answer the technician's question? " +
-  "Pick the chunk that most directly addresses the specific question asked, prioritizing exact values, model-specific details, and completeness. " +
-  "Answer with only the bracket number (1-6) of the best chunk, or 0 if no chunk adequately addresses the question.";
+  "Select the option for the chunk that most directly addresses the specific question, prioritizing exact values, model-specific details, and completeness. " +
+  "Select none if no chunk adequately addresses the question.";
 
 const MAX_QUESTION_CHARS = 600;
 const MAX_CHUNK_CHARS = 700;
@@ -63,13 +63,13 @@ export type JevShadowResult = {
   instructions_version: string;
   /** Exp B: 1-based index (matching bracket [n]) of best chunk for answering, or null when not run */
   best_chunk: number | null;
-  /** Exp B: confidence in the chunk choice (Jev `noul` for the choice question), or null when not run */
+  /** Exp B: confidence returned with the selected Choice label, or null when not run */
   best_chunk_confidence: number | null;
   /** Exp B: 0-based index into the chunks array, or null when not run / no choice made */
   best_chunk_index: number | null;
-  /** Exp B: why best_chunk is null: same reasons as skipped_reason, or "no_choice" when Jev returned 0 */
+  /** Exp B: why no chunk was selected: same reasons as skipped_reason, or "no_choice" for an explicit none selection */
   best_chunk_skipped_reason: string | null;
-  /** Exp B: latency for the chunk choice question, or null when not run (bundled with sufficiency, so same total latency) */
+  /** Exp B: elapsed time of the shared request, not separately measured Choice latency */
   best_chunk_latency_ms: number | null;
   /** Exp B: instructions version for chunk choice */
   choice_instructions_version: string;
@@ -89,7 +89,14 @@ export function scrubForVendor(text: string): string {
 export function buildJevRequest(
   question: string,
   evidence: readonly { content: string; title?: string | null }[],
-): { model: string; state: string; questions: Record<string, { type: "noul"; instructions: string }> } {
+): {
+  model: string;
+  state: string;
+  questions: {
+    sufficient: { type: "noul"; instructions: string };
+    best_chunk: { type: "choice"; instructions: string; criteria: Record<string, string> };
+  };
+} {
   const q = scrubForVendor(question.trim()).slice(0, MAX_QUESTION_CHARS);
   const chunks = evidence.slice(0, MAX_CHUNKS).map((c, i) => {
     const title = (c.title ?? "").trim();
@@ -102,7 +109,14 @@ export function buildJevRequest(
     state,
     questions: {
       sufficient: { type: "noul", instructions: JEV_INSTRUCTIONS },
-      best_chunk: { type: "noul", instructions: JEV_CHOICE_INSTRUCTIONS },
+      best_chunk: {
+        type: "choice",
+        instructions: JEV_CHOICE_INSTRUCTIONS,
+        criteria: {
+          ...Object.fromEntries(chunks.map((_, i) => [`c${i + 1}`, `Evidence chunk [${i + 1}] in the state`])),
+          none: "No evidence chunk adequately answers the question",
+        },
+      },
     },
   };
 }
@@ -176,11 +190,11 @@ export async function judgeEvidenceSufficiencyShadow(
       });
     const json = (await res.json()) as {
       model?: string;
-      answers?: { sufficient?: { noul?: number }; best_chunk?: { noul?: number } };
+      answers?: { sufficient?: { noul?: number }; best_chunk?: { type?: string; choice?: string; confidence?: number } };
       usage?: { input_tokens?: number };
     };
     const noul = json.answers?.sufficient?.noul;
-    const bestChunkNoul = json.answers?.best_chunk?.noul;
+    const choiceAnswer = json.answers?.best_chunk;
     // Exp A (sufficiency) validation — same as before
     if (typeof noul !== "number")
       return record({
@@ -190,19 +204,31 @@ export async function judgeEvidenceSufficiencyShadow(
         latency_ms: latency,
         best_chunk_latency_ms: latency,
       });
-    // Exp B (chunk choice) validation — noul is the confidence, we convert it to a 1-based chunk index
+    // Exp B is independent of Exp A: malformed Choice telemetry does not erase a valid sufficiency judgment.
     let bestChunk: number | null = null;
     let bestChunkIndex: number | null = null;
-    let bestChunkSkippedReason: string | null = null;
-    if (typeof bestChunkNoul === "number") {
-      // TypeSafe System One returns noul for the "which chunk" question; we need to extract the actual choice
-      // For now, we interpret the noul as confidence; the actual chunk index would need to come from a different response field
-      // This is a shadow-only probe, so we'll record what we can extract
-      bestChunk = null; // TODO: extract actual chunk number from response when TypeSafe provides it
-      bestChunkIndex = null;
-      bestChunkSkippedReason = "no_choice"; // placeholder until we have the actual choice extraction
-    } else {
-      bestChunkSkippedReason = "malformed";
+    let bestChunkSkippedReason: string | null = "malformed";
+    let bestChunkConfidence: number | null = null;
+    const choice = choiceAnswer?.choice;
+    const confidence = choiceAnswer?.confidence;
+    if (
+      choiceAnswer?.type === "choice" &&
+      typeof choice === "string" &&
+      Object.prototype.hasOwnProperty.call(body.questions.best_chunk.criteria, choice) &&
+      typeof confidence === "number" &&
+      Number.isFinite(confidence) &&
+      confidence >= 0 &&
+      confidence <= 1
+    ) {
+      bestChunkConfidence = confidence;
+      if (choice === "none") {
+        bestChunk = 0;
+        bestChunkSkippedReason = "no_choice";
+      } else {
+        bestChunk = Number(choice.slice(1));
+        bestChunkIndex = bestChunk - 1;
+        bestChunkSkippedReason = null;
+      }
     }
     return record({
       ...base,
@@ -212,7 +238,7 @@ export async function judgeEvidenceSufficiencyShadow(
       model: json.model ?? null,
       input_tokens: typeof json.usage?.input_tokens === "number" ? json.usage.input_tokens : null,
       best_chunk: bestChunk,
-      best_chunk_confidence: bestChunkNoul ?? null,
+      best_chunk_confidence: bestChunkConfidence,
       best_chunk_index: bestChunkIndex,
       best_chunk_skipped_reason: bestChunkSkippedReason,
     });

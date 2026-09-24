@@ -119,6 +119,31 @@ def test_zero_chunk_call_is_a_violation(tmp_path: Path):
     assert "Every judged turn had chunks: VIOLATED" in (tmp_path / "r.md").read_text()
 
 
+def test_choice_suffix_preserves_primary_disagreement_counts(tmp_path: Path):
+    chosen = packet(chunks=2, decision="answered", jev=0.1, claim=True)
+    chosen["answer_gate"].update(jev_best_chunk=2, jev_best_chunk_confidence=0.9)
+    row = mod.flatten(chosen, source="db", trace_id="choice-row")
+
+    assert mod.report([row], tmp_path / "r.md", tmp_path / "r.csv", baseline=[]) == 0
+    md = (tmp_path / "r.md").read_text()
+    assert "| D2 answered_claim_jev_low | 1 |" in md
+    assert "Disagreements: 1/1 judged turns" in md
+    assert "**D2 answered_claim_jev_low + B_chosen**" in md
+    assert "D2 answered_claim_jev_low + B_chosen" in (tmp_path / "r.csv").read_text()
+
+
+def test_unmeasured_combined_request_cost_is_not_reported_as_old_single_question_bound(
+    tmp_path: Path,
+):
+    row = mod.flatten(
+        packet(chunks=2, decision="answered", jev=0.9), source="db", trace_id="no-tokens"
+    )
+    assert mod.report([row], tmp_path / "r.md", tmp_path / "r.csv", baseline=[]) == 0
+    md = (tmp_path / "r.md").read_text()
+    assert "combined-request cost unmeasured" in md
+    assert "1,681" not in md
+
+
 def test_artifact_rows_carry_trace_and_scenario(tmp_path: Path):
     art = {
         "base": "https://app-staging.factorylm.com",
