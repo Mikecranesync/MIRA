@@ -264,8 +264,8 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     expect(out).toEqual([]);
     // Only the model-scoped pass ran (AND + OR). No manufacturer-only query.
     expect(calls.length).toBe(2);
-    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
-    expect(calls.every((c) => c.params.includes("%TP700%"))).toBe(true);
+    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
+    expect(calls.every((c) => c.params.includes("(^|[^[:alnum:]])TP700($|[^[:alnum:]])"))).toBe(true);
   });
 
   it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
@@ -303,20 +303,15 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
   });
 
   it("normalizes confirmed TP700 Comfort without admitting a different model", async () => {
-    const calls: Array<{ sql: string; params: unknown[] }> = [];
     const sameModel = { ...tp700(), model_number: "TP700" };
-    const client = { query: async (sql: string, params: unknown[]) => {
-      calls.push({ sql, params });
-      const token = String(params[3] ?? "").replaceAll("%", "").toLowerCase();
-      return { rows: sameModel.model_number.toLowerCase().includes(token) ? [sameModel] : [] };
-    }} as unknown as PoolClient;
+    const { client, calls } = makeClient([[sameModel]]);
     const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
       manufacturer: "Siemens", model: "TP700 Comfort", equipmentType: "HMIs", allowTenantFallback: false,
     });
     expect(out).toHaveLength(1);
     expect(out[0].modelNumber).toBe("TP700");
-    expect(calls[0].params).toContain("%TP700%");
-    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])TP700($|[^[:alnum:]])");
+    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
   });
 
   it("never widens a conflicting caller model into manufacturer-only retrieval", async () => {
@@ -334,8 +329,8 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
       manufacturer: "Siemens", model: "Custom-X 12", allowTenantFallback: false,
     });
     expect(calls).toHaveLength(2);
-    expect(calls[0].params).toContain("%Custom-X 12%");
-    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])Custom-X 12($|[^[:alnum:]])");
+    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
   });
 
   it("keeps a same-model SIMATIC HMI manual after family filtering", async () => {

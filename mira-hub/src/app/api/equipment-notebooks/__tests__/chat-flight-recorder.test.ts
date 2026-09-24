@@ -525,10 +525,9 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
-  it("4b. #3966 NEGATIVE CONTROL: identity extraction that THROWS degrades scope, it does not fail the turn", async () => {
-    // The guarantee under test is the fail-open asymmetry fixed alongside #3966:
-    // model extraction is an enrichment of retrieval scope, never a precondition
-    // for answering. Before the fix a throw here 500'd the technician's question.
+  it("4b. #3966 NEGATIVE CONTROL: identity extraction failure skips OEM citation but answers the turn", async () => {
+    // A parser failure cannot turn a TP700 observation into Siemens-wide BM25:
+    // a V20 chunk would be a wrong-machine citation. The turn still answers.
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     domainMock.listTurns.mockResolvedValueOnce([
       { id: "t1", threadId: "th", question: "what is this", answerStatus: "answered", answerText: "…", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "general_reasoning", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
@@ -537,18 +536,22 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     ragMock.resolveModelFromObservationText.mockImplementationOnce(() => {
       throw new Error("identity seam unavailable");
     });
-    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("From the earlier photo it is 24 Vdc.")));
     const res = await POST(chatReq({ message: "what voltage was it?", mode: "general", history: [{ role: "user", content: "what is this" }, { role: "assistant", content: "…" }] }), params);
     expect(res.status).toBe(200);
-    await res.text();
+    const text = await res.text();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const p = packetOf();
     // The turn survived and still recalled the photo …
     expect(p.visual_evidence.prior_turn_observation_count).toBe(1);
-    // … it simply was not identity-bound this time.
+    // … but no manufacturer-only retrieval or OEM citation is allowed.
     expect(p.retrieval.oem_model).toBeNull();
     expect(p.retrieval.oem_model_source).toBeNull();
+    expect(p.retrieval.oem_corpus_searched).toBe(false);
+    expect(p.retrieval.zero_result_reason).toBe("model_extraction_failed");
+    expect(p.retrieval.returned_doc_ids).toEqual([]);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(framesOf(text).find((f) => f.kind === "sources")?.citations ?? []).toEqual([]);
   });
 
   it("6. token usage lands in the packet (staging rows showed tokens=None/None)", async () => {

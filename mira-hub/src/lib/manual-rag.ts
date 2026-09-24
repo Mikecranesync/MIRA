@@ -499,15 +499,23 @@ async function runBm25Query(
     params.push(`%${manufacturer}%`);
     mfrClause = `AND manufacturer ILIKE $${params.length}`;
   }
-  // #2178 — scope to the asked model. Word-boundary-safe via the exclusion
-  // pattern ("753" must not match "7530"), mirroring neon_recall._product_search.
+  // #2178/#3966 — numeric legacy tokens remain substrings ("525" matches
+  // "PowerFlex 525"). Alphabetic identity tokens need both boundaries:
+  // TP700 must not admit KTP700, TP7000, or TP7001. Quote arbitrary caller
+  // text as a regex literal before passing it as a SQL parameter.
   let modelClause = "";
   if (model) {
-    params.push(`%${model}%`);
-    const likeIdx = params.length;
-    params.push(`%${model}0%`);
-    const exclIdx = params.length;
-    modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
+    if (/^\d{2,4}[a-z]?$/i.test(model)) {
+      params.push(`%${model}%`);
+      const likeIdx = params.length;
+      params.push(`%${model}0%`);
+      const exclIdx = params.length;
+      modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
+    } else {
+      const literal = model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      params.push(`(^|[^[:alnum:]])${literal}($|[^[:alnum:]])`);
+      modelClause = `AND model_number ~* $${params.length}`;
+    }
   }
   params.push(topK);
   const limitParam = `$${params.length}`;

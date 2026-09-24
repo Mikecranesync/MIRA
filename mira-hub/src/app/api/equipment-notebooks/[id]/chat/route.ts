@@ -1765,7 +1765,7 @@ async function handleChatTurn(
   // #3966 — resolve model/family alongside manufacturer. Prefer notebook.model;
   // else parse LOOK observation. Identity-bound retrieval must not fall through
   // to manufacturer-only BM25 (HMI photo → SINAMICS V20).
-  const oemIdentity: { model: { value: string; source: "notebook" | "photo" } | null; ambiguous: boolean } = (() => {
+  const oemIdentity: { model: { value: string; source: "notebook" | "photo" } | null; ambiguous: boolean; failed?: boolean } = (() => {
     if (notebookRetrieval) return { model: null, ambiguous: false };
     const notebookModel = nb?.model?.trim();
     if (notebookModel) {
@@ -1775,12 +1775,9 @@ async function handleChatTurn(
       return { model: { value: notebookModel, source: "notebook" }, ambiguous: false };
     }
     if (!photoTextForOem) return { model: null, ambiguous: false };
-    // Fail-open, exactly like the manufacturer resolution above it: identity
-    // extraction is an ENRICHMENT of retrieval scope, never a precondition for
-    // answering. A throw here (a bad pattern, a module seam that isn't loaded)
-    // must degrade the turn to unbound retrieval, not fail the technician's
-    // question. Losing the model only widens scope; losing the turn loses the
-    // answer.
+    // Identity extraction is an enrichment, not a precondition for answering.
+    // A throw must preserve the turn but skip OEM citation: falling through to
+    // manufacturer-only retrieval would admit another model's manual.
     try {
       const resolved = resolveModelFromObservationText(photoTextForOem);
       return resolved.ambiguous
@@ -1788,17 +1785,17 @@ async function handleChatTurn(
         : { model: resolved.model ? { value: resolved.model, source: "photo" } : null, ambiguous: false };
     } catch (err) {
       console.error(
-        "[notebook-chat] identity model extraction failed (retrieval not identity-bound this turn):",
+        "[notebook-chat] identity model extraction failed (OEM retrieval skipped this turn):",
         err instanceof Error ? err.message : err,
       );
-      return { model: null, ambiguous: false };
+      return { model: null, ambiguous: false, failed: true };
     }
   })();
   const oemModel = oemIdentity.model;
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
-  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous;
+  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
@@ -1871,7 +1868,9 @@ async function handleChatTurn(
       : oemRetrieval
         ? "oem_corpus_bm25"
         : "skipped_general_mode";
-    const zeroResultReason = oemIdentity.ambiguous
+    const zeroResultReason = oemIdentity.failed
+      ? "model_extraction_failed"
+      : oemIdentity.ambiguous
       ? "ambiguous_model_observation"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     rec.stage("retrieval", {
