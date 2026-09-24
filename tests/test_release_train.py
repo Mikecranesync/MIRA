@@ -39,7 +39,8 @@ def _write(tmp_path: Path, m: dict) -> Path:
         (migs / name).write_text("-- test\n")
     gradle = root / "mira-mobile/android/app"
     gradle.mkdir(parents=True, exist_ok=True)
-    (gradle / "build.gradle").write_text('        versionCode 11\n        versionName "1.2.0"\n')
+    # Copy the repository source, independently of the possibly mutated manifest.
+    (gradle / "build.gradle").write_text((ROOT / "mira-mobile/android/app/build.gradle").read_text())
     runner = root / "tools/release-train"
     runner.mkdir(parents=True, exist_ok=True)
     (runner / "parity_acceptance.py").write_text("# test\n")
