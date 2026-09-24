@@ -1179,6 +1179,18 @@ jobs:
       - name: Approved-retrieval gate is plumbed and enforced (#3328)
         run: pytest tests/test_approved_retrieval_plumbing.py -q
 
+      # ---- release train ---------------------------------------------------
+      # Wired into THIS job on purpose rather than a new one: a registry
+      # failure should surface in a single place. Repo-side invariants only, so
+      # it stays deterministic and offline like the rest of this job. The live
+      # expected-vs-running comparison is `--drift`, which needs the network and
+      # belongs to the deploy/verify path, not to CI.
+      - name: Validate the release-train manifest
+        run: python tools/release_train.py
+
+      - name: Release-train rule tests (incl. negative controls)
+        run: pytest tests/test_release_train.py -q
+
   drive-pack-extract-tests:
     name: Drive Pack Extract Tests
     runs-on: ubuntu-latest
