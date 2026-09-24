@@ -76,6 +76,8 @@ export interface UnifiedChatProps {
    *  stashed for the thread the send is about to create. Defaults to the
    *  notebook this shell is already rendering. */
   readonly attachmentNotebookId?: string | null;
+  /** Backend conversation id; meta.threadId is a shell presentation id. */
+  readonly attachmentThreadId?: string | null;
 }
 
 /**
@@ -135,6 +137,7 @@ export function UnifiedChat({
   groundingLine,
   suggestChips,
   attachmentNotebookId,
+  attachmentThreadId,
 }: UnifiedChatProps) {
   const capturedAt = useRef(new Date().toISOString());
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
@@ -173,7 +176,7 @@ export function UnifiedChat({
   // (see UnifiedChatHandlers) — they upload-and-ask immediately, which is the
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
-  const attachments = useUnifiedAttachments(attachTarget);
+  const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
     onAttachFile: attachments.attachFile,

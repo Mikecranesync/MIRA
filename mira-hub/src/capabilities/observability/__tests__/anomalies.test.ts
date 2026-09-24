@@ -300,3 +300,87 @@ describe("detectAnomalies — determinism and safety", () => {
     expect(codesOf(p)).toEqual(codesOf(p));
   });
 });
+
+describe("#3963 — the LOTO clause is not an ungrounded unit claim", () => {
+  // 25 of 40 turns in the 2026-09-22 sweep, and the photo benchmark's only
+  // unit-bearing number, were "0 V" inside the energy-isolation clause that
+  // MIRA_CORE REQUIRES in the same sentence as any instruction to touch wiring.
+  it("exempts an all-zero magnitude", () => {
+    for (const s of [
+      "With the drive isolated, locked out and the DC bus verified at 0 V, measure the coil.",
+      "Confirm the bus is at 0 V before touching the terminals.",
+      "With power isolated, locked out and the line voltage verified at 0 V, listen for the chatter.",
+    ]) {
+      expect(ungroundedUnitClaim(s)).toBe(false);
+    }
+  });
+
+  it("still flags a real rating claim, including one in the same answer as the clause", () => {
+    expect(ungroundedUnitClaim("The operating range is 50 °C.")).toBe(true);
+    expect(ungroundedUnitClaim("Its width is 2.5 in.")).toBe(true);
+    // The exemption is per-match, not per-answer: a LOTO clause must not
+    // launder a rating claim that appears beside it.
+    expect(
+      ungroundedUnitClaim("With the bus verified at 0 V, note the panel is rated 50 °C."),
+    ).toBe(true);
+  });
+});
+
+describe("#3962 — evidence in context that the answer never used", () => {
+  it("flags chunks in context with zero citations shipped on an ANSWERED turn", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag an abstain — refusing on unsupportive chunks is correct", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "insufficient_evidence";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag an answer that shipped a citation", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 6;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 1;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("does NOT flag a turn that retrieved nothing", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.context.chunk_count = 0;
+    p.answer_gate.invoked = true;
+    p.answer_gate.decision = "answered";
+    p.answer_gate.citations_shipped = 0;
+    expect(codesOf(p)).not.toContain("DOCUMENTS_IN_CONTEXT_UNCITED");
+  });
+
+  it("surfaces an unverified visual mismatch, and only that verdict", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.visual_evidence.observation_in_context = true;
+    p.answer_gate.evidence_followed = {
+      version: "1",
+      verdict: "unverified_mismatch",
+      subject_identifiers: 1,
+      subject_identifiers_in_answer: 0,
+      evidence_classes: ["bearing"],
+      answer_classes: ["drive"],
+      lead_classes: ["bearing"],
+      lead_verdict: "unverified_mismatch",
+    };
+    expect(codesOf(p)).toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+
+    p.answer_gate.evidence_followed!.verdict = "consistent";
+    expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+    p.answer_gate.evidence_followed = null;
+    expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
+  });
+});
