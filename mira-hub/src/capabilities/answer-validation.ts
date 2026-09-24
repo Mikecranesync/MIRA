@@ -623,7 +623,25 @@ export function validateAnswer(opts: {
   // Asterisks and backticks appear in no fault-code token and no safety
   // phrase; underscores are left alone (they occur inside real tokens).
   // Detection-only — the displayed/persisted text is never this copy.
-  const scanText = answerText.replace(/[*`]/g, "");
+  //
+  // R3 (#3973, found on live staging 2026-09-24): the same normalization has
+  // to fold Unicode dashes and spaces to ASCII, because EVERY hyphen-sensitive
+  // rule in this file is written against the ASCII "-". Groq's
+  // openai/gpt-oss-120b routinely emits U+2011 NON-BREAKING HYPHEN, and the
+  // staging leak that motivated this line was a complete restore-power-to-
+  // measure procedure that A4 catches verbatim once the hyphen is ASCII and
+  // misses entirely as "Re\u2011energize". The mirror risk — `(?<![\w-])energized`
+  // exists to keep the SAFE "de-energized" out of the hazard grammars, and
+  // U+2011 is in neither `\w` nor `-` — was measured and did NOT reproduce;
+  // it is pinned as a control in answer-validation-unicode-hyphen.test.ts so
+  // it cannot appear later. The ASCII assumption is file-wide rather than A4's,
+  // which is why this folds here instead of widening one regex: the whole
+  // Unicode dash block, the non-breaking spaces, and the curly apostrophes.
+  const scanText = answerText
+    .replace(/[*`]/g, "")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
+    .replace(/[\u00A0\u2007\u202F]/g, " ");
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
