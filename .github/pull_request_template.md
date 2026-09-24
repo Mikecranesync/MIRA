@@ -24,7 +24,7 @@ If this PR doesn't fit any existing spec:
 Anything else: write a spec first, then come back.
 -->
 
-## Legacy UI exception
+## Lifecycle guard rationale
 
 <!--
 OPTIONAL. Fill this in ONLY if this PR adds, modifies, deletes, or renames a
@@ -38,12 +38,19 @@ leave this whole section out of the PR body (don't fill placeholder text into
 it — the guard rejects blank/N/A/angle-bracket/HTML-comment values and fails
 closed without a substantive value on all three lines below).
 
-The guard is satisfied by an exact-head Codex attestation. For migration,
-removal, adapter, or a narrow correction toward the canonical shell, run
-`scripts/adversarial-review.sh <PR>` from the PR worktree: its
-`[CODEX-ADVERSARIAL-REVIEW]` GREEN at the exact head is the attestation, and
-a push simply needs a fresh review. Any change that introduces or expands
-frozen legacy UI will be reported by Codex as a BLOCKER.
+The sole authorization route is this substantive rationale plus the newest
+well-formed owner-account User `[CODEX-ADVERSARIAL-REVIEW]` ledger record whose
+`reviewed_sha` matches the current head, whose `reviewed_body_sha256` matches
+SHA-256 of the current PR body, and whose `status: GREEN`. Load
+`scripts/adversarial-review-trusted.sh` directly from the immutable captured
+`origin/<base>` object; never execute review producers from the PR worktree.
+Any push or body edit
+invalidates the reviewed snapshot and requires a fresh review.
+
+A change that introduces or expands frozen legacy presentation is a BLOCKER
+and can never be GREEN. A guard/control-plane change is reviewable rather than
+automatically blocking; it may be GREEN only when the fail-closed trusted-base
+guarantees and tests remain sound. There is no label or manual bypass.
 -->
 
 Reason:

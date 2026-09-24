@@ -2,30 +2,31 @@
 """FactoryLM Unified UI Cutover — legacy presentation lifecycle guard.
 
 FACTORYLM-UNIFIED-UI-CUTOVER-001. Charter:
-docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Legacy exception
-policy" + §3.1 "Trusted enforcement boundary". Governance plan:
-docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md
-Task 2.
+docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Lifecycle guard
+rationale and exact-snapshot review" + §3.1 "Trusted enforcement boundary".
+Governance plan: docs/superpowers/plans/
+2026-09-06-factorylm-unified-ui-cutover-governance.md Task 2.
 
 Fails closed by default on ANY addition, modification, deletion, rename-in,
 or rename-out of a guarded legacy presentation path (from
 docs/architecture/convergence/REGISTRY.yaml) or a hardcoded CONTROL_PATTERNS
 control-plane file — unless the PR carries a single substantive
-`## Legacy UI exception` PR-body section (Reason / Canonical replacement
-impact / Rollback) AND the exact-head Codex attestation:
-
-A `[CODEX-ADVERSARIAL-REVIEW]` comment (the repository's existing Codex
-review ledger, `scripts/adversarial-review.sh`) whose `reviewed_sha` is the
-current PR head and whose `status` is `GREEN`. The Codex contract treats any
-expansion of frozen legacy presentation as a finding, so a GREEN at the exact
-head is the independent classification that the touch is migration / removal /
-adapter work. Any head movement makes it stale; a fresh review restores it.
+`## Lifecycle guard rationale` PR-body section (Reason / Canonical replacement
+impact / Rollback) AND a `[CODEX-ADVERSARIAL-REVIEW]` comment
+  (the repository's existing Codex review ledger, `scripts/adversarial-review.sh`)
+  whose `reviewed_sha` and `reviewed_body_sha256` bind it to the current PR
+  head/body snapshot and whose `status` is `GREEN`.
+  The Codex contract treats any expansion of frozen legacy presentation as
+  a finding, so a GREEN at the exact head is the independent classification
+  that the touch is migration / removal / adapter work. Any head movement
+  or body edit makes it stale; a fresh review restores it.
 
 This module does no network access and reads no GitHub token — it is pure
 policy + text analysis, designed to run from the TRUSTED BASE revision of the
 repository (see `.github/workflows/ui-lifecycle-guard.yml`), fed only
 metadata (changed files plus one current PR snapshot containing body and head)
-fetched by a separate token-bearing step. See CLI `main()` at the bottom.
+fetched by a separate token-bearing step. See CLI `main()` at the
+bottom.
 
     python3 tools/ui_surface_lifecycle_guard.py --base <sha> --head <sha>
     python3 tools/ui_surface_lifecycle_guard.py \\
@@ -39,6 +40,7 @@ fetched by a separate token-bearing step. See CLI `main()` at the bottom.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -66,6 +68,9 @@ DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 # quietly loosened in the same PR that would benefit from the loosening.
 # ---------------------------------------------------------------------------
 CONTROL_PATTERNS: tuple[str, ...] = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/**",
     "conftest.py",
     "docs/architecture/convergence/REGISTRY.yaml",
     "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
@@ -82,6 +87,7 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "tox.ini",
     "usercustomize.py",
     "tests/test_ui_surface_lifecycle_guard.py",
+    "tests/test_adversarial_review_scripts.py",
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/rules/factorylm-unified-ui-cutover.md",
@@ -92,6 +98,16 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".github/scripts/resolve_release_tag.sh",
     ".github/pull_request_template.md",
     "requirements/ui-lifecycle-guard.txt",
+    "scripts/adversarial-review.sh",
+    "scripts/adversarial-review-loop.sh",
+    "scripts/adversarial-review-lock.sh",
+    "scripts/adversarial-review-ledger.mjs",
+    "scripts/adversarial-review-render.mjs",
+    "scripts/adversarial-review-schema.json",
+    "scripts/adversarial-review-prompt.md",
+    "scripts/adversarial-review-remediation-prompt.md",
+    "scripts/adversarial-review-trusted.sh",
+    "docs/adversarial-review-workflow.md",
     "tools/hooks/prod-guard.sh",
     "tools/ota_handset_evidence.py",
 )
@@ -575,7 +591,6 @@ _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS: frozenset[str] = frozenset(
 MAX_EXPECTED_CHANGE_COUNT = 3000
 
 _TERMINAL_GLOB = "/**"
-_LEGACY_LABEL = "legacy-ui-exception"
 _FIELD_LABELS: tuple[str, ...] = (
     "Reason:",
     "Canonical replacement impact:",
@@ -614,16 +629,26 @@ _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 # The Codex review ledger's comment envelope, byte-for-byte the shape
-# `scripts/adversarial-review-ledger.mjs` (REVIEW_RE) accepts. Anything that
+# `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
 # be a stale one, a forged one, or a partial one; it is simply ignored.
 _CODEX_REVIEW_MARKER = "[CODEX-ADVERSARIAL-REVIEW]"
 _CODEX_REVIEW_RE = re.compile(
     r"^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\n"
     r"reviewed_sha: (?P<sha>[0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: (?P<body_sha256>[0-9a-f]{64})\r?\n"
     r"base_sha: [^\r\n]+\r?\n"
     r"status: (?P<status>GREEN|ISSUES_FOUND)\r?\n"
     r"review_iteration: (?P<iteration>[0-9]+)\r?\n"
+    r"(?:post_cap_human_authorized: true\r?\n)?"
+    r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?"
+    r"\r?\n"
+    r"BLOCKER: (?P<blocker>[0-9]+)\r?\n"
+    r"HIGH: (?P<high>[0-9]+)\r?\n"
+    r"MEDIUM: (?P<medium>[0-9]+)\r?\n"
+    r"LOW: (?P<low>[0-9]+)\r?\n"
+    r"FALSE_POSITIVE: [0-9]+\r?\n"
+    r"```(?:\r?\n|$)"
 )
 
 # GitHub pull-files `status` values this guard understands, mapped to the
@@ -702,16 +727,17 @@ class GuardResult:
 
 @dataclass(frozen=True)
 class CodexAttestation:
-    """Latest Codex adversarial-review verdict, bound to one exact PR head.
+    """Latest Codex adversarial-review verdict, bound to one exact PR snapshot.
 
     `valid` is True only when the newest well-formed ledger comment for the
-    CURRENT head reports `GREEN`. `reviewed_sha` is the head of the newest
-    well-formed ledger comment of any status (so a stale GREEN can be named
-    in the failure message), or None when no ledger comment exists.
+    CURRENT head and body reports `GREEN`. The reviewed identifiers describe
+    the newest well-formed ledger comment of any status, or are both None when
+    no ledger comment exists.
     """
 
     valid: bool
     reviewed_sha: Optional[str]
+    reviewed_body_sha256: Optional[str]
     status: Optional[str]
     reason: str
 
@@ -1351,9 +1377,8 @@ def _load_json_object(path: Path, *, description: str) -> dict:
     return value
 
 
-def _current_head_and_owner(current: dict) -> tuple[str, str]:
-    """Return `(head_sha, base_repo_owner_login)` from a current PR snapshot,
-    failing closed on anything missing or malformed."""
+def _current_head_body_digest_and_owner(current: dict) -> tuple[str, str, str]:
+    """Return the exact current head, body digest, and repository owner."""
     current_head = current.get("head")
     current_base = current.get("base")
     if not isinstance(current_head, dict) or not isinstance(current_base, dict):
@@ -1361,17 +1386,25 @@ def _current_head_and_owner(current: dict) -> tuple[str, str]:
     current_sha = current_head.get("sha")
     if not isinstance(current_sha, str) or not _FULL_SHA_RE.fullmatch(current_sha):
         raise GuardPolicyError("current pull request head SHA is missing or malformed")
+    if "body" not in current:
+        raise GuardPolicyError("current pull request body is missing")
+    current_body = current["body"]
+    if current_body is None:
+        current_body = ""
+    elif not isinstance(current_body, str):
+        raise GuardPolicyError("current pull request body is not text or null")
+    current_body_sha256 = hashlib.sha256(current_body.encode("utf-8")).hexdigest()
     base_repo = current_base.get("repo")
     owner = base_repo.get("owner") if isinstance(base_repo, dict) else None
     owner_login = owner.get("login") if isinstance(owner, dict) else None
     if not isinstance(owner_login, str) or not owner_login:
         raise GuardPolicyError("current pull request base repository owner login is missing")
-    return current_sha, owner_login
+    return current_sha, current_body_sha256, owner_login
 
 
 def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> CodexAttestation:
     """Read the Codex review ledger from the PR's issue comments (JSON lines of
-    `{id, body, user: {login, type}}`) and bind it to the current head.
+    `{id, body, user: {login, type}}`) and bind it to the current head/body.
 
     Trust model — the same one `scripts/adversarial-review-ledger.mjs` uses:
     only a comment posted by the repository owner account (the account the
@@ -1380,12 +1413,12 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
     bot-authored, or foreign-account comments are ignored — they can neither
     mint nor revoke a GREEN. Among counting comments the newest (highest
     numeric id) decides: the attestation is valid only when that comment's
-    `reviewed_sha` is the current head AND its status is `GREEN`. A newer
-    `ISSUES_FOUND` at the same head withdraws an older GREEN; a GREEN at any
-    other SHA is stale by definition.
+    `reviewed_sha` and `reviewed_body_sha256` match the current snapshot AND
+    its status is `GREEN`. A newer `ISSUES_FOUND` record withdraws an older
+    GREEN. A GREEN at any other head or body is stale by definition.
     """
     current = _load_json_object(current_pull_path, description="current pull request")
-    current_sha, owner_login = _current_head_and_owner(current)
+    current_sha, current_body_sha256, owner_login = _current_head_body_digest_and_owner(current)
 
     try:
         text = Path(comments_path).read_text(encoding="utf-8")
@@ -1393,7 +1426,7 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
         raise GuardPolicyError(f"cannot read review comments file {comments_path}: {exc}") from exc
 
     newest_id = -1
-    newest: Optional[tuple[str, str]] = None
+    newest: Optional[tuple[str, str, str]] = None
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
@@ -1417,45 +1450,72 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
         match = _CODEX_REVIEW_RE.match(body)
         if match is None:
             continue
+        if match.group("status") == "GREEN" and any(
+            int(match.group(name)) != 0 for name in ("blocker", "high", "medium", "low")
+        ):
+            continue
         if comment_id > newest_id:
             newest_id = comment_id
-            newest = (match.group("sha"), match.group("status"))
+            newest = (
+                match.group("sha"),
+                match.group("body_sha256"),
+                match.group("status"),
+            )
 
     if newest is None:
         return CodexAttestation(
             valid=False,
             reviewed_sha=None,
+            reviewed_body_sha256=None,
             status=None,
             reason=f"no {_CODEX_REVIEW_MARKER} ledger comment on this pull request",
         )
-    reviewed_sha, status = newest
+    reviewed_sha, reviewed_body_sha256, status = newest
     if reviewed_sha != current_sha:
         return CodexAttestation(
             valid=False,
             reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
             status=status,
             reason=(
                 f"newest {_CODEX_REVIEW_MARKER} reviewed {reviewed_sha} ({status}) "
                 f"but the pull request head is {current_sha}"
             ),
         )
+    if reviewed_body_sha256 != current_body_sha256:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
+            status=status,
+            reason=(
+                f"review body stale: newest {_CODEX_REVIEW_MARKER} reviewed "
+                f"{reviewed_body_sha256} ({status}) but the pull request body is "
+                f"{current_body_sha256}"
+            ),
+        )
     if status != "GREEN":
         return CodexAttestation(
             valid=False,
             reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
             status=status,
-            reason=f"newest {_CODEX_REVIEW_MARKER} at the current head reports {status}",
+            reason=f"newest {_CODEX_REVIEW_MARKER} at the current head/body reports {status}",
         )
     return CodexAttestation(
         valid=True,
         reviewed_sha=reviewed_sha,
+        reviewed_body_sha256=reviewed_body_sha256,
         status=status,
-        reason=f"{_CODEX_REVIEW_MARKER} GREEN bound to the current head {current_sha}",
+        reason=(
+            f"{_CODEX_REVIEW_MARKER} GREEN bound to the current head {current_sha} "
+            f"and body {current_body_sha256}"
+        ),
     )
 
 
 # ---------------------------------------------------------------------------
-# Exception PR-body parsing — consume rendered CommonMark token structure plus
+# Lifecycle-rationale PR-body parsing — consume rendered CommonMark structure plus
 # GitHub's table/strikethrough rules, not source-looking regex approximations.
 # Only a real top-level H2 can open the section; fenced/indented code, unsafe
 # HTML, lists, blockquotes, tables, and struck text cannot smuggle a heading or
@@ -1549,9 +1609,9 @@ def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
     source = pr_body or ""
     tokens = _GITHUB_MARKDOWN.parse(source)
     if _has_unsafe_html(tokens):
-        return [], "body:unsafe or non-comment HTML invalidates Legacy UI exception"
+        return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
     if _has_renderer_specific_markup(source):
-        return [], "body:renderer-specific markup invalidates Legacy UI exception"
+        return [], "body:renderer-specific markup invalidates Lifecycle guard rationale"
     sections: list[str] = []
     current: Optional[list[str]] = None
     top_level_paragraph = False
@@ -1573,7 +1633,7 @@ def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
                 and token.markup == "##"
                 and inline is not None
                 and inline.type == "inline"
-                and inline.content == "Legacy UI exception"
+                and inline.content == "Lifecycle guard rationale"
             ):
                 current = []
             top_level_paragraph = False
@@ -1686,16 +1746,16 @@ def _is_substantive(value: Optional[str]) -> bool:
     return True
 
 
-def _exception_missing_fields(pr_body: str) -> list[str]:
+def _rationale_missing_fields(pr_body: str) -> list[str]:
     """Return the list of problems with the PR body's exception section —
     empty means exactly one live section with all three fields substantive."""
     sections, invalid_reason = _find_exception_sections(pr_body)
     if invalid_reason is not None:
         return [invalid_reason]
     if len(sections) == 0:
-        return ["body:## Legacy UI exception section"]
+        return ["body:## Lifecycle guard rationale section"]
     if len(sections) > 1:
-        return ["body:duplicate ## Legacy UI exception sections"]
+        return ["body:duplicate ## Lifecycle guard rationale sections"]
     body = sections[0]
     missing = []
     for label in _FIELD_LABELS:
@@ -1758,19 +1818,18 @@ def _tree_evidence_requires_exception(change: ChangedFile) -> bool:
 
 def evaluate(
     changes: Iterable[ChangedFile],
-    labels: "set[str] | frozenset[str]",
     pr_body: str,
     policy: GuardPolicy,
     *,
     codex_attestation: Optional[CodexAttestation] = None,
 ) -> GuardResult:
-    """Require an audited exception for any guarded or control-plane touch.
+    """Require an exact-snapshot independent review for every guarded touch.
 
     For a rename, both `previous_path` and `path` are checked — a rename-out
     of a guarded tree and a rename-in to a guarded tree are both violations.
 
-    A guarded touch passes on the substantive exception body PLUS a Codex
-    ledger GREEN bound to the current head (`codex_attestation.valid`).
+    A guarded touch passes only with a substantive lifecycle rationale and a
+    strict-v2 Codex ledger GREEN bound to the current head and body.
     """
     touched: list[str] = []
     seen: set[str] = set()
@@ -1795,10 +1854,10 @@ def evaluate(
             message="No guarded legacy or control-plane paths touched.",
         )
 
-    body_missing = _exception_missing_fields(pr_body)
-    codex_valid = codex_attestation is not None and codex_attestation.valid
+    body_missing = _rationale_missing_fields(pr_body)
+    review_valid = codex_attestation is not None and codex_attestation.valid
 
-    if not body_missing and codex_valid:
+    if not body_missing and review_valid:
         return GuardResult(
             allowed=True,
             guarded_paths=tuple(touched),
@@ -1811,34 +1870,40 @@ def evaluate(
             ),
         )
 
-    missing: list[str] = []
-    missing.extend(body_missing)
-    if not codex_valid:
-        missing.append("codex:GREEN at exact head")
+    missing = list(body_missing)
+    if not review_valid:
+        missing.append("review:exact-head and exact-body Codex GREEN")
 
-    if codex_attestation is not None and codex_attestation.reviewed_sha is not None:
-        if codex_attestation.status == "GREEN":
-            headline = (
-                f"REVIEW STALE (Codex GREEN reviewed {codex_attestation.reviewed_sha}; "
-                "the head has moved — rerun scripts/adversarial-review.sh)"
-            )
-        else:
+    if review_valid and body_missing:
+        headline = (
+            "RATIONALE DEFECT (the exact-head and exact-body Codex GREEN is current, "
+            "but the Lifecycle guard rationale is missing or invalid; correct the rationale "
+            "and rerun review because editing the body invalidates this GREEN)"
+        )
+    elif codex_attestation is not None and codex_attestation.reviewed_sha is not None:
+        if codex_attestation.status == "ISSUES_FOUND":
             headline = (
                 f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
                 "remediate and re-review)"
             )
+        else:
+            headline = (
+                f"REVIEW STALE ({codex_attestation.reason}; rerun "
+                "scripts/adversarial-review.sh against the current head and body)"
+            )
     else:
         headline = (
-            "INDEPENDENT REVIEW REQUIRED (guarded path touched; run "
-            "scripts/adversarial-review.sh to GREEN at this head)"
+            "INDEPENDENT REVIEW REQUIRED (guarded path touched; require an exact-head "
+            "and exact-body Codex GREEN from scripts/adversarial-review.sh)"
         )
     return GuardResult(
         allowed=False,
         guarded_paths=tuple(touched),
         missing_fields=tuple(missing),
         message=(
-            headline + ". Guarded legacy presentation or control-plane path(s) touched without "
-            "exact-head Codex GREEN attestation. Touched: "
+            headline
+            + ". Guarded legacy presentation or control-plane path(s) touched without "
+            "all required rationale and review evidence. Touched: "
             + ", ".join(touched)
             + ". Missing: "
             + ", ".join(missing)
@@ -1849,16 +1914,6 @@ def evaluate(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-def _read_labels(path: Optional[Path]) -> set[str]:
-    if path is None:
-        return set()
-    try:
-        text = Path(path).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise GuardPolicyError(f"cannot read labels file {path}: {exc}") from exc
-    return {line.strip() for line in text.splitlines() if line.strip()}
-
-
 def _read_pr_body(path: Optional[Path]) -> str:
     if path is None:
         return ""
@@ -1876,13 +1931,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=ROOT / DEFAULT_REGISTRY_REL,
         help="Path to REGISTRY.yaml (defaults to the repo's canonical location).",
     )
-    p.add_argument("--labels-file", type=Path, default=None, help="Newline-delimited label names.")
     p.add_argument("--pr-body-file", type=Path, default=None, help="Raw PR body text.")
     p.add_argument(
         "--current-pull-json-file",
         type=Path,
         default=None,
-        help="Current GitHub pull-request JSON for review ledger binding.",
+        help="Current GitHub pull-request JSON used for exact review binding.",
     )
     p.add_argument(
         "--review-comments-json-file",
@@ -1983,7 +2037,6 @@ def main(argv: Optional[list] = None) -> int:
             )
         else:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
-        labels = _read_labels(args.labels_file)
         pr_body = _read_pr_body(args.pr_body_file)
         codex = (
             load_codex_attestation(args.review_comments_json_file, args.current_pull_json_file)
@@ -1996,7 +2049,6 @@ def main(argv: Optional[list] = None) -> int:
 
     result = evaluate(
         changes,
-        labels,
         pr_body,
         policy,
         codex_attestation=codex,

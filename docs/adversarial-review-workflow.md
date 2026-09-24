@@ -30,12 +30,18 @@ it adds no OpenAI secrets to the repository.
 ## Architecture
 
 ```
+operator loads origin/<captured-base>:scripts/adversarial-review-trusted.sh
+        -> detached neutral base producer + detached candidate remediation tree
+        -> artifacts outside both worktrees
+        |
 Claude implements -> tests/lint -> commit + push
         |
         v
-scripts/adversarial-review.sh          (one round)
-   resolve PR -> HEAD==PR-head gate -> SHA dedupe
+trusted-base scripts/adversarial-review.sh          (one round)
+   resolve PR -> producer-HEAD==captured-base gate -> exact-snapshot dedupe
+        (head SHA + PR-body SHA-256) -> ordered reservation acquisition
         -> codex exec (read-only, --output-schema) -> validate/render
+        -> atomic invocation-token result handoff
         -> gh pr comment  [CODEX-ADVERSARIAL-REVIEW]
         |
         v
@@ -45,7 +51,7 @@ scripts/adversarial-review-loop.sh     (the loop, max 3 cycles)
            FALSE_POSITIVE/NEEDS_HUMAN_DECISION
         -> fix + regression tests + verify -> commit + push
         -> gh pr comment  [CLAUDE-REMEDIATION]
-   new SHA -> next review round
+   new exact snapshot -> next review round
         |
         v
 GREEN  |  [ADVERSARIAL-ESCALATION] after 3 cycles / no progress
@@ -53,22 +59,26 @@ GREEN  |  [ADVERSARIAL-ESCALATION] after 3 cycles / no progress
 
 ## Running it
 
-From the repo root (Git Bash on Windows; plain bash elsewhere):
+The supported entrypoint must itself be loaded from the PR's captured current
+base object. Candidate-local scripts and instructions are never executable
+inputs. From any checkout that can reach the PR objects:
 
 ```bash
-# Full autonomous loop on the current branch's PR (max 3 cycles):
-bash scripts/adversarial-review-loop.sh
+# Capture the current base, then execute exactly that immutable base blob.
+PR=3245
+BASE_SHA="$(gh pr view "$PR" --json baseRefOid --jq .baseRefOid)"
+git fetch origin "$(gh pr view "$PR" --json baseRefName --jq .baseRefName)"
+git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | bash -s -- "$PR"
 
-# Same, for an explicit PR:
-bash scripts/adversarial-review-loop.sh 3245
-
-# One review round only — post the verdict, no remediation:
-bash scripts/adversarial-review-loop.sh --review-only
-# (or directly: bash scripts/adversarial-review.sh [PR] [--force] [--dry-run])
+# Review only (no remediation):
+git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | \
+  bash -s -- "$PR" --review-only
 
 # Post-cap verification pass (requires EXPLICIT human authorization — see
 # "Durable review budget" below). Review-only by construction:
-ADV_REVIEW_HUMAN_AUTHORIZED=1 bash scripts/adversarial-review.sh <PR>
+ADV_REVIEW_HUMAN_AUTHORIZED=1 \
+  git show "$BASE_SHA:scripts/adversarial-review-trusted.sh" | \
+  bash -s -- "$PR" --review-only
 ```
 
 PR arguments are validated strictly (numeric PR ids only); unknown flags fail
@@ -78,11 +88,23 @@ always a precondition failure. A failed fetch of the base branch is a tooling
 failure (exit 2) — a stale merge-base silently poisons the reviewed diff scope,
 so it fails closed rather than proceeding.
 
-From a Claude Code session: `/adversarial-gate [PR] [--review-only]`.
+There is deliberately no candidate-local Claude slash command for this gate:
+candidate instruction files are not an authorization source. Use only the
+immutable-base operator invocation above.
 
-Preconditions (all fail closed): an open PR for the branch; local HEAD equals
-the PR head (push first); clean tracked working tree; `gh auth status` OK;
-`codex` authenticated (`codex doctor`).
+Preconditions (all fail closed): an open PR; captured base/head objects present;
+neutral detached producer HEAD equals the captured base; producer and detached
+candidate remediation worktrees are fully clean (tracked, untracked, and
+ignored); artifacts are outside both worktrees; `gh auth status` OK; `codex`
+authenticated (`codex doctor`). Direct candidate-local runner/loop invocation
+is non-authoritative and fails closed.
+
+Candidate `AGENTS.md`, `CLAUDE.md`, `.claude/**`, runner/renderer/schema,
+prompts, and docs are read-only untrusted evidence. Codex and Claude start in
+the neutral trusted-base checkout. The current PR that introduces this
+mechanism is a bootstrap: it cannot authorize itself and requires an external
+exact-head review plus the owner's explicit integration decision. The sole
+route is first proven on a later guarded PR after these assets exist on `main`.
 
 ## Review format (machine-readable envelope)
 
@@ -108,6 +130,7 @@ followed by a fenced block:
 
 ```
 reviewed_sha: <full SHA>
+reviewed_body_sha256: <SHA-256 of the exact PR body>
 base_sha: <merge-base SHA>
 status: ISSUES_FOUND | GREEN
 review_iteration: <n>
@@ -118,16 +141,22 @@ BLOCKER: n / HIGH: n / MEDIUM: n / LOW: n / FALSE_POSITIVE: n
 A GREEN review additionally contains the literal block
 `ADVERSARIAL GATE: GREEN` + `reviewed_sha: <SHA>`.
 
-**The GREEN is the Legacy UI lifecycle attestation.** The
+**The GREEN is also the Legacy UI lifecycle attestation.** The
 `Legacy UI Lifecycle Guard` (`tools/ui_surface_lifecycle_guard.py`) reads this
-ledger from the PR's comments and, for a PR that touches a guarded legacy path
-and carries a substantive `## Legacy UI exception` body, requires the newest
-well-formed owner-account envelope with `reviewed_sha == head` and
-`status: GREEN` as the sole attestation. The review prompt makes any expansion
-of frozen legacy UI a BLOCKER, so a GREEN means "migration / removal / adapter
-only". Because a comment is not a `pull_request_target` event, `final_green_gate`
-re-runs the latest guard run for the head after a GREEN (best effort;
-`gh run rerun` by hand otherwise).
+ledger from the PR's comments. For any guarded change, the sole authorization
+route is a substantive `## Lifecycle guard rationale` plus the newest
+well-formed owner-account User envelope whose `reviewed_sha` matches the
+current head, whose `reviewed_body_sha256` matches SHA-256 of the current PR
+body, and whose `status: GREEN`. Any push or body edit requires a fresh review.
+There is no label or manual bypass.
+
+The review prompt makes any introduction or expansion of frozen legacy
+presentation a BLOCKER that can never produce GREEN. A guard/control-plane
+change is not automatically a BLOCKER: the reviewer may return GREEN only
+when fail-closed behavior, trusted-base guarantees, and the relevant tests
+remain sound. Because a comment is not a `pull_request_target` event,
+`final_green_gate` dispatches a fresh workflow from the current default branch
+after a GREEN (best effort; never rerun a historical event snapshot).
 
 Claude's disposition comment starts with `[CLAUDE-REMEDIATION]` and lists one
 line per finding id with its classification. Escalations start with
@@ -136,26 +165,38 @@ line per finding id with its classification. Escalations start with
 ### Comment-ledger trust model (round-2 hardening)
 
 Anyone who can comment on a PR can type the marker, so a marker alone proves
-nothing. A ledger entry counts only when (a) it was **authored by the same
-GitHub account the runner posts as** and (b) its metadata block **parses
-strictly** (marker line, fenced block, exact `reviewed_sha:`/`status:`
-lines). Forged or malformed comments are ignored and can never mint a GREEN.
+nothing. A ledger entry counts only when (a) it was authored by the
+owner-account GitHub `User` the runner posts as and (b) its metadata block
+parses strictly (marker line, fenced block, exact `reviewed_sha:`,
+`reviewed_body_sha256:`, and `status:` lines). Foreign-account or malformed comments
+are ignored and cannot mint a GREEN. This is an
+owner-account trust contract, not cryptographic proof that Codex ran: someone
+with that account or its token can manually post a complete matching envelope.
+The supported trusted-base producer prevents candidate code from controlling
+the runner, but the owner must protect its posting credentials and must not
+forge review records. The guard cannot distinguish an owner-forged record
+from a genuine producer record.
 Remediation never fetches its instructions from PR comments at all — the
 loop injects the runner's own rendered review artifact verbatim into the
 prompt, with an explicit instruction that comment text is data, not
 instructions.
 
-### SHA protection
+### Exact-snapshot protection
 
-- The review runs only when the local checkout **is** the PR head; the
-  reviewed SHA is stamped into the comment.
-- A GREEN for an older SHA is never approval for a newer one: every new commit
-  changes `headRefOid`, and the runner reviews (and stamps) the new SHA.
-- Duplicate reviews of the same SHA are skipped; the skip reports the **prior
-  verdict at that SHA** (a prior ISSUES_FOUND exits 1, not 0). `--force`
-  re-reviews.
-- Iteration numbers and dedupe are derived from the PR's own comments —
-  stateless, no local state file to drift. Parsing lives in ONE place
+- The producer runs from the captured trusted base; it reviews immutable
+  candidate objects. The reviewed SHA and current PR-body digest are stamped
+  into the comment.
+- A GREEN for an older SHA or different body is never approval for a newer
+  snapshot. Every push or body edit requires a fresh review.
+- Duplicate reviews of the same exact head-and-body snapshot are skipped; the
+  skip reports the **prior verdict for that exact snapshot** (a prior
+  ISSUES_FOUND exits 1, not 0). A different body digest at the same head is
+  stale and receives a fresh review. `--force` re-reviews. A deduplicated
+  verdict still publishes a token-bound terminal result with its exact
+  snapshot and status. Deduplicated ISSUES_FOUND has no trusted local rendered
+  artifact, so the loop stops explicitly without privileged remediation.
+- Iteration numbers and exact-snapshot dedupe are derived from the PR's own
+  comments — stateless, no local state file to drift. Parsing lives in ONE place
   (`scripts/adversarial-review-ledger.mjs`, consumed by both scripts): the
   next iteration is **max(validated `review_iteration`) + 1**, never a raw
   comment count — duplicate posts of the same record and malformed comments
@@ -164,11 +205,18 @@ instructions.
 ### Durable review budget (2026-08-17 hardening)
 
 The 3-round ceiling is enforced against the **PR's validated review ledger**,
-not any single invocation's loop counter — `consumed` = distinct validated
-`(reviewed_sha, review_iteration)` records across the PR's whole history.
-Restarting the script does **not** mint three fresh autonomous rounds; a new
-session resumes the same budget, and the loop re-reads the ledger **every
-cycle** so concurrent or crashed invocations still count.
+not any single invocation's loop counter. The ledger is one stream ordered by
+immutable numeric comment id: each unique validated review round consumes one
+slot, and each unmatched canonical FULL reservation consumes one crashed slot.
+A validated review completes at most one earlier compatible FULL reservation,
+preferring its strict `run_id`; legacy review records without a `run_id` match
+only the earliest unmatched compatible reservation. `consumed_before_mine`
+counts that mixed review/reservation prefix before the caller's reservation,
+so two different bodies cannot both acquire the final slot. Timestamps and API
+array order never decide acquisition. Restarting the script does **not** mint
+three fresh autonomous rounds; a new session resumes the same budget, and the
+loop re-reads the ledger **every cycle** so concurrent or crashed invocations
+still count. `review_only` reservations remain non-consuming.
 
 Past the cap, exactly one action exists: a **human-authorized, review-only**
 pass — `ADV_REVIEW_HUMAN_AUTHORIZED=1` (set by a human, per run; the loop
@@ -187,34 +235,65 @@ local locks — sessions run on different machines):
 
 1. Before running Codex, the runner posts a strict
    `[ADVERSARIAL-ROUND-RESERVATION]` record — unique 128-bit `run_id`, exact
-   `head_sha`, `mode: full | review_only` (the loop sets `full`; anything else
-   is review-only), `human_authorized`, `requested_at` — and captures the
-   comment's immutable numeric id.
+   `head_sha`, exact `body_sha256`, `mode: full | review_only` (the loop sets
+   `full`; anything else is review-only), `human_authorized`, `requested_at` —
+   and captures the comment's immutable numeric id.
 2. It then re-reads the COMPLETE ledger and proceeds only if its reservation
-   is **canonical**: the earliest valid same-account reservation for that
-   head by numeric comment id (creation time is advisory only). Every loser
-   exits fail-closed before Codex runs. Duplicate posts of the same `run_id`
+   is **canonical**: the earliest valid same-account reservation for exact
+   `(head_sha, body_sha256, review_epoch)`, where `review_epoch` is the newest
+   preceding validated review comment id (or `0`), by numeric comment id.
+   This lets A -> reviewed B -> A create a fresh A reservation without
+   refunding either earlier round. Every same-snapshot/same-epoch loser exits
+   fail-closed before Codex runs. Duplicate posts of the same `run_id`
    collapse to the earliest comment (idempotent retry); distinct `run_id`s
-   never collapse; forged/malformed reservations never participate.
-3. The budget counts **canonical full-mode reservations** (each is one
-   autonomous slot, consumed at reservation — a crashed remediation
-   conservatively keeps its slot; work continues only on a new head or via
-   the human-authorized review-only override). `consumed` is the max of that
-   count and the legacy validated-review-round count, so pre-reservation
-   history still counts and nothing ever under-counts.
-4. **Immediately before privileged remediation** (`claude
-   --dangerously-skip-permissions`) the loop re-reads the ledger and proves
-   again, from the trusted local reservation artifact: it still owns the
-   canonical reservation for the reviewed head; the `run_id` matches; the PR
-   head still equals the reserved head; the reservation is within budget; and
-   no `[CLAUDE-REMEDIATION]` completion exists for that `run_id`. Any failure
-   exits without launching Claude.
-5. **Evidence binding:** the review record, the remediation disposition, and
+   never collapse;
+   forged/malformed reservations never participate. Pre-migration digest-less
+   reservations remain budget evidence but can neither prove ownership nor
+   block a new exact-snapshot reservation.
+3. The budget preserves every unique validated review round and charges every
+   canonical full-mode reservation until one later compatible review completes
+   it. A completed reservation and its review are one slot; every other
+   unmatched canonical FULL reservation remains charged as crashed. The
+   historical digest-less reservation format remains budget evidence. All
+   heads, bodies, and review epochs share the same three-round ceiling.
+4. Every invocation has a fresh 128-bit lowercase-hex artifact token. All
+   load-bearing prompt, envelope, Codex log, changed-file list, rendered
+   comment, remediation prompt, and Claude log names use
+   `<head_sha>-<body_sha256>-<token>`. The runner first reserves the token with
+   an exclusive, durable local claim. It publishes both the rendered review
+   and mode-`0600` `result-<pr>-<token>.json` with atomic no-replace semantics,
+   so neither a peer nor a pre-existing path can be overwritten. The result
+   always contains `kind` (`fresh_review` or `deduplicated`), `status`, exact
+   head/body digest, and mode. A fresh result additionally carries `run_id`,
+   numeric reservation comment id, rendered review path, and SHA-256 of the
+   exact rendered bytes; those fields are null for a deduplicated terminal
+   result. No head-only artifact or pre-call snapshot is fallback authority.
+5. **Immediately before privileged remediation** (`claude
+   --dangerously-skip-permissions`) the loop accepts only that token's result,
+   opens the result and review with no-follow fd checks, rejects non-regular
+   files, verifies every field, expected review path/envelope, and rendered
+   byte digest, and constructs the remediation prompt from that one verified
+   read (never a later pathname reopen). It rechecks that the current PR still
+   equals the runner-captured snapshot, then re-reads the ledger. It proves the
+   run still owns its canonical epoch reservation, `consumed_before_mine < 3`,
+   and no `[CLAUDE-REMEDIATION]` completion exists for that `run_id`. The
+   loop's pre-call snapshot is advisory only. Any missing, malformed,
+   cross-token, stale, replaced, symlinked, or digest-mismatched handoff exits
+   without launching Claude.
+6. **Evidence binding:** the review record, the remediation disposition, and
    escalation records all carry the same `run_id` (+ reservation comment id);
    the loop rejects a disposition whose `run_id` does not match the round it
    authorized. Remediation input still comes ONLY from the trusted local
-   runner artifact, never from PR comments.
-6. Any GitHub API failure, incomplete pagination, malformed ledger, or
+   runner artifact, never from PR comments. One shared cooperative lock
+   serializes standalone reviews and loop remediation in a worktree. The loop
+   owns it across all cycles and passes an unguessable 128-bit owner token;
+   each child runner reopens and verifies the regular mode-`0600` owner record
+   before re-entering without releasing the parent lock. Missing, malformed,
+   or mismatched owner state fails closed. At the final privileged boundary
+   the loop also proves local `HEAD == reviewed_sha` and captures tracked
+   status with an explicit successful exit code; failed or nonempty status
+   can never authorize Claude.
+7. Any GitHub API failure, incomplete pagination, malformed ledger, or
    inability to prove ownership stops the process — never proceed
    optimistically.
 
@@ -224,15 +303,17 @@ local locks — sessions run on different machines):
   `--max-iter` is validated and hard-capped at 3 — each cycle launches a
   privileged headless remediation, so the ceiling is a safety contract, not a
   default.
-- Concurrency: the head is re-verified **before remediation** (stale
-  ISSUES_FOUND findings are never remediated — the loop syncs and reviews the
-  new head) and **before any GREEN announcement**. Post-remediation progress
+- Concurrency: the exact head/body snapshot is re-verified **before
+  remediation** (stale ISSUES_FOUND findings are never remediated — a changed
+  body fails closed and a new head is synced for review) and **before any GREEN
+  announcement**. Post-remediation progress
   counts only when the new head *descends* from the reviewed commit AND a
   same-account `[CLAUDE-REMEDIATION]` disposition attests to that exact SHA —
   a third-party push is never "progress".
 - No-progress protection: if remediation pushes no new commit, the loop stops
   and escalates (everything left is disputed or needs a human).
-- The loop never reviews the same SHA twice (dedupe above).
+- The loop never reviews the same exact head-and-body snapshot twice (dedupe
+  above).
 - Exit codes: 0 GREEN · 1 unresolved/escalated · 2 tooling failure. **A
   tooling failure is never GREEN.**
 
@@ -247,7 +328,8 @@ rotating credentials, or making consequential product/architecture calls —
 those become `NEEDS_HUMAN_DECISION` dispositions.
 
 Safety floors: Claude runs headless with `--dangerously-skip-permissions`
-**inside this repo only**, where the deterministic `PreToolUse` hooks
+from the neutral trusted-base checkout and edits only the separately named
+detached remediation worktree. The trusted base's deterministic `PreToolUse` hooks
 (`tools/hooks/prod-guard.sh`, `rm-guard.sh`, `git-state-guard.sh`) remain the
 hard floor, and the loop itself contains no history-discarding git commands
 (fast-forward only). Codex runs sandboxed `read-only`.
@@ -260,27 +342,30 @@ hard floor, and the loop itself contains no history-discarding git commands
 | Malformed Codex output | exit 2 (never GREEN), envelope kept in `.adversarial-review/envelope-*.json` | re-run with `--force` |
 | GitHub unavailable / `gh` unauthenticated | exit 2/3 before any review runs | `gh auth login`; re-run |
 | No PR yet | exit 3 with instruction | create the PR, re-run |
-| Dirty worktree / HEAD ≠ PR head | exit 3 with instruction | commit/push, re-run |
+| Producer/remediation drift or captured base/head mismatch | exit 2/3, no authorization | clean the source state and restart from the current base |
 | New commits arrive mid-review | the posted comment stamps the SHA that was actually reviewed; the next round reviews the new head | nothing — by design |
 | Claude remediation fails | escalation comment, exit 2 | read `.adversarial-review/claude-*.log` |
 
-Artifacts (prompts, envelopes, rendered comments, logs) live in
-`.adversarial-review/` (gitignored).
+Artifacts (prompts, envelopes, rendered comments, logs, and atomic runner
+results) live in a private launcher temporary directory outside both detached
+worktrees and are invocation-unique.
+Each process also writes the exact PR body bytes to a read-only token-bound
+artifact and passes only that trusted path into the review prompt; PR-authored
+body text is never interpolated into shell or template code.
 
 ## Disable procedure
 
-Nothing runs automatically — both scripts are invoked manually (or via
-`/adversarial-gate`). To disable: simply don't run them. To remove the slash
-command without deleting the implementation, delete
-`.claude/commands/adversarial-gate.md`. No hooks, cron, or CI were added.
+Nothing runs automatically. To disable, simply do not run the immutable-base
+operator entrypoint. No candidate-local slash command, hook, cron, or CI
+producer invocation exists.
 
 ## Rollback
 
 The automation is self-contained in:
-`scripts/adversarial-review{,-loop}.sh`,
+`scripts/adversarial-review-trusted.sh`, `scripts/adversarial-review{,-loop}.sh`,
 `scripts/adversarial-review-{prompt,remediation-prompt}.md`,
 `scripts/adversarial-review-{schema.json,render.mjs}`,
-`.claude/commands/adversarial-gate.md`, this document, and one `.gitignore`
+this document, and one `.gitignore`
 line. Revert the introducing commit (or delete those files) and the repo is
 exactly as before.
 

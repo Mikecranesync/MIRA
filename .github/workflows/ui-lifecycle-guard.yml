@@ -14,14 +14,14 @@ name: Legacy UI Lifecycle Guard
 # author controls, even from a fork. It checks out ONLY `base.sha`, with
 # credential persistence disabled; it never checks out or executes the head
 # ref or any PR code. A separate, token-bearing metadata step fetches changed
-# files, immutable merge-base/head Git trees, one PR snapshot containing
-# labels/body/head, and (only for an exception-label event) the actor's current
-# collaborator role as DATA ONLY (never interpolated into executable script
-# text — always written to a file and read back by the guard). The
+# files, immutable merge-base/head Git trees, one current PR snapshot, the PR
+# body, and review comments as DATA ONLY (never interpolated into executable
+# script text — always written to a file and read back by the guard). The
 # guard-evaluation step itself carries no token and makes no network call.
 #
-# Job split (finding #4): `pending` (posts the pending status, holds
-# statuses:write ONLY) -> `guard` (needs: pending; fetches metadata, checks
+# Job split (finding #4): `snapshot` captures the current immutable PR tuple,
+# then `pending` (posts the pending status, holds statuses:write ONLY) ->
+# `guard` (needs: snapshot + pending; refetches/verifies metadata, checks
 # out trusted base, runs tests + evaluation; holds contents:read +
 # pull-requests:read, NEVER statuses:write) -> `final-status`
 # (needs: [pending, guard]; if: always(); runs on a fresh runner; holds
@@ -54,12 +54,16 @@ on:
       - reopened
       - synchronize
       - edited
-      - labeled
-      - unlabeled
       - ready_for_review
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to evaluate from the current default-branch workflow
+        required: true
+        type: string
 
 concurrency:
-  group: ui-lifecycle-guard-${{ github.event.pull_request.number }}
+  group: ui-lifecycle-guard-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 # No blanket workflow-level grant. Every job below declares exactly the
@@ -71,8 +75,59 @@ env:
   STATUS_CONTEXT: "Legacy UI Lifecycle Guard"
 
 jobs:
+  snapshot:
+    name: Capture current PR snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.snapshot.outputs.pr_number }}
+      base_ref: ${{ steps.snapshot.outputs.base_ref }}
+      base_sha: ${{ steps.snapshot.outputs.base_sha }}
+      head_sha: ${{ steps.snapshot.outputs.head_sha }}
+    steps:
+      - name: Assert trusted workflow-dispatch ref
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [ "$DISPATCH_REF" != "refs/heads/main" ]; then
+            echo "::error::workflow_dispatch must execute the current default-branch workflow"
+            exit 1
+          fi
+      - name: Resolve current immutable PR snapshot
+        id: snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          PR_NUMBER="${EVENT_PR_NUMBER:-$INPUT_PR_NUMBER}"
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::a numeric pull request number is required"
+            exit 1
+          fi
+          gh api "repos/$REPO/pulls/$PR_NUMBER" > "$RUNNER_TEMP/current-pull.json"
+          BASE_REF="$(jq -r '.base.ref' "$RUNNER_TEMP/current-pull.json")"
+          BASE_SHA="$(jq -r '.base.sha' "$RUNNER_TEMP/current-pull.json")"
+          HEAD_SHA="$(jq -r '.head.sha' "$RUNNER_TEMP/current-pull.json")"
+          if [ "$BASE_REF" != "main" ] || [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::current pull metadata lacks the required main base and immutable SHAs"
+            exit 1
+          fi
+          {
+            echo "pr_number=$PR_NUMBER"
+            echo "base_ref=$BASE_REF"
+            echo "base_sha=$BASE_SHA"
+            echo "head_sha=$HEAD_SHA"
+          } >> "$GITHUB_OUTPUT"
+
   pending:
     name: Post pending status
+    needs: snapshot
     runs-on: ubuntu-latest
     permissions:
       statuses: write
@@ -81,7 +136,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
         run: |
           gh api "repos/$REPO/statuses/$HEAD_SHA" \
             -f state=pending \
@@ -90,7 +145,7 @@ jobs:
 
   guard:
     name: Legacy UI Lifecycle Guard
-    needs: pending
+    needs: [snapshot, pending]
     runs-on: ubuntu-latest
     # Deliberately NO statuses:write here — this job executes checked-out
     # base-revision code (tests + the guard CLI); status-posting is isolated
@@ -104,8 +159,8 @@ jobs:
       # than trusting the trigger filter alone.
       - name: Assert base ref is main
         run: |
-          if [ "${{ github.event.pull_request.base.ref }}" != "main" ]; then
-            echo "::error::base.ref is '${{ github.event.pull_request.base.ref }}', expected 'main'"
+          if [ "${{ needs.snapshot.outputs.base_ref }}" != "main" ]; then
+            echo "::error::captured base.ref is '${{ needs.snapshot.outputs.base_ref }}', expected 'main'"
             exit 1
           fi
 
@@ -118,8 +173,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          APPROVER_LOGIN: ${{ github.event.sender.login }}
+          PR_NUMBER: ${{ needs.snapshot.outputs.pr_number }}
+          CAPTURED_BASE_SHA: ${{ needs.snapshot.outputs.base_sha }}
+          CAPTURED_HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
         run: |
           gh api "repos/$REPO/pulls/$PR_NUMBER" \
             > "$RUNNER_TEMP/current-pull.json"
@@ -135,6 +191,10 @@ jobs:
             echo "::error::pull metadata did not contain immutable base/head SHAs"
             exit 1
           fi
+          if [ "$BASE_SHA" != "$CAPTURED_BASE_SHA" ] || [ "$HEAD_SHA" != "$CAPTURED_HEAD_SHA" ]; then
+            echo "::error::pull request base/head changed after the current snapshot was captured"
+            exit 1
+          fi
           gh api "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" \
             > "$RUNNER_TEMP/compare.json"
           MERGE_BASE_SHA="$(jq -r '.merge_base_commit.sha' "$RUNNER_TEMP/compare.json")"
@@ -148,8 +208,6 @@ jobs:
             > "$RUNNER_TEMP/head-tree.json"
           jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" \
             > "$RUNNER_TEMP/pr-body.md"
-          jq -r '.labels[].name' "$RUNNER_TEMP/current-pull.json" \
-            > "$RUNNER_TEMP/labels.txt"
 
       # The Codex adversarial-review ledger lives in the PR's issue comments
       # (scripts/adversarial-review.sh posts it). Fetched as DATA ONLY, one
@@ -160,7 +218,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.snapshot.outputs.pr_number }}
         run: |
           gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
             --jq '.[] | {id, body, user: {login: .user.login, type: .user.type}}' \
@@ -172,7 +230,7 @@ jobs:
       - name: Checkout trusted base revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.snapshot.outputs.base_sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -198,7 +256,6 @@ jobs:
             --expected-change-count-file "$RUNNER_TEMP/expected-change-count.txt" \
             --base-tree-json-file "$RUNNER_TEMP/base-tree.json" \
             --head-tree-json-file "$RUNNER_TEMP/head-tree.json" \
-            --labels-file "$RUNNER_TEMP/labels.txt" \
             --pr-body-file "$RUNNER_TEMP/pr-body.md" \
             --current-pull-json-file "$RUNNER_TEMP/current-pull.json" \
             --review-comments-json-file "$RUNNER_TEMP/review-comments.jsonl"
@@ -217,7 +274,7 @@ jobs:
 
   final-status:
     name: Post final status
-    needs: [pending, guard]
+    needs: [snapshot, pending, guard]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -231,15 +288,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
           GUARD_RESULT: ${{ needs.guard.result }}
         run: |
           if [ "$GUARD_RESULT" = "success" ]; then
             STATE=success
-            DESC="No unguarded legacy change, or an exact-head Codex ledger GREEN is present."
+            DESC="No guarded legacy change, or substantive rationale plus exact-head/exact-body Codex ledger GREEN is present."
           else
             STATE=failure
-            DESC="Guarded path touched without exact-head Codex ledger GREEN (or a guard step failed)."
+            DESC="Guarded path lacks substantive rationale plus exact-head/exact-body Codex ledger GREEN."
           fi
           gh api "repos/$REPO/statuses/$HEAD_SHA" \
             -f "state=$STATE" \

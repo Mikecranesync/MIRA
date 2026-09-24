@@ -23,8 +23,8 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 - **Bounded platform adapters** live OUTSIDE the guarded legacy trees, under
   `mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
   `mira-mobile/src/factorylm-ui/**`. Mounting an adapter in an existing
-  guarded route is an audited exception; a new sibling legacy route or
-  component is not.
+  guarded route requires the audited lifecycle rationale; a new sibling legacy
+  route or component is not.
 - **Already-connected mobile new UI:** the historical
   `mira-mobile/src/unified/**` adapter root and exact hosts
   `mira-mobile/src/screens/UnifiedChat.tsx` and `UnifiedRoot.tsx` are canonical,
@@ -85,7 +85,7 @@ manifests, and other non-executable assets still change the shipped legacy
 experience. Direct production files at each legacy module root fail closed;
 docs, screenshot evidence, tests, and test-only configs/tooling stay open.
 Mobile native production trees and every OTA workflow control require the audited
-cutover exception; native tests and docs stay open. Root deployable nginx,
+cutover rationale; native tests and docs stay open. Root deployable nginx,
 automatic Compose, and redirect controls are guarded; backend-only deploy
 scripts remain open. Native release tests run in a separate secret-free job and
 workspace from the production signing/distribution job. Root Compose names are
@@ -95,30 +95,34 @@ is also a trusted control and must be guarded; Git-tracked handset receipts and
 their screenshots/transcripts remain open review inputs and never authorize
 themselves.
 
-## The exception policy
+## The lifecycle guard policy
 
-Changes to guarded legacy paths require an exact-head Codex attestation. The
-PR body must contain a substantive `## Legacy UI exception` section with
-`Reason:`, `Canonical replacement impact:`, and `Rollback:` — see the charter
-§3 for the exact format and what the guard rejects (blank values, `N/A`,
-placeholders, fenced code blocks, HTML comments, or fewer than three
-alphanumeric tokens and twelve alphanumeric characters per field).
+A guarded change must carry one substantive top-level
+`## Lifecycle guard rationale` section with `Reason:`,
+`Canonical replacement impact:`, and `Rollback:` — see the charter §3 for the
+exact format and what the guard rejects (blank values, `N/A`, placeholders,
+fenced code blocks, HTML comments, or fewer than three alphanumeric tokens and
+twelve alphanumeric characters per field).
 
-**Independent review attestation:** the newest well-formed
-`[CODEX-ADVERSARIAL-REVIEW]` ledger comment by the owner account with
-`reviewed_sha` equal to the current head and `status: GREEN`. Run
-`scripts/adversarial-review.sh <PR>` from the PR worktree; the Codex contract
-reports any expansion of frozen legacy UI as a BLOCKER, so a GREEN is the
-independent classification that the touch is migration / removal / adapter work.
-A push makes it stale; re-review restores it.
+There is one authorization route: the newest well-formed owner-account User
+`[CODEX-ADVERSARIAL-REVIEW]` ledger record must have `reviewed_sha` equal to
+the current head, `reviewed_body_sha256` equal to SHA-256 of the current PR
+body, and `status: GREEN`. Load `scripts/adversarial-review-trusted.sh` from
+the immutable captured `origin/<base>` object; never execute review producers
+from the PR worktree. Any push or body edit invalidates the reviewed snapshot and requires
+a fresh review. There is no label or manual bypass.
 
-An expansion of frozen legacy UI is a human decision; do not re-prompt Codex
-until it stops reporting one.
+The Codex contract reports any introduction or expansion of frozen legacy
+presentation as a BLOCKER, so it can never produce GREEN. A change to the
+guard or its control plane is not automatically a BLOCKER: it is reviewable
+and may GREEN only when fail-closed behavior, trusted-base guarantees, and the
+test contract remain sound. If any of those properties regress or cannot be
+established, the reviewer reports a BLOCKER.
 
 ## Do not
 
-- ❌ Add a feature to a guarded legacy presentation path without the audited
-  exception.
+- ❌ Add a feature to a guarded legacy presentation path; expansion is always
+  a BLOCKER and can never be GREEN.
 - ❌ Create a second chat store, stream parser, safety system, evidence
   system, provider router, asset identity system, or capability registry —
   reuse the seams in charter §2.3.
