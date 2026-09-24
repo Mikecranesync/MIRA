@@ -163,7 +163,7 @@ and release/deployment workflows, so those changes require the same exact-head
 review and exception gate as the lifecycle guard itself. Next: commit #3647's
 fully verified candidate, obtain
 independent immutable-head PASS plus green CI and the maintainer's fresh
-`legacy-ui-exception` attestation, then merge it. Rebase
+the then-current manual exception attestation, then merge it. Rebase
 #3651 and repeat exact-head code and handset-visual review before its merge;
 #3652 follows. The CHARLIE peer channel is an active notification path; GitHub
 issues, PR heads, checks, and review artifacts remain the durable authority.
@@ -185,7 +185,7 @@ task-sized commits on top of `1ecb9baef`:
 - `9bf47dcaa` — **fix(ci):** finding #1 (removed the `mira-web/public/sw.js` +
   `posthog-init.js` exact-path exemption entirely — both are executable JS and are now guarded
   like any other `.js` file; the old exemption test was INVERTED, not deleted, preserving the
-  regression proof) + finding #2 (hardened `## Legacy UI exception` PR-body parsing: fenced-code
+  regression proof) + finding #2 (hardened the former manual-exception PR-body parsing: fenced-code
   stripping now handles unclosed backtick/tilde fences via a line scanner, HTML-comment stripping
   now handles an unclosed `<!--`, placeholder detection now catches phrase variants anchored at
   the START of a value only — never mid-sentence — plus punctuation-only values, and a duplicate
@@ -317,7 +317,7 @@ Landed locally (Tasks 1-4, task-sized commits, all local — nothing pushed):
   (`pull_request_target`, base-sha-only checkout with `persist-credentials: false`, minimal
   `contents:read`/`pull-requests:read`/`statuses:write`, token-bearing metadata step kept separate
   from the no-token evaluation step, `Legacy UI Lifecycle Guard` status posted to the PR head SHA)
-  + the optional `## Legacy UI exception` scaffold added to `.github/pull_request_template.md`
+  + the optional former manual-exception scaffold added to `.github/pull_request_template.md`
   (blank fields, explanation only in HTML comments — verified to fail closed unfilled and pass once
   substantively completed, against the real registry). `actionlint` clean. This workflow **cannot
   run on the bootstrap PR that introduces it** (`pull_request_target` always uses the workflow
@@ -341,10 +341,10 @@ Landed locally (Tasks 1-4, task-sized commits, all local — nothing pushed):
   an interactive Claude Code step, not reproducible from a non-interactive session.
 
 **Legacy exception policy (live):** any addition/modification/deletion/rename touching a guarded
-legacy path or a `CONTROL_PATTERNS` control-plane file fails the guard by default. A maintainer
-opens it ONLY via the `legacy-ui-exception` label + a substantive `## Legacy UI exception` PR-body
-section (`Reason:` / `Canonical replacement impact:` / `Rollback:` — blank, `N/A`, placeholder,
-fenced-code, and HTML-comment-only values all fail closed). Full policy:
+legacy path or a `CONTROL_PATTERNS` control-plane file fails the guard by default. It opens ONLY
+with a substantive top-level `## Lifecycle guard rationale` and the newest well-formed owner-account
+User review whose `reviewed_sha` and `reviewed_body_sha256` match the current PR and whose status is
+`GREEN`. Any push or body edit requires a fresh review. Full policy:
 `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md` §3; enforcement:
 `tools/ui_surface_lifecycle_guard.py` + `.github/workflows/ui-lifecycle-guard.yml`.
 
