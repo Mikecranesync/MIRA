@@ -283,6 +283,19 @@ describe("review repair — numbered procedures and safe external readings on th
     expect((recorded.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(true);
   });
 
+  it.each([
+    "Re-energize the panel. Read current on the VFD display and then measure voltage across the terminals.",
+    "Restore power. De-energize the panel, lock out and verify zero voltage, then re-energize and measure phase current.",
+  ])("withholds mixed actions before emission and persistence: %s", async (draft) => {
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(text).not.toContain(draft);
+    expect(frames(text).find((f) => f.kind === "safety")?.trigger).toContain("energized-procedure");
+    const recorded = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
+    expect(String(recorded.answerText)).not.toContain(draft);
+    expect((recorded.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(true);
+  });
+
   it("serves a safe restart/display reading without a terminal frame", async () => {
     const draft = "Bring the conveyor motor back on and check the amp draw on the VFD display after it stabilizes.";
     stubProvider(draft);

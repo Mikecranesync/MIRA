@@ -187,3 +187,25 @@ describe("review repair: procedure scope and external readings", () => {
     expect(judge(text).ok).toBe(true);
   });
 });
+
+
+describe("independent review: scope exemptions to ordered actions", () => {
+  it.each([
+    "Re-energize the panel. Read current on the VFD display and then measure voltage across the terminals.",
+    "Re-energize the panel. Read the current off the VFD display and take a voltage reading from exposed lugs.",
+    "Re-energize the panel. Measure voltage across the terminals and then read current on the VFD display.",
+    "Restore power. De-energize the panel, lock out and verify zero voltage, then re-energize and measure phase current.",
+    "Restore power. Shut it down, apply lockout/tagout and verify absence of voltage, then re-energize and measure phase current.",
+    "Restore power. Do not shut it down, apply lockout/tagout and verify absence of voltage. Measure voltage across the terminals.",
+  ])("rejects mixed hazardous actions: %s", (text) => {
+    expect(judge(text).ok).toBe(false);
+  });
+  it.each([
+    "Restore power and confirm operation. Shut it down, apply lockout/tagout and verify absence of voltage. Measure resistance across the terminals.",
+    "Restore power and confirm operation. Isolate the panel, apply lockout/tagout, and verify zero voltage. Measure resistance across the terminals.",
+    "Restore power. De-energize the panel, lock out and verify zero voltage, then measure resistance across the terminals.",
+    "Re-energize the panel. Read current on the VFD display and record voltage on the installed display.",
+  ])("accepts isolated or external readings: %s", (text) => {
+    expect(judge(text).ok).toBe(true);
+  });
+});

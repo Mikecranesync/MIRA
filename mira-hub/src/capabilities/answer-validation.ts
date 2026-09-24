@@ -419,28 +419,38 @@ function restoreEnergyToMeasure(text: string): string | null {
   let restored: string | null = null;
   let electrical = false;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    if (/^\s*(?:\d+[.)]\s*)?de[-\s]?energi[sz]e\b/i.test(sentence)
-      && /\block[-\s]?out\b/i.test(sentence)
-      && /\b(?:verify|confirm)\s+zero\s+voltage\b/i.test(sentence)
-      && !REASSURANCE_AFFIRMATION.test(sentence)) {
-      restored = null;
-      electrical = false;
-      continue;
-    }
-    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
-      const restore = RESTORE_ENERGY.test(clause);
-      const measure = MEASURE_ACTION.test(clause);
-      const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
-      if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) continue;
-      if (restore) {
-        restored = sentence;
-        electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
+    // A completed affirmative isolation step ends the energized interval at
+    // its verification, not at the end of the sentence. Keep scanning suffixes
+    // such as "then re-energize" and never let a negated shutdown reset state.
+    const isolation = /^\s*(?:\d+[.)]\s*)?(?:de[-\s]?energi[sz]e\b|isolate\b|shut\s+(?:it\s+|the\s+\w+\s+)?down\b|switch\s+(?:it\s+|the\s+\w+\s+)?off\b)[^.!?]*?\block[-\s]?out\b[^.!?]*?\b(?:verify|confirm)\s+(?:zero\s+voltage|(?:the\s+)?absence\s+of\s+voltage)\b/i.exec(sentence);
+    const resetAt = isolation && !REASSURANCE_AFFIRMATION.test(isolation[0])
+      ? isolation[0].length : null;
+    const segments = resetAt === null ? [sentence] : [sentence.slice(0, resetAt), sentence.slice(resetAt)];
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      if (segmentIndex === 1) {
+        restored = null;
+        electrical = false;
       }
-      if (!restored || !measure) continue;
-      const contact = CONTACT_MEASUREMENT.test(clause);
-      if (!contact && EXTERNAL_READING.test(clause)) continue;
-      if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(clause)) {
-        return restored === sentence ? sentence : `${restored}\n${sentence}`;
+      for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
+        const restore = RESTORE_ENERGY.test(clause);
+        const measure = MEASURE_ACTION.test(clause);
+        const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
+        if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) continue;
+        if (restore) {
+          restored = sentence;
+          electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
+        }
+        if (!restored || !measure) continue;
+        // A display read exempts only its own action. A second measurement in
+        // the same clause must be judged independently, in either order.
+        const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
+        for (let i = 0; i < actions.length; i++) {
+          const action = clause.slice(actions[i].index, actions[i + 1]?.index);
+          if (!CONTACT_MEASUREMENT.test(action) && EXTERNAL_READING.test(action)) continue;
+          if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
+            return restored === sentence ? sentence : `${restored}\n${sentence}`;
+          }
+        }
       }
     }
   }
