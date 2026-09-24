@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { getNotebook } from "@/lib/equipment-notebooks";
 import {
   listTurnDiagnostics,
   loadTurnDiagnosticsByClientRequestId,
@@ -31,6 +32,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // A valid UUID is not proof that this tenant owns an existing notebook.
+  if (!(await getNotebook(ctx.tenantId, id))) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 

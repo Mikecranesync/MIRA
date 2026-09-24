@@ -255,6 +255,10 @@ def check_evidence_item(
             )
         )
 
+    if outcome == "fail" and enabled:
+        out.append(Finding(cap_id, "evidence_failed_as_proof",
+                           "failed evidence cannot support an enabled state"))
+
     # ---- identity --------------------------------------------------------
     sha = str(prov.get("commit_sha") or "")
     if not sha:

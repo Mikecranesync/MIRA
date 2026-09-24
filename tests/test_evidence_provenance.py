@@ -294,3 +294,8 @@ def test_shallow_detection_actually_detects(tmp_path):
         ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"],
         capture_output=True, text=True,
     ).stdout.strip() == "true"
+
+
+def test_failed_evidence_cannot_prove_an_enabled_capability():
+    assert "evidence_failed_as_proof" in _rules(_item(provenance=_prov(outcome="fail")))
+    assert _rules(_item(provenance=_prov(outcome="fail")), enabled=False) == set()
