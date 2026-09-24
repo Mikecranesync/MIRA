@@ -134,6 +134,19 @@ describe("pickPdf — native", () => {
 });
 
 describe("web", () => {
+  it("settles cancellation without needing a window focus event", async () => {
+    state.native = false;
+    let settled = false;
+    const pending = pickNameplatePhoto().then((file) => { settled = true; return file; });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    input.dispatchEvent(new Event("cancel"));
+    await Promise.resolve();
+    expect(settled).toBe(true);
+    expect(await pending).toBeNull();
+    expect(input.isConnected).toBe(false);
+    expect(pickImages).not.toHaveBeenCalled();
+  });
+
   it("uses a browser file input without calling the native plugin off-device", async () => {
     state.native = false;
     const pending = pickNameplatePhoto();

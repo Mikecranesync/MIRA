@@ -200,6 +200,12 @@ export function useUnifiedAttachments(notebookId: string | null) {
           retain();
           return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
         }
+        // Chat resolves visual evidence through this notebook's file links.
+        // A stored/analyzed file without that link would silently lose grounding.
+        if (!look.attachment?.linkId || look.attachment.notebookId !== notebookId) {
+          retain();
+          return { question, failure: "The photo couldn't be linked to this conversation. Try again." };
+        }
         // Keep model-generated LOOK prose out of the technician's question.
         // The engine classifies that string as operator-authored input, so a
         // negated observation such as "no burn marks" would otherwise trip an

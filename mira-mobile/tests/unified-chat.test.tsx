@@ -229,6 +229,7 @@ describe("UnifiedChat", () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     resources.lookAtPhoto.mockResolvedValue({
       fileId: "file-home-9",
+      attachment: { linkId: "link-photo", notebookId: "nb-1" },
       observation: { text: "No visible damage, burn marks, or corrosion.", capturedAt: "2026-09-16T00:00:00" },
     });
 
@@ -302,6 +303,7 @@ describe("UnifiedChat", () => {
       .mockRejectedValueOnce(new Error("Network request failed"))
       .mockResolvedValue({
         fileId: "file-retry-1",
+        attachment: { linkId: "link-photo", notebookId: "nb-1" },
         observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00" },
       });
     const h = handlers();

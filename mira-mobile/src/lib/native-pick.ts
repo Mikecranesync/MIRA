@@ -113,6 +113,7 @@ function pickInBrowser(accept?: string, capture?: "environment"): Promise<File |
       // that event one turn before interpreting the focus as a cancellation.
       focusTimer = setTimeout(() => finish(input.files?.[0] ?? null), 0);
     };
+    input.addEventListener("cancel", () => finish(null), { once: true });
     input.addEventListener("change", () => finish(input.files?.[0] ?? null), { once: true });
     window.addEventListener("focus", onFocus);
     document.body.appendChild(input);
