@@ -38,6 +38,10 @@
  * `hub_notebook_look`, empty question) — last and non-fatal, after the
  * response body is fixed. Observations remain conversation context, never a
  * citable source: nothing here writes knowledge_entries or touches identity.
+ *
+ * #3967 — observations carry notebook/owner/thread association in the existing
+ * VisualSession ledger. LOOK is not an answered chat turn and writes no fake
+ * question/answer pair into conversation history.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { context, trace, type Span } from "@opentelemetry/api";
@@ -59,7 +63,7 @@ import {
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook } from "@/lib/equipment-notebooks";
+import { getNotebook, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
 import {
   normalizeLookHazards,
@@ -189,6 +193,16 @@ async function handleLookTurn(
     );
   }
   const question = optionalString(form?.get("question") ?? null, MAX_QUESTION_CHARS);
+  // Optional thread so a LOOK on a non-legacy conversation is recallable by
+  // that thread's later text-only turns (`listTurns` is thread-scoped).
+  const rawThread = form?.get("threadId");
+  const threadId =
+    rawThread == null || rawThread === ""
+      ? null
+      : normalizeNotebookThreadId(typeof rawThread === "string" ? rawThread : null);
+  if (rawThread != null && rawThread !== "" && !threadId) {
+    return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  }
   const clientKey = ingress.clientRequestId;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
@@ -257,7 +271,11 @@ async function handleLookTurn(
   // Finish the packet and persist it through the one ledger writer. Fail-open:
   // `persistTurnUsage` returns rather than throws, and this wrapper swallows
   // anything else — a telemetry outage never changes the /look response.
-  const finishLook = async (vision: { provider: string | null; model: string | null; ok: boolean }): Promise<void> => {
+  const finishLook = async (vision: {
+    provider: string | null;
+    model: string | null;
+    ok: boolean;
+  }): Promise<void> => {
     // The usage write APPENDS the outcome row itself (persist-usage §091), so
     // mark the lifecycle settled first: a second close would be absorbed by the
     // (attempt_id, lifecycle) conflict, but it would also count a phantom
@@ -305,7 +323,7 @@ async function handleLookTurn(
           anomalies,
           otelTraceId: rootTraceId,
           turnRowId: null,
-          clientRequestId: null,
+          clientRequestId: clientKey && UUID_RE.test(clientKey) ? clientKey : null,
           notebookId,
           environment: environmentName(),
           gitSha: gitSha(),
@@ -402,6 +420,7 @@ async function handleLookTurn(
     try {
       await recordLookObservation({
         tenantId: ctx.tenantId,
+        ...(attachment.linkId ? { notebookId, threadId } : {}),
         fileId: parked.fileId,
         photoHash: sha256Hex(buffer),
         text: inspection.text,
@@ -435,7 +454,11 @@ async function handleLookTurn(
       hazard_count: inspection.hazards.length,
       ok: true,
     });
-    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: reply.model, ok: true });
+    await finishLook({
+      provider: fixtureSelected() ? "fixture" : "together",
+      model: reply.model,
+      ok: true,
+    });
     endRoot();
     return NextResponse.json({
       ...retained,

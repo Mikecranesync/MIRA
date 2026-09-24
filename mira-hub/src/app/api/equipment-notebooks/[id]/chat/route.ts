@@ -134,6 +134,7 @@ import {
   loadVisualEvidenceForAsset,
   renderVisualEvidenceSection,
   loadVisualEvidenceForPhoto,
+  loadRecentLookObservations,
   renderLookObservationSection,
   renderPriorLookObservationsSection,
   type VisualEvidenceRow,
@@ -1317,12 +1318,11 @@ async function handleChatTurn(
   // Evidence continuity (2026-09-22, staging trace ae30230b…): a text-only
   // follow-up ("what voltage was it?") lost the photos from earlier turns —
   // the client history is text-only by construction, so the server must
-  // recall them itself. Every photo turn persisted its `visual_observation
-  // {fileId}` on the turn row, and the LOOK text lives in the durable
-  // observation ledger keyed by that file id. Newest 2 distinct earlier
-  // photos of THIS thread (owner-scoped via listTurns). Fail-open: a load
-  // failure only means no prior-photo block. Skipped when the turn carries
-  // its own photo — the current observation owns that turn.
+  // recall them itself. New LOOK observations carry notebook/owner/thread
+  // scope in the existing VisualSession ledger, including a LOOK that never
+  // became a chat question. Historical photo-answer turns still supply file
+  // references. Select the newest two distinct photos of THIS conversation.
+  // A current explicit photo owns its turn, so prior recall is skipped then.
   let priorLookRows: VisualEvidenceRow[] = [];
   let priorLookFileIds: string[] = [];
   if (!visualEntry) {
@@ -1330,23 +1330,32 @@ async function handleChatTurn(
       const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
+        if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
         for (const e of t.evidence) {
           if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
         }
         if (seen.size >= 2) break;
       }
-      priorLookFileIds = [...seen].slice(0, 2);
-      if (priorLookFileIds.length > 0) {
-        const rows = await withTenantContext(ctx.tenantId, async (c) => {
-          const out: VisualEvidenceRow[] = [];
-          for (const fid of priorLookFileIds) {
-            const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid);
-            if (row) out.push(row);
-          }
-          return out;
-        });
-        priorLookRows = rows;
+      // photoLinkedToTarget opens its own tenant transaction. Verify before
+      // holding the observation client so concurrent follow-ups never nest
+      // acquisitions from the bounded connection pool.
+      const linkedHistorical: string[] = [];
+      for (const fid of [...seen].slice(0, 2)) {
+        if (await verifyVisualEntry(ctx.tenantId, notebookId, fid)) linkedHistorical.push(fid);
       }
+      const scope = { notebookId, ownerUserId: ctx.userId, threadId };
+      priorLookRows = await withTenantContext(ctx.tenantId, async (c) => {
+        // Standalone LOOK belongs in the observation ledger, not as an empty
+        // answered turn. Old actual chat turns remain a compatibility source.
+        const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
+        for (const fid of linkedHistorical) {
+          if (out.some((row) => row.fileId === fid)) continue;
+          const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true });
+          if (row) out.push(row);
+        }
+        return out.sort((a, b) => Date.parse(b.observedAt ?? "") - Date.parse(a.observedAt ?? "")).slice(0, 2);
+      });
+      priorLookFileIds = priorLookRows.flatMap((row) => row.fileId ? [row.fileId] : []);
     } catch (err) {
       console.error("[notebook-chat] prior look observations load failed (continuing without):", err instanceof Error ? err.message : err);
       priorLookRows = [];
