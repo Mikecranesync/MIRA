@@ -1,0 +1,192 @@
+# MIRA RELEASE TRAIN — the one place a release is defined.
+#
+# WHAT THIS IS. Backend, technician web, Android, database schema and the
+# behavioural contract they share are ONE release. This file records what that
+# release is EXPECTED to be. It is not a changelog and not a record of what
+# happened; `tools/release_train.py` validates it, and `--drift` compares it
+# against what is actually RUNNING. A manifest that only records SHAs is
+# documentation. A manifest that records `expected` and gets compared against
+# `observed` is enforcement. This is the second kind.
+#
+# WHY IT EXISTS. On 2026-09-24 staging served 24f90b762 while the branch head
+# was bc3cc8953, and `mira-mobile/android/app/build.gradle` declared
+# versionCode 10 while the APK installed for testing was versionCode 11.
+# Neither was noticed by any check. Both are exactly the drift this file makes
+# machine-detectable.
+#
+# HOW TO CHANGE IT. Edit `expected`. Never edit `observed_*` by hand to make a
+# check pass — those fields are evidence, they carry a date and a reader, and
+# they go stale on purpose.
+#
+# Validated by: tools/release_train.py (CI job "Capability Closure Registry")
+# Tests:        tests/test_release_train.py
+
+schema_version: release-train/v1
+
+release:
+  id: mira-1.2.0
+  # DEV -> RC -> STAGING_PARITY -> DEVICE_PARITY -> RELEASED
+  # The validator refuses to let this reach RELEASED while `blockers` is
+  # non-empty or any required component lacks proven identity. That is the
+  # whole point: the state is a claim the file has to earn, not a label.
+  state: RC
+  state_set_on: 2026-09-24
+  state_set_by: "release-train bootstrap (CHARLIE)"
+
+# ---------------------------------------------------------------------------
+# BLOCKERS — non-empty means RELEASED is invalid. Mechanically.
+# ---------------------------------------------------------------------------
+blockers:
+  - id: 3984
+    title: "A4 is sentence-scoped; a numbered energized-work procedure is served"
+    severity: safety
+    surfaces: [backend_hub, web_hub, android]
+    evidence: >-
+      Reproduced on live staging at 24f90b762 (trace
+      77ce12cb9f9196dc461d815c5d356f09): the general lane served a stranger a
+      complete restore-power-to-measure procedure as numbered steps. Leaks in
+      ASCII as well as Unicode, so it is independent of the U+2011 work.
+      Pinned as characterization tests in
+      mira-hub/src/capabilities/answer-validation-known-false-positives.test.ts
+      where GREEN means still leaking.
+    # A blocker is cleared by a human editing this file with proof, never by a
+    # passing test elsewhere. Do not remove this entry to make a check green.
+    clears_when: "the numbered-step shape is blocked on staging and re-proven"
+
+# ---------------------------------------------------------------------------
+# THE SHARED CONTRACT — what web and Android must BOTH honour.
+# Implementations may differ; behaviour may not.
+# ---------------------------------------------------------------------------
+contract:
+  version: mira-turn/v1
+  # Bump this when a change would make an older client render a turn wrongly.
+  # The validator checks every surface below claims this same version.
+  covers:
+    - "SSE frame kinds: trace, sources, content, safety, usage, status"
+    - "safety frame is TERMINAL for a stop and ADVISORY for a directive"
+    - "an answer withheld by the floor ships zero citations"
+    - "citations resolve to a passage in a source the tenant can read"
+    - "history survives cold start"
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+#
+# NOTE ON SHAPE, verified 2026-09-24 rather than assumed: `mira-hub` is a
+# single Next.js deployable that serves BOTH the technician web UI and the API
+# the Android app calls. So backend and technician-web are ONE artifact and
+# share ONE sha by construction — they cannot drift from each other, and the
+# manifest says so instead of inventing two fields that are always equal.
+# `mira-web` is a genuinely separate deployable (the public site).
+# ---------------------------------------------------------------------------
+components:
+
+  backend_hub:
+    what: "mira-hub — API + technician web UI (app.factorylm.com)"
+    required: true
+    contract: mira-turn/v1
+    expected:
+      sha: f02595267de33c02793214fec7178f02aa2e7a82
+    probe:
+      kind: http
+      staging: https://app-staging.factorylm.com/api/version/
+      production: https://app.factorylm.com/api/version/
+      sha_field: gitSha
+
+  web_hub:
+    what: "the technician web surface"
+    required: true
+    contract: mira-turn/v1
+    same_artifact_as: backend_hub   # validator asserts it carries no own sha
+
+  public_web:
+    what: "mira-web — the public site (factorylm.com)"
+    required: false
+    expected:
+      sha: f02595267de33c02793214fec7178f02aa2e7a82
+    probe:
+      kind: none
+      why: >-
+        mira-web exposes no version endpoint, and adding one means editing a
+        Legacy-UI-guarded path (mira-web/src/routes/**, server.ts) which needs
+        an audited exception this work does not warrant. Recorded as
+        build-time-only identity ON PURPOSE rather than implying a probe that
+        does not exist.
+
+  android:
+    what: "mira-mobile — the Android technician app"
+    required: true
+    contract: mira-turn/v1
+    expected:
+      version_code: 11
+      version_name: "1.2.0"
+      release_sha: f02595267de33c02793214fec7178f02aa2e7a82
+    probe:
+      kind: device_receipt
+      why: >-
+        The app exposes no continuous identity endpoint, and CDP over the
+        Android WebView proved unreliable in practice. Identity is therefore
+        read at a release checkpoint from the handset
+        (`adb shell dumpsys package`), not polled.
+    # KNOWN DRIFT, recorded rather than chased: build.gradle declares
+    # versionCode 10 / versionName "1.1.0" while the APK installed for testing
+    # on 2026-09-23 was versionCode 11. `--drift` reports this.
+    source_of_truth: mira-mobile/android/app/build.gradle
+
+  migrations:
+    what: "mira-hub schema level"
+    required: true
+    expected:
+      # The highest-numbered migration this release expects applied.
+      level: "094_decision_traces_lifecycle_invariant.sql"
+    probe:
+      kind: none
+      why: >-
+        Reading schema_migrations needs DB credentials CI does not have, and
+        `prod-guard.sh` forbids psql against production from a code session.
+        The repository-side invariant IS checkable and is: the expected level
+        must name a real file in mira-hub/db/migrations/ and must be the
+        highest-numbered one. That is what the validator enforces.
+
+# ---------------------------------------------------------------------------
+# PARITY ACCEPTANCE — the same flows, on both surfaces.
+# ---------------------------------------------------------------------------
+acceptance:
+  suite_version: parity/v1
+  runner: tools/release-train/parity_acceptance.py
+  # Every flow must be claimed by both required surfaces before STAGING_PARITY.
+  # `device: true` means the flow ALSO needs a physical-handset run before
+  # DEVICE_PARITY — an emulator receipt does not satisfy it.
+  flows:
+    - id: sign_in
+      device: true
+    - id: general_chat
+      device: true
+    - id: machine_project_chat
+      device: true
+    - id: threads_history
+      device: true            # cold-start hydration is device behaviour
+    - id: photo_attach_question
+      device: true            # real camera is one of the three hardware cases
+    - id: citations_evidence
+      device: false
+    - id: retry_reconnect
+      device: true            # cellular is one of the three hardware cases
+    - id: safety_behavior
+      device: true
+
+# ---------------------------------------------------------------------------
+# DEVICE PARITY — emulator evidence does not satisfy it.
+# ---------------------------------------------------------------------------
+device_parity:
+  requires_physical_device: true
+  # A receipt must name a serial that is NOT an emulator. The validator rejects
+  # any serial matching ^emulator- and rejects DEVICE_PARITY with no receipt.
+  receipts: []
+  # Example of the shape the validator requires:
+  #   - serial: 4A111FDEE0012B      # a real Pixel 9a serial, never emulator-*
+  #     device: "Pixel 9a"
+  #     app_version_code: 11
+  #     backend_sha: <40 hex>
+  #     flows: [sign_in, general_chat, ...]
+  #     date: 2026-09-24
+  #     evidence: docs/proofs/....md
