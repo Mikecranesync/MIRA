@@ -31,7 +31,14 @@ on:
       - '**/*.jpg'
       - '**/*.gif'
   pull_request:
-    branches: [main]
+    # DELIBERATELY UNFILTERED BY BASE BRANCH. A `branches: [main]` filter meant a
+    # STACKED pull request — one whose base is another feature branch — received
+    # NO ci.yml check at all. #3968 sat at 6 reported checks against #3964's 52
+    # for exactly this reason, and the difference was invisible unless someone
+    # counted. GitHub builds a stacked PR's merge commit against its own base, so
+    # running here is precisely what exercises the COMBINED stack rather than the
+    # leaf change alone. Docs-only PRs are still short-circuited by each job's
+    # own `dorny/paths-filter` step.
 
 jobs:
   # Detects whether any non-docs file changed, so heavy jobs can self-skip on
@@ -366,6 +373,33 @@ jobs:
           pytest mira-core/mira-ingest/tests/ -v -n auto \
             --cov=mira-core/mira-ingest --cov-report=term-missing \
             --cov-fail-under=20
+
+      - name: Acceptance observation-path controls (tools/qa)
+        # The release acceptance harness must be able to tell WHY it has no
+        # packet: unauthorized, absent endpoint, wrong notebook, or a turn that
+        # genuinely recorded nothing. Collapsing those into one "no packet" is
+        # how a broken harness reports a product failure, which is the defect
+        # this step exists to keep fixed.
+        #
+        # It gets its own step because NOTHING else in this workflow collects
+        # tools/qa/ — the pytest steps name mira-core/, mira-bots/ and
+        # tests/factorylm_ai/ explicitly. Without this the control file is green
+        # on a laptop and never runs in CI, which is indistinguishable from
+        # having no control at all.
+        run: |
+          set -euo pipefail
+          pytest tools/qa/test_packet_classification.py -v
+          # Anti-skip: pytest exits 0 when it collects nothing, so a moved or
+          # renamed file would silently stop gating. Demand the test BY NODE ID
+          # and read pytest's EXIT CODE (4 = no such test), not its stdout.
+          #
+          # The first version of this guard grepped `--collect-only -q` output
+          # and failed a run whose test had just PASSED: plugin chatter and the
+          # -q collect format are not a contract. Parsing a tool's prose to
+          # decide whether it ran is the same mistake in a different costume.
+          pytest "tools/qa/test_packet_classification.py::test_packet_read_distinguishes_five_failure_modes" \
+            --collect-only -q > /dev/null \
+            || { echo "::error::control test not collected — it is not gating anything"; exit 1; }
 
       - name: Run bot tests with coverage
         # -n auto is safe here ONLY because mira-bots/tests/conftest.py gives
@@ -1107,6 +1141,9 @@ jobs:
     # Doppler, no DB. Sub-second.
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Provenance existence and staleness checks require commit history.
+          fetch-depth: 0
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -1125,6 +1162,19 @@ jobs:
 
       - name: Validator rule tests (incl. negative fixtures)
         run: pytest tests/test_capability_closure.py -q
+
+      - name: Evidence provenance + observation-proof rules (negative controls)
+        # Runs inside the EXISTING capability-closure job on purpose: the
+        # provenance checks are part of the same registry's validation, and a
+        # separate job would imply a separate source of truth about closure.
+        run: |
+          set -euo pipefail
+          pytest tests/test_evidence_provenance.py -q
+          # Anti-skip by NODE ID + exit code, not by grepping collect output.
+          # See the note on the same guard in the Unit Tests job.
+          pytest "tests/test_evidence_provenance.py::test_inconclusive_cannot_prove_an_enabled_capability" \
+            --collect-only -q > /dev/null \
+            || { echo "::error::provenance controls not collected — not gating"; exit 1; }
 
       - name: Approved-retrieval gate is plumbed and enforced (#3328)
         run: pytest tests/test_approved_retrieval_plumbing.py -q
@@ -1461,6 +1511,111 @@ jobs:
   #   it is out of the gate only because a brand-new job has no reliability
   #   record yet, which is this list's stated promotion criterion. Promote it
   #   once it has a run of consecutive greens on main.
+  turn-lifecycle-reconciliation:
+    name: Turn lifecycle reconciliation (disposable Postgres, migrations 091-094)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # WHY THIS JOB EXISTS
+    # `turn-ingress.integration.test.ts` is the only executable proof that turn
+    # capture coverage is reconciled BY DIFFERENCE BETWEEN TWO LEDGERS rather
+    # than read out of the ledger being measured. It needs real Postgres, so it
+    # lives behind `vitest.integration.config.ts` — which the default unit run
+    # EXCLUDES. Until now nothing ran it in CI: it skipped silently whenever
+    # TEST_DATABASE_URL was unset, which is indistinguishable from passing.
+    #
+    # The reconciliation's whole point is bucket D — a turn that was served a
+    # 200 and that `decision_traces` has no row for. A query of `decision_traces`
+    # reports 100% coverage and cannot see it. Only `turn_ingress` (093), written
+    # before any recorder machinery runs, surfaces it. That property is exactly
+    # what a silent skip would stop protecting.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      # The decision_traces lineage, in dependency order: 032 creates the table,
+      # 070 retypes tenant_id, 090 adds the packet, 091 the lifecycle columns +
+      # the (attempt_id, lifecycle) unique index, 092 the append-only grants,
+      # 093 the independent turn_ingress counter, 094 the lifecycle invariant.
+      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "032_decision_traces.sql,055_decision_trace_confidence_and_feedback.sql,070_decision_traces_tenant_text.sql,071_decision_traces_context_manifest.sql,080_decision_traces_provider_usage.sql,090_decision_traces_turn_packet.sql,091_decision_traces_turn_lifecycle.sql,092_decision_traces_lifecycle_append_only.sql,093_turn_ingress.sql,094_decision_traces_lifecycle_invariant.sql"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: changes
+        with:
+          filters: |
+            lifecycle:
+              - 'mira-hub/db/migrations/09*.sql'
+              - 'mira-hub/db/migrations/032_decision_traces.sql'
+              - 'mira-hub/src/capabilities/observability/**'
+              - 'mira-hub/src/app/api/equipment-notebooks/**'
+              - 'mira-hub/src/lib/inference/persist-usage.ts'
+              - 'mira-hub/scripts/setup-integration-db.mjs'
+              - 'mira-hub/vitest.integration.config.ts'
+              - '.github/workflows/ci.yml'
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.changes.outputs.lifecycle == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub dependencies
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Apply the decision_traces lifecycle schema
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: Reconciliation suite (must RUN, not skip)
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            src/capabilities/observability/__tests__/turn-ingress.integration.test.ts \
+            2>&1 | tee /tmp/reconciliation.out
+          # A skip here is the exact failure this job was added to prevent. The
+          # suite self-skips when TEST_DATABASE_URL is unset, vitest then EXITS 0,
+          # and the run is visually identical to a passing one.
+          #
+          # These three clauses were each verified against real output, in both
+          # directions, before being written down. Note specifically that vitest
+          # reports a skipped run as "Tests  12 skipped (12)" — it never prints
+          # "0 passed" — so a naive `0 passed` check silently misses it. That
+          # exact mistake was made and caught while writing this job.
+          # STRIP ANSI FIRST. vitest colourises in CI, and the escapes land
+          # BETWEEN the label and the count:
+          #   ESC[2m      Tests ESC[22m ESC[1mESC[32m12 passedESC[39m
+          # so `Tests +[0-9]+ passed` does NOT match a real CI run. The first
+          # version of this guard failed a green 12/12 run for exactly that
+          # reason. Every clause below was then replayed against the actual
+          # captured CI output rather than a guessed shape.
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/reconciliation.out > /tmp/reconciliation.plain
+          if grep -qiE "no test files found" /tmp/reconciliation.plain; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/reconciliation.plain; then
+            echo "::error::reconciliation suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
@@ -1474,6 +1629,7 @@ jobs:
       - lint-and-type-check
       - test-unit
       - mira-hub-unit
+      - turn-lifecycle-reconciliation
       - mobile-unit-tests
       - mira-web-pack-tests
       - architecture-check
@@ -1500,6 +1656,7 @@ jobs:
           LINT_RESULT: ${{ needs.lint-and-type-check.result }}
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
+          LIFECYCLE_RECON_RESULT: ${{ needs.turn-lifecycle-reconciliation.result }}
           MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
           ARCH_RESULT: ${{ needs.architecture-check.result }}
@@ -1535,6 +1692,10 @@ jobs:
           require_success shared-line-guard     "$SHARED_LINE_RESULT"
           require_success lint-and-type-check   "$LINT_RESULT"
           require_success mira-hub-unit         "$HUB_UNIT_RESULT"
+          # Being in `needs` only makes the gate WAIT for this job; this line is
+          # what makes it able to BLOCK. Omitting it would reproduce the exact
+          # silent no-op the job was written to eliminate.
+          require_success turn-lifecycle-reconciliation "$LIFECYCLE_RECON_RESULT"
           # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
           # here, so a red mobile suite could not fail the merge (observed on
           # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape
