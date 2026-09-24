@@ -34,6 +34,7 @@ beforeAll(async () => {
   `);
   for (const model of [
     "TP700", "TP700 Comfort", "KTP700", "TP7000", "TP7001", "SINAMICS V20",
+    "TP1200", "TP 1200 Comfort", "KTP1200", "TP12000",
     "PowerFlex 525", "PowerFlex 5250", "AX%_7", "AXZZ7", "AX.7", "AXZ7",
     "12AX%_7", "12AXZZ7",
   ]) {
@@ -67,6 +68,11 @@ describe("identity-bound OEM model SQL", () => {
 
   it("still retrieves the numeric legacy model token within PowerFlex 525", async () => {
     expect(await modelsFor("525")).toEqual(["PowerFlex 525"]);
+  });
+
+  it("matches compact and spaced TP1200 labels without admitting sibling models", async () => {
+    expect(await modelsFor("TP1200")).toEqual(["TP 1200 Comfort", "TP1200"]);
+    expect(await modelsFor("TP 1200 Comfort")).toEqual(["TP 1200 Comfort", "TP1200"]);
   });
 
   it("treats unknown percent, underscore, and regex punctuation as literal identity", async () => {

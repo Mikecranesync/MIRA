@@ -265,7 +265,7 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     // Only the model-scoped pass ran (AND + OR). No manufacturer-only query.
     expect(calls.length).toBe(2);
     expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
-    expect(calls.every((c) => c.params.includes("(^|[^[:alnum:]])TP700($|[^[:alnum:]])"))).toBe(true);
+    expect(calls.every((c) => c.params.includes("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])"))).toBe(true);
   });
 
   it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
@@ -302,6 +302,26 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("keeps a TP700 manual whose title mentions the drive it connects to", async () => {
+    const connectedDrive = { ...tp700(), title: "TP700 Comfort connection to SINAMICS drives" };
+    const { client } = makeClient([[connectedDrive]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does the panel reboot", {
+      manufacturer: "Siemens", model: "TP700", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700 Comfort");
+  });
+
+  it("keeps a sparse numeric PowerFlex 525 manual despite Allen-Bradley defaulting to PLCs", async () => {
+    const sparseDrive = row({ model_number: "525", title: null, source_url: "https://example.com/525.pdf" });
+    const { client } = makeClient([[sparseDrive]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "what does the fault mean", {
+      manufacturer: "Allen-Bradley", model: "PowerFlex 525", equipmentType: "VFDs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("525");
+  });
+
   it("normalizes confirmed TP700 Comfort without admitting a different model", async () => {
     const sameModel = { ...tp700(), model_number: "TP700" };
     const { client, calls } = makeClient([[sameModel]]);
@@ -310,7 +330,7 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     });
     expect(out).toHaveLength(1);
     expect(out[0].modelNumber).toBe("TP700");
-    expect(calls[0].params).toContain("(^|[^[:alnum:]])TP700($|[^[:alnum:]])");
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])");
     expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
   });
 

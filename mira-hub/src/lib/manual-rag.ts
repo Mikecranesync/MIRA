@@ -434,6 +434,14 @@ export async function retrieveManualChunks(
   const rejectWrongFamily = (hits: ManualChunk[]): ManualChunk[] => {
     if (!assetType || assetType === "Other") return hits;
     return hits.filter((c) => {
+      // A model-scoped hit has already matched the caller's model in SQL.
+      // Classify explicit model evidence before weaker title/URL hints (which
+      // may name connected equipment) or manufacturer defaults (AB => PLCs).
+      if (identityBound && model) {
+        const modelType = inferEquipmentType({ modelNumber: c.modelNumber });
+        if (modelType !== "Other") return modelType === assetType;
+        return true; // Unknown model label, but SQL still established identity.
+      }
       const hitType = inferEquipmentType({
         modelNumber: c.modelNumber,
         title: c.title,
@@ -513,7 +521,11 @@ async function runBm25Query(
       modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
     } else {
       const literal = model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      params.push(`(^|[^[:alnum:]])${literal}($|[^[:alnum:]])`);
+      // Recognized panel names may be stored as either TP1200 or TP 1200.
+      // Keep outer token boundaries so KTP1200 and TP12000 remain excluded.
+      const panel = /^(K?TP)(\d{3,4})$/i.exec(model);
+      const token = panel ? `${panel[1]}[[:space:]]*${panel[2]}` : literal;
+      params.push(`(^|[^[:alnum:]])${token}($|[^[:alnum:]])`);
       modelClause = `AND model_number ~* $${params.length}`;
     }
   }
