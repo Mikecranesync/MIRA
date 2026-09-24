@@ -135,4 +135,58 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
     );
     expect(r.ok).toBe(false);
   });
+
+  /* ---- detection-only: the fold must never reach what a technician reads ---- */
+
+  describe("the fold is detection-only", () => {
+    const NBH2 = "\u2011";
+    const CODE_Q = "What does fault code Q-447-Delta mean?";
+
+    it("quotes the fault code as the MODEL spelled it, not as the fold rewrote it", () => {
+      const r = check(
+        `Q${NBH2}447${NBH2}Delta means a communication timeout on the drive network.`,
+        CODE_Q,
+      );
+      expect(r.ok).toBe(false);
+      if (r.ok === false) {
+        // the technician sees the model's spelling …
+        expect(r.replacement).toContain(`Q${NBH2}447${NBH2}Delta`);
+        // … and NOT the folded one
+        expect(r.replacement).not.toContain("Q-447-Delta");
+      }
+    });
+
+    it("an ASCII code is still quoted as ASCII", () => {
+      const r = check("Q-447-Delta means a communication timeout on the drive network.", CODE_Q);
+      expect(r.ok).toBe(false);
+      if (r.ok === false) expect(r.replacement).toContain("Q-447-Delta");
+    });
+
+    it("a zero-width-split code is quoted as written", () => {
+      const spelled = "Q-447-Del\u200Bta";
+      const r = check(`${spelled} means a communication timeout on the drive network.`, CODE_Q);
+      expect(r.ok).toBe(false);
+      if (r.ok === false) expect(r.replacement).toContain(spelled);
+    });
+
+    it("the QUESTION is folded too — a U+2011 code on BOTH sides does not escape the rule", () => {
+      const r = check(
+        `Q${NBH2}447${NBH2}Delta means a communication timeout on the drive network.`,
+        `What does fault code Q${NBH2}447${NBH2}Delta mean?`,
+      );
+      expect(r.ok).toBe(false);
+      expect(r.ok === false && r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+    });
+
+    it("no violation path returns the folded answer as the served text", () => {
+      // A pass carries no text at all, so the route can only emit its own
+      // original string — the structural guarantee behind "detection-only".
+      const safe = check(
+        `Confirm the panel is de${NBH2}energized and locked out before you open it.`,
+        "How do I make it safe to open?",
+      );
+      expect(safe).toEqual({ ok: true });
+      expect(Object.keys(safe)).toEqual(["ok"]);
+    });
+  });
 });

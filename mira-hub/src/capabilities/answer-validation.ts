@@ -528,6 +528,57 @@ const NON_VERIFICATION =
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
+/* ------------------------------------------------------------------------ *
+ * Detection-only canonicalization                                           *
+ * ------------------------------------------------------------------------ */
+
+/** Hyphen-equivalent codepoints folded to ASCII `-`. NOT en/em dash. */
+const HYPHEN_EQUIV = /[\u2010\u2011\u2012\u2212\uFE58\uFE63\uFF0D]/g;
+const APOSTROPHE_EQUIV = /[\u2018\u2019\u02BC]/g;
+const NBSP_EQUIV = /[\u00A0\u2007\u202F]/g;
+const ZERO_WIDTH = /[\u200B\u200C\u200D\uFEFF]/g;
+
+/**
+ * Fold a string into the ASCII shape every rule in this file is written
+ * against. **Detection only** — the returned string is never displayed,
+ * persisted, or sent to a model. See `validateAnswer` for why en/em dash are
+ * excluded.
+ */
+function foldForDetection(s: string): string {
+  return s
+    .replace(/[*`]/g, "")
+    .replace(HYPHEN_EQUIV, "-")
+    .replace(APOSTROPHE_EQUIV, "'")
+    .replace(NBSP_EQUIV, " ")
+    .replace(ZERO_WIDTH, "");
+}
+
+/**
+ * Recover how a folded token was ACTUALLY spelled in the original text.
+ *
+ * Every user-visible string this module produces must come from the original
+ * answer, never from the folded copy — otherwise the fold would silently
+ * rewrite what the technician reads (a model that writes "Q\u2011447\u2011Delta"
+ * must not be quoted back as "Q-447-Delta"). Only `specificityFallback` embeds
+ * a matched token in visible text, so only that path needs this.
+ *
+ * Falls back to the folded token when the original cannot be located, which is
+ * safe: the fallback text stays accurate, it just loses the exotic spelling.
+ */
+function originalSpelling(token: string, raw: string): string {
+  const zw = "[\\u200B\\u200C\\u200D\\uFEFF]*";
+  const body = Array.from(token)
+    .map((ch) => {
+      if (ch === "-") return "[-\\u2010\\u2011\\u2012\\u2212\\uFE58\\uFE63\\uFF0D]";
+      if (ch === "'") return "['\\u2018\\u2019\\u02BC]";
+      if (ch === " ") return "[ \\u00A0\\u2007\\u202F]";
+      return escapeRe(ch);
+    })
+    .join(zw);
+  const m = new RegExp(zw + body, "i").exec(raw);
+  return m ? m[0] : token;
+}
+
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -644,14 +695,13 @@ export function validateAnswer(opts: {
   // "-" would silently rewrite A2's clause scoping and B's numeric grammar.
   // The observed bypass was U+2011; en dash appeared in the leaked answer only
   // as a list separator and was never load-bearing for the match.
-  const scanText = answerText
-    .replace(/[*`]/g, "")
-    // hyphens (NOT en/em dash — see above)
-    .replace(/[\u2010\u2011\u2012\u2212\uFE58\uFE63\uFF0D]/g, "-")
-    .replace(/[\u2018\u2019\u02BC]/g, "'")
-    .replace(/[\u00A0\u2007\u202F]/g, " ")
-    // zero-width characters split a token without showing anything at all
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g, "");
+  const scanText = foldForDetection(answerText);
+  // The QUESTION is an input to detection too. `codeMeaningViolation` decides
+  // whether a fault code was "asked about" by matching tokens from the
+  // question; if the answer is folded and the question is not, the two stop
+  // agreeing and a code spelled with U+2011 on BOTH sides escapes the rule
+  // entirely. Measured, not assumed — see answer-validation-unicode-hyphen.
+  const scanQuestion = foldForDetection(question);
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
@@ -765,14 +815,17 @@ export function validateAnswer(opts: {
     }
   }
 
-  const cm = codeMeaningViolation(scanText, question);
+  const cm = codeMeaningViolation(scanText, scanQuestion);
   if (cm) {
     return {
       ok: false,
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:code-meaning-asserted",
       detail: cm.excerpt,
-      replacement: specificityFallback(cm.code),
+      // The ONLY visible string in this module built from a matched token, so
+      // it is the one place the fold could leak into what a technician reads.
+      // Quote the code as the model actually spelled it.
+      replacement: specificityFallback(originalSpelling(cm.code, answerText)),
     };
   }
 
