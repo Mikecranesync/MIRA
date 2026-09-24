@@ -14,5 +14,30 @@ export async function register(): Promise<void> {
     process.once("SIGTERM", () => {
       void shutdownTelemetry();
     });
+
+    // The stale-turn reconciler (093). `endRoot` closes every exit path the
+    // request reaches; a container that is SIGKILLed or redeployed mid-turn
+    // reaches none of them, so those start records can only be closed from
+    // outside the request. This is that outside. Flag-gated and OFF by default
+    // — it is the sole writer of `abandoned`, and it earns each environment.
+    const { turnReconcilerEnabled, turnReconcilerIntervalMs, turnReconcilerStaleMs } =
+      await import("./capabilities/observability/config");
+    if (turnReconcilerEnabled()) {
+      const { startTurnReconciler } = await import("./capabilities/observability/turn-lifecycle");
+      const stop = startTurnReconciler({
+        intervalMs: turnReconcilerIntervalMs(),
+        staleAfterMs: turnReconcilerStaleMs(),
+      });
+      process.once("SIGTERM", stop);
+      console.log(
+        JSON.stringify({
+          service: "mira-hub",
+          component: "turn-reconciler",
+          event: "reconciler.started",
+          interval_ms: turnReconcilerIntervalMs(),
+          stale_after_ms: turnReconcilerStaleMs(),
+        }),
+      );
+    }
   }
 }
