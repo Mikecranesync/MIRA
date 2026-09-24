@@ -896,7 +896,7 @@ export function validateAnswer(opts: {
   // Mask only complete administrative sentences, preserving every separator.
   // A1 uses whitespace inside phrases ("lockout is\nnot required"), so scanning
   // each sentence/line independently would weaken its existing coverage.
-  const affirmationScanText = scanText.split(/((?<=[.!?])\s+|\n+)/)
+  const affirmationScanText = scanText.split(/((?<=[.!?])\s+)/)
     .map((part) => PERMIT_PRACTICES_DESCRIPTION.test(part.trim())
       ? part.replace(/[^\r\n.!?]/g, " ") : part)
     .join("");
@@ -946,7 +946,7 @@ export function validateAnswer(opts: {
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
-  const hazard = clauseHazardViolation(scanText);
+  const hazard = clauseHazardViolation(affirmationScanText);
   if (hazard) {
     return {
       ok: false,

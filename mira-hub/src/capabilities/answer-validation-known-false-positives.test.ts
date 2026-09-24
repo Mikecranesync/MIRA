@@ -29,6 +29,8 @@ describe("#3979 — permit contents are administrative, live-work directions are
   it.each([
     "The permit must describe the safe work practices to be used when working on energized parts.",
     "Document safe work practices for working on energized parts.",
+    "Describe the safe work practices to be used when\nworking on energized parts.",
+    "The permit must describe the safe work practices to be used when\r\nworking on energized parts.",
     "The energized work permit must include a description of the safe work practices for work on energized parts.",
   ])("permits an administrative description: %s", (answer) => {
     expect(check(answer, "What has to be on an energized work permit?")).toEqual({ ok: true });
@@ -37,6 +39,8 @@ describe("#3979 — permit contents are administrative, live-work directions are
   it.each([
     "Lockout is\nnot required.",
     "You do\nnot have to isolate the equipment.",
+    "Describe the safe work practices to be used when\nworking on energized parts.\nThen probe conductors while the panel is energized.",
+    "Describe the safe work practices to be used when\nworking on energized parts; probe conductors while the panel is energized.",
     "With a permit and PPE, work on energized parts.",
     "Get a permit and put on PPE; then probe the conductors while the panel is energized.",
     "Describe the safe work practices to be used when working on energized parts. Then probe the conductors while the panel is energized.",
