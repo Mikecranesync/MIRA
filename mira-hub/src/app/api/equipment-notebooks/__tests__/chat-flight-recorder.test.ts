@@ -99,6 +99,7 @@ const veMock = vi.hoisted(() => ({
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
 import { POST } from "../[id]/chat/route";
+import { withTenantContext } from "@/lib/tenant-context";
 
 const chatReq = (body: unknown) =>
   new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
@@ -418,6 +419,46 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.request.source_doc_count).toBeGreaterThan(0);
     expect(p.retrieval.returned_doc_ids).toEqual([DOC_A]);
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+
+  it("five concurrent historical recalls do not nest connections in the five-slot pool", async () => {
+    const tenant = vi.mocked(withTenantContext);
+    const original = tenant.getMockImplementation()!;
+    let active = 0;
+    let exhausted = 0;
+    let arrived = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+    tenant.mockImplementation(async (_id, fn) => {
+      if (active === 5) { exhausted++; throw new Error("pool acquisition timeout"); }
+      active++;
+      try { return await fn({ query: vi.fn(async () => ({ rows: [] })) } as never); }
+      finally { active--; }
+    });
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    domainMock.listTurns.mockResolvedValue(Array.from({ length: 1 }, () => ({
+      id: "old", answerStatus: "answered", answerText: "A panel label.",
+      evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z", provenance: "phone_photo" }],
+    })) as never);
+    filesMock.photoLinkedToTarget.mockImplementation(() => withTenantContext(TENANT_A, async () => ({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" })));
+    veMock.loadRecentLookObservations.mockImplementation(async () => {
+      if (++arrived === 5) releaseBarrier();
+      await barrier;
+      return [];
+    });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({ fileId: FILE_ID, text: "Panel label", observedAt: "2026-09-22T00:00:00Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The earlier photo shows a panel label.")));
+    try {
+      await Promise.all(Array.from({ length: 5 }, async (_, i) => (await POST(chatReq({ message: `what was in photo ${i}?`, mode: "general" }), params)).text()));
+      expect(exhausted).toBe(0);
+      expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledTimes(5);
+    } finally {
+      tenant.mockImplementation(original);
+      domainMock.listTurns.mockResolvedValue([]);
+      filesMock.photoLinkedToTarget.mockResolvedValue(null);
+      veMock.loadRecentLookObservations.mockImplementation(async () => []);
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue(null);
+    }
   });
 
   it.each([

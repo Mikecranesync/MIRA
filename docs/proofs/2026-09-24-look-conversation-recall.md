@@ -10,9 +10,10 @@ A failed photo link does not create conversation-scoped memory, and current link
 
 Validation:
 
+- The trusted-base CLI review found nested pool acquisition in historical link verification. Link checks now finish before the observation transaction. A five-slot bounded-pool control synchronized five concurrent follow-ups, reproduced five acquisition failures before repair, and passes afterward; this is a deterministic concurrency test, not live load testing.
 - Round-two independent review found three fallback gaps. Five new negative controls failed before repair and pass afterward: synthetic/empty/unanswered rows, removed links, and another owner's legacy description.
 - Red-first association controls reproduced the fake answered turn, wrong-conversation description, invalid thread and missing mobile propagation.
-- Hub: 3,821 tests / 294 files passed.
+- Hub: 3,822 tests / 294 files passed.
 - Mobile: 777 tests / 61 files passed; TypeScript and Vite build passed.
 - Real disposable Postgres: 26 integration tests passed, including owner/notebook/thread/tenant isolation for reused photo bytes, active-observation filtering and linked-file eligibility.
 - Hub TypeScript retains the same 76 file/code/message diagnostics as the equal-dependency main baseline; no new diagnostics. This is not a clean Hub typecheck claim.

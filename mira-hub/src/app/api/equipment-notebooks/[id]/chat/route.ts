@@ -1334,14 +1334,20 @@ async function handleChatTurn(
         }
         if (seen.size >= 2) break;
       }
+      // photoLinkedToTarget opens its own tenant transaction. Verify before
+      // holding the observation client so concurrent follow-ups never nest
+      // acquisitions from the bounded connection pool.
+      const linkedHistorical: string[] = [];
+      for (const fid of [...seen].slice(0, 2)) {
+        if (await verifyVisualEntry(ctx.tenantId, notebookId, fid)) linkedHistorical.push(fid);
+      }
       const scope = { notebookId, ownerUserId: ctx.userId, threadId };
       priorLookRows = await withTenantContext(ctx.tenantId, async (c) => {
         // Standalone LOOK belongs in the observation ledger, not as an empty
         // answered turn. Old actual chat turns remain a compatibility source.
         const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
-        for (const fid of [...seen].slice(0, 2)) {
+        for (const fid of linkedHistorical) {
           if (out.some((row) => row.fileId === fid)) continue;
-          if (!await verifyVisualEntry(ctx.tenantId, notebookId, fid)) continue;
           const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true });
           if (row) out.push(row);
         }
