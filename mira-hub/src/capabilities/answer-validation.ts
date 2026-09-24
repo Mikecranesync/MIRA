@@ -532,8 +532,23 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
  * Detection-only canonicalization                                           *
  * ------------------------------------------------------------------------ */
 
-/** Hyphen-equivalent codepoints folded to ASCII `-`. NOT en/em dash. */
-const HYPHEN_EQUIV = /[\u2010\u2011\u2012\u2212\uFE58\uFE63\uFF0D]/g;
+/**
+ * Hyphen-equivalent codepoints folded to ASCII `-`. NOT en/em dash.
+ *
+ * Membership is decided by Unicode decomposition, not by how a glyph looks:
+ *   U+2010 HYPHEN, U+2012 FIGURE DASH, U+2212 MINUS SIGN  — hyphen/minus forms
+ *   U+2011 NON-BREAKING HYPHEN  — <noBreak> U+2010        (the observed bypass)
+ *   U+FE63 SMALL HYPHEN-MINUS   — <small>   U+002D
+ *   U+FF0D FULLWIDTH HYPHEN-MINUS — <wide>  U+002D
+ *
+ * U+FE58 SMALL EM DASH is deliberately ABSENT. It was in this set until an
+ * independent review checked its decomposition: `<small> U+2014`. It is an EM
+ * DASH form, and folding it would have quietly contradicted the en/em-dash
+ * exclusion three lines below — the precise class of interaction this file
+ * exists to prevent. Judge a codepoint by `unicodedata.decomposition()`, never
+ * by the shape of the glyph.
+ */
+const HYPHEN_EQUIV = /[\u2010\u2011\u2012\u2212\uFE63\uFF0D]/g;
 const APOSTROPHE_EQUIV = /[\u2018\u2019\u02BC]/g;
 const NBSP_EQUIV = /[\u00A0\u2007\u202F]/g;
 const ZERO_WIDTH = /[\u200B\u200C\u200D\uFEFF]/g;

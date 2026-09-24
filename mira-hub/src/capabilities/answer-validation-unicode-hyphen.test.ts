@@ -133,6 +133,26 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
 
   /* ---- detection-only: the fold must never reach what a technician reads ---- */
 
+
+  /* ---- codepoint membership is decided by decomposition, not by looks ---- */
+
+  it("U+FE58 SMALL EM DASH is NOT folded — it decomposes to EM DASH", () => {
+    // <small> U+2014. Folding it would contradict the en/em-dash exclusion.
+    const r = check(
+      "The drive nameplate range is 0\uFE58600 A \u2013 confirm it before sizing the CT.",
+      "What CT should I size for?",
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("the small and fullwidth HYPHEN-MINUS forms ARE folded", () => {
+    for (const h of ["\uFE63", "\uFF0D"]) {
+      const r = check(`Re${h}energize for measurement, then clamp each phase and record the current.`);
+      expect(r.ok).toBe(false);
+      expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    }
+  });
+
   describe("the fold is detection-only", () => {
     const NBH2 = "\u2011";
     const CODE_Q = "What does fault code Q-447-Delta mean?";
