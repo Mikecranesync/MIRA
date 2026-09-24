@@ -1067,10 +1067,12 @@ export async function lookAtPhoto(
   image: File,
   clientKey: string,
   question?: string | null,
+  threadId?: string | null,
 ): Promise<LookResult> {
   const fd = new FormData();
   fd.append("image", image);
   fd.append("clientKey", clientKey);
+  if (threadId) fd.append("threadId", threadId);
   if (question?.trim()) fd.append("question", question.trim());
   // §4.1: the server parks + links the photo BEFORE vision, and a provider
   // failure (502) or an unconfigured recognizer (503) still returns that
