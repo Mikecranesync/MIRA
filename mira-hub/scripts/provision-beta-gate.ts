@@ -65,6 +65,12 @@ async function cleanup(tenantId: string) {
       "workspace_file_links",
       "namespace_direct_uploads",
       "decision_traces",
+      // 093. The sweep deletes this tenant's `decision_traces`, so leaving its
+      // arrivals behind makes every swept acceptance run look like permanent
+      // capture loss: an ingress row with no ledger row behind it is exactly
+      // what `lost_starts` counts. Measured on staging 2026-09-23 — four swept
+      // attempts scored `lost_starts: 3` and cost an hour to explain.
+      "turn_ingress",
       "knowledge_entries",
       "hub_uploads",
       "kg_entities",
