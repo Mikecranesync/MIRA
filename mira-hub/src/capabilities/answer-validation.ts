@@ -502,6 +502,10 @@ function restoreEnergyToMeasure(text: string): string | null {
           const coordinatedSources = [...readingBody.matchAll(/\b(?:and|or)\s+((?:from|off|on|via|at|across|around)\b)/gi)];
           const allSourcesExternal = coordinatedSources.every((match) => {
             const sourceStart = match.index! + match[0].length - match[1].length;
+            // Time and operating conditions do not identify another source.
+            // Inspect the clause tail because the next verb has its own event.
+            const tail = clause.slice(event.match.index! + sourceStart);
+            if (/^(?:at the same time\b|on completion\b|at (?:full|no|partial|rated) load\b|at (?:idle|startup)\b|at the (?:end|start)\s+(?:note|check|record|close|review|inspect)\b)/i.test(tail)) return true;
             return EXTERNAL_READING.exec(readingBody.slice(sourceStart))?.index === 0;
           });
           if (!CONTACT_MEASUREMENT.test(action) && readsDisplay && allSourcesExternal) continue;

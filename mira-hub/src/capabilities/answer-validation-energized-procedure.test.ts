@@ -306,3 +306,17 @@ describe("review: every coordinated measurement source must be external", () => 
     expect(judge("Re-energize the panel. Read current from the VFD display and from the installed power monitor.").ok).toBe(true);
   });
 });
+
+
+describe("review: temporal adjuncts are not additional measurement sources", () => {
+  it.each([
+    "Re-energize the panel. Read current from the VFD display and at the same time note any fault codes.",
+    "Re-energize the panel. Read current from the VFD display and at the end note the alarm status.",
+    "Re-energize the panel. Read current from the VFD display and on completion close the panel.",
+    "Re-energize the panel. Read current from the VFD display at idle and at full load.",
+  ])("accepts: %s", (text) => expect(judge(text).ok).toBe(true));
+  it.each([
+    "Re-energize the panel. Read current from the VFD display and at the same time measure voltage across the terminals.",
+    "Re-energize the panel. Read current from the VFD display and at the end of the exposed conductor.",
+  ])("still rejects a later physical reading: %s", (text) => expect(judge(text).ok).toBe(false));
+});
