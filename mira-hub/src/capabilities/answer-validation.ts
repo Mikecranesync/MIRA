@@ -550,8 +550,33 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
  */
 const HYPHEN_EQUIV = /[\u2010\u2011\u2012\u2212\uFE63\uFF0D]/g;
 const APOSTROPHE_EQUIV = /[\u2018\u2019\u02BC]/g;
-const NBSP_EQUIV = /[\u00A0\u2007\u202F]/g;
-const ZERO_WIDTH = /[\u200B\u200C\u200D\uFEFF]/g;
+
+/**
+ * Every Unicode SPACE SEPARATOR (category `Zs`) folded to ASCII " ".
+ *
+ * Chosen by Unicode category rather than by listing the ones we happened to
+ * see: U+00A0, U+1680, the U+2000–U+200A block, U+202F, U+205F, U+3000. The
+ * earlier hand-picked set (U+00A0, U+2007, U+202F) missed the entire
+ * U+2000–U+200A block, and an exploratory fuzz over model-realistic variants
+ * is what surfaced it.
+ */
+const UNICODE_SPACE = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g;
+
+/**
+ * Invisible FORMAT characters (category `Cf`, Default_Ignorable) — removed
+ * outright, because they are not part of the logical text at all.
+ *
+ * U+00AD SOFT HYPHEN is here, not in HYPHEN_EQUIV, and the distinction is the
+ * whole point: a soft hyphen is a LINE-BREAK HINT, not a hyphen. Folding it to
+ * "-" would corrupt every word it appears inside ("ener\u00ADgized" would become
+ * "ener-gized"), whereas removing it restores the word the model meant. The
+ * hazard grammars already tolerate the hyphen being absent ("re[-\s]?energi"),
+ * so stripping catches "re\u00ADenergize" without inventing a hyphen anywhere.
+ *
+ * U+2060 WORD JOINER was missing until an independent review noted it and a
+ * fuzz run then proved it live: "ener\u2060gized" defeated A1 and A4 outright.
+ */
+const ZERO_WIDTH = /[\u00AD\u200B\u200C\u200D\u2060\uFEFF]/g;
 
 /**
  * Fold a string into the ASCII shape every rule in this file is written
@@ -564,7 +589,7 @@ function foldForDetection(s: string): string {
     .replace(/[*`]/g, "")
     .replace(HYPHEN_EQUIV, "-")
     .replace(APOSTROPHE_EQUIV, "'")
-    .replace(NBSP_EQUIV, " ")
+    .replace(UNICODE_SPACE, " ")
     .replace(ZERO_WIDTH, "");
 }
 
