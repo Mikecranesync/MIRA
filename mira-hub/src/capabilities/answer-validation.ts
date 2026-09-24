@@ -424,7 +424,7 @@ function restoreEnergyToMeasure(text: string): string | null {
     const isolation = /^\s*(?:\d+[.)]\s*)?(?:de[-\s]?energi[sz]e\b|isolate\b|shut\s+(?:it\s+|the\s+\w+\s+)?down\b|switch\s+(?:it\s+|the\s+\w+\s+)?off\b)[^.!?]*?\block[-\s]?out\b[^.!?]*?\b(?:verify|confirm)\s+(?:zero\s+voltage|(?:the\s+)?absence\s+of\s+voltage)\b/i.exec(sentence);
     const resetAt = isolation && !REASSURANCE_AFFIRMATION.test(isolation[0])
       && !/\b(?:not|never|skip|omit|optional|without|don't|no\s+need)\b/i.test(isolation[0])
-      && !/^\s+(?:(?:is|was|remains)\s+)?(?:optional|unnecessary|not\s+(?:needed|required))\b/i.test(sentence.slice(isolation[0].length))
+      && !/^\s+(?:(?:is|was|remains)\s+)?(?:optional|unnecessary|not\s+(?:needed|required)|only\s+if|if|unless|when)\b/i.test(sentence.slice(isolation[0].length))
       ? isolation[0].length : null;
     const segments = resetAt === null ? [sentence] : [sentence.slice(0, resetAt), sentence.slice(resetAt)];
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
@@ -434,38 +434,48 @@ function restoreEnergyToMeasure(text: string): string | null {
       }
       let frontedSource = "";
       for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
-        const restoration = RESTORE_ENERGY.exec(clause);
+        const restorations = [...clause.matchAll(new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"))];
         const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
-        const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
-        if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) {
-          frontedSource = "";
-          continue;
-        }
-        // A fronted source belongs to the first following read, not every
-        // measurement later in this clause or sentence.
-        if (actions.length === 0 && !restoration && EXTERNAL_READING.test(clause)) {
+        if (actions.length === 0 && restorations.length === 0 && EXTERNAL_READING.test(clause)) {
           frontedSource = clause;
           continue;
         }
-        let restoreAt = restoration?.index ?? Number.POSITIVE_INFINITY;
-        if (restoration && actions.length > 0 && restoration.index < actions[0].index!) {
-          const firstReading = clause.slice(actions[0].index, actions[1]?.index);
-          const beforeReading = clause.slice(restoration.index + restoration[0].length, actions[0].index);
-          // "Restore power AFTER taking an isolated reading" describes the
-          // opposite chronology from "restore power THEN take a reading".
-          if (/\bafter\b/i.test(beforeReading) && /\b(?:isolated|de[-\s]?energized|locked\s+out)\b/i.test(firstReading)) {
-            restoreAt = actions[1]?.index ?? clause.length;
+        // Polarity is local to each action. An earlier "do not restore" must
+        // never erase a later affirmative restoration in the same clause.
+        const events = [
+          ...restorations.map((match) => ({ match, kind: "restore" as const, at: match.index! })),
+          ...actions.map((match) => ({ match, kind: "measure" as const, at: match.index! })),
+        ].sort((a, b) => a.at - b.at);
+        const ordered = events.map((event, i) => ({
+          ...event,
+          context: clause.slice(i ? events[i - 1].at + events[i - 1].match[0].length : 0, events[i + 1]?.at),
+        }));
+        for (const event of ordered) {
+          if (event.kind !== "restore") continue;
+          const following = actions.findIndex((action) => action.index! > event.at);
+          if (following < 0) continue;
+          const reading = actions[following];
+          const readingText = clause.slice(reading.index, actions[following + 1]?.index);
+          const between = clause.slice(event.at + event.match[0].length, reading.index);
+          if (/\bafter\b/i.test(between)
+            && /\b(?:isolated|de[-\s]?energized|locked\s+out)\b/i.test(readingText)
+            && !/\b(?:not|never|without)\b/i.test(readingText)) {
+            // Restoration occurs after the isolated reading, before a later one.
+            event.at = (actions[following + 1]?.index ?? clause.length) - 0.5;
           }
         }
-        let appliedRestore = false;
-        for (let i = 0; i < actions.length; i++) {
-          if (restoration && restoreAt <= actions[i].index!) {
+        ordered.sort((a, b) => a.at - b.at);
+        for (const event of ordered) {
+          const prohibited = RESTORE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context);
+          if (prohibited && !REASSURANCE_AFFIRMATION.test(event.context)) continue;
+          if (event.kind === "restore") {
             restored = sentence;
             electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
-            appliedRestore = true;
+            continue;
           }
-          const action = (i === 0 ? frontedSource + " " + clause.slice(0, actions[i].index) : "")
-            + clause.slice(actions[i].index, actions[i + 1]?.index);
+          const index = actions.indexOf(event.match);
+          const action = (index === 0 ? frontedSource + " " + clause.slice(0, event.match.index) : "")
+            + clause.slice(event.match.index, actions[index + 1]?.index);
           frontedSource = "";
           if (!restored) continue;
           if (!CONTACT_MEASUREMENT.test(action) && EXTERNAL_READING.test(action)) continue;
@@ -473,10 +483,7 @@ function restoreEnergyToMeasure(text: string): string | null {
             return restored === sentence ? sentence : `${restored}\n${sentence}`;
           }
         }
-        if (restoration && !appliedRestore) {
-          restored = sentence;
-          electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
-        }
+
       }
     }
   }

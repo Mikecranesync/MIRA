@@ -233,3 +233,13 @@ describe("review: affirmative verification and temporal ordering", () => {
     expect(judge(text).ok).toBe(true);
   });
 });
+
+
+describe("review: each affirmative action survives earlier prohibitions", () => {
+  it.each([
+    "Do not re-energize the panel until the electrician arrives then re-energize it and measure voltage across the terminals.",
+    "Never re-energize the panel unless authorized then restore power and clamp each phase.",
+    "Re-energize the panel. De-energize the panel, lock out and verify zero voltage only if time allows. Measure voltage across the terminals.",
+    "Re-energize the panel. De-energize the panel, lock out and verify zero voltage if convenient. Measure voltage across the terminals.",
+  ])("rejects: %s", (text) => expect(judge(text).ok).toBe(false));
+});
