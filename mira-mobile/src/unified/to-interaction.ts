@@ -121,6 +121,12 @@ function freshnessOf(value: unknown): "live" | "stale" | "simulated" | "unknown"
 
 const SAFETY_STOP_MESSAGE =
   "Stop. This request involves a hazard. Follow the site lockout/tagout and safety procedure before proceeding; MIRA will not guide the unsafe step.";
+/** Byte-for-byte the message mira-hub's own adapter uses
+ *  (`mira-hub/src/factorylm-ui/to-interaction.ts` ELECTRICAL_DIRECTIVE_MESSAGE).
+ *  The two shells MUST say the same thing about the same turn; a paraphrase here
+ *  would make the phone and the web disagree about what the directive means. */
+const ELECTRICAL_DIRECTIVE_MESSAGE =
+  "Energized electrical work: this answer is framed by the NFPA 70E directive. De-energize, lock out, and verify absence of voltage before any hands-on step.";
 
 export function toInteractionPart(part: MessagePart): InteractionPart {
   switch (part.type) {
@@ -151,11 +157,24 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
         // The mobile ObservationPart carries no verification signal; never claim one.
         observation: { fileId: part.entry.fileId, capturedAt: part.entry.capturedAt, provenance: "phone_photo", verified: false },
       };
-    case "safety_notice":
+    case "safety_notice": {
+      // Two shapes share this part, split by `terminal` (contract.ts #3841/#3893):
+      // a hard stop (the reply IS the isolation instruction) vs the energized-
+      // electrical DIRECTIVE (the turn is answered, framed by NFPA 70E). Absent
+      // `terminal` means an older projection -> terminal, the safe default.
+      // Collapsing both to "stop" put "MIRA will not guide the unsafe step"
+      // directly above an answer that guides the steps — observed on a Pixel 9a
+      // against staging, 2026-09-23 (docs/proofs/2026-09-23-pixel9a-3917-*.md).
+      const terminal = part.terminal !== false;
       return {
         type: "safety_notice",
-        notice: { severity: "stop", message: SAFETY_STOP_MESSAGE, ...(part.trigger ? { trigger: part.trigger } : {}) },
+        notice: {
+          severity: terminal ? "stop" : "warning",
+          message: terminal ? SAFETY_STOP_MESSAGE : ELECTRICAL_DIRECTIVE_MESSAGE,
+          ...(part.trigger ? { trigger: part.trigger } : {}),
+        },
       };
+    }
     case "basis": {
       // `authorized` is server-owned truth. The mobile BasisPart carries only the
       // basis string and a caption, so it is never asserted here — the kind is a
