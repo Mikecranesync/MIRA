@@ -268,3 +268,27 @@ describe("#3973 R3 — a Unicode hyphen does not get the procedure onto the wire
     }
   });
 });
+
+
+describe("review repair — numbered procedures and safe external readings on the wire", () => {
+  it.each(["-", "\u2011"])("withholds a numbered procedure with %s and persists a terminal stop", async (hyphen) => {
+    const draft = `4. Re${hyphen}energize the panel.\n5. Clamp each phase and record the current.`;
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(text).not.toContain("Clamp each phase");
+    expect(text).not.toContain(`Re${hyphen}energize`);
+    expect(frames(text).find((f) => f.kind === "safety")?.trigger).toContain("energized-procedure");
+    const recorded = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
+    expect(String(recorded.answerText)).not.toContain("Clamp each phase");
+    expect((recorded.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(true);
+  });
+
+  it("serves a safe restart/display reading without a terminal frame", async () => {
+    const draft = "Bring the conveyor motor back on and check the amp draw on the VFD display after it stabilizes.";
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    const content = frames(text).filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+    expect(content).toBe(draft + "\n");
+    expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+  });
+});

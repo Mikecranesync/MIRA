@@ -1,3 +1,5 @@
+> **2026-09-24 review repair checkpoint:** Prior sections below are historical observations, not current staging acceptance. Independent review reproduced #3982 safe-reading refusals and #3984 numbered-step leaks. Red-first desired-behavior controls failed 14 cases. The existing validator now carries restoration across procedure steps, requires electrical measurement context, permits external display/process readings, and respects explicit isolation and clause-bound prohibitions. Focused validator/wire/Unicode checks: 418 passed. Full Hub suite: 3,739 passed / 294 files. Independent re-review is pending. Issue #3984 remains OPEN and its release-manifest blocker remains intact; no deployment or physical acceptance is claimed.
+
 # #3973 — the detected hazard now constrains the answer (2026-09-23)
 
 ## The turn, traced end to end

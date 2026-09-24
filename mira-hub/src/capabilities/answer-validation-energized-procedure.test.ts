@@ -163,3 +163,27 @@ describe("#3973 the replacement is useful, not a bare refusal", () => {
     expect(v.replacement.length).toBeGreaterThan(200);
   });
 });
+
+
+describe("review repair: procedure scope and external readings", () => {
+  it.each([
+    "Re-energize the panel. Put on the prescribed PPE. Clamp each phase and record the current.",
+    "Never measure energized conductors. Re-energize the panel. Then clamp each phase and record current.",
+    "Restore power. Read the VFD display, then clamp each phase and record the current.",
+    "Restore power. Do not de-energize the panel. Measure voltage across the terminals.",
+    "1. Re-energize the panel.\n2. Record the current using a clamp meter.",
+  ])("rejects a hazardous procedure despite intervening or safe-looking text: %s", (text) => {
+    expect(judge(text).ok).toBe(false);
+  });
+
+  it.each([
+    "Turn the pump back on. Read the flow rate from the gauge.",
+    "Switch the compressor back on and take a pressure reading using the installed probe.",
+    "Re-energize the feeder. Read each phase current on the installed power monitor display.",
+    "Measure resistance with the circuit isolated. Only after completing the work and replacing the covers, restore power.",
+    "Never re-energize the panel to take a reading with a clamp meter.",
+    "Restore power and confirm operation. De-energize the panel, lock out and verify zero voltage. Measure resistance across the terminals.",
+  ])("preserves an external reading, prohibition, or isolated measurement: %s", (text) => {
+    expect(judge(text).ok).toBe(true);
+  });
+});

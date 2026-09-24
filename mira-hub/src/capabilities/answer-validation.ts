@@ -404,19 +404,45 @@ const MEASURE_ACTION_SRC =
   "take\\s+(?:the\\s+|a\\s+)?(?:reading|measurement))";
 const MEASURE_ACTION = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
 
-/** Returns the offending sentence, or null. Sentence-scoped detection with the
- *  same clause-scoped prohibition exemption the A2 rule uses, so
- *  "never re-energize just to take a reading" is not itself a violation. */
+// The hazard is a physical electrical measurement after power is restored,
+// not a process reading or a value read from an installed external display.
+const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
+const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+){0,3}(?:phase|conductor|terminal|busbar|wire))\b/i;
+const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
+const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
+
+/** Carry an affirmative restoration across prose/list steps. Prohibitions
+ * apply only to their own clause; a safe opening cannot excuse a later
+ * instruction. An explicit isolate/lockout/verify step ends that interval.
+ * Retain original answer text elsewhere: this scans detection-only text. */
 function restoreEnergyToMeasure(text: string): string | null {
+  let restored: string | null = null;
+  let electrical = false;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    if (!RESTORE_ENERGY.test(sentence) || !MEASURE_ACTION.test(sentence)) continue;
-    const bearing = sentence
-      .split(CLAUSE_BOUNDARY)
-      .filter((c) => RESTORE_ENERGY.test(c) || MEASURE_ACTION.test(c));
-    const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
-    const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
-    if (!reassured && prohibited) continue;
-    return sentence;
+    if (/^\s*(?:\d+[.)]\s*)?de[-\s]?energi[sz]e\b/i.test(sentence)
+      && /\block[-\s]?out\b/i.test(sentence)
+      && /\b(?:verify|confirm)\s+zero\s+voltage\b/i.test(sentence)
+      && !REASSURANCE_AFFIRMATION.test(sentence)) {
+      restored = null;
+      electrical = false;
+      continue;
+    }
+    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+      const restore = RESTORE_ENERGY.test(clause);
+      const measure = MEASURE_ACTION.test(clause);
+      const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
+      if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) continue;
+      if (restore) {
+        restored = sentence;
+        electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
+      }
+      if (!restored || !measure) continue;
+      const contact = CONTACT_MEASUREMENT.test(clause);
+      if (!contact && EXTERNAL_READING.test(clause)) continue;
+      if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(clause)) {
+        return restored === sentence ? sentence : `${restored}\n${sentence}`;
+      }
+    }
   }
   return null;
 }
