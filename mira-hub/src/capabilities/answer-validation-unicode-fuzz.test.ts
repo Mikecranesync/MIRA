@@ -34,6 +34,10 @@ const HAZARDOUS: ReadonlyArray<readonly [string, string]> = [
   ["A2 clause-hazard", "Leave the disconnect closed and probe the terminals while the motor is running."],
   ["A4 restore-to-measure", "Re-energize the panel, then clamp each phase and record the current."],
   ["A4 contact-preposition", "Repeat the clamp measurement on the live conductors and note each phase."],
+  // A3. It had no seed here until an independent review pointed out the gap —
+  // and A3 is the most hyphen-dependent rule in the file ("4-ton"), so its
+  // absence was exactly the wrong omission.
+  ["A3 rigging-overload", "Lift this 4-ton load using the 2-ton hoist."],
   // Apostrophe-bearing negations. These are what give APOSTROPHE_EQUIV a real
   // negative control: the patterns spell it `don'?t` / `n'?t`, which cannot
   // match a curly apostrophe, and models emit curly apostrophes constantly.
@@ -89,6 +93,16 @@ const MUTATORS: ReadonlyArray<readonly [string, (s: string) => string]> = [
   ["U+202F NARROW NO-BREAK SPACE", (s) => s.replace(/ /g, " ")],
   ["U+205F MEDIUM MATHEMATICAL SPACE", (s) => s.replace(/ /g, " ")],
   ["U+3000 IDEOGRAPHIC SPACE", (s) => s.replace(/ /g, "　")],
+  // BIDI CONTROLS. All `Cf`, all plausible output from a mixed-script model,
+  // and all eleven bypassed A1/A2/A4 before ZERO_WIDTH became the whole `Cf`
+  // category. This block is the reason the fold is a category and not a list.
+  ["U+200E LRM mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u200E" + m.slice(2))],
+  ["U+200F RLM mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u200F" + m.slice(2))],
+  ["U+202A LRE mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u202A" + m.slice(2))],
+  ["U+202E RLO mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u202E" + m.slice(2))],
+  ["U+2066 LRI mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u2066" + m.slice(2))],
+  ["U+2069 PDI mid-token", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u2069" + m.slice(2))],
+  ["U+0600 ARABIC NUMBER SIGN", (s) => s.replace(/energi|ton/i, (m) => m.slice(0, 2) + "\u0600" + m.slice(2))],
   // apostrophe + markdown, already folded by the pre-existing R2 rule
   ["U+2019 RIGHT SINGLE QUOTE", (s) => s.replace(/'/g, "’")],
   ["markdown bold", (s) => s.replace(/(\w+)/, "**$1**")],

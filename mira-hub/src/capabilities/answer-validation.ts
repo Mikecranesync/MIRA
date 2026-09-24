@@ -519,6 +519,9 @@ export function unsupportedExactRating(text: string): string | null {
 // optional suffix — Q-447-Delta, ZX-9987, F0000000, E-12. Deliberately does
 // NOT match bare numbers, voltages (480V), thread sizes (M8), or model names
 // without a digit run (S7-1500's "S7" has a single digit).
+/** Longest token still treated as a fault code. Real ones are <20 chars. */
+const MAX_FAULT_CODE_LEN = 128;
+
 const FAULT_CODE_TOKEN = /\b[A-Za-z]{1,4}[-_]?\d{2,8}(?:[-_][A-Za-z0-9]+)?\b/g;
 
 // A sentence that quotes-without-defining ("I can't verify what Q-447 means")
@@ -548,8 +551,10 @@ const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
  * exists to prevent. Judge a codepoint by `unicodedata.decomposition()`, never
  * by the shape of the glyph.
  */
-const HYPHEN_EQUIV = /[\u2010\u2011\u2012\u2212\uFE63\uFF0D]/g;
-const APOSTROPHE_EQUIV = /[\u2018\u2019\u02BC]/g;
+const HYPHEN_EQUIV_CHARS = "\\u2010\\u2011\\u2012\\u2212\\uFE63\\uFF0D";
+const HYPHEN_EQUIV = new RegExp(`[${HYPHEN_EQUIV_CHARS}]`, "g");
+const APOSTROPHE_EQUIV_CHARS = "\\u2018\\u2019\\u02BC";
+const APOSTROPHE_EQUIV = new RegExp(`[${APOSTROPHE_EQUIV_CHARS}]`, "g");
 
 /**
  * Every Unicode SPACE SEPARATOR (category `Zs`) folded to ASCII " ".
@@ -560,23 +565,34 @@ const APOSTROPHE_EQUIV = /[\u2018\u2019\u02BC]/g;
  * U+2000–U+200A block, and an exploratory fuzz over model-realistic variants
  * is what surfaced it.
  */
-const UNICODE_SPACE = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g;
+const UNICODE_SPACE_CHARS = "\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000";
+const UNICODE_SPACE = new RegExp(`[${UNICODE_SPACE_CHARS}]`, "g");
 
 /**
- * Invisible FORMAT characters (category `Cf`, Default_Ignorable) — removed
+ * ALL invisible FORMAT characters (Unicode general category `Cf`) — removed
  * outright, because they are not part of the logical text at all.
  *
- * U+00AD SOFT HYPHEN is here, not in HYPHEN_EQUIV, and the distinction is the
- * whole point: a soft hyphen is a LINE-BREAK HINT, not a hyphen. Folding it to
- * "-" would corrupt every word it appears inside ("ener\u00ADgized" would become
- * "ener-gized"), whereas removing it restores the word the model meant. The
- * hazard grammars already tolerate the hyphen being absent ("re[-\s]?energi"),
- * so stripping catches "re\u00ADenergize" without inventing a hyphen anywhere.
+ * This is a CATEGORY, deliberately, and it is the second time that lesson has
+ * had to be learned in this file. The first version listed six codepoints that
+ * had actually been observed. An independent review then demonstrated a live
+ * bypass of A1, A2 and A4 through eleven more — U+200E/U+200F and the
+ * U+202A–U+202E and U+2066–U+2069 bidi controls — which are ordinary output
+ * for a mixed-script model, and gpt-oss-120b, the model that caused #3973, is
+ * one. A hand-picked list of invisible characters is the same mistake as a
+ * hand-picked list of hyphens; only the category closes the class.
  *
- * U+2060 WORD JOINER was missing until an independent review noted it and a
- * fuzz run then proved it live: "ener\u2060gized" defeated A1 and A4 outright.
+ * U+00AD SOFT HYPHEN is in here by virtue of being `Cf`, and that is correct:
+ * a soft hyphen is a LINE-BREAK HINT, not a hyphen. Folding it to "-" would
+ * corrupt every word it appears inside ("ener\u00ADgized" -> "ener-gized"),
+ * whereas removing it restores the word the model meant. The hazard grammars
+ * already tolerate an absent hyphen ("re[-\s]?energi"), so stripping catches
+ * "re\u00ADenergize" without inventing a hyphen anywhere.
+ *
+ * Safe to apply wholesale because this copy is never rendered: ZWJ emoji
+ * sequences, Arabic number signs and language tags all lose nothing that a
+ * SAFETY regex should have been matching on.
  */
-const ZERO_WIDTH = /[\u00AD\u200B\u200C\u200D\u2060\uFEFF]/g;
+const ZERO_WIDTH = /\p{Cf}/gu;
 
 /**
  * Fold a string into the ASCII shape every rule in this file is written
@@ -609,14 +625,30 @@ function originalSpelling(token: string, raw: string): string {
   const zw = "[\\u200B\\u200C\\u200D\\uFEFF]*";
   const body = Array.from(token)
     .map((ch) => {
-      if (ch === "-") return "[-\\u2010\\u2011\\u2012\\u2212\\uFE58\\uFE63\\uFF0D]";
-      if (ch === "'") return "['\\u2018\\u2019\\u02BC]";
-      if (ch === " ") return "[ \\u00A0\\u2007\\u202F]";
+      // These classes are the INVERSE of the fold sets above and must track
+      // them. They were hand-duplicated once and immediately drifted: this
+      // hyphen class still carried U+FE58 after it was removed from
+      // HYPHEN_EQUIV for decomposing to EM DASH, and the space class was still
+      // the pre-widening trio. Derived from one source now.
+      if (ch === "-") return `[-${HYPHEN_EQUIV_CHARS}]`;
+      if (ch === "'") return `['${APOSTROPHE_EQUIV_CHARS}]`;
+      if (ch === " ") return `[ ${UNICODE_SPACE_CHARS}]`;
       return escapeRe(ch);
     })
     .join(zw);
-  const m = new RegExp(zw + body, "i").exec(raw);
-  return m ? m[0] : token;
+  // A degenerate model output (a repetition loop) can produce a fault-code-
+  // shaped token thousands of characters long, and this builds one regex
+  // alternative per character: past ~40k the engine throws "regular expression
+  // too large". That threw out of validateAnswer and errored the whole stream.
+  // It failed CLOSED — no hazardous content shipped — but the documented
+  // contract here is "falls back to the folded token", and it did not fall
+  // back, it crashed. Now it does what it says.
+  try {
+    const m = new RegExp(zw + body, "i").exec(raw);
+    return m ? m[0] : token;
+  } catch {
+    return token;
+  }
 }
 
 function escapeRe(s: string): string {
@@ -651,6 +683,15 @@ function codeMeaningViolation(
     for (const clause of clauses) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
+        // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
+        // a repetition loop yields a "fault code" thousands of characters long.
+        // Every regex built from it below scales with its length, and past a
+        // few thousand the engine throws "regular expression too large" —
+        // which escaped validateAnswer and errored the whole SSE stream. It
+        // failed CLOSED (nothing hazardous shipped) but it denied service on a
+        // plausible degenerate output. No real fault code is anywhere near
+        // this long; anything that is, is not a code worth defining.
+        if (tok.length > MAX_FAULT_CODE_LEN) continue;
         if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,

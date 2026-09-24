@@ -153,6 +153,40 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
     }
   });
 
+
+  /* ---- robustness: a degenerate token must not crash the turn ---- */
+
+  it("a repetition-loop fault code neither throws nor blocks the stream", () => {
+    // FAULT_CODE_TOKEN's suffix is unbounded, so a model stuck in a repetition
+    // loop produces a 'fault code' thousands of characters long. Every regex
+    // built from it scaled with its length and the engine threw "regular
+    // expression too large" out of validateAnswer, erroring the whole SSE
+    // stream. It failed CLOSED, but it denied service. Two separate throw
+    // sites: originalSpelling's reconstruction, and codeMeaningViolation's
+    // own defFrame. Both are covered now.
+    for (const n of [5_000, 40_000, 80_000]) {
+      const code = `Q-12-${"A".repeat(n)}`;
+      expect(() =>
+        validateAnswer({
+          answerText: `The fault code ${code} means a communication timeout.`,
+          question: `What does fault code ${code} mean?`,
+          general: true,
+          served: true,
+          refused: false,
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it("a NORMAL fault code is still caught — the bound did not disable the rule", () => {
+    const r = check(
+      "The fault code Q-447-Delta means a communication timeout on the drive network.",
+      "What does fault code Q-447-Delta mean?",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
   describe("the fold is detection-only", () => {
     const NBH2 = "\u2011";
     const CODE_Q = "What does fault code Q-447-Delta mean?";
