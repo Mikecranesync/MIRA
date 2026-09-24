@@ -32,11 +32,7 @@
  */
 
 import { canonicalProviders } from "@/lib/inference/canonical-cascade";
-import {
-  judgeEvidenceSufficiencyShadow,
-  jevShadowEnabled,
-  type JevShadowResult,
-} from "@/capabilities/observability/jev-shadow";
+import type { JevShadowResult } from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
  *  deterministic floor and the gate itself are unaffected. */
@@ -66,9 +62,9 @@ export type HazardTriageResult = {
  * Observational hazard triage (SHADOW ONLY).
  *
  * Classifies whether a future optimization *would* skip the expensive
- * semantic LLM call. Does NOT bypass `semanticSafetyCheck` — callers must
- * always await the real check on the enabled path and gate solely on its
- * verdict.
+ * semantic LLM call from the route's existing Jev result. This function
+ * never starts a second paid judgment. Callers must always await the real
+ * semantic check on the enabled path and gate solely on its verdict.
  *
  * would_skip cases (measurement only):
  *  1. Refused answer — already a refusal, no hazard advice to check
@@ -82,13 +78,13 @@ export type HazardTriageResult = {
  *  - Hazard vocabulary detected (selector fired)
  *  - Any other uncertainty
  */
-export async function triageSemanticSafetyCheck(opts: {
+export function triageSemanticSafetyCheck(opts: {
   question: string;
   answerText: string;
   refused: boolean;
   general: boolean;
-  evidence: readonly { content: string; title?: string | null }[];
-}): Promise<HazardTriageResult> {
+  jev: JevShadowResult;
+}): HazardTriageResult {
   const start = Date.now();
 
   // 1. Refused answer — already a refusal, no hazard advice to check
@@ -115,8 +111,10 @@ export async function triageSemanticSafetyCheck(opts: {
     };
   }
 
-  // If Jev shadow is disabled, measure would_proceed (fail-open to safety)
-  if (!jevShadowEnabled()) {
+  // The route's existing shadow request may have been disabled. Do not
+  // re-read configuration after it ran or issue another request here.
+  const jev = opts.jev;
+  if (jev.skipped_reason === "disabled") {
     return {
       decision: "would_proceed",
       reason: "jev_disabled",
@@ -124,11 +122,6 @@ export async function triageSemanticSafetyCheck(opts: {
       latency_ms: Date.now() - start,
     };
   }
-
-  // Run Jev shadow to judge evidence sufficiency (observational input only)
-  const jev = await judgeEvidenceSufficiencyShadow(opts.question, opts.evidence, {
-    timeoutMs: 1500,
-  });
 
   // If Jev didn't run (timeout, error, no evidence, no key), measure would_proceed
   if (jev.noul === null) {
@@ -328,43 +321,4 @@ export async function semanticSafetyCheck(opts: {
     }
   }
   return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
-}
-
-/**
- * SHADOW-contract orchestrator (testable negative control for #3957 / #3969).
- * ALWAYS awaits semanticSafetyCheck after observational triage — including
- * when triage.decision === "would_skip". Optional deps injectables exist only
- * so unit tests can prove the call; production callers omit them.
- */
-export async function runSemanticSafetyCheckWithShadowTriage(
-  opts: {
-    question: string;
-    answerText: string;
-    refused: boolean;
-    general: boolean;
-    evidence: readonly { content: string; title?: string | null }[];
-    selectedClass: string;
-  },
-  deps?: {
-    triage?: typeof triageSemanticSafetyCheck;
-    check?: typeof semanticSafetyCheck;
-  },
-): Promise<{ triage: HazardTriageResult; verdict: SemanticVerdict }> {
-  const triageFn = deps?.triage ?? triageSemanticSafetyCheck;
-  const checkFn = deps?.check ?? semanticSafetyCheck;
-  const triage = await triageFn({
-    question: opts.question,
-    answerText: opts.answerText,
-    refused: opts.refused,
-    general: opts.general,
-    evidence: opts.evidence,
-  });
-  // NEGATIVE CONTROL: would_skip does NOT suppress the real safety call.
-  const verdict = await checkFn({
-    question: opts.question,
-    answerText: opts.answerText,
-    general: opts.general,
-    selectedClass: opts.selectedClass,
-  });
-  return { triage, verdict };
 }

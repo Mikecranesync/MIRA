@@ -2739,27 +2739,26 @@ async function handleChatTurn(
       // on this enabled path; triage never gates citations/badge/production
       // behavior. Unsafe/unverified gating comes solely from the semantic verdict.
       // Prior tip IR PASS on 3674c65a was intent-stale (accepted real skip).
+      let triagePromise: Promise<HazardTriageResult | null> | null = null;
       if (gate && !outputRejected && served && !refused && answerText && semanticCheckEnabled()) {
-        let triage: HazardTriageResult | null = null;
-        try {
-          triage = await triageSemanticSafetyCheck({
+        const candidateForTriage = answerText;
+        // The existing Jev request started before generation. Classify its
+        // result asynchronously; never await triage before the semantic judge.
+        // Its catch is telemetry-only, while the judge controls the wire.
+        triagePromise = jevShadow.then((jev) =>
+          triageSemanticSafetyCheck({
             question: message,
-            answerText,
+            answerText: candidateForTriage,
             refused,
             general: !docGrounded,
-            evidence: chunks.map((c) => ({ content: c.content, title: c.title })),
-          });
-          console.log(
-            `[notebook-chat] hazard-triage would_skip=${triage.decision === "would_skip"} ` +
-              `reason=${triage.reason} jev.noul=${triage.jev?.noul ?? "null"} ` +
-              `in ${triage.latency_ms}ms`,
-          );
-        } catch (err) {
-          // Triage is telemetry-only; a failure must never block the real check.
+            jev,
+          }),
+        ).catch((err): null => {
           console.warn(`[notebook-chat] hazard-triage telemetry failed (ignored):`, err);
-        }
+          return null;
+        });
 
-        // ALWAYS run the deterministic semantic check — never skip based on triage/Jev.
+        // ALWAYS run the semantic check — never skip based on triage/Jev.
         // Iteration-9 F1: classification is TELEMETRY only, never a selection boundary.
         const selectedClass = selectForSemanticCheck(answerText, message) ?? "unclassified";
         const semStart = Date.now();
@@ -2769,13 +2768,7 @@ async function handleChatTurn(
           general: !docGrounded,
           selectedClass,
         });
-        console.log(
-          `[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} ` +
-            `in ${Date.now() - semStart}ms` +
-            (triage
-              ? ` (triage_would_skip=${triage.decision === "would_skip"} reason=${triage.reason})`
-              : ""),
-        );
+        console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
@@ -2795,6 +2788,14 @@ async function handleChatTurn(
       // tail below must stay await-free. Bounded by its own timeout; fail-open;
       // read only by the packet.
       const jev = await jevShadow;
+      const triage = await triagePromise;
+      if (triage) {
+        console.log(
+          `[notebook-chat] hazard-triage would_skip=${triage.decision === "would_skip"} ` +
+            `reason=${triage.reason} jev.noul=${triage.jev?.noul ?? "null"} ` +
+            `in ${triage.latency_ms}ms`,
+        );
+      }
 
       // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
       // made once, above; validation (deterministic AND semantic) is complete;
