@@ -477,7 +477,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -513,7 +513,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -895,6 +895,7 @@ export function NotebookScreen({
           the shell changes. Device-local choice under the same capability. */}
       {panel === "chat" && chatSurface === "unified" && (
         <UnifiedChat
+          attachmentThreadId={threadId}
           turns={turns}
           liveTurns={liveTurns}
           pending={pending}
@@ -1455,6 +1456,7 @@ export function NotebookScreen({
 
       {sensorOpen && (
         <SensorSheet
+          threadId={threadId}
           notebook={notebook}
           onClose={() => setSensorOpen(false)}
           onChanged={refresh}

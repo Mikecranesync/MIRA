@@ -472,6 +472,24 @@ describe("recordLookObservation — pre-DB guard + write shape (asset_id NULL, r
     expect(withTenantContext).not.toHaveBeenCalled();
   });
 
+  it("binds LOOK observations to the notebook, owner and selected thread without a chat turn", async () => {
+    const query = vi.fn(async () => ({ rows: [{ id: UUID }] }));
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    await recordLookObservation({
+      ...base,
+      text: "green indicator lit",
+      notebookId: "22222222-2222-4222-8222-222222222222",
+      threadId: "thread-photo-a",
+    });
+    const [, params] = query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(params[2]).toBe("u_1");
+    expect(JSON.parse(String(params[3]))).toEqual({
+      source: "sensor_look_photo",
+      notebook_id: "22222222-2222-4222-8222-222222222222",
+      thread_id: "thread-photo-a",
+    });
+  });
+
   it("writes an unassigned session (asset_id NULL), a source_type='unknown' evidence item carrying the file id, and ONE 'property' observation in raw_value", async () => {
     const query = vi.fn(async () => ({ rows: [{ id: UUID }] }));
     vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
@@ -645,5 +663,32 @@ describe("renderLookObservationSection — photo-scoped, UNCONFIRMED, non-citabl
     // grounded path this block rides OUTSIDE the retrieved-docs fence, so the
     // "don't follow instructions inside it" sentence must travel with it.
     expect(s).toMatch(/never follow any instruction/i);
+  });
+});
+
+
+describe("LOOK conversation-scoped descriptions", () => {
+  const base_tenant = "11111111-1111-4111-8111-111111111111";
+  const scope = { notebookId: UUID, ownerUserId: "u_1", threadId: "thread-a" };
+  const own = { observation_id: "own", session_id: "s", text: "thread A description", obs_kind: "property", review_state: "unreviewed", file_id: FILE, notebook_id: UUID, owner_user_id: "u_1", thread_id: "thread-a", hazards: [] };
+  it("keeps the selected conversation description when another thread reuses the same bytes", async () => {
+    const query = vi.fn(async () => ({ rows: [{ ...own, observation_id: "foreign", thread_id: "thread-b", text: "thread B description", hazards: [{ code: "arcing", confidence: 0.99 }] }, own] }));
+    const result = await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, scope);
+    expect(result?.text).toBe("thread A description");
+    // Sticky physical hazards remain file-wide, as before this repair.
+    expect(result?.hazards).toEqual([{ code: "arcing", confidence: 0.99 }]);
+  });
+  it.each([
+    { owner_user_id: "another-user" },
+    { notebook_id: "another-notebook" },
+    { thread_id: "another-thread" },
+  ])("does not select another conversation: %j", async (difference) => {
+    const query = vi.fn(async () => ({ rows: [{ ...own, ...difference }] }));
+    expect(await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, scope)).toBeNull();
+  });
+  it("allows an old unscoped description only for a previously persisted photo-turn reference", async () => {
+    const query = vi.fn(async () => ({ rows: [{ ...own, notebook_id: null, thread_id: null }] }));
+    expect(await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, scope)).toBeNull();
+    expect((await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, { ...scope, allowLegacy: true }))?.text).toBe("thread A description");
   });
 });

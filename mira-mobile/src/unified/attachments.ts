@@ -61,7 +61,7 @@ function describe(file: File): Attachment {
  * `notebookId` is null on HOME, where no notebook exists yet. Picking still
  * works there; the bytes are stashed for the thread the send creates.
  */
-export function useUnifiedAttachments(notebookId: string | null) {
+export function useUnifiedAttachments(notebookId: string | null, threadId?: string | null) {
   // The shell only ever carries the small `Attachment` descriptor; the bytes
   // stay here, keyed by the id the chip shows.
   const held = useRef(new Map<string, File>());
@@ -166,7 +166,7 @@ export function useUnifiedAttachments(notebookId: string | null) {
 
       let rider: VisualEvidenceRider | undefined;
       if (photo) {
-        const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question);
+        const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question, threadId);
         if (!look.fileId) {
           // Never send a photo question without the photo: that would answer
           // from nothing while looking like it answered from the picture.
@@ -196,7 +196,7 @@ export function useUnifiedAttachments(notebookId: string | null) {
       retain();
       throw error;
     }
-  }, [notebookId]);
+  }, [notebookId, threadId]);
 
   return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
 }

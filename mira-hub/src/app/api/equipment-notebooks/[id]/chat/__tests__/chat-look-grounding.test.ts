@@ -11,7 +11,7 @@
  *     visual-context arg (the turn still completes);
  *   - unverified fileId ⇒ no lookup, no block (arg empty), turn still completes.
  *
- * #3967 — LOOK itself must leave a server-recallable turn: when listTurns
+ * #3967 — historical photo-answer turns remain recallable: when listTurns
  * returns a prior `visual_observation {fileId}` and THIS turn carries no
  * rider, priorLookRows still loads the observation (negative control: empty
  * listTurns ⇒ no prior observation block).
@@ -36,6 +36,7 @@ const nbMock = vi.hoisted(() => ({
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
   listTurns: vi.fn(async () => [] as unknown[]),
+  normalizeNotebookThreadId: (value: unknown) => typeof value === "string" ? value : null,
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -61,6 +62,7 @@ const veMock = vi.hoisted(() => ({
     hazards?.filter((h) => h.confidence >= 0.85).sort((a, b) => b.confidence - a.confidence)[0] ?? null,
   ),
   loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
+  loadRecentLookObservations: vi.fn(async () => [] as unknown[]),
   renderVisualEvidenceSection: vi.fn(() => ""),
   loadVisualEvidenceForPhoto: vi.fn(async () => ({
     observationId: "o1",
@@ -333,17 +335,17 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
 });
 
 
-describe("#3967 — LOOK turn is server-recallable without the client rider", () => {
+describe("#3967 — historical photo-answer turn remains recallable without the rider", () => {
   it("POSITIVE: prior LOOK visual_observation in listTurns → observation loaded with no rider", async () => {
-    // Simulates what LOOK's new recordTurn writes; the follow-up chat sends
+    // A historical actual photo-answer turn remains recallable; follow-up sends
     // text only (the harness shape that originally filed #3967).
     nbMock.listTurns.mockResolvedValueOnce([
       {
         id: "look-turn-1",
         threadId: "legacy",
-        question: "LOOK",
+        question: "What is in the photo?",
         answerStatus: "answered",
-        answerText: null,
+        answerText: "A panel label is visible.",
         evidence: [
           {
             kind: "visual_observation",
@@ -369,7 +371,7 @@ describe("#3967 — LOOK turn is server-recallable without the client rider", ()
     expect(res.status).toBe(200);
 
     expect(nbMock.listTurns).toHaveBeenCalled();
-    expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), TENANT, PHOTO);
+    expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), TENANT, PHOTO, expect.objectContaining({ notebookId: NB, ownerUserId: "u1", allowLegacy: true }));
     expect(veMock.renderPriorLookObservationsSection).toHaveBeenCalled();
     const priorArg = vi.mocked(veMock.renderPriorLookObservationsSection).mock.calls.at(-1)?.[0] as unknown[];
     expect(priorArg?.length).toBeGreaterThan(0);
@@ -395,5 +397,23 @@ describe("#3967 — LOOK turn is server-recallable without the client rider", ()
     expect(!lastPrior || lastPrior.length === 0).toBe(true);
     const call = vi.mocked(ragMock.buildManualUserContent).mock.calls.at(-1) as unknown as [string, unknown[], string?];
     expect(call[2] ?? "").toBe("");
+  });
+});
+
+
+describe("standalone LOOK recall in the selected conversation", () => {
+  it("grounds a text-only follow-up from the observation ledger without a fake chat turn", async () => {
+    nbMock.listTurns.mockResolvedValueOnce([]);
+    veMock.loadRecentLookObservations.mockResolvedValueOnce([{
+      observationId: "scoped-observation", sessionId: "scoped-session", text: "my photo", fileId: PHOTO,
+      trust: "candidate", observedAt: "2026-09-24T12:00:00Z", hazards: [],
+    }]);
+    const res = await POST(req({ message: "what did the label say", mode: "general", threadId: "actual-backend-thread" }), params);
+    expect(res.status).toBe(200);
+    expect(veMock.loadRecentLookObservations).toHaveBeenCalledWith(expect.anything(), TENANT, {
+      notebookId: NB, ownerUserId: "u1", threadId: "actual-backend-thread",
+    });
+    const call = ragMock.buildManualUserContent.mock.calls.at(-1);
+    expect(String(call?.[2] ?? "")).toContain("PRIOR-LOOK-CTX");
   });
 });

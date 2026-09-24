@@ -90,6 +90,7 @@ const veMock = vi.hoisted(() => ({
   loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
   renderVisualEvidenceSection: vi.fn(() => ""),
   loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
+  loadRecentLookObservations: vi.fn(async () => []),
   renderLookObservationSection: vi.fn((row: unknown) => (row ? "## LOOK-CTX" : "")),
   renderPriorLookObservationsSection: vi.fn((rows: unknown[]) => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
   normalizeLookHazards: vi.fn(() => []),

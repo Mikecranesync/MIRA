@@ -13,13 +13,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
-vi.mock("@/lib/equipment-notebooks", () => ({
+vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/equipment-notebooks")>()),
   getNotebook: vi.fn(),
   updateNotebook: vi.fn(),
   markNameplateDocVerified: vi.fn(),
   recordTurn: vi.fn(async () => "turn-row-look-1"),
-  normalizeNotebookThreadId: (value: unknown) =>
-    typeof value === "string" && value.trim() ? value.trim() : null,
 }));
 vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
@@ -392,40 +391,32 @@ describe("observations are conversation context, not citable sources", () => {
 
 
 describe("#3967 durable LOOK → priorLookRows recall index", () => {
-  it("LOOK 200 calls recordTurn with visual_observation {fileId} (server-recallable)", async () => {
+  it("persists conversation scope without an artificial answered turn", async () => {
     armVision("SIEMENS TP700 Comfort nameplate visible.", "vision-test");
-    const CLIENT_KEY = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-    const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-    const res = await POST(
-      makeReq({ clientKey: CLIENT_KEY, question: "what is this panel", threadId: THREAD }),
-      makeParams(NOTEBOOK_ID),
-    );
+    const res = await POST(makeReq({ threadId: "thread-photo-a" }), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
-    expect(recordTurn).toHaveBeenCalledTimes(1);
-    expect(recordTurn).toHaveBeenCalledWith(
-      TENANT_ID,
-      NOTEBOOK_ID,
-      expect.objectContaining({
-        ownerUserId: "u_1",
-        threadId: THREAD,
-        clientRequestId: CLIENT_KEY,
-        question: "what is this panel",
-        answerStatus: "answered",
-        answerText: null,
-        evidence: [
-          expect.objectContaining({
-            kind: "visual_observation",
-            fileId: FILE_ID,
-            provenance: "phone_photo",
-          }),
-        ],
-        model: "vision-test",
-      }),
-    );
-    // VisualSession path still runs — observation text lives there.
-    expect(recordLookObservation).toHaveBeenCalledWith(
-      expect.objectContaining({ fileId: FILE_ID, text: "SIEMENS TP700 Comfort nameplate visible." }),
-    );
+    expect(recordTurn).not.toHaveBeenCalled();
+    expect(recordLookObservation).toHaveBeenCalledWith(expect.objectContaining({
+      notebookId: NOTEBOOK_ID, threadId: "thread-photo-a", createdBy: "u_1", fileId: FILE_ID,
+    }));
+  });
+
+  it("does not associate an unlinked photo with the conversation", async () => {
+    armVision("A panel is visible.");
+    vi.mocked(attachFileToTargets).mockResolvedValueOnce({ ok: false, error: "target_not_found" } as never);
+    const res = await POST(makeReq({ threadId: "thread-photo-a" }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const options = vi.mocked(recordLookObservation).mock.calls[0][0];
+    expect(options.notebookId).toBeUndefined();
+    expect(options.threadId).toBeUndefined();
+    expect(recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid conversation identifiers before parking the photo", async () => {
+    const res = await POST(makeReq({ threadId: "bad thread / id" }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(400);
+    expect(recordLookObservation).not.toHaveBeenCalled();
+    expect(recordTurn).not.toHaveBeenCalled();
   });
 
   it("NEGATIVE CONTROL: vision failure does NOT recordTurn — nothing server-recallable", async () => {
@@ -443,9 +434,9 @@ describe("#3967 durable LOOK → priorLookRows recall index", () => {
     expect(recordTurn).not.toHaveBeenCalled();
   });
 
-  it("recordTurn failure is fail-open — LOOK still returns 200 with observation", async () => {
+  it("observation storage failure is fail-open — LOOK still returns 200 with observation", async () => {
     armVision("Green LED lit.");
-    vi.mocked(recordTurn).mockRejectedValueOnce(new Error("db unavailable"));
+    vi.mocked(recordLookObservation).mockRejectedValueOnce(new Error("db unavailable"));
     const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
     const body = await res.json();

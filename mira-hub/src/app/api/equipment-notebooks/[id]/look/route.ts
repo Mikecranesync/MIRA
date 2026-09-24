@@ -39,11 +39,9 @@
  * response body is fixed. Observations remain conversation context, never a
  * citable source: nothing here writes knowledge_entries or touches identity.
  *
- * #3967 — after a successful LOOK observation, also `recordTurn` a notebook
- * turn carrying `visual_observation {fileId}` so the next chat turn's
- * `priorLookRows` can recall it from the server without the client's
- * visualEvidence rider. The observation TEXT still lives only in VisualSession
- * (`recordLookObservation`); the turn row is the recall index. Fail-open.
+ * #3967 — observations carry notebook/owner/thread association in the existing
+ * VisualSession ledger. LOOK is not an answered chat turn and writes no fake
+ * question/answer pair into conversation history.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { context, trace, type Span } from "@opentelemetry/api";
@@ -65,7 +63,7 @@ import {
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, normalizeNotebookThreadId, recordTurn } from "@/lib/equipment-notebooks";
+import { getNotebook, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
 import {
   normalizeLookHazards,
@@ -202,6 +200,9 @@ async function handleLookTurn(
     rawThread == null || rawThread === ""
       ? null
       : normalizeNotebookThreadId(typeof rawThread === "string" ? rawThread : null);
+  if (rawThread != null && rawThread !== "" && !threadId) {
+    return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  }
   const clientKey = ingress.clientRequestId;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
@@ -274,7 +275,6 @@ async function handleLookTurn(
     provider: string | null;
     model: string | null;
     ok: boolean;
-    turnRowId?: string | null;
   }): Promise<void> => {
     // The usage write APPENDS the outcome row itself (persist-usage §091), so
     // mark the lifecycle settled first: a second close would be absorbed by the
@@ -322,7 +322,7 @@ async function handleLookTurn(
           packet,
           anomalies,
           otelTraceId: rootTraceId,
-          turnRowId: vision.turnRowId ?? null,
+          turnRowId: null,
           clientRequestId: clientKey && UUID_RE.test(clientKey) ? clientKey : null,
           notebookId,
           environment: environmentName(),
@@ -420,6 +420,7 @@ async function handleLookTurn(
     try {
       await recordLookObservation({
         tenantId: ctx.tenantId,
+        ...(attachment.linkId ? { notebookId, threadId } : {}),
         fileId: parked.fileId,
         photoHash: sha256Hex(buffer),
         text: inspection.text,
@@ -430,41 +431,6 @@ async function handleLookTurn(
       });
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
-    }
-    // #3967 — durable recall index for the next chat turn. `priorLookRows`
-    // scans notebook turns for `visual_observation {fileId}` and then loads
-    // the VisualSession text via `loadVisualEvidenceForPhoto`. Without this
-    // turn row, a LOOK whose follow-up chat omits the client rider leaves the
-    // observation invisible to every later question (oemManufacturer stays
-    // null; OEM corpus never fires on a source-less notebook). FAIL-OPEN:
-    // a turn-write failure must never fail the LOOK response.
-    let lookTurnRowId: string | null = null;
-    try {
-      lookTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
-        ownerUserId: ctx.userId,
-        threadId,
-        // Idempotent on retry when the client sent a UUID key (mobile does).
-        clientRequestId: clientKey && UUID_RE.test(clientKey) ? clientKey : null,
-        question: question ?? "LOOK",
-        answerStatus: "answered",
-        // Observation text is conversation context in VisualSession; the turn
-        // answer is empty so this row is a recall index, not a second chat reply.
-        answerText: null,
-        enabledSourceDocIds: [],
-        evidence: [
-          {
-            kind: "visual_observation",
-            fileId: parked.fileId,
-            capturedAt,
-            provenance: "phone_photo",
-          },
-        ],
-        model: reply.model,
-        basis: null,
-      });
-    } catch (err) {
-      console.error("[notebook-look] recordTurn (visual recall) failed (continuing):", err);
-      lookTurnRowId = null;
     }
     visionSpan.updateName(`chat ${reply.model}`);
     setSpanAttrs(
@@ -492,7 +458,6 @@ async function handleLookTurn(
       provider: fixtureSelected() ? "fixture" : "together",
       model: reply.model,
       ok: true,
-      turnRowId: lookTurnRowId,
     });
     endRoot();
     return NextResponse.json({

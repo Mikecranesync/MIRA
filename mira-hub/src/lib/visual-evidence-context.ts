@@ -220,6 +220,9 @@ export async function recordLookObservation(opts: {
   readonly hazards?: readonly LookHazardDescriptor[];
   /** Server receipt time (ISO) the LOOK route already computed. */
   readonly capturedAt: string;
+  /** Conversation association for durable recall; never an answered chat turn. */
+  readonly notebookId?: string;
+  readonly threadId?: string | null;
   readonly createdBy: string | null;
 }): Promise<{ sessionId: string; evidenceId: string; observationId: string } | null> {
   const text = opts.text.trim();
@@ -230,7 +233,10 @@ export async function recordLookObservation(opts: {
       `INSERT INTO visual_session (tenant_id, asset_id, title, created_by, metadata)
        VALUES ($1, NULL, $2, $3, $4::jsonb)
        RETURNING session_id::text AS id`,
-      [opts.tenantId, "LOOK photo", opts.createdBy, JSON.stringify({ source: "sensor_look_photo" })],
+      [opts.tenantId, "LOOK photo", opts.createdBy, JSON.stringify({
+        source: "sensor_look_photo",
+        ...(opts.notebookId ? { notebook_id: opts.notebookId, thread_id: opts.threadId ?? "legacy" } : {}),
+      })],
     );
     const sessionId = String(s.rows[0].id);
 
@@ -648,10 +654,19 @@ export async function loadVisualEvidenceForAsset(
  * `(tenant_id, (capture_meta->>'file_id'))` would be the scale follow-up (its own
  * migration), not part of this change.
  */
+export type LookConversationScope = {
+  readonly notebookId: string;
+  readonly ownerUserId: string;
+  readonly threadId: string | null;
+  /** Only for a verified reference on an already persisted historical turn. */
+  readonly allowLegacy?: boolean;
+};
+
 export async function loadVisualEvidenceForPhoto(
   c: QueryClient,
   tenantId: string,
   fileId: string,
+  scope?: LookConversationScope,
 ): Promise<VisualEvidenceRow | null> {
   if (!isUuidKey(fileId)) return null;
   const res = await c.query(
@@ -659,8 +674,11 @@ export async function loadVisualEvidenceForPhoto(
             coalesce(o.normalized_value, o.raw_value) AS text, o.obs_kind, o.confidence,
             o.review_state, o.created_at,
             e.original_hash AS photo_hash, e.capture_meta->>'file_id' AS file_id,
-            e.capture_meta->'hazards' AS hazards
+            e.capture_meta->'hazards' AS hazards,
+            vs.created_by AS owner_user_id, vs.metadata->>'notebook_id' AS notebook_id,
+            vs.metadata->>'thread_id' AS thread_id
        FROM observation o
+       JOIN visual_session vs ON vs.session_id = o.session_id AND vs.tenant_id = o.tenant_id
        JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
       WHERE o.tenant_id = $1
         AND e.capture_meta->>'file_id' = $2
@@ -675,7 +693,13 @@ export async function loadVisualEvidenceForPhoto(
   if (res.rows.length === 0) return null;
 
   // Latest LOOK observation text (one description per photo, read-side dedup).
-  const latest = res.rows[0];
+  const latest = scope
+    ? res.rows.find((r) => r.notebook_id === scope.notebookId
+      && r.owner_user_id === scope.ownerUserId
+      && r.thread_id === (scope.threadId ?? "legacy"))
+      ?? (scope.allowLegacy ? res.rows.find((r) => r.notebook_id == null) : undefined)
+    : res.rows[0];
+  if (!latest) return null;
   
   // MAX-confidence blocking hazard across ALL active LOOK rows (sticky until rejected).
   let maxHazards: LookHazardDescriptor[] = [];
@@ -702,6 +726,45 @@ export async function loadVisualEvidenceForPhoto(
     observedAt: latest.created_at ? String(latest.created_at) : null,
     hazards: maxHazards,
   };
+}
+
+/** Recent LOOKs from this conversation, independent of whether a chat followed.
+ * Reuses VisualSession metadata; does not manufacture completed chat turns.
+ */
+export async function loadRecentLookObservations(
+  c: QueryClient,
+  tenantId: string,
+  scope: LookConversationScope,
+): Promise<VisualEvidenceRow[]> {
+  const result = await c.query(
+    `SELECT e.capture_meta->>'file_id' AS file_id, max(o.created_at) AS observed_at
+       FROM observation o
+       JOIN visual_session vs ON vs.session_id = o.session_id AND vs.tenant_id = o.tenant_id
+       JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
+      WHERE o.tenant_id = $1
+        AND vs.created_by = $2
+        AND vs.metadata->>'notebook_id' = $3
+        AND vs.metadata->>'thread_id' = $4
+        AND EXISTS (
+          SELECT 1 FROM workspace_file_links l
+           WHERE l.tenant_id::text = $1 AND l.file_id::text = e.capture_meta->>'file_id'
+             AND l.target_type = 'equipment_notebook' AND l.target_id::text = $3
+             AND l.role = 'photo'
+        )
+        AND o.extractor = 'inspection_vision'
+        AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
+        AND o.review_state <> 'rejected' AND o.superseded_by IS NULL
+        AND coalesce(o.normalized_value, o.raw_value, '') <> ''
+      GROUP BY e.capture_meta->>'file_id'
+      ORDER BY max(o.created_at) DESC LIMIT 2`,
+    [tenantId, scope.ownerUserId, scope.notebookId, scope.threadId ?? "legacy"],
+  );
+  const rows: VisualEvidenceRow[] = [];
+  for (const entry of result.rows) {
+    const row = await loadVisualEvidenceForPhoto(c, tenantId, String(entry.file_id), { ...scope, allowLegacy: false });
+    if (row) rows.push(row);
+  }
+  return rows;
 }
 
 /**
