@@ -20,9 +20,19 @@
  *  - Every decision is logged with class + verdict + latency so the real
  *    invocation rate and cost are MEASURED, not assumed (#3793 estimates are
  *    unadopted until staging measurements exist).
+ *
+ * Hazard Triage — SHADOW ONLY (2026-09-23, #3957 remount / Mike mission):
+ *  - `triageSemanticSafetyCheck` is OBSERVATIONAL telemetry only.
+ *  - It classifies would_skip / would_proceed for measurement; it does NOT
+ *    bypass, gate, or replace `semanticSafetyCheck`.
+ *  - The production route ALWAYS awaits `semanticSafetyCheck` on the enabled
+ *    path. Unsafe / unverified gating comes solely from the semantic verdict.
+ *  - Fail-open classification: when Jev is disabled / unavailable / timed out
+ *    / uncertain, triage reports would_proceed.
  */
 
 import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import type { JevShadowResult } from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
  *  deterministic floor and the gate itself are unaffected. */
@@ -30,11 +40,129 @@ export function semanticCheckEnabled(): boolean {
   return process.env.NOTEBOOK_SEMANTIC_CHECK !== "0";
 }
 
-// Hazard-class CLASSIFIER: vocabulary per supported class, matched over the
-// candidate answer AND the question. Iteration-9 F1: this is telemetry (a
-// class hint for the judge and the logs), NEVER a selection boundary — no
-// finite vocabulary bounds English hazard descriptions, so the route judges
-// every served, non-refused answer while the gate is on.
+/* ------------------------------------------------------------------------ *
+ * Hazard Triage — SHADOW ONLY observational pre-classifier                   *
+ * ------------------------------------------------------------------------ *
+ * Telemetry only. NEVER skips or gates semanticSafetyCheck. The production
+ * route always runs the deterministic semantic check; this helper only
+ * answers "would we have skipped?" for measurement (refs #3957).
+ */
+
+export type HazardTriageResult = {
+  /** Observational classification only — does not control control-flow. */
+  decision: "would_skip" | "would_proceed";
+  /** Why: refused | educational | well_grounded | jev_disabled | jev_timeout | jev_unavailable | hazard_vocabulary | uncertain */
+  reason: string;
+  /** Jev shadow result, or null when not run. */
+  jev: JevShadowResult | null;
+  latency_ms: number;
+};
+
+/**
+ * Observational hazard triage (SHADOW ONLY).
+ *
+ * Classifies whether a future optimization *would* skip the expensive
+ * semantic LLM call from the route's existing Jev result. This function
+ * never starts a second paid judgment. Callers must always await the real
+ * semantic check on the enabled path and gate solely on its verdict.
+ *
+ * would_skip cases (measurement only):
+ *  1. Refused answer — already a refusal, no hazard advice to check
+ *  2. Educational question (no asset context) + no hazard vocabulary + strong Jev
+ *  3. Well-grounded answer (doc-grounded + high Jev confidence + no hazard selector)
+ *
+ * would_proceed cases (fail-open measurement):
+ *  - Jev disabled (MIRA_JEV_SHADOW=0)
+ *  - Jev unavailable/timeout
+ *  - Jev confidence too low (uncertain evidence)
+ *  - Hazard vocabulary detected (selector fired)
+ *  - Any other uncertainty
+ */
+export function triageSemanticSafetyCheck(opts: {
+  question: string;
+  answerText: string;
+  refused: boolean;
+  general: boolean;
+  jev: JevShadowResult;
+}): HazardTriageResult {
+  const start = Date.now();
+
+  // 1. Refused answer — already a refusal, no hazard advice to check
+  if (opts.refused) {
+    return {
+      decision: "would_skip",
+      reason: "refused",
+      jev: null,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // Classification uses the same selector the semantic path uses for telemetry.
+  const selectedClass = selectForSemanticCheck(opts.answerText, opts.question);
+
+  // Hazard vocabulary → would_proceed immediately (deterministic; no Jev needed).
+  // Observational only — still does NOT skip semanticSafetyCheck in production.
+  if (selectedClass) {
+    return {
+      decision: "would_proceed",
+      reason: "hazard_vocabulary",
+      jev: null,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // The route's existing shadow request may have been disabled. Do not
+  // re-read configuration after it ran or issue another request here.
+  const jev = opts.jev;
+  if (jev.skipped_reason === "disabled") {
+    return {
+      decision: "would_proceed",
+      reason: "jev_disabled",
+      jev: null,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // If Jev didn't run (timeout, error, no evidence, no key), measure would_proceed
+  if (jev.noul === null) {
+    return {
+      decision: "would_proceed",
+      reason: jev.skipped_reason === "timeout" ? "jev_timeout" : "jev_unavailable",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // Educational + no hazard vocabulary + high Jev confidence → would_skip (telemetry)
+  if (opts.general && jev.noul >= 0.85) {
+    return {
+      decision: "would_skip",
+      reason: "educational",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // Well-grounded + high Jev + no hazard vocabulary → would_skip (telemetry)
+  if (!opts.general && jev.noul >= 0.90) {
+    return {
+      decision: "would_skip",
+      reason: "well_grounded",
+      jev,
+      latency_ms: Date.now() - start,
+    };
+  }
+
+  // Default: would_proceed (fail-open measurement)
+  return {
+    decision: "would_proceed",
+    reason: "uncertain",
+    jev,
+    latency_ms: Date.now() - start,
+  };
+}
+
+
 const SELECTOR_CLASSES: readonly { readonly cls: string; readonly re: RegExp }[] = [
   {
     cls: "electrical",
