@@ -290,7 +290,7 @@ def main() -> int:
     print(f"\nweb: {npass} passed, {nfail} not passed, {nskip} skipped, "
           f"{time.time() - t0:.0f}s, gitSha={sha[:12]}")
     print(f"device still owed for DEVICE_PARITY: {', '.join(device_owed)}")
-    return 1 if nfail else 0
+    return 1 if nfail else (2 if nskip else 0)
 
 
 if __name__ == "__main__":

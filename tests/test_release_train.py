@@ -271,3 +271,14 @@ def test_citation_flow_requires_nonempty_shipped_citations():
         def ask(self, *a, **k): return {"frames": [{"kind": "sources", "citations": self.citations}]}
     assert pa.flow_citations_evidence(Probe([]), {"nb": "fixture"})[0] is None
     assert pa.flow_citations_evidence(Probe([{"docId": "fixture"}]), {"nb": "fixture"})[0] is True
+
+
+@pytest.mark.parametrize("outcome,exit_code", [(True, 0), (False, 1), (None, 2)])
+def test_parity_exit_code_preserves_unproven_flows(monkeypatch, outcome, exit_code):
+    import parity_acceptance as pa
+    monkeypatch.setattr(pa.sys, "argv", ["parity"])
+    monkeypatch.setattr(pa, "curl", lambda *a, **k: '{"gitSha":"' + "a" * 40 + '"}')
+    monkeypatch.setattr(pa, "Session", lambda *a: object())
+    monkeypatch.setattr(pa, "FLOWS", {k: (lambda *a: (True, "control")) for k in pa.FLOWS})
+    pa.FLOWS["machine_project_chat"] = lambda *a: (outcome, "controlled observation")
+    assert pa.main() == exit_code
