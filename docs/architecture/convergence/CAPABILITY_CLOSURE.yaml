@@ -91,7 +91,7 @@ capabilities:
           again. A linter shown only passing input cannot be told apart from one
           that returns an empty list.
         provenance:
-          commit_sha: "f4380a82cd4ac884c75cab366028207ded7f166e"
+          commit_sha: "248f6ac6e4fdc5485c0a3d8079848c4acde8cd88"
           environment: ci
           observed_at: "2026-09-24"
           outcome: pass
