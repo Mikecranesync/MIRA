@@ -4,11 +4,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse, type NextRequest } from "next/server";
 
+vi.mock("@/lib/equipment-notebooks", () => ({ getNotebook: vi.fn() }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/capabilities/observability/diagnostics-read", () => ({
   listTurnDiagnostics: vi.fn(),
+  loadTurnDiagnosticsByClientRequestId: vi.fn(),
 }));
 
+import { getNotebook } from "@/lib/equipment-notebooks";
+import { loadTurnDiagnosticsByClientRequestId } from "@/capabilities/observability/diagnostics-read";
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { listTurnDiagnostics } from "@/capabilities/observability/diagnostics-read";
@@ -23,6 +27,8 @@ function reqWithUrl(url: string): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getNotebook).mockResolvedValue({ id: NB } as never);
+  vi.mocked(loadTurnDiagnosticsByClientRequestId).mockResolvedValue(null);
   vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
   vi.mocked(listTurnDiagnostics).mockResolvedValue([]);
 });
@@ -106,4 +112,22 @@ describe("GET .../turns/diagnostics", () => {
     expect(json).not.toContain("packet");
     expect(json).not.toContain("\"question\":");
   });
+});
+
+
+it.each(["", "?client_request_id=11111111-1111-4111-8111-111111111111"])("rejects a nonexistent or foreign notebook before packet lookup: %s", async (query) => {
+  vi.mocked(getNotebook).mockResolvedValue(null);
+  const res = await GET(reqWithUrl(`http://x/api/equipment-notebooks/${NB}/turns/diagnostics${query}`), { params: Promise.resolve({ id: NB }) });
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: "not_found" });
+  expect(loadTurnDiagnosticsByClientRequestId).not.toHaveBeenCalled();
+  expect(listTurnDiagnostics).not.toHaveBeenCalled();
+});
+
+it("distinguishes a missing packet in an existing notebook", async () => {
+  const crid = "11111111-1111-4111-8111-111111111111";
+  const res = await GET(reqWithUrl(`http://x/api/equipment-notebooks/${NB}/turns/diagnostics?client_request_id=${crid}`), { params: Promise.resolve({ id: NB }) });
+  expect(res.status).toBe(404);
+  expect((await res.json()).error).toBe("packet_not_found");
+  expect(loadTurnDiagnosticsByClientRequestId).toHaveBeenCalledWith(TENANT, NB, crid);
 });
