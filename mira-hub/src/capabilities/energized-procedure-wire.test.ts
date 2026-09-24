@@ -28,8 +28,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { STAGING_RESTORE_POWER_LEAK_2026_09_24 } from "./__fixtures__/staging-restore-power-leak-2026-09-24";
 
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({ tenantId: "11111111-1111-4111-8111-111111111111", userId: "u1" })),
@@ -208,10 +207,7 @@ describe("#3973 control — a safe answer in the same category is untouched", ()
  * The fixture is the live bytes.
  */
 describe("#3973 R3 — a Unicode hyphen does not get the procedure onto the wire", () => {
-  const LIVE_LEAK = readFileSync(
-    join(__dirname, "__fixtures__", "2026-09-24-staging-restore-power-leak.txt"),
-    "utf8",
-  );
+  const LIVE_LEAK = STAGING_RESTORE_POWER_LEAK_2026_09_24;
   // Unicode-aware: the ASCII PROHIBITED list above cannot see these spellings,
   // which is precisely how the leak got out.
   const PROHIBITED_U = [

@@ -22,14 +22,9 @@
  * fix. They are pinned anyway so the fix cannot introduce that failure later.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { validateAnswer } from "./answer-validation";
 
-const LIVE_LEAK = readFileSync(
-  join(__dirname, "__fixtures__", "2026-09-24-staging-restore-power-leak.txt"),
-  "utf8",
-);
+import { STAGING_RESTORE_POWER_LEAK_2026_09_24 as LIVE_LEAK } from "./__fixtures__/staging-restore-power-leak-2026-09-24";
 
 const NBH = "‑"; // NON-BREAKING HYPHEN
 const QUESTION =
