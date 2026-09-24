@@ -22,7 +22,11 @@
  * (turn-recorder.ts) merges stage data into it as the turn progresses.
  */
 
-export const TURN_EVIDENCE_PACKET_VERSION = "1" as const;
+import type { EvidenceFollowedAssessment } from "./evidence-consistency";
+
+import type { JevDecisionRecord } from "./jev-decision";
+
+export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
 
 export type TurnKind = "chat" | "look";
 
@@ -148,6 +152,20 @@ export type TurnEvidencePacketAnswerGate = {
   jev_latency_ms: number | null;
   /** Jev `usage.input_tokens` for the shadow call — the cost basis ($/M input; output is free). */
   jev_input_tokens: number | null;
+  /**
+   * How many citations the answer actually SHIPPED (#3962). Distinct from
+   * `context.chunk_count`, which is what was put in front of the model: chunks
+   * in context with zero citations shipped is "evidence supplied, evidence not
+   * followed", and until this field existed the two were indistinguishable in
+   * the packet.
+   */
+  citations_shipped: number;
+  /**
+   * Versioned assessment of whether the answer engaged with the VISUAL evidence
+   * in context. An assessment, never a claim about the model's reasoning — see
+   * evidence-consistency.ts. null when the turn had no observation in context.
+   */
+  evidence_followed: EvidenceFollowedAssessment | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -190,6 +208,21 @@ export type TurnEvidencePacket = {
   persistence: TurnEvidencePacketPersistence;
   timings_ms: TurnEvidencePacketTimingsMs;
   errors: TurnEvidencePacketError[];
+  /**
+   * SHADOW. The Jev Decision Fabric's verdicts for this turn, stamped after
+   * `finish()` on the same pattern as `persistence.turn_row_id`, because the
+   * judgment needs the DELIVERED answer and so cannot be a stage.
+   *
+   * Optional on purpose: absent means the evaluator never ran for this turn
+   * (flag off, or a packet written before the fabric existed). `null` inside a
+   * present record's `signals` never happens — a failed call is a record with
+   * `skipped_reason` set, so an outage is a value rather than a silence.
+   *
+   * NOTHING reads this. It is not consulted by the answer gate, the safety
+   * gate, the lifecycle ledger, or any release gate (ADR-0029 rule 9: model
+   * output never self-promotes).
+   */
+  jev_decision?: JevDecisionRecord | null;
 };
 
 /** What is known at request.receive, before any stage has run. */
@@ -312,6 +345,8 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_skipped_reason: null,
       jev_latency_ms: null,
       jev_input_tokens: null,
+      citations_shipped: 0,
+      evidence_followed: null,
     },
     persistence: {
       turn_row_id: null,
