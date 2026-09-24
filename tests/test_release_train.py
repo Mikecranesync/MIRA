@@ -43,6 +43,9 @@ def _write(tmp_path: Path, m: dict) -> Path:
     runner = root / "tools/release-train"
     runner.mkdir(parents=True, exist_ok=True)
     (runner / "parity_acceptance.py").write_text("# test\n")
+    proof = root / "docs/proofs/x.md"
+    proof.parent.mkdir(parents=True, exist_ok=True)
+    proof.write_text("SYNTHETIC TEST FIXTURE ONLY: not handset acceptance.\n")
     return root
 
 
@@ -77,7 +80,8 @@ def test_released_is_refused_while_a_blocker_is_open(tmp_path, manifest):
     assert any("#3984" in e for e in errs), "the open blocker must be named: " + str(errs)
 
 
-def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest):
+@pytest.mark.parametrize("breakage", [None, "backend", "version", "flows", "evidence"])
+def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest, breakage):
     """The positive half — otherwise the rule above could be 'RELEASED is
     always invalid', which would be useless."""
     m = copy.deepcopy(manifest)
@@ -85,10 +89,21 @@ def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest):
     m["blockers"] = []
     m["device_parity"]["receipts"] = [{
         "serial": "4A111FDEE0012B", "device": "Pixel 9a", "app_version_code": 11,
-        "backend_sha": "f" * 40, "flows": ["sign_in"], "date": "2026-09-24",
+        "backend_sha": m["components"]["backend_hub"]["expected"]["sha"],
+        "flows": [fl["id"] for fl in m["acceptance"]["flows"] if fl["device"]], "date": "2026-09-24",
         "evidence": "docs/proofs/x.md",
     }]
-    assert errors_for(tmp_path, m) == []
+    receipt = m["device_parity"]["receipts"][0]
+    if breakage == "backend":
+        receipt["backend_sha"] = "a" * 40
+    elif breakage == "version":
+        receipt["app_version_code"] = 999
+    elif breakage == "flows":
+        receipt["flows"] = ["sign_in"]
+    elif breakage == "evidence":
+        receipt["evidence"] = "docs/proofs/does-not-exist.md"
+    errors = errors_for(tmp_path, m)
+    assert bool(errors) == bool(breakage), errors
 
 
 def test_a_blocker_cannot_be_a_bare_id(tmp_path, manifest):
@@ -214,3 +229,20 @@ def test_every_manifest_flow_has_a_runner():
     assert declared == implemented, (
         f"manifest-only: {declared - implemented}; runner-only: {implemented - declared}"
     )
+
+
+@pytest.mark.parametrize("receipts,required", [([], True), ([], False), ([{"serial": "claimed-pixel"}], True)])
+def test_released_requires_substantiated_device_evidence(tmp_path, manifest, receipts, required):
+    m = copy.deepcopy(manifest)
+    m["release"]["state"] = "RELEASED"
+    m["blockers"] = []
+    m["device_parity"].update(receipts=receipts, requires_physical_device=required)
+    assert errors_for(tmp_path, m), "RELEASED accepted without real device evidence"
+
+
+def test_deployed_sha_drift_is_detected(tmp_path, manifest, monkeypatch):
+    monkeypatch.setattr(rt, "_fetch", lambda url: {"gitSha": "a" * 40})
+    f = rt.validate(_write(tmp_path, manifest), drift=True)
+    assert any("DRIFTED backend_hub" in e for e in f.errors), f.errors
+    monkeypatch.setattr(rt, "_fetch", lambda url: {"gitSha": manifest["components"]["backend_hub"]["expected"]["sha"]})
+    assert rt.validate(_write(tmp_path, manifest), drift=True).errors == []

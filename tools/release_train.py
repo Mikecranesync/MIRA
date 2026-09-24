@@ -166,7 +166,7 @@ def check_migration_level(m: dict, root: Path, f: Findings) -> None:
         )
 
 
-def check_device_parity(m: dict, f: Findings) -> None:
+def check_device_parity(m: dict, f: Findings, root: Path) -> None:
     """DEVICE_PARITY cannot be bought with an emulator."""
     state = (m.get("release") or {}).get("state")
     dp = m.get("device_parity") or {}
@@ -175,13 +175,29 @@ def check_device_parity(m: dict, f: Findings) -> None:
     idx = STATES.index(state) if state in STATES else -1
     needs_device = idx >= STATES.index("DEVICE_PARITY")
 
-    if needs_device and dp.get("requires_physical_device") and not receipts:
+    if needs_device and not receipts:
         f.error(
             f"release.state is {state} but device_parity.receipts is empty. "
             "DEVICE_PARITY requires a receipt from a physical handset."
         )
 
+    expected = m.get("components") or {}
+    android = (expected.get("android") or {}).get("expected") or {}
+    backend = (expected.get("backend_hub") or {}).get("expected") or {}
+    required_flows = {fl["id"] for fl in (m.get("acceptance") or {}).get("flows", []) if fl.get("device")}
     for r in receipts:
+        for field in ("device", "app_version_code", "backend_sha", "flows", "date", "evidence"):
+            if not r.get(field):
+                f.error(f"device_parity receipt missing {field}")
+        if r.get("app_version_code") != android.get("version_code"):
+            f.error("device_parity receipt app_version_code differs from expected Android")
+        if r.get("backend_sha") != backend.get("sha"):
+            f.error("device_parity receipt backend_sha differs from expected backend")
+        if not isinstance(r.get("flows"), list) or not required_flows.issubset(r["flows"]):
+            f.error("device_parity receipt does not cover all device flows")
+        evidence = r.get("evidence")
+        if not isinstance(evidence, str) or not (root / evidence).is_file():
+            f.error("device_parity receipt evidence is not an existing file")
         serial = str(r.get("serial", ""))
         if not serial:
             f.error("a device_parity receipt has no serial")
@@ -298,7 +314,7 @@ def validate(root: Path, drift: bool = False, env: str = "staging") -> Findings:
     check_blockers_gate_released(m, f)
     check_components(m, root, f)
     check_migration_level(m, root, f)
-    check_device_parity(m, f)
+    check_device_parity(m, f, root)
     check_acceptance(m, root, f)
     check_state_evidence(m, f)
     check_android_source_drift(m, root, f)
