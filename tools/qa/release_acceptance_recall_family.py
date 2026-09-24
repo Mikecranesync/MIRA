@@ -273,17 +273,30 @@ def packet_or_verdict(results: list, scenario: str, c, crid: str,
     return None
 
 
+def _shipped_citations(answer_body: str) -> list[dict]:
+    citations = []
+    for line in (answer_body or "").splitlines():
+        if not line.startswith("data:"):
+            continue
+        try:
+            frame = json.loads(line[5:].strip())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(frame, dict) and frame.get("kind") == "sources":
+            items = frame.get("citations")
+            if isinstance(items, list):
+                citations.extend(item for item in items if isinstance(item, dict) and item)
+    return citations
+
+
 def cites_wrong_family(answer_body: str) -> list[str]:
-    """Wrong-family tokens in the ANSWER the technician actually saw."""
-    return sorted({m.group(1).lower() for m in _WRONG_FAMILY_RE.finditer(answer_body or "")})
+    """Inspect shipped citations, not incidental answer prose or JSON keys."""
+    return sorted({m.group(1).lower() for m in _WRONG_FAMILY_RE.finditer(
+        json.dumps(_shipped_citations(answer_body)))})
 
 
 def cited_anything(answer_body: str) -> bool:
-    """Did the turn cite at all? An answer citing NOTHING trivially satisfies the
-    wrong-family ban, so that outcome must be reported distinctly rather than as
-    a clean PASS."""
-    b = (answer_body or "").lower()
-    return ('"sources"' in b) or ("[1]" in b) or ('"citations"' in b)
+    return bool(_shipped_citations(answer_body))
 
 
 def check(results: list, name: str, ok, detail: str) -> None:
@@ -338,7 +351,6 @@ def main() -> int:
         st2, body2, crid2 = c.ask(a.hmi_question)      # <- no rider, on purpose
         p = packet_or_verdict(results, "R", c, crid2)
         check(results, "R/follow-up-served", st2 == 200, f"status={st2}")
-        check(results, "R/packet-readable", p is not None, "recorder returned the turn's packet")
         if p:
             ve = p.get("visual_evidence") or {}
             rt = p.get("retrieval") or {}
@@ -413,8 +425,6 @@ def main() -> int:
                   (ve4.get("prior_turn_observation_count") or 0) == 0,
                   f"prior_turn_observation_count={ve4.get('prior_turn_observation_count')} "
                   "(must be 0, else 'recall' is a field that is always set)")
-        else:
-            check(results, "R-neg/nothing-recalled", False, "no packet")
     else:
         print("\nR-neg SKIPPED — pass --fresh-notebook to run the negative control")
         results.append({"check": "R-neg/nothing-recalled", "ok": None,

@@ -150,6 +150,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: docs/architecture/convergence/units/evidence/capability-closure/run-diff-pilot-2026-08-19.md
+        recorded_at: "2026-08-19"  # Registry history, not a new observation.
         note: >-
           First reviewed run-diff artifact. The real engine driven offline via
           InMemoryRunStore — no production, staging, PLC or DB access. Segments 7
@@ -213,6 +214,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: docs/proofs/2026-09-05-notebook-private-turns-production-proof.md
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
         note: >-
           Production proof 2026-09-06: migration 086 applied via apply-migrations.yml
           (prod) and verified read-only via db-inspect.yml (column, index, 211 legacy
@@ -223,6 +225,7 @@ capabilities:
           browser reload and invisible to a same-tenant teammate; legacy history
           (7 turns) readable to both.
       - path: tools/notebook-e2e/notebook_proof.mjs
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
         note: >-
           Outside-in two-user harness (--expect-private-history) - PASS on local
           production builds of every reviewed head of #3597 and on the shipped head.
@@ -261,6 +264,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: tests/test_approved_retrieval_plumbing.py
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Every consumer's compose environment forwards the flag; with the
           container-shaped value 'true' recall_knowledge emits 'AND verified = true'
@@ -269,6 +273,7 @@ capabilities:
           backfilled), 255 verified private, 711 UNverified private — gate-on
           hides only unapproved uploads, the designed direction.
       - path: docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Production runtime proof 2026-08-27 after #3416 deployed (dd65c57eb):
           MIRA_ENFORCE_APPROVED_RETRIEVAL=true inside all five consumer
@@ -618,28 +623,40 @@ capabilities:
     required_checks_observed_on: "2026-09-06"
     evidence:
       - path: packages/factorylm-theme/src/__tests__/theme-contract.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Theme token contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-interaction/src/__tests__/reducer.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared interaction reducer contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-interaction/src/__tests__/fixtures.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared fixture contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-ui/src/__tests__/shell.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared shell component coverage."
       - path: packages/factorylm-ui/src/__tests__/conversation.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Conversation-part rendering coverage from merged Task 5."
       - path: packages/factorylm-ui/src/__tests__/composer.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Universal-composer behavior coverage from merged Task 5."
       - path: apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Cross-surface browser fixture matrix; local release proof, not part of the required unit check."
       - path: mira-mobile/tests/unified-chat.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
       - path: mira-mobile/tests/unified-root.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Whole-app mobile shell host behavior."
       - path: mira-hub/src/factorylm-ui/hub-host-logic.test.ts
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Hub HOME, General-project selection, loading gate, and New-project host behavior from #3875."
       - path: docs/promo-screenshots/2026-09-19_hub-v3-shell-thread-persists-after-reload_desktop.png
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Exact #3875 proof screenshot: the Hub /v3 thread persists after reload; not production proof."
       - path: https://updates.factorylm.com/manifest.canary.json
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
     rollback: >-
       On a canary device, choose Use classic app or set the device-local

@@ -299,3 +299,15 @@ def test_shallow_detection_actually_detects(tmp_path):
 def test_failed_evidence_cannot_prove_an_enabled_capability():
     assert "evidence_failed_as_proof" in _rules(_item(provenance=_prov(outcome="fail")))
     assert _rules(_item(provenance=_prov(outcome="fail")), enabled=False) == set()
+
+
+def test_undated_enabled_evidence_cannot_bypass_cutover():
+    assert "provenance_date_missing" in _rules({"path": "tests/test_evidence_provenance.py"})
+    assert _rules({"path": "tests/test_evidence_provenance.py", "recorded_at": "2026-08-01"}) == set()
+
+
+def test_named_controls_must_exist_in_the_python_file():
+    assert "observation_control_missing" in _rules(_item(provenance=_prov(observation={
+        "positive_control": "tests/test_evidence_provenance.py::test_does_not_exist",
+        "negative_control": "tests/test_evidence_provenance.py::test_also_missing",
+    })))

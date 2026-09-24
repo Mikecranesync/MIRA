@@ -109,3 +109,25 @@ def test_packet_read_distinguishes_five_failure_modes():
         assert len({w for _, w in expect}) == 5, "outcomes are not five distinct buckets"
     finally:
         srv.shutdown()
+
+
+def test_main_preserves_observation_failure_as_inconclusive(tmp_path, monkeypatch):
+    monkeypatch.setenv("ACCEPT_BASE", "https://app-staging.factorylm.com")
+    monkeypatch.setenv("ACCEPT_COOKIE", "test-only")
+    monkeypatch.setattr(raf.sys, "argv", ["acceptance", "--notebook", NB,
+        "--fresh-notebook", NB, "--hmi-photo", "unused.jpg", "--out", str(tmp_path / "out.json")])
+    monkeypatch.setattr(raf.Client, "look", lambda *a, **k: (200, "file", CRID))
+    monkeypatch.setattr(raf.Client, "ask", lambda *a, **k: (200, "", CRID))
+    for status in (raf.Client.PACKET_UNAUTHORIZED, raf.Client.PACKET_ENDPOINT_MISSING,
+                   raf.Client.PACKET_WRONG_NOTEBOOK, raf.Client.PACKET_MISSING_TURN):
+        monkeypatch.setattr(raf.Client, "packet_read", lambda *a, **k: (status, None, "controlled response"))
+        assert raf.main() == (1 if status == raf.Client.PACKET_MISSING_TURN else 2)
+        results = json.loads((tmp_path / "out.json").read_text())["results"]
+        if status != raf.Client.PACKET_MISSING_TURN:
+            assert not any(r["ok"] is False for r in results)
+
+
+def test_empty_sources_frame_does_not_prove_a_citation():
+    assert not raf.cited_anything('data: {"kind":"sources","citations":[]}\n\n')
+    assert not raf.cited_anything('data: {"kind":"content","content":"Use item [1]"}\n\n')
+    assert raf.cited_anything('data: {"kind":"sources","citations":[{"docId":"manual-id"}]}\n\n')

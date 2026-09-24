@@ -51,6 +51,7 @@ informational only. Move the date forward deliberately, never silently.
 
 from __future__ import annotations
 
+import ast
 import datetime as _dt
 import re
 import subprocess
@@ -183,16 +184,26 @@ def paths_changed_since(root: Path, sha: str, paths: list[str]) -> list[str]:
 
 
 def _control_resolves(root: Path, ref: str) -> bool:
-    """A control must be runnable, not merely described.
-
-    Accepts `path`, `path::test_name`, or `path:line`. Only the file part is
-    resolved — asserting that a named test exists would need collection, which
-    belongs in CI, not in a registry linter.
-    """
-    if not ref:
+    """Resolve files and Python test node names without executing source code."""
+    parts = str(ref).split("::")
+    path = root / parts[0].split(":", 1)[0].strip()
+    if not ref or not path.is_file():
         return False
-    head = str(ref).split("::", 1)[0].split(":", 1)[0].strip()
-    return bool(head) and (root / head).exists()
+    if len(parts) == 1:
+        return True
+    if path.suffix != ".py":
+        return False  # Named controls need a supported, inspectable syntax.
+    try:
+        scope = ast.parse(path.read_text()).body
+        for name in parts[1:]:
+            node = next((n for n in scope if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                         and n.name == name.split("[", 1)[0]), None)
+            if node is None:
+                return False
+            scope = node.body
+        return True
+    except (OSError, SyntaxError, UnicodeError):
+        return False
 
 
 def check_evidence_item(
@@ -210,7 +221,10 @@ def check_evidence_item(
         return out
 
     prov = item.get("provenance")
-    observed_at = item.get("observed_at") or (prov or {}).get("observed_at")
+    observed_at = item.get("observed_at") or (prov or {}).get("observed_at") or item.get("recorded_at")
+    if enabled and enforced_from and not observed_at:
+        out.append(Finding(cap_id, "provenance_date_missing",
+                           "enabled evidence needs an observation date or a historical recorded_at date"))
 
     in_scope = False
     if enforced_from and observed_at:
