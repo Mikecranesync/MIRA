@@ -374,6 +374,27 @@ jobs:
             --cov=mira-core/mira-ingest --cov-report=term-missing \
             --cov-fail-under=20
 
+      - name: Acceptance observation-path controls (tools/qa)
+        # The release acceptance harness must be able to tell WHY it has no
+        # packet: unauthorized, absent endpoint, wrong notebook, or a turn that
+        # genuinely recorded nothing. Collapsing those into one "no packet" is
+        # how a broken harness reports a product failure, which is the defect
+        # this step exists to keep fixed.
+        #
+        # It gets its own step because NOTHING else in this workflow collects
+        # tools/qa/ — the pytest steps name mira-core/, mira-bots/ and
+        # tests/factorylm_ai/ explicitly. Without this the control file is green
+        # on a laptop and never runs in CI, which is indistinguishable from
+        # having no control at all.
+        run: |
+          set -euo pipefail
+          pytest tools/qa/test_packet_classification.py -v
+          # Anti-skip: pytest exits 0 when it collects nothing, so a moved or
+          # renamed file would silently stop gating. Demand the test by name.
+          pytest tools/qa/test_packet_classification.py --collect-only -q \
+            | grep -q "test_packet_read_distinguishes_five_failure_modes" \
+            || { echo "::error::control test not collected — it is not gating anything"; exit 1; }
+
       - name: Run bot tests with coverage
         # -n auto is safe here ONLY because mira-bots/tests/conftest.py gives
         # each xdist worker a private MIRA_DB_PATH (issue #3212). Without that,
