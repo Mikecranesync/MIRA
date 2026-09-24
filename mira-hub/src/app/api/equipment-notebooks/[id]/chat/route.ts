@@ -107,7 +107,7 @@ import {
   buildManualUserContent,
   corpusManufacturers,
   manufacturerFromObservationText,
-  modelFromObservationText,
+  resolveModelFromObservationText,
   retrieveManualChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -1733,11 +1733,12 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
-  // Shared LOOK / prior-LOOK text for OEM identity (manufacturer + model).
-  // Server-derived only — never the client's free-text history (#3966).
+  // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
+  // newest prior LOOK. Earlier photos still reach context, but may be different
+  // machines and must not contaminate retrieval identity (#3966).
   const photoTextForOem = notebookRetrieval
     ? ""
-    : [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text)].join("\n").trim();
+    : (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
   const oemManufacturer: { name: string; source: "notebook" | "photo" } | null = await (async () => {
     if (notebookRetrieval) return null; // notebook sources own the turn
     if (nb?.manufacturer?.trim()) return { name: nb.manufacturer.trim(), source: "notebook" };
@@ -1764,10 +1765,16 @@ async function handleChatTurn(
   // #3966 — resolve model/family alongside manufacturer. Prefer notebook.model;
   // else parse LOOK observation. Identity-bound retrieval must not fall through
   // to manufacturer-only BM25 (HMI photo → SINAMICS V20).
-  const oemModel: { value: string; source: "notebook" | "photo" } | null = (() => {
-    if (notebookRetrieval) return null;
-    if (nb?.model?.trim()) return { value: nb.model.trim(), source: "notebook" };
-    if (!photoTextForOem) return null;
+  const oemIdentity: { model: { value: string; source: "notebook" | "photo" } | null; ambiguous: boolean } = (() => {
+    if (notebookRetrieval) return { model: null, ambiguous: false };
+    const notebookModel = nb?.model?.trim();
+    if (notebookModel) {
+      // retrieveManualChunks normalizes known notebook tokens and refuses
+      // ambiguous strings before issuing SQL. Preserve the confirmed raw label
+      // in the packet here rather than requiring other route consumers to parse.
+      return { model: { value: notebookModel, source: "notebook" }, ambiguous: false };
+    }
+    if (!photoTextForOem) return { model: null, ambiguous: false };
     // Fail-open, exactly like the manufacturer resolution above it: identity
     // extraction is an ENRICHMENT of retrieval scope, never a precondition for
     // answering. A throw here (a bad pattern, a module seam that isn't loaded)
@@ -1775,20 +1782,23 @@ async function handleChatTurn(
     // question. Losing the model only widens scope; losing the turn loses the
     // answer.
     try {
-      const fromPhoto = modelFromObservationText(photoTextForOem);
-      return fromPhoto ? { value: fromPhoto, source: "photo" } : null;
+      const resolved = resolveModelFromObservationText(photoTextForOem);
+      return resolved.ambiguous
+        ? { model: null, ambiguous: true }
+        : { model: resolved.model ? { value: resolved.model, source: "photo" } : null, ambiguous: false };
     } catch (err) {
       console.error(
         "[notebook-chat] identity model extraction failed (retrieval not identity-bound this turn):",
         err instanceof Error ? err.message : err,
       );
-      return null;
+      return { model: null, ambiguous: false };
     }
   })();
+  const oemModel = oemIdentity.model;
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
-  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null;
+  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
@@ -1861,7 +1871,9 @@ async function handleChatTurn(
       : oemRetrieval
         ? "oem_corpus_bm25"
         : "skipped_general_mode";
-    const zeroResultReason = retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
+    const zeroResultReason = oemIdentity.ambiguous
+      ? "ambiguous_model_observation"
+      : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     rec.stage("retrieval", {
       strategy: retrievalStrategy,
       executed: retrievalExecuted,

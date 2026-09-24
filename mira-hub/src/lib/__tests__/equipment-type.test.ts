@@ -74,4 +74,12 @@ describe("inferEquipmentType", () => {
       }),
     ).toBe("VFDs");
   });
+
+  it("keeps a specific S7 PLC identity when its title mentions a TP700 panel", () => {
+    expect(inferEquipmentType({
+      modelNumber: "S7-1200",
+      title: "SIMATIC S7-1200 connection to TP700 Comfort panel",
+      manufacturer: "Siemens",
+    })).toBe("PLCs");
+  });
 });

@@ -245,7 +245,33 @@ export function extractModelNumber(query: string): string | null {
  * detector. Null ⇒ no model/family evidence in the observation.
  */
 export function modelFromObservationText(text: string): string | null {
-  return extractModelNumber(text);
+  return resolveModelFromObservationText(text).model;
+}
+
+/** Resolve model tokens within ONE observation, refusing to pick between
+ * different specific models. Comfort is a family hint; a TP/KTP panel and its
+ * 6AV order number can describe the same nameplate. */
+export function resolveModelFromObservationText(text: string): { model: string | null; ambiguous: boolean } {
+  const found = new Set<string>();
+  for (const pattern of MODEL_PATTERNS) {
+    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+      let token = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
+      if (token === "SINAMICSV20") token = "V20";
+      found.add(token);
+    }
+  }
+  if (found.size > 1 && [...found].some((token) => /^(?:K?TP\d|6AV)/.test(token))) {
+    found.delete("COMFORT");
+  }
+  const tokens = [...found];
+  if (tokens.length === 0) return { model: null, ambiguous: false };
+  if (tokens.length === 1) return { model: tokens[0], ambiguous: false };
+  const panel = tokens.filter((token) => /^K?TP\d/.test(token));
+  const catalog = tokens.filter((token) => /^6AV/.test(token));
+  if (tokens.length === 2 && panel.length === 1 && catalog.length === 1) {
+    return { model: panel[0], ambiguous: false };
+  }
+  return { model: null, ambiguous: true };
 }
 
 // #2178 — ordered retrieval scopes, most-specific first. When a model is named we
@@ -386,7 +412,13 @@ export async function retrieveManualChunks(
   const allowTenantFallback = opts.allowTenantFallback ?? true;
   const callerModel = (opts.model ?? "").trim() || null;
   // Prefer identity-bound model from notebook/LOOK over query extraction (#3966).
-  const model = callerModel || extractModelNumber(q); // #2178 — null for most queries
+  const resolvedCaller = callerModel ? resolveModelFromObservationText(callerModel) : null;
+  if (resolvedCaller?.ambiguous) return [];
+  // Only known tokens are shortened. Unknown caller models retain their exact,
+  // narrower value; a conflicting identity never widens to vendor BM25.
+  const model = callerModel
+    ? resolvedCaller?.model ?? callerModel
+    : extractModelNumber(q); // #2178 — null for most queries
   const identityBound = callerModel !== null;
 
   // Walk the scopes most-specific-first, stopping at the first non-empty result.

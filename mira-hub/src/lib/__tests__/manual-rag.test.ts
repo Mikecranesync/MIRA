@@ -9,6 +9,7 @@ import {
   extractFaultCodes,
   extractModelNumber,
   modelFromObservationText,
+  resolveModelFromObservationText,
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
@@ -205,6 +206,26 @@ describe("extractModelNumber / modelFromObservationText (#3966 HMI+V20)", () => 
       "SIEMENS TP700 Comfort 1P 6AV2124-0GC01-0AX0 24VDC — no drive language";
     expect(modelFromObservationText(look)).toBe("TP700");
   });
+
+  it("resolves one TP700 nameplate with Comfort and its 6AV order number", () => {
+    expect(resolveModelFromObservationText("SIEMENS TP700 Comfort 1P 6AV2124-0GC01-0AX0"))
+      .toEqual({ model: "TP700", ambiguous: false });
+  });
+
+  it("marks conflicting TP700 and V20 models in one observation ambiguous", () => {
+    expect(resolveModelFromObservationText("Siemens TP700 Comfort panel beside SINAMICS V20 drive"))
+      .toEqual({ model: null, ambiguous: true });
+  });
+
+  it("marks two distinct TP panel models in one observation ambiguous", () => {
+    expect(resolveModelFromObservationText("Siemens TP700 and TP1200 panels"))
+      .toEqual({ model: null, ambiguous: true });
+  });
+
+  it("resolves the SINAMICS V20 family to the corpus-compatible V20 token", () => {
+    expect(resolveModelFromObservationText("Siemens SINAMICS V20 drive"))
+      .toEqual({ model: "V20", ambiguous: false });
+  });
 });
 
 describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
@@ -279,6 +300,52 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     expect(out).toHaveLength(1);
     expect(out[0].modelNumber).toMatch(/TP700/i);
     expect(calls).toHaveLength(1);
+  });
+
+  it("normalizes confirmed TP700 Comfort without admitting a different model", async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const sameModel = { ...tp700(), model_number: "TP700" };
+    const client = { query: async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      const token = String(params[3] ?? "").replaceAll("%", "").toLowerCase();
+      return { rows: sameModel.model_number.toLowerCase().includes(token) ? [sameModel] : [] };
+    }} as unknown as PoolClient;
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700 Comfort", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700");
+    expect(calls[0].params).toContain("%TP700%");
+    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
+  });
+
+  it("never widens a conflicting caller model into manufacturer-only retrieval", async () => {
+    const { client, calls } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700 TP1200", allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("keeps an unrecognized caller model as an exact string rather than shortening it", async () => {
+    const { client, calls } = makeClient([[], []]);
+    await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "Custom-X 12", allowTenantFallback: false,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].params).toContain("%Custom-X 12%");
+    expect(calls.every((c) => c.sql.includes("model_number ILIKE"))).toBe(true);
+  });
+
+  it("keeps a same-model SIMATIC HMI manual after family filtering", async () => {
+    const simaticHmi = { ...tp700(), model_number: "TP700", title: "SIMATIC HMI TP700 Comfort Operating Instructions" };
+    const { client } = makeClient([[simaticHmi]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700");
   });
 
   it("COMPAT: manufacturer-only (no identity model) still allows vendor path", async () => {
