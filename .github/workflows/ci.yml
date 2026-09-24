@@ -390,9 +390,15 @@ jobs:
           set -euo pipefail
           pytest tools/qa/test_packet_classification.py -v
           # Anti-skip: pytest exits 0 when it collects nothing, so a moved or
-          # renamed file would silently stop gating. Demand the test by name.
-          pytest tools/qa/test_packet_classification.py --collect-only -q \
-            | grep -q "test_packet_read_distinguishes_five_failure_modes" \
+          # renamed file would silently stop gating. Demand the test BY NODE ID
+          # and read pytest's EXIT CODE (4 = no such test), not its stdout.
+          #
+          # The first version of this guard grepped `--collect-only -q` output
+          # and failed a run whose test had just PASSED: plugin chatter and the
+          # -q collect format are not a contract. Parsing a tool's prose to
+          # decide whether it ran is the same mistake in a different costume.
+          pytest "tools/qa/test_packet_classification.py::test_packet_read_distinguishes_five_failure_modes" \
+            --collect-only -q > /dev/null \
             || { echo "::error::control test not collected — it is not gating anything"; exit 1; }
 
       - name: Run bot tests with coverage
@@ -1161,10 +1167,10 @@ jobs:
         run: |
           set -euo pipefail
           pytest tests/test_evidence_provenance.py -q
-          # Anti-skip: pytest exits 0 on an empty collection, so a rename would
-          # silently stop gating. Demand a known rule test by name.
-          pytest tests/test_evidence_provenance.py --collect-only -q \
-            | grep -q "test_inconclusive_cannot_prove_an_enabled_capability" \
+          # Anti-skip by NODE ID + exit code, not by grepping collect output.
+          # See the note on the same guard in the Unit Tests job.
+          pytest "tests/test_evidence_provenance.py::test_inconclusive_cannot_prove_an_enabled_capability" \
+            --collect-only -q > /dev/null \
             || { echo "::error::provenance controls not collected — not gating"; exit 1; }
 
       - name: Approved-retrieval gate is plumbed and enforced (#3328)

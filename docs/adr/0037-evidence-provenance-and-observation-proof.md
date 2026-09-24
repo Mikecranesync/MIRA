@@ -74,10 +74,28 @@ forward deliberately.
 
 ### Fails open where the fault is environmental
 
-`commit_exists` returns `True` when git itself is unavailable. A missing binary
-is an environment fault, and reporting it as "this SHA is fabricated" would
-reproduce exactly the product-vs-observation confusion this ADR exists to
-remove. That behaviour is asserted by a test.
+`commit_exists` returns `True` when the question cannot be answered here:
+git missing, **or a shallow/partial clone**. A missing binary is an environment
+fault, and reporting it as "this SHA is fabricated" would reproduce exactly the
+product-vs-observation confusion this ADR exists to remove.
+
+The shallow case was not theoretical and was not foreseen: the first CI run of
+this very change went red with
+
+    [provenance_sha_unknown] evidence_provenance_gate:
+    commit_sha '248f6ac6…' is not a commit here
+
+on a commit that plainly existed. CI checks out `refs/pull/N/merge` at
+`fetch-depth: 1`; git runs fine there and legitimately cannot see the object.
+The rule had been written to fail CLOSED on exactly the condition it was
+supposed to call inconclusive. `history_is_complete()` now gates both the
+existence check and the staleness diff, and the fix is demonstrated against a
+real `--depth 1` clone: with the guard the validator exits 0, without it exits 1
+with the original error.
+
+Three tests had to be decoupled from the shape of the checkout for the same
+reason — they asserted properties of the worktree while appearing to assert
+properties of the rules.
 
 ## Alternatives rejected
 

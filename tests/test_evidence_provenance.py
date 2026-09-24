@@ -95,7 +95,12 @@ def test_pre_cutover_evidence_is_not_retroactively_failed():
     assert _rules(item, enabled=True) == set(), "records older than the cutover must not fail"
 
 
-def test_fabricated_sha_is_caught():
+def test_fabricated_sha_is_caught(monkeypatch):
+    # Pinned to complete history on purpose. On CI's shallow checkout the
+    # question "does this commit exist?" is unanswerable, and the module
+    # correctly declines to answer it — so asserting the FINDING here without
+    # pinning would be asserting the environment, not the rule.
+    monkeypatch.setattr(ep, "history_is_complete", lambda root: True)
     assert "provenance_sha_unknown" in _rules(
         _item(provenance=_prov(commit_sha="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
     )
@@ -174,18 +179,24 @@ def test_unknown_outcome_is_caught():
     assert "provenance_outcome_invalid" in _rules(_item(provenance=_prov(outcome="probably")))
 
 
-def test_evidence_goes_stale_when_declared_code_moves():
-    # The first commit of the repo is guaranteed to predate any current file.
-    first = subprocess.run(
-        ["git", "-C", str(ROOT), "rev-list", "--max-parents=0", "HEAD"],
-        capture_output=True,
-        text=True,
-    ).stdout.split()[0]
-    r = _rules(
-        _item(provenance=_prov(commit_sha=first)),
-        code_paths=["tools/capability_closure.py"],
-    )
+def test_evidence_goes_stale_when_declared_code_moves(monkeypatch):
+    """The RULE, not the repository's history.
+
+    The first version of this test derived a real old commit with
+    `rev-list --max-parents=0`. That works in a full worktree and returns
+    nothing useful on CI's shallow `refs/pull/N/merge` checkout, so it failed
+    for a reason that had nothing to do with the rule under test — the same
+    observation-vs-subject confusion this whole module is about. Driving the
+    git seam directly makes the assertion deterministic everywhere.
+    """
+    monkeypatch.setattr(ep, "paths_changed_since", lambda root, sha, paths: ["tools/x.py"])
+    r = _rules(_item(), code_paths=["tools/capability_closure.py"])
     assert "evidence_stale_for_code" in r
+
+
+def test_staleness_is_not_reported_when_nothing_moved(monkeypatch):
+    monkeypatch.setattr(ep, "paths_changed_since", lambda root, sha, paths: [])
+    assert "evidence_stale_for_code" not in _rules(_item(), code_paths=["tools/capability_closure.py"])
 
 
 def test_evidence_at_head_is_not_stale():
@@ -233,3 +244,53 @@ def test_fabricated_sha_check_fails_open_when_git_is_unavailable(monkeypatch):
 
     monkeypatch.setattr(ep.subprocess, "run", boom)
     assert ep.commit_exists(ROOT, "abcdef1234567") is True
+
+
+# --------------------------------------------------------------------------
+# the shallow-clone blind spot that failed this module's own first CI run
+# --------------------------------------------------------------------------
+def test_shallow_clone_cannot_conclude_a_sha_is_fake(monkeypatch):
+    """CI checks out refs/pull/N/merge with fetch-depth 1.
+
+    There, `cat-file -e` reports "no such object" for a commit that is real on
+    the branch — it was simply never fetched. Calling that a fabricated SHA is
+    the product-vs-observation confusion this module exists to prevent, and it
+    is exactly how the first version of this check turned a valid record red.
+    """
+    monkeypatch.setattr(ep, "history_is_complete", lambda root: False)
+    assert ep.commit_exists(ROOT, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") is True
+
+
+def test_complete_history_still_rejects_a_fabricated_sha(monkeypatch):
+    # The positive half: the fail-open above must not disable the check where
+    # the question CAN be answered.
+    monkeypatch.setattr(ep, "history_is_complete", lambda root: True)
+    assert ep.commit_exists(ROOT, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") is False
+
+
+def test_shallow_clone_does_not_report_false_staleness(monkeypatch):
+    monkeypatch.setattr(ep, "history_is_complete", lambda root: False)
+    assert ep.paths_changed_since(ROOT, "HEAD~1", ["tools/capability_closure.py"]) == []
+
+
+def test_shallow_detection_actually_detects(tmp_path):
+    """The detector must DISCRIMINATE, not report a constant.
+
+    Asserting `history_is_complete(ROOT) is True` looked like a control and was
+    really an assertion about the checkout — it passed in a worktree and failed
+    on CI's shallow clone. Cloning one here tests the detector itself, which is
+    what the fail-open depends on: if this always returned False, every SHA
+    check would be silently disabled everywhere.
+    """
+    shallow = tmp_path / "shallow"
+    r = subprocess.run(
+        ["git", "clone", "--depth", "1", "--quiet", f"file://{ROOT}/.git", str(shallow)],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:  # cloning unavailable in this sandbox
+        return
+    assert ep.history_is_complete(shallow) is False, "a shallow clone must be detected"
+    assert subprocess.run(
+        ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"],
+        capture_output=True, text=True,
+    ).stdout.strip() == "true"

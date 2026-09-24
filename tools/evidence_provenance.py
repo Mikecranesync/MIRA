@@ -90,6 +90,44 @@ class Finding:
         return f"[{self.rule}] {self.cap}: {self.message}"
 
 
+def history_is_complete(root: Path) -> bool:
+    """Can this checkout answer "does commit X exist?" at all?
+
+    CI checks out `refs/pull/N/merge` with `fetch-depth: 1`. Git runs fine
+    there and `cat-file -e` legitimately reports "no such object" for a commit
+    that is perfectly real on the branch — the object was simply never fetched.
+    Treating that as a fabricated SHA is precisely the product-vs-observation
+    confusion this module exists to prevent, and it is how the FIRST version of
+    this check turned a valid record red on its own first CI run.
+
+    So the existence check is only a verdict when history is complete. On a
+    shallow or partial clone the observation is INCONCLUSIVE, and an
+    inconclusive observation is not a finding.
+    """
+    try:
+        for flag in ("--is-shallow-repository",):
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", flag],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if r.returncode == 0 and r.stdout.strip().lower() == "true":
+                return False
+        # A partial (blobless/treeless) clone can also lack objects.
+        r = subprocess.run(
+            ["git", "-C", str(root), "config", "--get", "remote.origin.partialclonefilter"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return False
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def commit_exists(root: Path, sha: str) -> bool:
     """Is this a real commit object in this repository?
 
@@ -97,9 +135,14 @@ def commit_exists(root: Path, sha: str) -> bool:
     was force-pushed away. `cat-file -e <sha>^{commit}` answers exactly that and
     nothing more — it deliberately does NOT assert reachability from main, so
     evidence gathered on a feature branch stays valid.
+
+    Returns True when the question cannot be answered here (missing git,
+    shallow/partial clone). That is deliberate: see `history_is_complete`.
     """
     if not _SHA_RE.match(sha or ""):
         return False
+    if not history_is_complete(root):
+        return True
     try:
         r = subprocess.run(
             ["git", "-C", str(root), "cat-file", "-e", f"{sha}^{{commit}}"],
@@ -120,7 +163,10 @@ def paths_changed_since(root: Path, sha: str, paths: list[str]) -> list[str]:
     This is what makes evidence EXPIRE against code rather than against the
     calendar. A proof of behaviour is a proof of the behaviour of one tree.
     """
-    if not paths:
+    if not paths or not history_is_complete(root):
+        # Same reasoning as commit_exists: on a shallow clone `git diff sha..HEAD`
+        # cannot be trusted, and a wrong "your evidence is stale" is as bad as a
+        # wrong "your evidence is fine".
         return []
     try:
         r = subprocess.run(
