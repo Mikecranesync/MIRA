@@ -243,3 +243,12 @@ describe("review: each affirmative action survives earlier prohibitions", () => 
     "Re-energize the panel. De-energize the panel, lock out and verify zero voltage if convenient. Measure voltage across the terminals.",
   ])("rejects: %s", (text) => expect(judge(text).ok).toBe(false));
 });
+
+
+describe("review: coordinated prohibitions and display alternatives", () => {
+  it.each([
+    "Do not clamp each phase or re-energize the feeder. Take a reading of the pump discharge pressure instead.",
+    "Do not clamp each phase and re-energize the feeder. Take a reading of the pump discharge pressure instead.",
+    "Restore power. Never clamp each phase; use the VFD display to read current instead.",
+  ])("accepts the safe alternative: %s", (text) => expect(judge(text).ok).toBe(true));
+});

@@ -407,7 +407,7 @@ const MEASURE_ACTION_SRC =
 // not a process reading or a value read from an installed external display.
 const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
 const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?))\b/i;
-const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
+const EXTERNAL_READING = /\b(?:from|off|on|via|use)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
 
 /** Carry an affirmative restoration across prose/list steps. Prohibitions
@@ -448,8 +448,17 @@ function restoreEnergyToMeasure(text: string): string | null {
         ].sort((a, b) => a.at - b.at);
         const ordered = events.map((event, i) => ({
           ...event,
+          prohibited: false,
           context: clause.slice(i ? events[i - 1].at + events[i - 1].match[0].length : 0, events[i + 1]?.at),
         }));
+        for (let i = 0; i < ordered.length; i++) {
+          const event = ordered[i];
+          const prefix = clause.slice(i ? events[i - 1].at + events[i - 1].match[0].length : 0, events[i].at);
+          // "Do not A or B" shares a prohibition; "do not A then B" does not.
+          const coordinated = i > 0 && ordered[i - 1].prohibited && /\b(?:or|and)\s*$/i.test(prefix);
+          event.prohibited = !REASSURANCE_AFFIRMATION.test(event.context)
+            && (coordinated || RESTORE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context));
+        }
         for (const event of ordered) {
           if (event.kind !== "restore") continue;
           const following = actions.findIndex((action) => action.index! > event.at);
@@ -466,8 +475,7 @@ function restoreEnergyToMeasure(text: string): string | null {
         }
         ordered.sort((a, b) => a.at - b.at);
         for (const event of ordered) {
-          const prohibited = RESTORE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context);
-          if (prohibited && !REASSURANCE_AFFIRMATION.test(event.context)) continue;
+          if (event.prohibited) continue;
           if (event.kind === "restore") {
             restored = sentence;
             electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
