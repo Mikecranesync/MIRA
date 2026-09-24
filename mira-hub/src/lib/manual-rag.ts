@@ -521,10 +521,12 @@ async function runBm25Query(
       modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
     } else {
       const literal = model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Recognized panel names may be stored as either TP1200 or TP 1200.
-      // Keep outer token boundaries so KTP1200 and TP12000 remain excluded.
-      const panel = /^(K?TP)(\d{3,4})$/i.exec(model);
-      const token = panel ? `${panel[1]}[[:space:]]*${panel[2]}` : literal;
+      // Match the same internal whitespace accepted by model resolution.
+      // Outer boundaries still exclude sibling or prefixed model identities.
+      const panel = /^(TP\d{3,4}|KTP\d{2,4})$/i.test(model)
+        ? /^(K?TP)(\d+)$/i.exec(model) : null;
+      const token = panel ? `${panel[1]}[[:space:]]*${panel[2]}`
+        : /^V20$/i.test(model) ? "V[[:space:]]*20" : literal;
       params.push(`(^|[^[:alnum:]])${token}($|[^[:alnum:]])`);
       modelClause = `AND model_number ~* $${params.length}`;
     }

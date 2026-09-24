@@ -75,6 +75,14 @@ describe("inferEquipmentType", () => {
     ).toBe("VFDs");
   });
 
+  it.each(["SIMATIC TP 1200", "SIMATIC KTP 700", "TP\t1200", "KTP\n700"])("recognizes spaced panel %s before SIMATIC fallback", (model) => {
+    expect(inferEquipmentType({ modelNumber: model, title: model })).toBe("HMIs");
+  });
+
+  it.each(["S7-1200", "CompactLogix 5380"])("preserves explicit PLC %s over a spaced panel hint", (model) => {
+    expect(inferEquipmentType({ modelNumber: model, title: "SIMATIC TP 1200 connection" })).toBe("PLCs");
+  });
+
   it("keeps a specific S7 PLC identity when its title mentions a TP700 panel", () => {
     expect(inferEquipmentType({
       modelNumber: "S7-1200",

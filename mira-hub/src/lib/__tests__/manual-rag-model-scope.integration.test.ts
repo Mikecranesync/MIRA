@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import { retrieveManualChunks } from "../manual-rag";
+import { inferEquipmentType } from "../equipment-type";
 
 const TENANT = "39700000-0000-4000-8000-000000000001";
 let pool: Pool;
@@ -34,7 +35,8 @@ beforeAll(async () => {
   `);
   for (const model of [
     "TP700", "TP700 Comfort", "KTP700", "TP7000", "TP7001", "SINAMICS V20",
-    "TP1200", "TP 1200 Comfort", "KTP1200", "TP12000",
+    "TP1200", "TP 1200 Comfort", "SIMATIC TP 1200", "KTP1200", "KTP 1200", "TP12000",
+    "KTP70", "KTP 70", "KTP7000", "V20", "SINAMICS V 20", "V200", "XV20", "V 200",
     "PowerFlex 525", "PowerFlex 5250", "AX%_7", "AXZZ7", "AX.7", "AXZ7",
     "12AX%_7", "12AXZZ7",
   ]) {
@@ -56,7 +58,7 @@ afterAll(async () => {
 
 async function modelsFor(model: string): Promise<string[]> {
   const hits = await retrieveManualChunks(client, TENANT, "panel supply", {
-    manufacturer: "Siemens", model, equipmentType: "Other", topK: 20,
+    manufacturer: "Siemens", model, equipmentType: inferEquipmentType({ modelNumber: model, title: model }), topK: 20,
   });
   return hits.map((hit) => hit.modelNumber).sort();
 }
@@ -71,8 +73,22 @@ describe("identity-bound OEM model SQL", () => {
   });
 
   it("matches compact and spaced TP1200 labels without admitting sibling models", async () => {
-    expect(await modelsFor("TP1200")).toEqual(["TP 1200 Comfort", "TP1200"]);
-    expect(await modelsFor("TP 1200 Comfort")).toEqual(["TP 1200 Comfort", "TP1200"]);
+    expect(await modelsFor("TP1200")).toEqual(["SIMATIC TP 1200", "TP 1200 Comfort", "TP1200"]);
+    expect(await modelsFor("TP 1200 Comfort")).toEqual(["SIMATIC TP 1200", "TP 1200 Comfort", "TP1200"]);
+  });
+
+  it("uses the real family classifier for spaced SIMATIC caller and corpus labels", async () => {
+    expect(await modelsFor("SIMATIC TP 1200")).toEqual(["SIMATIC TP 1200", "TP 1200 Comfort", "TP1200"]);
+    expect(await modelsFor("TP1200")).toEqual(["SIMATIC TP 1200", "TP 1200 Comfort", "TP1200"]);
+  });
+
+  it("matches every accepted spaced panel/drive token with its compact corpus form", async () => {
+    for (const model of ["KTP70", "KTP 70"]) {
+      expect(await modelsFor(model)).toEqual(["KTP 70", "KTP70"]);
+    }
+    for (const model of ["V20", "SINAMICS V20", "SINAMICS V 20"]) {
+      expect(await modelsFor(model)).toEqual(["SINAMICS V 20", "SINAMICS V20", "V20"]);
+    }
   });
 
   it("treats unknown percent, underscore, and regex punctuation as literal identity", async () => {
