@@ -64,7 +64,7 @@ import { SafetyNotice } from "./SafetyNotice";
 import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
+import { directiveSafetyNotice, hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
@@ -477,7 +477,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -513,7 +513,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -895,6 +895,7 @@ export function NotebookScreen({
           the shell changes. Device-local choice under the same capability. */}
       {panel === "chat" && chatSurface === "unified" && (
         <UnifiedChat
+          attachmentThreadId={threadId}
           turns={turns}
           liveTurns={liveTurns}
           pending={pending}
@@ -978,6 +979,11 @@ export function NotebookScreen({
               // it on the floor and a LOTO refusal reloaded here wearing full
               // answer chrome — citations, basis, evidence cards.
               const safety = terminalSafetyNotice(t);
+              // #3893: non-terminal energized directive persisted on the row.
+              // `safety` (terminal) stays null for it, so the `!safety` chrome
+              // below renders in full — the directive is a warning-with-answer,
+              // not a stop. Matches the ChatV2/live projection.
+              const directive = directiveSafetyNotice(t) != null;
               return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the
@@ -998,6 +1004,7 @@ export function NotebookScreen({
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 {safety && <SafetyNotice />}
+                {directive && <SafetyNotice terminal={false} />}
                 <AnswerMarkdown
                   text={answerBody(
                     t.answerText,
@@ -1048,6 +1055,10 @@ export function NotebookScreen({
               // simply never read it. Sticky by design: it survives a stop or a
               // truncation, matching the adapter's rule for ChatV2.
               const safety = t.a.safetyTrigger !== undefined;
+              // #3893: non-terminal energized directive on the live turn. Only
+              // when there is no terminal stop; chrome below stays because it is
+              // gated on `safety` (terminal), which is false for a directive.
+              const directive = !safety && t.a.safetyDirective !== undefined;
               // ADR-0038 rule 6. The stream ended without the authoritative
               // `status` frame and the technician did NOT press Stop — a
               // server-side close, a dropped connection, a proxy cut. The read
@@ -1063,6 +1074,7 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 {safety && <SafetyNotice />}
+                {directive && <SafetyNotice terminal={false} />}
                 {incomplete ? (
                   <>
                     {t.a.answer.trim() && (
@@ -1150,6 +1162,11 @@ export function NotebookScreen({
                 {/* A hard-stop safety frame lands before its first content byte,
                     so the in-flight turn must show the banner immediately. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
+                {/* #3893: the energized directive rides the evidence frame (late,
+                    after content), so it usually appears as the turn completes —
+                    render the non-terminal warning the moment it arrives. */}
+                {pending.a.safetyTrigger === undefined &&
+                  pending.a.safetyDirective !== undefined && <SafetyNotice terminal={false} />}
                 {/* 086 §3: the dispute marker is the FIRST frame on a disputed
                     wire — it must show while the answer is still streaming,
                     exactly as ChatV2's pendingMessages does. */}
@@ -1439,6 +1456,7 @@ export function NotebookScreen({
 
       {sensorOpen && (
         <SensorSheet
+          threadId={threadId}
           notebook={notebook}
           onClose={() => setSensorOpen(false)}
           onChanged={refresh}

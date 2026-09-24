@@ -19,7 +19,10 @@ describe("emptyPacket — defaults", () => {
   it("stamps the version and kind from init", () => {
     const p = emptyPacket(BASE_INIT);
     expect(p.v).toBe(TURN_EVIDENCE_PACKET_VERSION);
-    expect(p.v).toBe("1");
+    // Literal on purpose: a version bump should be a DECISION, so it has to
+    // break this line. "2" adds answer_gate.citations_shipped and
+    // answer_gate.evidence_followed (#3962).
+    expect(p.v).toBe("2");
     expect(p.kind).toBe("chat");
   });
 

@@ -38,11 +38,21 @@
  * `hub_notebook_look`, empty question) — last and non-fatal, after the
  * response body is fixed. Observations remain conversation context, never a
  * citable source: nothing here writes knowledge_entries or touches identity.
+ *
+ * #3967 — observations carry notebook/owner/thread association in the existing
+ * VisualSession ledger. LOOK is not an answered chat turn and writes no fake
+ * question/answer pair into conversation history.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { context, trace, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder } from "@/capabilities/observability/turn-recorder";
+import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
+import {
+  recordArrival,
+  recordResponse,
+  type IngressRecord,
+} from "@/capabilities/observability/turn-ingress";
 import {
   anomalyChecksEnabled,
   environmentName,
@@ -53,7 +63,7 @@ import {
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook } from "@/lib/equipment-notebooks";
+import { getNotebook, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
 import {
   normalizeLookHazards,
@@ -136,9 +146,14 @@ function extractInspection(text: string): { text: string; hazards: LookHazardDes
   return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function handleLookTurn(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  ingress: IngressRecord,
+) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  ingress.tenantId = ctx.tenantId;
   const { id: notebookId } = await params;
 
   // Cross-tenant / missing notebooks are indistinguishable: 404, no existence leak.
@@ -151,6 +166,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const form = await req.formData().catch(() => null);
+  // Read the CLIENT's key before any upload validation, not after. A rejected
+  // upload is exactly the attempt a technician most wants accounted for, and
+  // with this read below the mime/size checks a 413 or 415 reached the ledger
+  // with no client id at all — unjoinable to the attempt that caused it.
+  // Measured on staging 2026-09-23: the failed-upload row came back `unknown`
+  // for that reason and no other.
+  // The body value wins when present; a null must NOT erase a good header key.
+  ingress.clientRequestId =
+    optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS) ?? ingress.clientRequestId;
   const file = form?.get("image");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "image_required" }, { status: 400 });
@@ -169,7 +193,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
   const question = optionalString(form?.get("question") ?? null, MAX_QUESTION_CHARS);
-  const clientKey = optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS);
+  // Optional thread so a LOOK on a non-legacy conversation is recallable by
+  // that thread's later text-only turns (`listTurns` is thread-scoped).
+  const rawThread = form?.get("threadId");
+  const threadId =
+    rawThread == null || rawThread === ""
+      ? null
+      : normalizeNotebookThreadId(typeof rawThread === "string" ? rawThread : null);
+  if (rawThread != null && rawThread !== "" && !threadId) {
+    return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  }
+  const clientKey = ingress.clientRequestId;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
   const capturedAt = new Date().toISOString();
@@ -192,8 +226,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (extra) setSpanAttrs(extra, rootSpan);
     } finally {
       rootSpan.end();
+      // Every exit path ends the root, so every exit path closes the record.
+      // An exit that never classified itself closes as `error` — the honest
+      // reading, and far better than a row left `started` forever.
+      closeLifecycle("error");
     }
   };
+  // TURN LIFECYCLE (091) — LOOK had none. It wrote a row only at the very end,
+  // through `persistTurnUsage`, so a photo turn that died in the vision call,
+  // timed out, or was cancelled left NO ROW AT ALL. #3962's own reproduction
+  // starts with a LOOK, which is precisely the turn that could go missing.
+  const openedTurn = openTurn({
+    attemptId: ingress.attemptId,
+    tenantId: ctx.tenantId,
+    notebookId,
+    platform: "hub_notebook_look",
+    otelTraceId: rootTraceId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  });
+  let lifecycleSettled = false;
+  let lifecycleClosed = false;
+  const closeLifecycle = (outcome: TurnOutcome): void => {
+    if (lifecycleClosed || lifecycleSettled) return;
+    lifecycleClosed = true;
+    void openedTurn
+      .then((o) => closeTurn({ tenantId: ctx.tenantId, attemptId: o.attemptId, outcome }))
+      .catch(() => {
+        /* counted inside closeTurn; never fails a turn */
+      });
+  };
+  ingress.closeOnUnhandled = (outcome) => closeLifecycle(outcome);
+
   const rec = startTurnRecorder({
     kind: "look",
     tenantId: ctx.tenantId,
@@ -207,7 +271,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Finish the packet and persist it through the one ledger writer. Fail-open:
   // `persistTurnUsage` returns rather than throws, and this wrapper swallows
   // anything else — a telemetry outage never changes the /look response.
-  const finishLook = async (vision: { provider: string | null; model: string | null; ok: boolean }): Promise<void> => {
+  const finishLook = async (vision: {
+    provider: string | null;
+    model: string | null;
+    ok: boolean;
+  }): Promise<void> => {
+    // The usage write APPENDS the outcome row itself (persist-usage §091), so
+    // mark the lifecycle settled first: a second close would be absorbed by the
+    // (attempt_id, lifecycle) conflict, but it would also count a phantom
+    // "close missed, no start" against capture health.
+    lifecycleSettled = true;
     try {
       const { packet, anomalies } = rec.finish({
         productionRouteVars: productionRouteDetected(),
@@ -239,6 +312,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           citationsPresent: false,
           latencyMs: Date.now() - rec.startedAt,
           platform: "hub_notebook_look",
+          // CLOSES the start record rather than inserting a second ledger row:
+          // one accepted turn, one lifecycle (materialized-evidence rule 15).
+          attemptId: (await openedTurn).attemptId,
+          outcome: vision.ok ? "answered" : "error",
         },
         usage,
         {
@@ -246,7 +323,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           anomalies,
           otelTraceId: rootTraceId,
           turnRowId: null,
-          clientRequestId: null,
+          clientRequestId: clientKey && UUID_RE.test(clientKey) ? clientKey : null,
           notebookId,
           environment: environmentName(),
           gitSha: gitSha(),
@@ -254,6 +331,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     } catch (err) {
       console.error("[notebook-look] flight recorder persist failed:", err instanceof Error ? err.message : err);
+      // The usage write was supposed to append the outcome and did not, so the
+      // record is NOT settled after all — let `endRoot` close it rather than
+      // leaving a start the reconciler will later call `abandoned`.
+      lifecycleSettled = false;
     }
   };
   const traceHeaders: Record<string, string> = rootTraceId ? { "x-mira-trace-id": rootTraceId } : {};
@@ -339,6 +420,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       await recordLookObservation({
         tenantId: ctx.tenantId,
+        ...(attachment.linkId ? { notebookId, threadId } : {}),
         fileId: parked.fileId,
         photoHash: sha256Hex(buffer),
         text: inspection.text,
@@ -372,7 +454,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       hazard_count: inspection.hazards.length,
       ok: true,
     });
-    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: reply.model, ok: true });
+    await finishLook({
+      provider: fixtureSelected() ? "fixture" : "together",
+      model: reply.model,
+      ok: true,
+    });
     endRoot();
     return NextResponse.json({
       ...retained,
@@ -411,5 +497,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       { status: 502, headers: traceHeaders },
     );
+  }
+}
+
+
+/** See the chat route's wrapper: arrival is recorded before auth, the response
+ *  status in a `finally` no early return can skip, and both share the attempt
+ *  id the ledger start is opened with. */
+export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: string }> }) {
+  const attemptId = crypto.randomUUID();
+  let notebookId: string | null = null;
+  try {
+    const p = await routeCtx.params;
+    notebookId = typeof p?.id === "string" && UUID_RE.test(p.id) ? p.id : null;
+  } catch {
+    notebookId = null;
+  }
+  // The client's own key, read from a HEADER before any parsing. The body is
+  // where it normally travels, but a malformed body is precisely the attempt
+  // that most needs accounting for and its id is unreachable in there — so a
+  // request that fails to parse can still be joined to the client that sent it.
+  // Shape-checked: this lands in a TEXT column that operators read.
+  const headerKey = req.headers.get("x-client-request-id");
+  const ingress: IngressRecord = {
+    attemptId,
+    route: "hub_notebook_look",
+    tenantId: null,
+    clientRequestId: headerKey && UUID_RE.test(headerKey) ? headerKey : null,
+    notebookId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  };
+  const arrival = recordArrival({ ...ingress });
+  let status = 500;
+  try {
+    const res = await handleLookTurn(req, routeCtx, ingress);
+    status = res.status;
+    return res;
+  } catch (err) {
+    ingress.closeOnUnhandled?.("error");
+    throw err;
+  } finally {
+    void arrival
+      .then(() => recordResponse({ ...ingress, httpStatus: status }))
+      .catch(() => {
+        /* counted inside the module; never fails a turn */
+      });
   }
 }
