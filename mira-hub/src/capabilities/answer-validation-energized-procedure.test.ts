@@ -270,3 +270,17 @@ describe("review: display data is not a physical contact instruction", () => {
     "Re-energize the panel. Read current from the VFD display with test leads disconnected.",
   ])("accepts: %s", (text) => expect(judge(text).ok).toBe(true));
 });
+
+
+describe("review: the display must be the reading source", () => {
+  it.each([
+    "Re-energize the panel. Read current from each phase conductor and from the VFD display for comparison.",
+    "Re-energize the panel. Take a current reading from the live conductor and from the VFD display for comparison.",
+    "Re-energize the panel. Take a voltage reading from the exposed wire and from the HMI display for comparison.",
+    "Re-energize the panel. Take a voltage reading from the connection and from the HMI display for comparison.",
+  ])("rejects a physical source before a display comparison: %s", (text) => expect(judge(text).ok).toBe(false));
+  it.each([
+    "Re-energize the panel. Read current from the VFD display with test leads still disconnected.",
+    "Re-energize the panel. Read current from the VFD display with the test leads not connected.",
+  ])("accepts a display with explicitly disconnected leads: %s", (text) => expect(judge(text).ok).toBe(true));
+});

@@ -406,7 +406,7 @@ const MEASURE_ACTION_SRC =
 // The hazard is a physical electrical measurement after power is restored,
 // not a process reading or a value read from an installed external display.
 const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
-const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?)|from\s+(?:the\s+|an?\s+|exposed\s+|live\s+){0,3}(?:lugs?|terminals?)|(?:with|using)\s+(?:the\s+|an?\s+)?test\s+leads?(?!\s+(?:disconnected|removed|unplugged)\b))\b/i;
+const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?)|from\s+(?:the\s+|an?\s+|each\s+|exposed\s+|live\s+|phase\s+){0,3}(?:lugs?|terminals?|conductors?|wires?|busbars?)|(?:with|using)\s+(?:the\s+|an?\s+)?test\s+leads?(?!\s+(?:still\s+)?(?:disconnected|removed|unplugged|not\s+connected)\b))\b/i;
 const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
 const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|power|VFD|thermostat|HMI|monitor)\s+){0,5}(?:display|gauge|HMI|monitor|metering)\s+to\s*$/i;
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
@@ -483,13 +483,21 @@ function restoreEnergyToMeasure(text: string): string | null {
             continue;
           }
           const index = actions.indexOf(event.match);
-          const action = (index === 0 ? frontedSource + " " + clause.slice(0, event.match.index) : "")
-            + clause.slice(event.match.index, actions[index + 1]?.index);
+          const readingBody = clause.slice(event.match.index, actions[index + 1]?.index);
+          const carriedSource = index === 0 ? frontedSource : "";
+          const action = (index === 0 ? carriedSource + " " + clause.slice(0, event.match.index) : "") + readingBody;
           frontedSource = "";
           if (!restored) continue;
           const readingPrefix = clause.slice(index ? actions[index - 1].index! + actions[index - 1][0].length : 0, event.match.index);
-          if (!CONTACT_MEASUREMENT.test(action)
-            && (EXTERNAL_READING.test(action) || EXTERNAL_READING_INTRO.test(readingPrefix))) continue;
+          // The first stated source owns the reading. A later display used
+          // for comparison must not exempt an earlier unknown/physical source.
+          const source = /\b(?:from|off|on|via)\b/i.exec(readingBody);
+          const externalSource = EXTERNAL_READING.exec(readingBody);
+          const readsDisplay = source
+            ? externalSource?.index === source.index
+            : EXTERNAL_READING_INTRO.test(readingPrefix)
+              || (index === 0 && EXTERNAL_READING.test(carriedSource + " " + readingPrefix));
+          if (!CONTACT_MEASUREMENT.test(action) && readsDisplay) continue;
           if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
             return restored === sentence ? sentence : `${restored}\n${sentence}`;
           }
