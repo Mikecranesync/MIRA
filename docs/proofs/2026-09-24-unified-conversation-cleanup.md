@@ -12,3 +12,10 @@
 - Existing overlapping PRs: #3845 attachment retry rendering, #3815 public demo, #3690 held groundedness chrome. Their changes are not absorbed or altered; reconcile exact current diffs before merging.
 - Validation planned: red-first DOM regression controls, shared suite/build, independent review, web lab render, staging Android build. Device backend DNS currently unavailable; no live acceptance claim.
 - No new shell, parser, framework, backend enforcement, deployment, or #3984 clearance.
+
+## Validation checkpoint
+
+- Red-first: conversation suite 16 passed / 2 failed on original renderer, reproducing visible trigger and trace disclosure.
+- Repaired: 18 focused tests passed; all four surface profiles exercised, including null traceId and preserved unknown future parts.
+- Full shared workspace: 252 tests / 2142 assertions passed; TypeScript, production build, bundle budget and dependency-license audit passed.
+- Pixel: separate #3972 current-main staging APK installed; backend DNS fails while handset locked. No device acceptance claimed.
