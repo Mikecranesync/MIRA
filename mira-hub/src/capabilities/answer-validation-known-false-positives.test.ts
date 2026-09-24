@@ -1,8 +1,7 @@
 /**
- * Review regression ledger. #3979 remains a known false positive and its
- * characterization explicitly says WRONG. #3982/#3984 now assert the desired
- * safe-pass/hazard-block behavior after red-first review repairs. These are
- * local code controls, not deployed acceptance or authority to clear holds.
+ * Review regression ledger. #3979/#3982/#3984 assert the desired
+ * safe-pass/hazard-block behavior after red-first repairs. These are local
+ * code controls, not deployed acceptance or authority to clear holds.
  */
 import { describe, expect, it } from "vitest";
 import { validateAnswer, ENERGIZED_PROCEDURE_WITHHELD } from "./answer-validation";
@@ -10,20 +9,42 @@ import { validateAnswer, ENERGIZED_PROCEDURE_WITHHELD } from "./answer-validatio
 const check = (answerText: string, question: string, general = true) =>
   validateAnswer({ answerText, question, general, served: true, refused: false });
 
-describe("#3979 — the energized-work-permit question is refused", () => {
+describe("#3979 — permit contents are administrative, live-work directions are not", () => {
   /**
    * Verbatim NFPA 70E 130.2(B)(2): one of the permit's own required contents.
-   * A2 reads "work" + "on energized parts" in one clause as an instruction to
-   * work live. It is the opposite — it is the paperwork that makes the job legal.
-   *
-   * PRE-EXISTING: measured identically on origin/main and on this branch.
+   * A2 previously read "work" + "on energized parts" as a live-work
+   * instruction. This sentence describes a required permit field instead.
    */
   const NFPA_130_2_B_2 = "Describe the safe work practices to be used when working on energized parts.";
 
-  it("is blocked today (WRONG — pinned so the fix shows up as a red test)", () => {
+  it("permits the verbatim required-content sentence in the general lane", () => {
     const r = check(NFPA_130_2_B_2, "What has to be on an energized work permit?");
+    expect(r.ok).toBe(true);
+  });
+
+  it("permits the same required-content sentence in the grounded lane", () => {
+    expect(check(NFPA_130_2_B_2, "What has to be on an energized work permit?", false).ok).toBe(true);
+  });
+
+  it.each([
+    "The permit must describe the safe work practices to be used when working on energized parts.",
+    "Document safe work practices for working on energized parts.",
+    "The energized work permit must include a description of the safe work practices for work on energized parts.",
+  ])("permits an administrative description: %s", (answer) => {
+    expect(check(answer, "What has to be on an energized work permit?")).toEqual({ ok: true });
+  });
+
+  it.each([
+    "Lockout is\nnot required.",
+    "You do\nnot have to isolate the equipment.",
+    "With a permit and PPE, work on energized parts.",
+    "Get a permit and put on PPE; then probe the conductors while the panel is energized.",
+    "Describe the safe work practices to be used when working on energized parts. Then probe the conductors while the panel is energized.",
+    "Describe the safe work practices to be used when working on energized parts; then probe the conductors while the panel is energized.",
+  ])("keeps a live-work direction blocked despite permit language: %s", (answer) => {
+    const r = check(answer, "What has to be on an energized work permit?");
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:clause-hazard-energized");
+    expect(r.ok === false && r.kind).toBe("unsafe_answer");
   });
 
   it("the neighbouring permit requirements are NOT blocked — the defect is narrow", () => {

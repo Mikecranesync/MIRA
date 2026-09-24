@@ -337,6 +337,12 @@ const BOUND_PROHIBITION = new RegExp(
 // exemptions scope identically.
 const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|\bthough\b/i;
 
+// #3979: a permit's required CONTENT can describe safe practices for work on
+// energized parts without instructing a technician to do that work. Match the
+// complete administrative sentence (optionally a list item), never the word
+// "permit" alone: an appended live-work direction must still reach A2.
+const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(?:energized[-\s]work\s+)?permit\s+(?:must|should|shall)\s+)?(?:describe|document|state|list|include)(?:\s+a\s+description\s+of)?\s+(?:the\s+)?safe\s+work\s+practices\s+(?:to\s+be\s+used\s+when|for)\s+work(?:ing)?\s+on\s+energized\s+parts\.?$/i;
+
 /** Returns the offending sentence, or null. DETECTION is sentence-scoped —
  *  splitting an instruction across punctuation ("While the machine is
  *  energized, reset the fault") must not hide it. The prohibitive/cautionary
@@ -347,6 +353,7 @@ const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|
  *  hesitate: …") never exempts. Detection only, never rewriting. */
 function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
     const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
@@ -886,8 +893,15 @@ export function validateAnswer(opts: {
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
+  // Mask only complete administrative sentences, preserving every separator.
+  // A1 uses whitespace inside phrases ("lockout is\nnot required"), so scanning
+  // each sentence/line independently would weaken its existing coverage.
+  const affirmationScanText = scanText.split(/((?<=[.!?])\s+|\n+)/)
+    .map((part) => PERMIT_PRACTICES_DESCRIPTION.test(part.trim())
+      ? part.replace(/[^\r\n.!?]/g, " ") : part)
+    .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
-    const m = p.re.exec(scanText);
+    const m = p.re.exec(affirmationScanText);
     if (m) {
       return {
         ok: false,
