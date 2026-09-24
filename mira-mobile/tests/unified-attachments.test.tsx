@@ -33,10 +33,10 @@ import type { Attachment } from "@factorylm/interaction";
 type Controller = ReturnType<typeof useUnifiedAttachments>;
 
 /** Render the hook and hand its API back, since it is a hook not a function. */
-function mount(notebookId: string | null): () => Controller {
+function mount(notebookId: string | null, threadId?: string | null): () => Controller {
   let current: Controller | null = null;
   function Probe() {
-    current = useUnifiedAttachments(notebookId);
+    current = useUnifiedAttachments(notebookId, threadId);
     return null;
   }
   render(<Probe />);
@@ -94,7 +94,7 @@ describe("unified attachments controller", () => {
         capturedAt: "2026-09-16T21:17:20",
       },
     });
-    const get = mount("nb-1");
+    const get = mount("nb-1", "actual-backend-thread");
 
     let a: Attachment | null = null;
     await act(async () => { a = await get().attachPhoto(); });
@@ -102,6 +102,7 @@ describe("unified attachments controller", () => {
     await act(async () => { composed = await get().compose("why is it leaking", [a as Attachment]); });
 
     expect(api.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(api.lookAtPhoto.mock.calls[0][4]).toBe("actual-backend-thread");
     expect(composed).toEqual({
       question: "why is it leaking",
       rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T21:17:20" } },
