@@ -102,3 +102,23 @@ describe("#3977 quickstart/ask validates the answer", () => {
     expect(cascade.cascadeComplete).not.toHaveBeenCalled();
   });
 });
+
+
+describe("quickstart refusal text cannot exempt a substantive claim", () => {
+  it("withholds a fabricated code meaning after a refusal marker", async () => {
+    const candidate = "I don't have manuals for that in the public knowledge base — sign up to upload your own and I can help. Fault Q-447 means the drive is overloaded.";
+    cascade.cascadeComplete.mockResolvedValue({ content: candidate, provider: "Groq" });
+    const res = await POST(req({ question: "What does Q-447 mean?" }));
+    const body = await res.json();
+    expect(body.answer).not.toContain("drive is overloaded");
+    expect(body.citations).toEqual([]);
+    expect(res.headers.get("X-Safety-Stop")).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+  it("preserves a pure refusal with no invented claim", async () => {
+    const candidate = "I don't have manuals for that in the public knowledge base — sign up to upload your own and I can help.";
+    cascade.cascadeComplete.mockResolvedValue({ content: candidate, provider: "Groq" });
+    const res = await POST(req({ question: "What does Q-447 mean?" }));
+    expect((await res.json()).answer).toBe(candidate);
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+  });
+});

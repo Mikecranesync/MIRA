@@ -220,7 +220,9 @@ export async function POST(req: Request) {
     question,
     general: chunks.length === 0,
     served: true,
-    refused: isRefusalAnswer(answerText),
+    // A refusal marker may prefix a substantive claim. Validate the entire
+    // candidate; pure refusals pass without needing this exemption.
+    refused: false,
     evidenceSufficient: chunks.length > 0,
   });
   if (!validation.ok) {
