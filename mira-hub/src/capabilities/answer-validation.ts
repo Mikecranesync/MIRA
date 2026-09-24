@@ -402,12 +402,11 @@ const MEASURE_ACTION_SRC =
   "record\\s+(?:the\\s+|each\\s+)?(?:current|phase|amp\\w*|reading|voltage)|" +
   "check\\s+(?:the\\s+|each\\s+)?(?:current|amp\\w*|voltage|phase)|" +
   "take\\s+(?:the\\s+|a\\s+)?(?:reading|measurement))";
-const MEASURE_ACTION = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
 
 // The hazard is a physical electrical measurement after power is restored,
 // not a process reading or a value read from an installed external display.
 const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
-const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+){0,3}(?:phase|conductor|terminal|busbar|wire))\b/i;
+const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?))\b/i;
 const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
 
@@ -424,6 +423,8 @@ function restoreEnergyToMeasure(text: string): string | null {
     // such as "then re-energize" and never let a negated shutdown reset state.
     const isolation = /^\s*(?:\d+[.)]\s*)?(?:de[-\s]?energi[sz]e\b|isolate\b|shut\s+(?:it\s+|the\s+\w+\s+)?down\b|switch\s+(?:it\s+|the\s+\w+\s+)?off\b)[^.!?]*?\block[-\s]?out\b[^.!?]*?\b(?:verify|confirm)\s+(?:zero\s+voltage|(?:the\s+)?absence\s+of\s+voltage)\b/i.exec(sentence);
     const resetAt = isolation && !REASSURANCE_AFFIRMATION.test(isolation[0])
+      && !/\b(?:not|never|skip|omit|optional|without|don't|no\s+need)\b/i.test(isolation[0])
+      && !/^\s+(?:(?:is|was|remains)\s+)?(?:optional|unnecessary|not\s+(?:needed|required))\b/i.test(sentence.slice(isolation[0].length))
       ? isolation[0].length : null;
     const segments = resetAt === null ? [sentence] : [sentence.slice(0, resetAt), sentence.slice(resetAt)];
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
@@ -431,25 +432,50 @@ function restoreEnergyToMeasure(text: string): string | null {
         restored = null;
         electrical = false;
       }
+      let frontedSource = "";
       for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
-        const restore = RESTORE_ENERGY.test(clause);
-        const measure = MEASURE_ACTION.test(clause);
-        const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
-        if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) continue;
-        if (restore) {
-          restored = sentence;
-          electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
-        }
-        if (!restored || !measure) continue;
-        // A display read exempts only its own action. A second measurement in
-        // the same clause must be judged independently, in either order.
+        const restoration = RESTORE_ENERGY.exec(clause);
         const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
+        const prohibited = RESTORE_PROHIBITION.test(clause) || BOUND_PROHIBITION.test(clause);
+        if (prohibited && !REASSURANCE_AFFIRMATION.test(clause)) {
+          frontedSource = "";
+          continue;
+        }
+        // A fronted source belongs to the first following read, not every
+        // measurement later in this clause or sentence.
+        if (actions.length === 0 && !restoration && EXTERNAL_READING.test(clause)) {
+          frontedSource = clause;
+          continue;
+        }
+        let restoreAt = restoration?.index ?? Number.POSITIVE_INFINITY;
+        if (restoration && actions.length > 0 && restoration.index < actions[0].index!) {
+          const firstReading = clause.slice(actions[0].index, actions[1]?.index);
+          const beforeReading = clause.slice(restoration.index + restoration[0].length, actions[0].index);
+          // "Restore power AFTER taking an isolated reading" describes the
+          // opposite chronology from "restore power THEN take a reading".
+          if (/\bafter\b/i.test(beforeReading) && /\b(?:isolated|de[-\s]?energized|locked\s+out)\b/i.test(firstReading)) {
+            restoreAt = actions[1]?.index ?? clause.length;
+          }
+        }
+        let appliedRestore = false;
         for (let i = 0; i < actions.length; i++) {
-          const action = clause.slice(actions[i].index, actions[i + 1]?.index);
+          if (restoration && restoreAt <= actions[i].index!) {
+            restored = sentence;
+            electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
+            appliedRestore = true;
+          }
+          const action = (i === 0 ? frontedSource + " " + clause.slice(0, actions[i].index) : "")
+            + clause.slice(actions[i].index, actions[i + 1]?.index);
+          frontedSource = "";
+          if (!restored) continue;
           if (!CONTACT_MEASUREMENT.test(action) && EXTERNAL_READING.test(action)) continue;
           if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
             return restored === sentence ? sentence : `${restored}\n${sentence}`;
           }
+        }
+        if (restoration && !appliedRestore) {
+          restored = sentence;
+          electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
         }
       }
     }

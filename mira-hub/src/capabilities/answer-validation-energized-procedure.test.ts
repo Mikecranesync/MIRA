@@ -192,6 +192,7 @@ describe("review repair: procedure scope and external readings", () => {
 describe("independent review: scope exemptions to ordered actions", () => {
   it.each([
     "Re-energize the panel. Read current on the VFD display and then measure voltage across the terminals.",
+    "Re-energize the panel. Read current on the VFD display and voltage across the terminals.",
     "Re-energize the panel. Read the current off the VFD display and take a voltage reading from exposed lugs.",
     "Re-energize the panel. Measure voltage across the terminals and then read current on the VFD display.",
     "Restore power. De-energize the panel, lock out and verify zero voltage, then re-energize and measure phase current.",
@@ -206,6 +207,29 @@ describe("independent review: scope exemptions to ordered actions", () => {
     "Restore power. De-energize the panel, lock out and verify zero voltage, then measure resistance across the terminals.",
     "Re-energize the panel. Read current on the VFD display and record voltage on the installed display.",
   ])("accepts isolated or external readings: %s", (text) => {
+    expect(judge(text).ok).toBe(true);
+  });
+});
+
+
+describe("review: affirmative verification and temporal ordering", () => {
+  it.each([
+    "Re-energize the panel. De-energize the panel, lock out and do not verify zero voltage. Measure voltage across the terminals.",
+    "Re-energize the panel. De-energize the panel, lock out and never verify zero voltage. Measure voltage across the terminals.",
+    "Re-energize the panel. De-energize the panel, lock out and verify zero voltage is optional. Measure voltage across the terminals.",
+    "Re-energize the panel. De-energize the panel, do not lock out and verify zero voltage. Measure voltage across the terminals.",
+    "Re-energize the panel. From the VFD display, read current and then measure voltage across the terminals.",
+    "Turn the panel back on after taking the resistance reading across the isolated terminals then measure voltage across the terminals.",
+  ])("rejects weakened isolation or a later live action: %s", (text) => {
+    expect(judge(text).ok).toBe(false);
+  });
+  it.each([
+    "Re-energize the panel. From the VFD display, read the current.",
+    "Re-energize the panel. On the installed power monitor display, check the phase current.",
+    "Measure resistance across the terminals with the circuit isolated and locked out then restore power.",
+    "With the circuit isolated and locked out measure resistance across the terminals then restore power.",
+    "Turn the panel back on after taking the resistance reading across the isolated terminals.",
+  ])("accepts an external or prior isolated measurement: %s", (text) => {
     expect(judge(text).ok).toBe(true);
   });
 });
