@@ -13,6 +13,7 @@ QUESTION="${2:?question required}"
 EXPECT_PAGE="${3:-}"
 
 SDK="${ANDROID_SDK_ROOT:-$HOME/AppData/Local/Android/Sdk}"
+export ANDROID_SDK_ROOT="$SDK"
 ADB="$SDK/platform-tools/adb.exe"
 EMULATOR="$SDK/emulator/emulator.exe"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -27,8 +28,8 @@ if ! "$ADB" devices | awk 'NR>1 && $2=="device"' | grep -q '^emulator-'; then
   AVD="$("$EMULATOR" -list-avds | head -1)"
   [ -n "$AVD" ] || { echo "No AVD defined. Create one in Android Studio first." >&2; exit 2; }
   echo "==> booting emulator: $AVD"
-  # -no-snapshot-load gives a clean boot; the app's cookie jar must not survive between runs
-  # or 'sign in' silently becomes a no-op and stops being tested.
+  # -no-snapshot-load starts the emulator OS fresh. App data may still persist;
+  # journey.py reports an already-authenticated session as a sign-in SKIP.
   "$EMULATOR" -avd "$AVD" -no-snapshot-load -no-boot-anim >/dev/null 2>&1 &
   echo "    waiting for boot..."
   "$ADB" wait-for-device
@@ -42,7 +43,12 @@ else
 fi
 
 # --------------------------------------------------------------- 2. apk
-APK="$MOBILE/android/app/build/outputs/apk/debug/app-debug.apk"
+case "${MIRA_PKG:-com.factorylm.mira}" in
+  com.factorylm.mira) FLAVOR=production ;;
+  com.factorylm.mira.staging) FLAVOR=staging ;;
+  *) echo "Unsupported MIRA_PKG=${MIRA_PKG}; refusing to build/install" >&2; exit 2 ;;
+esac
+APK="$MOBILE/android/app/build/outputs/apk/$FLAVOR/debug/app-$FLAVOR-debug.apk"
 if [ ! -f "$APK" ]; then
   echo "==> building debug APK"
   ( cd "$MOBILE"
@@ -52,7 +58,7 @@ if [ ! -f "$APK" ]; then
     # local.properties MUST use forward slashes -- backslashes are Java-properties
     # escapes and the resulting error impersonates a long-path failure.
     [ -f local.properties ] || echo "sdk.dir=${SDK//\\//}" > local.properties
-    ./gradlew --no-daemon assembleDebug )
+    ./gradlew --no-daemon "assemble${FLAVOR^}Debug" )
 fi
 [ -f "$APK" ] || { echo "APK not found after build: $APK" >&2; exit 1; }
 

@@ -8,8 +8,13 @@ export FLM_EMAIL='...' FLM_PASSWORD='...'
 bash tools/mobile-e2e/run.sh ~/Downloads/some-manual.pdf "When do I need to derate this drive" 117
 ```
 
-`run.sh` boots an emulator (cold, no snapshot), builds the debug APK if it is missing, then
-runs `journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure.
+`run.sh` boots an emulator, builds the selected debug flavor if missing, then runs
+`journey.py`. Set `MIRA_PKG=com.factorylm.mira.staging` to target the staging
+flavor; the APK application ID is checked before installation. The harness
+updates the selected package in place and never uninstalls either package.
+An existing session can therefore skip the sign-in proof, which is reported as
+SKIP. Exit code 0 means the executed stages passed their assertions, not that
+a signed build or a physical-device journey was accepted.
 
 ## Why it exists
 
@@ -20,24 +25,27 @@ ingest, retrieval, citation rendering and citation resolution are all device-agn
 mobile app is not a fork, it calls the same Hub route the desktop does
 (`POST /api/equipment-notebooks/{id}/chat/`).
 
-So this harness covers the whole chain, and is explicit about the three things it cannot.
+The cold-restart stage requires a debuggable WebView for exact DOM evidence.
+Release builds and physical-device acceptance remain separate.
 
 ## Coverage
 
 | Leg | Emulator | Note |
 |---|---|---|
-| Fresh install + permission grant | yes | uninstall-then-install, so the grant is re-exercised |
-| Sign in | yes | cold boot each run, so the cookie jar cannot mask a broken sign-in |
+| Selected-package update | yes | `adb install -r`; preserves package data and sibling flavor |
+| Sign in | conditional | existing session reports SKIP; no automatic credential proof |
 | SAF picker + multipart upload | yes | the picker is the same system component |
 | Ingest → embed | yes | server-side; assert separately with the DB probe below |
 | Grounded cited answer | yes | |
 | Citation resolves to a passage | yes | |
+| Cold restart and same-thread cited turn | debug only | DOM-bound question, paired answer and source; release WebView cannot supply CDP |
 | Nameplate → extraction | partial | needs a **real photo** via `--nameplate`; see below |
 | **Cellular behaviour** | **no** | emulator uses the host network |
 | **Camera capture** | **no** | and see the P1 defect below |
 | **Release-signed Play identity** | **no** | needs a keystore + `assembleRelease` |
 
-Those last three are the only legitimate reasons to reach for real hardware again.
+These emulator assertions do not stand in for physical-device, staging, or
+release-signed acceptance.
 
 ## Design decisions worth keeping
 
@@ -56,8 +64,20 @@ be read back, so sign-in asserts on the *outcome* instead.
 **No `?` in questions.** `input text` does not decode `%3F`, and a bare `?` is a glob on the
 device shell. `type_text()` raises rather than let a literal `%3F` reach the chat box.
 
-**Cold-boot the emulator.** With a snapshot, a surviving session cookie turns "sign in" into
-a no-op that passes forever without testing anything.
+**Preserve package data.** An update install does not erase an accepted session.
+The sign-in leg names an existing session as SKIP instead of claiming a fresh
+authentication check.
+
+**Cold restart checks the exact conversation.** Before force-stop, the debug
+WebView helper captures the active project/thread ID and an exact user question
+with its paired completed answer, inline citation button, and source card.
+It then goes Home and reopens the project to fetch the server-backed turn ID
+before stopping the process. The force-stop/start commands and process-ID
+change must succeed. After restart it waits for Home, opens that project, and
+requires the same thread, persisted user/assistant IDs, answer text, and
+citation evidence. A PDF filename or `p.117` in prose cannot satisfy it.
+Use `--stop-after history` to stop after this stage. CDP unavailable is FAIL,
+not a text-only pass. No device run has been performed for this change.
 
 **Skip, never fake.** No `--nameplate` means the leg reports SKIP. A generated nameplate image
 would not exercise real-photo OCR — synthetic fixtures pass while real photos fail.
