@@ -4001,50 +4001,63 @@ def test_prod_source_authorization_precedes_all_environment_credentials():
     assert "environment" not in authorize
     assert "DOPPLER_TOKEN" not in authorize_text
     assert "VPS_SSH_KEY" not in authorize_text
-    assert "github.event.workflow_run.event == 'push'" in authorize["if"]
-    assert "github.event.workflow_run.head_branch == 'main'" in authorize["if"]
     assert (
-        "github.event.workflow_run.head_repository.full_name == github.repository"
-        in authorize["if"]
+        authorize["if"]
+        == "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
     )
-    assert "git fetch --no-tags origin main" in authorize_commands
-    assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in authorize_commands
-    assert "skip_staging_gate=true requires a non-empty skip_reason" in authorize_commands
-    assert "skip_drift_check=true requires a non-empty skip_reason" in authorize_commands
+    assert 'if [ "$CHECKED_OUT" != "$APPROVED_RC_SHA" ];' in authorize_commands
+    assert "git fetch --no-tags origin main" not in authorize_commands
+    assert "CURRENT_MAIN" not in authorize_commands
+    assert "Reject gate-bypass inputs" in authorize_text
+    assert "skip_staging_gate=true requires a non-empty skip_reason" not in authorize_commands
+    assert "skip_drift_check=true requires a non-empty skip_reason" not in authorize_commands
     assert "/commits/$DEPLOY_SHA/pulls" in authorize_commands
     assert '--workflow "Staging Gate"' in authorize_commands
     assert "completed:success" in authorize_commands
+    assert "tools/staging_receipt.py verify" in authorize_commands
 
     assert jobs["migration-drift"]["needs"] == "authorize-source"
     assert jobs["deploy"]["needs"] == ["authorize-source", "migration-drift"]
 
 
 def test_prod_deploy_jobs_reject_stale_or_non_push_main_sources_before_credentials():
-    """A rerun of an old/manual Smoke Test must not deploy stale repository code."""
+    """Exact-source verification precedes all production environment jobs."""
     path = REPO_ROOT / ".github" / "workflows" / "deploy-vps.yml"
     workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
 
-    for job_name in ("migration-drift", "deploy"):
-        job = workflow["jobs"][job_name]
-        condition = job["if"]
-        assert "github.event.workflow_run.event == 'push'" in condition
-        assert "github.event.workflow_run.head_branch == 'main'" in condition
-        assert (
-            "github.event.workflow_run.head_repository.full_name == github.repository" in condition
-        )
+    # migration-drift: unconditional, runs after authorize-source.
+    migration_drift = workflow["jobs"]["migration-drift"]
+    assert "if" not in migration_drift, "migration-drift must be unconditional"
+    assert migration_drift["needs"] == "authorize-source"
 
+    # deploy: gated by workflow_dispatch + main, runs after authorize-source and migration-drift.
+    deploy = workflow["jobs"]["deploy"]
+    assert (
+        deploy["if"]
+        == "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+    )
+    assert deploy["needs"] == ["authorize-source", "migration-drift"]
+
+    # Both jobs must have the source-check step *before* any secret-bearing step.
+    for job_name, job in [("migration-drift", migration_drift), ("deploy", deploy)]:
         steps = job["steps"]
         source_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name") == "Require the exact current main source"
+            (
+                index
+                for index, step in enumerate(steps)
+                if step.get("name") == "Require HEAD == approved_rc_sha"
+            ),
+            None,
         )
+        assert source_index is not None, (
+            f"{job_name} must have 'Require HEAD == approved_rc_sha' step"
+        )
+
         source_step = steps[source_index]
         source_commands = source_step["run"]
-        assert "git fetch --no-tags origin main" in source_commands
-        assert 'CURRENT_MAIN="$(git rev-parse origin/main)"' in source_commands
-        assert 'CHECKED_OUT="$(git rev-parse HEAD)"' in source_commands
-        assert '[[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]]' in source_commands
+        assert 'if [ "$CHECKED_OUT" != "$APPROVED_RC_SHA" ];' in source_commands
+        assert "git fetch --no-tags origin main" not in source_commands
+        assert "origin/main" not in source_commands
 
         first_secret_index = next(
             (index for index, step in enumerate(steps) if _native_job_secret_refs({"step": step})),
@@ -4114,10 +4127,16 @@ def test_production_ssh_uses_committed_host_identity(workflow_name):
 
 def test_factorylm_prod_host_identity_is_committed_and_guarded():
     host_key = (REPO_ROOT / "deployment" / "known_hosts.factorylm-prod").read_text(encoding="utf-8")
-    assert host_key == (
+    # Must contain both DigitalOcean (legacy) and OVH production keys for rollback independence
+    expected = (
+        "# DigitalOcean production host key (legacy). SHA256:R6kD/zI16xOLqNFNYGw67lIwPFWdIlsqgGTyg6NWEpM\n"
         "165.245.138.91 ssh-ed25519 "
         "AAAAC3NzaC1lZDI1NTE5AAAAIOx9AwtJJMamqcrrAyrea9+7Hmqo4o9IO3QZHI50EUqR\n"
+        "# OVH production host key pin (#3800). SHA256:yslCH8KRVJu0281ztiTXYxD9o8Ogg32OQ2rZ5pn8FrY\n"
+        "40.160.141.61 ssh-ed25519 "
+        "AAAAC3NzaC1lZDI1NTE5AAAAIHFI2GfClRE3Nlpi7EfqH56rSawold8FozJbIORHP04o\n"
     )
+    assert host_key == expected
     policy = load_guard_policy(REAL_REGISTRY)
     assert path_is_guarded("deployment/known_hosts.factorylm-prod", policy)
     assert path_is_guarded("tools/migration_drift.py", policy)

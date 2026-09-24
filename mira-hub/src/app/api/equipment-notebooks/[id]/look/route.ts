@@ -28,11 +28,44 @@
  *   `quality` (assessCapture) is deliberately absent: assessCapture is pure
  *   over DECODED grayscale pixels and the Hub has no image decoder, so the
  *   retake hint is a client-side call (see capture-quality.ts header).
+ *
+ * TURN FLIGHT RECORDER (docs/architecture/observability/2026-09-22-turn-flight-
+ * recorder.md §3/§4, lane I2): a `mira.turn` root span (kind="look") wraps the
+ * whole request, with `attachment.persist` and a per-vision-call `chat <model>`
+ * child. `x-mira-trace-id` is set and `traceId` rides in the JSON body
+ * (additive). The `kind:"look"` Turn Evidence Packet is persisted through the
+ * same single ledger writer as chat (`persistTurnUsage`, platform
+ * `hub_notebook_look`, empty question) — last and non-fatal, after the
+ * response body is fixed. Observations remain conversation context, never a
+ * citable source: nothing here writes knowledge_entries or touches identity.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { context, trace, type Span } from "@opentelemetry/api";
+import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
+import { startTurnRecorder } from "@/capabilities/observability/turn-recorder";
+import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
+import {
+  recordArrival,
+  recordResponse,
+  type IngressRecord,
+} from "@/capabilities/observability/turn-ingress";
+import {
+  anomalyChecksEnabled,
+  environmentName,
+  gitSha,
+  productionRouteDetected,
+  serviceVersion,
+} from "@/capabilities/observability/config";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
-import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
+import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
+import {
+  normalizeLookHazards,
+  recordLookObservation,
+  type LookHazardDescriptor,
+} from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
@@ -66,7 +99,14 @@ Rules:
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
 - Keep it concise (short sentences or a short list). Plain text, no markdown headings.
-Respond ONLY with JSON: {"observation": string}`;
+For safety classification, also report only hazards visibly present now using this bounded vocabulary:
+- arcing: visible electrical arc or flash
+- exposed_conductor: visibly bare energized-capable conductor outside its intended insulation or guard
+- active_fire: visible flame
+- smoke: visible smoke
+Do not infer a hazard from labels, warnings, equipment type, or absence of a guard unless the hazardous condition itself is visible.
+Use a confidence from 0 to 1. A healthy image or negated condition has an empty hazards array.
+Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}]}`;
 
 function safePhotoName(raw: string | undefined, mime: string): string {
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : mime === "image/gif" ? "gif" : "jpg";
@@ -89,21 +129,27 @@ function optionalString(v: FormDataEntryValue | null, max: number): string | und
 
 /** Deterministic stand-in for NAMEPLATE_RECOGNIZER=fixture — no network. */
 const fixtureVisionCall: VisionCall = async () => ({
-  text: JSON.stringify({ observation: "Fixture observation: one enclosure with a green indicator lit." }),
+  text: JSON.stringify({ observation: "Fixture observation: one enclosure with a green indicator lit.", hazards: [] }),
   model: "fixture",
 });
 
-/** Unwrap the JSON-mode reply; a provider that answered in prose is kept verbatim. */
-function extractObservation(text: string): string | null {
+/** Unwrap and validate JSON-mode output; a prose answer stays a healthy observation. */
+function extractInspection(text: string): { text: string; hazards: LookHazardDescriptor[] } | null {
   const parsed = safeJson(text);
   const fromJson = parsed && typeof parsed.observation === "string" ? parsed.observation : null;
   const value = (fromJson ?? text).trim();
-  return value.length > 0 && value !== "{}" ? value : null;
+  if (value.length === 0 || value === "{}") return null;
+  return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function handleLookTurn(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  ingress: IngressRecord,
+) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  ingress.tenantId = ctx.tenantId;
   const { id: notebookId } = await params;
 
   // Cross-tenant / missing notebooks are indistinguishable: 404, no existence leak.
@@ -116,6 +162,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const form = await req.formData().catch(() => null);
+  // Read the CLIENT's key before any upload validation, not after. A rejected
+  // upload is exactly the attempt a technician most wants accounted for, and
+  // with this read below the mime/size checks a 413 or 415 reached the ledger
+  // with no client id at all — unjoinable to the attempt that caused it.
+  // Measured on staging 2026-09-23: the failed-upload row came back `unknown`
+  // for that reason and no other.
+  // The body value wins when present; a null must NOT erase a good header key.
+  ingress.clientRequestId =
+    optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS) ?? ingress.clientRequestId;
   const file = form?.get("image");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "image_required" }, { status: 400 });
@@ -134,12 +189,141 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
   const question = optionalString(form?.get("question") ?? null, MAX_QUESTION_CHARS);
-  const clientKey = optionalString(form?.get("clientKey") ?? null, MAX_CLIENT_KEY_CHARS);
+  const clientKey = ingress.clientRequestId;
   const filename = safePhotoName(file.name, mime);
   // Server receipt time: the phone's clock is not trusted as evidence time.
   const capturedAt = new Date().toISOString();
 
+  // ── Turn Flight Recorder (file header) ──────────────────────────────────
+  const tracer = getTracer();
+  const turnId = clientKey ?? crypto.randomUUID();
+  const rootSpan = tracer.startSpan("mira.turn");
+  const rootCtx = trace.setSpan(context.active(), rootSpan);
+  const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
+  setSpanAttrs(
+    { "mira.turn.kind": "look", "mira.turn.id": turnId, "mira.notebook.id": notebookId, "mira.file.mime": mime, "mira.file.bytes": buffer.length },
+    rootSpan,
+  );
+  let rootEnded = false;
+  const endRoot = (extra?: SpanAttrs): void => {
+    if (rootEnded) return;
+    rootEnded = true;
+    try {
+      if (extra) setSpanAttrs(extra, rootSpan);
+    } finally {
+      rootSpan.end();
+      // Every exit path ends the root, so every exit path closes the record.
+      // An exit that never classified itself closes as `error` — the honest
+      // reading, and far better than a row left `started` forever.
+      closeLifecycle("error");
+    }
+  };
+  // TURN LIFECYCLE (091) — LOOK had none. It wrote a row only at the very end,
+  // through `persistTurnUsage`, so a photo turn that died in the vision call,
+  // timed out, or was cancelled left NO ROW AT ALL. #3962's own reproduction
+  // starts with a LOOK, which is precisely the turn that could go missing.
+  const openedTurn = openTurn({
+    attemptId: ingress.attemptId,
+    tenantId: ctx.tenantId,
+    notebookId,
+    platform: "hub_notebook_look",
+    otelTraceId: rootTraceId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  });
+  let lifecycleSettled = false;
+  let lifecycleClosed = false;
+  const closeLifecycle = (outcome: TurnOutcome): void => {
+    if (lifecycleClosed || lifecycleSettled) return;
+    lifecycleClosed = true;
+    void openedTurn
+      .then((o) => closeTurn({ tenantId: ctx.tenantId, attemptId: o.attemptId, outcome }))
+      .catch(() => {
+        /* counted inside closeTurn; never fails a turn */
+      });
+  };
+  ingress.closeOnUnhandled = (outcome) => closeLifecycle(outcome);
+
+  const rec = startTurnRecorder({
+    kind: "look",
+    tenantId: ctx.tenantId,
+    notebookId,
+    ownerUserId: ctx.userId ?? null,
+    environment: environmentName(),
+    gitSha: gitSha(),
+    serviceVersion: serviceVersion(),
+    traceId: rootTraceId,
+  });
+  // Finish the packet and persist it through the one ledger writer. Fail-open:
+  // `persistTurnUsage` returns rather than throws, and this wrapper swallows
+  // anything else — a telemetry outage never changes the /look response.
+  const finishLook = async (vision: { provider: string | null; model: string | null; ok: boolean }): Promise<void> => {
+    // The usage write APPENDS the outcome row itself (persist-usage §091), so
+    // mark the lifecycle settled first: a second close would be absorbed by the
+    // (attempt_id, lifecycle) conflict, but it would also count a phantom
+    // "close missed, no start" against capture health.
+    lifecycleSettled = true;
+    try {
+      const { packet, anomalies } = rec.finish({
+        productionRouteVars: productionRouteDetected(),
+        anomalyChecks: anomalyChecksEnabled(),
+      });
+      setSpanAttrs({ "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
+      if (anomalies.length > 0) {
+        console.log(
+          JSON.stringify({ event: "turn.anomaly", traceId: rootTraceId, turnId, codes: anomalies.map((a) => a.code) }),
+        );
+      }
+      const usage: TurnUsage = {
+        provider: vision.provider,
+        model: vision.model,
+        routeReason: "vision",
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        costUsdEstimate: null,
+        status: vision.ok ? "ok" : "error",
+        attempted: [],
+      };
+      await persistTurnUsage(
+        {
+          tenantId: ctx.tenantId,
+          notebookId,
+          question: "",
+          answerText: null,
+          citationsPresent: false,
+          latencyMs: Date.now() - rec.startedAt,
+          platform: "hub_notebook_look",
+          // CLOSES the start record rather than inserting a second ledger row:
+          // one accepted turn, one lifecycle (materialized-evidence rule 15).
+          attemptId: (await openedTurn).attemptId,
+          outcome: vision.ok ? "answered" : "error",
+        },
+        usage,
+        {
+          packet,
+          anomalies,
+          otelTraceId: rootTraceId,
+          turnRowId: null,
+          clientRequestId: null,
+          notebookId,
+          environment: environmentName(),
+          gitSha: gitSha(),
+        },
+      );
+    } catch (err) {
+      console.error("[notebook-look] flight recorder persist failed:", err instanceof Error ? err.message : err);
+      // The usage write was supposed to append the outcome and did not, so the
+      // record is NOT settled after all — let `endRoot` close it rather than
+      // leaving a start the reconciler will later call `abandoned`.
+      lifecycleSettled = false;
+    }
+  };
+  const traceHeaders: Record<string, string> = rootTraceId ? { "x-mira-trace-id": rootTraceId } : {};
+  // ─────────────────────────────────────────────────────────────────────────
+
   // ── Park FIRST. Everything below may fail; the bytes must not. ─────────────
+  const attachSpan = tracer.startSpan("attachment.persist", undefined, rootCtx);
   const parked = await parkOrReuseFile({
     tenantId: ctx.tenantId,
     filename,
@@ -160,9 +344,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? { linkId: attached.links[0]?.linkId ?? null, notebookId }
     : { linkId: null, notebookId };
   const retained = { fileId: parked.fileId, attachment, ...(clientKey ? { clientKey } : {}) };
+  rec.stage("ids", { file_ids: [parked.fileId] });
+  setSpanAttrs(
+    {
+      "mira.file.id": parked.fileId,
+      "mira.file.mime": mime,
+      "mira.file.bytes": buffer.length,
+      "mira.file.sha256_present": true,
+      "mira.file.dedup_hit": parked.reused,
+      "mira.file.link_ok": attached.ok,
+    },
+    attachSpan,
+  );
+  attachSpan.end();
 
   // Honest failure — the photo is already retained and viewable in the notebook.
   if (!isRecognizerConfigured()) {
+    await finishLook({ provider: null, model: null, ok: false });
+    endRoot();
     return NextResponse.json(
       {
         error: "recognizer_not_configured",
@@ -170,12 +369,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         message: "Visual inspection is not available. The photo has been saved to this notebook.",
         ...retained,
         observation: null,
+        traceId: rootTraceId,
       },
-      { status: 503 },
+      { status: 503, headers: traceHeaders },
     );
   }
 
   const vision: VisionCall = fixtureSelected() ? fixtureVisionCall : togetherVisionCall;
+  const visionStartedAt = Date.now();
+  const visionSpan = tracer.startSpan("chat (vision)", undefined, rootCtx);
   try {
     // Same read-only working pixels as recognize: the detector may crop, the
     // ORIGINAL is what was parked. A question, if given, rides along as
@@ -190,14 +392,76 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       temperature: 0.1,
       maxTokens: 600,
     });
-    const text = extractObservation(reply.text);
-    if (!text) throw new Error("vision_empty_response");
+    const inspection = extractInspection(reply.text);
+    if (!inspection) throw new Error("vision_empty_response");
+    // #3788 — persist the observation into the VisualSession ledger (migration
+    // 063; NO new table) so a later chat turn that re-sends THIS photo as visual
+    // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
+    // LOOK turn — the photo is already parked and the observation is returned to
+    // the client regardless (Law 1: the bytes/observation must survive).
+    try {
+      await recordLookObservation({
+        tenantId: ctx.tenantId,
+        fileId: parked.fileId,
+        photoHash: sha256Hex(buffer),
+        text: inspection.text,
+        model: reply.model,
+        hazards: inspection.hazards,
+        capturedAt,
+        createdBy: ctx.userId ?? null,
+      });
+    } catch (err) {
+      console.error("[notebook-look] observation persist failed (continuing):", err);
+    }
+    visionSpan.updateName(`chat ${reply.model}`);
+    setSpanAttrs(
+      {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.response.model": reply.model,
+        "mira.vision.observation_chars": inspection.text.length,
+        "mira.vision.hazard_count": inspection.hazards.length,
+        "mira.vision.ok": true,
+      },
+      visionSpan,
+    );
+    visionSpan.end();
+    rec.stage("vision", {
+      ran: true,
+      provider: fixtureSelected() ? "fixture" : "together",
+      model: reply.model,
+      latency_ms: Date.now() - visionStartedAt,
+      observation_chars: inspection.text.length,
+      hazard_count: inspection.hazards.length,
+      ok: true,
+    });
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: reply.model, ok: true });
+    endRoot();
     return NextResponse.json({
       ...retained,
-      observation: { text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
-    });
+      observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
+      traceId: rootTraceId,
+    }, { headers: traceHeaders });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "vision_failed";
+    setSpanAttrs(
+      {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "mira.vision.ok": false,
+      },
+      visionSpan,
+    );
+    visionSpan.end();
+    rec.stage("vision", {
+      ran: true,
+      provider: fixtureSelected() ? "fixture" : "together",
+      latency_ms: Date.now() - visionStartedAt,
+      ok: false,
+    });
+    rec.error("vision", "provider_error");
+    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: null, ok: false });
+    endRoot();
     return NextResponse.json(
       {
         // Scrub any query-string credentials from provider error text (PRD §20).
@@ -206,8 +470,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         message: "Could not describe the photo. The photo has been saved to this notebook.",
         ...retained,
         observation: null,
+        traceId: rootTraceId,
       },
-      { status: 502 },
+      { status: 502, headers: traceHeaders },
     );
+  }
+}
+
+
+/** See the chat route's wrapper: arrival is recorded before auth, the response
+ *  status in a `finally` no early return can skip, and both share the attempt
+ *  id the ledger start is opened with. */
+export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: string }> }) {
+  const attemptId = crypto.randomUUID();
+  let notebookId: string | null = null;
+  try {
+    const p = await routeCtx.params;
+    notebookId = typeof p?.id === "string" && UUID_RE.test(p.id) ? p.id : null;
+  } catch {
+    notebookId = null;
+  }
+  // The client's own key, read from a HEADER before any parsing. The body is
+  // where it normally travels, but a malformed body is precisely the attempt
+  // that most needs accounting for and its id is unreachable in there — so a
+  // request that fails to parse can still be joined to the client that sent it.
+  // Shape-checked: this lands in a TEXT column that operators read.
+  const headerKey = req.headers.get("x-client-request-id");
+  const ingress: IngressRecord = {
+    attemptId,
+    route: "hub_notebook_look",
+    tenantId: null,
+    clientRequestId: headerKey && UUID_RE.test(headerKey) ? headerKey : null,
+    notebookId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  };
+  const arrival = recordArrival({ ...ingress });
+  let status = 500;
+  try {
+    const res = await handleLookTurn(req, routeCtx, ingress);
+    status = res.status;
+    return res;
+  } catch (err) {
+    ingress.closeOnUnhandled?.("error");
+    throw err;
+  } finally {
+    void arrival
+      .then(() => recordResponse({ ...ingress, httpStatus: status }))
+      .catch(() => {
+        /* counted inside the module; never fails a turn */
+      });
   }
 }

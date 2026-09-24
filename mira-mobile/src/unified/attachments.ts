@@ -103,6 +103,15 @@ export function useUnifiedAttachments(notebookId: string | null) {
    *  technician attached them to is answered without them. */
   const hasCarried = useCallback(() => carried.current.length > 0, []);
 
+  // Bytes a FAILED send keeps for Try again. Kept apart from `carried` on
+  // purpose (#3863): `carried` rides the next send by design (the HOME
+  // handoff), whereas a retained photo belongs to one specific turn that did
+  // not happen. If it were folded into the next plain send, a technician who
+  // dismissed the error and asked something unrelated would get that question
+  // answered with an invisible photo attached — no chip, no way to remove it.
+  const retained = useRef<readonly HeldAttachment[]>([]);
+  const hasRetained = useCallback(() => retained.current.length > 0, []);
+
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
     const attachment = describe(file);
@@ -132,26 +141,33 @@ export function useUnifiedAttachments(notebookId: string | null) {
   const compose = useCallback(async (
     raw: string,
     attachments: readonly Attachment[],
+    opts: { retry?: boolean } = {},
   ): Promise<ComposedSend> => {
-    const items = [...carried.current.map((c) => c.attachment), ...attachments]
+    // Only an explicit retry re-arms what the last failure retained (#3863).
+    const retrying = opts.retry === true ? retained.current.map((r) => r.attachment) : [];
+    const items = [...carried.current.map((c) => c.attachment), ...retrying, ...attachments]
       .map((attachment) => ({ attachment, file: held.current.get(attachment.id) }))
       .filter((x): x is { attachment: Attachment; file: File } => Boolean(x.file));
     carried.current = [];
+    // A plain send supersedes the failed turn: drop its bytes rather than keep
+    // a photo the technician has moved on from parked in memory.
+    if (!opts.retry) for (const r of retained.current) held.current.delete(r.attachment.id);
+    retained.current = [];
     const text = raw.trim();
     if (items.length === 0 || !notebookId) return { question: text };
 
     assertSupportedAttachments(items.map((item) => item.attachment));
-
     const photo = items.find((x) => x.attachment.kind === "photo");
     const documents = items.filter((x) => x.attachment.kind !== "photo");
     // An attachment with no typed question still deserves a question.
     const question = questionForAttachments(text, items.map((item) => item.attachment));
-    // A failure must leave the bytes armed for another attempt. `held` still
-    // has them (they are dropped only on success, below), but `carried` was
-    // cleared above and the composer has already released its chip — so a retry
-    // would compose NOTHING and send the photo question with no photo, the one
-    // outcome this module refuses. Put the items back on every failure path.
-    const retain = () => { carried.current = items; };
+
+    // A failure must leave the bytes armed for Try again. `held` still has
+    // them (they are dropped only on success, below), but the composer has
+    // already released its chip — so a retry would compose NOTHING and send the
+    // photo question with no photo, the one outcome this module refuses. Put
+    // the items into `retained` (never `carried`) on every failure path.
+    const retain = () => { retained.current = items; };
 
     let warning: string | undefined;
     try {
@@ -205,5 +221,5 @@ export function useUnifiedAttachments(notebookId: string | null) {
     }
   }, [notebookId]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried };
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
 }

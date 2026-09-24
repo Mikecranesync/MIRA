@@ -1,3 +1,37 @@
+# Hot Cache — 2026-09-19 — customer-ready unified experience release train
+
+**Start here:** [`docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md`](../docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md).
+It is the reconciled evidence/closure ledger for the ChatGPT-like mobile + web
+mission. The durable coordination thread remains
+[#3626](https://github.com/Mikecranesync/MIRA/issues/3626).
+
+Snapshot `main` was `0913114c79682e370522b8d47a2a9c70d2ba73b1`; production
+still reported recovery SHA `0178b1b0776f30cccde42c8d255031254b882a38`
+(27 commits behind). The last completed production deploy was fail-closed on
+missing migrations `088` and `089`; only emulator `emulator-5554` was connected,
+with FactoryLM 1.2.1/versionCode 12. No current physical-Pixel or same-thread
+phone-to-web acceptance was proven.
+
+Critical path: correctness/safety issue queue -> human migration gate
+[#3878](https://github.com/Mikecranesync/MIRA/issues/3878) -> direct `/v3`
+production proof [#3879](https://github.com/Mikecranesync/MIRA/issues/3879), in
+parallel with the current mobile release/Pixel gate
+[#3881](https://github.com/Mikecranesync/MIRA/issues/3881) -> same-thread
+phone/web proof [#3882](https://github.com/Mikecranesync/MIRA/issues/3882) ->
+default-route cutover [#3880](https://github.com/Mikecranesync/MIRA/issues/3880)
+-> explicit human go/no-go. Public demo proof is parallel in
+[#3883](https://github.com/Mikecranesync/MIRA/issues/3883). The UTC date rollover
+also expired two pre-existing capability reviews; #3885 landed the canonical
+2026-10-19 deferrals, while their actual closure work is tracked in
+[#3886](https://github.com/Mikecranesync/MIRA/issues/3886) and
+[#3887](https://github.com/Mikecranesync/MIRA/issues/3887).
+
+Refresh live state before acting. A merge, green CI, image, signed APK,
+installation, launch, or direct-route screenshot is not interchangeable with a
+deploy, physical acceptance, cross-surface continuity, or final release go.
+
+---
+
 # Hot Cache — 2026-09-13 — Alpha pre-move shutdown state (physical relocation)
 
 Alpha is being SHUT DOWN for a physical move. State at shutdown: wiki-sync **PR #3671**

@@ -17,12 +17,42 @@
  * only channel).
  */
 
-/** Shared safety-stop banner. Presentational only — no state, no transport. */
-export function SafetyNotice() {
+/**
+ * Shared safety banner. Presentational only — no state, no transport.
+ *
+ * Two variants, split by `terminal` (mirrors the hub's terminal-vs-directive
+ * split, #3841/#3893):
+ *   - `terminal` (default) — the hard stop: the reply is an isolation
+ *     instruction, not an answer. Red, `role="alert"`.
+ *   - `terminal={false}` — the energized-electrical DIRECTIVE: the turn IS an
+ *     answer, framed by an NFPA 70E warning. A warning, not a stop, so the
+ *     answer/citations/basis around it stay visible; `role="note"` and warning
+ *     colour keep it distinct from a hard stop without claiming the turn was
+ *     refused. Colour is never the only channel (glyph + bold lead-in state the
+ *     meaning) — industrial-hmi doctrine.
+ */
+export function SafetyNotice({ terminal = true }: { terminal?: boolean } = {}) {
+  if (!terminal) {
+    return (
+      <div
+        className="safety-notice safety-notice-directive"
+        data-testid="safety-notice"
+        data-variant="directive"
+        role="note"
+        aria-label="Energized-work safety directive"
+      >
+        <strong>⚠ Energized-work safety directive.</strong> This answer covers
+        work on or near energized equipment. De-energize and verify absence of
+        voltage where possible; if energized work is unavoidable, follow NFPA 70E
+        (risk assessment, PPE, permit) before proceeding.
+      </div>
+    );
+  }
   return (
     <div
       className="safety-notice"
       data-testid="safety-notice"
+      data-variant="stop"
       role="alert"
       aria-label="Safety stop"
     >

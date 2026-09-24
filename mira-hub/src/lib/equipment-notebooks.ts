@@ -1227,6 +1227,199 @@ export class NotebookNotFoundError extends Error {
   }
 }
 
+export type StoredNotebookTurn = {
+  id: string;
+  question: string;
+  answerStatus: "answered" | "insufficient_evidence" | "error";
+  answerText: string | null;
+  enabledSourceDocIds: string[];
+  evidence: unknown[];
+  model: string | null;
+  basis: string | null;
+};
+
+export type NotebookTurnRequestClaim =
+  | { status: "claimed"; claimToken: string }
+  | { status: "in_progress" }
+  | { status: "mismatch" }
+  | { status: "replay"; turn: StoredNotebookTurn };
+
+function storedNotebookTurn(row: Record<string, unknown>): StoredNotebookTurn {
+  return {
+    id: String(row.id),
+    question: String(row.question),
+    answerStatus: String(row.answer_status) as StoredNotebookTurn["answerStatus"],
+    answerText: row.answer_text == null ? null : String(row.answer_text),
+    enabledSourceDocIds: Array.isArray(row.enabled_source_doc_ids)
+      ? row.enabled_source_doc_ids.map(String)
+      : [],
+    evidence: Array.isArray(row.evidence) ? row.evidence : [],
+    model: row.model == null ? null : String(row.model),
+    basis: row.basis == null ? null : String(row.basis),
+  };
+}
+
+/**
+ * Atomically own one client-minted notebook request before retrieval or
+ * inference. The pending row is hidden from history until recordTurn completes
+ * it. A duplicate sees either `in_progress` or the exact terminal row to
+ * replay; it never runs a second provider/judge pass.
+ *
+ * A ten-minute abandoned lease is recoverable. Normal provider timeouts finish
+ * well inside that bound, so a live first request cannot be stolen; a crashed
+ * worker cannot strand the key forever.
+ */
+export async function claimNotebookTurnRequest(
+  tenantId: string,
+  notebookId: string,
+  request: {
+    ownerUserId: string;
+    clientRequestId: string;
+    question: string;
+    threadId?: string | null;
+    requestPayload?: unknown;
+  },
+): Promise<NotebookTurnRequestClaim> {
+  const owner = request.ownerUserId.trim();
+  if (!owner) throw new Error("claimNotebookTurnRequest requires ownerUserId (server-derived)");
+  const payload = JSON.stringify(request.requestPayload ?? null);
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `WITH candidate AS (
+         SELECT gen_random_uuid() AS token
+       ), owned_notebook AS (
+         SELECT id, tenant_id
+           FROM equipment_notebooks
+          WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), claimed AS (
+         INSERT INTO equipment_notebook_turns AS t
+           (notebook_id, tenant_id, question, answer_status, answer_text,
+            enabled_source_doc_ids, evidence, model, owner_user_id, thread_id,
+            client_request_id, client_request_state, client_request_started_at,
+            client_request_claim_token, client_request_payload)
+         SELECT nb.id, nb.tenant_id, $5, 'error', NULL,
+                '[]'::jsonb, '[]'::jsonb, NULL, $3, $6,
+                $4::uuid, 'pending', now(), candidate.token, $7::jsonb
+           FROM owned_notebook nb CROSS JOIN candidate
+         ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
+           WHERE client_request_id IS NOT NULL
+         DO UPDATE SET
+           client_request_state = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN 'pending' ELSE t.client_request_state END,
+           client_request_started_at = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN now() ELSE t.client_request_started_at END,
+           client_request_claim_token = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN (SELECT token FROM candidate) ELSE t.client_request_claim_token END,
+           client_request_payload = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN $7::jsonb ELSE t.client_request_payload END
+         RETURNING t.client_request_claim_token::text AS claim_token,
+                   t.client_request_state, t.client_request_payload,
+                   t.id::text, t.question, t.answer_status, t.answer_text,
+                   t.enabled_source_doc_ids, t.evidence, t.model, t.basis
+       )
+       SELECT CASE
+                WHEN claimed.question <> $5
+                  OR claimed.client_request_payload IS NULL
+                  OR claimed.client_request_payload <> $7::jsonb
+                  THEN 'mismatch'
+                WHEN claimed.claim_token = candidate.token::text THEN 'claimed'
+                WHEN claimed.client_request_state = 'complete' THEN 'replay'
+                ELSE 'in_progress'
+              END AS claim_status,
+              claimed.claim_token, claimed.id, claimed.question,
+              claimed.answer_status, claimed.answer_text,
+              claimed.enabled_source_doc_ids, claimed.evidence,
+              claimed.model, claimed.basis
+         FROM claimed CROSS JOIN candidate`,
+      [
+        notebookId,
+        tenantId,
+        owner,
+        request.clientRequestId,
+        request.question,
+        storedThreadId(request.threadId),
+        payload,
+      ],
+    );
+    const row = res.rows[0] as Record<string, unknown> | undefined;
+    if (!row) throw new NotebookNotFoundError(notebookId);
+    const status = String(row.claim_status);
+    if (status === "replay") return { status, turn: storedNotebookTurn(row) };
+    if (status === "claimed") return { status, claimToken: String(row.claim_token) };
+    if (status === "in_progress" || status === "mismatch") return { status };
+    throw new Error(`unexpected notebook request claim status: ${status}`);
+  });
+}
+
+/** Release a pending claim when the route returns a non-turn HTTP refusal. */
+export async function abandonNotebookTurnRequest(
+  tenantId: string,
+  notebookId: string,
+  ownerUserId: string,
+  clientRequestId: string | null,
+  claimToken: string | null,
+): Promise<void> {
+  if (!clientRequestId || !claimToken) return;
+  await withTenantContext(tenantId, async (c) => {
+    await c.query(
+      `DELETE FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid
+          AND client_request_state = 'pending'
+          AND client_request_claim_token = $5::uuid`,
+      [tenantId, notebookId, ownerUserId, clientRequestId, claimToken],
+    );
+  });
+}
+
 export async function recordTurn(
   tenantId: string,
   notebookId: string,
@@ -1242,6 +1435,10 @@ export async function recordTurn(
      *  Required so no code path can persist an ownerless turn by omission;
      *  ownerless rows exist only as pre-086 legacy history. */
     ownerUserId: string;
+    /** Client-minted UUID. Retries reuse it so one logical send writes one row. */
+    clientRequestId?: string | null;
+    /** Server-side execution lease returned by claimNotebookTurnRequest. */
+    claimToken?: string | null;
     /** 087 / THRD-0: conversation identity inside this notebook/project.
      *  Omitted/null/legacy preserves the pre-thread default conversation. */
     threadId?: string | null;
@@ -1255,24 +1452,74 @@ export async function recordTurn(
      *  (refusals, safety stops, errors). Never inferred client-side. */
     basis?: string | null;
   },
-): Promise<void> {
+): Promise<string | null> {
   const owner = (turn.ownerUserId ?? "").trim();
   if (!owner) throw new Error("recordTurn requires ownerUserId (server-derived)");
-  await withTenantContext(tenantId, async (c) => {
+  return withTenantContext(tenantId, async (c) => {
     // Atomic with tenant ownership: the row set is SELECTed from the notebook
     // itself, scoped to (id, tenant_id). A notebook id that is not this
     // tenant's yields zero rows — nothing is written, and we fail closed —
     // instead of a turn carrying the caller's tenant_id landing in a foreign
     // notebook (the hole the zero-source safety-stop path used to have).
     const res = await c.query(
-      `INSERT INTO equipment_notebook_turns
+      `WITH owned_notebook AS (
+         SELECT id, tenant_id
+           FROM equipment_notebooks
+          WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), completed_claim AS (
+       UPDATE equipment_notebook_turns t
+          SET question = $3,
+              answer_status = $4,
+              answer_text = $5,
+              enabled_source_doc_ids = $6::jsonb,
+              evidence = $7::jsonb,
+              model = $8,
+              equipment_entity_id = $9,
+              asset_uns_path = $10,
+              basis = $11,
+              thread_id = $13,
+              client_request_state = 'complete',
+              client_request_started_at = NULL,
+              client_request_claim_token = NULL
+         FROM owned_notebook nb
+        WHERE $15::uuid IS NOT NULL
+          AND t.notebook_id = nb.id
+          AND t.tenant_id = nb.tenant_id
+          AND t.owner_user_id = $12
+          AND t.client_request_id = $14::uuid
+          AND t.client_request_state = 'pending'
+          AND t.client_request_claim_token = $15::uuid
+       RETURNING t.id
+       ), inserted AS (
+       INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id)
-       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13
-         FROM equipment_notebooks nb
-        WHERE nb.id = $1::uuid AND nb.tenant_id = $2::uuid
-       RETURNING id`,
+          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id,
+          client_request_id, client_request_state, client_request_started_at,
+          client_request_claim_token)
+       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8,
+              $9, $10, $11, $12, $13, $14::uuid, 'complete', NULL, NULL
+         FROM owned_notebook nb
+        WHERE $15::uuid IS NULL
+       ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
+         WHERE client_request_id IS NOT NULL
+       DO NOTHING
+       RETURNING id
+       )
+       SELECT id FROM completed_claim
+       UNION ALL
+       SELECT id FROM inserted
+       UNION ALL
+       SELECT t.id
+         FROM equipment_notebook_turns t
+         JOIN owned_notebook nb
+           ON nb.id = t.notebook_id AND nb.tenant_id = t.tenant_id
+         WHERE $14::uuid IS NOT NULL
+           AND t.owner_user_id = $12
+           AND t.client_request_id = $14::uuid
+           AND t.client_request_state = 'complete'
+           AND $15::uuid IS NULL
+        LIMIT 1`,
       [
         notebookId,
         tenantId,
@@ -1287,9 +1534,15 @@ export async function recordTurn(
         turn.basis ?? null,
         owner,
         storedThreadId(turn.threadId),
+        turn.clientRequestId ?? null,
+        turn.claimToken ?? null,
       ],
     );
     if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
+    // Turn Flight Recorder (design §2): `mira.turn.row_id` / `persistence.turn_row_id`
+    // correlate a span/packet to this row. The INSERT/UPDATE already RETURNS id
+    // (see the CTE above) — this was previously discarded (Promise<void>).
+    return (res.rows[0]?.id as string | undefined) ?? null;
   });
 }
 
@@ -1412,8 +1665,9 @@ export async function listTurns(
       `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
            SELECT id::text AS id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
-             FROM equipment_notebook_turns
+            FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+              AND client_request_state = 'complete'
               AND ${ownerPredicate}
               ${threadPredicate}
             ORDER BY created_at DESC
@@ -1495,6 +1749,7 @@ export async function listThreads(
               bool_or(owner_user_id IS NULL) AS shared_legacy
          FROM equipment_notebook_turns
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND client_request_state = 'complete'
           AND ${ownerPredicate}
         GROUP BY thread_id
         ORDER BY updated_at DESC

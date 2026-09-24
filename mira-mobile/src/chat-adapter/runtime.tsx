@@ -50,7 +50,13 @@ function partToContent(part: MessagePart, citations: ChatCitation[]): TMLPart | 
     case "observation":
       return { type: "data-observation", data: part.entry as never };
     case "safety_notice":
-      return { type: "data-safety-notice", data: { trigger: part.trigger } as never };
+      // `terminal` drives the banner variant (hard stop vs #3893 non-terminal
+      // energized directive); chrome suppression already happened upstream in
+      // turns-to-parts. Absent → terminal (safe default).
+      return {
+        type: "data-safety-notice",
+        data: { trigger: part.trigger, terminal: part.terminal !== false } as never,
+      };
     case "basis":
       return { type: "data-basis", data: { basis: part.basis, label: part.label } as never };
     case "followups":

@@ -58,7 +58,7 @@ vi.mock("../../lib/native-pick", async (importOriginal) => {
 });
 
 import { NotebookScreen } from "../NotebookScreen";
-import { parseChatSse, type ChatTurn } from "../../lib/sse";
+import { ENERGIZED_ELECTRICAL_HAZARD, parseChatSse, type ChatTurn } from "../../lib/sse";
 
 const CITATION = {
   citationId: "1",
@@ -76,7 +76,11 @@ const PERSISTED_SAFETY = {
   question: "can I change the belt while it's running?",
   answerStatus: "answered",
   answerText: "Do not work on this equipment while energized. Apply LOTO first.",
-  evidence: [{ kind: "safety_notice", trigger: "loto" }, CITATION],
+  evidence: [
+    { kind: "safety_notice", trigger: "loto" },
+    { kind: "safety_stop", trigger: "loto" },
+    CITATION,
+  ],
   basis: "general_reasoning",
 };
 
@@ -162,7 +166,11 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "answered",
           answerText: "Do not work on this equipment while energized.",
-          evidence: [{ kind: "safety_notice", trigger: null }, CITATION],
+          evidence: [
+            { kind: "safety_notice", trigger: null },
+            { kind: "safety_stop", trigger: "loto" },
+            CITATION,
+          ],
           basis: "general_reasoning",
         },
       ]),
@@ -205,7 +213,10 @@ describe.each(SURFACES)("FLEET-003 mobile safety identity — %s", (_name, avail
           question: "can I open it live?",
           answerStatus: "error",
           answerText: "Do not work on this equipment while ener",
-          evidence: [{ kind: "safety_notice", trigger: "loto" }],
+          evidence: [
+            { kind: "safety_notice", trigger: "loto" },
+            { kind: "safety_stop", trigger: "loto" },
+          ],
           basis: null,
         },
       ]),
@@ -248,8 +259,8 @@ const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
  *  the exact shape that would ship citation chips on a hard stop if the guards
  *  were missing. */
 const LIVE_SAFETY = parseChatSse(
-  frame({ kind: "content", text: "Do not work on this while energized." }) +
-    frame({ kind: "safety", trigger: "arc flash" }) +
+  frame({ kind: "safety", trigger: "arc flash" }) +
+    frame({ kind: "content", text: "Do not work on this while energized." }) +
     frame({ kind: "sources", citations: [CITATION] }) +
     frame({ kind: "status", status: "answered" }),
 );
@@ -283,6 +294,38 @@ describe.each(SURFACES)("FLEET-003 live safety frame — %s", (_name, available)
     await waitFor(() => expect(screen.queryByText(/GS10 manual/)).toBeNull());
   });
 
+  it("a network failure after the safety marker keeps the STOP terminal and offers no Retry", async () => {
+    askNotebook.mockImplementation(async (_id: string, _msg: string, _scope: unknown, opts: {
+      onUpdate?: (t: ChatTurn) => void;
+    }) => {
+      opts.onUpdate?.({
+        answer: "",
+        citations: [CITATION],
+        status: "",
+        safetyTrigger: "arc flash",
+        evidenceBasis: "oem_documentation",
+        followups: ["Unsafe follow-up"],
+      });
+      throw new Error("network reset");
+    });
+    mount(available);
+
+    const input = (await screen.findByRole("textbox", {
+      name: "Ask a question",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "there is smoke" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(await screen.findByTestId("safety-notice")).toBeTruthy();
+    expect(screen.queryByText("Retry")).toBeNull();
+    expect(input.value).toBe("");
+    expect(screen.queryByText(/GS10 manual/)).toBeNull();
+    expect(screen.queryByText(/Grounded/i)).toBeNull();
+    expect(screen.queryByText("Unsafe follow-up")).toBeNull();
+  });
+
   it("an ordinary live answer keeps its citation chip and shows no banner", async () => {
     const normal = parseChatSse(
       frame({ kind: "content", text: "The overload trips at 115% FLA [1]." }) +
@@ -307,5 +350,51 @@ describe.each(SURFACES)("FLEET-003 live safety frame — %s", (_name, available)
 
     expect(await screen.findByText(/GS10 manual/)).toBeTruthy();
     expect(screen.queryByTestId("safety-notice")).toBeNull();
+  });
+
+  it("#3893: a live energized directive shows a NON-terminal warning AND keeps the cited answer", async () => {
+    // The Hub streams the directive on the EVIDENCE frame's `hazardEntries`,
+    // NEVER a `{kind:"safety"}` frame (pinned by the hub's
+    // chat-electrical-hazard-live-stream.test.ts). Unlike a hard stop this turn
+    // IS an answer: the banner is a warning (role="note"), and the citation chip
+    // survives — the exact chrome a hard stop suppresses.
+    const directive = parseChatSse(
+      frame({ kind: "content", content: "De-energize first, then verify absence of voltage [1]." }) +
+        frame({ kind: "sources", citations: [CITATION] }) +
+        frame({
+          kind: "evidence",
+          basis: "oem_documentation",
+          label: "From the manual",
+          hazardEntries: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }],
+        }) +
+        frame({ kind: "status", status: "answered" }),
+    );
+    // Fixture guard: the parser captured the directive, NOT a terminal stop.
+    expect(directive.safetyDirective).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    expect(directive.safetyTrigger).toBeUndefined();
+
+    askNotebook.mockImplementation(async (_id: string, _msg: string, _scope: unknown, opts: {
+      onUpdate?: (t: ChatTurn) => void;
+    }) => {
+      opts.onUpdate?.({ answer: "De-energize first", citations: [], status: "" });
+      return directive;
+    });
+    mount(available);
+
+    const input = (await screen.findByRole("textbox", {
+      name: "Ask a question",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "can I clamp-meter it live?" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    // The warning banner is present and is the NON-terminal directive variant
+    // (role="note"), NOT the hard-stop alert.
+    const banner = await screen.findByTestId("safety-notice");
+    expect(banner.getAttribute("data-variant")).toBe("directive");
+    expect(banner.getAttribute("role")).toBe("note");
+    // Success chrome is PRESERVED — the citation chip a hard stop would suppress.
+    expect(await screen.findByText(/GS10 manual/)).toBeTruthy();
   });
 });

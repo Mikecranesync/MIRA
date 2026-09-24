@@ -35,6 +35,14 @@ from pathlib import Path
 
 import yaml
 
+# Sibling module, imported by path rather than by package: `tools/` is not a
+# package and this script is run as `python3 tools/capability_closure.py` from
+# the repo root AND imported by tests from elsewhere. A bare import works only
+# in the first case, which is exactly the kind of "green on my machine" seam
+# this change exists to remove.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import evidence_provenance  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_REL = "docs/architecture/convergence/CAPABILITY_CLOSURE.yaml"
 CI_REL = ".github/workflows/ci.yml"
@@ -417,6 +425,13 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
         findings += check_evidence_paths_exist(cap, root)
         findings += check_production_has_rollback(cap)
         findings += check_review_not_expired(cap, today)
+
+    # Evidence provenance + observation proof. Kept in a sibling module because
+    # it is a distinct question ("can this observation be reproduced, and did
+    # its mechanism ever prove itself?") but wired in HERE so the registry keeps
+    # exactly one validator, one CI job and one exit code. A second entry point
+    # would be a second source of truth about closure.
+    findings += evidence_provenance.check_registry(registry, root)
 
     # A defect that is FILED and TRACKED is a different state from an unknown
     # one. `acknowledged_rules` marks findings that a named issue already

@@ -56,6 +56,40 @@ describe("toInteractionPart", () => {
     expect(mapped[9]).toEqual({ type: "unknown", raw: { kind: "future" } });
   });
 
+  // #3893/#3917, reproduced on a Pixel 9a against staging 2026-09-23: the Hub
+  // rides the energized-electrical DIRECTIVE on the evidence frame's
+  // hazardEntries and emits NO {kind:"safety"} frame, so turns-to-parts projects
+  // a NON-terminal safety_notice (`terminal:false`). This adapter collapsed both
+  // shapes to severity "stop", so the shipping unified surface showed
+  // "MIRA will not guide the unsafe step" directly above an answer that does
+  // guide the steps. mira-hub's own adapter already splits them
+  // (mira-hub/src/factorylm-ui/to-interaction.ts safetyNoticePart); mobile must
+  // project identically or the two shells disagree about what a turn MEANS.
+  it("splits the non-terminal energized directive from the terminal hard stop", () => {
+    const stop = toInteractionPart({ type: "safety_notice", trigger: "arc flash", terminal: true });
+    expect(stop).toMatchObject({ type: "safety_notice", notice: { severity: "stop" } });
+    expect((stop as { notice: { message: string } }).notice.message).toMatch(/^Stop\./);
+
+    const directive = toInteractionPart({
+      type: "safety_notice",
+      trigger: "energized-electrical-hazard",
+      terminal: false,
+    });
+    expect(directive).toMatchObject({ type: "safety_notice", notice: { severity: "warning" } });
+    const message = (directive as { notice: { message: string } }).notice.message;
+    expect(message).not.toMatch(/will not guide/);
+    expect(message).toMatch(/NFPA 70E/);
+  });
+
+  // An older projection has no `terminal` field at all. contract.ts fixes the
+  // safe default: treat it as terminal, preserving pre-#3893 behaviour.
+  it("treats a projection without `terminal` as a hard stop", () => {
+    expect(toInteractionPart({ type: "safety_notice", trigger: "loto" })).toMatchObject({
+      type: "safety_notice",
+      notice: { severity: "stop" },
+    });
+  });
+
   it("never over-claims a basis it cannot recognise", () => {
     expect(basisKind("general")).toBe("general_reasoning");
     expect(basisKind("something new")).toBe("general_reasoning");

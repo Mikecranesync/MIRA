@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #3732: nothing the app stores locally may leave the device. The session
+     cookie jar is plain SharedPreferences (Capacitor Preferences); the WebView
+     keeps its own cookie/database stores under files/ and databases/. API 31+
+     reads this file; older devices read backup_rules.xml. allowBackup="false"
+     in the manifest already disables both paths — these rules are the second
+     lock in case that attribute is ever flipped. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

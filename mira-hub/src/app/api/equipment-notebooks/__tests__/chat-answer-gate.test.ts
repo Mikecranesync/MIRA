@@ -23,6 +23,8 @@ import { NextRequest } from "next/server";
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
+const PHOTO = "44444444-4444-4444-8444-444444444444";
+const CAPTURED_AT = "2026-09-19T11:09:23.000Z";
 
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({
@@ -47,6 +49,11 @@ const domainMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
+const filesMock = vi.hoisted(() => ({
+  photoLinkedToTarget: vi.fn(async (): Promise<{ fileId: string; capturedAt: string } | null> => null),
+}));
+vi.mock("@/lib/workspace-files", () => filesMock);
+
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
@@ -55,7 +62,7 @@ const ragMock = vi.hoisted(() => ({
 vi.mock("@/lib/manual-rag", () => ragMock);
 
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }));
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
@@ -132,7 +139,7 @@ function lastTurn() {
     answerStatus: string;
     answerText: string | null;
     basis: string | null;
-    evidence: { kind?: string; trigger?: string }[];
+    evidence: Record<string, unknown>[];
   };
 }
 
@@ -147,6 +154,7 @@ beforeEach(() => {
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT_A, userId: "u1" } as never);
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
+  filesMock.photoLinkedToTarget.mockResolvedValue(null);
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -172,6 +180,9 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
 
     const safety = frames.find((f) => f.kind === "safety");
     expect(safety).toMatchObject({ trigger: "unsafe-answer:permits-energized" });
+    expect(frames.findIndex((f) => f.kind === "safety")).toBeLessThan(
+      frames.findIndex((f) => f.kind === "content"),
+    );
     expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
     expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
     expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
@@ -182,8 +193,52 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
     expect(turn.answerText).toBe(SAFETY_STOP);
     expect(turn.basis).toBeNull();
     expect(turn.evidence).toContainEqual({ kind: "safety_notice", trigger: "unsafe-answer:permits-energized" });
+    expect(turn.evidence).toContainEqual({ kind: "safety_stop", trigger: "unsafe-answer:permits-energized" });
     // The rejected candidate is stored NOWHERE.
     expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("permits resetting");
+  });
+
+  it("retains a verified photo when the output gate replaces an unsafe candidate", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        completingProvider(
+          "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
+        ),
+      ),
+    );
+
+    const res = await POST(
+      chatReq({
+        message: "Can I reset the E-12 fault while it's still on?",
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+    const frames = parseFrames(await res.text());
+
+    expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT_A, PHOTO, "equipment_notebook", NB);
+    expect(frames).toContainEqual({
+      kind: "evidence",
+      visualEvidence: {
+        kind: "visual_observation",
+        fileId: PHOTO,
+        capturedAt: CAPTURED_AT,
+        provenance: "phone_photo",
+      },
+    });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().evidence).toContainEqual({
+      kind: "visual_observation",
+      fileId: PHOTO,
+      capturedAt: CAPTURED_AT,
+      provenance: "phone_photo",
+    });
+    expect(lastTurn().basis).toBeNull();
   });
 });
 
@@ -450,6 +505,40 @@ describe("Semantic layer (#3793) through the real handler", () => {
     });
   }
   const hazardCandidate = "Crack the fitting a quarter turn to vent the hydraulic accumulator down before removal.";
+
+  it("persists a committed Safety STOP even when the client cancels during the semantic judge", async () => {
+    let releaseJudge!: (response: Response) => void;
+    let judgeStarted!: () => void;
+    const started = new Promise<void>((resolve) => { judgeStarted = resolve; });
+    const judge = new Promise<Response>((resolve) => { releaseJudge = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      const request = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (request.stream !== false) return completingProvider(hazardCandidate);
+      judgeStarted();
+      return judge;
+    }));
+
+    const res = await POST(
+      chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }),
+      params,
+    );
+    await started;
+    await res.body!.getReader().cancel();
+    releaseJudge(new Response(JSON.stringify({
+      choices: [{ message: { content: '{"verdict":"unsafe","hazard_class":"pressure","reason":"vents under load"}' } }],
+    }), { status: 200 }));
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn()).toMatchObject({
+      answerStatus: "answered",
+      answerText: SAFETY_STOP,
+      basis: null,
+    });
+    expect(lastTurn().evidence).toContainEqual({
+      kind: "safety_stop",
+      trigger: "unsafe-answer:semantic-pressure",
+    });
+  });
 
   it("an unsafe semantic verdict replaces the candidate with SAFETY_STOP, zero citations, basis NULL", async () => {
     vi.stubGlobal(

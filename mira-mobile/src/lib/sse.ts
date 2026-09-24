@@ -1,11 +1,22 @@
 // Pure SSE frame parser for the Hub chat endpoints. Actual wire order:
-// content* → sources → evidence → [usage] → status → [followups] → [DONE].
+// [safety] → content* → sources → evidence → [usage] → status → [followups] → [DONE].
 // One incremental parser (`createChatSseParser`) owns the frame semantics;
 // `parseChatSse` is the one-shot convenience over it, so a streamed turn
 // (STRM-1) and a buffered turn are byte-identical by construction.
 
 import { machineEvidenceEntries, type MachineEvidenceEntry } from "./replay";
 import { visualObservationEntries, type VisualObservationEntry } from "./sensor";
+
+/** The one NON-terminal safety trigger (byte-for-byte the mira-hub
+ *  `safety-classifier.ts` sentinel). The energized-electrical DIRECTIVE frames
+ *  a real, answered turn with an NFPA 70E warning, so — unlike every other
+ *  trigger — it must NOT hard-stop the turn (#3841/#3893). The Hub streams it
+ *  on the EVIDENCE frame's `hazardEntries`, never as a `{kind:"safety"}` frame,
+ *  precisely so a presence-based reader cannot mistake it for a stop; this
+ *  parser mirrors that split (see `safetyDirective` vs `safetyTrigger`). Kept
+ *  as a local literal, not a cross-package import, so the mobile bundle stays
+ *  self-contained. */
+export const ENERGIZED_ELECTRICAL_HAZARD = "energized-electrical-hazard";
 
 export interface ChatCitation {
   citationId: string;
@@ -30,6 +41,8 @@ export interface ChatTurn {
   answer: string;
   citations: ChatCitation[];
   status: string;
+  /** Optional technician-facing sentence supplied by the terminal frame. */
+  statusMessage?: string;
   /** Evidence basis (spec 1.3). Absent on older servers -> render nothing
    *  rather than guessing; an unlabelled answer must never be presented as
    *  grounded. */
@@ -53,6 +66,16 @@ export interface ChatTurn {
    *  frame was silently dropped, which erased the safety identity of the
    *  turn on every surface. Absent = no safety stop. */
   safetyTrigger?: string;
+  /** NON-terminal energized-electrical DIRECTIVE (#3841/#3893). The Hub rides
+   *  it on the `evidence` frame's `hazardEntries` as
+   *  `{kind:"safety_notice", trigger:ENERGIZED_ELECTRICAL_HAZARD}` — NEVER as a
+   *  `{kind:"safety"}` frame — because this turn IS answered: the NFPA 70E
+   *  warning frames a real answer, not an isolation refusal. Kept SEPARATE from
+   *  `safetyTrigger` so a consumer that treats any safety marker as terminal by
+   *  presence (this parser's own `{kind:"safety"}` path, the classic screen,
+   *  ChatV2) never mis-renders the directive as a hard stop. Absent = no
+   *  directive. The value is always `ENERGIZED_ELECTRICAL_HAZARD`. */
+  safetyDirective?: string;
   /** 086 §3: the server withheld the notebook's bound machine for this turn
    *  (the client's asset claim did not match the confirmed binding). Read off
    *  the `evidence` frame's `identityDisputed` field; absent = not disputed,
@@ -137,12 +160,14 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let answer = "";
   let citations: ChatCitation[] = [];
   let status = httpStatus === 200 ? "" : `http ${httpStatus}`;
+  let statusMessage: string | undefined;
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
   let machineEvidence: MachineEvidenceEntry[] | undefined;
   let visualEvidence: VisualObservationEntry[] | undefined;
   let safetyTrigger: string | undefined;
+  let safetyDirective: string | undefined;
   let identityDisputed: true | undefined;
   let unknownFrames: unknown[] | undefined;
   let sawStatus = false;
@@ -160,6 +185,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         citations = normalizeCitations(frame.citations);
       else if (frame.kind === "status") {
         status = String(frame.status ?? "");
+        statusMessage = typeof frame.message === "string" && frame.message.trim() ? frame.message : undefined;
         sawStatus = true;
       }
       else if (frame.kind === "followups") {
@@ -187,6 +213,25 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
         const visual = visualObservationEntries(carried);
         if (visual.length) visualEvidence = visual;
         if (frame.identityDisputed === true) identityDisputed = true;
+        // NON-terminal energized directive (#3841/#3893). The Hub rides it on
+        // THIS frame's `hazardEntries` as `{kind:"safety_notice", trigger}`,
+        // deliberately NOT as a `{kind:"safety"}` frame (see below). Read it
+        // into a SEPARATE field so it can never be treated as a hard stop by
+        // presence; only the exact ENERGIZED sentinel qualifies — any other
+        // trigger on this frame is ignored here and, if terminal, arrives on
+        // the `{kind:"safety"}` frame instead.
+        if (Array.isArray(frame.hazardEntries)) {
+          for (const raw of frame.hazardEntries) {
+            if (
+              typeof raw === "object" &&
+              raw !== null &&
+              (raw as Record<string, unknown>).kind === "safety_notice" &&
+              (raw as Record<string, unknown>).trigger === ENERGIZED_ELECTRICAL_HAZARD
+            ) {
+              safetyDirective = ENERGIZED_ELECTRICAL_HAZARD;
+            }
+          }
+        }
       } else if (frame.kind === "safety") {
         safetyTrigger = String(frame.trigger ?? "");
       } else if (frame.kind !== "usage") {
@@ -203,12 +248,14 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     answer,
     citations,
     status,
+    ...(statusMessage ? { statusMessage } : {}),
     evidenceBasis,
     evidenceLabel,
     followups,
     ...(machineEvidence ? { machineEvidence } : {}),
     ...(visualEvidence ? { visualEvidence } : {}),
     ...(safetyTrigger !== undefined ? { safetyTrigger } : {}),
+    ...(safetyDirective !== undefined ? { safetyDirective } : {}),
     ...(identityDisputed ? { identityDisputed } : {}),
     ...(unknownFrames ? { unknownFrames } : {}),
     // Present ONLY when the authoritative terminal frame never arrived.

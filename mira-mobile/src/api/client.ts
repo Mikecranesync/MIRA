@@ -11,8 +11,44 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { resolveApiBase } from "../plugins/build-config";
 
-export const API_BASE = "https://app.factorylm.com";
+// API_BASE is determined at runtime from the Android build flavor's BuildConfig
+// (production or staging) or, in a browser, the plugin's web implementation.
+// Initialized on first request. There is deliberately NO environment fallback:
+// if the flavor cannot be read, every request fails with a typed "network"
+// ApiError rather than silently talking to a different environment.
+let API_BASE: string | null = null;
+let apiBasePromise: Promise<string> | null = null;
+
+async function getApiBase(): Promise<string> {
+  if (API_BASE !== null) return API_BASE;
+  if (apiBasePromise !== null) return apiBasePromise;
+
+  apiBasePromise = resolveApiBase()
+    .then((apiBase) => {
+      API_BASE = apiBase;
+      return apiBase;
+    })
+    .catch((e: unknown) => {
+      // Fail closed. Reset so a later request can retry once the bridge is up.
+      apiBasePromise = null;
+      throw new ApiError(
+        "network",
+        null,
+        e instanceof Error ? e.message : "build configuration unavailable",
+      );
+    });
+
+  return apiBasePromise;
+}
+
+/** Test/diagnostic seam: forget the resolved origin so the next request re-resolves. */
+export function __resetApiBaseForTests(): void {
+  API_BASE = null;
+  apiBasePromise = null;
+}
+
 const JAR_KEY = "flm.cookiejar.v1";
 
 export type ApiErrorKind =
@@ -189,6 +225,7 @@ async function rawRequest(
   requestEpoch: number = localSessionEpoch,
 ): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const method = opts.method ?? "GET";
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -205,7 +242,7 @@ async function rawRequest(
 
   if (Capacitor.isNativePlatform()) {
     const res = await CapacitorHttp.request({
-      url: API_BASE + path,
+      url: apiBase + path,
       method,
       headers,
       data: dataBody,
@@ -272,6 +309,7 @@ async function uploadMultipartRequest(
   opts: { acceptStatuses?: number[] } = {},
 ): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = {};
@@ -281,7 +319,7 @@ async function uploadMultipartRequest(
   }
   let res: Response;
   try {
-    res = await fetch(native ? API_BASE + path : path, {
+    res = await fetch(native ? apiBase + path : path, {
       method: "POST",
       headers,
       body: form,
@@ -317,6 +355,8 @@ export function uploadMultipart(
 
 export interface StreamOpts {
   json: unknown;
+  /** Called after successful response headers arrive, before body reads. */
+  onResponseHeaders?: (headers: Headers) => void;
   /** Called with each raw body chunk as it arrives, in order. */
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;
@@ -343,10 +383,12 @@ export interface StreamOpts {
  *  origin and the session cookie to live in the WebView store — the Hub-side
  *  CORS + cookie prerequisite tracked in #3453 (hub-streaming lane). Until
  *  that lands, the UI must not advertise Stop on device: aborting the local
- *  read cannot cancel server work or truthfully persist a stopped turn. NOT
- *  retried — a chat turn is not idempotent. */
+ *  read cannot cancel server work or truthfully persist a stopped turn. The
+ *  transport does not auto-retry; UI Retry reuses the server-deduped client
+ *  request id. */
 async function requestStreamRequest(path: string, opts: StreamOpts): Promise<ApiResponse> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const native = Capacitor.isNativePlatform();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -367,7 +409,7 @@ async function requestStreamRequest(path: string, opts: StreamOpts): Promise<Api
   try {
     let res: Response;
     try {
-      res = await fetch(native ? API_BASE + path : path, {
+      res = await fetch(native ? apiBase + path : path, {
         method: "POST",
         headers,
         body: JSON.stringify(opts.json),
@@ -393,6 +435,7 @@ async function requestStreamRequest(path: string, opts: StreamOpts): Promise<Api
       }
       throw errorFromStatus(status, data);
     }
+    opts.onResponseHeaders?.(res.headers);
     const reader = res.body?.getReader();
     if (!reader) {
       // No stream support (old WebView): degrade to one chunk, same contract.
@@ -463,6 +506,7 @@ export async function requestBinary(
   opts: { timeoutMs?: number } = {},
 ): Promise<{ status: number; bytes: Uint8Array; contentType: string }> {
   await loadJar();
+  const apiBase = await getApiBase();
   const requestEpoch = localSessionEpoch;
   const headers: Record<string, string> = {};
   const cookies = cookieHeader();
@@ -472,7 +516,7 @@ export async function requestBinary(
     let res: Awaited<ReturnType<typeof CapacitorHttp.request>>;
     try {
       res = await CapacitorHttp.request({
-        url: API_BASE + path,
+        url: apiBase + path,
         method: "GET",
         headers,
         disableRedirects: true,

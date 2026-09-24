@@ -21,7 +21,19 @@ vi.mock("@/lib/equipment-notebooks", () => ({
 vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
   attachFileToTargets: vi.fn(),
+  sha256Hex: vi.fn(() => "photo-sha256"),
 }));
+vi.mock("@/lib/visual-evidence-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/visual-evidence-context")>();
+  return {
+    ...actual,
+    recordLookObservation: vi.fn(async () => ({
+      sessionId: "session-1",
+      evidenceId: "evidence-1",
+      observationId: "observation-1",
+    })),
+  };
+});
 vi.mock("@/lib/nameplate", () => ({
   isRecognizerConfigured: vi.fn(),
   fixtureSelected: vi.fn(),
@@ -31,13 +43,19 @@ vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/nameplate/passes")>();
   return { ...real, togetherVisionCall: vi.fn() };
 });
-// The raw DB pool must never be touched by this route (no knowledge_entries write).
+// The raw DB pool must never be touched by this route for product data (no
+// knowledge_entries write). The Turn Flight Recorder's ledger write is the one
+// legitimate side effect and is mocked here so the suite stays hermetic.
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn(), connect: vi.fn() } }));
+vi.mock("@/lib/inference/persist-usage", () => ({
+  persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "00000000-0000-4000-8000-000000000000" })),
+}));
 
 import { POST, INSPECTION_PROMPT } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, updateNotebook, markNameplateDocVerified } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
+import { recordLookObservation } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { togetherVisionCall } from "@/lib/nameplate/passes";
@@ -252,6 +270,53 @@ describe("dedup + linking", () => {
 });
 
 describe("observation contract (§4.1)", () => {
+  it("persists an empty structured hazard list for a healthy negation", async () => {
+    vi.mocked(togetherVisionCall).mockResolvedValue({
+      text: JSON.stringify({
+        observation: "No exposed wiring, guards in place, no burn marks.",
+        hazards: [],
+      }),
+      model: "vision-test",
+    });
+
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(recordLookObservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileId: FILE_ID,
+        text: "No exposed wiring, guards in place, no burn marks.",
+        hazards: [],
+      }),
+    );
+  });
+
+  it("persists only bounded server-produced hazards and ignores a client hazard field", async () => {
+    vi.mocked(togetherVisionCall).mockResolvedValue({
+      text: JSON.stringify({
+        observation: "Visible arcing at an uncovered terminal.",
+        hazards: [
+          { code: "arcing", confidence: 0.99 },
+          { code: "invented_by_provider", confidence: 1 },
+          { code: "exposed_conductor", confidence: 2 },
+        ],
+      }),
+      model: "vision-test",
+    });
+    const request = makeReq() as Request;
+    const form = await request.formData();
+    form.append("hazards", JSON.stringify([{ code: "fire", confidence: 1 }]));
+    const reqWithClientHazards = new Request(request.url, { method: "POST", body: form }) as never;
+
+    const res = await POST(reqWithClientHazards, makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(recordLookObservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileId: FILE_ID,
+        hazards: [{ code: "arcing", confidence: 0.99 }],
+      }),
+    );
+  });
+
   it("returns observation {text, capturedAt (server ISO), provenance 'phone_photo'} + attachment", async () => {
     const before = Date.now();
     armVision("Terminal block X1: all four spade connectors seated. Green RUN LED lit.", "MiniMaxAI/MiniMax-M3");
@@ -308,8 +373,14 @@ describe("observations are conversation context, not citable sources", () => {
     armVision("Burn mark visible on the lower-left terminal.");
     const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);
-    expect(pool.query).not.toHaveBeenCalled();
-    expect(pool.connect).not.toHaveBeenCalled();
+    // The observation is conversation context, never a citable source: no
+    // SQL touching knowledge_entries may run. (The Turn Flight Recorder's
+    // ledger row — decision_traces via persistTurnUsage — is mocked in this
+    // suite and is the one legitimate write this route makes.)
+    const sqlTexts = [...vi.mocked(pool.query).mock.calls, ...vi.mocked(pool.connect).mock.calls]
+      .map((c) => String((c as unknown[])[0] ?? ""))
+      .join("\n");
+    expect(sqlTexts).not.toMatch(/knowledge_entries/i);
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
     expect(updateNotebook).not.toHaveBeenCalled();
   });

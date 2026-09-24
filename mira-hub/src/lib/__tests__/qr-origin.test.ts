@@ -31,12 +31,20 @@ describe("printed QR origin", () => {
   });
 
   it("matches the origin the mobile scanner actually trusts", () => {
+    // Since #3938 the mobile trust origin is per FLAVOR: tags.ts resolves it
+    // at runtime from the native BuildConfig (fail-closed), and the PRODUCTION
+    // flavor's DEEP_LINK_HOST lives in build.gradle. A printed sticker is a
+    // production artifact, so that is the host it must match.
+    const gradle = read("mira-mobile/android/app/build.gradle");
+    const production = gradle.match(/production\s*\{([\s\S]*?)\n\s*\}\s*\n\s*staging\s*\{/);
+    expect(production, "production flavor block not found in mira-mobile/android/app/build.gradle").toBeTruthy();
+    const host = production![1].match(/buildConfigField\s+"String",\s*"DEEP_LINK_HOST",\s*'"([^"]+)"'/);
+    expect(host, "DEEP_LINK_HOST not found in the production flavor").toBeTruthy();
+    // tags.ts pins the protocol to https: for every flavor.
     const tags = read("mira-mobile/src/lib/tags.ts");
-    const m = tags.match(/TRUSTED_ORIGIN\s*=\s*\{\s*protocol:\s*"([^"]+)"\s*,\s*host:\s*"([^"]+)"/);
-    expect(m, "TRUSTED_ORIGIN not found in mira-mobile/src/lib/tags.ts").toBeTruthy();
-    const [, protocol, host] = m!;
+    expect(tags).toMatch(/TRUSTED_ORIGIN\s*=\s*\{\s*protocol:\s*"https:"/);
     // A sticker encoding anything else is refused by isTrustedDeepLink, silently.
-    expect(`${protocol}//${host}`).toBe(QR_CANONICAL_ORIGIN);
+    expect(`https://${host![1]}`).toBe(QR_CANONICAL_ORIGIN);
   });
 
   it("matches the base URL the PDF label producer hardcodes", () => {

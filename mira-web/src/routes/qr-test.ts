@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import { Client } from "@neondatabase/serverless";
 import { generatePng, scanUrlFor } from "../lib/qr-generate.js";
+import { hubOrigin } from "../capabilities/hub-origin.js";
 
 export const qrTest = new Hono();
 
@@ -232,7 +233,7 @@ ${cards.map((card) => `    <div class="qr-card">
   </div>
 
   <footer>
-    <a href="https://app.factorylm.com">MIRA by FactoryLM</a>
+    <a href="${hubOrigin()}">MIRA by FactoryLM</a>
     &nbsp;·&nbsp; ${escapeHtml(tenantName)}
     &nbsp;·&nbsp; ${cards.length} asset${cards.length !== 1 ? "s" : ""}
     &nbsp;·&nbsp; <a href="#" onclick="window.print();return false;">Print this page</a>

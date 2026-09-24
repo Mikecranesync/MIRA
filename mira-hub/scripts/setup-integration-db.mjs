@@ -26,7 +26,8 @@ const defaultMigrationFiles = [
   "072_hub_uploads_content_sha256.sql",
   // Equipment Notebook turns + ownership (086): the notebook lineage is
   // 073 → 081 (asset snapshot) → 084 (basis; FK to 027 namespace_direct_uploads)
-  // → 085 (provenance) → 086 (owner_user_id) → 087 (thread_id).
+  // → 085 (provenance) → 086 (owner_user_id) → 087 (thread_id)
+  // → 088 (request key) → 089 (pre-inference claim/replay lease).
   "027_namespace_direct_uploads.sql",
   "059_namespace_filing_cabinet.sql",
   "073_equipment_notebooks.sql",
@@ -36,6 +37,8 @@ const defaultMigrationFiles = [
   "085_notebook_source_canonical_provenance.sql",
   "086_notebook_turn_owner.sql",
   "087_notebook_thread_identity.sql",
+  "088_notebook_turn_idempotency.sql",
+  "089_notebook_turn_request_claim.sql",
   // Visual-evidence spine (ADR-0027 Phase 1) + the TEXT-tenant fix: visual_session,
   // evidence_item, observation, region_of_interest, visual_question, answer_claim.
   "063_visual_sessions.sql",
@@ -73,9 +76,21 @@ async function listSql(dir) {
 
 async function integrationMigrations() {
   const configured = process.env.MIRA_INTEGRATION_MIGRATIONS;
-  const files = configured
+  const base = configured
     ? configured.split(",").map((file) => file.trim()).filter(Boolean)
     : defaultMigrationFiles;
+
+  // ADDITIVE, on purpose. Overriding MIRA_INTEGRATION_MIGRATIONS replaces the
+  // default set, which then fails `smokeCheck()` — that check hardcodes tables
+  // (kg_entities, ai_suggestions, cmms_*) the default set creates. A suite that
+  // needs EXTRA schema on top of the standard integration database therefore
+  // appends here instead of replacing, so the smoke check keeps meaning what it
+  // says. Duplicates are harmless: `applySqlFile` is ledgered and idempotent.
+  const extra = (process.env.MIRA_INTEGRATION_EXTRA_MIGRATIONS ?? "")
+    .split(",")
+    .map((file) => file.trim())
+    .filter(Boolean);
+  const files = [...base, ...extra];
 
   return Promise.all(files.map(async (file) => {
     const fullPath = path.join(migrationsDir, file);
@@ -89,6 +104,24 @@ async function ensureBootstrap(client) {
   await client.query("CREATE EXTENSION IF NOT EXISTS ltree");
   await client.query("CREATE EXTENSION IF NOT EXISTS btree_gist");
   await client.query("DO $$ BEGIN CREATE ROLE factorylm_app NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$");
+  // Base-schema bootstrap gap (`.claude/rules/mira-hub-migrations.md` §8): this
+  // directory is an INCREMENTAL set layered on `001_saas_layer.sql` /
+  // `002_knowledge_base.sql`, which are no longer in the repo. Migration 032
+  // therefore references `troubleshooting_sessions(id)` that nothing here
+  // creates, so any integration schema including 032 cannot be built without
+  // this stub. Only the FK target is needed — 032 stores `session_id` and never
+  // reads a column off it. This is deliberately NOT a re-creation of the real
+  // table: it exists so the disposable database can be built at all.
+  await client.query(
+    "CREATE TABLE IF NOT EXISTS troubleshooting_sessions (id UUID PRIMARY KEY DEFAULT gen_random_uuid())",
+  );
+  // withTenantContext uses `SET LOCAL ROLE factorylm_app`. Disposable hosted
+  // Postgres users are not superusers, so creating the role is insufficient:
+  // the connection user must be a member before any RLS integration test can
+  // exercise application SQL.
+  await client.query(`DO $$ BEGIN
+    EXECUTE format('GRANT factorylm_app TO %I', current_user);
+  END $$`);
   await client.query("GRANT USAGE ON SCHEMA public TO factorylm_app");
   await client.query(`
     CREATE TABLE IF NOT EXISTS integration_schema_migrations (

@@ -14,6 +14,7 @@
  * quota.ts, blog-db.ts, connect.ts. No Client lifecycle management needed.
  */
 import { neon } from "@neondatabase/serverless";
+import { hubOrigin } from "../capabilities/hub-origin.js";
 
 function sql() {
   const url = process.env.NEON_DATABASE_URL;
@@ -75,7 +76,7 @@ export async function resolveAssetWithChannelConfig(
       a.atlas_asset_id,
       COALESCE(c.enabled_channels, ARRAY['openwebui', 'guest']) AS enabled_channels,
       c.telegram_bot_username,
-      COALESCE(c.openwebui_url, 'https://app.factorylm.com')   AS openwebui_url,
+      COALESCE(c.openwebui_url, ${hubOrigin()})                AS openwebui_url,
       COALESCE(c.allow_guest_reports, true)                     AS allow_guest_reports
     FROM asset_qr_tags a
     LEFT JOIN tenant_channel_config c ON c.tenant_id = a.tenant_id

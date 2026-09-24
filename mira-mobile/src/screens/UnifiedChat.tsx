@@ -258,26 +258,26 @@ export function UnifiedChat({
    * notebook the uploads run first and the resulting rider goes out with the
    * question on the host's existing send path.
    */
-  const onSend = useCallback((text: string, pending: readonly Attachment[]) => {
-    // Synchronous by design: Composer keeps both the draft and attachment chips
-    // when a host send throws. Waiting for compose() would clear the chips first
-    // and leave the technician unable to choose which photo should be sent.
+  const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // Keep chips available when the request exceeds the single-photo contract.
     assertSupportedAttachments(pending);
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
       handlers.onSend(questionForAttachments(text, pending));
       return;
     }
-    // Nothing held here and nothing carried from HOME: the plain, synchronous
-    // text send, unchanged. `hasCarried()` is what keeps the HOME handoff from
-    // being skipped — the composer's own pending list is empty in the notebook
-    // the handoff just opened, so a pending-only check sent the question and
-    // left the photo behind for the NEXT send.
-    if (pending.length === 0 && !attachments.hasCarried()) {
+    // Nothing held here, nothing carried from HOME, and not a retry: the plain,
+    // synchronous text send, unchanged. `hasCarried()` is what keeps the HOME
+    // handoff from being skipped — the composer's own pending list is empty in
+    // the notebook the handoff just opened, so a pending-only check sent the
+    // question and left the photo behind for the NEXT send. A failed send's
+    // retained bytes are deliberately NOT a reason to compose here (#3863):
+    // they ride only the explicit Try again below.
+    if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
       handlers.onSend(text);
       return;
     }
-    void attachments.compose(text, pending).then((composed) => {
+    void attachments.compose(text, pending, opts).then((composed) => {
       if (composed.failure) {
         // Do not send: a photo question with no photo would answer from nothing.
         dispatch({ type: "set-send-error", error: composed.failure });
@@ -318,9 +318,9 @@ export function UnifiedChat({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasCarried()) {
+          if (attachments.hasRetained() || attachments.hasCarried()) {
             dispatch({ type: "set-send-error", error: null });
-            onSend(state.draft, []);
+            onSend(state.draft, [], { retry: true });
             return;
           }
           handlers.onRetry?.();

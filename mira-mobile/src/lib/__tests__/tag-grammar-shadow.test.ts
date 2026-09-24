@@ -9,11 +9,30 @@
 //
 // Inputs: the full contract corpus + 5,000 deterministic fuzz strings
 // (seeded LCG, no Math.random — reproducible forever).
-import { describe, it, expect } from "vitest";
-import { extractAssetTag as mobileExtract, isTrustedDeepLink } from "../tags";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { extractAssetTag as mobileExtract, isTrustedDeepLink, initTagParser } from "../tags";
 // eslint-disable-next-line import/no-relative-packages — the point IS to run the real Hub code
 import { extractAssetTag as hubExtract } from "../../../../mira-hub/src/lib/scan-target";
 import corpus from "../../../../docs/contracts/asset-tag-grammar.json";
+
+// Mock BuildConfig to return production values for contract tests
+vi.mock("../../plugins/build-config", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../plugins/build-config")>();
+  return {
+    ...mod,
+    default: {
+      getApiBase: vi.fn(async () => ({ apiBase: "https://app.factorylm.com" })),
+      getDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+    },
+    resolveApiBase: vi.fn(async () => "https://app.factorylm.com"),
+    resolveDeepLinkConfig: vi.fn(async () => ({ host: "app.factorylm.com", scheme: "factorylm" })),
+  };
+});
+
+beforeEach(async () => {
+  // Initialize tag parser with production values before each test
+  await initTagParser();
+});
 
 function isAbsoluteUrl(s: string): boolean {
   return /^[a-z]+:\/\//i.test(s.trim());

@@ -26,6 +26,11 @@ vi.mock("@/lib/session", () => sessionMock);
 
 const domainMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
+  claimNotebookTurnRequest: vi.fn(async () => ({
+    status: "claimed" as const,
+    claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  })),
+  abandonNotebookTurnRequest: vi.fn(async () => undefined),
   recordTurn: vi.fn(async () => undefined),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({
@@ -136,7 +141,10 @@ beforeEach(() => {
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
 });
-afterEach(() => {
+afterEach(async () => {
+  // Usage persistence is deliberately scheduled after the response closes.
+  // Drain that task before the next test clears/reprograms the shared mock.
+  await new Promise((resolve) => setTimeout(resolve, 20));
   process.env = { ...ENV };
   vi.unstubAllGlobals();
 });
@@ -206,8 +214,44 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     // Only content frames ever reached the client — no sources/evidence/status.
     const kinds = parseFrames(received).map((f) => f.kind);
     expect(kinds.every((k) => k === "content")).toBe(true);
-    // Legacy path: no spend ledger write.
-    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    // Legacy path: the Turn Flight Recorder still writes ONE ledger row for
+    // the stopped turn (design §4: every completed path persists a packet),
+    // with UNKNOWN spend — null tokens/cost, routeReason 'legacy_cascade' —
+    // never a fabricated zero.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, usage, record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as Parameters<
+      typeof import("@/lib/inference/persist-usage").persistTurnUsage
+    >;
+    expect(usage.routeReason).toBe("legacy_cascade");
+    expect(usage.inputTokens).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
+    expect(record?.packet?.answer_gate?.decision).toBe("error");
+  });
+
+  it("releases a keyed request claim when persistence of the stopped turn fails", async () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const provider = hangingProvider(["DC bus "]);
+    vi.stubGlobal("fetch", vi.fn(async () => provider.res));
+    domainMock.recordTurn.mockRejectedValueOnce(new Error("write unavailable"));
+
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A], clientRequestId }),
+      params,
+    );
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(domainMock.abandonNotebookTurnRequest).toHaveBeenCalledWith(
+        TENANT_A,
+        NB,
+        "u1",
+        clientRequestId,
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      ),
+    );
   });
 
   it("an aborted request signal stops the turn the same way and records spend when the seam is on", async () => {
@@ -528,9 +572,9 @@ describe("ADR-0038 rule 7 — a disconnect after the commit point cannot reclass
   });
 
   it("a disconnect DURING persistence produces no second, contradicting write", async () => {
-    // `recordTurn` is awaited last. Holding it open puts the disconnect inside
-    // the persistence window — the narrowest place a compensating "actually it
-    // was stopped" write could be introduced by a later refactor.
+    // Terminal truth is persisted before the first response byte. Holding the
+    // write open and cancelling the reader proves a transport cancellation
+    // cannot create a compensating "actually it was stopped" write.
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     domainMock.recordTurn.mockImplementationOnce(async () => {
@@ -540,11 +584,12 @@ describe("ADR-0038 rule 7 — a disconnect after the commit point cannot reclass
     vi.stubGlobal("fetch", vi.fn(async () => completingProvider("DC bus undervoltage [1]")));
 
     const res = await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params);
-    const { reader } = await readUntil(res, (s) => s.includes('"kind":"status"'));
+    const reader = res.body!.getReader();
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
 
-    await reader.cancel(); // client gone while the write is still in flight
+    const cancelled = reader.cancel(); // client gone while the write is still in flight
     release();
+    await cancelled;
     await new Promise((r) => setTimeout(r, 50));
 
     expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
@@ -589,13 +634,9 @@ describe("ADR-0038 rule 7 — a disconnect after the commit point cannot reclass
  *
  * The behavioural tests above pin the OUTCOME, but they cannot catch the
  * refactor the rule actually forbids, and it is worth saying exactly why:
- * between the commit point and the write there is no `await`, so the write is
- * already in flight before any disconnect a black-box test can trigger has a
- * chance to land. Adding `answerStatus: clientAbort.signal.aborted ? "error"
- * : answerStatus` to the `recordTurn` call leaves every behavioural assertion
- * above GREEN (verified by mutation, 2026-09-01) while silently reintroducing
- * the bug: a technician's cited answer becomes "Stopped" on reload whenever
- * their connection happens to drop in the tail.
+ * between the commit point and the write there is no `await`, and no response
+ * byte is emitted until that write completes. A disconnect can close the
+ * controller, but it cannot prevent terminal truth from becoming replayable.
  *
  * So the guard is on the SHAPE of the tail, not on its timing. Two properties
  * make rule 7 true, and both are asserted here:
@@ -625,11 +666,11 @@ describe("ADR-0038 rule 7 — the commit-to-write tail stays atomic (source inva
   const ROUTE = fileURLToPath(new URL("../[id]/chat/route.ts", import.meta.url));
   const src = readFileSync(ROUTE, "utf8");
 
-  /** Commit point → the answered write. `rfind` semantics: the LAST detach is
-   *  the one on the answered path (the earlier one is inside the stop block),
-   *  and the LAST `recordTurn` is the answered write. */
-  const commit = src.lastIndexOf('req.signal?.removeEventListener("abort", onClientGone);');
-  const write = src.lastIndexOf("await recordTurn(");
+  /** Commit point → the answered write. Anchor on the named decision comment,
+   *  then take the detach and first write that follow it. */
+  const decision = src.indexOf("ADR-0038 rule 7 commit point");
+  const commit = src.indexOf('req.signal?.removeEventListener("abort", onClientGone);', decision);
+  const write = src.indexOf("await recordTurn(", commit);
   /** Commit point up to (not including) the write: the atomic window. */
   const tail = src.slice(commit, write);
   /** The write's own argument list. The abort signal must not appear HERE
@@ -640,9 +681,10 @@ describe("ADR-0038 rule 7 — the commit-to-write tail stays atomic (source inva
   it("finds both anchors (guards the guard — a rename must fail loudly, not silently pass)", () => {
     expect(commit).toBeGreaterThan(-1);
     expect(write).toBeGreaterThan(commit);
-    // Sanity: the slices really are the terminal block + the write, not empty.
-    expect(tail).toContain('kind: "status"');
-    expect(tail).toContain("[DONE]");
+    // Sanity: this is the terminal-decision block immediately before the write.
+    expect(tail).toContain("const answerStatus");
+    expect(tail).toContain("const evidenceFrame");
+    expect(tail).not.toContain("controller.enqueue");
     expect(writeCall.length).toBeGreaterThan(0);
   });
 

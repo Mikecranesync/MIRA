@@ -1,0 +1,190 @@
+name: Retrieval acceptance (staging)
+
+# The evidence/retrieval acceptance contract, run LIVE against the deployed
+# staging Hub — the loop that replaced "Mike tests on the phone and reports
+# what broke" (2026-09-22, MIRA #3939 / #3943–#3945).
+#
+#   change → merge → deploy-staging → THIS → traces → PASS/FAIL
+#
+# Six scenarios (tools/qa/retrieval_acceptance.py) drive the exact mobile
+# request shapes, read every turn's durable Turn Evidence Packet through the
+# diagnostics endpoint, and assert the contract as machine checks. Every row
+# carries its Langfuse trace id; the JSON artifact is uploaded on every run so a
+# failure is one trace open away. Staging only — the script refuses a
+# production base URL.
+#
+# Runs automatically after a successful "Deploy to Staging VPS", and on demand.
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Staging VPS"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Hub base URL (staging only)"
+        required: false
+        default: "https://app-staging.factorylm.com"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retrieval-acceptance-staging
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Six live scenarios against staging
+    # Only after a SUCCESSFUL deploy (a failed deploy has nothing to accept).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
+    timeout-minutes: 30
+    env:
+      ACCEPT_BASE: ${{ inputs.base || 'https://app-staging.factorylm.com' }}
+    steps:
+      - name: Refuse anything that is not staging
+        run: |
+          case "$ACCEPT_BASE" in
+            https://app-staging.factorylm.com|https://app-staging.factorylm.com/) ;;
+            *) echo "::error::acceptance runs against staging only (got $ACCEPT_BASE)"; exit 1 ;;
+          esac
+
+      # The acceptance contract belongs to the tree that is RUNNING, not to the
+      # default branch. `workflow_run` checks out the DEFAULT branch, so a green
+      # deploy of a non-main RC was audited by main's script — and failed on a
+      # difference that was not a defect (2026-09-23: main asserted a `grounded`
+      # prompt against a deploy that legitimately reports `augmented`).
+      # Read the SHA off the deployment itself and audit THAT tree.
+      - name: Resolve the SHA actually deployed to staging
+        id: deployed
+        run: |
+          body="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/")" || {
+            echo "::error::cannot read $ACCEPT_BASE/api/health/ — refusing to accept an unidentified deploy"
+            exit 1
+          }
+          sha="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')"
+          case "$sha" in
+            ????????????????????????????????????????) ;;
+            *) echo "::error::health reported no full 40-char gitSha (got \"$sha\") — cannot pin the audit"; exit 1 ;;
+          esac
+          case "$sha" in
+            *[!0-9a-f]*) echo "::error::gitSha is not hexadecimal: $sha"; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "staging is running $sha — auditing that tree" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.deployed.outputs.sha }}
+
+      - name: The deployed tree must carry the harness it is audited by
+        run: |
+          test -f tools/qa/retrieval_acceptance.py || {
+            echo "::error::${{ steps.deployed.outputs.sha }} has no tools/qa/retrieval_acceptance.py — that deploy predates the acceptance contract"
+            exit 1
+          }
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Install mira-hub deps (provisioner only)
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      # A throwaway stranger on staging: register → tenant → next-auth cookie.
+      # Same provisioner the beta gate uses; the cookie never leaves this job.
+      - name: Provision a stranger session on staging
+        id: provision
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          HUB_BASE: ${{ env.ACCEPT_BASE }}
+        run: |
+          ( cd mira-hub && doppler run --project factorylm --config stg -- bun run scripts/provision-beta-gate.ts ) > /tmp/env.out 2>/tmp/provision.err || {
+            echo "::error::stranger provisioning failed"; sed -E 's/(cookie|token|secret)[^ ]*/[redacted]/Ig' /tmp/provision.err | tail -20; exit 1; }
+          grep '^ENV:BETA_GATE_TENANT=' /tmp/env.out | sed 's/^ENV://' >> "$GITHUB_OUTPUT"
+          grep '^ENV:BETA_GATE_COOKIE=' /tmp/env.out | sed 's/^ENV:BETA_GATE_COOKIE=/ACCEPT_COOKIE=/' >> "$GITHUB_ENV"
+          echo "::add-mask::$(grep '^ENV:BETA_GATE_COOKIE=' /tmp/env.out | sed 's/^ENV:BETA_GATE_COOKIE=//')"
+
+      - name: Run the six scenarios
+        id: run
+        run: |
+          python3 tools/qa/retrieval_acceptance.py \
+            --photo docs/proofs/2026-09-22-pixel9a-staging-session/turn2-photo-siemens-tp700-nameplate.jpg \
+            --manual tools/demo-3tag-plc-vfd-conveyor.pdf \
+            --out /tmp/retrieval-acceptance.json --verbose
+
+      # Capture acceptance runs BESIDE the retrieval scenarios, on the same
+      # provisioned stranger and the same pinned SHA. It answers a different
+      # question - not "was the answer right" but "is every attempt accounted
+      # for" - and a deploy that silently stopped recording turns would pass the
+      # six scenarios while failing this. Unit tests cannot cover it: the defects
+      # it found (a rejected upload with no client id, a 5xx filed as a
+      # pre-accept rejection, four accepted turns reported as never-accepted)
+      # were each only visible against a live deployment.
+      - name: Provision a notebook for capture acceptance
+        id: capnb
+        run: |
+          # The audited tree is the DEPLOYED one (see the SHA-pin above), so a
+          # deploy that predates this harness genuinely does not contain it.
+          # Skip LOUDLY rather than fail: the step is meaningless against a build
+          # that never shipped it, and silently passing would be worse than both.
+          if [ ! -f tools/qa/make_notebook.py ] || [ ! -f tools/qa/capture_acceptance.py ]; then
+            echo "::notice::deployed SHA ${{ steps.deployed.outputs.sha }} predates capture acceptance — skipping (not a pass)"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 tools/qa/make_notebook.py >> "$GITHUB_OUTPUT"
+
+      - name: Capture acceptance - every attempt accounted for
+        if: steps.capnb.outputs.skipped != 'true'
+        run: |
+          python3 tools/qa/capture_acceptance.py \
+            --notebook "${{ steps.capnb.outputs.notebook }}" \
+            --photo docs/proofs/2026-09-22-pixel9a-staging-session/turn1-photo-bearing-box-label.jpg \
+            --out /tmp/capture-acceptance.json
+
+      - name: Upload the capture-acceptance artifact
+        if: always() && steps.capnb.outputs.skipped != 'true' 
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-acceptance-${{ github.run_id }}
+          path: /tmp/capture-acceptance.json
+          retention-days: 30
+
+      # A SHA is a contract: re-confirm it at VERDICT time, not only at start.
+      # A deploy that lands mid-run means this verdict describes a tree that is
+      # no longer serving, which is worse than no verdict at all.
+      - name: The deploy must not have moved under the audit
+        if: always()
+        run: |
+          now="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/" \
+                 | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')" || {
+            echo "::warning::could not re-read health at verdict time"; exit 0; }
+          if [ "$now" != "${{ steps.deployed.outputs.sha }}" ]; then
+            echo "::error::staging moved ${{ steps.deployed.outputs.sha }} -> $now during the run; this verdict is SUPERSEDED"
+            exit 1
+          fi
+          echo "verdict pinned to $now" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence artifact (trace ids + packets, no content)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-acceptance-${{ github.run_id }}
+          path: /tmp/retrieval-acceptance.json
+          retention-days: 30
+
+      - name: Sweep the stranger's auth rows
+        if: always() && steps.provision.outputs.BETA_GATE_TENANT != ''
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          ( cd mira-hub && doppler run --project factorylm --config stg -- bun run scripts/provision-beta-gate.ts --cleanup "${{ steps.provision.outputs.BETA_GATE_TENANT }}" ) || echo "::warning::stranger sweep failed — rows remain on staging (harmless)"

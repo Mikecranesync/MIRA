@@ -382,6 +382,45 @@ const FABRICATED_DOC_PATTERNS: readonly { readonly id: string; readonly re: RegE
 const EXACT_SETTING_RE =
   /(?:^|[.!?:;]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|now\s+|next\s+|first\s+)?(?:set|adjust|torque|tighten|calibrate|dial)\b[^.!?\n]{0,60}?\bto\s+\d[\d.,]*\s*(?:bar|psi|kpa|mpa|n·?m|nm|ft[-·\s]?lbs?|volts?|amps?|hz|rpm|°\s?[cf]|celsius|fahrenheit|mm|degrees)\b|\bshould\s+be\s+(?:set|adjusted|torqued|calibrated)\s+to\s+\d[\d.,]*\s*\w/im;
 
+// 2026-09-22 staging traces (952036aa…, 8906786b…, ae30230b…): the general
+// lane stated this machine's exact RATINGS as fact with nothing behind them —
+// "operating range is –20 °C to +60 °C", "width 2.5 in", "IP65 front face,
+// 0…+50 °C" — and the answer gate recorded evidence_sufficient=false while
+// still serving. EXACT_SETTING_RE only catches the imperative shape ("set …
+// to N units"). This catches the DECLARATIVE shape: an equipment quantity
+// asserted with an exact unit-bearing value (or range). It applies only when
+// the turn has NO evidence (no chunks, no machine packet, no photo
+// observation) — with a photo in context the nameplate is the evidence.
+// Hedged / generic phrasing ("typically", "often", "many", "for example",
+// "industrial HMIs generally") is not an assertion about this machine and is
+// left alone; the user's own numbers ("it says 480V on the label") are not
+// rated-claims either.
+const UNIT =
+  "(?:v(?:olts?|dc|ac)?|a(?:mps?|mperes?)?|hz|rpm|bar|psi|k?pa|mpa|n[·.]?m|ft[-·\\s]?lbs?|°\\s?[cf]|celsius|fahrenheit|mm|cm|in(?:ch(?:es)?)?|kw|hp|ma|kv|ohms?|ω)";
+const NUM = "[-–+]?\\d[\\d.,]*";
+const RANGE = `${NUM}\\s*(?:°\\s?[cf]\\s*)?(?:to|[-–…]|and)\\s*${NUM}`;
+const QTY =
+  "(?:rated|rating|ratings|range|maximum|minimum|max|min|nominal|operating|supply|input|output|limit|limits|spec|specification|tolerance|clearance|torque|pressure|voltage|current|speed|temperature|frequency|power|capacity|width|height|length|depth|weight|diameter|thickness|gap|setting|setpoint)";
+const HEDGE =
+  /\b(?:typically|usually|often|generally|commonly|normally|for example|e\.g\.|such as|many|most|some|industrial|standard|common|might|may|could|would|should|approximately|around|about|roughly|likely)\b/i;
+const EXACT_RATING_RE = new RegExp(
+  `\\b${QTY}\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*${UNIT}\\b|\\b(?:${RANGE}|${NUM})\\s*${UNIT}\\b[^.!?\\n]{0,40}?\\b(?:rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
+  "i",
+);
+
+/** A sentence-level scan: the rating claim must live in a sentence that is not
+ *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
+ *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
+export function unsupportedExactRating(text: string): string | null {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!sentence.trim()) continue;
+    if (HEDGE.test(sentence)) continue;
+    const m = EXACT_RATING_RE.exec(sentence);
+    if (m) return m[0].slice(0, 160);
+  }
+  return null;
+}
+
 // Fault-code-shaped token: letter prefix, optional separator, 2+ digits,
 // optional suffix — Q-447-Delta, ZX-9987, F0000000, E-12. Deliberately does
 // NOT match bare numbers, voltages (480V), thread sizes (M8), or model names
@@ -476,8 +515,13 @@ export function validateAnswer(opts: {
   general: boolean;
   served: boolean;
   refused: boolean;
+  /** Does anything back this turn — retrieved chunks, a machine packet, or a
+   *  photo observation (current or prior) in context? Defaults to true so
+   *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
+  evidenceSufficient?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
+  const evidenceSufficient = opts.evidenceSufficient ?? true;
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -553,6 +597,19 @@ export function validateAnswer(opts: {
       detail: es[0].slice(0, 160),
       replacement: specificityFallback(null),
     };
+  }
+
+  if (!evidenceSufficient) {
+    const er = unsupportedExactRating(scanText);
+    if (er) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:exact-rating",
+        detail: er,
+        replacement: specificityFallback(null),
+      };
+    }
   }
 
   const cm = codeMeaningViolation(scanText, question);

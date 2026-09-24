@@ -87,29 +87,6 @@ describe("unified attachments controller", () => {
     });
   });
 
-  it("fails closed when the photo was saved but LOOK returned no observation", async () => {
-    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
-    api.lookAtPhoto.mockResolvedValue({
-      fileId: "file-9",
-      observation: null,
-      reason: "provider_error",
-      message: "Could not describe the photo. The photo has been saved to this notebook.",
-    });
-    const get = mount("nb-1");
-
-    let a: Attachment | null = null;
-    await act(async () => { a = await get().attachPhoto(); });
-    let composed;
-    await act(async () => { composed = await get().compose("what is in this box", [a as Attachment]); });
-
-    expect(composed).toMatchObject({
-      question: "what is in this box",
-      failure: expect.stringMatching(/photo was saved, but MIRA couldn't analyze it/i),
-    });
-    expect(composed).not.toHaveProperty("rider.visualEvidence");
-    expect(get().hasCarried()).toBe(true);
-  });
-
   it("refuses to send a photo question when the photo did not upload", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockResolvedValue({ fileId: null });
@@ -191,12 +168,34 @@ describe("unified attachments controller", () => {
     expect(first).toMatchObject({ failure: expect.stringContaining("didn't upload") });
 
     // The controller still owns the bytes, so the retry can re-upload them.
-    expect(get().hasCarried()).toBe(true);
+    expect(get().hasRetained()).toBe(true);
 
     let second;
-    await act(async () => { second = await get().compose("what is this", []); });
+    await act(async () => { second = await get().compose("what is this", [], { retry: true }); });
     expect(api.lookAtPhoto).toHaveBeenCalledTimes(2);
     expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-retry" } } });
+  });
+
+  // #3863: retained bytes are for Try again ONLY. A plain compose — the next
+  // question after the technician dismissed the error — must not upload them
+  // or attach a rider; that photo belongs to a turn that never happened.
+  it("does not fold a retained failed attachment into a plain compose (#3863)", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValueOnce({ fileId: null })
+      .mockResolvedValue({ fileId: "file-unexpected", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    await act(async () => { await get().compose("what is this", [a as Attachment]); });
+    expect(get().hasRetained()).toBe(true);
+    // The HOME handoff is a different thing and must stay untouched by a failure.
+    expect(get().hasCarried()).toBe(false);
+
+    let plain;
+    await act(async () => { plain = await get().compose("what is P06.01", []); });
+    expect(plain).toEqual({ question: "what is P06.01" });
+    expect(api.lookAtPhoto).toHaveBeenCalledTimes(1);
   });
 
   // Same guarantee when the upload THROWS rather than returning no fileId.
@@ -215,10 +214,38 @@ describe("unified attachments controller", () => {
       await get().compose("what is this", [a as Attachment]).catch(() => undefined);
     });
 
-    expect(get().hasCarried()).toBe(true);
+    expect(get().hasRetained()).toBe(true);
     let second;
-    await act(async () => { second = await get().compose("what is this", []); });
+    await act(async () => { second = await get().compose("what is this", [], { retry: true }); });
     expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-thrown" } } });
+  });
+
+
+  // A photo that PARKED but was never analysed must not be asked about. The
+  // server returns the saved file with `observation: null` on a vision-provider
+  // failure (502) or an unconfigured recognizer (503) — real paths, not
+  // exceptions (see lookAtPhoto in src/api/resources.ts). Sending anyway asks
+  // "what am I looking at" about a picture nothing has read, which is the same
+  // "answer from nothing while looking grounded" failure the fileId check
+  // prevents. Ported from the legacy surface (#3837) onto the surface the app
+  // actually renders.
+  it("refuses to ask about a photo the server could not analyze", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValue({ fileId: "parked-1", observation: null });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    let composed;
+    await act(async () => { composed = await get().compose("what is in this box", [a as Attachment]); });
+
+    expect(composed).toMatchObject({ failure: expect.stringContaining("couldn't analyze") });
+    expect(composed).not.toHaveProperty("rider");
+    // Held for another attempt, exactly like the other failure paths.
+    // Since #3864 a failed send retains its bytes in `retained` (armed only for
+    // Try again), never in `carried` (which rides the next send by design).
+    expect(get().hasRetained()).toBe(true);
+    expect(get().hasCarried()).toBe(false);
   });
 
 });

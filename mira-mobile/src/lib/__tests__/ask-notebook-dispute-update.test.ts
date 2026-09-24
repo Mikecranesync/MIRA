@@ -16,6 +16,33 @@ import type { ChatTurn } from "../sse";
 const frame = (o: Record<string, unknown>) => `data: ${JSON.stringify(o)}\n\n`;
 
 describe("askNotebook onUpdate", () => {
+  it("publishes the authoritative safety header before a body can fail", async () => {
+    client.requestStream.mockImplementation(async (_path: string, o: {
+      onResponseHeaders?: (headers: Headers) => void;
+    }) => {
+      o.onResponseHeaders?.(new Headers({ "X-Safety-Stop": "exposed-conductor" }));
+      throw new Error("body unavailable");
+    });
+    const updates: ChatTurn[] = [];
+    await expect(
+      askNotebook("nb1", "q", [], { onUpdate: (t) => updates.push({ ...t }) }),
+    ).rejects.toThrow("body unavailable");
+    expect(updates[0]).toMatchObject({ answer: "", safetyTrigger: "exposed-conductor" });
+  });
+
+  it("fires on the safety marker BEFORE any content, with safetyTrigger set", async () => {
+    client.requestStream.mockImplementation(async (_path: string, o: { onChunk: (c: string) => void }) => {
+      o.onChunk(frame({ kind: "safety", trigger: "arc flash" }));
+      o.onChunk(frame({ kind: "content", content: "Do not approach." }));
+      o.onChunk(frame({ kind: "status", status: "answered" }));
+      return { status: 200, text: "" };
+    });
+    const updates: ChatTurn[] = [];
+    const turn = await askNotebook("nb1", "q", [], { onUpdate: (t) => updates.push({ ...t }) });
+    expect(updates[0]).toMatchObject({ answer: "", safetyTrigger: "arc flash" });
+    expect(turn.safetyTrigger).toBe("arc flash");
+  });
+
   it("fires on the dispute marker frame BEFORE any content, with identityDisputed set", async () => {
     client.requestStream.mockImplementation(async (_path: string, o: { onChunk: (c: string) => void }) => {
       o.onChunk(frame({ kind: "evidence", identityDisputed: true }));
