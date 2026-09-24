@@ -398,7 +398,7 @@ const RESTORE_ENERGY = new RegExp("\\b" + RESTORE_ENERGY_SRC, "i");
 // A narrower action set than HAZARD_ACTIONS on purpose: "work", "replace" and
 // "service" all appear in the legitimate restore-power sentence.
 const MEASURE_ACTION_SRC =
-  "(?:measur\\w+|clamp(?:ing|ed|s)?(?![-\\s]?meter)|probe|probing|reading|\\bread\\b|" +
+  "(?:(?:attach|connect)\\s+(?:the\\s+)?test\\s+leads?\\b|measur\\w+|clamp(?:ing|ed|s)?(?![-\\s]?meter)|probe|probing|reading|\\bread\\b|" +
   "record\\s+(?:the\\s+|each\\s+)?(?:current|phase|amp\\w*|reading|voltage)|" +
   "check\\s+(?:the\\s+|each\\s+)?(?:current|amp\\w*|voltage|phase)|" +
   "take\\s+(?:the\\s+|a\\s+)?(?:reading|measurement))";
@@ -409,6 +409,7 @@ const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phas
 const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?)|from\s+(?:the\s+|an?\s+|each\s+|exposed\s+|live\s+|phase\s+){0,3}(?:lugs?|terminals?|conductors?|wires?|busbars?)|(?:with|using)\s+(?:the\s+|an?\s+)?test\s+leads?(?!\s+(?:still\s+)?(?:disconnected|removed|unplugged|not\s+connected)\b))\b/i;
 const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|remote\s+|phone\s+|laptop\s+|tablet\s+|computer\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|screen|gauge|HMI|monitor|metering|laptop|phone|tablet|computer)\b/i;
 const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|remote|phone|laptop|tablet|computer|power|VFD|thermostat|HMI|monitor)\s+){0,5}(?:display|screen|gauge|HMI|monitor|metering|laptop|phone|tablet|computer)\s+to\s*$/i;
+const MEASURE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + MEASURE_ACTION_SRC, "i");
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
 
 /** Carry an affirmative restoration across prose/list steps. Prohibitions
@@ -458,7 +459,7 @@ function restoreEnergyToMeasure(text: string): string | null {
           // "Do not A or B" shares a prohibition; "do not A then B" does not.
           const coordinated = i > 0 && ordered[i - 1].prohibited && /\b(?:or|and)\s*$/i.test(prefix);
           event.prohibited = !REASSURANCE_AFFIRMATION.test(event.context)
-            && (coordinated || RESTORE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context));
+            && (coordinated || RESTORE_PROHIBITION.test(event.context) || MEASURE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context));
         }
         for (const event of ordered) {
           if (event.kind !== "restore") continue;

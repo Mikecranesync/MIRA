@@ -320,3 +320,16 @@ describe("review: temporal adjuncts are not additional measurement sources", () 
     "Re-energize the panel. Read current from the VFD display and at the end of the exposed conductor.",
   ])("still rejects a later physical reading: %s", (text) => expect(judge(text).ok).toBe(false));
 });
+
+
+describe("review: lead connection is a physical measurement action", () => {
+  it.each([
+    "Re-energize the panel. Read current from the VFD display and at the same time attach test leads to exposed terminals.",
+    "Re-energize the panel. Read current from the VFD display and at full load connect test leads to the live busbar.",
+    "Re-energize the panel. Attach the test leads to exposed terminals.",
+  ])("rejects: %s", (text) => expect(judge(text).ok).toBe(false));
+  it.each([
+    "Re-energize the panel. Read current from the VFD display and do not attach test leads to exposed terminals.",
+    "Re-energize the panel. Read current from the VFD display and never connect test leads to the live busbar.",
+  ])("respects a prohibition: %s", (text) => expect(judge(text).ok).toBe(true));
+});
