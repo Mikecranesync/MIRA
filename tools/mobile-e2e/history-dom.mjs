@@ -48,6 +48,10 @@ try {
       document.querySelector('[data-testid="unified-root"][data-notebook-id]')?.getAttribute("data-notebook-id") ?? null));
     await touch('button[aria-label="Open navigation"]');
     await touch(`[data-item-id="sources-${notebookId}"]`);
+    await until(() => c.evaluate(() => [...document.querySelectorAll('button')].some((button) => {
+      const box = button.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && button.textContent?.includes("Upload a PDF manual");
+    })));
     process.stdout.write(JSON.stringify({ notebookId }));
   } else if (action === "restore") {
     await until(() => c.evaluate(() => Boolean(document.querySelector('[data-testid="unified-home"]'))));
