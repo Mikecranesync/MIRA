@@ -497,7 +497,14 @@ function restoreEnergyToMeasure(text: string): string | null {
             ? externalSource?.index === source.index
             : EXTERNAL_READING_INTRO.test(readingPrefix)
               || (index === 0 && EXTERNAL_READING.test(carriedSource + " " + readingPrefix));
-          if (!CONTACT_MEASUREMENT.test(action) && readsDisplay) continue;
+          // A single verb can name two reading sources. Both must be external;
+          // "from the display and at exposed test points" is still live work.
+          const coordinatedSources = [...readingBody.matchAll(/\b(?:and|or)\s+((?:from|off|on|via|at|across|around)\b)/gi)];
+          const allSourcesExternal = coordinatedSources.every((match) => {
+            const sourceStart = match.index! + match[0].length - match[1].length;
+            return EXTERNAL_READING.exec(readingBody.slice(sourceStart))?.index === 0;
+          });
+          if (!CONTACT_MEASUREMENT.test(action) && readsDisplay && allSourcesExternal) continue;
           if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
             return restored === sentence ? sentence : `${restored}\n${sentence}`;
           }

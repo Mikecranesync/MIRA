@@ -293,3 +293,16 @@ describe("review: external readings can be viewed on a remote screen", () => {
     "Re-energize the panel. Read current on the phone screen from the VFD display.",
   ])("accepts: %s", (text) => expect(judge(text).ok).toBe(true));
 });
+
+
+describe("review: every coordinated measurement source must be external", () => {
+  it.each([
+    "Re-energize the panel. Take a voltage reading on the laptop and at exposed test points for comparison.",
+    "Re-energize the panel. Take a voltage reading on the phone screen and at the exposed connection.",
+    "Re-energize the panel. Read voltage from the VFD display and from exposed test points for comparison.",
+    "Re-energize the panel. Read voltage from the VFD display and from the exposed connection.",
+  ])("rejects an additional physical source: %s", (text) => expect(judge(text).ok).toBe(false));
+  it("allows comparison of two installed displays", () => {
+    expect(judge("Re-energize the panel. Read current from the VFD display and from the installed power monitor.").ok).toBe(true);
+  });
+});
