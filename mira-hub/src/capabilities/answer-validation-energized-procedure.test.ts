@@ -261,3 +261,12 @@ describe("review: a later display comparison cannot excuse physical contact", ()
     "Re-energize the panel. Read current from the exposed lugs and from the VFD display for comparison.",
   ])("rejects: %s", (text) => expect(judge(text).ok).toBe(false));
 });
+
+
+describe("review: display data is not a physical contact instruction", () => {
+  it.each([
+    "Re-energize the panel. Read current from the VFD display with each phase shown separately.",
+    "Re-energize the panel. Read current from the VFD display and compare the values from each phase.",
+    "Re-energize the panel. Read current from the VFD display with test leads disconnected.",
+  ])("accepts: %s", (text) => expect(judge(text).ok).toBe(true));
+});

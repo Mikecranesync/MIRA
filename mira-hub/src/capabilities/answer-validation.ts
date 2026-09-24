@@ -406,7 +406,7 @@ const MEASURE_ACTION_SRC =
 // The hazard is a physical electrical measurement after power is restored,
 // not a process reading or a value read from an installed external display.
 const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
-const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at|from|with)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?))\b/i;
+const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?)|from\s+(?:the\s+|an?\s+|exposed\s+|live\s+){0,3}(?:lugs?|terminals?)|(?:with|using)\s+(?:the\s+|an?\s+)?test\s+leads?(?!\s+(?:disconnected|removed|unplugged)\b))\b/i;
 const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|gauge|HMI|monitor|metering)\b/i;
 const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|power|VFD|thermostat|HMI|monitor)\s+){0,5}(?:display|gauge|HMI|monitor|metering)\s+to\s*$/i;
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
