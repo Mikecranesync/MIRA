@@ -27,8 +27,13 @@ degenerate case:
   R-neg  a fresh notebook with no prior LOOK must NOT report a recalled
          observation -- otherwise "recall" could just be a field that is always
          set, and R would pass without recalling anything.
-  F-neg  a same-family question must still return citations -- otherwise a
-         filter that returns empty for EVERYTHING passes F trivially.
+  F-neg  a same-family question must still RETRIEVE (retrieval.candidate_count
+         > 0) -- otherwise a filter that returns empty for EVERYTHING passes F
+         trivially. Note this asserts retrieval, not rendered citations: the
+         packet carries candidate counts and doc ids, never titles. If the
+         corpus simply holds no same-family manual the control reports
+         INCONCLUSIVE, because it then cannot tell an over-aggressive filter
+         from an empty corpus.
 
 It also asserts two invariants that must hold on every turn:
   J  Jev is SHADOW ONLY -- present in the packet, never the gate.
@@ -46,6 +51,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -54,9 +60,19 @@ import urllib.request
 import uuid
 
 PROD_HOSTS = {"app.factorylm.com", "factorylm.com", "www.factorylm.com"}
-# Families that must never be cited for an HMI turn. Substring match on the
-# citation title/url, case-insensitive.
+# Families that must never be cited for an HMI turn.
+#
+# WORD-BOUNDARY, not substring: a bare `in` test for "vfd" matches any JSON key
+# or prose containing those letters and reports a wrong-family citation that
+# never happened.
+#
+# And these are matched against the ANSWER BODY, not the packet. The Turn
+# Evidence Packet carries `returned_doc_ids` / `evidence_doc_ids` — opaque uuids
+# — and NO manual titles or urls, so scanning the packet for "v20" can almost
+# never match and the check passes vacuously. The citations with human-readable
+# titles live in the chat response.
 WRONG_FAMILY = ("v20", "gh6", "sinamics", "powerflex", "vfd", "inverter")
+_WRONG_FAMILY_RE = re.compile(r"\b(" + "|".join(WRONG_FAMILY) + r")\b", re.I)
 
 
 def refuse_prod(base: str) -> str:
@@ -155,14 +171,27 @@ class Client:
         return None
 
 
-def cites_wrong_family(packet: dict) -> list[str]:
-    blob = json.dumps(packet.get("retrieval", {})) + json.dumps(packet.get("context", {}))
-    return [t for t in WRONG_FAMILY if t in blob.lower()]
+def cites_wrong_family(answer_body: str) -> list[str]:
+    """Wrong-family tokens in the ANSWER the technician actually saw."""
+    return sorted({m.group(1).lower() for m in _WRONG_FAMILY_RE.finditer(answer_body or "")})
 
 
-def check(results: list, name: str, ok: bool, detail: str) -> None:
-    results.append({"check": name, "ok": bool(ok), "detail": detail})
-    print(f"  {'PASS' if ok else 'FAIL'}  {name}: {detail}")
+def cited_anything(answer_body: str) -> bool:
+    """Did the turn cite at all? An answer citing NOTHING trivially satisfies the
+    wrong-family ban, so that outcome must be reported distinctly rather than as
+    a clean PASS."""
+    b = (answer_body or "").lower()
+    return ('"sources"' in b) or ("[1]" in b) or ('"citations"' in b)
+
+
+def check(results: list, name: str, ok, detail: str) -> None:
+    """ok=True PASS, ok=False FAIL, ok=None INCONCLUSIVE.
+
+    A control that could not discriminate is NOT a pass. Folding it into the
+    pass count is how a harness reports success for work it never did.
+    """
+    results.append({"check": name, "ok": None if ok is None else bool(ok), "detail": detail})
+    print(f"  {'PASS' if ok else ('INCONCLUSIVE' if ok is None else 'FAIL')}  {name}: {detail}")
 
 
 def invariants(results: list, tag: str, p: dict) -> None:
@@ -204,7 +233,7 @@ def main() -> int:
     if st != 200:
         print("  aborting R: the LOOK itself did not land")
     else:
-        st2, _, crid2 = c.ask(a.hmi_question)          # <- no rider, on purpose
+        st2, body2, crid2 = c.ask(a.hmi_question)      # <- no rider, on purpose
         p = c.packet(crid2)
         check(results, "R/follow-up-served", st2 == 200, f"status={st2}")
         check(results, "R/packet-readable", p is not None, "recorder returned the turn's packet")
@@ -223,9 +252,16 @@ def main() -> int:
                   f"context.visual_evidence_count={ctx.get('visual_evidence_count')}")
             # ---- F: right family, or nothing ---------------------------------
             print("\nF — identity-bound retrieval must not cite another family")
-            bad = cites_wrong_family(p)
-            check(results, "F/no-wrong-family-citation", not bad,
-                  f"wrong-family tokens in retrieval/context: {bad or 'none'}")
+            bad = cites_wrong_family(body2)
+            if not bad and not cited_anything(body2):
+                # Honest refusal satisfies the BAN but proves nothing about the
+                # filter, so it is not a pass.
+                check(results, "F/no-wrong-family-citation", None,
+                      "answer cited NOTHING — the ban is trivially satisfied and this "
+                      "run cannot distinguish a correct filter from a broken one")
+            else:
+                check(results, "F/no-wrong-family-citation", not bad,
+                      f"wrong-family tokens in the ANSWER: {bad or 'none'}; cited={cited_anything(body2)}")
             check(results, "F/identity-bound",
                   rt.get("oem_model") is not None,
                   f"oem_model={rt.get('oem_model')!r} source={rt.get('oem_model_source')!r}")
@@ -233,14 +269,28 @@ def main() -> int:
 
     # ---- F-neg: a same-family question must still retrieve ------------------
     print("\nF-neg — NEGATIVE CONTROL: same-family question still retrieves")
-    st3, _, crid3 = c.ask(a.same_family_question)
+    st3, body3, crid3 = c.ask(a.same_family_question)
     p3 = c.packet(crid3)
     if p3:
         rt3 = p3.get("retrieval") or {}
         searched = bool(rt3.get("oem_corpus_searched"))
-        check(results, "F-neg/still-retrieves", searched,
-              f"oem_corpus_searched={searched} candidate_count={rt3.get('candidate_count')} "
-              "(a filter that returned empty for EVERYTHING would fail here)")
+        candidates = rt3.get("candidate_count") or 0
+        # `oem_corpus_searched` only says retrieval was ATTEMPTED. A filter that
+        # returned empty for EVERYTHING would still set it true and sail past.
+        # The control has to assert the RESULT.
+        if not searched:
+            check(results, "F-neg/still-retrieves", False,
+                  "OEM corpus was not even searched for a same-family question")
+        elif candidates > 0:
+            check(results, "F-neg/still-retrieves", True,
+                  f"candidate_count={candidates} — the filter did not empty everything")
+        else:
+            # Cannot tell "filter too aggressive" from "no same-family manual in
+            # this corpus". Neither pass nor fail.
+            check(results, "F-neg/still-retrieves", None,
+                  "searched but candidate_count=0 — INCONCLUSIVE: either the filter is "
+                  "over-aggressive or this corpus holds no same-family manual. Seed one "
+                  "and re-run, or this control proves nothing")
         invariants(results, "F-neg", p3)
     else:
         check(results, "F-neg/still-retrieves", False, "no packet")
@@ -268,9 +318,10 @@ def main() -> int:
     with open(a.out, "w") as fh:
         json.dump({"base": base, "results": results}, fh, indent=2)
     print(f"\nartifact: {a.out}")
-    print(f"{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} not run")
+    print(f"{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, "
+          f"{len(skipped)} inconclusive/not-run")
     if skipped:
-        print("NOT RUN (a skipped negative control proves nothing):")
+        print("INCONCLUSIVE or NOT RUN — these prove nothing and are NOT passes:")
         for r in skipped:
             print(f"  - {r['check']}: {r['detail']}")
     if failed:
