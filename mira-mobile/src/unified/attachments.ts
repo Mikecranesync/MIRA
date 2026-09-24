@@ -27,6 +27,10 @@ import { uploadSourceWarningCopy } from "../lib/resource-copy";
 import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "./attachment-handoff";
 
+/** Shared with the legacy surface so both say the same thing (see #3837). */
+const PHOTO_ANALYSIS_UNAVAILABLE =
+  "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
+
 /** The rider shape the notebook's send path already accepts for Sensor. */
 export interface VisualEvidenceRider {
   readonly visualEvidence: { fileId: string; capturedAt: string };
@@ -57,7 +61,7 @@ function describe(file: File): Attachment {
  * `notebookId` is null on HOME, where no notebook exists yet. Picking still
  * works there; the bytes are stashed for the thread the send creates.
  */
-export function useUnifiedAttachments(notebookId: string | null) {
+export function useUnifiedAttachments(notebookId: string | null, threadId?: string | null) {
   // The shell only ever carries the small `Attachment` descriptor; the bytes
   // stay here, keyed by the id the chip shows.
   const held = useRef(new Map<string, File>());
@@ -162,12 +166,21 @@ export function useUnifiedAttachments(notebookId: string | null) {
 
       let rider: VisualEvidenceRider | undefined;
       if (photo) {
-        const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question);
+        const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question, threadId);
         if (!look.fileId) {
           // Never send a photo question without the photo: that would answer
           // from nothing while looking like it answered from the picture.
           retain();
           return { question, failure: "The photo didn't upload — try again." };
+        }
+        if (!look.observation) {
+          // Parked but never read. The server returns the saved file with a
+          // null observation when vision fails (502) or is unconfigured (503),
+          // so this is an ordinary outage, not an exception. Asking anyway
+          // would answer from nothing about a picture nothing has read — the
+          // same failure the fileId check above prevents, one step later.
+          retain();
+          return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
         }
         rider = {
           visualEvidence: {
@@ -183,7 +196,7 @@ export function useUnifiedAttachments(notebookId: string | null) {
       retain();
       throw error;
     }
-  }, [notebookId]);
+  }, [notebookId, threadId]);
 
   return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
 }

@@ -22,6 +22,18 @@ import { NextRequest } from "next/server";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
+const triageFault = vi.hoisted(() => ({ throwNow: false }));
+vi.mock("@/capabilities/answer-safety-check", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/answer-safety-check")>();
+  return {
+    ...actual,
+    triageSemanticSafetyCheck: (...args: Parameters<typeof actual.triageSemanticSafetyCheck>) => {
+      if (triageFault.throwNow) throw new Error("triage telemetry failed");
+      return actual.triageSemanticSafetyCheck(...args);
+    },
+  };
+});
+
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const PHOTO = "44444444-4444-4444-8444-444444444444";
 const CAPTURED_AT = "2026-09-19T11:09:23.000Z";
@@ -62,7 +74,7 @@ const ragMock = vi.hoisted(() => ({
 vi.mock("@/lib/manual-rag", () => ragMock);
 
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }));
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
@@ -146,6 +158,7 @@ function lastTurn() {
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
+  triageFault.throwNow = false;
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
@@ -505,6 +518,108 @@ describe("Semantic layer (#3793) through the real handler", () => {
     });
   }
   const hazardCandidate = "Crack the fitting a quarter turn to vent the hydraulic accumulator down before removal.";
+
+  function shadowProviderAndJudge(candidate: string, judgeContent: string, jevFault = false) {
+    const calls = { jev: 0, semantic: 0 };
+    const fetchMock = vi.fn(async (url: unknown, init?: { body?: unknown }) => {
+      if (String(url).includes("api.typesafe.ai")) {
+        calls.jev += 1;
+        if (jevFault) throw new Error("Jev unavailable");
+        return new Response(JSON.stringify({ answers: { sufficient: { noul: 0.96 } } }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (body.stream !== false) return completingProvider(candidate);
+      calls.semantic += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: judgeContent } }] }), { status: 200 });
+    });
+    return { calls, fetchMock };
+  }
+
+  it("a shadow would_skip still obeys the route's unsafe semantic verdict with one Jev request", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "review-fixture";
+    const { calls, fetchMock } = shadowProviderAndJudge(
+      "Press the red button to clear the warning [1].",
+      '{"verdict":"unsafe","hazard_class":"other","reason":"unsafe step"}',
+    );
+    const log = vi.spyOn(console, "log");
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "How do I clear the warning?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(log.mock.calls.some((args) => String(args[0]).includes("hazard-triage would_skip=true"))).toBe(true);
+    expect(calls.jev).toBe(1);
+    expect(calls.semantic).toBe(1);
+    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().basis).toBeNull();
+    log.mockRestore();
+  });
+
+  it("starts semantic review before a pending Jev shadow result and keeps safe citations", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "review-fixture";
+    let resolveJev!: (response: Response) => void;
+    const waitingJev = new Promise<Response>((resolve) => { resolveJev = resolve; });
+    let jevCalls = 0;
+    let semanticCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: { body?: unknown }) => {
+      if (String(url).includes("api.typesafe.ai")) {
+        jevCalls += 1;
+        return waitingJev;
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { stream?: boolean };
+      if (body.stream !== false) return completingProvider("Check the display contrast setting first [1].");
+      semanticCalls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"verdict":"safe","hazard_class":"none","reason":"benign"}' } }] }), { status: 200 });
+    }));
+    const res = await POST(chatReq({ message: "The display is dim, what should I look at?", sourceDocIds: [DOC_A] }), params);
+    const textPromise = res.text();
+    try {
+      await vi.waitFor(() => expect(semanticCalls).toBe(1));
+    } finally {
+      resolveJev(new Response(JSON.stringify({ answers: { sufficient: { noul: 0.96 } } }), { status: 200 }));
+    }
+    const frames = parseFrames(await textPromise);
+    expect(jevCalls).toBe(1);
+    expect(contentOf(frames)).toContain("display contrast setting first [1]");
+    expect(frames.find((f) => f.kind === "sources")?.citations).toHaveLength(1);
+    expect(frames.find((f) => f.kind === "evidence")).toMatchObject({ basis: "oem_documentation" });
+  });
+
+  it("a Jev provider fault still obeys an unverified semantic verdict with one Jev request", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "review-fixture";
+    const { calls, fetchMock } = shadowProviderAndJudge(
+      "Press the red button to clear the warning [1].", "malformed verdict", true,
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "How do I clear the warning?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(calls.jev).toBe(1);
+    expect(calls.semantic).toBeGreaterThan(0);
+    expect(contentOf(frames)).toContain("safety review that could not be completed");
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().basis).toBeNull();
+  });
+
+  it("a triage exception still obeys the route's unsafe semantic verdict", async () => {
+    process.env.MIRA_JEV_SHADOW = "1";
+    process.env.JEV_API_KEY = "review-fixture";
+    triageFault.throwNow = true;
+    const { calls, fetchMock } = shadowProviderAndJudge(
+      "Press the red button to clear the warning [1].",
+      '{"verdict":"unsafe","hazard_class":"other","reason":"unsafe step"}',
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "How do I clear the warning?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    expect(calls.jev).toBe(1);
+    expect(calls.semantic).toBe(1);
+    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+  });
 
   it("persists a committed Safety STOP even when the client cancels during the semantic judge", async () => {
     let releaseJudge!: (response: Response) => void;

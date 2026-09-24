@@ -214,8 +214,18 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     // Only content frames ever reached the client — no sources/evidence/status.
     const kinds = parseFrames(received).map((f) => f.kind);
     expect(kinds.every((k) => k === "content")).toBe(true);
-    // Legacy path: no spend ledger write.
-    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    // Legacy path: the Turn Flight Recorder still writes ONE ledger row for
+    // the stopped turn (design §4: every completed path persists a packet),
+    // with UNKNOWN spend — null tokens/cost, routeReason 'legacy_cascade' —
+    // never a fabricated zero.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, usage, record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as Parameters<
+      typeof import("@/lib/inference/persist-usage").persistTurnUsage
+    >;
+    expect(usage.routeReason).toBe("legacy_cascade");
+    expect(usage.inputTokens).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
+    expect(record?.packet?.answer_gate?.decision).toBe("error");
   });
 
   it("releases a keyed request claim when persistence of the stopped turn fails", async () => {

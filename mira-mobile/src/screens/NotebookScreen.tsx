@@ -64,7 +64,7 @@ import { SafetyNotice } from "./SafetyNotice";
 import { IdentityDisputeNotice } from "./IdentityDisputeNotice";
 // The persisted-marker reader is the adapter's, not a second copy: one
 // definition of "is this turn a safety stop" serves both surfaces (FLEET-003).
-import { hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
+import { directiveSafetyNotice, hasIdentityDispute, terminalSafetyNotice } from "../chat-adapter/turns-to-parts";
 import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
@@ -157,6 +157,7 @@ export function NotebookScreen({
   onInitialSensorStartConsumed,
   onInitialAddSourcesConsumed,
   onNewThread,
+  onCreateProject,
 }: {
   id: string;
   /** 087 / THRD-0: selected conversation inside this notebook-as-Project. */
@@ -175,6 +176,10 @@ export function NotebookScreen({
   onInitialAddSourcesConsumed?: () => void;
   /** Root-owned THRD-0 creation, used by the shared shell's New chat control. */
   onNewThread?: (notebookId?: string | null) => void;
+  /** Root-owned project creation, used by the shared shell's New project
+   *  control (#3896). Without it the drawer honestly disables the control —
+   *  which is what technicians saw inside every conversation. */
+  onCreateProject?: () => void;
   /** Direct Sensor entry queued by the unified home/shell Scan action. */
   initialSensorStart?: "read-scan" | null;
   onInitialSensorStartConsumed?: () => void;
@@ -324,13 +329,16 @@ export function NotebookScreen({
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
-    // When no machine is selected, always use general mode and empty scope
-    // regardless of enabled sources — sources without a machine context cannot
-    // ground retrieval (#3742). When a machine IS selected, omit mode to trigger
-    // grounded retrieval if scope has sources.
-    const noMachine = !notebook.asset;
-    const effectiveScope = noMachine ? [] : scope;
-    const effectiveMode = noMachine || effectiveScope.length === 0 ? "general" : undefined;
+    // Confirmed sources ALWAYS ride the turn, bound machine or not (#3862): the
+    // manual a project uploaded is the reason it exists, and the server grounds
+    // on the scope, not on an asset binding. #3745 had gated this on
+    // `notebook.asset` to spare a GENERAL question ("What is a VFD?") the
+    // sources-miss abstention — that case is handled below instead: a grounded
+    // turn that comes back `insufficient_evidence` is re-asked ONCE in general
+    // mode, so the technician gets an answer either way and the abstention
+    // stays on the record as the honest trail.
+    const effectiveScope = scope;
+    const effectiveMode = effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
       scope: effectiveScope,
@@ -365,16 +373,37 @@ export function NotebookScreen({
     setChatError(null);
     setPending({ q: question, a: EMPTY_TURN });
     try {
-      const a = await askNotebook(id, body.question, body.scope, {
-        threadId,
-        mode: body.mode,
-        history: body.history,
-        clientRequestId: body.clientRequestId,
-        machineEvidence: body.machineEvidence,
-        visualEvidence: body.visualEvidence,
-        signal: ctl.signal,
-        onUpdate: (partial) => setPending({ q: question, a: partial }),
-      });
+      const ask = (send: PendingSend) =>
+        askNotebook(id, send.question, send.scope, {
+          threadId,
+          mode: send.mode,
+          history: send.history,
+          clientRequestId: send.clientRequestId,
+          machineEvidence: send.machineEvidence,
+          visualEvidence: send.visualEvidence,
+          signal: ctl.signal,
+          onUpdate: (partial) => setPending({ q: question, a: partial }),
+        });
+      let a = await ask(body);
+      // A grounded turn the selected sources could not answer, on an UNBOUND
+      // notebook only (the #3862/#3742 case: a general question with a manual
+      // attached): re-ask once in general mode under its OWN request id (the
+      // server fences idempotency on the exact payload, so a re-send with a
+      // different mode must not collide with the abstained turn). A machine-
+      // BOUND notebook keeps its abstention — an answer about that machine is
+      // grounded or it is not. Never for a replay (Retry re-sends the identical
+      // body) and never when the turn was already general.
+      if (
+        !replay &&
+        !notebook.asset &&
+        body.mode === undefined &&
+        !isTruncatedTurn(a) &&
+        a.status === "insufficient_evidence" &&
+        !ctl.signal.aborted
+      ) {
+        const general: PendingSend = { ...body, scope: [], mode: "general", clientRequestId: crypto.randomUUID() };
+        a = await ask(general);
+      }
       if (isTruncatedTurn(a)) {
         const interrupted: ChatTurn = {
           answer: a.answer,
@@ -448,7 +477,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -484,7 +513,7 @@ export function NotebookScreen({
     setBusy(true);
     setPending({ q: question, a: { ...EMPTY_TURN, answer: "" } });
     try {
-      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question);
+      const look = await lookAtPhoto(notebook.id, file, crypto.randomUUID(), question, threadId);
       refresh(); // the photo is now a linked file — refresh Photos
       setBusy(false);
       setPending(null);
@@ -866,6 +895,7 @@ export function NotebookScreen({
           the shell changes. Device-local choice under the same capability. */}
       {panel === "chat" && chatSurface === "unified" && (
         <UnifiedChat
+          attachmentThreadId={threadId}
           turns={turns}
           liveTurns={liveTurns}
           pending={pending}
@@ -890,6 +920,7 @@ export function NotebookScreen({
               return null;
             },
             onNewChat: () => onNewThread?.(id),
+            ...(onCreateProject ? { onCreateProject } : {}),
           }}
           initialQuestion={initialQuestion}
           onInitialQuestionSent={onInitialQuestionSent}
@@ -948,6 +979,11 @@ export function NotebookScreen({
               // it on the floor and a LOTO refusal reloaded here wearing full
               // answer chrome — citations, basis, evidence cards.
               const safety = terminalSafetyNotice(t);
+              // #3893: non-terminal energized directive persisted on the row.
+              // `safety` (terminal) stays null for it, so the `!safety` chrome
+              // below renders in full — the directive is a warning-with-answer,
+              // not a stop. Matches the ChatV2/live projection.
+              const directive = directiveSafetyNotice(t) != null;
               return isStoppedTurn(t) ? (
                 // STRM-2 stopped-turn contract on reload: `error` + partial
                 // text is the turn the technician stopped. Same render as the
@@ -968,6 +1004,7 @@ export function NotebookScreen({
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
                 {safety && <SafetyNotice />}
+                {directive && <SafetyNotice terminal={false} />}
                 <AnswerMarkdown
                   text={answerBody(
                     t.answerText,
@@ -1018,6 +1055,10 @@ export function NotebookScreen({
               // simply never read it. Sticky by design: it survives a stop or a
               // truncation, matching the adapter's rule for ChatV2.
               const safety = t.a.safetyTrigger !== undefined;
+              // #3893: non-terminal energized directive on the live turn. Only
+              // when there is no terminal stop; chrome below stays because it is
+              // gated on `safety` (terminal), which is false for a directive.
+              const directive = !safety && t.a.safetyDirective !== undefined;
               // ADR-0038 rule 6. The stream ended without the authoritative
               // `status` frame and the technician did NOT press Stop — a
               // server-side close, a dropped connection, a proxy cut. The read
@@ -1033,6 +1074,7 @@ export function NotebookScreen({
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
                 {safety && <SafetyNotice />}
+                {directive && <SafetyNotice terminal={false} />}
                 {incomplete ? (
                   <>
                     {t.a.answer.trim() && (
@@ -1120,6 +1162,11 @@ export function NotebookScreen({
                 {/* A hard-stop safety frame lands before its first content byte,
                     so the in-flight turn must show the banner immediately. */}
                 {pending.a.safetyTrigger !== undefined && <SafetyNotice />}
+                {/* #3893: the energized directive rides the evidence frame (late,
+                    after content), so it usually appears as the turn completes —
+                    render the non-terminal warning the moment it arrives. */}
+                {pending.a.safetyTrigger === undefined &&
+                  pending.a.safetyDirective !== undefined && <SafetyNotice terminal={false} />}
                 {/* 086 §3: the dispute marker is the FIRST frame on a disputed
                     wire — it must show while the answer is still streaming,
                     exactly as ChatV2's pendingMessages does. */}
@@ -1409,6 +1456,7 @@ export function NotebookScreen({
 
       {sensorOpen && (
         <SensorSheet
+          threadId={threadId}
           notebook={notebook}
           onClose={() => setSensorOpen(false)}
           onChanged={refresh}

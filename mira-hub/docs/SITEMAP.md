@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **181** (67 dynamic) |
+| API routes | **184** (69 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (181)
+## API routes (184)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -182,6 +182,8 @@
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
+| `/api/equipment-notebooks/[id]/turns/[turnId]/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/[turnId]/diagnostics/route.ts` |
+| `/api/equipment-notebooks/[id]/turns/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/diagnostics/route.ts` |
 | `/api/equipment-notebooks/recognize-nameplate` | static | `api/equipment-notebooks/recognize-nameplate/route.ts` |
 | `/api/events` | static | `api/events/route.ts` |
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
@@ -230,6 +232,7 @@
 | `/api/namespace/node/[id]/files` | dynamic | `api/namespace/node/[id]/files/route.ts` |
 | `/api/namespace/path` | static | `api/namespace/path/route.ts` |
 | `/api/namespace/tree` | static | `api/namespace/tree/route.ts` |
+| `/api/observability/coverage` | static | `api/observability/coverage/route.ts` |
 | `/api/picker/dropbox/key` | static | `api/picker/dropbox/key/route.ts` |
 | `/api/picker/google/token` | static | `api/picker/google/token/route.ts` |
 | `/api/pm-schedules` | static | `api/pm-schedules/route.ts` |

@@ -227,6 +227,10 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
     if (result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
+    // #3841: the live directive arrives on the evidence frame as
+    // `hazardNotice`; it classifies as a warning through the same rule the
+    // hydrated row uses, so live and reloaded turns render identically.
+    if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
     return parts;
   }

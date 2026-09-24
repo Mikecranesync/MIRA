@@ -25,6 +25,9 @@
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
+import type { TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
+import type { Anomaly } from "@/capabilities/observability/anomalies";
+import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 
 export type PersistUsageScope = {
   tenantId: string;
@@ -36,6 +39,39 @@ export type PersistUsageScope = {
   citationsPresent: boolean;
   /** Wall time for the whole turn, if measured. */
   latencyMs?: number | null;
+  /** Ledger platform tag. Defaults to the chat surface; `/look` writes
+   *  `hub_notebook_look` so a vision turn is never mistaken for a chat spend row. */
+  platform?: "hub_notebook_chat" | "hub_notebook_look";
+  /**
+   * The attempt id from `openTurn` (091 turn lifecycle). When present this
+   * write CLOSES the start record that was already written for this turn
+   * instead of inserting a second ledger row — one accepted turn, one row
+   * (materialized-evidence rule 15). Absent, the behaviour is the pre-091
+   * INSERT, byte for byte, which is what keeps every other caller unchanged.
+   */
+  attemptId?: string | null;
+  /** Lifecycle outcome recorded alongside the usage. Defaults to "answered"
+   *  when an attemptId is supplied, since a usage write means a served turn. */
+  outcome?: TurnOutcome | null;
+};
+
+/**
+ * Turn Flight Recorder output (turn-recorder.ts `finish()`), optionally
+ * attached to a usage write. Design:
+ * docs/architecture/observability/2026-09-22-turn-flight-recorder.md §4.
+ * Omitting this argument entirely is what keeps every pre-existing caller
+ * and test unchanged — the eight new columns simply write NULL (or, for the
+ * NOT-NULL `anomalies` column, the empty array).
+ */
+export type TurnRecord = {
+  packet: TurnEvidencePacket;
+  anomalies: Anomaly[];
+  otelTraceId: string | null;
+  turnRowId?: string | null;
+  clientRequestId?: string | null;
+  notebookId: string;
+  environment: string;
+  gitSha: string;
 };
 
 /** Result is returned (not thrown) so callers can assert without try/catch. */
@@ -52,25 +88,42 @@ export type PersistUsageResult =
 export async function persistTurnUsage(
   scope: PersistUsageScope,
   usage: TurnUsage,
+  record?: TurnRecord,
 ): Promise<PersistUsageResult> {
   try {
     return await withTenantContext(scope.tenantId, async (c) => {
+      // APPEND the outcome row for a turn that opened a start record (091).
+      // decision_traces is append-only by design (032: "the app role may read +
+      // insert, never mutate or delete"), so the close is an INSERT carrying
+      // `attempt_id` + lifecycle='closed', NOT an update of the start row.
       const res = await c.query(
         `INSERT INTO decision_traces
            (tenant_id, platform, user_question, recommendation, citations_present,
             model_used, latency_ms,
             provider, route_reason, principal,
             input_tokens, cached_input_tokens, output_tokens,
-            cost_usd_estimate, status)
+            cost_usd_estimate, status,
+            otel_trace_id, turn_id, client_request_id, notebook_id,
+            environment, git_sha, evidence_packet, anomalies,
+            attempt_id, lifecycle, outcome, started_at, finished_at)
          VALUES ($1, $2, $3, $4, $5,
                  $6, $7,
                  $8, $9, $10,
                  $11, $12, $13,
-                 $14, $15)
+                 $14, $15,
+                 $16, $17::uuid, $18, $19::uuid,
+                 $20, $21, $22::jsonb, $23::jsonb,
+                 $24::uuid,
+                 'closed',
+                 $25,
+                 (SELECT started_at FROM decision_traces
+                   WHERE attempt_id = $24::uuid AND lifecycle = 'started'),
+                 CASE WHEN $24 IS NULL THEN NULL ELSE now() END)
+         ON CONFLICT (attempt_id, lifecycle) WHERE attempt_id IS NOT NULL DO NOTHING
          RETURNING trace_id`,
         [
           scope.tenantId, // TEXT — see note above
-          "hub_notebook_chat",
+          scope.platform ?? "hub_notebook_chat",
           scope.question,
           scope.answerText,
           scope.citationsPresent,
@@ -90,6 +143,22 @@ export async function persistTurnUsage(
           // every spend rollup built on this column.
           usage.costUsdEstimate,
           usage.status,
+          // Turn Flight Recorder columns (090). `record` is optional so every
+          // pre-090 caller keeps writing exactly the row it always did; these
+          // seven are NULL without it. `anomalies` is the one NOT-NULL column
+          // among the eight (090 default '[]'::jsonb) — pass the literal
+          // empty array rather than NULL, or the insert would violate that
+          // constraint on every caller that hasn't adopted the recorder yet.
+          record?.otelTraceId ?? null,
+          record?.turnRowId ?? null,
+          record?.clientRequestId ?? null,
+          record ? record.notebookId : null,
+          record?.environment ?? null,
+          record?.gitSha ?? null,
+          record ? JSON.stringify(record.packet) : null,
+          JSON.stringify(record?.anomalies ?? []),
+          scope.attemptId ?? null,
+          scope.attemptId ? (scope.outcome ?? "answered") : null,
         ],
       );
       const traceId = res.rows[0]?.trace_id as string | undefined;
@@ -114,6 +183,9 @@ export async function persistTurnUsage(
         // 42501 = privilege -> grant drift. Both are operator-actionable.
         code: code ?? null,
         error: message,
+        // null (not omitted) when unknown, so a grep for "traceId" never has
+        // to guess whether the field is missing or genuinely untraced.
+        traceId: record?.otelTraceId ?? null,
       }),
     );
     return { persisted: false, reason: code ?? "error" };

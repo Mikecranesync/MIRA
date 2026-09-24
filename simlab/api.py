@@ -10,6 +10,7 @@ Production startup uses ``simlab.__main__``.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -78,6 +79,20 @@ except ImportError:  # pragma: no cover
 
 _DOCS_ROOT = Path(__file__).parent / "docs"
 _DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
+
+
+def _safe_doc_path(asset_id: str, filename: str) -> Optional[Path]:
+    """Resolve a docs path, returning it only if it stays under ``_DOCS_ROOT``.
+
+    Path-traversal containment (#3815 / #3883): ``asset_id`` and ``filename`` come
+    straight off the URL, so ``/simlab/docs/../scenarios.py`` would otherwise let
+    ``get_doc`` read the rubric answer key (``simlab/scenarios.py``). ``resolve()``
+    collapses ``..`` (literal or percent-decoded) and follows symlinks on both
+    sides; a target outside the docs tree yields ``None`` -> 404.
+    """
+    docs_root = _DOCS_ROOT.resolve()
+    candidate = (docs_root / asset_id / filename).resolve()
+    return candidate if candidate.is_relative_to(docs_root) else None
 
 
 def _dashboard_html() -> str:
@@ -380,8 +395,8 @@ def build_app(
 
     @app.get("/simlab/docs/{asset_id}/{filename}")
     def get_doc(asset_id: str, filename: str) -> PlainTextResponse:
-        doc_path = _DOCS_ROOT / asset_id / filename
-        if not doc_path.exists():
+        doc_path = _safe_doc_path(asset_id, filename)
+        if doc_path is None or not doc_path.exists():
             raise HTTPException(404, f"Doc {asset_id}/{filename} not found")
         return PlainTextResponse(doc_path.read_text())
 
@@ -517,4 +532,12 @@ def _make_default_app() -> Any:
     return build_app(engine=_default_engine, approvals=_default_approvals)
 
 
-app = _make_default_app()
+# Defer app initialization under pytest to avoid SQLite race condition when
+# pytest-xdist workers import this module in parallel (all try to create
+# /tmp/mira_simlab_approvals.db with WAL mode at the same time). Tests use
+# build_app() directly with tmp_path fixtures; only production startup needs
+# the module-level app.
+if "pytest" not in sys.modules:
+    app = _make_default_app()
+else:
+    app = None  # type: ignore[assignment]

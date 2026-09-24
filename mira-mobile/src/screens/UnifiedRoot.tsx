@@ -9,7 +9,8 @@
  */
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
-import { listNotebooks, type Me, type Notebook } from "../api/resources";
+import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
+import { homeSendPlan } from "../unified/home-send";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -99,17 +100,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   }, []);
 
   const open = useCallback((id: string, threadId?: string | null) => {
+    const notebook = notebooks?.find((nb) => nb.id === id);
+    // #3851: opening the project the boot restore already pointed at must
+    // resume the thread the technician was last reading, not the newest one —
+    // and must not overwrite the persisted pointer with the newest id (that is
+    // what made "resume on the wrong thread" permanent). An explicit threadId
+    // (a thread row, a deep link) still wins; another project opens on its
+    // latest thread as before.
+    const restored =
+      id === selected && selectedThreadId && notebook?.threads?.some((thread) => thread.id === selectedThreadId)
+        ? selectedThreadId
+        : null;
+    const activeThread = threadId ?? restored ?? latestThreadId(notebook);
     setSelected(id);
-    setSelectedThreadId(threadId ?? latestThreadId(notebooks?.find((nb) => nb.id === id)));
+    setSelectedThreadId(activeThread);
     setDraftThreadId(null);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
-      const activeThread = threadId ?? latestThreadId(notebooks?.find((nb) => nb.id === id));
       await preferencesStore.set(LAST_THREAD_KEY(id), activeThread);
     });
-  }, [notebooks]);
+  }, [notebooks, selected, selectedThreadId]);
 
   // A deep link resolves through the SAME decision the QR scanner uses
   // (resolveScan): tag → asset → that machine's notebook, opened in place.
@@ -172,6 +184,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     });
     return id;
   }, [preferredNotebookId]);
+
+  /**
+   * The thread a HOME question or a HOME "New chat" opens (#3877): an UNBOUND
+   * notebook — General first — never `preferredNotebookId()`, which is the
+   * last-opened notebook, i.e. the machine the technician was just at; its
+   * identity would ride the turn as machine context. With no unbound notebook
+   * it creates General so a stranger with no project can still ask. Async only
+   * on that create path; the caller sequences the question after it.
+   */
+  const startHomeThread = useCallback(async (): Promise<string | null> => {
+    const plan = homeSendPlan(notebooks);
+    if (plan.kind === "loading") return null;
+    if (plan.kind === "existing") return startNewThread(plan.notebookId);
+    try {
+      const created = await createNotebook(plan.body);
+      setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
+      return startNewThread(created.id);
+    } catch (e) {
+      setError(apiErrorCopy(e, "Could not create a project for your question."));
+      return null;
+    }
+  }, [notebooks, startNewThread]);
 
   const openPreferredNotebook = useCallback((): string | null => {
     const id = preferredNotebookId();
@@ -279,6 +313,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         onCancel={() => setShowCreateProject(false)}
         onCreated={(nb) => {
           setShowCreateProject(false);
+          // #3895: the list is fetched once at boot, so a project created here
+          // has to be added to it or the drawer never shows it (no thread row,
+          // no Sources to upload into) until the app is relaunched. Same idiom
+          // as createGeneral above.
+          setNotebooks((current) => (current?.some((existing) => existing.id === nb.id) ? current : [nb, ...(current ?? [])]));
           open(nb.id);
           setHomeVisible(false);
         }}
@@ -343,13 +382,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
             onSend: (text) => {
-              const id = startNewThread();
-              if (id) setQueuedQuestion(text);
+              void startHomeThread().then((id) => { if (id) setQueuedQuestion(text); });
             },
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,
-            onNewChat: () => { startNewThread(); },
+            onNewChat: () => { void startHomeThread(); },
             onCreateProject: () => { onCreateProject(); },
             onScanMachine: async () => {
               const id = openPreferredNotebook();
@@ -393,6 +431,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         initialSensorStart={queuedSensorStart}
         onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}
         onNewThread={startNewThread}
+        onCreateProject={onCreateProject}
       />
     </div>
   );

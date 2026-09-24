@@ -37,12 +37,19 @@ vi.mock("../src/api/client", async () => {
   return { ...actual, hasActiveApiMutations: () => otaProbe.activeApiMutation };
 });
 
+const notebookApi = vi.hoisted(() => ({
+  createNotebook: vi.fn(async (input: { displayName: string }) => ({
+    id: "nb-general", displayName: input.displayName, manufacturer: null, model: null, equipmentType: null,
+    identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [],
+  })),
+}));
 vi.mock("../src/api/resources", async () => {
   const actual = await vi.importActual<typeof import("../src/api/resources")>("../src/api/resources");
   return {
     ...actual,
     getAssetByTag: scanApi.getAssetByTag,
     openAssetNotebook: scanApi.openAssetNotebook,
+    createNotebook: notebookApi.createNotebook,
     listNotebooks: vi.fn(async () => [
       { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
         threads: [
@@ -70,6 +77,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
     initialQuestion?: string | null;
     initialSensorStart?: "read-scan" | null;
     onExit: () => void;
+    onCreateProject?: () => void;
   }) => {
     props.backRef.current = () => {
       props.onExit();
@@ -84,8 +92,10 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
         data-initial-sensor={props.initialSensorStart ?? ""}
+        data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
+        <button onClick={() => props.onCreateProject?.()}>create-project-from-notebook</button>
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
     );
@@ -132,7 +142,7 @@ afterEach(() => {
 });
 
 describe("UnifiedRoot", () => {
-  it("loads notebooks into a composer-first home, then opens the preferred notebook when the user sends", async () => {
+  it("loads notebooks into a composer-first home; a HOME send opens an UNBOUND notebook, never the last-opened machine one (#3877)", async () => {
     const onSignOut = vi.fn(async () => {});
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={onSignOut} />);
 
@@ -143,7 +153,9 @@ describe("UnifiedRoot", () => {
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
-    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    // nb-a is the bound Siemens G120 and first in last-opened order; nb-b is
+    // the unbound "General notes". A general question must not inherit a drive.
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
     expect(nb.getAttribute("data-chromeless")).toBe("true");
     expect(nb.getAttribute("data-initial-question")).toBe("Why did the conveyor stop?");
@@ -161,7 +173,7 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("about"))).toBeTruthy();
   });
 
-  it("New chat from the sidebar creates a clean thread in the selected project without destroying the old one", async () => {
+  it("New chat from HOME creates a clean thread in an UNBOUND project (#3877) without destroying the old one", async () => {
     const backRef = { current: null as (() => boolean) | null };
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
@@ -170,7 +182,10 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
     const nb = await waitFor(() => screen.getByTestId("nb"));
     const firstThread = nb.getAttribute("data-thread-id");
-    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    // From HOME, "New chat" is a blank GENERAL chat: nb-b (unbound), not nb-a
+    // (the last-opened Siemens G120). Inside a notebook, New chat still stays
+    // in that notebook — that path is unchanged.
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(firstThread).toMatch(/^thrd_/);
 
     await act(async () => {
@@ -181,6 +196,34 @@ describe("UnifiedRoot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toMatch(/^thrd_/));
     expect(screen.getByTestId("nb").getAttribute("data-thread-id")).not.toBe(firstThread);
+  });
+
+  it("New project is reachable from inside a conversation, not only from HOME (#3896)", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    await waitFor(() => screen.getByTestId("nb"));
+    fireEvent.click(screen.getByText("create-project-from-notebook"));
+    expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
+  });
+
+  it("a project created from the New-project form is in the drawer's Project list at once, Sources included (#3895)", async () => {
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pixel pre-read" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Name the machine" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    // The form's createNotebook mock answers with id nb-general and the typed
+    // name; the host must land in it AND list it — on the phone the drawer had
+    // no row for the new project (and no Sources to upload into) until the app
+    // was killed and relaunched.
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(JSON.parse(nb.getAttribute("data-project-names") ?? "[]")).toContain("Pixel pre-read");
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {
@@ -401,5 +444,84 @@ describe("UnifiedRoot", () => {
     await waitFor(() => expect(onDeepLinkConsumed).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText("Dismiss"));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("#3851: a cold start resumes the persisted last-viewed thread when the project is opened — not the latest one", async () => {
+    // thrd-a1 is the NEWEST thread of nb-a (updatedAt 12:00); the technician was
+    // last reading thrd-a2 (11:00). The boot restore reads that id, and opening
+    // the project must honour it instead of falling back to the latest thread —
+    // and must not overwrite the persisted pointer with the latest id.
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-a2");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Drive A" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
+    await waitFor(() => expect(prefStore.mem.get("flm.unified.thread.v1.nb-a")).toBe("thrd-a2"));
+  });
+
+  it("#3851 control: opening a DIFFERENT project than the restored one still lands on its latest thread", async () => {
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-a2");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "General notes" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-b1");
+  });
+
+  it("a HOME send with only machine notebooks creates General first, then asks there (#3877)", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([
+      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 2, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null }, threads: [] },
+    ] as never);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.input(box, { target: { value: "What is a VFD?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledWith({ displayName: "General", identitySourceType: "user" });
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What is a VFD?");
+  });
+
+  it("#3851: a persisted last-viewed id that is no longer in the notebook's list falls back to the latest thread and the pointer is rewritten", async () => {
+    prefStore.mem.set("flm.unified.notebook.v1", "nb-a");
+    prefStore.mem.set("flm.unified.thread.v1.nb-a", "thrd-deleted-or-outside-the-window");
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Drive A" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a1");
+    await waitFor(() => expect(prefStore.mem.get("flm.unified.thread.v1.nb-a")).toBe("thrd-a1"));
+  });
+
+  it("#3851: a selection that went stale AFTER boot (a draft New-chat id not in the server list) is not resumed — open() re-validates against the list", async () => {
+    // Boot already normalises a stale PERSISTED id, so open()'s own membership
+    // check is only load-bearing for ids that go stale later: HOME "New chat"
+    // mints a draft thread that exists only client-side (in nb-b, the unbound
+    // notebook). Back to HOME, then tapping that project must land on its real
+    // latest thread, not the empty draft.
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={vi.fn(async () => {})} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-b");
+    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+    await act(async () => { backRef.current?.(); });
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "General notes" }));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toBe("thrd-b1"));
   });
 });

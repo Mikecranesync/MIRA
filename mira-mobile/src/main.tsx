@@ -9,6 +9,7 @@ import {
   recoverToPackaged,
 } from "./lib/live-update";
 import { installResumeGuard } from "./lib/resume-guard";
+import { initTagParser } from "./lib/tags";
 import "./app.css";
 
 type BundleBootBoundaryState = {
@@ -120,7 +121,13 @@ class BundleBootBoundary extends React.Component<
 // full app is always visible without DevTools device mode. Native is untouched.
 if (!Capacitor.isNativePlatform()) document.body.classList.add("web-preview");
 
-// Deep links (factorylm://m/<TAG> and https://app.factorylm.com/m/<TAG>).
+// Initialize flavor-specific trust configuration for deep-link tag parsing.
+// Must happen BEFORE deep-link listeners are registered so any cold-start URL
+// can be validated against the correct origin (app.factorylm.com for production,
+// app-staging.factorylm.com for staging).
+void initTagParser();
+
+// Deep links (custom scheme and https app URLs with /m/<TAG> paths).
 // Registered BEFORE first render so a cold-start URL is not missed.
 // Blank-white-screen recovery after background/picker round-trips (#3392).
 installResumeGuard();

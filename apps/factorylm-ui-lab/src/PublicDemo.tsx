@@ -32,7 +32,7 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import { FactoryLMShell, MachineView, useSimLabDemo } from "@factorylm/ui";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
 
 export interface PublicDemoConfig {
@@ -189,6 +189,11 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
     () => createShellState(getFixture("empty"), PROFILES.public),
   );
   const [asking, setAsking] = useState(false);
+  const activeChat = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    activeChat.current?.abort();
+    activeChat.current = null;
+  }, [chat]);
   const [conversions, setConversions] = useState<string[]>([]);
 
   /**
@@ -223,6 +228,9 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
   const machines = useMemo(() => demoMachines(demo.state), [demo.state]);
 
   const onSend = useCallback((text: string) => {
+    if (asking || demo.busy) return;
+    const controller = new AbortController();
+    activeChat.current = controller;
     const at = new Date().toISOString();
     const withQuestion = shellReducer(state, {
       type: "hydrate",
@@ -242,8 +250,9 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
             role: turn.role as "user" | "assistant",
             content: turn.parts.filter((part) => part.type === "text").map((part) => part.text).join(" "),
           })),
-      })
+      }, controller.signal)
       .then((result) => {
+        if (activeChat.current !== controller) return;
         dispatch({
           type: "hydrate",
           data: {
@@ -256,17 +265,23 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
         });
       })
       .finally(() => {
+        if (activeChat.current !== controller) return;
+        activeChat.current = null;
         setAsking(false);
         revealNewestTurn();
       });
-  }, [chat, machines, state]);
+  }, [chat, machines, state, asking, demo.busy]);
 
   const resetDemo = useCallback(async () => {
+    activeChat.current?.abort();
+    activeChat.current = null;
+    setAsking(false);
     await demo.reset();
     // The conversation resets with the machine: a cited answer about a jam that
     // is no longer there is the most confusing thing this page could leave up.
     dispatch({ type: "load-fixture", fixture: getFixture("empty"), profile: PROFILES.public });
-  }, [demo]);
+    dispatch({ type: "set-navigation-visible", visible: state.navigationVisible });
+  }, [demo, state.navigationVisible]);
 
   return <FactoryLMShell
     state={state}
@@ -274,7 +289,7 @@ export function PublicDemo({ config }: { readonly config: PublicDemoConfig }) {
     adapter={adapter}
     hooks={{
       onSend,
-      busy: asking,
+      busy: asking || demo.busy,
       onConvert: (intent) => setConversions((seen) => [...seen, intent]),
     }}
     machinePanel={<MachineView

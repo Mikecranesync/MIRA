@@ -37,7 +37,10 @@ vi.mock("@/lib/workspace-files", () => ({ sha256Hex: (b: Buffer) => `sha:${b.len
 import {
   correctVisualObservations,
   loadVisualEvidenceForAsset,
+  loadVisualEvidenceForPhoto,
+  loadRecentLookObservations,
   promoteVisualObservations,
+  recordLookObservation,
   recordNameplateObservations,
 } from "../visual-evidence-context";
 import { withTenantContext } from "../tenant-context";
@@ -156,6 +159,8 @@ run("visual-evidence-context (integration)", () => {
     await q(`DELETE FROM observation WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await q(`DELETE FROM evidence_item WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await q(`DELETE FROM visual_session WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
+    await q("DELETE FROM workspace_file_links WHERE file_id = 'f11e0000-0000-4000-8000-000000000099'");
+    await q("DELETE FROM namespace_direct_uploads WHERE id = 'f11e0000-0000-4000-8000-000000000099'");
     await pool.end();
   });
 
@@ -505,4 +510,81 @@ run("visual-evidence-context (integration)", () => {
       expect(n.rows[0].n).toBe(1);
     });
   });
+
+  // ── #3788 — a Sensor LOOK observation persisted by `recordLookObservation`
+  //    round-trips through `loadVisualEvidenceForPhoto`, keyed on the SERVER-VERIFIED
+  //    file id, on an UNBOUND session (asset_id NULL). Isolates by tenant AND by
+  //    file id, and stays INVISIBLE to the asset-keyed loader (no double-surfacing).
+  //    Real schema (063 + 069 TEXT tenant), real RLS — the write goes through
+  //    withTenantContext → SET LOCAL ROLE factorylm_app, not the owner seed helper.
+  //    Nested inside this run() so it shares the pool (the shared afterAll ends it).
+  describe("recordLookObservation / loadVisualEvidenceForPhoto — LOOK round-trips by file id, isolates by tenant", () => {
+  const LOOK_FILE = "10041000-0000-4000-8000-0000000000f1";
+  const OTHER_FILE = "10041000-0000-4000-8000-0000000000f2";
+  const OBS_TEXT = "green indicator lit; no burn marks; terminal cover seated";
+
+  beforeAll(async () => {
+    const w = await recordLookObservation({
+      tenantId: TENANT_A,
+      fileId: LOOK_FILE,
+      photoHash: "look-roundtrip-hash",
+      text: OBS_TEXT,
+      model: "together/vision-it",
+      hazards: [{ code: "exposed_conductor", confidence: 0.93 }],
+      capturedAt: "2026-09-19T12:00:00.000Z",
+      createdBy: "it-look",
+    });
+    expect(w).not.toBeNull();
+  });
+
+  it("L1: the observation is readable by its file id, marked candidate, on an unbound session", async () => {
+    const row = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForPhoto(c, TENANT_A, LOOK_FILE));
+    expect(row).not.toBeNull();
+    expect(row).toMatchObject({
+      text: OBS_TEXT,
+      trust: "candidate",
+      fileId: LOOK_FILE,
+      photoHash: "look-roundtrip-hash",
+      hazards: [{ code: "exposed_conductor", confidence: 0.93 }],
+    });
+  });
+
+  it("L2 (isolation CONTROL — must go red if tenant/file scoping breaks): a foreign tenant and a wrong file id both read NOTHING", async () => {
+    const foreignTenant = await withTenantContext(TENANT_B, (c) => loadVisualEvidenceForPhoto(c, TENANT_B, LOOK_FILE));
+    expect(foreignTenant).toBeNull();
+    const wrongFile = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForPhoto(c, TENANT_A, OTHER_FILE));
+    expect(wrongFile).toBeNull();
+  });
+
+  it("L3: the LOOK observation (asset_id NULL) is INVISIBLE to the asset-keyed loader — no double-surfacing", async () => {
+    const byAsset = await withTenantContext(TENANT_A, (c) => loadVisualEvidenceForAsset(c, TENANT_A, ASSET_A1, 100));
+    expect(byAsset.some((r) => r.text === OBS_TEXT)).toBe(false);
+  });
+  });
+
+
+
+describe("LOOK conversation association without completed chat turns", () => {
+  it("round-trips thread, owner and notebook scope even when photo bytes are reused", async () => {
+    const fileId = "f11e0000-0000-4000-8000-000000000099";
+    const scope = { notebookId: "22222222-2222-4222-8222-222222222222", ownerUserId: "scope-owner-a", threadId: "scope-thread-a" };
+    const base = { tenantId: TENANT_A, fileId, photoHash: "same-bytes", text: "my original photo description", model: "fixture", capturedAt: "2026-09-24T12:00:00Z", createdBy: scope.ownerUserId, notebookId: scope.notebookId, threadId: scope.threadId };
+    const own = await recordLookObservation(base);
+    await recordLookObservation({ ...base, threadId: "scope-thread-b", text: "other thread description", hazards: [{ code: "arcing", confidence: 0.99 }] });
+    await recordLookObservation({ ...base, createdBy: "scope-owner-b", text: "other owner description" });
+    await recordLookObservation({ ...base, notebookId: "33333333-3333-4333-8333-333333333333", text: "other notebook description" });
+    expect(await withTenantContext(TENANT_A, (c) => loadRecentLookObservations(c, TENANT_A, scope))).toEqual([]);
+    await q("INSERT INTO namespace_direct_uploads (id, tenant_id, filename, mime_type) VALUES ($1, $2, 'scope-test.jpg', 'image/jpeg')", [fileId, TENANT_A]);
+    await q("INSERT INTO workspace_file_links (tenant_id, file_id, target_type, target_id, role) VALUES ($1, $2, 'equipment_notebook', $3, 'photo')", [TENANT_A, fileId, scope.notebookId]);
+    const rows = await withTenantContext(TENANT_A, (c) => loadRecentLookObservations(c, TENANT_A, scope));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].observationId).toBe(own?.observationId);
+    expect(rows[0].text).toBe("my original photo description");
+    expect(rows[0].hazards).toEqual([{ code: "arcing", confidence: 0.99 }]);
+    expect(await withTenantContext(TENANT_B, (c) => loadRecentLookObservations(c, TENANT_B, scope))).toEqual([]);
+    await q("UPDATE observation SET review_state = 'rejected' WHERE observation_id = $1::uuid", [own?.observationId]);
+    expect(await withTenantContext(TENANT_A, (c) => loadRecentLookObservations(c, TENANT_A, scope))).toEqual([]);
+  });
+});
+
 });

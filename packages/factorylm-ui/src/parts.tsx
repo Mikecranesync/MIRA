@@ -335,12 +335,11 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "safety_notice": {
       const { notice } = part;
-      return <div className="fl-part fl-safety" role="alert" data-part-type="safety_notice" data-severity={notice.severity}>
+      return <div className="fl-part fl-safety" role={notice.severity === "stop" ? "alert" : "note"} data-part-type="safety_notice" data-severity={notice.severity}>
         <span className="fl-safety__glyph" aria-hidden="true">⚠</span>
         <div>
           <p className="fl-safety__title">{notice.severity === "stop" ? "Stop" : "Warning"}</p>
           <p>{notice.message}</p>
-          {notice.trigger ? <p className="fl-card__meta">Trigger: {notice.trigger}</p> : null}
         </div>
       </div>;
     }
@@ -482,11 +481,18 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       </div>;
     }
 
-    case "unknown":
+    case "unknown": {
+      // NotebookTraceFrame is transport metadata, preserved on the part for
+      // support. It is not an answer or a technician-facing disclosure.
+      const raw = part.raw;
+      if (typeof raw === "object" && raw !== null && "kind" in raw && raw.kind === "trace"
+        && "turnId" in raw && typeof raw.turnId === "string"
+        && "traceId" in raw && (raw.traceId === null || typeof raw.traceId === "string")) return null;
       return <details className="fl-part fl-unknown" data-part-type="unknown">
         <summary>Unrecognized part (preserved for inspection)</summary>
         <pre>{JSON.stringify(part.raw, null, 2)}</pre>
       </details>;
+    }
 
     default:
       return assertNever(part);

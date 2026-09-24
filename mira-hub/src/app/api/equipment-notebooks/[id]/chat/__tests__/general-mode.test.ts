@@ -207,6 +207,9 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     ragMock.retrieveNodeChunks.mockResolvedValue([
       { docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." },
     ]);
+    // The documentation badge is earned by a shipped citation (2026-09-22: a
+    // grounded answer that cites nothing must not imply the manual backed it).
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is DC bus undervoltage [1]."), { status: 200 })));
     await (await POST(req({ message: "what is F004" }), params)).text();
     expect(nbMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),

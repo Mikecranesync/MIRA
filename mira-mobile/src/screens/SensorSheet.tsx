@@ -62,12 +62,9 @@ export interface SensorAskEvidence {
 /** The last LOOK of THIS SESSION, held by the notebook screen so closing the
  *  sheet without asking doesn't throw the observation away.
  *
- *  Known v0 limit (documented, not hidden): the observation TEXT is memory
- *  only — it is conversation context, not a stored row, so it does not survive
- *  leaving the notebook or restarting the app. The PHOTO is persisted (parked
- *  + linked, role "photo") and stays in the notebook's files either way.
- *  Persisting the text needs a store, and a Sensor store is forbidden in v0
- *  (contract §2.3/§2.4). */
+ *  This card is an in-memory preview. The server separately retains the
+ *  scoped observation in its existing VisualSession ledger for later questions;
+ *  it does not turn the photo into an answered chat message. */
 export interface RememberedLook {
   result: LookResult;
   /** Resolved once, when the look happened — so a restored card shows the
@@ -77,6 +74,7 @@ export interface RememberedLook {
 
 export function SensorSheet({
   notebook,
+  threadId,
   onClose,
   onChanged,
   onAsk,
@@ -88,6 +86,7 @@ export function SensorSheet({
   initialReadState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
+  threadId?: string | null;
   onClose: () => void;
   /** The notebook changed (a photo was parked and linked; a machine was
    *  bound) — the caller re-reads it. */
@@ -158,6 +157,7 @@ export function SensorSheet({
           </div>
           {current.id === "look" && (
             <LookPanel
+              threadId={threadId}
               notebookId={notebookId}
               onChanged={onChanged}
               onAsk={onAsk}
@@ -204,12 +204,14 @@ type LookState =
 
 function LookPanel({
   notebookId,
+  threadId,
   onChanged,
   onAsk,
   lastLook,
   onLook,
 }: {
   notebookId: string;
+  threadId?: string | null;
   onChanged: () => void;
   onAsk: (question: string, evidence?: SensorAskEvidence) => void;
   lastLook: RememberedLook | null;
@@ -232,7 +234,7 @@ function LookPanel({
     const clientKey = crypto.randomUUID();
     setState({ name: "looking", photo });
     try {
-      const result = await lookAtPhoto(notebookId, photo, clientKey);
+      const result = await lookAtPhoto(notebookId, photo, clientKey, undefined, threadId);
       // The photo is a linked source now (role "photo") whatever vision said.
       onChanged();
       const capturedAt = result.observation?.capturedAt ?? new Date().toISOString();
@@ -398,6 +400,7 @@ function ReadPanel({
   initialState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
+  threadId?: string | null;
   onChanged: () => void;
   onOpenNotebook: (notebookId: string) => void;
   onUploadInstead: () => void;

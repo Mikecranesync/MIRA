@@ -11,9 +11,12 @@
  * (`notebook-chat-utils.ts`), mapped onto `InteractionPart` by
  * `to-interaction.ts`.
  *
- * Scope decisions fixed by the owner (2026-09-17): a composer with no notebook
- * selected is disabled-with-reason, never routed to a general endpoint; `/v3`
- * is a temporary authenticated canary; `/feed` stays the default landing.
+ * Scope (owner, 2026-09-19 — supersedes the 2026-09-17 note): the host lands on
+ * HOME with the composer enabled (ChatGPT-first lock L0); a HOME send becomes a
+ * new thread in an UNBOUND notebook on the ONE canonical route (never the
+ * last-opened machine notebook, whose identity would ride the turn), creating a
+ * "General" project when the workspace has none; New chat and New project are
+ * always available. `/feed` remains the default landing until Gate 6.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import {
@@ -47,11 +50,15 @@ import {
   fixtureFor,
   groundingLineFor,
   historyRows,
+  homeSendPlan,
   initialSelection,
+  landingSelection,
   latestRequestGate,
   metaFor,
   newThreadId,
   retainedStreamInterruption,
+  searchForSelection,
+  selectionFromSearch,
   shellThreadId,
   type CompatibleStreamResult,
   type HubSelection,
@@ -76,6 +83,18 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status:
   return { status: res.status, data };
 }
 
+/** The address bar, read/written only in the browser (the page is a client
+ *  component but is still prerendered). `replaceState` keeps one history entry
+ *  per visit: the shell's own Back handling (`adapter.onBack`) is unchanged. */
+function readSearch(): string {
+  return typeof window === "undefined" ? "" : window.location.search;
+}
+function writeSearch(search: string): void {
+  if (typeof window === "undefined") return;
+  const next = `${window.location.pathname}${search}`;
+  if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
+}
+
 const EMPTY_FIXTURE = {
   id: "hub-empty",
   title: "FactoryLM",
@@ -96,6 +115,11 @@ export function HubShellHost() {
   const [signedOut, setSignedOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
   const [selection, setSelection] = useState<HubSelection | null>(null);
+  // Mirror for async callbacks that must know whether anything is open yet
+  // without re-subscribing to the selection (the notebook list reloads after
+  // every send).
+  const selectionRef = useRef<HubSelection | null>(null);
+  useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,12 +158,19 @@ export function HubShellHost() {
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
-    setSelection((cur) => {
-      if (cur) return cur;
-      const first = initialSelection(data.notebooks);
-      if (first) syncThread(first);
-      return first;
-    });
+    // A deep link / reload names its conversation (#3922); otherwise HOME (L0).
+    // Opening from the URL goes through the same two steps as a click: the
+    // reducer is told the thread id FIRST (`syncThread`), or its hydrate case
+    // would reset the draft on every render and the composer could not be
+    // typed into (the e2e deep-link follow-up caught exactly that).
+    if (!selectionRef.current) {
+      const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
+      if (next) {
+        syncThread(next);
+        setSelection(next);
+      }
+    }
+    return data.notebooks;
   }, [syncThread]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
@@ -181,6 +212,7 @@ export function HubShellHost() {
     setFailedBody(null);
     syncThread(sel);
     setSelection(sel);
+    writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
 
   // --- derived shell inputs ---
@@ -237,8 +269,8 @@ export function HubShellHost() {
   }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string) => {
-    if (!selection) return;
+  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
+    if (!sel) return;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -248,7 +280,7 @@ export function HubShellHost() {
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString() });
     setBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(selection.notebookId)}/chat/`, {
+      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
@@ -264,7 +296,7 @@ export function HubShellHost() {
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
       // The server row is the source of truth; refresh it (also picks up a
       // thread created by this first turn) and let the live turn go.
-      await loadDetail(selection);
+      await loadDetail(sel);
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
     } catch (err) {
@@ -292,23 +324,81 @@ export function HubShellHost() {
     }
   }, [selection, loadDetail, loadNotebooks]);
 
+  /** Create a project through the same contract as the legacy "New notebook" button. */
+  const createNotebook = useCallback(async (body: { displayName: string; identitySourceType?: "user" }): Promise<string | null> => {
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (res.status === 401) { setSignedOut(true); return null; }
+    if (!res.ok) throw new Error(errorMessageFor("", res.status));
+    const created = (await res.json()) as { notebook?: { id?: string } };
+    const id = created.notebook?.id ?? null;
+    await loadNotebooks();
+    return id;
+  }, [loadNotebooks]);
+
+  /**
+   * HOME send (L0): the question becomes a new thread in the preferred notebook
+   * — created first when the workspace has none — and goes out on the canonical
+   * route in general mode (no sources selected), so it persists, streams and
+   * lands under Recent like every other conversation.
+   */
+  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string) => {
+    let notebookId: string | null = plan.kind === "existing" ? plan.notebookId : null;
+    if (plan.kind === "create") {
+      setBusy(true);
+      try { notebookId = await createNotebook(plan.body); }
+      catch (err) { dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
+      finally { setBusy(false); }
+    }
+    // No id means the create was refused (401 → signed-out screen) — hand the
+    // technician their question back rather than dropping it.
+    if (!notebookId) { dispatch({ type: "set-draft", draft: q }); return; }
+    const sel: HubSelection = { notebookId, threadId: newThreadId() };
+    select(sel);
+    await send(chatBodyFor(q, [], [], sel), q, sel);
+  }, [createNotebook, select, send]);
+
   const onSend = useCallback((text: string) => {
     const q = text.trim();
     if (!q || busy) return;
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
-    // RETURNS, so a no-project send used to discard the technician's question.
-    // Throwing is the Composer's documented contract for "keep the draft, show
-    // this plain-language error".
-    if (!selection || !detail) throw new Error(NO_PROJECT_ERROR);
+    // RETURNS, so a send before the data loaded used to discard the
+    // technician's question. Throwing is the Composer's documented contract
+    // for "keep the draft, show this plain-language error". On HOME that is
+    // the guard against creating a duplicate "General" before the list is
+    // known (#3875 F2); inside a notebook, against sending before its detail.
+    if (!selection) {
+      const plan = homeSendPlan(notebooks);
+      if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
+      void sendFromHome(plan, q);
+      return;
+    }
+    if (!detail) throw new Error(NO_PROJECT_ERROR);
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [busy, selection, detail, docIds, send]);
+  }, [busy, selection, notebooks, detail, docIds, send, sendFromHome]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
+  /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {
     if (selection) select({ notebookId: selection.notebookId, threadId: newThreadId() });
   }, [selection, select]);
+
+  /** New project: the legacy button's exact flow (prompt for a name, POST, open it). */
+  const onCreateProject = useCallback(() => {
+    const name = window.prompt("Name this machine or project (e.g. Conveyor 4)")?.trim();
+    if (!name) return;
+    void (async () => {
+      try {
+        const id = await createNotebook({ displayName: name, identitySourceType: "user" });
+        if (id) select({ notebookId: id, threadId: newThreadId() });
+      } catch (err) {
+        dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) });
+      }
+    })();
+  }, [createNotebook, select]);
 
   const onOpenItem = useCallback((item: ProjectItem) => {
     const ref = threadRefFromItem(item.id);
@@ -367,7 +457,8 @@ export function HubShellHost() {
     renderText,
     onCopy,
     onSource: (source) => openSource(source.id),
-    onNewChat: selection ? onNewChat : undefined,
+    onNewChat,
+    onCreateProject,
     ...(busy ? { onStop } : {}),
     ...(failedBody ? { onRetry } : {}),
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),

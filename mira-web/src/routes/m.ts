@@ -34,6 +34,7 @@ import {
   readChannelPref,
 } from "../lib/cookie-session.js";
 import { hubSessionPresent, hubScanPath } from "../lib/hub-handoff.js";
+import { hubUrl } from "../capabilities/hub-origin.js";
 
 function buildChannelUrl(
   channel: string,
@@ -48,7 +49,7 @@ function buildChannelUrl(
     case "openwebui":
       return config.openwebuiUrl
         ? `${config.openwebuiUrl}/c/new`
-        : "https://app.factorylm.com/c/new";
+        : hubUrl("/c/new");
     case "guest":
       return `/m/${assetTag}/report`;
     case "slack":

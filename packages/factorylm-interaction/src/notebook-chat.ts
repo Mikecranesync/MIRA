@@ -399,9 +399,16 @@ export class NotebookChatClient {
     }
 
     const frames = parseStream(body);
-    // A stream that produced no frame at all never reached a `status`, so there
-    // is no turn to render. Saying so beats rendering an empty answer.
-    if (frames.length === 0) return chatUnavailable("malformed_stream");
+    // Content can arrive before the server commits its verdict. EOF (or DONE)
+    // without a valid terminal status is truncation, never a completed answer.
+    const terminalIndex = frames.findIndex((frame) => frame.kind === "status");
+    const terminal = frames[terminalIndex];
+    if (!terminal || terminal.kind !== "status") return chatUnavailable("malformed_stream");
+    // The Hub may append deterministic follow-ups to an answered verdict.
+    // No later frame may add answer content/evidence or replace that verdict.
+    if (frames.slice(terminalIndex + 1).some((frame) =>
+      frame.kind !== "followups" || terminal.status !== "answered"
+    )) return chatUnavailable("malformed_stream");
     return framesToParts(frames);
   }
 }

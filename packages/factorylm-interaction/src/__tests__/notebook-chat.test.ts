@@ -338,3 +338,44 @@ describe("the account/fault gate", () => {
     }
   });
 });
+
+describe("terminal status is required before releasing a response", () => {
+  it.each(["answered", "insufficient_evidence", "error"])("withholds content after %s commits the outcome", async (status) => {
+    const body = sse({ kind: "status", status }, { kind: "content", content: "Unverified directive" });
+    expect(await client({ body }).chat.ask({ message: "q" }))
+      .toMatchObject({ ok: false, reason: "malformed_stream" });
+  });
+
+  it.each([
+    { kind: "status", status: "answered" },
+    { kind: "sources", citations: [] },
+    { kind: "evidence", basis: "oem_documentation" },
+    { kind: "safety", trigger: "energized" },
+    { kind: "usage", inputTokens: 2, outputTokens: 1 },
+    { kind: "followups", suggestions: ["Continue the procedure"] },
+  ])("does not amend a refused outcome with a later known frame", async (frame) => {
+    const body = sse({ kind: "status", status: "insufficient_evidence" }, frame);
+    expect(await client({ body }).chat.ask({ message: "q" }))
+      .toMatchObject({ ok: false, reason: "malformed_stream" });
+  });
+
+  it("keeps additive unknown metadata compatible after status", async () => {
+    const body = sse({ kind: "content", content: "Verified answer" },
+      { kind: "status", status: "answered" }, { kind: "future_metadata", version: 2 });
+    expect((await client({ body }).chat.ask({ message: "q" })).ok).toBe(true);
+  });
+
+  it.each([
+    sse({ kind: "content", content: "Unfinished candidate" }),
+    sse({ kind: "sources", citations: [] }),
+    sse({ kind: "content", content: "Unfinished candidate" }, { kind: "status", status: "bogus" }),
+  ])("withholds a stream without a valid status", async (body) => {
+    const result = await client({ body }).chat.ask({ message: "q" });
+    expect(result).toMatchObject({ ok: false, reason: "malformed_stream" });
+    expect(result).not.toHaveProperty("parts");
+  });
+
+  it.each([ANSWERED, ABSTAIN, SAFETY, ERRORED])("preserves legitimate terminal outcomes", async (body) => {
+    expect((await client({ body }).chat.ask({ message: "q" })).ok).toBe(true);
+  });
+});

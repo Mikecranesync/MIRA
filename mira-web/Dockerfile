@@ -1,5 +1,18 @@
-FROM oven/bun:1.2.9-slim AS base
+# 1.2.10-slim is the first oven/bun slim image on Debian bookworm. 1.2.9-slim is
+# bullseye, whose security suite no longer serves packages (index lists curl
+# deb11u16, pool 404s), so `apt-get install curl` below cannot succeed anywhere.
+# Runtime bun moves one patch release (1.2.9 -> 1.2.10); CI tests mira-web on
+# `bun-version: latest`. See #3930 (staging acceptance, 2026-09-21).
+FROM oven/bun:1.2.10-slim AS base
 WORKDIR /app
+
+# Build arguments for version/identity tracking
+ARG MIRA_GIT_SHA=unknown
+ARG MIRA_APP_VERSION=unknown
+ARG MIRA_BUILD_TIME=unknown
+ENV MIRA_GIT_SHA=$MIRA_GIT_SHA
+ENV MIRA_APP_VERSION=$MIRA_APP_VERSION
+ENV MIRA_BUILD_TIME=$MIRA_BUILD_TIME
 
 # Install curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

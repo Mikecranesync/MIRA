@@ -96,3 +96,27 @@ describe("notebookMachines", () => {
     expect(machines[0]).toMatchObject({ id: "asset-uuid-1", canonicalAssetId: "asset-uuid-1", status: "unknown" });
   });
 });
+
+describe("unbound (asset: null) notebooks are addressable in the tree (#3922)", () => {
+  it("lists a mobile-form notebook's threads as openable rows with no machine link, and each row resolves to its exact thread", () => {
+    const mobile = notebook({
+      id: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4",
+      displayName: "EMU-WALK-3898-verify",
+      manufacturer: "AutomationDirect",
+      model: "GS10",
+      identityStatus: "user_confirmed",
+      asset: null,
+      threads: [
+        { id: "t-1", notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", title: "temperature", createdAt: "", updatedAt: "", turnCount: 3, sharedLegacy: false },
+        { id: "t-2", notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", title: "ports", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false },
+      ],
+    });
+    const [project] = notebookProjects([mobile]);
+    expect(project.id).toBe("project-7a352ed1-5f8a-48d6-b66c-1ff641fea9d4");
+    expect(project.children.map((c) => c.kind)).toEqual(["thread", "thread"]);
+    for (const [row, threadId] of [[project.children[0], "t-1"], [project.children[1], "t-2"]] as const) {
+      expect(threadRefFromItem(row.id)).toEqual({ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId });
+    }
+    expect(notebookMachines([mobile])).toEqual([]);
+  });
+});

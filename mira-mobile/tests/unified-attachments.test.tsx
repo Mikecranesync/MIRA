@@ -33,10 +33,10 @@ import type { Attachment } from "@factorylm/interaction";
 type Controller = ReturnType<typeof useUnifiedAttachments>;
 
 /** Render the hook and hand its API back, since it is a hook not a function. */
-function mount(notebookId: string | null): () => Controller {
+function mount(notebookId: string | null, threadId?: string | null): () => Controller {
   let current: Controller | null = null;
   function Probe() {
-    current = useUnifiedAttachments(notebookId);
+    current = useUnifiedAttachments(notebookId, threadId);
     return null;
   }
   render(<Probe />);
@@ -66,7 +66,7 @@ describe("unified attachments controller", () => {
   it("uploads the photo through the LOOK door and returns the visual-evidence rider", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockResolvedValue({ fileId: "file-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
-    const get = mount("nb-1");
+    const get = mount("nb-1", "actual-backend-thread");
 
     let a: Attachment | null = null;
     await act(async () => { a = await get().attachPhoto(); });
@@ -74,6 +74,7 @@ describe("unified attachments controller", () => {
     await act(async () => { composed = await get().compose("why is it leaking", [a as Attachment]); });
 
     expect(api.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(api.lookAtPhoto.mock.calls[0][4]).toBe("actual-backend-thread");
     expect(composed).toEqual({
       question: "why is it leaking",
       rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T00:00:00Z" } },
@@ -203,6 +204,34 @@ describe("unified attachments controller", () => {
     let second;
     await act(async () => { second = await get().compose("what is this", [], { retry: true }); });
     expect(second).toMatchObject({ rider: { visualEvidence: { fileId: "file-thrown" } } });
+  });
+
+
+  // A photo that PARKED but was never analysed must not be asked about. The
+  // server returns the saved file with `observation: null` on a vision-provider
+  // failure (502) or an unconfigured recognizer (503) — real paths, not
+  // exceptions (see lookAtPhoto in src/api/resources.ts). Sending anyway asks
+  // "what am I looking at" about a picture nothing has read, which is the same
+  // "answer from nothing while looking grounded" failure the fileId check
+  // prevents. Ported from the legacy surface (#3837) onto the surface the app
+  // actually renders.
+  it("refuses to ask about a photo the server could not analyze", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValue({ fileId: "parked-1", observation: null });
+    const get = mount("nb-1");
+
+    let a: Attachment | null = null;
+    await act(async () => { a = await get().attachPhoto(); });
+    let composed;
+    await act(async () => { composed = await get().compose("what is in this box", [a as Attachment]); });
+
+    expect(composed).toMatchObject({ failure: expect.stringContaining("couldn't analyze") });
+    expect(composed).not.toHaveProperty("rider");
+    // Held for another attempt, exactly like the other failure paths.
+    // Since #3864 a failed send retains its bytes in `retained` (armed only for
+    // Try again), never in `carried` (which rides the next send by design).
+    expect(get().hasRetained()).toBe(true);
+    expect(get().hasCarried()).toBe(false);
   });
 
 });
