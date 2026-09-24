@@ -150,23 +150,54 @@ class Client:
         )
         return status, body.decode("utf8", "replace"), crid
 
-    def packet(self, client_request_id: str, *, tries: int = 12) -> dict | None:
-        """Read the turn's evidence packet back out of the recorder."""
+    def packet(self, client_request_id: str, *, notebook: str | None = None,
+               tries: int = 12) -> dict | None:
+        """Read the turn's evidence packet back out of the recorder.
+
+        CORRECTED 2026-09-24. This previously fetched
+        `/api/observability/turns/?client_request_id=...`, WHICH DOES NOT EXIST
+        — not on main and not on any of the four release heads. The only route
+        under /api/observability is `coverage`, and `listAttempts` returns a
+        `has_packet` BOOLEAN, never the packet body. So every packet-dependent
+        check (wrong-family, recall-without-rider, F-neg's candidate_count,
+        oem_model) would have read None and reported FAIL/INCONCLUSIVE. The
+        live acceptance could not have passed at all.
+
+        The packet is already served by an EXISTING route — no new endpoint is
+        needed, and per the repo's reuse-before-build rule none is added:
+            GET /api/equipment-notebooks/{id}/turns/{turnId}/diagnostics
+        which returns {traceId, turnId, notebookId, packet, anomalies, ...}.
+
+        Keying works because the chat route does
+        `const turnId = clientRequestId ?? crypto.randomUUID()` — when the
+        client supplies a clientRequestId, the turn id IS that value. We always
+        supply one, so turnId == client_request_id. Both ids must be UUIDs or
+        the route 404s before Postgres; uuid4 satisfies that.
+
+        Note the route deliberately serves ids/counts/flags only and NEVER the
+        question or answer text. That is fine here: the wrong-family scan reads
+        the ANSWER BODY from the chat response, not from the packet.
+        """
+        nb = notebook or self.notebook
+        turn_id = client_request_id
         for _ in range(tries):
             status, body = self._req(
-                f"/api/observability/turns/?client_request_id={urllib.parse.quote(client_request_id)}"
+                f"/api/equipment-notebooks/{nb}/turns/{urllib.parse.quote(turn_id)}/diagnostics/"
             )
             if status == 200:
                 try:
-                    rows = json.loads(body.decode("utf8", "replace"))
+                    doc = json.loads(body.decode("utf8", "replace"))
                 except Exception:
-                    rows = None
-                if isinstance(rows, dict):
-                    rows = rows.get("turns") or rows.get("rows") or []
-                if rows:
-                    p = rows[0].get("packet") if isinstance(rows[0], dict) else None
+                    doc = None
+                # Single-turn shape first; tolerate a list shape so the
+                # collection route remains a usable fallback.
+                if isinstance(doc, dict):
+                    p = doc.get("packet")
                     if p:
                         return p
+                    rows = doc.get("turns") or doc.get("rows") or []
+                    if rows and isinstance(rows[0], dict) and rows[0].get("packet"):
+                        return rows[0]["packet"]
             time.sleep(2)
         return None
 
@@ -299,7 +330,12 @@ def main() -> int:
     if a.fresh_notebook:
         print("\nR-neg — NEGATIVE CONTROL: empty notebook recalls nothing")
         st4, _, crid4 = c.ask(a.hmi_question, notebook=a.fresh_notebook)
-        p4 = c.packet(crid4)
+        # The diagnostics route is notebook-scoped (loadTurnDiagnostics filters on
+        # notebook_id), so this turn must be read back from the FRESH notebook it
+        # was asked on. Defaulting to self.notebook here 404s and the control
+        # silently degrades to "no packet" — a FAIL that looks like a defect in
+        # the product rather than in the harness.
+        p4 = c.packet(crid4, notebook=a.fresh_notebook)
         if p4:
             ve4 = p4.get("visual_evidence") or {}
             check(results, "R-neg/nothing-recalled",
