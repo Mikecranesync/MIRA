@@ -42,6 +42,12 @@
 # ---------------------------------------------------------------------------
 
 meta:
+  # Evidence recorded ON OR AFTER this date must carry a `provenance:` block
+  # when it backs an enabled capability (tools/evidence_provenance.py).
+  # Deliberately NOT retroactive: failing every historical record would either
+  # turn main red or invite a blanket acknowledgement, and a rule everyone
+  # silences is not a rule. Move this date forward deliberately, never quietly.
+  provenance_enforced_from: "2026-09-24"
   observed_on: "2026-08-19"
   observed_by: "capability-closure inventory (Doppler read, dev/stg/prd)"
   doppler_project: factorylm
@@ -51,6 +57,68 @@ meta:
     repository-side invariants only.
 
 capabilities:
+
+  # =========================================================================
+  - id: evidence_provenance_gate
+    purpose: >-
+      Bind every closure claim to a reproducible observation: a real commit, a
+      named environment, a stated falsifier, and an observation path that has
+      itself demonstrated a positive and a negative control.
+    customer_outcome: >-
+      A release is not declared on evidence nobody can reproduce, and an
+      observation the harness could not make is never reported as the product
+      failing.
+    state: connected_ci_missing
+    owner: "@Mikecranesync"
+    feature_flag: null
+    code_paths:
+      - tools/evidence_provenance.py
+      - tools/capability_closure.py
+    environments:
+      dev: n/a
+      staging: n/a
+      production: n/a
+    ci_jobs:
+      - capability-closure
+    evidence:
+      - path: tests/test_evidence_provenance.py
+        observed_at: "2026-09-24"
+        note: >-
+          29 provenance rule tests plus 3 packet-classification and caller controls. Mutation-tested three
+          ways rather than assumed: gutting the observation-control check,
+          letting INCONCLUSIVE count as proof, and removing the commit-existence
+          check each turn the suite red, and restoring each turns it green
+          again. A linter shown only passing input cannot be told apart from one
+          that returns an empty list.
+        provenance:
+          commit_sha: "4ebd8b91747f2a8fa14ce2cf3b77a3ac3593d2e0"
+          environment: local
+          observed_at: "2026-09-24"
+          outcome: pass
+          observation:
+            mechanism: >-
+              pytest over pure functions with a synthetic registry; commit
+              identity resolved through `git cat-file -e <sha>^{commit}`.
+            positive_control: tests/test_evidence_provenance.py::test_complete_record_is_clean
+            negative_control: tests/test_evidence_provenance.py::test_fabricated_sha_is_caught
+          falsified_by: >-
+            Remove any single rule from tools/evidence_provenance.py and the
+            suite must go red. If it stays green, the rule was never enforced
+            and this evidence is void.
+    reason: >-
+      Not a runtime feature and has no flag: it is a repository-side validator
+      that runs in CI, so `environments` is n/a rather than off. State stays
+      connected_ci_missing until the capability-closure job carrying its rule
+      tests has actually run green on main — a job declared in a PR is not a job
+      that has executed.
+    review_by: "2026-12-31"
+    rollback: >-
+      Delete `meta.provenance_enforced_from`. Every provenance rule then
+      reports nothing, which is the pre-change behaviour.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "A capability whose evidence was REJECTED by these rules and then re-observed."
+      - "The staging acceptance run records provenance rather than prose."
   # =========================================================================
   - id: run_diff_engine
     purpose: >-
@@ -82,6 +150,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: docs/architecture/convergence/units/evidence/capability-closure/run-diff-pilot-2026-08-19.md
+        recorded_at: "2026-08-19"  # Registry history, not a new observation.
         note: >-
           First reviewed run-diff artifact. The real engine driven offline via
           InMemoryRunStore — no production, staging, PLC or DB access. Segments 7
@@ -145,6 +214,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: docs/proofs/2026-09-05-notebook-private-turns-production-proof.md
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
         note: >-
           Production proof 2026-09-06: migration 086 applied via apply-migrations.yml
           (prod) and verified read-only via db-inspect.yml (column, index, 211 legacy
@@ -155,6 +225,7 @@ capabilities:
           browser reload and invisible to a same-tenant teammate; legacy history
           (7 turns) readable to both.
       - path: tools/notebook-e2e/notebook_proof.mjs
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
         note: >-
           Outside-in two-user harness (--expect-private-history) - PASS on local
           production builds of every reviewed head of #3597 and on the shipped head.
@@ -193,6 +264,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: tests/test_approved_retrieval_plumbing.py
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Every consumer's compose environment forwards the flag; with the
           container-shaped value 'true' recall_knowledge emits 'AND verified = true'
@@ -201,6 +273,7 @@ capabilities:
           backfilled), 255 verified private, 711 UNverified private — gate-on
           hides only unapproved uploads, the designed direction.
       - path: docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Production runtime proof 2026-08-27 after #3416 deployed (dd65c57eb):
           MIRA_ENFORCE_APPROVED_RETRIEVAL=true inside all five consumer
@@ -550,28 +623,40 @@ capabilities:
     required_checks_observed_on: "2026-09-06"
     evidence:
       - path: packages/factorylm-theme/src/__tests__/theme-contract.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Theme token contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-interaction/src/__tests__/reducer.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared interaction reducer contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-interaction/src/__tests__/fixtures.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared fixture contract, run by the standalone Shared UI workflow."
       - path: packages/factorylm-ui/src/__tests__/shell.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Shared shell component coverage."
       - path: packages/factorylm-ui/src/__tests__/conversation.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Conversation-part rendering coverage from merged Task 5."
       - path: packages/factorylm-ui/src/__tests__/composer.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Universal-composer behavior coverage from merged Task 5."
       - path: apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Cross-surface browser fixture matrix; local release proof, not part of the required unit check."
       - path: mira-mobile/tests/unified-chat.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
       - path: mira-mobile/tests/unified-root.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Whole-app mobile shell host behavior."
       - path: mira-hub/src/factorylm-ui/hub-host-logic.test.ts
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Hub HOME, General-project selection, loading gate, and New-project host behavior from #3875."
       - path: docs/promo-screenshots/2026-09-19_hub-v3-shell-thread-persists-after-reload_desktop.png
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
         note: "Exact #3875 proof screenshot: the Hub /v3 thread persists after reload; not production proof."
       - path: https://updates.factorylm.com/manifest.canary.json
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
         note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
     rollback: >-
       On a canary device, choose Use classic app or set the device-local
