@@ -41,8 +41,8 @@ beforeAll(async () => {
     "12AX%_7", "12AXZZ7",
   ]) {
     await client.query(
-      `INSERT INTO knowledge_entries (tenant_id, content, manufacturer, model_number, source_url)
-       VALUES ($1, 'panel supply specification', 'Siemens', $2, $3)`,
+      `INSERT INTO knowledge_entries (tenant_id, content, manufacturer, model_number, source_url, is_private)
+       VALUES ($1, 'panel supply specification', 'Siemens', $2, $3, false)`,
       [TENANT, model, `https://test.invalid/${encodeURIComponent(model)}`],
     );
   }
