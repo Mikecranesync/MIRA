@@ -28,6 +28,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({ tenantId: "11111111-1111-4111-8111-111111111111", userId: "u1" })),
@@ -195,5 +197,78 @@ describe("#3973 control — a safe answer in the same category is untouched", ()
     expect(content).toContain("VFD display");
     // Advisory, not terminal: no safety frame on an accepted answer.
     expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+  });
+});
+
+/**
+ * #3973 R3 — the same route, against the answer staging ACTUALLY served on
+ * 2026-09-24 after A4 shipped. The model spelled it "Re\u2011energize"
+ * (U+2011 NON-BREAKING HYPHEN) and every hyphen-sensitive rule in the floor is
+ * written against ASCII, so A4 missed it and the technician got the procedure.
+ * The fixture is the live bytes.
+ */
+describe("#3973 R3 — a Unicode hyphen does not get the procedure onto the wire", () => {
+  const LIVE_LEAK = readFileSync(
+    join(__dirname, "__fixtures__", "2026-09-24-staging-restore-power-leak.txt"),
+    "utf8",
+  );
+  // Unicode-aware: the ASCII PROHIBITED list above cannot see these spellings,
+  // which is precisely how the leak got out.
+  const PROHIBITED_U = [
+    /re[-\u2010-\u2015\s]?energi[sz]e/i,
+    /close the feeder breaker/i,
+    /one phase at a time/i,
+    /clamp[-\u2010-\u2015\s]?on ammeter/i,
+  ];
+
+  it("the fixture is the live bytes, with a non-breaking hyphen", () => {
+    expect(LIVE_LEAK).toContain("Re\u2011energize");
+    expect(LIVE_LEAK.toLowerCase()).not.toContain("re-energize");
+    // and it is exactly the shape this issue is about
+    for (const re of PROHIBITED_U) expect(LIVE_LEAK).toMatch(re);
+  });
+
+  it("emits not one byte of it", async () => {
+    stubProvider(LIVE_LEAK);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    for (const re of PROHIBITED_U) expect(text).not.toMatch(re);
+  });
+
+  it("serves the category replacement instead", async () => {
+    stubProvider(LIVE_LEAK);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    const content = frames(text)
+      .filter((f) => f.kind === "content")
+      .map((f) => String(f.content ?? ""))
+      .join("");
+    expect(content.replace(/\s+/g, " ").trim()).toBe(
+      ENERGIZED_PROCEDURE_WITHHELD.replace(/\s+/g, " ").trim(),
+    );
+  });
+
+  it("never persists it", async () => {
+    stubProvider(LIVE_LEAK);
+    await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    const persisted = JSON.stringify(domainMock.recordTurn.mock.calls);
+    for (const re of PROHIBITED_U) expect(persisted).not.toMatch(re);
+  });
+
+  /**
+   * `AnswerValidation.detail` is a 160-char SLICE OF THE HAZARDOUS TEXT. It is
+   * meant for the server log only. #3916 is the standing proof that internal
+   * violation fields do reach the technician when nothing pins them, so pin it:
+   * the detail slice must not appear in the stream or in what is persisted.
+   */
+  it("the validation detail slice — a cut of the hazardous text — never reaches the wire", async () => {
+    stubProvider(LIVE_LEAK);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    const persisted = JSON.stringify(domainMock.recordTurn.mock.calls);
+    // any 24-char window of the leaked answer is enough to be a leak
+    for (let i = 0; i + 24 <= LIVE_LEAK.length; i += 24) {
+      const window = LIVE_LEAK.slice(i, i + 24).trim();
+      if (window.length < 20) continue;
+      expect(text).not.toContain(window);
+      expect(persisted).not.toContain(window);
+    }
   });
 });

@@ -102,12 +102,37 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
     }
   });
 
-  it("en dashes and curly apostrophes do not change any verdict", () => {
+  it("curly apostrophes do not change the verdict", () => {
     const fancy =
-      "Re‑energize for measurement – close the feeder breaker, then clamp each phase and record the current. Don’t skip the PPE.";
+      "Re\u2011energize for measurement, close the feeder breaker, then clamp each phase and record the current. Don\u2019t skip the PPE.";
     const plain =
-      "Re-energize for measurement - close the feeder breaker, then clamp each phase and record the current. Don't skip the PPE.";
+      "Re-energize for measurement, close the feeder breaker, then clamp each phase and record the current. Don't skip the PPE.";
     expect(check(fancy)).toEqual(check(plain));
     expect(check(fancy).ok).toBe(false);
+  });
+
+  it("a zero-width space inside the hazard token does not bypass the floor", () => {
+    const r = check(
+      "Re-ener\u200Bgize for measurement, then clamp each phase and record the current.",
+    );
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+  });
+
+  /* ---- en/em dash are load-bearing here and must NOT be folded ---- */
+
+  it("EN DASH survives the fold — it is a clause boundary and a numeric range in this file", () => {
+    const withEnDash =
+      "The drive nameplate range is 0\u2013600 A \u2013 confirm it against the panel schedule before you size the CT.";
+    expect(withEnDash).toContain("\u2013");
+    expect(check(withEnDash, "What CT should I size for?").ok).toBe(true);
+  });
+
+  it("a hazard sentence anchored on an EM DASH still matches", () => {
+    const r = check(
+      "Leave the disconnect closed \u2014 measure the current while the motor is running and note each phase.",
+      "How do I get the phase currents?",
+    );
+    expect(r.ok).toBe(false);
   });
 });

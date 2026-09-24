@@ -635,13 +635,23 @@ export function validateAnswer(opts: {
   // U+2011 is in neither `\w` nor `-` — was measured and did NOT reproduce;
   // it is pinned as a control in answer-validation-unicode-hyphen.test.ts so
   // it cannot appear later. The ASCII assumption is file-wide rather than A4's,
-  // which is why this folds here instead of widening one regex: the whole
-  // Unicode dash block, the non-breaking spaces, and the curly apostrophes.
+  // which is why this folds here instead of widening one regex.
+  //
+  // The fold is deliberately HYPHENS ONLY. U+2013 EN DASH and U+2014 EM DASH
+  // are load-bearing in this file and must NOT be folded: CLAUSE_BOUNDARY
+  // splits on them, NUM/RANGE parse "0–600 A" through them, and three
+  // HAZARD_AFFIRMATIONS anchor a sentence start on `[—–]`. Folding those to
+  // "-" would silently rewrite A2's clause scoping and B's numeric grammar.
+  // The observed bypass was U+2011; en dash appeared in the leaked answer only
+  // as a list separator and was never load-bearing for the match.
   const scanText = answerText
     .replace(/[*`]/g, "")
-    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    // hyphens (NOT en/em dash — see above)
+    .replace(/[\u2010\u2011\u2012\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .replace(/[\u2018\u2019\u02BC]/g, "'")
-    .replace(/[\u00A0\u2007\u202F]/g, " ");
+    .replace(/[\u00A0\u2007\u202F]/g, " ")
+    // zero-width characters split a token without showing anything at all
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, "");
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
