@@ -84,15 +84,15 @@ capabilities:
       - path: tests/test_evidence_provenance.py
         observed_at: "2026-09-24"
         note: >-
-          21 rule tests, each asserted in BOTH directions. Mutation-tested three
+          27 provenance rule tests plus the packet-classification control. Mutation-tested three
           ways rather than assumed: gutting the observation-control check,
           letting INCONCLUSIVE count as proof, and removing the commit-existence
           check each turn the suite red, and restoring each turns it green
           again. A linter shown only passing input cannot be told apart from one
           that returns an empty list.
         provenance:
-          commit_sha: "248f6ac6e4fdc5485c0a3d8079848c4acde8cd88"
-          environment: ci
+          commit_sha: "defbb5cc0117e4b6726d57d6f82bc6b8a386ef0b"
+          environment: local
           observed_at: "2026-09-24"
           outcome: pass
           observation:
