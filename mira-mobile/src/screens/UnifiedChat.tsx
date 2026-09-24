@@ -15,7 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
   createShellState,
@@ -149,6 +149,7 @@ export function UnifiedChat({
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+  const [validationError, setValidationError] = useState(false);
 
   useEffect(() => {
     dispatch({
@@ -263,7 +264,13 @@ export function UnifiedChat({
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
     // Keep chips available when the request exceeds the single-photo contract.
-    assertSupportedAttachments(pending);
+    try {
+      assertSupportedAttachments(pending);
+    } catch (error) {
+      setValidationError(true);
+      throw error;
+    }
+    setValidationError(false);
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
       handlers.onSend(questionForAttachments(text, pending));
@@ -351,6 +358,7 @@ export function UnifiedChat({
       adapter={adapter}
       hooks={hooks}
       conversationSurface="assistant"
+      retryComposerOnError={validationError}
       onOpenItem={host?.onOpenItem}
       onSelectProject={host?.onSelectProject}
       navigationFooter={host?.navigationFooter}

@@ -253,13 +253,16 @@ describe("UnifiedChat", () => {
     ));
   });
 
-  it("refuses multiple photos before clearing their chips or uploading only one", async () => {
+  it.each([
+    { retryPath: "draft fallback", turns: [] as NotebookServerTurn[], canRetry: false },
+    { retryPath: "prior host turn", turns: [TURN], canRetry: true },
+  ])("refuses multiple photos on $retryPath before clearing their chips or uploading only one", async ({ turns, canRetry }) => {
     nativePick.pickPhoto
       .mockResolvedValueOnce(new File(["a"], "left.jpg", { type: "image/jpeg" }))
       .mockResolvedValueOnce(new File(["b"], "right.jpg", { type: "image/jpeg" }));
     const h = handlers();
     render(
-      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false}
+      <UnifiedChat turns={turns} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={canRetry}
         chatError={null} handlers={h} meta={META} />,
     );
 
@@ -279,6 +282,31 @@ describe("UnifiedChat", () => {
     expect(screen.getByText(/right\.jpg/)).toBeTruthy();
     expect(resources.lookAtPhoto).not.toHaveBeenCalled();
     expect(h.onSend).not.toHaveBeenCalled();
+    expect(h.onRetry).not.toHaveBeenCalled();
+
+    // A validation error has no sent turn to retry. The error surface must
+    // retry the current composer with its visible chips, never resend text alone.
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
+    expect(h.onSend).not.toHaveBeenCalled();
+    expect(h.onRetry).not.toHaveBeenCalled();
+    expect(screen.getByText(/left\.jpg/)).toBeTruthy();
+    expect(screen.getByText(/right\.jpg/)).toBeTruthy();
+
+    resources.lookAtPhoto.mockResolvedValue({
+      fileId: "file-left",
+      attachment: { linkId: "link-left", notebookId: "nb-1" },
+      observation: { text: "Left panel.", capturedAt: "2026-09-24T00:00:00Z" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove right.jpg" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(
+      "compare these",
+      { visualEvidence: { fileId: "file-left", capturedAt: "2026-09-24T00:00:00Z" } },
+    ));
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/left\.jpg/)).toBeNull();
+    expect(screen.queryByText(/right\.jpg/)).toBeNull();
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {

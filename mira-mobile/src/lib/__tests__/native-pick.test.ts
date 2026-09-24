@@ -147,6 +147,31 @@ describe("web", () => {
     expect(pickImages).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["photo", pickNameplatePhoto],
+    ["document", pickPdf],
+  ] as const)("waits for the %s selection even when focus arrives first", async (_kind, pick) => {
+    state.native = false;
+    vi.useFakeTimers();
+    let settled = false;
+    const pending = pick().then((file) => { settled = true; return file; });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    try {
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(settled).toBe(false);
+      expect(input.isConnected).toBe(true);
+      const selected = new File(["selection"], "selected.jpg", { type: "image/jpeg" });
+      Object.defineProperty(input, "files", { configurable: true, value: [selected] });
+      input.dispatchEvent(new Event("change"));
+      expect(await pending).toBe(selected);
+      expect(input.isConnected).toBe(false);
+    } finally {
+      input.remove();
+      vi.useRealTimers();
+    }
+  });
+
   it("uses a browser file input without calling the native plugin off-device", async () => {
     state.native = false;
     const pending = pickNameplatePhoto();

@@ -87,8 +87,8 @@ function imageMimeOf(picked: PickedFile): string {
 }
 
 /** Browser/PWA equivalent of the native one-file picker. The temporary input
- * is removed as soon as the user chooses a file. A focus return with no change
- * is treated as cancel so callers never remain busy after closing the dialog. */
+ * is removed on the authoritative change or cancel event. Window focus may
+ * precede a successful selection and must not settle this promise. */
 function pickInBrowser(accept?: string, capture?: "environment"): Promise<File | null> {
   if (typeof document === "undefined") return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -99,23 +99,14 @@ function pickInBrowser(accept?: string, capture?: "environment"): Promise<File |
     input.style.display = "none";
 
     let settled = false;
-    let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const finish = (file: File | null) => {
       if (settled) return;
       settled = true;
-      if (focusTimer) clearTimeout(focusTimer);
-      window.removeEventListener("focus", onFocus);
       input.remove();
       resolve(file);
     };
-    const onFocus = () => {
-      // Browsers dispatch `change` just after the picker gives focus back. Give
-      // that event one turn before interpreting the focus as a cancellation.
-      focusTimer = setTimeout(() => finish(input.files?.[0] ?? null), 0);
-    };
     input.addEventListener("cancel", () => finish(null), { once: true });
     input.addEventListener("change", () => finish(input.files?.[0] ?? null), { once: true });
-    window.addEventListener("focus", onFocus);
     document.body.appendChild(input);
     input.click();
   });
