@@ -103,6 +103,9 @@ def check_components(m: dict, root: Path, f: Findings) -> None:
         required = bool(c.get("required"))
         alias = c.get("same_artifact_as")
 
+        if required and c.get("contract") and c["contract"] != contract:
+            f.error(f"component '{name}' claims contract {c['contract']!r} but the release contract is {contract!r}")
+
         if alias:
             # An aliased surface must NOT carry its own sha — two fields that
             # are always equal is exactly how they stop being equal.
@@ -130,11 +133,6 @@ def check_components(m: dict, root: Path, f: Findings) -> None:
 
         # A required component must declare the contract it honours, so a
         # surface cannot silently ship against an older turn shape.
-        if required and not non_sha and c.get("contract") and c["contract"] != contract:
-            f.error(
-                f"component '{name}' claims contract {c['contract']!r} but the release "
-                f"contract is {contract!r}"
-            )
         if required and not non_sha and not c.get("contract") and not alias:
             f.error(f"required component '{name}' does not declare a contract version")
 

@@ -246,3 +246,28 @@ def test_deployed_sha_drift_is_detected(tmp_path, manifest, monkeypatch):
     assert any("DRIFTED backend_hub" in e for e in f.errors), f.errors
     monkeypatch.setattr(rt, "_fetch", lambda url: {"gitSha": manifest["components"]["backend_hub"]["expected"]["sha"]})
     assert rt.validate(_write(tmp_path, manifest), drift=True).errors == []
+
+
+def test_alias_still_has_to_match_the_release_contract(tmp_path, manifest):
+    m = copy.deepcopy(manifest)
+    m["components"]["web_hub"]["contract"] = "mira-turn/v0"
+    assert any("claims contract" in e for e in errors_for(tmp_path, m))
+
+
+def test_machine_project_flow_cannot_pass_without_a_grounded_fixture():
+    sys.path.insert(0, str(ROOT / "tools/release-train"))
+    import parity_acceptance as pa
+    class SessionProbe:
+        def ask(self, nb, message, general=True):
+            raise AssertionError("empty notebook must not stand in for grounded machine proof")
+            return {"text": "test response " * 10}
+    assert pa.flow_machine_project_chat(SessionProbe(), {"nb": "fixture"})[0] is None
+
+
+def test_citation_flow_requires_nonempty_shipped_citations():
+    import parity_acceptance as pa
+    class Probe:
+        def __init__(self, citations): self.citations = citations
+        def ask(self, *a, **k): return {"frames": [{"kind": "sources", "citations": self.citations}]}
+    assert pa.flow_citations_evidence(Probe([]), {"nb": "fixture"})[0] is None
+    assert pa.flow_citations_evidence(Probe([{"docId": "fixture"}]), {"nb": "fixture"})[0] is True
