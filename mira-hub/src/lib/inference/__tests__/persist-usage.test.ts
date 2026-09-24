@@ -278,7 +278,10 @@ describe("persistTurnUsage — Turn Flight Recorder columns (migration 090)", ()
     expect(params).toContain(null);
     // anomalies is NOT NULL (090 default '[]'::jsonb) — never pass null for it.
     expect(params).not.toContain(undefined);
-    expect(params[params.length - 1]).toBe("[]"); // anomalies -> stringified []
+    // POSITION-INDEPENDENT on purpose: 091 appends `attempt_id`/`outcome` after
+    // anomalies, and "the last param" is not what this test is about — it is
+    // about anomalies never being null on a NOT-NULL column.
+    expect(params).toContain("[]"); // anomalies -> stringified []
   });
 
   it("with a record, writes otelTraceId/turnRowId/clientRequestId/notebookId/environment/gitSha", async () => {
@@ -324,8 +327,8 @@ describe("persistTurnUsage — Turn Flight Recorder columns (migration 090)", ()
   it("without a record, anomalies still writes the literal empty array, never NULL", async () => {
     await persistTurnUsage(scope, usage);
     const { params } = calls[0];
-    expect(params[params.length - 1]).toBe("[]");
-    expect(params[params.length - 1]).not.toBeNull();
+    expect(params).toContain("[]");
+    expect(params.find((p) => p === "[]")).not.toBeNull();
   });
 
   it("includes the traceId in the persist_failed log when a record is present", async () => {

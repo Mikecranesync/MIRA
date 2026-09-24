@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 183
+    "apiRoutes": 184
   },
   "pages": [
     "/admin",
@@ -217,6 +217,7 @@
     "/api/namespace/node/[id]/files",
     "/api/namespace/path",
     "/api/namespace/tree",
+    "/api/observability/coverage",
     "/api/picker/dropbox/key",
     "/api/picker/google/token",
     "/api/pm-schedules",

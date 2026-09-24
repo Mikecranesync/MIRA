@@ -58,7 +58,7 @@ vi.mock("../../lib/native-pick", async (importOriginal) => {
 });
 
 import { NotebookScreen } from "../NotebookScreen";
-import { parseChatSse, type ChatTurn } from "../../lib/sse";
+import { ENERGIZED_ELECTRICAL_HAZARD, parseChatSse, type ChatTurn } from "../../lib/sse";
 
 const CITATION = {
   citationId: "1",
@@ -350,5 +350,51 @@ describe.each(SURFACES)("FLEET-003 live safety frame — %s", (_name, available)
 
     expect(await screen.findByText(/GS10 manual/)).toBeTruthy();
     expect(screen.queryByTestId("safety-notice")).toBeNull();
+  });
+
+  it("#3893: a live energized directive shows a NON-terminal warning AND keeps the cited answer", async () => {
+    // The Hub streams the directive on the EVIDENCE frame's `hazardEntries`,
+    // NEVER a `{kind:"safety"}` frame (pinned by the hub's
+    // chat-electrical-hazard-live-stream.test.ts). Unlike a hard stop this turn
+    // IS an answer: the banner is a warning (role="note"), and the citation chip
+    // survives — the exact chrome a hard stop suppresses.
+    const directive = parseChatSse(
+      frame({ kind: "content", content: "De-energize first, then verify absence of voltage [1]." }) +
+        frame({ kind: "sources", citations: [CITATION] }) +
+        frame({
+          kind: "evidence",
+          basis: "oem_documentation",
+          label: "From the manual",
+          hazardEntries: [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }],
+        }) +
+        frame({ kind: "status", status: "answered" }),
+    );
+    // Fixture guard: the parser captured the directive, NOT a terminal stop.
+    expect(directive.safetyDirective).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    expect(directive.safetyTrigger).toBeUndefined();
+
+    askNotebook.mockImplementation(async (_id: string, _msg: string, _scope: unknown, opts: {
+      onUpdate?: (t: ChatTurn) => void;
+    }) => {
+      opts.onUpdate?.({ answer: "De-energize first", citations: [], status: "" });
+      return directive;
+    });
+    mount(available);
+
+    const input = (await screen.findByRole("textbox", {
+      name: "Ask a question",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "can I clamp-meter it live?" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    // The warning banner is present and is the NON-terminal directive variant
+    // (role="note"), NOT the hard-stop alert.
+    const banner = await screen.findByTestId("safety-notice");
+    expect(banner.getAttribute("data-variant")).toBe("directive");
+    expect(banner.getAttribute("role")).toBe("note");
+    // Success chrome is PRESERVED — the citation chip a hard stop would suppress.
+    expect(await screen.findByText(/GS10 manual/)).toBeTruthy();
   });
 });

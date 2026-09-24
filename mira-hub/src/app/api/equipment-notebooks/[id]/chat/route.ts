@@ -45,6 +45,8 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
+import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
   captureContentEnabled,
   environmentName,
@@ -93,6 +95,13 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
+import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
+import {
+  recordArrival,
+  recordResponse,
+  type IngressRecord,
+} from "@/capabilities/observability/turn-ingress";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -773,9 +782,17 @@ async function verifyVisualEntry(
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function handleChatTurn(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  ingress: IngressRecord,
+) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // The arrival row was written before auth and therefore carries no tenant.
+  // Attribute it now, so a lost start is still countable against the tenant it
+  // belonged to instead of only in the unscoped operator view.
+  ingress.tenantId = ctx.tenantId;
   const { id: notebookId } = await params;
 
   let body: {
@@ -849,6 +866,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (body.clientRequestId != null && !clientRequestId) {
     return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
   }
+  // Carry the CLIENT's own key into the ingress ledger (093). The arrival row
+  // is written before the body is parsed, so it cannot have this; the response
+  // row can, and without it a client attempt that never produced a ledger start
+  // is unjoinable to anything the server saw — which is the difference between
+  // "never arrived" and "arrived and was lost".
+  // Body wins when present; a null must not erase a good header key.
+  ingress.clientRequestId = clientRequestId ?? ingress.clientRequestId;
   // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
   // pass it to the model for continuity, and use it to rewrite the retrieval
   // query so a referential follow-up ("what about Ethernet?", "the other one")
@@ -908,8 +932,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (extra) setSpanAttrs(extra, rootSpan);
     } finally {
       rootSpan.end();
+      if (!lifecycleSettled) closeLifecycle(lifecycleOutcome ?? "error");
     }
   };
+  // TURN LIFECYCLE (091). The start record is written HERE — the turn has been
+  // authenticated and validated, so it is an ACCEPTED turn; nothing downstream
+  // has run yet. Before this, the ledger only ever heard about a turn that
+  // survived to the end, so a timeout, a cancel, or a dead provider cascade
+  // produced no row at all and was indistinguishable from a turn that never
+  // happened. Fire-and-forget: `openTurn` never throws and never blocks the
+  // technician's answer; a failed start is counted, not raised.
+  const openedTurn = openTurn({
+    // The SAME id the ingress row was written with, so "arrived but never
+    // opened" is an exact join rather than a guess from timestamps.
+    attemptId: ingress.attemptId,
+    tenantId: ctx.tenantId,
+    notebookId,
+    platform: "hub_notebook_chat",
+    clientRequestId,
+    otelTraceId: rootTraceId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  });
+  let lifecycleOutcome: TurnOutcome | null = null;
+  // SHADOW (MIRA_JEV_DECISION=1, off by default). Filled at the commit point,
+  // where the DELIVERED answer, the evidence behind it and the deterministic
+  // gate outcomes all exist at once; consumed in `finishAndPersist`, which runs
+  // after `controller.close()`. Held in a variable rather than passed as an
+  // argument because the persist helper is defined before these values exist.
+  let decisionState: TurnDecisionState | null = null;
+  let lifecycleClosed = false;
+  /**
+   * Close the start record. Idempotent. Called from `endRoot` so EVERY exit
+   * path closes — including the ones that return a bare 4xx long before any
+   * turn row exists. An exit that never classified itself closes as `error`,
+   * which is the honest reading of an unclassified early return and is far
+   * better than the row sitting `started` forever and counting as an orphan.
+   */
+  const closeLifecycle = (outcome: TurnOutcome): void => {
+    if (lifecycleClosed) return;
+    lifecycleClosed = true;
+    void openedTurn
+      .then((o) =>
+        // The happy path already closed this row inside persistTurnUsage (it
+        // UPDATEs on attempt_id). `closeTurn` then matches nothing and returns
+        // matched:false without touching it — which is why `answered` must not
+        // be double-counted: see `lifecycleSettled`.
+        closeTurn({ tenantId: ctx.tenantId, attemptId: o.attemptId, outcome }),
+      )
+      .catch(() => {
+        /* counted inside closeTurn; never fails a turn */
+      });
+  };
+  /** Set once the usage write has already closed the row. */
+  let lifecycleSettled = false;
+  // Available to the ingress wrapper from here on: a start record exists and
+  // `closeLifecycle` is declared, so a throw that escapes every `endRoot` still
+  // lands an `error` outcome instead of an eventual, misleading `abandoned`.
+  ingress.closeOnUnhandled = (outcome) => closeLifecycle(outcome);
+
   const rec: TurnRecorder = startTurnRecorder({
     kind: "chat",
     tenantId: ctx.tenantId,
@@ -970,6 +1051,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // confirm it) succeed — the recordTurn-failure exit path passes it
     // explicitly as null; every other call site passes the real row id.
     packet.persistence.outcome = turnRowId ? "ok" : "failed";
+    // SHADOW (MIRA_JEV_DECISION=1, off by default). The one metered judgment
+    // call for this turn.
+    //
+    // WHY THIS CANNOT DELAY DELIVERY — the precise version.
+    // `finishAndPersist` has FIVE call sites and they are NOT all post-close:
+    // the safety-stop path awaits it and only then returns its Response, and
+    // the gate-abstain path runs before its `controller.close()`. The guarantee
+    // is narrower than "the helper is always late": `decisionState` is assigned
+    // at exactly ONE place — inside the final answer-gate block — and the only
+    // two call sites downstream of that assignment (the recordTurn-failure path
+    // and the final path) both sit after a `controller.close()`. The three
+    // earlier call sites reach this line with `decisionState` still null and
+    // make no call at all.
+    //
+    // That invariant is load-bearing and easy to break by populating
+    // `decisionState` earlier, which would silently put a ~280 ms vendor call
+    // in front of a HAZARD STOP response. `jev-route-invariant.test.ts` pins it.
+    //
+    // The cost of the invariant is real and is stated rather than hidden:
+    // safety_stop, abstained and client-cancelled turns carry NO jev_decision.
+    // Shadow coverage is answered turns only. Extending it to the safety path
+    // would mean awaiting a vendor call before a hazard stop reaches the
+    // technician, which is not a trade worth making for a shadow signal.
+    //
+    // It is
+    // also never awaited on a path that can still reject the turn: the helper
+    // is fail-open and returns a record carrying `skipped_reason` instead of
+    // throwing, so an outage shows up as a value in the data rather than a gap.
+    if (decisionState) {
+      packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
+    }
     setSpanAttrs({ "mira.turn.row_id": turnRowId, "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
     if (anomalies.length > 0) {
       console.log(
@@ -977,6 +1089,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     try {
+      const opened = await openedTurn;
       await persistTurnUsage(
         {
           tenantId: ctx.tenantId,
@@ -985,6 +1098,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           answerText: opts.answerText,
           citationsPresent: opts.citationsPresent,
           latencyMs: opts.latencyMs,
+          // ONE ROW PER ACCEPTED TURN: this UPDATEs the start record rather
+          // than inserting beside it.
+          attemptId: opened.attemptId,
+          outcome: lifecycleOutcome ?? "answered",
         },
         usage,
         {
@@ -1003,6 +1120,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // last-resort guard so the Turn Flight Recorder can never fail a turn.
       console.error("[notebook-chat] flight-recorder persistTurnUsage failed:", err instanceof Error ? err.message : err);
     }
+    // The usage write owns the close from here; endRoot must not re-close.
+    lifecycleSettled = true;
   };
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1033,6 +1152,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         requestPayload: body,
       });
       if (claim.status === "replay") {
+        // An idempotent replay is `superseded`, not `error`. Measured on
+        // staging 2026-09-23: sending the same clientRequestId twice produced
+        // `closed/error` for the second, because the replay path reaches
+        // `endRoot` without ever classifying itself and the fallback is `error`.
+        // The union already has the right word for "a duplicate/retry the
+        // server discarded", and a ledger that files healthy idempotency under
+        // errors teaches an operator to ignore errors.
+        lifecycleOutcome = "superseded";
         // Idempotent replay of an already-terminal turn — no new work, no new
         // packet. `finish` was never reached; note it on the span and close.
         endRoot({ "mira.turn.replay": true });
@@ -1349,6 +1476,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // switching devices mid-incident — spec §10 requires the warning to be
   // retained on resume, and a warning that lives only in a stream is not.
   if (safetyTrigger && !electricalHazardDirective) {
+    lifecycleOutcome = "safety_stop";
     const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
     const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
     const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
@@ -1767,6 +1895,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? "I saw your photo, but I couldn't find anything about it in the selected sources."
       : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
@@ -2089,7 +2218,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       identity_included: identityIncluded,
       history_turns: history.length,
       prompt_chars: promptChars,
-      system_prompt_kind: systemPromptKind,
+      system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
     });
     setSpanAttrs(
       {
@@ -2132,7 +2261,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // is created once and never awaited on its own, so it can't leak as an
   // unhandled rejection.
   const clientAbort = new AbortController();
-  const onClientGone = () => clientAbort.abort();
+  const onClientGone = () => {
+    // The technician closed the app / lost signal. Classify it before the
+    // abort unwinds, so the ledger says `cancelled` rather than the `error`
+    // an unclassified exit would default to.
+    lifecycleOutcome = "cancelled";
+    clientAbort.abort();
+  };
   req.signal?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
@@ -2662,6 +2797,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
+        // the packet deliberately carries no answer text and so this can never
+        // be recomputed later from stored packets. Only the verdict, its version
+        // and small counts are kept.
+        const evidenceFollowed =
+          served && !refused && lookContext ? assessEvidenceFollowed(lookContext, answerText) : null;
+        // The LEDGER outcome, mapped from the gate decision. Distinct from
+        // `gateDecision` on purpose: the gate answers "what did we decide about
+        // the answer", the lifecycle answers "how did this accepted turn end" —
+        // and a blocked answer that still shipped a replacement is a `refused`
+        // turn, not an error.
+        lifecycleOutcome = outputRejected
+          ? outputRejected.kind === "unsafe_answer"
+            ? "safety_stop"
+            : "refused"
+          : gateDecision === "insufficient_evidence"
+            ? "abstained"
+            : gateDecision === "error"
+              ? "error"
+              : refused
+                ? "refused"
+                : "answered";
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
@@ -2676,6 +2833,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          citations_shipped: emittedCitations.length,
+          evidence_followed: evidenceFollowed,
+        });
+        // SHADOW. Assemble the judgeable view of this turn while the text still
+        // exists. The packet deliberately stores no question and no answer, so
+        // this can never be reconstructed afterwards — but only the VERDICTS
+        // are kept, never the text (see turn-decision-state.ts for the audited
+        // payload). Assembly is pure and cannot throw the turn; the metered call
+        // happens later, after the stream is closed.
+        decisionState = buildTurnDecisionState({
+          question: message,
+          answer: answerText,
+          // The strongest identity the turn actually resolved, in the order the
+          // retrieval layer trusts them. `null` is a real answer here — an
+          // unresolved subject is exactly the #3962 shape and the judge should
+          // see it as unresolved rather than be handed a guess.
+          assetIdentity:
+            chunks.length > 0 && chunks[0].manufacturer
+              ? [chunks[0].manufacturer, chunks[0].modelNumber].filter(Boolean).join(" ")
+              : null,
+          observations: [lookContext],
+          evidence: chunks.map((c) => ({
+            source: c.title,
+            // The mismatch signal for #3966: the family the SOURCE belongs to,
+            // which is what diverged from the panel in the photo.
+            family: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || null,
+            content: c.content,
+          })),
+          gates: {
+            decision: gateDecision,
+            evidence_sufficient: evidenceSufficient,
+            citations_shipped: emittedCitations.length,
+            ungrounded_unit_claim: ungroundedClaim,
+            system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
+            retrieval_strategy: oemRetrieval ? "oem_corpus" : "notebook",
+          },
+          traceId: rootTraceId,
+          attemptId: null,
         });
         setSpanAttrs(
           {
@@ -2687,6 +2882,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             "mira.answer_gate.evidence_phrase_matched": evidencePhraseMatched,
             "mira.safety.classification": electricalHazardDirective ? "hazard_directive" : "none",
             "mira.evidence.sufficient": evidenceSufficient,
+            "mira.answer_gate.citations_shipped": emittedCitations.length,
+            "mira.evidence.followed": evidenceFollowed?.verdict ?? "not_applicable",
           },
           finalAnswerGateSpan,
         );
@@ -2967,4 +3164,83 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
     },
   });
+}
+
+
+/**
+ * INGRESS WRAPPER (093) — the outermost thing in this route, on purpose.
+ *
+ * Everything below `handleChatTurn` is the recorder's world: it starts after
+ * `sessionOr401`, after body parsing, after validation. So every 401, every
+ * `invalid_json`, every `message_too_long` returned before `openTurn` left NO
+ * TRACE OF ANY KIND — and, worse, a turn that was accepted but whose start
+ * record failed to write was equally invisible, because the only thing that
+ * could have reported it was the write that failed.
+ *
+ * This wrapper writes "a request arrived" into a DIFFERENT table before any of
+ * that runs, and "a response left, with this status" in a `finally` that no
+ * early return can skip. Reconciling the two against the ledger turns a silence
+ * into a number:
+ *
+ *   responded 4xx, never opened  → a pre-accept rejection (expected, own denominator)
+ *   responded 2xx, never opened  → a LOST START (the capture defect)
+ *
+ * Both writes are fire-and-forget and neither can fail a turn; the response
+ * write is chained onto the arrival so the two rows cannot be written out of
+ * order under load.
+ */
+/** The notebook id goes into a UUID column; a non-UUID path segment (a 404 on
+ *  its way) must be recorded as an arrival with no notebook, not crash the
+ *  counter that exists to notice it. */
+const INGRESS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: string }> }) {
+  const attemptId = crypto.randomUUID();
+  let notebookId: string | null = null;
+  try {
+    const p = await routeCtx.params;
+    notebookId = typeof p?.id === "string" && INGRESS_UUID_RE.test(p.id) ? p.id : null;
+  } catch {
+    notebookId = null;
+  }
+  // The client's own key, read from a HEADER before any parsing. The body is
+  // where it normally travels, but a malformed body is precisely the attempt
+  // that most needs accounting for and its id is unreachable in there — so a
+  // request that fails to parse can still be joined to the client that sent it.
+  // Shape-checked: this lands in a TEXT column that operators read.
+  const headerKey = req.headers.get("x-client-request-id");
+  const ingress: IngressRecord = {
+    attemptId,
+    route: "hub_notebook_chat",
+    tenantId: null,
+    clientRequestId: headerKey && INGRESS_UUID_RE.test(headerKey) ? headerKey : null,
+    notebookId,
+    environment: environmentName(),
+    gitSha: gitSha(),
+  };
+  // A SNAPSHOT, deliberately. `handleChatTurn` sets `ingress.tenantId` once
+  // auth succeeds, and this call is not awaited — so passing the live object
+  // would make "did the arrival row get a tenant" a race that COALESCE hides
+  // from every assertion while leaving the tenant index unreliable. The arrival
+  // row has no tenant because at arrival there is no tenant.
+  const arrival = recordArrival({ ...ingress });
+  let status = 500;
+  try {
+    const res = await handleChatTurn(req, routeCtx, ingress);
+    status = res.status;
+    return res;
+  } catch (err) {
+    // A throw that escaped every `endRoot` would leave the start record open
+    // until the reconciler swept it — reported as `abandoned` when it was in
+    // fact an error, which is a worse lie than no record at all.
+    ingress.closeOnUnhandled?.("error");
+    throw err;
+  } finally {
+    // `ingress.tenantId` is populated by now on every authenticated path.
+    void arrival
+      .then(() => recordResponse({ ...ingress, httpStatus: status }))
+      .catch(() => {
+        /* counted inside the module; never fails a turn */
+      });
+  }
 }
