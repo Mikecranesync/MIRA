@@ -82,6 +82,61 @@ export async function loadTurnDiagnostics(
 }
 
 /**
+ * One turn's packet, keyed by CLIENT REQUEST ID rather than turn id.
+ *
+ * Why this exists. `decision_traces` carries BOTH `turn_id` and
+ * `client_request_id`, and they are DIFFERENT values:
+ *   - `turn_id`           = `equipment_notebook_turns.id` (persist-usage.ts
+ *                            writes `record.turnRowId` into it)
+ *   - `client_request_id` = the caller-supplied idempotency key (090, mirroring
+ *                            `equipment_notebook_turns.client_request_id` from 088)
+ *
+ * An API client — the release acceptance harness, or anything else driving a
+ * turn from outside — knows only the id IT supplied. It never sees the turn row
+ * id: the chat route's SSE `trace` frame carries `const turnId = clientRequestId
+ * ?? crypto.randomUUID()`, which is the OTel span's turn id, NOT the row id that
+ * lands in `decision_traces.turn_id`. So `loadTurnDiagnostics` — which matches on
+ * `turn_id` — cannot be reached by such a client at all, and returns 404 for a
+ * turn that exists and recorded a packet perfectly well.
+ *
+ * This is the same SELECT and the same tenant + notebook scoping as
+ * `loadTurnDiagnostics`; only the lookup column differs. It is deliberately NOT
+ * a new endpoint — the existing diagnostics route accepts it as an alternate key.
+ *
+ * `client_request_id` is TEXT on `decision_traces` (090), so it is compared as
+ * text with no cast. Callers validate the format before calling.
+ */
+export async function loadTurnDiagnosticsByClientRequestId(
+  tenantId: string,
+  notebookId: string,
+  clientRequestId: string,
+): Promise<TurnDiagnostics | null> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT otel_trace_id, turn_id, notebook_id, evidence_packet, anomalies, ts
+         FROM decision_traces
+        WHERE tenant_id = $1
+          AND notebook_id = $2::uuid
+          AND client_request_id = $3
+          AND evidence_packet IS NOT NULL
+        ORDER BY ts DESC
+        LIMIT 1`,
+      [tenantId, notebookId, clientRequestId],
+    );
+    const row = res.rows[0];
+    if (!row || !row.evidence_packet) return null;
+    return {
+      traceId: (row.otel_trace_id as string | null) ?? null,
+      turnId: row.turn_id as string,
+      notebookId: row.notebook_id as string,
+      packet: row.evidence_packet as TurnEvidencePacket,
+      anomalies: (row.anomalies as Anomaly[] | null) ?? [],
+      ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
+    };
+  });
+}
+
+/**
  * Recent packets for a notebook — ids + decision + anomaly codes only, never
  * the packet body (that's `loadTurnDiagnostics` for one turn at a time).
  */

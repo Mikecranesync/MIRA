@@ -150,56 +150,127 @@ class Client:
         )
         return status, body.decode("utf8", "replace"), crid
 
-    def packet(self, client_request_id: str, *, notebook: str | None = None,
-               tries: int = 12) -> dict | None:
-        """Read the turn's evidence packet back out of the recorder.
+    # Distinguishable outcomes for a packet read. A single None for every
+    # failure is what let a broken harness read as a broken product: an
+    # unauthorized run, a typo'd notebook, a route that does not exist and a
+    # turn that genuinely recorded nothing all collapsed into "no packet".
+    PACKET_OK = "OK"
+    PACKET_UNAUTHORIZED = "UNAUTHORIZED"
+    PACKET_ENDPOINT_MISSING = "ENDPOINT_MISSING"
+    PACKET_WRONG_NOTEBOOK = "WRONG_NOTEBOOK"
+    PACKET_MISSING_TURN = "MISSING_TURN"
 
-        CORRECTED 2026-09-24. This previously fetched
-        `/api/observability/turns/?client_request_id=...`, WHICH DOES NOT EXIST
-        — not on main and not on any of the four release heads. The only route
-        under /api/observability is `coverage`, and `listAttempts` returns a
-        `has_packet` BOOLEAN, never the packet body. So every packet-dependent
-        check (wrong-family, recall-without-rider, F-neg's candidate_count,
-        oem_model) would have read None and reported FAIL/INCONCLUSIVE. The
-        live acceptance could not have passed at all.
+    def packet_read(self, client_request_id: str, *, notebook: str | None = None,
+                    tries: int = 12) -> tuple[str, dict | None, str]:
+        """Read one turn's evidence packet. Returns (status, packet, detail).
 
-        The packet is already served by an EXISTING route — no new endpoint is
-        needed, and per the repo's reuse-before-build rule none is added:
-            GET /api/equipment-notebooks/{id}/turns/{turnId}/diagnostics
-        which returns {traceId, turnId, notebookId, packet, anomalies, ...}.
+        Keyed on CLIENT REQUEST ID, which is the only id this harness has.
 
-        Keying works because the chat route does
-        `const turnId = clientRequestId ?? crypto.randomUUID()` — when the
-        client supplies a clientRequestId, the turn id IS that value. We always
-        supply one, so turnId == client_request_id. Both ids must be UUIDs or
-        the route 404s before Postgres; uuid4 satisfies that.
+        CORRECTED TWICE, and the second correction matters more than the first.
+        The original fetched `/api/observability/turns/?client_request_id=...`,
+        a route that does not exist on main or any release head. The first fix
+        moved to `/turns/{turnId}/diagnostics` on the theory that
+        `turnId == clientRequestId`, reading the chat route's
+        `const turnId = clientRequestId ?? crypto.randomUUID()`. THAT WAS WRONG.
+        That constant is the OTel span's turn id. `decision_traces.turn_id` is a
+        DIFFERENT column holding `record.turnRowId` — `equipment_notebook_turns.id`
+        — which an external caller never sees. Keying the single-turn route on a
+        client request id therefore 404s for every turn, exactly like the route
+        that did not exist. Verified by reading persist-usage.ts's INSERT
+        parameter list, where `turn_id` <- `record?.turnRowId` and
+        `client_request_id` <- `record?.clientRequestId` are separate arguments.
 
-        Note the route deliberately serves ids/counts/flags only and NEVER the
-        question or answer text. That is fine here: the wrong-family scan reads
-        the ANSWER BODY from the chat response, not from the packet.
+        So the lookup uses the canonical diagnostics route's alternate key,
+        `?client_request_id=`, against `decision_traces.client_request_id` (090,
+        mirroring 088). No new endpoint.
         """
         nb = notebook or self.notebook
-        turn_id = client_request_id
+        last = ""
         for _ in range(tries):
             status, body = self._req(
-                f"/api/equipment-notebooks/{nb}/turns/{urllib.parse.quote(turn_id)}/diagnostics/"
+                f"/api/equipment-notebooks/{nb}/turns/diagnostics"
+                f"?client_request_id={urllib.parse.quote(client_request_id)}"
             )
-            if status == 200:
-                try:
-                    doc = json.loads(body.decode("utf8", "replace"))
-                except Exception:
-                    doc = None
-                # Single-turn shape first; tolerate a list shape so the
-                # collection route remains a usable fallback.
-                if isinstance(doc, dict):
-                    p = doc.get("packet")
-                    if p:
-                        return p
-                    rows = doc.get("turns") or doc.get("rows") or []
-                    if rows and isinstance(rows[0], dict) and rows[0].get("packet"):
-                        return rows[0]["packet"]
+            text = body.decode("utf8", "replace")
+            if status == 401 or status == 403:
+                return self.PACKET_UNAUTHORIZED, None, f"http {status} — session/cookie rejected"
+            try:
+                doc = json.loads(text)
+            except Exception:
+                # Not JSON at all: a redirect page, an HTML 404, a proxy error.
+                # Whatever it is, it is not this API.
+                return (self.PACKET_ENDPOINT_MISSING, None,
+                        f"http {status}, non-JSON body ({text[:60]!r}) — route not serving JSON")
+            if status == 200 and isinstance(doc, dict) and doc.get("packet"):
+                return self.PACKET_OK, doc["packet"], f"turnId={doc.get('turnId')}"
+            err = doc.get("error") if isinstance(doc, dict) else None
+            if err == "packet_not_found":
+                # The route ran and scoped correctly; it simply has no packet for
+                # this crid in this notebook yet. Retry — the close is async.
+                last = f"http {status} packet_not_found (notebook {nb})"
+                time.sleep(2)
+                continue
+            if err == "not_found":
+                # The route rejected the NOTEBOOK (or the id shape) before any
+                # packet lookup. Separate the two by asking the same route for
+                # this notebook's list.
+                lst, _lb = self._req(f"/api/equipment-notebooks/{nb}/turns/diagnostics?limit=1")
+                if lst == 200:
+                    return (self.PACKET_MISSING_TURN, None,
+                            f"notebook {nb} is readable but rejected this turn id")
+                return (self.PACKET_WRONG_NOTEBOOK, None,
+                        f"notebook {nb} not found for this tenant (list -> http {lst})")
+            if err is None and status >= 400:
+                return (self.PACKET_ENDPOINT_MISSING, None,
+                        f"http {status} with no error field — route likely absent")
+            last = f"http {status} body={text[:80]!r}"
             time.sleep(2)
-        return None
+        # Exhausted retries on a route that answered correctly each time.
+        lst, _lb = self._req(f"/api/equipment-notebooks/{nb}/turns/diagnostics?limit=1")
+        if lst == 401 or lst == 403:
+            return self.PACKET_UNAUTHORIZED, None, f"list -> http {lst}"
+        if lst != 200:
+            return self.PACKET_WRONG_NOTEBOOK, None, f"list -> http {lst}"
+        return self.PACKET_MISSING_TURN, None, last or "no packet after retries"
+
+    def packet(self, client_request_id: str, *, notebook: str | None = None,
+               tries: int = 12) -> dict | None:
+        """Back-compat shim: packet body or None. Prefer `packet_read`, which
+        says WHY there is no packet — a bare None is the ambiguity this whole
+        correction exists to remove."""
+        status, p, detail = self.packet_read(client_request_id, notebook=notebook, tries=tries)
+        if status != self.PACKET_OK:
+            print(f"  packet unavailable [{status}]: {detail}")
+        return p
+
+
+def packet_or_verdict(results: list, scenario: str, c, crid: str,
+                      notebook: str | None = None) -> dict | None:
+    """Fetch a packet, and if there isn't one, record the RIGHT KIND of verdict.
+
+    This is the evidence-integrity rule in code: acceptance cannot certify a
+    release when its own observation path is broken, and it must never charge a
+    harness/auth/lookup fault to the product.
+
+      UNAUTHORIZED / ENDPOINT_MISSING / WRONG_NOTEBOOK -> INCONCLUSIVE.
+        The harness could not observe. That proves nothing either way, and
+        reporting it as FAIL would invent a product defect.
+      MISSING_TURN -> FAIL.
+        The route worked, the notebook was right, and the turn still has no
+        packet. That is the product failing to record, which is precisely what
+        this release is supposed to guarantee.
+    """
+    status, p, detail = c.packet_read(crid, notebook=notebook)
+    if status == c.PACKET_OK:
+        return p
+    if status == c.PACKET_MISSING_TURN:
+        check(results, f"{scenario}/packet", False,
+              f"turn recorded NO packet — {detail}")
+    else:
+        check(results, f"{scenario}/packet", None,
+              f"OBSERVATION PATH BROKEN [{status}] — {detail}. "
+              "Not a product verdict: the harness could not see the turn")
+    return None
 
 
 def cites_wrong_family(answer_body: str) -> list[str]:
@@ -265,7 +336,7 @@ def main() -> int:
         print("  aborting R: the LOOK itself did not land")
     else:
         st2, body2, crid2 = c.ask(a.hmi_question)      # <- no rider, on purpose
-        p = c.packet(crid2)
+        p = packet_or_verdict(results, "R", c, crid2)
         check(results, "R/follow-up-served", st2 == 200, f"status={st2}")
         check(results, "R/packet-readable", p is not None, "recorder returned the turn's packet")
         if p:
@@ -301,7 +372,7 @@ def main() -> int:
     # ---- F-neg: a same-family question must still retrieve ------------------
     print("\nF-neg — NEGATIVE CONTROL: same-family question still retrieves")
     st3, body3, crid3 = c.ask(a.same_family_question)
-    p3 = c.packet(crid3)
+    p3 = packet_or_verdict(results, "F-neg", c, crid3)
     if p3:
         rt3 = p3.get("retrieval") or {}
         searched = bool(rt3.get("oem_corpus_searched"))
@@ -324,7 +395,7 @@ def main() -> int:
                   "and re-run, or this control proves nothing")
         invariants(results, "F-neg", p3)
     else:
-        check(results, "F-neg/still-retrieves", False, "no packet")
+        pass  # verdict already recorded by packet_or_verdict
 
     # ---- R-neg: no prior LOOK => nothing recalled ---------------------------
     if a.fresh_notebook:
@@ -335,7 +406,7 @@ def main() -> int:
         # was asked on. Defaulting to self.notebook here 404s and the control
         # silently degrades to "no packet" — a FAIL that looks like a defect in
         # the product rather than in the harness.
-        p4 = c.packet(crid4, notebook=a.fresh_notebook)
+        p4 = packet_or_verdict(results, "R-neg", c, crid4, notebook=a.fresh_notebook)
         if p4:
             ve4 = p4.get("visual_evidence") or {}
             check(results, "R-neg/nothing-recalled",
