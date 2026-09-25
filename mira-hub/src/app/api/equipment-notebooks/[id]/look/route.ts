@@ -103,10 +103,11 @@ Rules:
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
 - First distinguish a photograph of equipment from a drawing. For a drawing, transcribe readable component names, terminal/relay identifiers and voltage units including AC versus DC exactly; describe only connections you can trace. A wiring drawing does not show unprovided controller program logic. Do not infer an enable sequence or substitute a familiar component for the printed name.
-- Screw heads, terminal openings and reflective metal are not LEDs. Report a light only when its indicator lens or illumination is distinguishable; uncertainty belongs next to the observation.
+- Circular slotted or cross-recessed metal faces are fasteners, not lights; a dark hole is not evidence of an unlit LED. Distinguish visible geometry before naming an indicator. Screw heads, terminal openings and reflective metal are not LEDs. Report a light only when its indicator lens or illumination is distinguishable; uncertainty belongs next to the observation.
 - An empty-looking screw head does not prove a wire is missing: the conductor may enter from below or outside the frame. Do not infer continuity, power, contact state or de-energization from appearance.
 - For rotated drawings, read labels in their printed orientation. Mark unreadable regions explicitly instead of filling them from industrial conventions.
-- Keep it concise (short sentences or a short list), but preserve every legible safety/input label and its units. Plain text, no markdown headings.
+- Keep the entire observation under 180 words. Describe the image type and major objects, then quote at most eight clearly legible labels relevant to the question. Do not inventory terminal numbers or enumerate relay IDs. If labels are numerous, say additional labels are visible but not transcribed. Plain text, no markdown headings.
+- Distinguish a numbered channel or dial name from its measured/selected value. A numeral in a label is not a reading. Describe a dial pointer only if its position is unambiguous.
 For safety classification, also report only hazards visibly present now using this bounded vocabulary:
 - arcing: visible electrical arc or flash
 - exposed_conductor: visibly bare energized-capable conductor outside its intended insulation or guard
@@ -141,11 +142,20 @@ const fixtureVisionCall: VisionCall = async () => ({
   model: "fixture",
 });
 
-/** Unwrap and validate JSON-mode output; a prose answer stays a healthy observation. */
+/** JSON-mode extraction must be complete; malformed provider text is not evidence. */
 function extractInspection(text: string): { text: string; hazards: LookHazardDescriptor[] } | null {
-  const parsed = safeJson(text);
+  let parsed = safeJson(text);
+  // Some JSON-mode providers escape the entire object but omit the enclosing
+  // string quotes. Decode exactly that complete form, then validate the same
+  // schema. A truncated object or prose still fails closed.
+  if (!parsed && text.trim().startsWith('{\\"') && text.trim().endsWith('}')) {
+    try {
+      const decoded = JSON.parse(`"${text.trim()}"`);
+      if (typeof decoded === "string") parsed = safeJson(decoded);
+    } catch { /* incomplete or otherwise malformed output */ }
+  }
   const fromJson = parsed && typeof parsed.observation === "string" ? parsed.observation : null;
-  const value = (fromJson ?? text).trim();
+  const value = (fromJson ?? "").trim();
   if (value.length === 0 || value === "{}") return null;
   return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
 }
@@ -408,14 +418,25 @@ async function handleLookTurn(
     const prompt = question
       ? `${INSPECTION_PROMPT}\nThe technician asked: "${question}". Describe what is visible that relates to it; do not answer beyond what the photo shows.`
       : INSPECTION_PROMPT;
-    const reply = await vision({
+    let reply = await vision({
       prompt,
       images: [{ base64: read.base64, mimeType: read.mimeType }],
       temperature: 0.1,
-      maxTokens: 600,
+      maxTokens: 1200,
     });
-    const inspection = extractInspection(reply.text);
-    if (!inspection) throw new Error("vision_empty_response");
+    let inspection = reply.finishReason && reply.finishReason !== "stop" ? null : extractInspection(reply.text);
+    if (!inspection) {
+      // One same-provider retry. Never store the broken first draft or expose
+      // its hallucinated/truncated fragments as a fallback observation.
+      reply = await vision({
+        prompt: `${prompt}\nReturn a COMPLETE JSON object. Limit the observation to 180 words. Select a few clearly readable labels; never enumerate guessed identifiers. Stop before the output budget and close the JSON.`,
+        images: [{ base64: read.base64, mimeType: read.mimeType }],
+        temperature: 0,
+        maxTokens: 1600,
+      });
+      inspection = reply.finishReason && reply.finishReason !== "stop" ? null : extractInspection(reply.text);
+    }
+    if (!inspection) throw new Error("vision_incomplete_response");
     // #3788 — persist the observation into the VisualSession ledger (migration
     // 063; NO new table) so a later chat turn that re-sends THIS photo as visual
     // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
@@ -467,6 +488,7 @@ async function handleLookTurn(
     return NextResponse.json({
       ...retained,
       observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
+      finishReason: reply.finishReason ?? null,
       traceId: rootTraceId,
     }, { headers: traceHeaders });
   } catch (err) {

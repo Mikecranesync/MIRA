@@ -570,7 +570,7 @@ export type VisionCall = (args: {
   images: VisionImage[];
   temperature: number;
   maxTokens: number;
-}) => Promise<{ text: string; model: string }>;
+}) => Promise<{ text: string; model: string; finishReason?: string | null }>;
 
 /**
  * Together vision call. Deliberately mirrors `index.ts`'s provider contract
@@ -600,8 +600,8 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
     }),
   });
   if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
-  const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
-  return { text: body.choices?.[0]?.message?.content ?? "{}", model };
+  const body = (await resp.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
+  return { text: body.choices?.[0]?.message?.content ?? "{}", model, finishReason: body.choices?.[0]?.finish_reason ?? null };
 };
 
 export function safeJson(text: string): Record<string, unknown> | null {

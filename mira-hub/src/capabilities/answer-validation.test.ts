@@ -678,6 +678,10 @@ describe("present-voltage instruction under isolation (#3991)", () => {
     'Quick verification steps (de-energized, LOTO applied)\nConfirm the 120 VAC supply is present at the ignition module’s input terminals.',
     'After lockout, verify that the 24 VDC supply is present at the block and that its polarity matches the diagram.',
     'Check for 120 VAC at terminals L and N.',
+    'Confirm 24 V is present at the terminals and the cover is not present.',
+    'Confirm the cover is not present, then measure 24 V at the terminals.',
+    'Confirm no tools remain inside, then measure 24 V at the terminals.',
+    'Confirm 24 V is not present at the output and measure 120 V at the input.',
     'With LOTO applied, ensure the enable relay is receiving its drive signal.',
   ])("rejects physical present-voltage verification: %s", (answer) => {
     expect(grounded(answer, 'What does this drawing tell you?').ok).toBe(false);
@@ -687,10 +691,21 @@ describe("present-voltage instruction under isolation (#3991)", () => {
     'Do not check for 120 VAC at terminals L and N.',
     'With isolation and lockout verified, verify absence of voltage using the approved site procedure.',
     'The photo shows a green indicator; its meaning requires the matching manual.',
+    'Verify no supply voltage is present.',
+    'Confirm 24 V is not present at the terminals.',
     'Verify the drawing shows 120 VAC at the input terminals.',
     'Check the display says supply voltage is present.',
     'Do not ensure the relay is receiving power by probing it.',
   ])("preserves passive and prohibition controls: %s", (answer) => {
     expect(grounded(answer, 'What does this drawing tell you?').ok).toBe(true);
   });
+});
+
+describe('requested documentation is not fabricated authority',()=>{
+ it('allows requesting a generic official installation manual for an unclear drawing',()=>{
+  expect(general('The photo shows a wiring drawing. Please provide the official installation manual to establish its logic.','What does this drawing show?').ok).toBe(true);
+ });
+ it('does not turn an unsupported detail fallback into unrelated equipment actions',()=>{
+  expect(specificityFallback(null)).not.toMatch(/restart|check the basics|supply power|tripped breakers/i);
+ });
 });

@@ -355,10 +355,10 @@ describe("observation contract (§4.1)", () => {
     expect(args.images).toHaveLength(1);
   });
 
-  it("keeps a prose (non-JSON) provider reply verbatim rather than failing", async () => {
+  it("does not publish non-JSON output as a healthy structured observation", async () => {
     vi.mocked(togetherVisionCall).mockResolvedValue({ text: "One black cable, connector seated.", model: "m" });
     const body = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
-    expect(body.observation.text).toBe("One black cable, connector seated.");
+    expect(body.observation).toBeNull();
   });
 
   it("NAMEPLATE_RECOGNIZER=fixture answers deterministically without the provider", async () => {
@@ -443,4 +443,42 @@ describe("#3967 durable LOOK → priorLookRows recall index", () => {
     expect(body.observation.text).toBe("Green LED lit.");
     expect(body.fileId).toBe(FILE_ID);
   });
+});
+
+
+describe('incomplete structured extraction', () => {
+  it('retains photo but never stores malformed JSON after bounded retry', async () => {
+    vi.mocked(togetherVisionCall).mockResolvedValue({text: '{"observation":"K1 K2 K3 K4',model:'m'});
+    const response = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(response.status).toBe(502);
+    expect((await response.json()).fileId).toBe(FILE_ID);
+    expect(recordLookObservation).not.toHaveBeenCalled();
+    expect(togetherVisionCall).toHaveBeenCalledTimes(2);
+  });
+  it('retries provider length termination even when JSON happens to close', async () => {
+    vi.mocked(togetherVisionCall).mockResolvedValueOnce({text:'{"observation":"partial list"}',model:'m',finishReason:'length'} as never)
+      .mockResolvedValueOnce({text:'{"observation":"One green indicator lit","hazards":[]}',model:'m',finishReason:'stop'} as never);
+    const response = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(response.status).toBe(200);
+    expect((await response.json()).observation.text).toBe('One green indicator lit');
+    expect(togetherVisionCall).toHaveBeenCalledTimes(2);
+    expect(recordLookObservation).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+it('rejects content-filter termination even if structured text is valid', async()=>{
+ vi.mocked(togetherVisionCall).mockResolvedValue({text:'{"observation":"partial description"}',model:'m',finishReason:'content_filter'});
+ const response=await POST(makeReq(),makeParams(NOTEBOOK_ID));
+ expect(response.status).toBe(502);
+ expect(recordLookObservation).not.toHaveBeenCalled();
+});
+
+it('decodes a complete escaped JSON object, never truncated JSON or arbitrary prose',async()=>{
+ const intended={observation:'Label reads "RUN"; one green indicator.',hazards:[]};
+ const escaped=JSON.stringify(JSON.stringify(intended)).slice(1,-1);
+ vi.mocked(togetherVisionCall).mockResolvedValue({text:escaped,model:'m',finishReason:'stop'});
+ const response=await POST(makeReq(),makeParams(NOTEBOOK_ID));
+ expect(response.status).toBe(200);
+ expect((await response.json()).observation.text).toBe(intended.observation);
 });

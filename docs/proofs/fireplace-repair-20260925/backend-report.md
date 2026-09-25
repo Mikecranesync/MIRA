@@ -1,6 +1,6 @@
 # Backend repair checkpoint — 2026-09-25
 
-Candidate base: `7e45def2b98898861041a23104dd5b7224c307a8` (root's combined current-main + existing navigation/retry repairs). Root subsequently committed backend as `32787374d`. This worker made no commits, pushes, deployments, DB operations, provider changes or live API calls. Physical candidate grading is still required. Original staging observations were on older `24f90b7`; these causes were inspected in current candidate source.
+Candidate base: `7e45def2b98898861041a23104dd5b7224c307a8` (root's combined current-main + existing navigation/retry repairs). Root subsequently committed backend as `32787374d`. At the first checkpoint this worker made no commits, pushes, deployments, DB operations, provider changes or live API calls. Subsequent explicitly authorized local diagnostics are recorded below. Physical candidate grading is still required. Original staging observations were on older `24f90b7`; these causes were inspected in current candidate source.
 
 ## Causes and changes
 
@@ -26,8 +26,28 @@ Logs and complete backend patch are in `backend-tests/`. Private original photos
 
 Modified existing definitions/call sites: `buildFollowupSuggestions`, `loadRecentLookObservations`, prior-photo assembly in notebook chat, `GENERAL_SYSTEM_PROMPT`, `INSPECTION_PROMPT`, `HAZARD_AFFIRMATIONS`, `JUDGE_SYSTEM`. New optional function argument `referenceText` is supplied by existing `ManualChunk.content`. No new DB columns, services, models, endpoints or modules.
 
-Originals park in `namespace_direct_uploads.content` BYTEA, not filesystem. LOOK uses existing Together key/model. Detector service is optional via `NAMEPLATE_DETECT_ENABLED=1`; otherwise original pixels are passed.600-token LOOK output cap remains unchanged pending actual extraction evidence.
+Originals park in `namespace_direct_uploads.content` BYTEA, not filesystem. LOOK uses existing Together key/model. Detector service is optional via `NAMEPLATE_DETECT_ENABLED=1`; otherwise original pixels are passed.The original 600-token LOOK cap was subsequently changed after the live truncation evidence below.
 
 ## Outstanding
 
 Root must grade fresh physical candidate photos, retain raw LOOK separately from answer, and test exact labels/AC/DC, no invented wiring/logic, context continuity, usefulness and unsafe opposite controls. #3982 is not declared fixed: generation could still add unrequested checks; existing A4 behavior remains. Do not loosen safety from the old passive-question observation alone. #3984 remains OPEN. No release/merge claim.
+
+## Second checkpoint: observed backend failures and bounded repairs
+
+Normal synthetic QA authentication against the isolated local HTTPS Hub was used for five original-photo controls, never a physical UI acceptance claim. Originals and raw LOOK versus served chat remain separate under the gitignored `private-backend-diagnostic/` directories. No held-out repair facts were supplied. No remote configuration, deployment, credential reset, or commit was performed by this worker.
+
+Actual boundary failures: LOOK accepted malformed/truncated JSON as healthy prose; provider finish reasons were discarded; chat marked length-truncated text answered; prior-photo context could displace the current image; generic requests for an installation manual triggered a fabricated-document gate and irrelevant restart guidance. Raw vision also invented exact labels and electrical meanings. The latter is **not resolved** by deterministic test success.
+
+Changes in existing carriers:
+- `VisionCall`/`togetherVisionCall` retain optional finishReason. LOOK rejects explicit non-stop completion and malformed schema, permits complete escaped-object JSON only after strict parsing, and retries once (1200 then1600 output tokens). No malformed prose success fallback.
+- `INSPECTION_PROMPT` requests <=180 words and <=8 legible labels with locally unresolved regions. It distinguishes fasteners/indicators and channel names/actual settings. This is an instruction, not proof the model follows it.
+- Chat puts current-photo evidence nearest the question, keeps earlier comparisons, and removes the contradictory instruction to supply typical device-specific meanings without a matching reference.
+- Chat rejects non-stop finish reasons and abrupt EOF without stop or explicit SSE DONE. Partial output is not persisted as answered. DONE remains supported for existing provider streams. `general-mode.test.ts` demonstrates length/content_filter/tool_calls/EOF errors; tool_calls and EOF were red before repair.
+- Specificity validation accepts generic installation-manual requests but retains unsupported named-document claims. A specificity fallback now has insufficient_evidence status/no grounding basis and requests the missing evidence instead of inventing a procedure.
+- Voltage negation exemptions bind to the voltage predicate and scan coordinated new instructions. The independent-review unsafe cross-clause controls, including safe absence check AND unsafe live measurement, are covered alongside safe absence and passive-label controls.
+
+Live round3 still fails visual accuracy: sideways safety schematic LOOK502; breaker1489 read1499; Honeywell arrow read as d; green LEDs still assigned electrical status before the final HONESTY contradiction removal. Honest errors/refusals do not constitute a successful diagnosis.
+
+Diagnostic-only rotated and multiview controls preserve originals and improve CURRENT SENSOR/sheet identification, but still misread E-STOP/440R. No preprocessing was added to production. Authenticated Together model listing identified public Qwen3-VL 8B/32B/235B candidates with Apache-2.0 metadata; model listing is not successful inference proof. Parent owns further bounded comparisons.
+
+Verification logs: `/tmp/fireplace-eof-red.log` (2 failed/13 passed), `/tmp/fireplace-eof-green.log` (15 passed), `/tmp/fireplace-and-green.log` (117 passed), and `/tmp/fireplace-round2-checkpoint-full.log` (295 files /3893 tests passed). Latest pre-EOF full suite was295 files/3889 tests; tsc remained33 baseline-only diagnostics in `/tmp/fireplace-round2-final-tsc.log`. The actual model controls are not replaced by these mocks.

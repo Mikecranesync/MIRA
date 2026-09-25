@@ -243,10 +243,10 @@ ANSWER SHAPE — the technician needs something they can act on:
 - For troubleshooting, establish the actual symptom and what changed before ranking possible causes. Label a hypothesis as a hypothesis and name the missing evidence.
 - Offer a short ordered list of checks only when the technician asks for next steps.
 - Ask a diagnostic question when one answer would genuinely change your advice. Ask at most one.
-- Keep it under about 150 words.
+- Keep the entire answer under 150 words. Prefer 3-5 short bullets. Do not exhaustively repeat the observation or use long tables.
 
 HONESTY:
-- You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Say what it typically is and that it must be verified against the unit's own manual.
+- You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Do not substitute a typical value or device-specific meaning for missing evidence. For photographed indicators and ratings, report only the visible label/state and identify the matching legend or manual needed to interpret it.
 - If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
@@ -257,6 +257,8 @@ VISUAL REASONING:
 - An empty-looking screw face does not establish a missing wire, continuity, absent power or a fault. A dark indicator does not prove a relay or circuit is de-energized. Do not infer hidden terminations or contact state from appearance alone.
 - A wiring drawing does not establish controller program logic or a Boolean enable sequence. Describe only traced connections; request the logic/manual for unshown behavior.
 - Do not rename screw heads as indicator lights or assign status meanings that are not printed or supported by matching documentation. If the observation is ambiguous, say so locally.
+- When a current photo is attached, "this photo" and "this drawing" mean the CURRENT photo, never an earlier one. Lead with its subject even if it differs from earlier pictures.
+- Indicator color alone does not establish voltage, healthy operation, a contact position, a relay coil state or absence of a fault. Quote a printed legend when present; otherwise state only the observed light and request the matching reference for meaning. Do not add a typical-meaning table as if it describes this device.
 - Use all supplied photo observations for comparison, naming current versus earlier photos. Do not claim the original pixels are visible to you when only descriptions are supplied.
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on electrical equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized. A LOTO heading cannot make checking for present supply voltage a de-energized procedure. Passive interpretation of photographed indicators or printed ratings requires no equipment action.`;
@@ -2091,7 +2093,7 @@ async function handleChatTurn(
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
+  const lookContext = [renderPriorLookObservationsSection(priorLookRows), renderLookObservationSection(lookRow)]
     .filter(Boolean)
     .join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
@@ -2330,6 +2332,7 @@ async function handleChatTurn(
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
+      let incompleteGeneration = false;
 
       // ONE cascade definition per turn. Flag off => byte-identical legacy list.
       const seam = canonicalSeamEnabled();
@@ -2468,11 +2471,23 @@ async function handleChatTurn(
                     break;
                   }
                 }
-                if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
+                const finishReason = parsed.choices?.[0]?.finish_reason;
+                if (finishReason && finishReason !== "stop") {
+                  incompleteGeneration = true;
+                  finished = true;
+                } else if (finishReason === "stop") finished = true;
               } catch {
                 // partial frame — keep buffering
               }
             }
+          }
+          if (!finished || incompleteGeneration || capped) {
+            incompleteGeneration = true;
+            responseBuffer.length = 0;
+            turnUsage = seam ? usageFromRaw(provider.name, provider.model, rawUsage as never,
+              routeReasonFor(attempted), attempted, "capped") : null;
+            genOutcome = "http_error";
+            break cascade;
           }
           if (responseBuffer.length > 0) {
             const tail = !docGrounded
@@ -2821,7 +2836,7 @@ async function handleChatTurn(
         !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
-        : refused
+        : refused || outputRejected?.kind === "unsupported_specificity"
           ? "insufficient_evidence"
           : "answered";
 
@@ -2840,7 +2855,9 @@ async function handleChatTurn(
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
-            ? internalError
+            ? incompleteGeneration
+              ? "provider_incomplete"
+              : internalError
               ? "internal_error"
               : "provider_exhausted"
             : refused
@@ -3026,7 +3043,7 @@ async function handleChatTurn(
               : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
-          basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
+          basis: served && !outputRejected ? evidenceFrame.basis : null,
           ...assetSnapshot,
         });
       } catch (err) {
@@ -3096,7 +3113,8 @@ async function handleChatTurn(
       // client can render the honest caption.
       // The machine entry and the verified visual observation ride on the SAME
       // frame, additively — the basis and label above are untouched by them.
-      if (outputRejected?.kind === "unsafe_answer") {
+      if (outputRejected) {
+        // A withheld candidate must not lend its evidence basis to a replacement.
         // The replacement IS the safety stop: same grammar as the input-side
         // stop — no basis-bearing evidence frame. The rejected candidate's
         // lane must not certify the replacement. Its safety frame was emitted
@@ -3111,7 +3129,9 @@ async function handleChatTurn(
           ? { kind: "status", status: "answered" }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
-            : internalError
+            : incompleteGeneration
+              ? { kind: "status", status: "error", message: "The answer was cut off before it finished. Please retry with a narrower question." }
+              : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : { kind: "status", status: "error", message: "No answer provider available." };
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
