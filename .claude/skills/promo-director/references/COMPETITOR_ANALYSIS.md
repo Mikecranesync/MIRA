@@ -1,8 +1,35 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-13
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-13
+
+### Most actionable change for MIRA playbook
+MaintainX's acquisition by Autodesk repositions the #1 CMMS competitor toward a design-make-operate platform play — MIRA's differentiation as an *open, sensor-agnostic, OEM-manual-native* context layer gets cleaner now that MaintainX is tied to Autodesk's stack. Separately, Augury's DuPont video upgrades the proof template from 2.5x ROI (Fortune Brands) to 7x ROI in under a year with 100% prediction accuracy — this is the new ceiling for ROI claims in industrial AI video.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition announced May 28, 2026 ($3.6B all-cash, largest Autodesk acquisition); completed August 3, 2026. Now branded "MaintainX (An Autodesk Company)". New Root Cause Analysis feature (April 2026) brings structured failure analysis into the maintenance workflow. No dedicated launch video confirmed; announcement-native press release distribution.
+- **MaintainX** — Maintenance Plans (August 2026): "puts every PM cycle for an asset in one place" — closest feature-framing competitor to MIRA's asset-context layer. No dedicated video.
+
+**Predictive maintenance**
+- **Augury** — "DuPont + Augury: Driving Innovation with Predictive Maintenance": https://www.youtube.com/watch?v=wyD0wzVavgM — 7x ROI in <1 year; 100% prediction accuracy claimed; real factory exec interview format [transcript not verified]. Supersedes Fortune Brands 2.5x ROI as the strongest proof template in this vendor's video library.
+
+**Automation / SCADA**
+- **Rockwell Automation ROKStudios — OEM machine lifecycle season** (June 2026, Interpack 2026, Düsseldorf): in-depth interviews with machine builder execs on evolving OEM strategies across the full machine lifecycle. Format: executive interview. CTA: soft brand. No single YouTube URL confirmed.
+- **Rockwell Automation ROKStudios — Cybersecurity season** (September 2026, recorded at Secure Digital Operations Forum, UK): https://www.prnewswire.com/news-releases/rockwell-automation-announces-new-cybersecurity-season-of-rokstudios-video-series-302867790.html — theme: OT/IT convergence; "cybersecurity is foundational to digital transformation and the ability to scale AI and automation." 170+ total ROKStudios recordings now available.
+- **Inductive Automation** — ICC 2026 (Sep 22–24, Sacramento, #ICCUnleashed): conference not yet completed as of this refresh. Preview webinar published: https://inductiveautomation.com/resources/webinar/icc-2026-preview-prepare-to-unleash-your-innovation — Technology Keynote will include Ignition 2027 preview + "AI with Ignition" industrial roadmap. 60+ sessions — fullest schedule in ICC history.
+
+**B2B SaaS / dev-tools**
+- **Stripe Sessions 2026** — Full keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw; opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8; 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8 — 288 new products/features; 9,000+ attendees. Lead framing: "economic infrastructure for the AI era." Key launches: Agentic Commerce Suite (agent wallets, Meta + Google partnerships), Checkout Studio. CTA: soft/ecosystem.
+- **Anthropic "Code with Claude" 2026** — Annual global developer conference: SF (May 6, https://www.youtube.com/watch?v=GMIWm5y90xA), London (May 19, https://www.youtube.com/watch?v=6amLO7I9xdg), Tokyo (June 12, https://www.youtube.com/watch?v=N4efO8viXXo). Conference-as-launch-vehicle format now matches Figma/Stripe model; content: Claude Code rate limit 2x + API limit increases. VO register: engineer/founder. [transcripts not verified]
+- **Figma Config 2026** (June 24, 2026) — CEO Dylan Field: https://www.youtube.com/watch?v=2ZCc4k_IV5w. New framing: "code + design on the same canvas." Key launches: Code Layers (code on the Figma canvas, GitHub import), Figma Motion (timeline animation with keyframes + agent assist), Shaders, Weave Tools (AI style transfer, product rendering), Figma Agent (connectors to Notion, Slack, GitHub + slash-command skills). Convergence story: design tool eating dev-tool territory via AI agents. CTA: awareness/ecosystem.
+- **Notion Custom Agents GA** (Feb 24, 2026, Notion 3.3) — No standalone launch video found; release-page native. 21,000+ agents built in beta before GA; now live on Business + Enterprise plans. Custom Agent Directory launched May 6. Framing: "autonomous AI teammate running 24/7 in background."
 
 ---
 
@@ -86,7 +113,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Acquisition (May 28 → Aug 3, 2026):** Autodesk acquired MaintainX for $3.6B all-cash — largest Autodesk acquisition. Now branded "MaintainX (An Autodesk Company)." Autodesk created Autodesk Operations Solutions (AOS) to unify design, make, and operate. Positioning will shift toward design/build/operate integrations; MIRA's open/OEM-manual-native differentiation gets cleaner against a stack-locked competitor.
+
+**Root Cause Analysis (April 2026):** structured failure analysis added directly to maintenance workflow — most direct capability overlap with MIRA's diagnostic path found in the CMMS competitor set. No dedicated launch video.
+
+**Maintenance Plans (August 2026):** "puts every PM cycle for an asset in one place." Blog-native launch, no video.
+
+**Market position:** 13,000+ companies (at time of acquisition); Deloitte Technology Fast 500 2025 winner.
 
 ---
 
@@ -144,7 +177,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**DuPont case study (2026)**
+- URL: https://www.youtube.com/watch?v=wyD0wzVavgM
+- Title: "DuPont + Augury: Driving Innovation with Predictive Maintenance"
+- Claim: 7x ROI in less than a year; 100% prediction accuracy
+- Format: real factory floor + exec interview [transcript not verified]
+- CTA: none explicit; authority/credibility
+
+**Pattern note:** Augury runs a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands, DuPont). The DuPont video upgrades the proof template ceiling from 2.5x ROI (Fortune Brands) to 7x ROI with 100% accuracy — the strongest ROI claim in any competitor video found to date.
 
 ---
 
@@ -188,6 +228,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Video format: release announcement, likely screen capture + narration
 - ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
 
+**ICC 2026 preview (Sep 2026 — conference Sep 22–24, Sacramento)**
+- Preview webinar: https://inductiveautomation.com/resources/webinar/icc-2026-preview-prepare-to-unleash-your-innovation
+- Technology Keynote will preview Ignition 2027 (next major release) + "AI with Ignition" industrial roadmap
+- 60+ sessions — fullest schedule in ICC history; streaming on demand for virtual attendees
+- Pattern: conference-as-launch-vehicle for major release announcements (same pattern as Figma Config, Stripe Sessions)
+
 ---
 
 ### Rockwell Automation / Allen-Bradley
@@ -204,6 +250,17 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
+
+**ROKStudios — OEM machine lifecycle season (June 2026, Interpack, Düsseldorf)**
+- Format: executive interview series with machine builder execs; focuses on full machine lifecycle strategy
+- Topics: how OEMs are evolving across design, build, sell, and service; no single URL confirmed
+- CTA: soft brand / thought leadership
+
+**ROKStudios — Cybersecurity season (September 2026, Secure Digital Operations Forum, UK)**
+- Source: https://www.prnewswire.com/news-releases/rockwell-automation-announces-new-cybersecurity-season-of-rokstudios-video-series-302867790.html
+- Theme: OT/IT convergence; "cybersecurity is foundational to digital transformation and the ability to scale AI and automation"
+- Library: 170+ total ROKStudios recordings now available
+- CTA: soft brand / thought leadership
 
 ---
 
@@ -254,11 +311,18 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (May 2026, San Francisco)**
+- Full keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Scale: 9,000+ attendees; 288 new products/features
+- Lead framing: "economic infrastructure for the AI era"
+- Key launches: Agentic Commerce Suite (agent wallets for AI agents to transact autonomously), Checkout Studio (fully customizable), Meta + Google partnerships
+- VO register: Collison brothers; founder/peer
+- CTA: soft ecosystem; "available now" within product segments [transcript not verified]
+- Pattern: sharpest pivot yet from "payments company" to "AI infrastructure company" — framing parallels how MIRA should position as infrastructure, not feature
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. Sessions 2026 introduces "agentic commerce" as a full suite — the first competitor in this cache to build dedicated tooling for AI agents as economic actors, not just users.
 
 ---
 
@@ -302,7 +366,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**"Code with Claude" 2026 developer conference**
+- SF (May 6): https://www.youtube.com/watch?v=GMIWm5y90xA
+- London (May 19): https://www.youtube.com/watch?v=6amLO7I9xdg
+- Tokyo (June 12): https://www.youtube.com/watch?v=N4efO8viXXo
+- Format: conference-as-launch-vehicle; engineer/founder register; [transcripts not verified]
+- Key content: Claude Code rate limits 2x + API limit increases; global roadshow format
+- Pattern: Anthropic adopted the Figma Config / Stripe Sessions model — annual developer conference as the primary video launch vehicle; no standalone product ads
 
 ---
 
@@ -340,6 +411,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Custom Agents GA (Feb 24, 2026, Notion 3.3)**
+- No standalone launch video found; release-page native
+- Scale: 21,000+ custom agents built in beta before GA; now live on Business + Enterprise plans
+- Custom Agent Directory launched May 6, 2026
+- Framing: "autonomous AI teammate running 24/7 in background" — no human trigger required
+- Key capability: agents can be scoped to specific databases/pages, given custom instructions, and scheduled or event-triggered
+- Pattern: Notion has shifted from "agent you run" to "agent that runs for you" — the background-always-on teammate framing is a step beyond UpKeep's "acts on it"
+
 ---
 
 ### Figma
@@ -354,6 +433,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Presenter: CEO Dylan Field
+- Lead framing: "code + design on the same canvas" — explicit convergence of design tool into dev-tool territory
+- Key launches: Code Layers (live code on the Figma canvas, GitHub repo import), Figma Motion (timeline animation with keyframes + agent assist), Shaders, Weave Tools (AI style transfer + product rendering), Figma Agent (connectors to Notion/Slack/GitHub + slash-command skills)
+- Footage style: on-stage keynote [transcript not verified]
+- VO register: founder
+- CTA: awareness/ecosystem
+- Pattern: Figma now explicitly positions as a unified design+code environment; "Figma Agent" moves it into the AI-agent-connector category alongside Notion and Stripe
 
 ---
 
@@ -382,9 +471,12 @@ No video content surfaced for 2025–2026.
 | Question hook: "What if [existing workflow] with [new capability]?" | UpKeep: "What if you could control all of your maintenance data using just your voice?" | "What if your tech already knew the fault before they reached the machine?" |
 | "Doesn't just X — it Y" (passive→active dichotomy) | UpKeep: "doesn't just analyze…it acts on it" | "doesn't just surface the fault code — it tells you exactly what to do next" |
 | "You assign. It does." compression | Notion: "You assign the tasks. Your Agents do the work." | "You take the call. MIRA has the answer." |
-| ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
+| Background-always-on teammate | Notion Custom Agents: "autonomous AI teammate running 24/7 in background" | "MIRA is already reading the fault — before your tech picks up the phone" |
+| ROI proof via named customer + specific number | Augury: DuPont 7x ROI in <1 year, 100% accuracy | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Conference-as-launch-vehicle | Figma Config, Stripe Sessions, Anthropic Code with Claude, IA ICC | MIRA user summit or FactoryLM Live — convert customer proof sessions to always-on video library |
+| Infrastructure reframe | Stripe: "economic infrastructure for the AI era" | "maintenance-context infrastructure for AI on any UNS" |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +487,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX → Autodesk Operations Solutions** (Aug 3, 2026): largest Autodesk acquisition ($3.6B). Repositioned from open CMMS to stack-locked design/make/operate platform. MIRA's "open, sensor-agnostic, OEM-manual-native" differentiation is now cleaner against MaintainX's Autodesk-stack dependency.
+- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel. ICC 2026 extends conference-as-launch-vehicle pattern.
+- **Augury**: upgraded proof template from Fortune Brands (2.5x ROI, Bloomberg-distributed) to DuPont (7x ROI in <1 year, 100% accuracy) — setting a new ceiling for named-customer ROI claims in industrial AI video.
+- **Anthropic**: adopted conference-as-launch-vehicle model (Code with Claude 2026 — SF, London, Tokyo). Previously analyst/podcast-only video presence.
+- **Figma**: moved from "design tool" to "design + code on same canvas" framing at Config 2026; Figma Agent connectors put it in AI-agent-connector territory alongside Notion and Stripe.
