@@ -1,0 +1,4 @@
+# Private device images, raw model outputs, and session evidence stay local.
+/private-*/
+/tasks/
+/backend-tests/
