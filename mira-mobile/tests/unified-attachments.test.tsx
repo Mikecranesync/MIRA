@@ -50,6 +50,27 @@ afterEach(() => {
 });
 
 describe("unified attachments controller", () => {
+  it.each([
+    null,
+    { linkId: "", notebookId: "nb-1" },
+    { linkId: "link-1", notebookId: "another-notebook" },
+  ])("retains an analyzed photo whose notebook link is missing or wrong: %j", async (attachment) => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-unlinked", attachment,
+      observation: { text: "A bearing", capturedAt: "2026-09-24T00:00:00Z" },
+    });
+    const get = mount("nb-1");
+    let photo: Attachment | null = null;
+    await act(async () => { photo = await get().attachPhoto(); });
+    let result;
+    await act(async () => { result = await get().compose("what is this", [photo!]); });
+    expect(result).toMatchObject({ failure: expect.stringMatching(/link.*photo|photo.*link/i) });
+    expect(result).not.toHaveProperty("rider");
+    expect(get().hasRetained()).toBe(true);
+    expect(get().hasCarried()).toBe(false);
+  });
+
   it("holds the picked file and uploads NOTHING until send", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     const get = mount("nb-1");
@@ -63,9 +84,16 @@ describe("unified attachments controller", () => {
     expect(api.uploadSourceToNotebook).not.toHaveBeenCalled();
   });
 
-  it("uploads the photo through the LOOK door and returns the visual-evidence rider", async () => {
+  it("keeps generated LOOK text out of the classified question and returns the visual-evidence rider", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
-    api.lookAtPhoto.mockResolvedValue({ fileId: "file-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-9",
+      attachment: { linkId: "link-photo", notebookId: "nb-1" },
+      observation: {
+        text: "No visible damage, burn marks, or corrosion.",
+        capturedAt: "2026-09-16T21:17:20",
+      },
+    });
     const get = mount("nb-1", "actual-backend-thread");
 
     let a: Attachment | null = null;
@@ -77,7 +105,7 @@ describe("unified attachments controller", () => {
     expect(api.lookAtPhoto.mock.calls[0][4]).toBe("actual-backend-thread");
     expect(composed).toEqual({
       question: "why is it leaking",
-      rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T00:00:00Z" } },
+      rider: { visualEvidence: { fileId: "file-9", capturedAt: "2026-09-16T21:17:20" } },
       warning: undefined,
     });
   });
@@ -127,7 +155,11 @@ describe("unified attachments controller", () => {
     act(() => { home().stashForHandoff([a as Attachment]); });
     cleanup();
 
-    api.lookAtPhoto.mockResolvedValue({ fileId: "file-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    api.lookAtPhoto.mockResolvedValue({
+      fileId: "file-9",
+      attachment: { linkId: "link-photo", notebookId: "nb-1" },
+      observation: { text: "A leaking pump seal.", capturedAt: "2026-09-16T00:00:00Z" },
+    });
     const notebook = mount("nb-1"); // the thread the send created
     let composed;
     await act(async () => { composed = await notebook().compose("what is leaking", []); });
@@ -147,7 +179,11 @@ describe("unified attachments controller", () => {
   it("retains a failed attachment so the next compose re-uploads it", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockResolvedValueOnce({ fileId: null })
-      .mockResolvedValue({ fileId: "file-retry", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({
+        fileId: "file-retry",
+        attachment: { linkId: "link-photo", notebookId: "nb-1" },
+        observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00Z" },
+      });
     const get = mount("nb-1");
 
     let a: Attachment | null = null;
@@ -191,7 +227,11 @@ describe("unified attachments controller", () => {
   it("retains a thrown attachment failure for the next compose", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     api.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"))
-      .mockResolvedValue({ fileId: "file-thrown", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({
+        fileId: "file-thrown",
+        attachment: { linkId: "link-photo", notebookId: "nb-1" },
+        observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00Z" },
+      });
     const get = mount("nb-1");
 
     let a: Attachment | null = null;

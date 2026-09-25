@@ -9,8 +9,8 @@
  * floor should get the picker their phone always gives them.
  *
  * So on device we call the platform picker directly and hand the caller a plain
- * `File`. Off device we return null and say so via `canPickNatively()`, and the
- * caller keeps its existing `<input>` — the web build is unchanged.
+ * `File`. Off device these exports create a short-lived browser file input, so
+ * shared-shell callers keep the same promise contract on web and Android.
  *
  * Bytes, in preference order:
  *   1. `blob`  — the plugin already read it (this is the web implementation).
@@ -86,6 +86,32 @@ function imageMimeOf(picked: PickedFile): string {
   return IMAGE_EXT_MIME[ext] ?? "image/jpeg";
 }
 
+/** Browser/PWA equivalent of the native one-file picker. The temporary input
+ * is removed on the authoritative change or cancel event. Window focus may
+ * precede a successful selection and must not settle this promise. */
+function pickInBrowser(accept?: string, capture?: "environment"): Promise<File | null> {
+  if (typeof document === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    if (accept) input.accept = accept;
+    if (capture) input.setAttribute("capture", capture);
+    input.style.display = "none";
+
+    let settled = false;
+    const finish = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener("cancel", () => finish(null), { once: true });
+    input.addEventListener("change", () => finish(input.files?.[0] ?? null), { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
 async function toFile(picked: PickedFile, fallbackName: string, mimeOf?: MimeOf): Promise<File | null> {
   const name = picked.name?.trim() || fallbackName;
   const type =
@@ -128,6 +154,7 @@ async function pickOne(
  *  trusted raw): see `imageMimeOf`. `fallbackName` only matters when the
  *  picker returns no filename. */
 export function pickPhoto(fallbackName = "photo.jpg"): Promise<File | null> {
+  if (!canPickNatively()) return pickInBrowser("image/*");
   return pickOne(() => FilePicker.pickImages({ limit: 1 }), fallbackName, imageMimeOf);
 }
 
@@ -146,6 +173,7 @@ export function pickNameplatePhoto(): Promise<File | null> {
  * needed; the workspace parks the original). Cancel → null, like every pick.
  */
 export function capturePhoto(fallbackName = "photo.jpg"): Promise<File | null> {
+  if (!canPickNatively()) return pickInBrowser("image/*", "environment");
   return pickOne(
     async () => {
       const shot = await Camera.getPhoto({
@@ -180,6 +208,7 @@ export function captureNameplatePhoto(): Promise<File | null> {
  * route a real manual down the "stored, not indexed" path.
  */
 export function pickPdf(): Promise<File | null> {
+  if (!canPickNatively()) return pickInBrowser(PDF_MIME);
   return pickOne(() => FilePicker.pickFiles({ types: [PDF_MIME], limit: 1 }), "document.pdf", PDF_MIME);
 }
 
@@ -233,5 +262,6 @@ function documentMimeOf(picked: PickedFile): string {
  * by the picker or, worse, implied to be readable.
  */
 export function pickDocument(): Promise<File | null> {
+  if (!canPickNatively()) return pickInBrowser();
   return pickOne(() => FilePicker.pickFiles({ limit: 1 }), "document", documentMimeOf);
 }
