@@ -278,3 +278,11 @@ Changed: `wiki/hot.md`
 ## 2026-09-13T13:28:46Z — session auto-commit
 
 Changed: `wiki/hot.md`
+
+
+## [2026-09-13] session | Projects and two-lane research publication
+
+- Codex Work, isolated workspace (`localhost`), user-directed research handoff in [PR #3791](https://github.com/Mikecranesync/MIRA/pull/3791).
+- Preserved the Projects interaction brief and three original signed-out ChatGPT desktop screenshots; added the two-lane code/spec assessment, research index, and [combined Claude implementation guide](../docs/research/2026-09-13-projects-two-lane/CLAUDE_IMPLEMENTATION_GUIDE.md).
+- Evidence pin: `b5bcc102c3b46eb3cafa2afb44a74a74716a6e44`; benchmark PR reference: #3789 at `38fd56e1c301111d964902b3be45c58c711da335`. Research is static; no application-test, deployment, or phone-install claim.
+- Existing UI/photo/evidence PRs are reuse leads, not adopted or merged by this session. Documentation branch and original research remain preserved for handoff.
