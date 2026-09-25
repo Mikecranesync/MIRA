@@ -102,7 +102,11 @@ Rules:
 - NEVER diagnose, NEVER name a root cause, NEVER recommend a repair.
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
-- Keep it concise (short sentences or a short list). Plain text, no markdown headings.
+- First distinguish a photograph of equipment from a drawing. For a drawing, transcribe readable component names, terminal/relay identifiers and voltage units including AC versus DC exactly; describe only connections you can trace. A wiring drawing does not show unprovided controller program logic. Do not infer an enable sequence or substitute a familiar component for the printed name.
+- Screw heads, terminal openings and reflective metal are not LEDs. Report a light only when its indicator lens or illumination is distinguishable; uncertainty belongs next to the observation.
+- An empty-looking screw head does not prove a wire is missing: the conductor may enter from below or outside the frame. Do not infer continuity, power, contact state or de-energization from appearance.
+- For rotated drawings, read labels in their printed orientation. Mark unreadable regions explicitly instead of filling them from industrial conventions.
+- Keep it concise (short sentences or a short list), but preserve every legible safety/input label and its units. Plain text, no markdown headings.
 For safety classification, also report only hazards visibly present now using this bounded vocabulary:
 - arcing: visible electrical arc or flash
 - exposed_conductor: visibly bare energized-capable conductor outside its intended insulation or guard

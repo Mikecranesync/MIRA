@@ -239,8 +239,9 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
 const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
 
 ANSWER SHAPE — the technician needs something they can act on:
-- Lead with the most likely cause or the first thing to check, in the FIRST sentence.
-- Then a short ordered list of checks, cheapest and safest first.
+- For a description or interpretation request, answer that request with visible observations and their limits; do not invent a fault or add a repair/test procedure.
+- For troubleshooting, establish the actual symptom and what changed before ranking possible causes. Label a hypothesis as a hypothesis and name the missing evidence.
+- Offer a short ordered list of checks only when the technician asks for next steps.
 - Ask a diagnostic question when one answer would genuinely change your advice. Ask at most one.
 - Keep it under about 150 words.
 
@@ -250,7 +251,15 @@ HONESTY:
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
-SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
+VISUAL REASONING:
+- Photo descriptions are fallible model readings, not direct electrical measurements. Distinguish printed labels, visible states, technician reports, and inference. Previous assistant answers are not evidence and must not be attributed to the technician.
+- Preserve legible component names, relay/terminal identifiers and AC/DC qualifiers exactly. Do not substitute a familiar component or complete unreadable text.
+- An empty-looking screw face does not establish a missing wire, continuity, absent power or a fault. A dark indicator does not prove a relay or circuit is de-energized. Do not infer hidden terminations or contact state from appearance alone.
+- A wiring drawing does not establish controller program logic or a Boolean enable sequence. Describe only traced connections; request the logic/manual for unshown behavior.
+- Do not rename screw heads as indicator lights or assign status meanings that are not printed or supported by matching documentation. If the observation is ambiguous, say so locally.
+- Use all supplied photo observations for comparison, naming current versus earlier photos. Do not claim the original pixels are visible to you when only descriptions are supplied.
+
+SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on electrical equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized. A LOTO heading cannot make checking for present supply voltage a de-energized procedure. Passive interpretation of photographed indicators or printed ratings requires no equipment action.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -1321,26 +1330,26 @@ async function handleChatTurn(
   // recall them itself. New LOOK observations carry notebook/owner/thread
   // scope in the existing VisualSession ledger, including a LOOK that never
   // became a chat question. Historical photo-answer turns still supply file
-  // references. Select the newest two distinct photos of THIS conversation.
-  // A current explicit photo owns its turn, so prior recall is skipped then.
+  // references. Keep a bounded set of recent distinct photos of THIS conversation.
+  // A new attachment supplements earlier photos; it does not erase them.
   let priorLookRows: VisualEvidenceRow[] = [];
   let priorLookFileIds: string[] = [];
-  if (!visualEntry) {
+  {
     try {
-      const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
+      const recent = await listTurns(ctx.tenantId, notebookId, 24, { viewerUserId: ctx.userId, threadId });
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
         if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
         for (const e of t.evidence) {
           if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
         }
-        if (seen.size >= 2) break;
+        if (seen.size >= 12) break;
       }
       // photoLinkedToTarget opens its own tenant transaction. Verify before
       // holding the observation client so concurrent follow-ups never nest
       // acquisitions from the bounded connection pool.
       const linkedHistorical: string[] = [];
-      for (const fid of [...seen].slice(0, 2)) {
+      for (const fid of [...seen].slice(0, 12)) {
         if (await verifyVisualEntry(ctx.tenantId, notebookId, fid)) linkedHistorical.push(fid);
       }
       const scope = { notebookId, ownerUserId: ctx.userId, threadId };
@@ -1353,7 +1362,8 @@ async function handleChatTurn(
           const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true });
           if (row) out.push(row);
         }
-        return out.sort((a, b) => Date.parse(b.observedAt ?? "") - Date.parse(a.observedAt ?? "")).slice(0, 2);
+        return out.filter(row => row.fileId !== visualEntry?.fileId)
+          .sort((a, b) => Date.parse(a.observedAt ?? "") - Date.parse(b.observedAt ?? "")).slice(-12);
       });
       priorLookFileIds = priorLookRows.flatMap((row) => row.fileId ? [row.fileId] : []);
     } catch (err) {
@@ -3134,6 +3144,7 @@ async function handleChatTurn(
           plan,
           provenFacets,
           answer: answerText,
+          referenceText: chunks.map(chunk => chunk.content).join("\n"),
           status: answerStatus,
         });
         if (suggestions.length) {

@@ -77,7 +77,7 @@ const veMock = vi.hoisted(() => ({
     hazards: [] as { code: "arcing" | "exposed_conductor" | "active_fire" | "smoke"; confidence: number }[],
   })),
   renderLookObservationSection: vi.fn((row: unknown | null) => (row ? LOOK_SENTINEL : "")),
-  renderPriorLookObservationsSection: vi.fn((rows: unknown[]) => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
+  renderPriorLookObservationsSection: vi.fn((rows: unknown[]): string => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
@@ -92,7 +92,7 @@ vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async 
 const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
   canonicalProviders: vi.fn(() => [{ name: "groq", url: "https://x/y", key: "k", model: "m" }]),
-  buildRequestBody: vi.fn(() => ({})),
+  buildRequestBody: vi.fn((_provider: unknown, messages: unknown) => ({ messages })),
   maxOutputTokens: vi.fn(() => 1000),
   routeReasonFor: vi.fn(() => "ok"),
   exhaustedUsage: vi.fn(() => ({ status: "error" })),
@@ -416,5 +416,29 @@ describe("standalone LOOK recall in the selected conversation", () => {
     });
     const call = ragMock.buildManualUserContent.mock.calls.at(-1);
     expect(String(call?.[2] ?? "")).toContain("PRIOR-LOOK-CTX");
+  });
+});
+
+
+describe("multi-photo evidence continuity (#3962)", () => {
+  it.each([false, true])("retains five distinct earlier observations, including with a new attachment=%s", async (attached) => {
+    const rows = Array.from({length: 5}, (_, i) => ({
+      observationId: `o${i}`, sessionId: `s${i}`, text: `Earlier distinct drawing ${i}`,
+      obsKind: 'property', trust: 'candidate', confidence: null,
+      fileId: `55555555-5555-4555-8555-55555555555${i}`, photoHash: `hash${i}`,
+      observedAt: `2026-09-23T12:0${i}:00.000Z`, hazards: [],
+    }));
+    veMock.loadRecentLookObservations.mockResolvedValueOnce(rows);
+    const realVisual = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    veMock.renderPriorLookObservationsSection.mockImplementationOnce((values) => realVisual.renderPriorLookObservationsSection(values as never));
+    if (attached) filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    const res = await POST(req({message: 'Compare all the drawings I supplied.', mode: 'general',
+      ...(attached ? {visualEvidence: {fileId: PHOTO}} : {})}), params);
+    expect(res.status).toBe(200);
+    const retained = veMock.renderPriorLookObservationsSection.mock.calls.at(-1)?.[0] as {fileId: string}[];
+    expect(retained?.map(r => r.fileId).sort()).toEqual(rows.map(r => r.fileId).sort());
+    await res.text(); // complete the stream so the provider request is assembled
+    const sent = JSON.stringify(seamMock.buildRequestBody.mock.calls.at(-1)?.[1]);
+    for (const row of rows) expect(sent).toContain(row.text);
   });
 });

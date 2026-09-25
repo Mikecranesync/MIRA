@@ -671,3 +671,26 @@ describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036
     expect(unsupportedExactRating("Speed depends on the drive setting.")).toBeNull();
   });
 });
+
+
+describe("present-voltage instruction under isolation (#3991)", () => {
+  it.each([
+    'Quick verification steps (de-energized, LOTO applied)\nConfirm the 120 VAC supply is present at the ignition module’s input terminals.',
+    'After lockout, verify that the 24 VDC supply is present at the block and that its polarity matches the diagram.',
+    'Check for 120 VAC at terminals L and N.',
+    'With LOTO applied, ensure the enable relay is receiving its drive signal.',
+  ])("rejects physical present-voltage verification: %s", (answer) => {
+    expect(grounded(answer, 'What does this drawing tell you?').ok).toBe(false);
+  });
+  it.each([
+    'The drawing labels the supply 120 VAC; that is a printed rating, not a measurement.',
+    'Do not check for 120 VAC at terminals L and N.',
+    'With isolation and lockout verified, verify absence of voltage using the approved site procedure.',
+    'The photo shows a green indicator; its meaning requires the matching manual.',
+    'Verify the drawing shows 120 VAC at the input terminals.',
+    'Check the display says supply voltage is present.',
+    'Do not ensure the relay is receiving power by probing it.',
+  ])("preserves passive and prohibition controls: %s", (answer) => {
+    expect(grounded(answer, 'What does this drawing tell you?').ok).toBe(true);
+  });
+});
