@@ -111,6 +111,10 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
   // answered with an invisible photo attached — no chip, no way to remove it.
   const retained = useRef<readonly HeldAttachment[]>([]);
   const hasRetained = useCallback(() => retained.current.length > 0, []);
+  const discardRetained = useCallback(() => {
+    for (const item of retained.current) held.current.delete(item.attachment.id);
+    retained.current = [];
+  }, []);
 
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
@@ -227,5 +231,5 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     }
   }, [notebookId, threadId]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, discardRetained };
 }

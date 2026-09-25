@@ -42,7 +42,7 @@ export interface SendErrorProps {
 export function SendError({ error, dispatch, draft, turnId, hooks, retryCurrentComposer }: SendErrorProps) {
   if (!error) return null;
 
-  const hostRetry = turnId && hooks?.onRetry ? hooks.onRetry : undefined;
+  const hostRetry = hooks?.onRetry;
   const draftRetry = Boolean(draft.trim() && hooks?.onSend);
   const canRetry = Boolean(retryCurrentComposer) || Boolean(hostRetry) || draftRetry;
 
@@ -53,7 +53,7 @@ export function SendError({ error, dispatch, draft, turnId, hooks, retryCurrentC
     }
     if (hostRetry) {
       dispatch({ type: "set-send-error", error: null });
-      hostRetry(turnId as string);
+      hostRetry(turnId ?? "");
       return;
     }
     const text = draft.trim();

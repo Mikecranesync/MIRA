@@ -180,7 +180,14 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
       // basis string and a caption, so it is never asserted here — the kind is a
       // display grouping from keywords and must not be read as authorization.
       const kind = basisKind(part.basis);
-      return { type: "evidence_basis", basis: { kind, label: part.label ?? part.basis, authorized: false } };
+      return { type: "evidence_basis", basis: { kind, label: part.label ?? ({
+        workspace_evidence: "Grounded in workspace evidence.",
+        general_reasoning: "General guidance — not grounded in this machine’s documents.",
+        oem_documentation: "Grounded in this notebook’s sources.",
+        identified_component: "Grounded in the identified component.",
+        machine_history: "Grounded in recorded machine history — not live.",
+        live_machine_evidence: "Grounded in live machine evidence.",
+      }[part.basis] ?? part.basis.replace(/_/g, " ")), authorized: false } };
     }
     case "error":
       return {

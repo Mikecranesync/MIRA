@@ -45,6 +45,8 @@ export interface HostHooks {
   readonly onConvert?: (intent: ConversionIntent) => void;
   /** Open the host's own citation viewer instead of the built-in source viewer. */
   readonly onSource?: (source: SourceReference) => void;
+  /** Open original photo bytes through the host authenticated viewer. */
+  readonly onPhoto?: (fileId: string) => void;
   /**
    * Start a host-owned thread. The action is enabled only when the host
    * provides this; without it (the disconnected lab) the control is honestly disabled with a
@@ -314,6 +316,7 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     case "visual_observation": {
       const { observation } = part;
       return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified) }}>
+        {hooks?.onPhoto ? <button type="button" onClick={() => hooks.onPhoto?.(observation.fileId)}>Open original photo</button> : null}
         <dl className="fl-card__facts">
           <div><dt>File</dt><dd>{observation.fileId}</dd></div>
           <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>

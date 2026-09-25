@@ -77,6 +77,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
     initialQuestion?: string | null;
     initialSensorStart?: "read-scan" | null;
     onExit: () => void;
+    onNewThread?: (id: string) => void;
     onCreateProject?: () => void;
   }) => {
     props.backRef.current = () => {
@@ -92,9 +93,11 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
         data-initial-sensor={props.initialSensorStart ?? ""}
+        data-projects={JSON.stringify(props.unifiedShell?.projects)}
         data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
+        <button onClick={() => props.onNewThread?.(props.id)}>new-chat-from-notebook</button>
         <button onClick={() => props.onCreateProject?.()}>create-project-from-notebook</button>
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
@@ -224,6 +227,12 @@ describe("UnifiedRoot", () => {
     // was killed and relaunched.
     expect(nb.getAttribute("data-id")).toBe("nb-general");
     expect(JSON.parse(nb.getAttribute("data-project-names") ?? "[]")).toContain("Pixel pre-read");
+    const original = "notebook-nb-general:thread-legacy";
+    fireEvent.click(screen.getByText("new-chat-from-notebook"));
+    expect(screen.getByTestId("nb").getAttribute("data-projects")).toContain(original);
+    fireEvent.click(screen.getByText("new-chat-from-notebook"));
+    expect(screen.getByTestId("nb").getAttribute("data-projects")).toContain(original);
+
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {

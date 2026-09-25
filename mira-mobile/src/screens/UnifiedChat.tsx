@@ -28,6 +28,8 @@ import {
 import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
 import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
+import { Sheet } from "./Sheet";
+import { FilePreview } from "./FilePreview";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
@@ -149,7 +151,11 @@ export function UnifiedChat({
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+  const [openPhoto, setOpenPhoto] = useState<string | null>(null);
   const [validationError, setValidationError] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const preparingRef = useRef(false);
+  const [attachmentFailure, setAttachmentFailure] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch({
@@ -263,6 +269,7 @@ export function UnifiedChat({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    if (preparingRef.current) return;
     // Keep chips available when the request exceeds the single-photo contract.
     try {
       assertSupportedAttachments(pending);
@@ -271,6 +278,7 @@ export function UnifiedChat({
       throw error;
     }
     setValidationError(false);
+    setAttachmentFailure(null);
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
       handlers.onSend(questionForAttachments(text, pending));
@@ -284,12 +292,17 @@ export function UnifiedChat({
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
     if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+      attachments.discardRetained();
       handlers.onSend(text);
       return;
     }
+    preparingRef.current = true;
+    setPreparing(true);
+    const question = questionForAttachments(text, pending);
     void attachments.compose(text, pending, opts).then((composed) => {
       if (composed.failure) {
         // Do not send: a photo question with no photo would answer from nothing.
+        setAttachmentFailure(composed.question);
         dispatch({ type: "set-send-error", error: composed.failure });
         dispatch({ type: "set-draft", draft: composed.question });
         return;
@@ -299,9 +312,10 @@ export function UnifiedChat({
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
+      setAttachmentFailure(question);
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
-      dispatch({ type: "set-draft", draft: text });
-    });
+      dispatch({ type: "set-draft", draft: question });
+    }).finally(() => { preparingRef.current = false; setPreparing(false); });
   }, [attachTarget, attachments, handlers, dispatch]);
 
   // The question HOME queued for the thread it just created. It goes through
@@ -326,18 +340,22 @@ export function UnifiedChat({
     // ask the photo question with no photo — the outcome `compose` refuses on
     // the first attempt (see attachments.ts). When the controller still holds
     // the bytes, retry through the composed path so the photo rides the turn.
-    ...(canRetry && handlers.onRetry
+    ...((attachmentFailure !== null || (canRetry && handlers.onRetry)) && !preparing
       ? { onRetry: () => {
           if (attachments.hasRetained() || attachments.hasCarried()) {
             dispatch({ type: "set-send-error", error: null });
-            onSend(state.draft, [], { retry: true });
+            const question = attachmentFailure ?? state.draft;
+            if (state.draft === question) dispatch({ type: "set-draft", draft: "" });
+            onSend(question, [], { retry: true });
             return;
           }
+          if (state.draft === failedQuestion) dispatch({ type: "set-draft", draft: "" });
           handlers.onRetry?.();
         } }
       : {}),
     ...(handlers.onNewChat ? { onNewChat: handlers.onNewChat } : {}),
     ...(handlers.onCreateProject ? { onCreateProject: handlers.onCreateProject } : {}),
+    onPhoto: setOpenPhoto,
     onSource: (source) => {
       const citation: ChatCitation | undefined = citations.get(source.id);
       if (citation) handlers.onCitation(citation);
@@ -345,10 +363,12 @@ export function UnifiedChat({
     onScanMachine: handlers.onScanMachine,
     groundingLine,
     suggestChips,
-    busy,
+    busy: busy || preparing,
   };
 
   return <div className="unified-host" data-testid="unified-chat">
+    {openPhoto ? <Sheet label="Photo" onClose={() => setOpenPhoto(null)}><FilePreview fileId={openPhoto} filename="Photo" /><button onClick={() => setOpenPhoto(null)}>Close</button></Sheet> : null}
+    {preparing ? <p role="status">Preparing attachment for MIRA…</p> : null}
     {/* No host-level error banner: the shell's SendError is the surface now. It
         renders in the thread, strips status codes, offers the host's own Retry
         and dismisses — keeping this too drew two error surfaces for one failure. */}

@@ -9,6 +9,8 @@ vi.mock("../src/lib/native-pick", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/native-pick")>();
   return { ...real, ...nativePick };
 });
+const fileTransport = vi.hoisted(() => ({ requestBinary: vi.fn() }));
+vi.mock("../src/api/client", async (importOriginal) => ({ ...await importOriginal<typeof import("../src/api/client")>(), ...fileTransport }));
 const resources = vi.hoisted(() => ({ lookAtPhoto: vi.fn(), uploadSourceToNotebook: vi.fn(), getNotebookDetail: vi.fn() }));
 vi.mock("../src/api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/api/resources")>();
@@ -392,6 +394,68 @@ describe("UnifiedChat", () => {
     await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
     expect(h.onSend.mock.calls[0]).toEqual(["what is P06.01"]);
     expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it("acknowledges photo preparation and retries a photo-only first turn without host retry capability", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    let reject!: (e: Error) => void;
+    resources.lookAtPhoto.mockImplementationOnce(() => new Promise((_, r) => { reject = r; }))
+      .mockResolvedValue({ fileId: "retry-photo", attachment: { linkId: "link", notebookId: "nb-1" }, observation: { text: "Bearing", capturedAt: "now" } });
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByRole("status").textContent).toMatch(/preparing.*photo|preparing.*attachment/i);
+    await act(async () => { reject(new Error("Network failed")); });
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(h.onSend.mock.calls[0][1]).toMatchObject({ visualEvidence: { fileId: "retry-photo" } });
+    expect(h.onRetry).not.toHaveBeenCalled();
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it.each([false, true])("host retry clears its restored draft but preserves a different draft: edited=%s", (edited) => {
+    const h = handlers();
+    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true} chatError="Network failed" failedQuestion="Failed question" handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    if (edited) fireEvent.change(box, { target: { value: "Different question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(box.value).toBe(edited ? "Different question" : "");
+  });
+
+  it("reopens persisted photo bytes through authenticated transport and humanizes provenance", async () => {
+    fileTransport.requestBinary.mockResolvedValue({ bytes: new Uint8Array([1, 2]), contentType: "image/jpeg" });
+    URL.createObjectURL = vi.fn(() => "blob:private-photo");
+    URL.revokeObjectURL = vi.fn();
+    const row = { ...TURN, basis: "workspace_evidence", evidence: [{ kind: "visual_observation", fileId: "photo-original", capturedAt: "2026-09-25T00:00:00Z", text: "Panel" }] };
+    render(<UnifiedChat turns={[row]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={handlers()} meta={META} />);
+    expect(document.querySelector('[data-part-type="evidence_basis"]')?.textContent).not.toContain("workspace_evidence");
+    fireEvent.click(screen.getByRole("button", { name: "Open original photo" }));
+    await waitFor(() => expect(screen.getByRole("img", { name: "Photo" }).getAttribute("src")).toBe("blob:private-photo"));
+    expect(fileTransport.requestBinary).toHaveBeenCalledWith("/api/namespace/files/photo-original/");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:private-photo");
+  });
+
+  it("a dismissed photo cannot claim the retry of a later failed text request", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockRejectedValue(new Error("Network failed"));
+    const h = handlers();
+    const props = { turns: [TURN], liveTurns: [], pending: null, busy: false, canStop: false, canRetry: false, chatError: null, handlers: h, meta: META };
+    const view = render(<UnifiedChat {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.change(box, { target: { value: "Unrelated text" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    view.rerender(<UnifiedChat {...props} canRetry chatError="Text network failed" failedQuestion="Unrelated text" />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(h.onRetry).toHaveBeenCalledTimes(1);
   });
 
 });
