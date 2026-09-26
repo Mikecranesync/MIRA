@@ -1,3 +1,64 @@
+# Overnight scope — MIRA owner proxy / fireplace repair
+
+Owner: Mike / FactoryLM. Executor: Codex CHARLIE. Date: 2026-09-26.
+Branch: `codex/fireplace-repair-loop`; isolated worktree `fireplace-repair-loop/MIRA`.
+PR #3999; governing PRD and mission: PR #4001. Existing source freeze: c8687ceb511b739984873ae94652504d4218a183.
+
+## Numbered scope and success criteria
+
+1. Reproduce and repair demonstrated photo interpretation / answer attribution failures
+   in the existing notebook LOOK, chat, visual context and validation code, and affected
+   tests. Success: targeted red/green checks plus faithful real-model replay on exact source.
+2. Run all five original fireplace photos and a changed-order control on the Pixel;
+   retain input, interpretation, context/retrieval and final answer where available.
+   Success: per-layer PASS/FAIL/UNKNOWN with every failed run preserved, no guessed pass.
+3. Verify original viewing, recovery, cold restart and phone → web → phone continuity.
+   Repair demonstrated defects in the existing shared shell/mobile carrier only.
+   Success: actual same-thread turns/evidence persist on the real surfaces.
+4. Select at most three additional private industrial photo cases from the phone and
+   use them as opposite/generalization controls. Success: private manifest, neutral
+   prompts and observed results, no public originals or answer-key hints.
+5. Obtain independent Claude read-only review, reproduce and fix applicable findings.
+   Success: exact-SHA review record and honest unresolved findings; no self-attestation.
+6. Assess Jev use cases using existing integration/evidence. Success: adopt/defer/reject
+   matrix with evidence limits, privacy/cost/latency considerations. No new third-party
+   private-content exports; no Jev safety/authorization/release gate.
+7. Use OpenAI answers as an evidence-checked comparison where helpful; all further paid
+   OpenAI tests including vision stay below $8. Reserve before each call and stop before
+   exceeding the cap. Success: durable usage/reservation ledger; unknown cost is reserved,
+   never silently zero. No top-ups, new vendors or purchase actions.
+8. Publish novice-friendly progress and morning HANDOFF on GitHub with candidate
+   identities, tests, real product results, costs and remaining gates. Success: reviewable
+   PR evidence and accessible owner report, not an unsupported working-app promise.
+
+## OUT of scope
+
+No main/develop pushes, merge, production deploy/migration, OT actions, customer-data
+operations, new architecture/workflows/schema/providers, broad refactoring, safety-policy
+weakening, benchmark-specific production hints, issue closure without own clearing
+contract, or public private-photo/transcript publication. Keep #3984 open.
+
+## Preflight and stop rules
+
+Worktree/branch isolated; no override variables. The current canonical hook config is
+`.claude/settings.json` (the skill's `.Codex` path is historical). Stop/prod guards are
+present; hook-payload suite: 56 passed. Codex tool execution does not automatically
+become Claude hook execution: run relevant gates explicitly. Historical named operator
+memory entries were absent from the available memory registry; current PRD, repo rules
+and overnight playbook supply the constraints. Active fireplace ownership remains in
+90-day plan; overlapping PRs are inventoried before editing.
+
+Work one bounded failure at a time. Freeze again after code changes; record fixed-source
+local dev-server replay separately from production-build acceptance. No further paid
+calls until a hard spending bound is established. Stop at the cost cap, approval boundary,
+repeated unresolved failure or completed scope and record HANDOFF. Use morning 07:00
+America/New_York as the report checkpoint, not a fabricated completion deadline.
+
+Existing root plan was inherited from merged capture-lifecycle work. Preserve that
+historical content below; it is not this lane's active scope.
+
+<details><summary>Inherited capture-lifecycle plan (historical)</summary>
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
@@ -127,3 +188,5 @@ All PLAN rows done · >70% budget · >200 turns · 5 turns on one failing test �
 architecture/security/privacy decision needed · any OUT-of-scope path required ·
 isolation/privacy/data-loss/safety risk · remaining work human-gated → write
 HANDOFF **once** and stop.
+
+</details>
