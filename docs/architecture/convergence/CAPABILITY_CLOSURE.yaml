@@ -84,16 +84,16 @@ capabilities:
       - path: tests/test_evidence_provenance.py
         observed_at: "2026-09-26"
         note: >-
-          36 provenance rule tests (re-observed 2026-09-26 at the durability-rule
-          commit, pinned by tag evidence/evidence_provenance_gate/2026-09-26 so a
-          squash merge cannot orphan it). Mutation-tested three
+          37 provenance rule tests (re-observed 2026-09-26 at the #4007 review
+          commit, pinned by tag evidence/evidence_provenance_gate/2026-09-26b so a
+          squash merge cannot orphan it; to be re-stamped onto main after merge). Mutation-tested three
           ways rather than assumed: gutting the observation-control check,
           letting INCONCLUSIVE count as proof, and removing the commit-existence
           check each turn the suite red, and restoring each turns it green
           again. A linter shown only passing input cannot be told apart from one
           that returns an empty list.
         provenance:
-          commit_sha: "54f0ee703626a7e83d50d8f026a726bf3a69e786"
+          commit_sha: "88aff302940d09cbb77241837db466dc199f8775"
           environment: local
           observed_at: "2026-09-26"
           outcome: pass
