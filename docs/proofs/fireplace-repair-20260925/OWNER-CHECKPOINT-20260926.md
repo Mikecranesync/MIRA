@@ -1,5 +1,21 @@
 # MIRA overnight owner report — September 26
 
+## Safety-check wiring repair — next candidate
+
+Source `2cff474bf` narrows the OpenAI comparison flag to notebook answers. The
+existing safety judge keeps its original providers, request format, rules, and
+fail-closed behavior. Before repair, three new protocol checks failed. After
+repair, the selected suites passed all 507 checks; the real chat-handler suite
+then passed all 21 checks including the newly added answer-plus-safety wiring
+case. The local production build gate passed. These are deterministic checks,
+not proof that the model will judge every real request correctly.
+
+Claude review and a newly frozen product replay remain pending. The prior frozen
+backend is still `b5b5314f2`; do not attribute its results to this repair. The
+emulator console reports its virtual device stopped after the disk incident;
+its control interface is alive. No app data was reset. No further OpenAI calls
+were used for this repair.
+
 ## Latest checkpoint — local build recovery and comparison review
 
 Both the repair branch and shared workspace local build gates now pass. Its earlier failure was a full

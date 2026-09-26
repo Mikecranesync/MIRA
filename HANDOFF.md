@@ -1,3 +1,18 @@
+# Next candidate: 2cff474bf — safety provider scope repaired
+
+Local build gate passed; red3/green507 and real-route21 (including one new test).
+Claude read-only review still running: exec35158, PID47680; stream
+/tmp/mira-fireplace-localqa/review-safety-scope-stream.jsonl. Do not restart from timeout.
+Current frozen backend remains b5; new repair not installed/replayed yet.
+Emulator adb console says virtual device stopped, ping alive; can resume same AVD
+using console after build space recovered. CDP20732 and adb9223 are waiting on
+that stopped device; no restart from timeout. Private failed M run preserved.
+Build logs /tmp/mira-hub-stop-build-2cff-pass.log. OpenAI accounted3.412805/8.
+Next: review outcome, frozen Docker build from full2cff SHA, replace only local4450
+backend, resume existing emulator, new named original/reverse-order runs, grade.
+Phone remains securely locked; user unlock and web handoffs pending.
+
+---
 # Latest checkpoint — b5 comparison is not accepted
 
 ## Latest checkpoint — local build recovery and comparison review
