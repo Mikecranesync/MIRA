@@ -271,3 +271,19 @@ No safety prompt, verdict parser, timeout, selector or fail-closed policy change
 Prove safe/unsafe verdict transport, fallback and exhaustion under the comparison
 flag, plus continued notebook pinning and unchanged defaults. Model correctness
 still requires separate frozen product replay.
+
+## O replay repair: connection acquisition and visible unsaved readings
+
+Demonstrated C failure: O photo2 LOOK logs a connection timeout and returns its
+reading anyway; only four observations survive for five images. Reuse the tenant
+transaction helper, enabling one connection-acquisition timeout retry only for
+LOOK recording. Never retry BEGIN, callback or COMMIT; no duplicate writes from
+uncertain commit. Preserve other callers' behavior. If saving still fails, keep
+original bytes/returned reading and expose observationSaved=false. Canonical
+composer retains the question/photo for its existing Try again flow and sends
+no answer request until saving succeeds. Legacy responses without the new flag
+remain compatible. No schema, outbox, provider, safety or rendering change.
+Tests: transient/persistent acquire timeout, permission error, midtransaction
+error/commit ambiguity without replay, server flag and original preservation,
+mobile response parsing and retained-photo retry. Frozen fault-injection replay
+and successful five-observation replay remain required product evidence.

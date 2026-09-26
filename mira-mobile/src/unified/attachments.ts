@@ -197,6 +197,10 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
           retain();
           return { question, failure: "The photo didn't upload — try again." };
         }
+        if (look.observationSaved === false) {
+          retain();
+          return { question, failure: "Your photo is saved, but its reading couldn't be saved. Try again." };
+        }
         if (!look.observation) {
           // A saved file ID proves storage, not visual understanding. Do not
           // let retrieval answer the technician from an unrelated manual when

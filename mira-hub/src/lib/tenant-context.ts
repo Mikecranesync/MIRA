@@ -22,8 +22,19 @@ import type { PoolClient } from "pg";
 export async function withTenantContext<T>(
   tenantId: string,
   fn: (client: PoolClient) => Promise<T>,
+  options?: { retryConnectionTimeout?: boolean },
 ): Promise<T> {
-  const client = await pool.connect();
+  // A failed acquisition has run no transaction and is safe to retry once.
+  // Never wrap the callback or COMMIT: their outcome may already be durable.
+  let client: PoolClient;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    const timedOut = err instanceof Error &&
+      err.message === "Connection terminated due to connection timeout";
+    if (!options?.retryConnectionTimeout || !timedOut) throw err;
+    client = await pool.connect();
+  }
   try {
     await client.query("BEGIN");
     await client.query("SET LOCAL ROLE factorylm_app");

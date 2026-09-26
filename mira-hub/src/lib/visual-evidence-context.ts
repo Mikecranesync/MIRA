@@ -271,7 +271,7 @@ export async function recordLookObservation(opts: {
       [sessionId, opts.tenantId, evidenceId, text],
     );
     return { sessionId, evidenceId, observationId: String(o.rows[0].id) };
-  });
+  }, { retryConnectionTimeout: true });
 }
 
 /**

@@ -1039,6 +1039,9 @@ export interface LookObservation {
 }
 
 export interface LookResult {
+  /** False means the reading was returned but could not be saved for recall.
+   * Absent on older servers; never infer saved from the parked file alone. */
+  observationSaved?: boolean;
   /** The parked photograph — retained and linked to the notebook (role
    *  "photo") BEFORE vision runs, so it exists even when the provider fails. */
   fileId: string;
@@ -1089,6 +1092,7 @@ export async function lookAtPhoto(
   const att = d.attachment as Record<string, unknown> | undefined;
   const obs = d.observation as Record<string, unknown> | null | undefined;
   return {
+    ...(typeof d.observationSaved === "boolean" ? { observationSaved: d.observationSaved } : {}),
     fileId: String(d.fileId ?? ""),
     attachment: att
       ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }

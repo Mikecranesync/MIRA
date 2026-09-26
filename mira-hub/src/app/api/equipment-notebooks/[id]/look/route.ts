@@ -465,7 +465,10 @@ async function handleLookTurn(
     // 063; NO new table) so a later chat turn that re-sends THIS photo as visual
     // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
     // LOOK turn — the photo is already parked and the observation is returned to
-    // the client regardless (Law 1: the bytes/observation must survive).
+    // the client regardless (Law 1: the bytes/observation must survive). The
+    // save flag lets the composer retain its inputs for explicit retry rather
+    // than silently sending a question with an unsaved interpretation.
+    let observationSaved = false;
     try {
       await recordLookObservation({
         tenantId: ctx.tenantId,
@@ -478,6 +481,7 @@ async function handleLookTurn(
         capturedAt,
         createdBy: ctx.userId ?? null,
       });
+      observationSaved = true;
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
     }
@@ -512,6 +516,7 @@ async function handleLookTurn(
     return NextResponse.json({
       ...retained,
       observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
+      observationSaved,
       finishReason: reply.finishReason ?? null,
       provider,
       preprocessing,

@@ -71,6 +71,22 @@ describe("unified attachments controller", () => {
     expect(get().hasCarried()).toBe(false);
   });
 
+  it("retains the photo and question until its interpretation is saved", async () => {
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "panel.jpg", { type: "image/jpeg" }));
+    const look = { fileId: "saved-photo", attachment: { linkId: "link", notebookId: "nb-1" }, observation: { text: "Panel", capturedAt: "2026-09-26T00:00:00Z" } };
+    api.lookAtPhoto.mockResolvedValueOnce({ ...look, observationSaved: false }).mockResolvedValueOnce({ ...look, observationSaved: true });
+    const get = mount("nb-1");let photo: Attachment | null = null;
+    await act(async () => { photo = await get().attachPhoto(); });
+    let failed;
+    await act(async () => { failed = await get().compose("What does this show?", [photo!]); });
+    expect(failed).toMatchObject({ question: "What does this show?", failure: expect.stringContaining("reading couldn't be saved") });
+    expect(failed).not.toHaveProperty("rider");expect(get().hasRetained()).toBe(true);
+    let retried;
+    await act(async () => { retried = await get().compose("What does this show?", [], { retry: true }); });
+    expect(retried).toMatchObject({ question: "What does this show?", rider: { visualEvidence: { fileId: "saved-photo" } } });
+    expect(get().hasRetained()).toBe(false);
+  });
+
   it("holds the picked file and uploads NOTHING until send", async () => {
     pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     const get = mount("nb-1");

@@ -449,6 +449,7 @@ describe("#3967 durable LOOK → priorLookRows recall index", () => {
     const body = await res.json();
     expect(body.observation.text).toBe("Green LED lit.");
     expect(body.fileId).toBe(FILE_ID);
+    expect(body.observationSaved).toBe(false);
   });
 });
 
