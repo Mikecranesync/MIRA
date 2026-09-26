@@ -307,7 +307,11 @@ export async function semanticSafetyCheck(opts: {
             },
           ],
           stream: false,
-          max_tokens: 200,
+          // #4022: gpt-oss reasons ~200-280 tokens BEFORE the verdict; at 200
+          // most calls ended finish_reason=length with empty content and a
+          // correct answer was withheld. Measured 8/8 verdicts at 1024
+          // (236-283 tokens, median ~0.8 s) on staging keys, 2026-09-26.
+          max_tokens: 1024,
           temperature: 0,
         }),
         signal: ac.signal,
@@ -316,11 +320,12 @@ export async function semanticSafetyCheck(opts: {
         attempts.push(`${p.name}=http_${res.status}`);
         continue;
       }
-      const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+      const data = (await res.json()) as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] };
       const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
       if (parsed) return parsed;
-      // Malformed verdict from this provider — try the next one.
-      attempts.push(`${p.name}=malformed`);
+      // Malformed verdict from this provider — try the next one. A length stop
+      // means the budget ran out before the verdict: name it, it is fixable.
+      attempts.push(`${p.name}=${data?.choices?.[0]?.finish_reason === "length" ? "truncated" : "malformed"}`);
     } catch {
       // Timeout / network / non-JSON body — try the next provider.
       attempts.push(`${p.name}=${ac.signal.aborted ? "timeout" : "error"}`);
