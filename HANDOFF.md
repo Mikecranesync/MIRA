@@ -29,8 +29,14 @@ reasoning all failed; high reasoning at 800 tokens returns no visible answer.
 Same-context OpenAI comparison more faithful once, not product acceptance.
 Private evidence and manifest: overnight-runtime/summary-investigation-manifest.json.
 The temporary diagnostic container is stopped; original frozen backend restored.
-Claude read-only mechanism review handle 84100 was launched; inspect its terminal
-result before another review. Stream at /tmp/mira-fireplace-localqa/review-summary-mechanism-stream.jsonl.
+Claude mechanism review finished (handle 84100 terminal). Findings saved at
+/tmp/mira-fireplace-localqa/review-summary-mechanism-findings.txt and private runtime.
+Its stop hook had hit disk exhaustion; parent cleared generated root build output,
+reran repair stop gate successfully, then review exited. No gate bypass.
+Per-photo type tags, local-uncertainty LOOK wording, full-resolution image input,
+and Qwen3.8 low/none comparisons all rejected. Do not repeat these variants.
+Actual observation text already retains image type: no structured type was lost.
+Summary packets have zero chunks: changing general-mode gating is not their fix.
 Next bounded work: use that review to choose a source-supported experiment;
 avoid more speculative prompt accumulation or a new architecture. The attached-photo + explicit earlier-drawing question control now PASSes reference
 separation on Pixel build15; small-print correctness remains unverified. Check CI, including DeepEval offline failure whose failed-log
@@ -45,7 +51,7 @@ version, so record its identity if used. CUA stagingContinuityTab was marked han
 
 OpenAI account ledger is authoritative at private-backend-diagnostic/overnight-runtime/
 openai-spend-ledger.json; /tmp/mira-fireplace-localqa/openai-spend-ledger.json symlinks
-there. $2.639015 accounted (33 recorded calls + $1 earlier reserve), $8 hard ceiling.
+there. $3.047985 accounted (39 recorded calls + $1 earlier reserve), $8 hard ceiling.
 Both host and container guards use this one ledger. No unguarded calls, no top-ups.
 Jev stays existing shadow only; J/K/L summary overreach flags match observed concerns,
 not an accuracy metric. Do not promote it to a safety, auth, billing or release gate.

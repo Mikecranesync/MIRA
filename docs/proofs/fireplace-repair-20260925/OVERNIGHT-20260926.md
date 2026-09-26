@@ -293,3 +293,43 @@ signals are triage prompts, not a replacement for grading individual dimensions.
 The mixed-topic packet also records three retrieved excerpts; their relevance
 has not been independently graded. Its reference PASS must not become a retrieval
 or whole-answer PASS.
+
+## Independent mechanism review and rejected follow-ups
+
+Claude completed a read-only review of the summary path at `59ad56960`. The
+useful finding is that existing final-answer validation does not compare each
+relationship claim with its supporting evidence. A suggested manual-mode gate
+change would not fix the recorded summaries: their packets have zero retrieved
+chunks, so that gate was already reached. The suggestion that evidence type is
+“discarded” needs qualification: it remains in observation text, but is not a
+separate structured field. No structured type existed to lose.
+
+Tested Claude's remaining hypothesis by adding generic per-observation source
+type tags to the same reconstructed input. It still claimed a drawing/hardware
+match and promoted illuminated indicators to electrical state. **Rejected.**
+This is evidence against another prompt/context-format-only repair.
+
+Small-print follow-up kept the original files private and unchanged. Compared
+the current LOOK prompt with a generic instruction to localize uncertain glyphs
+and punctuation on two photos; the readings remained unchanged. Separately
+removed only the 2576-pixel working-image reduction, retaining the existing
+orientation correction and prompt. Full-resolution input also did not resolve
+the disputed readings. Neither variant was installed. A reviewer's impression
+of a faint/rotated character is not independent ground truth; these characters
+remain explicitly unverified.
+
+Groq's live model list confirmed Qwen 3.8 27B was available through the existing
+provider. Tested the same reconstructed summary with low reasoning and with
+reasoning disabled. Both produced unsupported claims, so neither configuration
+was installed. No new provider, production routing change, or purchase occurred.
+[Provider parameter reference](https://console.groq.com/docs/model/qwen/qwen3.8-27b).
+
+The read-only Claude session's stop hook rebuilt the Hub and hit disk exhaustion.
+After clearing only the shared checkout's generated build output, the actual
+repair-branch stop gate returned `approve` and the review session exited. Both
+failed and successful logs remain preserved. This was a packaging-space failure,
+not a reviewer code change.
+
+OpenAI ledger now accounts for **$3.047985 / $8**, 39 measured calls plus the
+retained $1 reserve. All additional comparison artifacts and the review findings
+remain in the ignored private evidence directory.
