@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-09-17
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-09-17
+
+### Most actionable change for MIRA playbook
+
+Augury's "Industrial AI Workforce" pivot (May 2026) reframes machine-health agents as plural digital co-workers with named roles (reliability engineer, maintenance planner, ops manager). This is the first role-plural framing in the industrial AI space — more specific than "AI copilot" and directly transferable: MIRA as the maintenance team's diagnostic specialist, not just a generic AI layer.
+
+### New findings
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" (May 18, 2026): https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html — launched at AVEVA World Milan; Google Gemini + AVEVA CONNECT foundation; role-based agents for reliability/maintenance/ops roles; brand pivot from "machine health monitoring" → "Industrial AI Workforce"
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios season 3 (June 4, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — filmed at Interpack 2026 Düsseldorf; theme shifts from "automation to autonomy" (S1/S2) to machine lifecycle / OEM leaders; 150+ recordings in portal
+- **Inductive Automation** — ICC 2026 Sep 22–24 (upcoming as of today); Ignition 2027 preview + "AI with Ignition" plans announced; no recording yet
+
+**B2B SaaS (pattern transfer)**
+- **Figma** — Config 2026 keynote (June 23–25, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — CEO Dylan Field; hook: "Design is changing, and the roles designers play in that process"; launches: motion/shaders, custom-built tools, stronger AI agent; confirms annual conference-as-launch-vehicle pattern
+- **Anthropic** — Code with Claude 2026 multi-city (SF May 6, London May 19, Tokyo June 12): SF https://www.youtube.com/watch?v=GMIWm5y90xA | London https://www.youtube.com/watch?v=6amLO7I9xdg | Tokyo https://www.youtube.com/watch?v=N4efO8viXXo — 19 talks ~8h on YouTube; Dario + Daniela Amodei + Boris Cherny; major style shift: analyst appearances only → first multi-city developer conference with full recordings [transcripts not verified]
+- **Cursor** — Projects launch (Sep 2026): https://cursor.com/changelog — "take on larger bodies of work… delegating tasks to thousands of subagents… recurring work without being prompted"; "self-driving codebases" explicit framing; new abstraction above Agents Window; changelog-driven, no standalone promo video
 
 ---
 
@@ -51,9 +73,9 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - Facebook version: https://www.facebook.com/onupkeep/videos/1345499360289198/
 
 **Nova Model Switcher / Studio (Feb 2026)**
-- URL: https://upkeep.com/product-releases/upkeep-product-release-february-20-2026/
-- UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff
-- No dedicated YouTube video confirmed
+- URL: https://www.youtube.com/watch?v=XnKGMEvM6h4 (published Feb 19, 2026; prior cache miss — pre-dates May 2026 cutoff)
+- Release notes: https://upkeep.com/product-releases/upkeep-product-release-february-20-2026/
+- UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff [transcript not verified]
 
 **Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
 
@@ -144,7 +166,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Industrial AI Workforce launch (May 18, 2026)**
+- Source: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html
+- Video: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [transcript not verified]
+- Announced at AVEVA World, Milan; Google Gemini + AVEVA CONNECT as foundation
+- Role-based agents: reliability engineer, maintenance planner, ops manager — explicit role names, not generic "AI"
+- Brand pivot: "machine health monitoring" → "Industrial AI Workforce"; agents framed as digital co-workers
+- Claim: "production health will be managed by both human workers and AI agents working side by side"
+
+**Pattern note:** Augury is now running three parallel tracks — (1) technical/category videos (Ultra Low RPM), (2) third-party credibility (Bloomberg/Fortune Brands), (3) named-role agent workforce framing (Industrial AI Workforce launch). The role-plural "workforce" frame is the newest and most transferable: it elevates AI from tool to team member.
 
 ---
 
@@ -188,17 +218,30 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Video format: release announcement, likely screen capture + narration
 - ICC 2026: all session recordings free from Jan 2, 2026 — extended content tail
 
+**ICC 2026 (Sep 22–24, upcoming as of 2026-09-17)**
+- Conference site: https://icc.inductiveautomation.com/
+- Previewed: Ignition 2027 + "AI with Ignition" session track
+- No video exists yet; watch for keynote recordings post-Sep 24
+- Pattern: IA uses ICC to announce major platform direction (Ignition 8.3 → 2027 roadmap); recordings become long-tail educational content via free-access policy
+
 ---
 
 ### Rockwell Automation / Allen-Bradley
 
-**ROKStudios new season (announced Apr 1, 2026)**
+**ROKStudios season 1/2 (announced Apr 1, 2026)**
 - URL: https://www.prnewswire.com/news-releases/rockwell-automation-announces-rokstudios-video-series-launches-a-new-season-exploring-the-journey-from-automation-to-autonomy-302729726.html
 - Theme: "Journey from automation to autonomy"
 - Format: executive interview series (EMEA leaders); not product demos
 - Episode topics: cyber resilience in OT/IT convergence, workforce reshaping under AI
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
+
+**ROKStudios season 3 (June 4, 2026)**
+- URL: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Filmed at Interpack 2026, Düsseldorf; theme: machine lifecycle innovation / OEM leaders
+- Theme shift: "automation to autonomy" (S1/2) → practical/operational (S3); suggests audience feedback demanded less abstraction
+- 150+ total recordings now in portal
+- Format continues: interview series, not product demos
 
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
@@ -302,7 +345,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — multi-city developer conference**
+- SF keynote (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA
+- London (May 19, 2026): https://www.youtube.com/watch?v=6amLO7I9xdg
+- Tokyo (June 12, 2026): https://www.youtube.com/watch?v=N4efO8viXXo
+- 19 talks ~8h total, all on YouTube; presenters include Dario Amodei, Daniela Amodei, Boris Cherny
+- Style shift: analyst appearances only → first multi-city developer conference with full recordings
+- Pattern: developer audience, technical depth, no product-demo CTA — education-as-acquisition [transcripts not verified]
 
 ---
 
@@ -316,6 +366,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Projects launch (Sep 2026)**
+- Changelog: https://cursor.com/changelog
+- Claims: "take on larger bodies of work… delegating tasks to thousands of subagents… recurring work without being prompted"
+- Explicit "self-driving codebases" framing — first "self-driving [domain]" claim observed in this cohort
+- New abstraction tier above Agents Window (3.0); positions Projects as autonomous long-horizon task execution
+- No standalone promo video; changelog-only launch as before
+- Transfer: "self-diagnosing plant" as the industrial analog to "self-driving codebase"
 
 ---
 
@@ -355,6 +413,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Config 2026 keynote (June 23–25, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Presenter: CEO Dylan Field
+- Hook: "Design is changing, and the roles designers play in that process" [description-derived]
+- Launches: motion/shaders, custom-built tools in Figma, stronger AI agent
+- Confirms second consecutive annual conference-as-launch-vehicle pattern; Figma has committed to this format
+- [transcript not verified]
+
 ---
 
 ### Replit
@@ -385,6 +451,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| AI Workforce vs AI Copilot (role-plural framing) | Augury: named roles (reliability engineer, maintenance planner, ops manager) | "MIRA acts as your reliability engineer, your maintenance planner — the whole bench" |
+| "Self-driving [domain]" | Cursor Projects: "self-driving codebases, thousands of subagents" | "self-diagnosing plant" — MIRA handles the diagnostic workload without being prompted |
 
 ### Anti-patterns (avoid)
 
@@ -397,4 +465,5 @@ No video content surfaced for 2025–2026.
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. By May 2026 added a third track: role-plural "AI Workforce" brand pivot framing agents as digital co-workers with named job titles.
+- **Anthropic**: shifted from analyst/podcast appearances only to first-party multi-city developer conference with full recordings (Code with Claude 2026: SF/London/Tokyo). Signals transition from research-brand to product-developer-brand.
