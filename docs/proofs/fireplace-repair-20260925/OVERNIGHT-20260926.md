@@ -131,9 +131,11 @@ no further package versions. Also removed an unused import in this PR's new
 history test: Ruff passes and all 31 history controls pass.
 
 A controlled two-photo experiment varied only OpenAI image detail (`high` versus
-`original`) on the same prepared bytes and observation prompt. Higher detail
-preserved a decimal point lost by one lower-detail reading and improved a truncated
-word. This is limited evidence, not an accuracy-rate estimate. The adapter now
+`original`) on the same prepared bytes and observation prompt. The settings produced different
+readings of a supply rating and of a truncated word. The earlier report incorrectly
+called the decimal-point difference an improvement: disagreement does not establish
+which reading is correct. The rating remains uncertain pending a clearer view or
+matching documentation. This is not an accuracy-rate estimate. The adapter now
 requests original detail; the request regression failed before the change, then
 46 adapter/preprocessing/LOOK tests passed. A new frozen product replay is required.
 The provider documents original detail for small text and dense images:
@@ -150,3 +152,45 @@ screen carrying the remembered project's breadcrumb. The adapter now identifies
 home as home rather than as the previous project. A rendered-shell regression
 failed before this correction; 24 root/navigation tests and the mobile production
 bundle build pass afterward. Physical validation requires a new local APK.
+
+
+## Frozen Pixel replay J — still FAIL
+
+The full five-photo conversation and summary completed on the real Pixel with
+source `500cf18e94ae436cc537aca01a08837483fad650`, staging app
+`1.2.1-fireplace-500cf18e9` (build 14), APK SHA-256
+`3ea04eae9f440c80ae90e92d0064bcf05340435a60ea2945066e8c25ea54f22c`.
+The local backend used the immutable production image
+`sha256:b221a42ec8a14ff00536a104bba16e1832cc77454a7eae89a70b6dda3997dad2`.
+This was a local test installation connected to synthetic staging data, not a
+production release. Initial test-driver timing failures happened before sending
+photos; their logs are preserved separately.
+
+All five photos reached the observation recorder; all six final answers have
+saved diagnostic packets carrying this source identity. Vision used
+`gpt-5.5-2026-04-23`; final answers used Groq `openai/gpt-oss-120b`.
+The summary received all five observations. It still presented some drawing
+labels as installed hardware and treated lit indicators as proof of electrical
+power. That is an answer-composition failure: a plausible interpretation was
+promoted to a confirmed fact. Some small-print readings also remain uncertain.
+Neither the complete upload sequence nor green software checks clear this case.
+
+Jev's existing shadow review flagged the summary as overreach (234 ms, reported
+confidence 0.86). It also flagged the other five answers; these flags are leads
+for evidence review, not proof that all six judgments were correct. No Jev gate,
+privacy boundary, or provider was changed.
+
+The new APK's home screen no longer displays the previous project's name as if
+its empty composer belonged to that project. Saved-thread recovery on this exact
+APK and changed-order replay are still being checked.
+
+CI at this head passes Hub/mobile suites, Docker build, offline evaluation,
+visual-evidence isolation and the write-path tests. The main unit job fails five
+visual-store database tests because the new dependency resolution installed
+SQLAlchemy 2.1.1, which selects psycopg 3 for an unspecified PostgreSQL driver;
+this environment installs psycopg2 instead. The last passing main run installed
+2.0.54 and passed these same tests. This is a newly exposed dependency problem,
+not a claim that current main has been rerun and proven broken.
+[SQLAlchemy's migration notes](https://docs.sqlalchemy.org/en/21/changelog/migration_21.html)
+confirm the changed default. The independent review and staging gates remain
+separate unmet requirements. No merge or deployment has occurred.
