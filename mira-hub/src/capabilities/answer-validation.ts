@@ -535,7 +535,14 @@ function restoreEnergyToMeasure(text: string): string | null {
  *  electrical MEASUREMENT — a measure action in an electrical context with no
  *  other hazard action and no pressurized/motion relation. Used only after A4
  *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
- *  warns about, while every other hazard clause is still scanned. */
+ *  warns about, while every other hazard clause is still scanned.
+ *  Decided, not inherited: a live measurement that also says "without
+ *  de-energizing" (A2's no-isolation form) is masked too — it is the same
+ *  energized-measurement category the owner put in the warn lane (#3984), and
+ *  explicit "lockout isn't needed" affirmations are A1, which reads unmasked.
+ *  A masked prohibited measurement ("never probe the live terminals, and …")
+ *  no longer shields a sibling hazard clause: the prohibition only ever bound
+ *  the probing, so the sibling is judged on its own (pinned in the wire test). */
 function maskLiveMeasurementClauses(text: string): string {
   const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
   const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");

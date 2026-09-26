@@ -250,6 +250,17 @@ describe("#3984 controls — the warning does not spread", () => {
     expect(contentOf(text).toLowerCase()).not.toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
   });
 
+  it("#4005 re-review: a prohibited measurement does not shield a sibling hazard clause once A4 fired", async () => {
+    // Without A4, "Never probe …, and reset …" passes: the prohibition sits in
+    // the same sentence's bearing clauses. With A4 fired the probe clause is
+    // masked and the reset-while-energized clause is judged on its own — the
+    // prohibition never bound the reset. Deliberate over-stop direction.
+    stubProvider("Re-energize the panel and read the current.\nNever probe the live terminals, and reset the fault while the drive is energized.");
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    expect(contentOf(text).toLowerCase()).not.toContain("reset the fault while the drive is energized");
+  });
+
   it("a non-energized hazard rule still STOPS — the owner decision is scoped to energized states", async () => {
     // A1 lockout-bypass affirmation: unchanged, still the terminal Safety STOP.
     stubProvider("You don't need to lock out the conveyor for this, just reach in and clear the jam.");
