@@ -1,3 +1,28 @@
+# Current checkpoint — N/O frozen replay exposes persistence failure
+
+Read OWNER-CHECKPOINT-20260926.md for novice report. Goal ACTIVE.
+Frozen backend a6375845f89fb15867b33c98009dee1a45120eaf now on4450;
+container mira-fireplace-frozen-a6375845f. Previous b5 stopped/preserved.
+Claude review35158 terminal exit0 no source-supported findings; saved privately.
+N session19001 terminal; O85273 terminal. Safety37732 and38622 terminal.
+N narrow E improvement; overallUNKNOWN. O FAIL C: photo2 observation write timed
+out and LOOK silently continued. Logs /tmp/mira-fireplace-localqa/backend-a637.log.
+Source route LOOK464-483 catches recordLookObservation failure and continues;
+withTenantContext currently pool.connect before callback, no retry. Next bounded
+mission: preserve photo interpretation durably/recover visibly. Avoid blind retry
+on uncertain COMMIT. Tests and existing route failure contract need inspection.
+All private N/O/safety evidence copied into ignored overnight-runtime.
+N notebook46167b29-33d8-4fc9-9be8-9f570799b45e;
+O f2613014-1c9e-4371-ad86-205e2610db19. O includes two followup safety controls.
+Emulator resumed SAME AVD via adb emu avd start after authoritative stopped state.
+APK15 CDP9343. Pixel still locked; no bypass. Browser handoffs still pending.
+Budget ledger authoritative; report has current amount. No more calls needed now.
+CI env drift was local flag mistakenly in deployment inventory; moved to explicit
+local-test subsection without Compose or allowlist changes; checker passes.
+CI DeepEval3 unexpected failures and lifecycle exact-review/rationale remain.
+No merge/deploy/label/issueclosure. Old notes below may be stale.
+
+---
 # Next candidate: 2cff474bf — safety provider scope repaired
 
 Local build gate passed; red3/green507 and real-route21 (including one new test).
