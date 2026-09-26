@@ -531,6 +531,28 @@ function restoreEnergyToMeasure(text: string): string | null {
   return null;
 }
 
+/** #3984: blank (length-preserving) every clause that is purely a live
+ *  electrical MEASUREMENT — a measure action in an electrical context with no
+ *  other hazard action and no pressurized/motion relation. Used only after A4
+ *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
+ *  warns about, while every other hazard clause is still scanned. */
+function maskLiveMeasurementClauses(text: string): string {
+  const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
+  const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");
+  return text.replace(/[^.!?\n]+/g, (sentence) =>
+    sentence
+      .split(new RegExp(`(${CLAUSE_BOUNDARY.source})`, "i"))
+      .map((clause) => {
+        if (!new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(clause)) return clause;
+        if (!ELECTRICAL_MEASUREMENT_CONTEXT.test(clause) && !CONTACT_MEASUREMENT.test(clause)) return clause;
+        if (HAZARD_ACTION_ANY.test(clause.replace(measure, " "))) return clause;
+        if (otherRelations.some((r) => r.re.test(clause))) return clause;
+        return clause.replace(/[^\s]/g, " ");
+      })
+      .join(""),
+  );
+}
+
 /* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
  * ------------------------------------------------------------------------ */
@@ -932,8 +954,18 @@ export function validateAnswer(opts: {
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
-  const hazard = clauseHazardViolation(affirmationScanText);
-  if (hazard && !(restore && hazard.relId === "energized")) {
+  // #3984 + #4005 review: when A4 has already turned this answer into a
+  // warning, blank ONLY the clauses that are themselves live electrical
+  // measurements, then run A2 unchanged over the rest. Exempting A2's whole
+  // `energized` relation was wrong twice over: it is first-match (so it hid a
+  // later motion step), and it also covers "while the conveyor is running"
+  // (so it hid mechanical hazards in the SAME sentence). Any other hazard
+  // clause — reaching into moving machinery, bleeding a pressurized line,
+  // resetting a fault while energized — is still scanned and still STOPS.
+  const hazard = clauseHazardViolation(
+    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+  );
+  if (hazard) {
     return {
       ok: false,
       kind: "unsafe_answer",

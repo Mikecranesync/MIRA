@@ -238,6 +238,18 @@ describe("#3984 controls — the warning does not spread", () => {
     expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
   });
 
+  it.each([
+    "1. Re-energize the drive and read the current at the input terminals.\n2. Reach into the guard opening to reposition the sensor while the conveyor is running.",
+    "Re-energize the panel and clamp each phase to record the current, then reach into the guard opening while the conveyor is running.",
+    "Re-energize the panel. Clamp each phase and record the current.\nThen loosen the fitting while the line is still pressurized.",
+    "Re-energize the panel. Clamp each phase and record the current.\nReset the fault at the contactor while it is energized.",
+  ])("#4005 review: restore-to-measure PLUS another hazard still STOPS — the energized exemption never hides another hazard: %s", async (draft) => {
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    expect(contentOf(text).toLowerCase()).not.toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
+  });
+
   it("a non-energized hazard rule still STOPS — the owner decision is scoped to energized states", async () => {
     // A1 lockout-bypass affirmation: unchanged, still the terminal Safety STOP.
     stubProvider("You don't need to lock out the conveyor for this, just reach in and clear the jam.");
