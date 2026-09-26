@@ -269,6 +269,7 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
         row.check(
             "deterministic abstain ran no inference",
             not g.get("served_provider")
+            and not g.get("served_model")
             and g.get("input_tokens") is None
             and g.get("output_tokens") is None,
             f"gate={gate_reason} {g.get('served_provider')}/{g.get('input_tokens')}",
