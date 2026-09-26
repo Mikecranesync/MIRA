@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.1.0/work_item.schema.json",
+  "title": "peer-network work_item",
+  "version": "1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id",
+    "goal",
+    "priority",
+    "dependencies",
+    "acceptance_gates",
+    "status",
+    "authorization"
+  ],
+  "properties": {
+    "mission_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9-]+$"
+    },
+    "goal": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "acceptance_gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "ready",
+        "claimed",
+        "in_review",
+        "in_verification",
+        "blocked",
+        "complete",
+        "released"
+      ]
+    },
+    "authorization": {
+      "type": "object",
+      "required": [
+        "standing",
+        "granted_by"
+      ],
+      "properties": {
+        "standing": {
+          "type": "boolean"
+        },
+        "granted_by": {
+          "type": "string",
+          "pattern": "^\\S(?:.*\\S)?$",
+          "description": "Who granted the authorization. Nonblank; a standing authorization with a blank grantor is no authorization."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
