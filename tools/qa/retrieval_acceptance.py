@@ -16,7 +16,8 @@ turn's durable packet through the diagnostics endpoint and checks the contract:
   4. photo turn, then a text-only follow-up    → prior photo observation recalled
                                                   SERVER-side (prior_visual_observations_considered ≥ 1)
   5. no evidence + exact rating requested      → no unit-bearing number escapes as fact
-  6. (every row) token usage present; no secrets or question/answer text in
+  6. (every row) token usage present — or, for a deterministic answer-gate
+     abstain, proof that NO model ran; no secrets or question/answer text in
      any packet
 
 Usage:
@@ -260,16 +261,29 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
         "environment attribution", p.get("environment") == "staging", str(p.get("environment"))
     )
     g = p["generation"]
-    row.check(
-        "provider/model recorded",
-        bool(g.get("served_provider")) and bool(g.get("served_model")),
-        f"{g.get('served_provider')}/{g.get('served_model')}",
-    )
-    row.check(
-        "token usage recorded",
-        isinstance(g.get("input_tokens"), int) and isinstance(g.get("output_tokens"), int),
-        f"{g.get('input_tokens')}/{g.get('output_tokens')}",
-    )
+    gate_reason = (p.get("answer_gate") or {}).get("reason")
+    if gate_reason and not g.get("attempts") and w["status"] == "insufficient_evidence":
+        # A deterministic answer-gate abstain (e.g. #4004 identity_bound_no_manual)
+        # calls no model, so provider and tokens are truthfully empty. Assert
+        # exactly that rather than demanding a model call that must not happen.
+        row.check(
+            "deterministic abstain ran no inference",
+            not g.get("served_provider")
+            and g.get("input_tokens") is None
+            and g.get("output_tokens") is None,
+            f"gate={gate_reason} {g.get('served_provider')}/{g.get('input_tokens')}",
+        )
+    else:
+        row.check(
+            "provider/model recorded",
+            bool(g.get("served_provider")) and bool(g.get("served_model")),
+            f"{g.get('served_provider')}/{g.get('served_model')}",
+        )
+        row.check(
+            "token usage recorded",
+            isinstance(g.get("input_tokens"), int) and isinstance(g.get("output_tokens"), int),
+            f"{g.get('input_tokens')}/{g.get('output_tokens')}",
+        )
     serialized = json.dumps(d).lower()
     row.check("no secrets in packet", not any(m in serialized for m in SECRET_MARKERS), "")
     head = (w["content"][:60] or "").lower()
