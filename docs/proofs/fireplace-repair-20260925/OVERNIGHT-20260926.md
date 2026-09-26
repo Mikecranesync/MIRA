@@ -143,3 +143,10 @@ No additional model calls or parallel reasoning architecture were added to the a
 GitHub's legacy guard separately requires an independent exact-head, exact-body
 Codex review. Claude's completed source review does not satisfy that separate gate.
 No exception label or approval was inferred from successful tests.
+
+Cold-restart follow-through: the saved thread reopened with all six exchanges and
+five photo buttons. The apparent blank project was the intentionally unbound home
+screen carrying the remembered project's breadcrumb. The adapter now identifies
+home as home rather than as the previous project. A rendered-shell regression
+failed before this correction; 24 root/navigation tests and the mobile production
+bundle build pass afterward. Physical validation requires a new local APK.

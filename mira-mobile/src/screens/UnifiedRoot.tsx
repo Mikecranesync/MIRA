@@ -424,7 +424,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           meta={{
             notebookId: "home",
             threadId: "home",
-            projectId: selected ? `project-${selected}` : "project-home",
+            // HOME is unbound: the remembered project is only a navigation
+            // preference, not the context of this empty conversation.
+            projectId: "project-home",
             title: "FactoryLM",
             asset: null,
             identityConfirmed: false,

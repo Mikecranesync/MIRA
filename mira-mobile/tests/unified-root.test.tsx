@@ -151,6 +151,9 @@ describe("UnifiedRoot", () => {
 
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
     expect(screen.queryByTestId("nb")).toBeNull();
+    // HOME sends to an unbound conversation; showing Drive A here implies
+    // the machine conversation is open but has lost its saved messages.
+    expect(screen.queryByRole("navigation", { name: "Context" })?.textContent ?? "").not.toContain("Drive A");
     const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
     fireEvent.input(box, { target: { value: "Why did the conveyor stop?" } });
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
