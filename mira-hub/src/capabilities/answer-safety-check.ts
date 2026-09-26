@@ -281,6 +281,9 @@ export async function semanticSafetyCheck(opts: {
   timeoutMs?: number;
 }): Promise<SemanticVerdict> {
   const timeoutMs = opts.timeoutMs ?? Number(process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS ?? 4000);
+  // #4022: what each provider did, so an `unknown` (which withholds the answer)
+  // names its cause — 429, timeout, malformed — instead of a bare reason.
+  const attempts: string[] = [];
   for (const p of canonicalProviders()) {
     if (!p.key) continue;
     const ac = new AbortController();
@@ -309,16 +312,25 @@ export async function semanticSafetyCheck(opts: {
         }),
         signal: ac.signal,
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        attempts.push(`${p.name}=http_${res.status}`);
+        continue;
+      }
       const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
       const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
       if (parsed) return parsed;
       // Malformed verdict from this provider — try the next one.
+      attempts.push(`${p.name}=malformed`);
     } catch {
       // Timeout / network / non-JSON body — try the next provider.
+      attempts.push(`${p.name}=${ac.signal.aborted ? "timeout" : "error"}`);
     } finally {
       clearTimeout(timer);
     }
   }
-  return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
+  return {
+    verdict: "unknown",
+    hazardClass: opts.selectedClass,
+    reason: `no_provider_verdict [${attempts.join(";") || "no_configured_provider"}]`,
+  };
 }
