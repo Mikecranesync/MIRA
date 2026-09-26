@@ -33,6 +33,7 @@ WHAT THESE CHECKS ENFORCE
 -------------------------
   provenance_missing          evidence for an enabled state has no provenance
   provenance_sha_unknown      commit_sha does not resolve in this repository
+  provenance_sha_unreachable  commit_sha exists but only a mutable branch can reach it
   provenance_env_invalid      environment is not a recognised one
   provenance_no_falsifier     no stated experiment that would disprove it
   observation_unproven        no positive AND negative control named
@@ -158,6 +159,64 @@ def commit_exists(root: Path, sha: str) -> bool:
         return True
 
 
+# Refs whose history does not get deleted. A squash-merge repository orphans
+# every feature-branch commit the moment the branch is deleted, so a commit that
+# merely EXISTS today can vanish tomorrow — and `provenance_sha_unknown` then
+# fails the capability-closure job, and with it CI Gate, for every PR (#3974
+# post-merge review). Evidence must be pinned to history that stays.
+DURABLE_BASE_REFS = ("origin/main", "main")
+
+
+def commit_is_durable(root: Path, sha: str) -> bool | None:
+    """Is `sha` reachable from the default branch or from a tag?
+
+    True/False is a verdict; None means "cannot tell here" (shallow/partial
+    clone, no base ref fetched, git missing) and is never a finding, for the
+    same reason as `commit_exists`. `EVIDENCE_BASE_REF` overrides the base ref.
+    """
+    if not history_is_complete(root):
+        return None
+    import os
+
+    refs = (
+        [os.environ["EVIDENCE_BASE_REF"]]
+        if os.environ.get("EVIDENCE_BASE_REF")
+        else list(DURABLE_BASE_REFS)
+    )
+    try:
+        base = None
+        for ref in refs:
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if r.returncode == 0:
+                base = ref
+                break
+        if base is None:
+            return None
+        r = subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", sha, base],
+            capture_output=True,
+            timeout=30,
+        )
+        if r.returncode == 0:
+            return True
+        if r.returncode != 1:
+            return None  # git error (bad object etc.): not a verdict
+        tags = subprocess.run(
+            ["git", "-C", str(root), "tag", "--contains", sha],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return tags.returncode == 0 and bool(tags.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def paths_changed_since(root: Path, sha: str, paths: list[str]) -> list[str]:
     """Which of `paths` changed between `sha` and HEAD.
 
@@ -196,8 +255,15 @@ def _control_resolves(root: Path, ref: str) -> bool:
     try:
         scope = ast.parse(path.read_text()).body
         for name in parts[1:]:
-            node = next((n for n in scope if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                         and n.name == name.split("[", 1)[0]), None)
+            node = next(
+                (
+                    n
+                    for n in scope
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    and n.name == name.split("[", 1)[0]
+                ),
+                None,
+            )
             if node is None:
                 return False
             scope = node.body
@@ -221,10 +287,17 @@ def check_evidence_item(
         return out
 
     prov = item.get("provenance")
-    observed_at = item.get("observed_at") or (prov or {}).get("observed_at") or item.get("recorded_at")
+    observed_at = (
+        item.get("observed_at") or (prov or {}).get("observed_at") or item.get("recorded_at")
+    )
     if enabled and enforced_from and not observed_at:
-        out.append(Finding(cap_id, "provenance_date_missing",
-                           "enabled evidence needs an observation date or a historical recorded_at date"))
+        out.append(
+            Finding(
+                cap_id,
+                "provenance_date_missing",
+                "enabled evidence needs an observation date or a historical recorded_at date",
+            )
+        )
 
     in_scope = False
     if enforced_from and observed_at:
@@ -270,8 +343,13 @@ def check_evidence_item(
         )
 
     if outcome == "fail" and enabled:
-        out.append(Finding(cap_id, "evidence_failed_as_proof",
-                           "failed evidence cannot support an enabled state"))
+        out.append(
+            Finding(
+                cap_id,
+                "evidence_failed_as_proof",
+                "failed evidence cannot support an enabled state",
+            )
+        )
 
     # ---- identity --------------------------------------------------------
     sha = str(prov.get("commit_sha") or "")
@@ -280,6 +358,16 @@ def check_evidence_item(
     elif not commit_exists(root, sha):
         out.append(
             Finding(cap_id, "provenance_sha_unknown", f"commit_sha {sha!r} is not a commit here")
+        )
+    elif commit_is_durable(root, sha) is False:
+        out.append(
+            Finding(
+                cap_id,
+                "provenance_sha_unreachable",
+                f"commit_sha {sha[:12]} is reachable only from a mutable branch — deleting that "
+                "branch (routine after a squash merge) would fail CI for every PR. Stamp a "
+                "commit on main or a tag",
+            )
         )
     elif code_paths:
         moved = paths_changed_since(root, sha, code_paths)

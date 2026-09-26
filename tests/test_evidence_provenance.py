@@ -9,6 +9,8 @@ exact failure class this module was written to catch.
 from __future__ import annotations
 
 import datetime as _dt
+
+import pytest
 import sys
 from pathlib import Path
 
@@ -68,6 +70,14 @@ def _rules(item, *, enabled=True, code_paths=None):
             code_paths=code_paths or [],
         )
     }
+
+
+@pytest.fixture(autouse=True)
+def _durable_by_default(request, monkeypatch):
+    """REAL_SHA is HEAD, which on a PR branch is not on main. Rule tests that are
+    not ABOUT durability pin it true; the durability tests below opt out."""
+    if not getattr(request.function, "real_durability", False):
+        monkeypatch.setattr(ep, "commit_is_durable", lambda root, sha: True)
 
 
 # --------------------------------------------------------------------------
@@ -196,7 +206,9 @@ def test_evidence_goes_stale_when_declared_code_moves(monkeypatch):
 
 def test_staleness_is_not_reported_when_nothing_moved(monkeypatch):
     monkeypatch.setattr(ep, "paths_changed_since", lambda root, sha, paths: [])
-    assert "evidence_stale_for_code" not in _rules(_item(), code_paths=["tools/capability_closure.py"])
+    assert "evidence_stale_for_code" not in _rules(
+        _item(), code_paths=["tools/capability_closure.py"]
+    )
 
 
 def test_evidence_at_head_is_not_stale():
@@ -285,15 +297,20 @@ def test_shallow_detection_actually_detects(tmp_path):
     shallow = tmp_path / "shallow"
     r = subprocess.run(
         ["git", "clone", "--depth", "1", "--quiet", f"file://{ROOT}/.git", str(shallow)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0:  # cloning unavailable in this sandbox
         return
     assert ep.history_is_complete(shallow) is False, "a shallow clone must be detected"
-    assert subprocess.run(
-        ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"],
-        capture_output=True, text=True,
-    ).stdout.strip() == "true"
+    assert (
+        subprocess.run(
+            ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == "true"
+    )
 
 
 def test_failed_evidence_cannot_prove_an_enabled_capability():
@@ -303,11 +320,100 @@ def test_failed_evidence_cannot_prove_an_enabled_capability():
 
 def test_undated_enabled_evidence_cannot_bypass_cutover():
     assert "provenance_date_missing" in _rules({"path": "tests/test_evidence_provenance.py"})
-    assert _rules({"path": "tests/test_evidence_provenance.py", "recorded_at": "2026-08-01"}) == set()
+    assert (
+        _rules({"path": "tests/test_evidence_provenance.py", "recorded_at": "2026-08-01"}) == set()
+    )
 
 
 def test_named_controls_must_exist_in_the_python_file():
-    assert "observation_control_missing" in _rules(_item(provenance=_prov(observation={
-        "positive_control": "tests/test_evidence_provenance.py::test_does_not_exist",
-        "negative_control": "tests/test_evidence_provenance.py::test_also_missing",
-    })))
+    assert "observation_control_missing" in _rules(
+        _item(
+            provenance=_prov(
+                observation={
+                    "positive_control": "tests/test_evidence_provenance.py::test_does_not_exist",
+                    "negative_control": "tests/test_evidence_provenance.py::test_also_missing",
+                }
+            )
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# durability: evidence must survive routine branch deletion (#3974 review)
+# --------------------------------------------------------------------------
+
+
+def real_durability(fn):
+    """Opt a test out of the autouse durability stub."""
+    fn.real_durability = True
+    return fn
+
+
+def _git(repo, *args):
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def _repo_with_squash_orphan(tmp_path):
+    """main has one commit; `feat` has a commit that a squash merge would orphan."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "a").write_text("1")
+    _git(repo, "add", "a")
+    _git(repo, "commit", "-qm", "base")
+    on_main = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-qb", "feat")
+    (repo / "a").write_text("2")
+    _git(repo, "commit", "-qam", "feature")
+    on_branch = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "main")
+    return repo, on_main, on_branch
+
+
+@real_durability
+def test_branch_only_commit_is_not_durable(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVIDENCE_BASE_REF", "main")
+    repo, _on_main, on_branch = _repo_with_squash_orphan(tmp_path)
+    assert ep.commit_is_durable(repo, on_branch) is False
+
+
+@real_durability
+def test_main_commit_is_durable(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVIDENCE_BASE_REF", "main")
+    repo, on_main, _on_branch = _repo_with_squash_orphan(tmp_path)
+    assert ep.commit_is_durable(repo, on_main) is True
+
+
+@real_durability
+def test_tagged_branch_commit_is_durable(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVIDENCE_BASE_REF", "main")
+    repo, _on_main, on_branch = _repo_with_squash_orphan(tmp_path)
+    _git(repo, "tag", "evidence-pin", on_branch)
+    assert ep.commit_is_durable(repo, on_branch) is True
+
+
+@real_durability
+def test_missing_base_ref_is_not_a_verdict(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVIDENCE_BASE_REF", "no-such-ref")
+    repo, on_main, _ = _repo_with_squash_orphan(tmp_path)
+    assert ep.commit_is_durable(repo, on_main) is None
+
+
+@real_durability
+def test_shallow_history_is_not_a_verdict(monkeypatch):
+    monkeypatch.setattr(ep, "history_is_complete", lambda root: False)
+    assert ep.commit_is_durable(ROOT, REAL_SHA) is None
+
+
+def test_unreachable_sha_is_a_finding(monkeypatch):
+    monkeypatch.setattr(ep, "commit_is_durable", lambda root, sha: False)
+    assert "provenance_sha_unreachable" in _rules(_item())
+
+
+def test_undeterminable_durability_is_not_a_finding(monkeypatch):
+    monkeypatch.setattr(ep, "commit_is_durable", lambda root, sha: None)
+    assert "provenance_sha_unreachable" not in _rules(_item())
