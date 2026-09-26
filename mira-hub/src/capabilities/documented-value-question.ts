@@ -38,7 +38,7 @@ const STRONG_DEFINITIONAL =
 const WEAK_DEFINITIONAL =
   /\bwhat(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)/i;
 const BINDING =
-  /\b(?:this|its|it|my|your|our|that|these|those)\b|\b(?:on|for|of|in)\s+the\b/i;
+  /\b(?:this|its|it|my|your|our|that|these|those)\b|\b(?:on|for|of)\s+the\b/i;
 
 function namesModel(q: string, boundModel: string | null | undefined): boolean {
   if (!boundModel) return false;

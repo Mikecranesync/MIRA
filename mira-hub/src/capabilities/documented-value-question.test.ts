@@ -34,6 +34,9 @@ describe("#4004 asksForDocumentedValue", () => {
     "what is a catalog number used for?",
     "how do I read a wiring diagram?",
     "why would a panel lose power?",
+    // #4010 round 3 — "in the" is idiom, not a binding.
+    "what is voltage in the first place?",
+    "what is torque, in the general sense?",
     "",
   ])("not a documented-value question: %s", (q) => expect(asksForDocumentedValue(q)).toBe(false));
 });
