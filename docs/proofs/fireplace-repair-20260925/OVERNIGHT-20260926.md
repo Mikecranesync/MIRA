@@ -108,3 +108,38 @@ opening, cold restart and phone → web → phone are not yet cleared. The brows
 currently rejects the local self-signed certificate; its security warning needs
 Mike's own decision. Independent phone and code work continues. Keep #3984 and
 other safety blockers open. No merge or production deployment occurred.
+
+
+## Later checkpoint: replay I and two further repairs
+
+Replay I used runtime source `bb600fdc274abbf638f0c65d176d232e6f619e34`.
+The second-photo answer no longer imported the earlier relay, and the manufacturer
+was read correctly on this attempt. **Overall FAIL remains:** the combined answer
+said no measurements had been taken (only their absence from the supplied evidence
+is known) and asserted drawing-to-hardware matches without establishing them.
+This preserves the distinction between an improved answer and a cleared benchmark.
+
+The original-photo control opened a visible 3000 × 4000 image on the Pixel. Cold
+restart returned to the project title but an empty chat; saved conversation recovery
+through navigation is being checked. This is not yet a persistence pass.
+
+CI exposed a real omitted Bun lockfile update, caused by pinning sharp in package.json.
+The same frozen install failed locally before repair and succeeded in a clean
+scratch directory after regenerating bun.lock with Bun 1.4.0. The update only
+repositions existing semver resolutions and synchronizes the sharp pin; it adds
+no further package versions. Also removed an unused import in this PR's new
+history test: Ruff passes and all 31 history controls pass.
+
+A controlled two-photo experiment varied only OpenAI image detail (`high` versus
+`original`) on the same prepared bytes and observation prompt. Higher detail
+preserved a decimal point lost by one lower-detail reading and improved a truncated
+word. This is limited evidence, not an accuracy-rate estimate. The adapter now
+requests original detail; the request regression failed before the change, then
+46 adapter/preprocessing/LOOK tests passed. A new frozen product replay is required.
+The provider documents original detail for small text and dense images:
+[OpenAI vision guide](https://developers.openai.com/api/docs/guides/images-vision).
+No additional model calls or parallel reasoning architecture were added to the app.
+
+GitHub's legacy guard separately requires an independent exact-head, exact-body
+Codex review. Claude's completed source review does not satisfy that separate gate.
+No exception label or approval was inferred from successful tests.

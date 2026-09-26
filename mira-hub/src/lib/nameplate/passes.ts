@@ -605,7 +605,8 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
 };
 
 /** Opt-in notebook LOOK adapter; existing nameplate defaults do not call it.
- * Mirrors PrintSense's Responses/high-detail protocol with stricter completion.
+ * Uses original detail so the provider does not downsample small inspection labels
+ * to the high-detail 2,500-patch budget. Completion remains strictly checked.
  */
 export const openaiVisionCall: VisionCall = async ({ prompt, images }) => {
   const key = process.env.OPENAI_API_KEY;
@@ -619,7 +620,7 @@ export const openaiVisionCall: VisionCall = async ({ prompt, images }) => {
       model, store: false, max_output_tokens: 4096, reasoning: { effort: "medium" },
       input: [{ role: "user", content: [
         { type: "input_text", text: prompt },
-        ...images.map((image) => ({ type: "input_image", detail: "high",
+        ...images.map((image) => ({ type: "input_image", detail: "original",
           image_url: `data:${image.mimeType};base64,${image.base64}` })),
       ] }],
     }),
