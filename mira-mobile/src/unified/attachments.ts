@@ -19,6 +19,8 @@
 import { useCallback, useRef } from "react";
 import type { Attachment } from "@factorylm/interaction";
 import {
+  canBeChatSource,
+  enabledDocIds,
   getNotebookDetail,
   lookAtPhoto,
   uploadSourceToNotebook,
@@ -43,6 +45,13 @@ export interface ComposedSend {
   readonly rider?: VisualEvidenceRider;
   /** Set when a document uploaded but could not be indexed. */
   readonly warning?: string;
+  /**
+   * The notebook's chat scope re-read AFTER a document upload, so the turn the
+   * technician attached the manual to is grounded in it. The host's own scope
+   * was computed before the upload and would send this turn ungrounded.
+   * Absent when no document was uploaded or the re-read failed.
+   */
+  readonly scope?: readonly string[];
   /** Set when the attachment failed outright; the caller must not send. */
   readonly failure?: string;
 }
@@ -150,6 +159,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     const retain = () => { retained.current = items; };
 
     let warning: string | undefined;
+    let scope: readonly string[] | undefined;
     try {
       if (documents.length > 0) {
         // The source-upload door needs the namespace node, which the shell does
@@ -161,6 +171,16 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
           // Indexing failures stay honest: the file uploaded, it is just not
           // searchable, and the technician is told so rather than left to assume.
           if (!result.attached) warning = uploadSourceWarningCopy(result.warning);
+        }
+        // Same fail-closed filter the host applies (confirmed, materialized,
+        // enabled), but on the server's view AFTER the upload. A failed re-read
+        // leaves the host's scope in charge rather than failing an upload that
+        // already succeeded.
+        try {
+          const after = await getNotebookDetail(notebookId);
+          scope = enabledDocIds(after.sources.filter(canBeChatSource));
+        } catch {
+          scope = undefined;
         }
       }
 
@@ -191,7 +211,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
       }
 
       for (const item of items) held.current.delete(item.attachment.id);
-      return { question, rider, warning };
+      return { question, rider, warning, ...(scope ? { scope } : {}) };
     } catch (error) {
       retain();
       throw error;

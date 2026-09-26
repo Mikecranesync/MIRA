@@ -326,6 +326,7 @@ export function NotebookScreen({
     raw: string,
     replay?: PendingSend,
     sensor?: SensorAskEvidence,
+    scopeOverride?: readonly string[],
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
@@ -337,7 +338,9 @@ export function NotebookScreen({
     // turn that comes back `insufficient_evidence` is re-asked ONCE in general
     // mode, so the technician gets an answer either way and the abstention
     // stays on the record as the honest trail.
-    const effectiveScope = scope;
+    // A manual attached in the unified composer uploads just before this send;
+    // `scope` was computed before it existed. Its re-read scope wins.
+    const effectiveScope = scopeOverride ? [...scopeOverride] : scope;
     const effectiveMode = effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
@@ -908,7 +911,10 @@ export function NotebookScreen({
             // as the SAME rider Sensor already uses, so it rides this one send
             // path instead of a second one. Attachment picking/holding/upload
             // lives in the canonical adapter tree (src/unified/attachments.ts).
-            onSend: (text, evidence) => void sendQuestion(text, undefined, evidence),
+            onSend: (text, evidence, uploadedScope) => {
+              void sendQuestion(text, undefined, evidence, uploadedScope);
+              if (uploadedScope) refresh(); // later turns keep the new source
+            },
             onStop: stopGeneration,
             onCitation: setViewCitation,
             onAttachPhoto: () => void attachPhotoAndAsk(),
