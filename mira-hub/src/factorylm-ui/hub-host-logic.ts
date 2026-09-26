@@ -236,9 +236,11 @@ export function chatBodyFor(
   return {
     ...base,
     threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
-    // #4019: a photo turn is served on its visual claim (like mobile), so it is
-    // never forced into general mode, which would switch notebook retrieval off.
-    ...(docIds.length === 0 && !visual ? { mode: "general" as const } : {}),
+    // A zero-source turn is served ONLY in general mode — including a photo
+    // turn: the chat route lets a visual claim past the early no-sources check
+    // just to verify it, then refuses a non-general zero-source turn (422
+    // no_sources_selected — caught by the live /v3 photo proof, #4024).
+    ...(docIds.length === 0 ? { mode: "general" as const } : {}),
     ...(visual ? { visualEvidence: visual } : {}),
   };
 }

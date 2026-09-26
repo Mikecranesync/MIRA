@@ -81,13 +81,18 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
     expect(body.sourceDocIds).toEqual(["doc-a"]);
     expect("mode" in body).toBe(false);
   });
-  // #4019: a photo turn rides the /look fileId, exactly like mobile's send —
-  // and, like mobile, it is NOT forced into general mode: the route serves a
-  // visual claim with no sources (chat route: `visualClaimFileId`), and general
-  // mode would switch notebook retrieval off for a notebook that has sources.
-  it("a photo rider carries visualEvidence and is not forced into general mode", () => {
+  // #4019: a photo turn rides the /look fileId, like mobile's send. With no
+  // document sources it stays in general mode — the route refuses a non-general
+  // zero-source turn even with a photo (422, found by the live /v3 proof).
+  it("a photo rider carries visualEvidence; with no sources the turn is general", () => {
     const rider = { visualEvidence: { fileId: "f-1", capturedAt: "2026-09-26T19:00:00Z" } };
     const body = chatBodyFor("what is this", [], history, sel, rider);
+    expect(body.visualEvidence).toEqual(rider.visualEvidence);
+    expect(body.mode).toBe("general");
+  });
+  it("a photo rider on a notebook with sources is the ordinary grounded turn", () => {
+    const rider = { visualEvidence: { fileId: "f-1", capturedAt: "t" } };
+    const body = chatBodyFor("what is this", ["doc-a"], history, sel, rider);
     expect(body.visualEvidence).toEqual(rider.visualEvidence);
     expect("mode" in body).toBe(false);
   });
