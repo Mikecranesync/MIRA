@@ -2313,6 +2313,12 @@ async function handleChatTurn(
     model: null,
     input_tokens: null,
     instructions_version: "unknown",
+    best_chunk: null,
+    best_chunk_confidence: null,
+    best_chunk_index: null,
+    best_chunk_skipped_reason: "error",
+    best_chunk_latency_ms: null,
+    choice_instructions_version: "unknown",
   }));
 
   // STRM-2 (client stop). Two ways the technician can vanish mid-answer —
@@ -2927,6 +2933,12 @@ async function handleChatTurn(
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          jev_best_chunk: jev.best_chunk,
+          jev_best_chunk_confidence: jev.best_chunk_confidence,
+          jev_best_chunk_index: jev.best_chunk_index,
+          jev_best_chunk_skipped_reason: jev.best_chunk_skipped_reason,
+          jev_best_chunk_latency_ms: jev.best_chunk_latency_ms,
+          jev_choice_instructions_version: jev.choice_instructions_version,
           citations_shipped: emittedCitations.length,
           evidence_followed: evidenceFollowed,
         });

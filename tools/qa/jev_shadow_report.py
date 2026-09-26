@@ -5,6 +5,10 @@ Answers one question over real staging turns: when the Jev shadow judgment
 (`answer_gate.jev_sufficient`, PR #3949) disagrees with MIRA's presence-based
 `evidence_sufficient`, are the disagreements consistently useful?
 
+Exp B (chunk choice, this PR): records which chunk Jev selected as best
+via `answer_gate.jev_best_chunk*` fields. This report does not compare the
+selection to citation order.
+
 Sources (merged, de-duplicated by trace id):
   --runs N          the last N successful `retrieval-acceptance.yml` runs' artifacts
                     (downloaded with `gh`). Acceptance turns are SWEPT from the
@@ -32,6 +36,11 @@ possible disagreement is "MIRA says sufficient, Jev says low". Categories:
   D4 refused_jev_high       refused AND jev ≥ HIGH → retrieval fine, generation didn't use it.
   A  agree                  answered AND jev ≥ HIGH.
   U  uncertain              LOW ≤ jev < HIGH.
+
+Exp B categories (chunk choice, when jev_best_chunk is non-null):
+  B_chosen                  a chunk was selected; no citation comparison yet
+  B_no_choice               jev_best_chunk is 0 (no chunk was adequate)
+  B_uncertain               choice confidence < 0.70 (provisional analysis cutoff)
 
 Never prints question or answer text; the packet holds none and the DB text
 columns are never selected. Cost uses the vendor's published $/M input rate;
@@ -61,7 +70,8 @@ USD_PER_M_INPUT = 0.042  # api.typesafe.ai published rate (probe report, 2026-09
 MAX_QUESTION_CHARS = 600
 MAX_CHUNK_CHARS = 700
 MAX_CHUNKS = 6
-OBSERVED_MAX_INPUT_TOKENS = 1681
+# The historical 1,681-token observation was for a different, single-question
+# request. Do not use it as a cost bound for the combined Choice request.
 LATENCY_CAP_MS = 1500  # DEFAULT_TIMEOUT_MS in jev-shadow.ts
 TARGET_JUDGED = (50, 100)
 
@@ -197,6 +207,12 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
         "jev_skipped_reason": ag.get("jev_skipped_reason"),
         "jev_latency_ms": ag.get("jev_latency_ms"),
         "jev_input_tokens": ag.get("jev_input_tokens"),
+        "jev_best_chunk": ag.get("jev_best_chunk"),
+        "jev_best_chunk_confidence": ag.get("jev_best_chunk_confidence"),
+        "jev_best_chunk_index": ag.get("jev_best_chunk_index"),
+        "jev_best_chunk_skipped_reason": ag.get("jev_best_chunk_skipped_reason"),
+        "jev_best_chunk_latency_ms": ag.get("jev_best_chunk_latency_ms"),
+        "jev_choice_instructions_version": ag.get("jev_choice_instructions_version"),
         "served_provider": gen.get("served_provider"),
         "generation_ms": tm.get("generation"),
         "total_ms": tm.get("total"),
@@ -209,15 +225,35 @@ def categorize(r: dict[str, Any]) -> str:
     if j is None:
         return "skipped:" + str(r.get("jev_skipped_reason")) if r.get("jev_aware") else "pre_shadow"
     refused = r.get("decision") == "insufficient_evidence"
+
+    # Primary categorization (Exp A: sufficiency)
     if j < LOW:
         if refused:
-            return "D1 refused_jev_low"
-        return (
-            "D2 answered_claim_jev_low" if r.get("ungrounded_unit_claim") else "D3 answered_jev_low"
-        )
-    if j >= HIGH:
-        return "D4 refused_jev_high" if refused else "A agree"
-    return "U uncertain"
+            base = "D1 refused_jev_low"
+        else:
+            base = (
+                "D2 answered_claim_jev_low"
+                if r.get("ungrounded_unit_claim")
+                else "D3 answered_jev_low"
+            )
+    elif j >= HIGH:
+        base = "D4 refused_jev_high" if refused else "A agree"
+    else:
+        base = "U uncertain"
+
+    # Secondary categorization (Exp B: chunk choice) — only when best_chunk is present
+    best_chunk = r.get("jev_best_chunk")
+    best_chunk_conf = r.get("jev_best_chunk_confidence")
+    if best_chunk is not None:
+        if best_chunk == 0:
+            return f"{base} + B_no_choice"
+        elif best_chunk_conf is not None and best_chunk_conf < HIGH:
+            return f"{base} + B_uncertain"
+        # Note: we can't determine B_agree vs B_reorder without citation data,
+        # which isn't in the packet. Those require wire.citations analysis.
+        # For now, just flag that chunk choice was made.
+        return f"{base} + B_chosen"
+    return base
 
 
 def report(
@@ -251,8 +287,10 @@ def report(
         r["jev_input_tokens"] for r in judged if isinstance(r.get("jev_input_tokens"), (int, float))
     ]
     cats: dict[str, list[dict[str, Any]]] = {}
+    primary_cats: dict[str, list[dict[str, Any]]] = {}
     for r in judged:
         cats.setdefault(r["category"], []).append(r)
+        primary_cats.setdefault(r["category"].split(" + ", 1)[0], []).append(r)
 
     L = []
     L.append("# Jev shadow vs `evidence_sufficient` — staging evidence report\n")
@@ -296,9 +334,9 @@ def report(
         )
     else:
         L.append(
-            "- Cost: no judged turn in this set carries `jev_input_tokens` (packets from builds before the field shipped). "
-            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars, "
-            f"measured at up to {OBSERVED_MAX_INPUT_TOKENS:,} input tokens/call (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call)"
+            "- Cost: combined-request cost unmeasured in this set (`jev_input_tokens` absent). "
+            f"The state is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars; "
+            "no token or dollar bound is inferred from the older single-question probe."
         )
     if baseline:
         by = {}
@@ -334,9 +372,9 @@ def report(
         "A agree",
         "U uncertain",
     ]:
-        L.append(f"| {c} | {len(cats.get(c, []))} | {meaning[c]} |")
+        L.append(f"| {c} | {len(primary_cats.get(c, []))} | {meaning[c]} |")
     dis = sum(
-        len(cats.get(c, []))
+        len(primary_cats.get(c, []))
         for c in (
             "D1 refused_jev_low",
             "D2 answered_claim_jev_low",

@@ -86,6 +86,14 @@ describe("emptyPacket — defaults", () => {
     expect(p.retrieval.strategy).toBeNull();
     expect(p.retrieval.zero_result_reason).toBeNull();
     expect(p.answer_gate.reason).toBeNull();
+    expect(p.answer_gate).toMatchObject({
+      jev_best_chunk: null,
+      jev_best_chunk_confidence: null,
+      jev_best_chunk_index: null,
+      jev_best_chunk_skipped_reason: null,
+      jev_best_chunk_latency_ms: null,
+      jev_choice_instructions_version: null,
+    });
     expect(p.persistence.turn_row_id).toBeNull();
     expect(p.persistence.error_code).toBeNull();
     for (const k of Object.keys(p.timings_ms) as (keyof typeof p.timings_ms)[]) {
