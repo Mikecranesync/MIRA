@@ -333,3 +333,42 @@ not a reviewer code change.
 OpenAI ledger now accounts for **$3.047985 / $8**, 39 measured calls plus the
 retained $1 reserve. All additional comparison artifacts and the review findings
 remain in the ignored private evidence directory.
+
+## Latest checkpoint — local build recovery and comparison review
+
+Both the repair branch and shared workspace local build gates now pass. Its earlier failure was a full
+host disk (`ENOSPC`), not a compiler error. Generated build output and downloaded
+installer caches were removed; source, installed applications, private photos,
+recorded failures and frozen test images were preserved. No gate was bypassed.
+
+Candidate backend source: `b5b5314f2a4701dcd48a3a2786c15f36ae7493e4`.
+The opt-in OpenAI notebook comparison has 75 passing focused checks and a passing
+Docker build. Default production routing was not changed. These checks do not
+prove answer quality or safety acceptance.
+
+Claude's read-only review found that the existing safety checker builds its own
+request using older parameter names. The new OpenAI selection also reaches that
+checker, so the local guard rejects that request before it is sent. Code inspection
+confirmed the mismatch. The checker fails closed: it cannot supply a valid verdict.
+This comparison remains unaccepted pending a bounded compatibility repair and
+safe/unsafe opposite controls. Tight reasoning budgets and operator flag mismatch
+also need explicit validation. The review process was stopped after its findings
+were saved because its stop hook repeatedly retriggered the same disk failure.
+
+The five-photo emulator run **M is UNKNOWN/incomplete**: disk exhaustion interrupted
+recording during photo 2. Its partial results and failure log were preserved; no
+successful replay is claimed. Emulator and Pixel both have mobile build 15, source
+`054d6c9283f7eca29a91a5a00d3812b5cd2b96c7`. The physical Pixel is securely locked,
+so a fresh physical run awaits Mike unlocking it. Web continuity still needs the
+existing browser handoff. Local health also reports missing `INGEST_URL`; complete
+service readiness has not been established.
+
+OpenAI accounting now reserves **$3.412805 of $8** across 43 calls,
+including the earlier $1 reserve and any calls without confirmed usage. Reservations
+are retained after interruption. No more calls were needed for build recovery.
+Jev remains an observer, never a release or safety approval authority.
+
+Next bounded mission: repair the comparison/safety-check request compatibility,
+prove both allowed and disallowed cases, freeze again, then replay without replacing
+failed evidence. The original J/K/L synthesis failures remain open. No merge,
+production deployment, or safety-issue closure occurred.
