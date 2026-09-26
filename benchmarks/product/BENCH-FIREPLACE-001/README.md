@@ -90,5 +90,8 @@ UNKNOWN because it has not been demonstrated. Automated test counts do not chang
 
 This first benchmark registers the contract only. It neither claims current model
 accuracy nor authorizes a new provider, broad architecture work, merge or deployment.
-The user-supplied First Mission section is incomplete; its missing tail must be supplied
-before treating this document as the complete first-mission dispatch.
+The complete [first mission](../../../docs/missions/OWNER-PROXY-FIREPLACE-001.md) requires
+all five photos, changed-order controls, physical Pixel proof and phone → web → phone
+continuity on one frozen candidate. Emulator progress cannot replace physical proof.
+Keep #3984 and other safety blockers until their own clearing contracts are demonstrated.
+Extract the permanent method only after #3999 reaches a defensible outcome.

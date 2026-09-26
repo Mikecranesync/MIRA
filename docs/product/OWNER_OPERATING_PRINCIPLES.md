@@ -12,8 +12,9 @@ Agents should catch the things Mike would notice: an incorrect explanation, lost
 a confusing screen, or an unsafe suggestion. They must show what happened, find where
 it went wrong, and repair the smallest responsible part of MIRA.
 
-Once adopted, this is the canonical product-judgment contract for refinement work.
-While proposed, it does not activate unattended work or grant new permissions.
+This is the canonical product-judgment contract for authorized refinement work under
+the [governing Owner Proxy PRD](OWNER_PROXY_PRD.md). The system design remains proposed;
+this contract does not activate unattended work or grant new release permissions.
 It supplements existing architecture, safety, release, privacy, and work-ownership
 rules. It does not replace them or make an existing human approval optional.
 

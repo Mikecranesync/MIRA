@@ -9,8 +9,12 @@ the reuse candidates; refresh active owners before connecting them.
 [PR #3999 findings](https://github.com/Mikecranesync/MIRA/pull/3999#issuecomment-5841521419)
 remain the first proving ground. Emulator investigation still found inaccurate answers;
 frozen five-photo/Pixel/web acceptance remains incomplete. Preserve the active repair
-worktree. The supplied First Mission section is truncated; obtain its remainder before
-treating the proposed contract as a complete mission dispatch. No merge or deployment.
+worktree. Mike has now supplied the complete [governing PRD](../docs/product/OWNER_PROXY_PRD.md)
+and [first mission](../docs/missions/OWNER-PROXY-FIREPLACE-001.md): attribution, uncertain
+print, frozen five-photo replay, changed-order controls, Pixel and phone/web continuity.
+Continue emulator investigation until the Pixel is connected. Preserve #3984 and other
+safety blockers. Extract the permanent method after #3999 has a defensible outcome.
+No merge or deployment.
 
 ---
 

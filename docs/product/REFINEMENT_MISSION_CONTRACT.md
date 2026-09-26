@@ -161,6 +161,10 @@ repair contract, reuse, authorized implementation/delegation, deterministic chec
 frozen replay, challenge, PASS/FAIL/UNKNOWN outcome, owner report, reviewable GitHub
 package, and stopping at the boundary. A collection of these documents is not that proof.
 
-The user's First Mission section arrived truncated at “Repair remaining interpretation-t…”.
-Do not reconstruct its missing requirements or treat this proposal as a new mission dispatch.
-The current known PR #3999 failures are described in the linked reconnaissance report.
+The complete [governing PRD](OWNER_PROXY_PRD.md) defines the first mission in section 30.
+[OWNER-PROXY-FIREPLACE-001](../missions/OWNER-PROXY-FIREPLACE-001.md) scopes the remaining
+attribution and small-print work, one frozen five-photo candidate, changed-order controls,
+physical Pixel verification and phone → web → phone continuity. Keep #3984 and other
+safety blockers until their own clearing contracts are demonstrated. Continue emulator
+investigation while the Pixel is absent; physical proof remains UNKNOWN. Extract the
+permanent operating method only after #3999 has a defensible outcome.

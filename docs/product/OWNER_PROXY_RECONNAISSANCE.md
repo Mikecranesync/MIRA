@@ -55,15 +55,18 @@ No runtime code, model selection, production prompt, database, dependency, test 
 agent dispatch, scheduled job, customer data, deployment or active repair branch changes.
 The new documentation is in a separate worktree based on the main SHA above.
 
-## Remaining decisions and missing evidence
+## Complete first mission and remaining evidence
 
-The supplied proposal stops in section 30 at “Repair remaining interpretation-t…”.
-The exact remainder is requested; it is not reconstructed here. The complete first
-mission, its execution/cost limits, required repeated-run contract and any activation
-schedule remain to be specified before unattended execution. Do not treat “Proposed”
-as proof of adoption or operational readiness.
+Mike supplied the complete First Mission and Governing Principle. They are preserved
+in [the governing PRD](OWNER_PROXY_PRD.md#30-first-mission--finish-3999s-evidence), with
+an [execution scope](../missions/OWNER-PROXY-FIREPLACE-001.md) for the existing #3999 work.
+The first mission repairs attribution, addresses/localizes uncertain print, freezes
+one candidate, runs all five photos and changed-order controls, verifies the physical
+Pixel and phone → web → phone continuity, and preserves independent safety blockers.
+Only after a defensible #3999 outcome should the successful method be extracted into
+the permanent system. No large new autonomous-agent subsystem comes first.
 
-Recommended next action: review this documentation against the completed First Mission
-text, then run one narrowly scoped PR #3999 mission using the existing machinery.
-A proposed contract can be ready for review while the product and automation remain
-unproven. PASS for one repair never clears the broader release or safety gates.
+Emulator work can continue while the Pixel is unavailable. Its evidence is separate
+from required physical proof. Repeated-run rules and exact candidate identity must be
+recorded before acceptance. Any later unattended execution still needs bounded
+execution limits and a defined cadence. Documentation is not operational acceptance.
