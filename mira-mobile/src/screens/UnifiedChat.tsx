@@ -98,7 +98,12 @@ export interface UnifiedChatProps {
  */
 export interface UnifiedChatHandlers
   extends Omit<ChatV2Handlers, "onSend" | "onAttachPhoto" | "onAttachCamera" | "onAttachFile"> {
-  readonly onSend: (text: string, evidence?: VisualEvidenceRider) => void;
+  readonly onSend: (
+    text: string,
+    evidence?: VisualEvidenceRider,
+    /** Chat scope re-read after an attachment upload; overrides the host's. */
+    scope?: readonly string[],
+  ) => void;
   /** Inherited from ChatV2 and UNUSED here — optional so neither host has to
    *  pass a handler the unified composer never calls. */
   readonly onAttachPhoto?: () => void;
@@ -280,7 +285,10 @@ export function UnifiedChat({
         dispatch({ type: "set-draft", draft: composed.question });
         return;
       }
-      handlers.onSend(composed.question, composed.rider);
+      // A text or photo turn keeps its exact two-argument send; only a document
+      // upload adds the re-read scope.
+      if (composed.scope) handlers.onSend(composed.question, composed.rider, composed.scope);
+      else handlers.onSend(composed.question, composed.rider);
       // Uploaded but not searchable stays visible rather than being swallowed.
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
