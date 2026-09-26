@@ -1,3 +1,15 @@
+# Hot Cache — 2026-09-26 — Fireplace recovery remains unaccepted
+
+PR #3999: bounded photo-save repair at f1c73144b. Frozen emulator build16
+controlled retry passed; reverse-order five-photo run preserved all readings,
+but overall product result remains UNKNOWN. Pixel locked; web continuity pending.
+Local build gate returned approve after removing inactive generated build files.
+Docker storage has I/O errors; do not reset shared services or discard evidence.
+See docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md and HANDOFF.md.
+No merge, production deployment, or safety blocker closure.
+
+---
+
 # Hot Cache — 2026-09-19 — customer-ready unified experience release train
 
 **Start here:** [`docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md`](../docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md).

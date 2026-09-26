@@ -1,3 +1,28 @@
+# Current checkpoint — f1 persistence repair and frozen P/Q/R
+
+Goal ACTIVE. Latest code f1c73144b2d86102c727b966ac7f72e03b58dd3c.
+Frozen host backend on4450, exec95245, /tmp/mira-fireplace-localqa/frozen-host-f1c73144b.
+No fault injector in acceptance runtime. Docker builder has storage I/O errors;
+do not restart shared VM or delete images. Backend artifact independent of .next.
+Emulator build16/CDP9343; physical Pixel locked onbuild15; web handoffs pending.
+P controlled save-failure/retry PASS narrow: question/photo retained, one saved
+observation/link/answer after retry. Does not prove live connection-timeout retry;
+real ledger+mock pool covers that deterministically. 511Hub/53mobile tests pass,
+Hub/mobile builds pass, Claude source review37573 terminal no concrete defects.
+Q reverse-order complete: five observations, six answers, summary five observations.
+Overall UNKNOWN: tiny print, retrieval relevance, summary manual/state wording.
+R original-order complete exec41788 exit0: five saved readings/six answers,
+summary allfive. OverallUNKNOWN; earlier failure not reproduced in either order.
+Budget after R5.269545/8; refresh authoritative private ledger before calls.
+Root build gate returned approve this turn; log preserved at
+/tmp/mira-hub-stop-build-root-verified-20260926.log. Inactive generated .next cleared
+after build to retain space; active frozen artifact preserved. No bypass.
+CI exactf1 DeepEval and lifecycle guard still red; no merge/deploy/issueclosure.
+Latest novice report: docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md.
+
+Earlier checkpoints follow; superseded where above differs.
+
+---
 # Current checkpoint — N/O frozen replay exposes persistence failure
 
 Read OWNER-CHECKPOINT-20260926.md for novice report. Goal ACTIVE.

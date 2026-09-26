@@ -1,13 +1,40 @@
 # MIRA overnight owner report — September 26
 
-**Photo summaries improved in two emulator runs, but the app is not yet ready
-to call fully working. A database timeout silently lost one saved photo reading.**
+**The photo-saving failure now has a tested recovery path. The app is still not
+accepted: fine-print accuracy and physical phone/web continuity remain unproven.**
 
 [PR #3999](https://github.com/Mikecranesync/MIRA/pull/3999) remains a draft.
 Nothing was merged or deployed to production. Original photos and full
 conversations remain private. Failed runs have been preserved.
 
-## What improved
+## Latest repair and evidence
+
+A database timeout previously let MIRA answer a photo without saving its reading.
+The repair reuses the existing photo ledger and transaction helper. It retries
+one specific connection timeout before any database work begins. It never
+replays a possibly completed write. If saving still fails, the app retains the
+question and photo and explains that the reading needs another try.
+
+- **P — controlled recovery PASS:** a deliberately failed save showed the new
+  explanation and retained the question/photo. Retry produced one answer, one
+  saved reading and one photo link. This proves the visible failure/retry path;
+  the connection-acquisition retry itself has deterministic coverage.
+- **Q — reverse-order replay UNKNOWN overall:** five original photos produced
+  five saved readings and six answers; the summary received all five readings.
+  Small print remains unverified. One answer mentions unrelated retrieved
+  references, and summary wording about what a manual can establish needs review.
+- **R — original-order replay UNKNOWN overall:** also saved five readings and
+  produced six answers. Its summary kept exact drawing match, actual voltages,
+  continuity, safety logic and equipment function uncertain. Fine-print accuracy
+  and complete product acceptance remain unproven.
+- **Verification:** 511 backend and 53 mobile checks passed, plus production
+  builds. Claude's independent source review found no concrete defects; it did
+  not run those tests itself. Test counts do not establish answer correctness.
+- **Build gate:** the shared-workspace gate was rerun and returned `approve`.
+  Earlier failures ran out of disk space. Only unused generated build files
+  were removed; no gate was bypassed.
+
+## Earlier improvements — retained evidence
 
 - Fixed the local OpenAI comparison setting so it changes answer generation
   without changing the existing safety checker. Three new checks failed before
@@ -52,7 +79,22 @@ It flagged N's improved summary for overreach, so score/answer disagreements nee
 adjudication before any accuracy claims. Deterministic checks remain appropriate
 for missing photos, lost turns and broken links.
 
-## Exact candidate and spending
+## Latest exact candidate
+
+P/Q/R use backend and mobile source
+`f1c73144b2d86102c727b966ac7f72e03b58dd3c`, emulator build **16**.
+Backend: frozen macOS standalone production bundle, built
+`2026-09-26T08:36:00Z`, SHA-256
+`dd0df0baa84a51c086683dfac43ae4f153a5aabed47abb8c5dbcdb458bbbabbc`.
+APK SHA-256:
+`c737951d23ff1ed809a13b7f900597b106add0c036d6b07d83aeb6bb9bdbb355`.
+OpenAI model remains `gpt-5.5-2026-04-23`; existing safety cascade retained.
+The local Docker builder developed storage I/O errors, so this is explicitly
+macOS-host evidence, not a successful Docker build. Shared containers were not
+restarted or deleted. The physical Pixel still has build15 and is locked.
+
+## Earlier candidate identities
+
 
 N/O used local backend source `a6375845f89fb15867b33c98009dee1a45120eaf`, built
 `2026-09-26T08:04:10Z`; image
@@ -63,17 +105,16 @@ Photo interpretation and answer comparison used OpenAI `gpt-5.5-2026-04-23`;
 safety judging retained its existing cascade. Later documentation commits do
 not change these frozen runtime identities.
 
-OpenAI accounting reserves **$4.339935 of the $8 cap**, including $1 for earlier
+OpenAI accounting after run R reserves **$5.269545 of the $8 cap**, including $1 for earlier
 uncaptured usage and conservative reservations when usage is absent. No top-up.
 Comparisons are evidence to inspect, not answer keys.
 
 ## Next bounded repair and release limits
 
-Repair the demonstrated missing-photo-memory path. Reuse the existing tenant
-transaction and visual-observation ledger; distinguish connection acquisition
-failure from an uncertain commit before considering any retry. Do not replay a
-possibly committed write blindly. Prove recovery plus persistent-outage behavior,
-freeze again, and replay the affected workflow.
+Inspect the retrieved
+references and remaining evidence wording before choosing another bounded repair.
+Physical Pixel and phone → web → phone proof still need the pending unlock and
+browser handoffs. Do not reinterpret emulator evidence as physical acceptance.
 
 GitHub checks are separate from local builds: the deployment-env documentation
 mismatch was corrected and its checker passes locally. DeepEval still reports
