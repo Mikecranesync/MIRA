@@ -9,7 +9,16 @@ describe("#4004 asksForDocumentedValue", () => {
     "give me the wiring for the encoder",
     "which parameter sets the accel time",
     "what are the dimensions",
+    // #4010 round 2 — the binding lands AFTER the value word; must still abstain.
+    "what is voltage rating for this panel?",
+    "what is supply voltage on the TP700?",
+    "what is operating temperature for my panel?",
   ])("documented value: %s", (q) => expect(asksForDocumentedValue(q)).toBe(true));
+
+  it("the bound model's own name binds a bare 'what is' question", () => {
+    expect(asksForDocumentedValue("what is supply voltage TP700", "TP700 Comfort")).toBe(true);
+    expect(asksForDocumentedValue("what is supply voltage TP700", null)).toBe(false);
+  });
 
   it.each([
     "it keeps rebooting, what do I check first",

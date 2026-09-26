@@ -1975,7 +1975,7 @@ async function handleChatTurn(
     // A photo in this turn (or recalled from the conversation) is evidence of
     // its own — a nameplate can answer "what voltage" — so it keeps the lane.
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
-    !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message)
+    !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
       ? `${oemManufacturer!.name} ${oemModel.value}`
       : null;
   if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {

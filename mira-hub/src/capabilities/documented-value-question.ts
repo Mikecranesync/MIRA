@@ -27,17 +27,34 @@ const ASKS_FOR_VALUE =
 
 // #4010 review: a TEACHING question must never abstain with "upload the
 // manual" — that is the over-block direction the owner rejected (#3982/#3984).
-// "what is voltage?", "difference between rated and nominal current",
-// "what a parameter is", "what does IP rating mean", "used for", "in general":
-// a definitional frame asks about the concept, not THIS equipment's value.
-// "what is/what's/what are" only counts as asking for a value when it binds to
-// something specific (the / this / its / it / my / your / that).
-const DEFINITIONAL =
-  /\b(?:what(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)|what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
+// Decided on the WHOLE question (round 2): a binding anywhere ("for this
+// panel", "on the TP700", "my drive", the bound model's own name) makes it a
+// question about THIS equipment, however it opens.
+//  - STRONG teaching frames are always conceptual: "difference between",
+//    "… mean", "used for", "in general", "what a/an …", "explain what/how".
+//  - A WEAK frame ("what is voltage?") is conceptual only when nothing binds it.
+const STRONG_DEFINITIONAL =
+  /\b(?:what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
+const WEAK_DEFINITIONAL =
+  /\bwhat(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)/i;
+const BINDING =
+  /\b(?:this|its|it|my|your|our|that|these|those)\b|\b(?:on|for|of|in)\s+the\b/i;
 
-export function asksForDocumentedValue(question: string): boolean {
+function namesModel(q: string, boundModel: string | null | undefined): boolean {
+  if (!boundModel) return false;
+  const lq = q.toLowerCase();
+  // Any model token carrying a digit ("TP700", "525", "V20") is a binding.
+  return boundModel
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .some((t) => t.length >= 2 && /\d/.test(t) && new RegExp(`\\b${t}\\b`).test(lq));
+}
+
+export function asksForDocumentedValue(question: string, boundModel?: string | null): boolean {
   const q = question.trim();
   if (!q) return false;
-  if (DEFINITIONAL.test(q)) return false;
+  if (STRONG_DEFINITIONAL.test(q)) return false;
+  const bound = BINDING.test(q) || namesModel(q, boundModel);
+  if (WEAK_DEFINITIONAL.test(q) && !bound) return false;
   return DOCUMENTED_VALUE.test(q) && ASKS_FOR_VALUE.test(q);
 }
