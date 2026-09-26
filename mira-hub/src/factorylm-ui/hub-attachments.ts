@@ -235,6 +235,11 @@ export async function composeHubSend(
     if (!link || typeof link.linkId !== "string" || !link.linkId) {
       return { question, failure: "The photo didn't attach to this project — try again." };
     }
+    // Chat re-derives the photo's evidence from the persisted observation;
+    // /look's write is fail-open, so require its confirmation (round 3 F1).
+    if (d.observationPersisted !== true) {
+      return { question, failure: "MIRA read the photo but couldn't save what it saw — try again." };
+    }
     visualEvidence = {
       fileId,
       capturedAt: typeof obs.capturedAt === "string" ? obs.capturedAt : new Date().toISOString(),

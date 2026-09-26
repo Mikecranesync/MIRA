@@ -348,12 +348,17 @@ export function HubShellHost() {
     nodeId: string,
     fallbackScope: readonly string[],
     history: ReturnType<typeof historyRows>,
+    existing?: AbortController,
   ) => {
     setBusy(true);
     dispatch({ type: "set-send-error", error: null });
-    uploadAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    uploadAbortRef.current = ctrl;
+    // A HOME send created its controller before the node read (round 3 F2);
+    // reuse it so a Stop or navigation during that read already counts.
+    const ctrl = existing ?? new AbortController();
+    if (!existing) {
+      uploadAbortRef.current?.abort();
+      uploadAbortRef.current = ctrl;
+    }
     let outcome: Awaited<ReturnType<typeof runAttachedSend>>;
     try {
       outcome = await runAttachedSend({
@@ -431,11 +436,26 @@ export function HubShellHost() {
       await send(chatBodyFor(q, [], [], sel), q, sel);
       return;
     }
+    // Round 3 F2: own the operation from here, so Stop or opening another
+    // thread during the node read cancels it before anything uploads.
+    const ctrl = new AbortController();
+    uploadAbortRef.current = ctrl;
+    setBusy(true);
     // The upload door needs the notebook's own namespace node (every notebook
     // has one); a HOME send knows only the id, so read it first.
     const target = await resolveUploadNode(() =>
-      getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`),
+      getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`, ctrl.signal),
     );
+    if (ctrl.signal.aborted) {
+      for (const f of files) adapter.forget(f.attachment.id);
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
+      setBusy(false);
+      return;
+    }
+    if (target.kind !== "ok") {
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
+      setBusy(false);
+    }
     if (target.kind === "signed_out") { setSignedOut(true); return; }
     if (target.kind === "failed") {
       // Codex #4024 F4: the Composer already cleared the draft — hand it back.
@@ -444,7 +464,7 @@ export function HubShellHost() {
       dispatch({ type: "set-draft", draft: q });
       return;
     }
-    await composeAndSend(q, files, sel, target.nodeId, [], []);
+    await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
   }, [adapter, createNotebook, select, send, composeAndSend]);
 
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {

@@ -31,7 +31,7 @@ function server(over: Partial<Record<"files" | "sources" | "detail" | "look", ()
     if (url.includes("/api/namespace/node/")) return over.files?.() ?? json({ indexed: true, uploadId: "doc-new" }, 201);
     if (url.endsWith("/sources/")) return over.sources?.() ?? json({ ok: true }, 201);
     if (url.includes("/look/")) {
-      return over.look?.() ?? json({ fileId: "f-1", attachment: { linkId: "l-1", notebookId: "nb-1" }, observation: { text: "a GS10 nameplate", capturedAt: "2026-09-26T19:00:00Z" } });
+      return over.look?.() ?? json({ fileId: "f-1", attachment: { linkId: "l-1", notebookId: "nb-1" }, observationPersisted: true, observation: { text: "a GS10 nameplate", capturedAt: "2026-09-26T19:00:00Z" } });
     }
     return (
       over.detail?.() ??
@@ -152,6 +152,19 @@ describe("composeHubSend — unlinked photo", () => {
     });
     const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("p1", "photo", "np.jpg"), file: file("np.jpg") }] }, deps);
     expect(out.failure).toMatch(/photo didn't attach/i);
+    expect(out.visualEvidence).toBeUndefined();
+  });
+});
+
+// Codex #4024 round 3 F1: chat grounds a photo turn on the PERSISTED observation;
+// /look's ledger write is fail-open, so the response must say it persisted.
+describe("composeHubSend — observation not persisted", () => {
+  it("fails closed when /look read the photo but could not persist the observation", async () => {
+    const { deps } = server({
+      look: () => new Response(JSON.stringify({ fileId: "f-1", attachment: { linkId: "l-1" }, observationPersisted: false, observation: { text: "x", capturedAt: "t" } })),
+    });
+    const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("p1", "photo", "np.jpg"), file: file("np.jpg") }] }, deps);
+    expect(out.failure).toMatch(/couldn't save what it saw/i);
     expect(out.visualEvidence).toBeUndefined();
   });
 });
