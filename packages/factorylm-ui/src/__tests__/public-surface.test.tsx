@@ -19,7 +19,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
 import { renderHarness, type HarnessView } from "./harness";
-import type { ConversionIntent } from "@factorylm/interaction";
+import { getFixture, type ConversionIntent, type InteractionTurn } from "@factorylm/interaction";
 
 const views: HarnessView[] = [];
 afterEach(() => { views.splice(0).forEach((view) => view.cleanup()); });
@@ -172,5 +172,86 @@ describe("public surface — enterprise depth stays off", () => {
     // turning the demo on never leaks the Hub's enterprise panel.
     const view = render({ surface: "public", fixture: "grounded-answer" });
     expect(view.container.querySelector('[aria-label="Inspector"]')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The conversion prompt: the turn that ended in an invitation, not an error
+// ---------------------------------------------------------------------------
+
+/** A finished assistant turn whose only content is the door. */
+function promptTurn(intents: readonly ConversionIntent[]): InteractionTurn {
+  const base = getFixture("empty");
+  return {
+    id: "turn-conversion",
+    threadId: base.thread.id,
+    role: "assistant",
+    parts: [
+      { type: "conversion_prompt", prompt: { reason: "There is nothing here to ground an answer in.", intents } },
+      { type: "status", status: "completed" },
+    ],
+    lifecycle: "completed",
+    context: base.activeContext,
+    createdAt: "2026-09-15T12:00:00.000Z",
+    updatedAt: "2026-09-15T12:00:00.000Z",
+  };
+}
+
+function renderPrompt(intents: readonly ConversionIntent[], hooks?: Parameters<typeof renderHarness>[0]["hooks"]) {
+  const view = render({ surface: "public", fixture: "empty", ...(hooks ? { hooks } : {}) });
+  const base = getFixture("empty");
+  view.dispatch({ type: "hydrate", data: { thread: { ...base.thread, turns: [promptTurn(intents)] } } });
+  return view;
+}
+
+const promptEl = (view: HarnessView) => view.container.querySelector('[data-part-type="conversion_prompt"]');
+
+describe("public surface — the conversion prompt is an invitation, not a failure", () => {
+  it("renders the reason and one button per door the host can open", () => {
+    const { hooks } = convertingHost();
+    const view = renderPrompt(["create-workspace", "sign-in"], hooks);
+    const element = promptEl(view);
+    expect(element).not.toBeNull();
+    expect(element?.textContent).toContain("nothing here to ground an answer in");
+
+    const labels = Array.from(element?.querySelectorAll("button") ?? []).map((b) => b.textContent?.trim());
+    expect(labels).toEqual(["Create workspace", "Sign in"]);
+  });
+
+  it("is NOT an alert and NOT an error — a visitor without an account is not a fault", () => {
+    // The distinction this whole part type exists for. `role="alert"` and the
+    // fault-coloured .fl-error are for things that BROKE; being signed out is
+    // the route working as designed.
+    const { hooks } = convertingHost();
+    const view = renderPrompt(["create-workspace"], hooks);
+    expect(promptEl(view)?.getAttribute("role")).toBe("status");
+    expect(view.container.querySelector('[data-part-type="error"]')).toBeNull();
+  });
+
+  it("converts on click, with the intent the button carries", () => {
+    const { intents, hooks } = convertingHost();
+    const view = renderPrompt(["create-workspace", "sign-in"], hooks);
+    const signIn = view.container.querySelector<HTMLButtonElement>('[data-intent="sign-in"]');
+    expect(signIn).not.toBeNull();
+    view.click(signIn as HTMLButtonElement);
+    expect(intents).toEqual(["sign-in"]);
+  });
+
+  it("states the limit instead of rendering dead buttons when the host cannot convert", () => {
+    // Same discipline as the demo notice and onNewChat: no host, no button.
+    const view = renderPrompt(["create-workspace", "sign-in"]);
+    const element = promptEl(view);
+    expect(element?.querySelectorAll("button")).toHaveLength(0);
+    expect(element?.textContent).toContain("not wired up in this preview");
+  });
+
+  it("states the limit when the host CAN convert but there is no door to offer", () => {
+    // An empty intent list must not render an empty button row that looks like
+    // a loading state.
+    const { hooks } = convertingHost();
+    const view = renderPrompt([], hooks);
+    const element = promptEl(view);
+    expect(element?.querySelectorAll("button")).toHaveLength(0);
+    expect(element?.textContent).toContain("not wired up in this preview");
   });
 });

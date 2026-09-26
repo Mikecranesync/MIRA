@@ -208,6 +208,16 @@ const SOURCE_KIND_LABEL = {
 
 const ATTACHMENT_KIND_LABEL = { photo: "IMG", pdf: "PDF", file: "FILE" } as const;
 
+/**
+ * One label per door. `Record<ConversionIntent, string>` is the point: a new
+ * intent is a compile error here rather than a button rendering its own slug.
+ */
+const CONVERSION_LABEL: Readonly<Record<ConversionIntent, string>> = {
+  "sign-in": "Sign in",
+  "create-workspace": "Create workspace",
+  "try-your-equipment": "Try with your equipment",
+};
+
 function Card({ type, label, title, children, className, extra }: {
   readonly type: InteractionPart["type"];
   readonly label: string;
@@ -446,6 +456,30 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
         Machine identity not confirmed for this turn: the asset claimed did not match the notebook's confirmed
         binding, so no machine history was used and nothing here is stated as machine-specific fact.
       </p>;
+
+    case "conversion_prompt": {
+      const { prompt } = part;
+      const convert = hooks?.onConvert;
+      // Not `role="alert"`: nothing went wrong. It is a status the visitor can
+      // act on, so it announces politely and does not steal focus.
+      return <div className="fl-part fl-conversion" role="status" data-part-type="conversion_prompt">
+        <p className="fl-conversion__reason">{prompt.reason}</p>
+        {typeof convert === "function" && prompt.intents.length > 0
+          ? <div className="fl-conversion__actions">
+            {prompt.intents.map((intent) => <button
+              key={intent}
+              type="button"
+              className="fl-conversion__action"
+              data-intent={intent}
+              onClick={() => convert(intent)}
+            >{CONVERSION_LABEL[intent]}</button>)}
+          </div>
+          // No host to convert to, or no door it can open: state the limit
+          // rather than render a button that goes nowhere. Same discipline as
+          // onNewChat/onCreateProject and the demo notice.
+          : <p className="fl-conversion__hint">Sign-in is not wired up in this preview.</p>}
+      </div>;
+    }
 
     case "unknown": {
       // NotebookTraceFrame is transport metadata, preserved on the part for

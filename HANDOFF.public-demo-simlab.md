@@ -1,0 +1,185 @@
+# HANDOFF — FactoryLM public SimLab conveyor demo
+
+**Handoff file:** `HANDOFF.public-demo-simlab.md` — root `HANDOFF.md`, like root
+`PLAN.md`, is a TRACKED file owned by the #3760 baseline-defect run. Overwriting
+either would have deleted that run's handoff on merge, so this run keeps its own
+branch-scoped pair at the branch root.
+**Branch:** `feat/public-demo-simlab-conveyor`
+**Worktree:** `.claude/worktrees/public-demo-simlab`
+**Base:** `origin/feat/public-demo-surface` @ `6bb961f01` (PR #3812 — **open, not merged**)
+**Draft PR target:** `feat/public-demo-surface` — this work is **stacked on #3812**
+**Scope contract:** `PLAN.public-demo-simlab.md`
+**Runbook:** `docs/runbooks/public-demo-simlab.md`
+
+Nothing was merged, deployed, or pointed at production. No DNS, OVH, Neon, VPS,
+container, migration, or physical hardware was touched. No new dependency was
+added — the licence audit reports the same 110 manifests as the baseline.
+
+---
+
+## PLAN row by row
+
+| # | Scope | Status | Evidence |
+|---|---|---|---|
+| 1 | Pin the trust boundary | **DONE** | `tests/simlab/test_public_demo_trust_boundary.py` — 28 tests, every scenario; 6 mutations caught |
+| 2 | Typed SimLab bridge | **DONE** | `packages/factorylm-interaction/src/simlab.ts` + 28 tests; 7 mutations caught |
+| 3 | Public machine visualization | **DONE** | `packages/factorylm-ui/src/MachineView.tsx` + 23 tests; 8 mutations caught |
+| 4 | Visitor flow | **DONE** | `useSimLabDemo.ts`, `notebook-chat.ts`, `apps/factorylm-ui-lab/src/PublicDemo.tsx`; 24 mutations caught. Anonymous chat is settled: the ask is the conversion moment — see **The decision, made**. |
+| 5 | Prove and package | **DONE** | Gates below; 8 screenshots captured against a real SimLab and visually inspected |
+
+## Gates
+
+| Gate | Baseline (`6bb961f01`) | Now |
+|---|---|---|
+| `python -m pytest tests/simlab -q` | 123 passed, 3 skipped | **151 passed, 3 skipped** |
+| `bun run verify` (tests) | 228 pass / 0 fail | **318 pass / 0 fail** |
+| `tsc --noEmit` | clean | clean |
+| build budget | 207,537 B gzip (budget 307,200) | **214,657 B** |
+| licence audit | 110 manifests, MIT/Apache-2.0 | **110 manifests — unchanged** |
+| `ui_surface_lifecycle_guard.py` | — | **No guarded legacy or control-plane paths touched** (no exception label required) |
+
+Browser proof: desktop 1440x900 and mobile 412x915, **0 console errors** on both,
+against SimLab running for real. Screenshots inspected, not just captured — two
+layout defects were found by looking at them (below).
+
+## What a reviewer should look at first
+
+1. **`tests/simlab/test_public_demo_trust_boundary.py`** — the claim the whole demo
+   rests on. Note the positive control: the rubric endpoint is asserted to contain
+   ground truth, so a leak detector that silently stopped working fails loudly
+   instead of passing vacuously.
+2. **`packages/factorylm-interaction/src/simlab.ts`** — the frozen endpoint
+   allowlist. `/rubric` and `/evidence` are unreachable by construction.
+3. **`packages/factorylm-interaction/src/notebook-chat.ts`** — there is no fallback
+   answerer, and a test asserts no failure path produces a text part.
+
+## Findings worth keeping
+
+**Two SimLab facts that shaped the UI.** `status.run_state` is `"Idle"` for every
+asset in every scenario and `process.accumulation_percent` is `0.0` everywhere —
+the engine never drives either. Rendering them would contradict the numbers beside
+them. `test_undriven_tags_stay_undriven` pins the fact and expires the omission: if
+SimLab ever drives one, it goes red and the tag should be rendered.
+
+**`assemble_evidence` names the faulted asset.** It returns
+`asset_id = scenario.asset_id`, and every scenario sets
+`expected_asset = asset_id`. Legitimate for the grading harness; disqualifying for
+the public demo. That is why `/simlab/evidence/{id}` is not a public endpoint, and
+a test pins the reason so it cannot be lost.
+
+**Defects the work found in its own code, all caught by tests or the browser:**
+
+1. The polling loop aborted its own requests — the default `now` closure was a new
+   identity each render and an effect dependency.
+2. Every successful poll took the failure path — the cycle returned
+   `State | {error}` and `SimLabDemoState` declares an `error` field, so the
+   discriminant was true for good readings too. Now a tagged union.
+3. A StrictMode remount resurrected a stale cycle: liveness was a shared `useRef`,
+   so a torn-down cycle saw the remounted `true` and started a second loop holding
+   an aborted controller. Browser-only; no unit test had remounted fast enough.
+   Regression test added.
+4. `CP001` was read and never rendered — found only by looking at the screenshot.
+5. The shell's main grid gave its flexible row to the demo notice, leaving a blank
+   band above the machine — found only by looking at the screenshot.
+
+**Four mutations were GREEN on first run and each exposed a weak test, not a sound
+one** — an unmount test that never reached the mid-cycle case, a control-window
+test whose reads outlasted the window, a concurrency metric counting requests when
+one cycle legitimately issues two, and a fake that ignored `AbortSignal`. All four
+tests were strengthened until the mutation went red.
+
+## The decision, made (2026-09-15)
+
+**How may an anonymous visitor's question reach the shared chat route?**
+**Answer: it may not. Asking is what signing up unlocks.**
+
+`POST /api/equipment-notebooks/{id}/chat` begins with `sessionOr401` and scopes
+retrieval to `(tenant ∧ notebook ∧ not-rejected)`, so the real path cannot serve
+an anonymous turn. Owner decision: keep it that way. The visitor sees the line,
+injects the jam, watches Case Packer 01 fault with `CP001` — and the ask is the
+conversion moment. A demo tenant or a public rate-limited route is reconsidered
+**only** once the demo is live on the marketing site and there is evidence
+visitors are actually reaching the ask. No anonymous chat was invented.
+
+What that changed here:
+
+- `chatGate()` splits the five failure reasons into `account`
+  (`unauthenticated`, `not_configured`) and `fault` (`unreachable`,
+  `http_error`, `malformed_stream`) — a total frozen `Record`, so a new reason
+  is a compile error rather than a silent slide into the friendlier branch.
+- A new `conversion_prompt` interaction part carries a reason plus the doors the
+  HOST can open; `parts.tsx` renders it as `role="status"` (nothing broke), and
+  states the limit rather than rendering dead buttons when there is no host or
+  no door.
+- `assistantTurn` routes `account` to that part with lifecycle **`completed`**,
+  and `fault` to the existing error part with lifecycle `failed`.
+
+The rule runs both ways and both directions are pinned by tests: a visitor
+without an account must not be told the product is broken, and a broken hub must
+not be dressed up as a sales opportunity — that misleads them *and* hides the
+bug from us.
+
+**Defect found by looking at the screenshot, not by a test.** The taller card
+pushed the conversion buttons to y≈1003 in a 915px mobile viewport — below the
+fold on the one turn that asks the visitor to act. Cause: `.fl-shell` sets
+`min-block-size: 100dvh` (a *minimum*), so with the machine panel rendered the
+PAGE scrolls and `.fl-conversation`'s own `overflow-y: auto` never engages.
+`revealNewestTurn()` scrolls the page after the reply lands (buttons now y≈748);
+the shell-level fix is follow-up 5.
+
+## Related PRs opened from this work
+
+- **#3822** — `fix(ui)`: the narrow-viewport drawer (follow-up 1 below). Off `main`.
+- **#3823** — `chore(hooks)`: root `PLAN.md`/`HANDOFF.md` ownership guard, closing
+  the near-miss this run hit twice. Off `main`. It is why this branch carries
+  `PLAN.public-demo-simlab.md` / `HANDOFF.public-demo-simlab.md` rather than the
+  bare names.
+
+## Follow-ups (not blockers, not started)
+
+1. **Shell drawer mismatch, wider than this demo — FIXED in #3822** (off `main`,
+   not stacked here). `navigationIsLayer` keyed on `profile.kind === "mobile"`
+   while `shell.css` turns the sidebar into a fixed overlay below 48rem for
+   *every* surface, so a narrow `public`/`web`/`hub` surface got a drawer with no
+   scrim and no Escape-to-close. #3822 makes the drawer a layer on any narrow
+   viewport and pins the CSS/TS breakpoint together so they cannot drift again.
+   `PublicDemo` still closes the drawer at mount on narrow viewports, and should
+   keep doing so: navigation opens by default on every surface, and a phone-sized
+   demo should land on the machine rather than a drawer. That is a host product
+   decision, not a workaround #3822 removes.
+2. **The built bundle ships React's development build.** `bun run build` produces a
+   bundle that logs "Download the React DevTools…" and double-invokes effects under
+   StrictMode, i.e. `process.env.NODE_ENV` is not pinned to `production`. It made
+   finding defect 3 easier, and it is wrong for anything shipped. Out of scope here.
+3. **Mounting the demo on the real marketing surface.** It runs in the lab host
+   because that is the only host consuming the shared shell today (#3806). The
+   `mira-web` / `mira-hub` mount is a later PR, after #3812 and #3808 land.
+4. **`simlab/dashboard.html` is untouched** and remains the engineer-facing
+   self-scoring oracle — deliberately not the public face.
+5. **The shell is not height-bound, so the PAGE scrolls instead of the
+   conversation.** (NOT fixed by #3822 — a separate defect in the same area.) `.fl-shell { min-block-size: 100dvh }` is a minimum; with a
+   machine panel the content exceeds it and `.fl-conversation`'s `overflow-y:
+   auto` never engages, so the newest turn is not pinned and can land below the
+   fold. `revealNewestTurn()` in the host is the scoped workaround; binding the
+   shell's height (and pinning the newest turn) belongs to the shell owner,
+   alongside follow-up 1.
+
+## Reproduce
+
+```bash
+git worktree add .claude/worktrees/public-demo-simlab feat/public-demo-simlab-conveyor
+cd .claude/worktrees/public-demo-simlab
+python -m pytest tests/simlab -q
+bun install --frozen-lockfile && (cd apps/factorylm-ui-lab && bun run verify)
+
+# browser proof — see docs/runbooks/public-demo-simlab.md
+SIMLAB_CORS_ORIGINS="http://localhost:4173" python -m simlab --host 127.0.0.1 --port 8099
+(cd apps/factorylm-ui-lab && bun run build && PORT=4173 bun scripts/preview.ts)
+# http://localhost:4173/demo.html?surface=public&demo=simlab&embed=1
+```
+
+## Local services
+
+Both were stopped before this handoff was written. A SimLab belonging to another
+session was found already listening on 8099; it was left alone and this run used
+8098.
