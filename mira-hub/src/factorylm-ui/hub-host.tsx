@@ -40,7 +40,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { composeHubSend, pairAttachments, type HeldFile } from "./hub-attachments";
+import { composeHubSend, pairAttachments, resolveUploadNode, type HeldFile } from "./hub-attachments";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
@@ -409,23 +409,18 @@ export function HubShellHost() {
     }
     // The upload door needs the notebook's own namespace node (every notebook
     // has one); a HOME send knows only the id, so read it first.
-    let status = 0;
-    let data: Detail | null = null;
-    try {
-      ({ status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`));
-    } catch {
-      // Codex #4024 F4: the Composer already cleared the draft; a network
-      // error here must hand the question back, not vanish.
-      data = null;
-    }
-    if (status === 401) { setSignedOut(true); return; }
-    if (!data?.notebook?.nodeId) {
+    const target = await resolveUploadNode(() =>
+      getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`),
+    );
+    if (target.kind === "signed_out") { setSignedOut(true); return; }
+    if (target.kind === "failed") {
+      // Codex #4024 F4: the Composer already cleared the draft — hand it back.
       for (const f of files) adapter.forget(f.attachment.id);
       dispatch({ type: "set-send-error", error: "Couldn't open the project to upload into. Attach the file again, then send." });
       dispatch({ type: "set-draft", draft: q });
       return;
     }
-    await composeAndSend(q, files, sel, data.notebook.nodeId, [], []);
+    await composeAndSend(q, files, sel, target.nodeId, [], []);
   }, [adapter, createNotebook, select, send, composeAndSend]);
 
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {

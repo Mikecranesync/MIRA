@@ -78,6 +78,25 @@ export function pairAttachments(
   return files;
 }
 
+/**
+ * Resolve the namespace node a HOME send uploads into (every notebook owns one).
+ * Never throws: the Composer has already cleared the draft, so a rejected read
+ * must come back as a value the host turns into "here is your question back"
+ * (Codex #4024 F4).
+ */
+export async function resolveUploadNode(
+  read: () => Promise<{ status: number; data: { notebook?: { nodeId?: string | null } } | null }>,
+): Promise<{ kind: "ok"; nodeId: string } | { kind: "signed_out" } | { kind: "failed" }> {
+  try {
+    const { status, data } = await read();
+    if (status === 401) return { kind: "signed_out" };
+    const nodeId = data?.notebook?.nodeId;
+    return nodeId ? { kind: "ok", nodeId } : { kind: "failed" };
+  } catch {
+    return { kind: "failed" };
+  }
+}
+
 async function body(res: Response): Promise<Record<string, unknown>> {
   try {
     return ((await res.json()) ?? {}) as Record<string, unknown>;

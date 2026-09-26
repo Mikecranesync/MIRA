@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { composeHubSend, pairAttachments, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
+import { composeHubSend, pairAttachments, resolveUploadNode, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -183,5 +183,23 @@ describe("pairAttachments", () => {
 
   it("no attachments is an empty pairing", () => {
     expect(pairAttachments([], get)).toEqual([]);
+  });
+});
+
+// Codex #4024 F4: a HOME send reads the new notebook's node before uploading.
+// Every outcome is a value the host can act on — a rejected read must not
+// escape as an unhandled rejection that loses the (already cleared) draft.
+describe("resolveUploadNode", () => {
+  it("returns the node on a good read", async () => {
+    expect(await resolveUploadNode(async () => ({ status: 200, data: { notebook: { nodeId: "n1" } } }))).toEqual({ kind: "ok", nodeId: "n1" });
+  });
+  it("a network rejection is a failure value, not a throw", async () => {
+    expect(await resolveUploadNode(async () => { throw new TypeError("fetch failed"); })).toEqual({ kind: "failed" });
+  });
+  it("401 is signed out", async () => {
+    expect(await resolveUploadNode(async () => ({ status: 401, data: null }))).toEqual({ kind: "signed_out" });
+  });
+  it("a read without a node is a failure", async () => {
+    expect(await resolveUploadNode(async () => ({ status: 200, data: { notebook: {} } }))).toEqual({ kind: "failed" });
   });
 });
