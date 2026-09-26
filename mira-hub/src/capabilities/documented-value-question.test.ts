@@ -17,6 +17,14 @@ describe("#4004 asksForDocumentedValue", () => {
     "what is MQTT",
     "why would a contactor chatter",
     "what does fault code F004 mean on this unit", // E10's floor owns code meanings
+    // #4010 review (mira-f1's probe set) — teaching questions keep answering.
+    "what is voltage?",
+    "what's the difference between rated and nominal current?",
+    "tell me what a parameter is",
+    "what does IP rating mean in general?",
+    "what is a catalog number used for?",
+    "how do I read a wiring diagram?",
+    "why would a panel lose power?",
     "",
   ])("not a documented-value question: %s", (q) => expect(asksForDocumentedValue(q)).toBe(false));
 });

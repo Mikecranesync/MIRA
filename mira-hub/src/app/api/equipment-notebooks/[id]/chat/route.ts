@@ -1359,6 +1359,11 @@ async function handleChatTurn(
           // conversation already answered from. `fid` is verified (answered turn
           // in this thread + notebook link) and ownership is still enforced, so
           // accepting the same notebook's legacy-thread row widens nothing else.
+          // SAFETY DEPENDENCY: `{ threadId: null }` drops the thread filter, so
+          // this is only safe because `seen` comes from listTurns(…, { threadId })
+          // answered turns of THIS thread (verifyVisualEntry checks notebook, not
+          // thread). Widening `seen` would make this a cross-thread read — pinned
+          // by chat-flight-recorder "4b".
           const row =
             (await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true })) ??
             (scope.threadId ? await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, threadId: null }) : null);

@@ -25,8 +25,19 @@ const DOCUMENTED_VALUE =
 const ASKS_FOR_VALUE =
   /\b(?:what(?:'s|\s+is|\s+are)?|which|how\s+(?:much|many|hot|cold|high|low)|does\s+(?:it|the\s+\w+)\s+(?:need|take|use|require)|need|required|list|give\s+me|tell\s+me)\b/i;
 
+// #4010 review: a TEACHING question must never abstain with "upload the
+// manual" — that is the over-block direction the owner rejected (#3982/#3984).
+// "what is voltage?", "difference between rated and nominal current",
+// "what a parameter is", "what does IP rating mean", "used for", "in general":
+// a definitional frame asks about the concept, not THIS equipment's value.
+// "what is/what's/what are" only counts as asking for a value when it binds to
+// something specific (the / this / its / it / my / your / that).
+const DEFINITIONAL =
+  /\b(?:what(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)|what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
+
 export function asksForDocumentedValue(question: string): boolean {
   const q = question.trim();
   if (!q) return false;
+  if (DEFINITIONAL.test(q)) return false;
   return DOCUMENTED_VALUE.test(q) && ASKS_FOR_VALUE.test(q);
 }

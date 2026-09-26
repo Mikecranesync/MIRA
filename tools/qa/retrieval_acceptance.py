@@ -384,6 +384,11 @@ def run(args: argparse.Namespace) -> int:
     )
     common_checks(row, d, w)
     row.observed = f"{r['strategy']} n={r['candidate_count']} / {w['basis']} cit={w['citations']} / {w['status']}"
+    if r["candidate_count"] == 0:
+        # Non-gating by design (#4010 review): an honest abstain passes, but the
+        # corpus still holds no manual for the bound model — keep that visible
+        # so an all-green loop is never read as "the technician got an answer".
+        row.observed += " | COVERAGE GAP: no manual in corpus for the bound model"
     row.packet, row.wire = p, {k: v for k, v in w.items() if k != "content"}
     rows.append(row)
 

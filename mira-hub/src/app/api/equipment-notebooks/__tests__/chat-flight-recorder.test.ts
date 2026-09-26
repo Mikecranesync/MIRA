@@ -625,6 +625,11 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(scopes[0]).toMatchObject({ threadId: TH, allowLegacy: true });
     expect(scopes[1]).toMatchObject({ threadId: null });
     expect(packetOf().retrieval.prior_visual_observations_considered).toBe(1);
+    // #4010 review: the legacy fallback drops the thread filter, so its safety
+    // rests on `seen` being built ONLY from answered turns of THIS thread. Pin
+    // that the history read is thread-scoped — widening it must break here.
+    const listCall = domainMock.listTurns.mock.calls[0] as unknown as [string, string, number, { threadId?: string | null }];
+    expect(listCall[3]).toMatchObject({ threadId: TH });
   });
 
   it("4c. scenario 4 control: with no threadId on the chat there is no second (legacy) lookup", async () => {
