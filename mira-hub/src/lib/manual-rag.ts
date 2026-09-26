@@ -322,7 +322,13 @@ export function __resetCorpusManufacturersCache(): void {
  *  observation text (a LOOK/nameplate reading), or null. Pure once the list
  *  is known; exported so the route can test it without a database. */
 export function manufacturerFromObservationText(text: string, manufacturers: readonly string[]): string | null {
-  const hay = text.toLowerCase();
+  // A catalog-number heading is not a CAT manufacturer claim. Mask only the
+  // heading before a number-bearing identifier; retain separate real CAT
+  // mentions (and ordinary prose such as "CAT no power").
+  const hay = text.toLowerCase().replace(
+    /\bcat\b\.?\s*(?:no\b\.?|number\b|#)(?=\s*:?\s*[a-z0-9-]*\d)/gi,
+    " ",
+  );
   if (!hay.trim()) return null;
   for (const name of manufacturers) {
     const needle = name.toLowerCase();

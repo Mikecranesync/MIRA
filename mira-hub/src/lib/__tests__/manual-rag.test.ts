@@ -10,6 +10,7 @@ import {
   extractModelNumber,
   isRefusalAnswer,
   retrieveManualChunks,
+  manufacturerFromObservationText,
   retrieveNodeChunks,
   buildDocScopedSystemPrompt,
   type ManualChunk,
@@ -786,5 +787,23 @@ describe("buildDocScopedSystemPrompt", () => {
     expect(prompt).toContain("ONLY the documentation provided");
     expect(prompt).toContain("[n]");
     expect(prompt.toLowerCase()).toContain("safety");
+  });
+});
+
+
+describe("manufacturerFromObservationText catalog labels", () => {
+  it.each(["CAT.NO. X123", "CAT. NO. X123", "Cat No: X123", "CAT # X123", "Cat. Number X123"])(
+    "does not infer CAT equipment from catalog label %s", (label) => {
+      expect(manufacturerFromObservationText(`Contactor label: ${label}`, ["CAT"])).toBeNull();
+      expect(manufacturerFromObservationText(`Siemens contactor. ${label}`, ["CAT", "Siemens"])).toBe("Siemens");
+    },
+  );
+  it.each(["CAT motor", "CAT no power", "Manufacturer: CAT; CAT.NO. X123", "CAT.NO. X123; a separate CAT logo is visible"])(
+    "keeps a real CAT manufacturer mention in %s", (text) => {
+      expect(manufacturerFromObservationText(text, ["CAT"])).toBe("CAT");
+    },
+  );
+  it("does not confuse longer manufacturer names or equipment categories", () => {
+    expect(manufacturerFromObservationText("CATTRON radio, category control", ["CAT", "CATTRON"])).toBe("CATTRON");
   });
 });

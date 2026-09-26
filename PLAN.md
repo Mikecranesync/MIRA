@@ -287,3 +287,19 @@ Tests: transient/persistent acquire timeout, permission error, midtransaction
 error/commit ambiguity without replay, server flag and original preservation,
 mobile response parsing and retained-photo retry. Frozen fault-injection replay
 and successful five-observation replay remain required product evidence.
+
+## Q retrieval repair: catalog abbreviation is not manufacturer identity
+
+Raw existing TS retrieval against staging reproduced Q turn2's exact four source
+IDs. Stored photo text contains CAT.NO. as a catalog label. The corpus-name matcher
+selects CAT from that label, and manufacturer ILIKE %CAT% broadens to unrelated
+Equipment Fabricators/CAT/Caterpillar/CATTRON records. First demonstrated layer D.
+REUSE existing manufacturerFromObservationText; REPAIR only catalog-label false
+identity, with generic catalog-number variants and genuine CAT opposite controls.
+CONNECT unchanged notebook route; FINISH raw retrieval comparison, independent
+Claude review and frozen replay. No new matcher service, ranking overhaul, schema,
+private corpus mutation or benchmark equipment labels in production logic.
+Files: manual-rag.ts and its existing tests; this plan/evidence reports.
+Acceptance: catalog-only labels yield no CAT identity; real CAT name still routes;
+other actual brands remain available; exact raw Q rerun excludes the four unrelated
+references; frozen product evidence required before overall acceptance.
