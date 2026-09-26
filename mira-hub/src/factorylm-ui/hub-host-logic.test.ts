@@ -93,7 +93,7 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
   });
   it("no rider leaves the body byte-identical to before", () => {
     // clientRequestId is minted per call; everything else must match.
-    const strip = ({ clientRequestId: _id, ...rest }: ReturnType<typeof chatBodyFor>) => rest;
+    const strip = (b: ReturnType<typeof chatBodyFor>) => ({ ...b, clientRequestId: "" });
     expect(strip(chatBodyFor("q", [], history, sel, undefined))).toEqual(strip(chatBodyFor("q", [], history, sel)));
     expect("visualEvidence" in chatBodyFor("q", ["d"], [], sel)).toBe(false);
   });

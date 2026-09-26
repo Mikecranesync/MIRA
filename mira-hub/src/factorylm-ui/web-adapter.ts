@@ -66,6 +66,8 @@ export interface HubWebAdapter extends PlatformAdapter {
   forget(id: string): void;
 }
 
+const MAX_HELD = 8;
+
 export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
   const held = new Map<string, File>();
   const pick = async (accept: string, capture?: "environment" | "user"): Promise<Attachment | null> => {
@@ -73,6 +75,10 @@ export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
     if (!file) return null;
     const attachment = toAttachment(file, deps.newId());
     held.set(attachment.id, file);
+    // A removed chip sends the adapter no event, so bound what is held: the
+    // oldest file is released past MAX_HELD (Map keeps insertion order). A
+    // chip whose bytes were released fails closed at send ("attach it again").
+    while (held.size > MAX_HELD) held.delete(held.keys().next().value as string);
     return attachment;
   };
 

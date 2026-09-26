@@ -97,6 +97,30 @@ export async function resolveUploadNode(
   }
 }
 
+/**
+ * One attached send as a single cancellable operation (round 2 F2): Stop or
+ * opening another thread aborts `signal`, and once it is aborted the chat POST
+ * never starts — neither after a successful upload nor after an upload the
+ * abort interrupted. Returns what happened so the host can react.
+ */
+export async function runAttachedSend(opts: {
+  signal: AbortSignal;
+  compose: () => Promise<ComposedHubSend>;
+  send: (composed: ComposedHubSend) => Promise<void>;
+}): Promise<"sent" | "cancelled" | ComposedHubSend> {
+  let composed: ComposedHubSend;
+  try {
+    composed = await opts.compose();
+  } catch (error) {
+    if (opts.signal.aborted) return "cancelled";
+    throw error;
+  }
+  if (opts.signal.aborted) return "cancelled";
+  if (composed.failure) return composed;
+  await opts.send(composed);
+  return "sent";
+}
+
 async function body(res: Response): Promise<Record<string, unknown>> {
   try {
     return ((await res.json()) ?? {}) as Record<string, unknown>;
@@ -203,6 +227,13 @@ export async function composeHubSend(
     const obs = d.observation as { text?: unknown; capturedAt?: unknown } | null | undefined;
     if (!obs || typeof obs.text !== "string" || !obs.text.trim()) {
       return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
+    }
+    // The chat route re-verifies that the photo is LINKED to this notebook and
+    // silently ignores it otherwise (verifyVisualEntry) — so an unlinked photo
+    // would be a photo question answered without the photo (round 2 F1).
+    const link = d.attachment as { linkId?: unknown } | null | undefined;
+    if (!link || typeof link.linkId !== "string" || !link.linkId) {
+      return { question, failure: "The photo didn't attach to this project — try again." };
     }
     visualEvidence = {
       fileId,

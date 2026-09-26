@@ -37,6 +37,18 @@ describe("attachments", () => {
     expect(a.heldFile(picked!.id)).toBeUndefined();
   });
 
+  // Codex #4024 round 2 F3: removing a chip gives the adapter no event, so the
+  // held bytes are bounded — the oldest is released once more than 8 are held.
+  it("holds at most the 8 most recent files", async () => {
+    let n = 0;
+    const a = createWebAdapter(deps({ pickFile: async () => file(`f${++n}.pdf`, "application/pdf") }));
+    const ids: string[] = [];
+    for (let i = 0; i < 9; i++) ids.push((await a.attachFile())!.id);
+    expect(a.heldFile(ids[0])).toBeUndefined();
+    expect(a.heldFile(ids[1])).toBeDefined();
+    expect(a.heldFile(ids[8])).toBeDefined();
+  });
+
   it("a dismissed chooser holds nothing", async () => {
     const a = createWebAdapter(deps({ pickFile: async () => null }));
     expect(await a.attachPhoto()).toBeNull();

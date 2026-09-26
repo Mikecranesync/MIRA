@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { composeHubSend, pairAttachments, resolveUploadNode, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
+import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -31,7 +31,7 @@ function server(over: Partial<Record<"files" | "sources" | "detail" | "look", ()
     if (url.includes("/api/namespace/node/")) return over.files?.() ?? json({ indexed: true, uploadId: "doc-new" }, 201);
     if (url.endsWith("/sources/")) return over.sources?.() ?? json({ ok: true }, 201);
     if (url.includes("/look/")) {
-      return over.look?.() ?? json({ fileId: "f-1", observation: { text: "a GS10 nameplate", capturedAt: "2026-09-26T19:00:00Z" } });
+      return over.look?.() ?? json({ fileId: "f-1", attachment: { linkId: "l-1", notebookId: "nb-1" }, observation: { text: "a GS10 nameplate", capturedAt: "2026-09-26T19:00:00Z" } });
     }
     return (
       over.detail?.() ??
@@ -139,6 +139,59 @@ describe("composeHubSend — photos", () => {
     const { deps } = server({ look: () => new Response(JSON.stringify({ error: "x" }), { status: 500 }) });
     const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("p1", "photo", "np.jpg"), file: file("np.jpg") }] }, deps);
     expect(out.failure).toMatch(/photo didn't upload/i);
+  });
+});
+
+// Codex #4024 round 2 F1: the chat route verifies the photo is LINKED to this
+// notebook and silently ignores it otherwise — so an unlinked photo would be a
+// photo question answered without the photo.
+describe("composeHubSend — unlinked photo", () => {
+  it("fails closed when /look saved and read the photo but did not link it to the notebook", async () => {
+    const { deps } = server({
+      look: () => new Response(JSON.stringify({ fileId: "f-1", attachment: { linkId: null }, observation: { text: "x", capturedAt: "t" } })),
+    });
+    const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("p1", "photo", "np.jpg"), file: file("np.jpg") }] }, deps);
+    expect(out.failure).toMatch(/photo didn't attach/i);
+    expect(out.visualEvidence).toBeUndefined();
+  });
+});
+
+// Codex #4024 round 2 F2: Stop or opening another thread during an upload must
+// not let the question post afterwards.
+describe("runAttachedSend", () => {
+  it("sends the composed turn when nothing cancelled it", async () => {
+    const send = vi.fn(async () => {});
+    const out = await runAttachedSend({ signal: new AbortController().signal, compose: async () => ({ question: "q", scope: ["d"] }), send });
+    expect(out).toBe("sent");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("a cancel during the upload means no chat post", async () => {
+    const ctrl = new AbortController();
+    const send = vi.fn(async () => {});
+    const out = await runAttachedSend({
+      signal: ctrl.signal,
+      compose: async () => { ctrl.abort(); return { question: "q", scope: ["d"] }; },
+      send,
+    });
+    expect(out).toBe("cancelled");
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("a compose that throws because it was aborted is cancelled, not a failure", async () => {
+    const ctrl = new AbortController();
+    const send = vi.fn(async () => {});
+    const out = await runAttachedSend({
+      signal: ctrl.signal,
+      compose: async () => { ctrl.abort(); throw new DOMException("aborted", "AbortError"); },
+      send,
+    });
+    expect(out).toBe("cancelled");
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("a composed failure is returned and nothing is sent", async () => {
+    const send = vi.fn(async () => {});
+    const out = await runAttachedSend({ signal: new AbortController().signal, compose: async () => ({ question: "q", failure: "nope" }), send });
+    expect(out).toEqual({ question: "q", failure: "nope" });
+    expect(send).not.toHaveBeenCalled();
   });
 });
 

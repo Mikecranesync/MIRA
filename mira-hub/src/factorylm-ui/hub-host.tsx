@@ -40,7 +40,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { composeHubSend, pairAttachments, resolveUploadNode, type HeldFile } from "./hub-attachments";
+import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
@@ -127,6 +127,9 @@ export function HubShellHost() {
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // The upload half of an attached send (#4019 round 2 F2): Stop and thread
+  // changes abort it too, so a slow upload can never post afterwards.
+  const uploadAbortRef = useRef<AbortController | null>(null);
   // Detail loads are independent of the chat stream: their own abort handle and
   // a latest-request gate so a slow, superseded GET can never overwrite the
   // detail of the selection that replaced it (Codex #3839 F3).
@@ -210,6 +213,7 @@ export function HubShellHost() {
   /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
     abortRef.current?.abort();
+    uploadAbortRef.current?.abort();
     detailGate.invalidate();
     detailAbortRef.current?.abort();
     setDetail(null);
@@ -347,28 +351,48 @@ export function HubShellHost() {
   ) => {
     setBusy(true);
     dispatch({ type: "set-send-error", error: null });
-    let composed: Awaited<ReturnType<typeof composeHubSend>>;
+    uploadAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    uploadAbortRef.current = ctrl;
+    let outcome: Awaited<ReturnType<typeof runAttachedSend>>;
     try {
-      composed = await composeHubSend(
-        { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId, baseScope: fallbackScope },
-        { fetch: (...a) => fetch(...a), apiBase: API_BASE, newKey: () => crypto.randomUUID(), maxUploadMb: MAX_UPLOAD_MB },
-      );
+      outcome = await runAttachedSend({
+        signal: ctrl.signal,
+        compose: () => composeHubSend(
+          { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId, baseScope: fallbackScope },
+          {
+            fetch: (input, init) => fetch(input, { ...init, signal: ctrl.signal }),
+            apiBase: API_BASE,
+            newKey: () => crypto.randomUUID(),
+            maxUploadMb: MAX_UPLOAD_MB,
+          },
+        ),
+        send: async (composed) => {
+          const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
+          await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
+        },
+      });
     } catch {
-      composed = { question: text, failure: "The attachment didn't upload — check the connection." };
+      outcome = { question: text, failure: "The attachment didn't upload — check the connection." };
     } finally {
       for (const f of files) adapter.forget(f.attachment.id);
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
     }
-    if (composed.failure) {
-      setBusy(false);
-      dispatch({
-        type: "set-send-error",
-        error: composed.reattach === false ? composed.failure : `${composed.failure} Attach it again, then send.`,
-      });
-      dispatch({ type: "set-draft", draft: text });
+    if (outcome === "sent") return;
+    setBusy(false);
+    // Stopped or navigated away: nothing was posted; the question goes back
+    // only if the technician is still on the thread it was typed in.
+    if (outcome === "cancelled") {
+      if (selectionRef.current?.notebookId === sel.notebookId && selectionRef.current?.threadId === sel.threadId) {
+        dispatch({ type: "set-draft", draft: text });
+      }
       return;
     }
-    const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
-    await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
+    dispatch({
+      type: "set-send-error",
+      error: outcome.reattach === false ? outcome.failure! : `${outcome.failure} Attach it again, then send.`,
+    });
+    dispatch({ type: "set-draft", draft: text });
   }, [adapter, send]);
 
   /** Create a project through the same contract as the legacy "New notebook" button. */
@@ -450,7 +474,7 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend]);
 
-  const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
+  const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
