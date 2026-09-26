@@ -618,10 +618,7 @@ def _row_matches_model(equipment_model: str, model: str) -> bool:
     return not re.search(_model_suffix_exclude_regex(model), equipment_model, re.IGNORECASE)
 
 
-# Clause boundaries a technician uses to talk about two machines in one message.
-_CLAUSE_SEP_RE = re.compile(
-    r"\s*(?:[,;]|\band\b|\bbut\b|\bthen\b|\balso\b|\bwhile\b)\s*", re.IGNORECASE
-)
+_MAX_FAULT_LOOKUPS = 6
 
 
 def _fault_code_scopes(
@@ -631,52 +628,21 @@ def _fault_code_scopes(
 
     - No product named -> each code unscoped (None), as before #3337.
     - One product -> each code scoped to it.
-    - Several products -> every OCCURRENCE of a code is placed within its
-      clause: it takes the product named in the same clause nearest to it (gap
-      between the two mentions). A tie between two different products, or a
-      clause with no product, is ambiguous and that occurrence is not promoted.
-      The same code on two machines is looked up for both (Codex #4026 r2).
-    Pairs are de-duplicated in order of first appearance.
+    - Several products -> each code against EVERY named product. No attempt is
+      made to guess which code "belongs" to which machine: every clause or
+      proximity rule tried in review (#4026 rounds 1-3) broke on another
+      phrasing ("both show F004", "525, F004; 40, F4"). A row only exists where
+      the code is defined for that model, and each promoted row carries its own
+      ``equipment_model``, so nothing is attributed to the wrong machine.
+    Capped at ``_MAX_FAULT_LOOKUPS`` pairs; ``query_text`` is kept for the
+    call-site signature.
     """
     if not products:
-        return [(c, None) for c in codes]
-    if len(products) == 1:
-        return [(c, products[0]) for c in codes]
-    lq = query_text.lower()
-    clauses: list[tuple[int, int]] = []
-    start = 0
-    for sep in _CLAUSE_SEP_RE.finditer(lq):
-        clauses.append((start, sep.start()))
-        start = sep.end()
-    clauses.append((start, len(lq)))
-    spans = [
-        (m.start(), m.end(), p)
-        for p in set(products)
-        for m in re.finditer(re.escape(p.lower()), lq)
-    ]
-    found: list[tuple[int, str, str]] = []
-    for code in codes:
-        pattern = r"(?<![0-9a-z])" + re.escape(code.lower()) + r"(?![0-9a-z])"
-        for m in re.finditer(pattern, lq):
-            clause = next((c for c in clauses if c[0] <= m.start() < c[1]), None)
-            if clause is None:
-                continue
-            here = [sp for sp in spans if clause[0] <= sp[0] and sp[1] <= clause[1]]
-            if not here:
-                continue
-
-            def gap(sp: tuple[int, int, str], m: re.Match[str] = m) -> int:
-                return m.start() - sp[1] if sp[1] <= m.start() else sp[0] - m.end()
-
-            best = min(gap(sp) for sp in here)
-            nearest = {sp[2] for sp in here if gap(sp) == best}
-            if len(nearest) == 1:
-                found.append((m.start(), code, nearest.pop()))
-    pairs: list[tuple[str, str | None]] = []
-    for _, code, product in sorted(found):
-        if (code, product) not in pairs:
-            pairs.append((code, product))
-    return pairs
+        pairs: list[tuple[str, str | None]] = [(c, None) for c in codes]
+    else:
+        ordered = sorted(set(products))
+        pairs = [(c, p) for c in codes for p in ordered]
+    return pairs[:_MAX_FAULT_LOOKUPS]
 
 
 def _product_search(
@@ -1164,13 +1130,13 @@ def recall_knowledge(
                 # heuristic will always have edges, the scope constraint does not.
                 #
                 # No product named => None => unconstrained, exactly as before.
-                # Each code is scoped to the product named nearest to it; with
-                # several products, a code that cannot be placed is skipped
-                # rather than scoped to an arbitrary one (Codex #4026 F2).
+                # Scope each code to the named machine(s): with several named,
+                # every code is looked up against every one, and _row_matches_model
+                # keeps each row on its own model (Codex #4026).
                 _fc_pairs = _fault_code_scopes(
                     query_text, fault_codes[:3], _extract_product_names(query_text)
                 )
-                for fc, _fc_model in _fc_pairs[:3]:
+                for fc, _fc_model in _fc_pairs:
                     fc_rows = recall_fault_code(fc, tenant_id, model=_fc_model)
                     for row in fc_rows:
                         # Format structured data as a pseudo-chunk for prompt injection
