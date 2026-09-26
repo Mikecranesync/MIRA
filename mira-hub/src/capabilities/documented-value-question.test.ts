@@ -13,6 +13,14 @@ describe("#4004 asksForDocumentedValue", () => {
     "what is voltage rating for this panel?",
     "what is supply voltage on the TP700?",
     "what is operating temperature for my panel?",
+    // #4015 — drive-tuning quantities a technician asks about on a bound VFD.
+    "what carrier frequency should this drive not exceed above 20hp",
+    "what is the max frequency for this drive",
+    "what accel time should I use on my GS10",
+    "what's the decel time default on this drive",
+    "what fuse size does this drive need",
+    "what wire size do I need for this drive",
+    "what is the overload rating of this motor",
   ])("documented value: %s", (q) => expect(asksForDocumentedValue(q)).toBe(true));
 
   it("the bound model's own name binds a bare 'what is' question", () => {
@@ -37,6 +45,10 @@ describe("#4004 asksForDocumentedValue", () => {
     // #4010 round 3 — "in the" is idiom, not a binding.
     "what is voltage in the first place?",
     "what is torque, in the general sense?",
+    // #4015 — the new drive vocabulary stays conceptual when unbound.
+    "what is carrier frequency?",
+    "what does carrier frequency mean",
+    "why would I lower the carrier frequency",
     "",
   ])("not a documented-value question: %s", (q) => expect(asksForDocumentedValue(q)).toBe(false));
 });
