@@ -496,15 +496,24 @@ describe("fresh photo owns the current referent", () => {
 
 
 describe("summary preserves the kind of evidence", () => {
-  it("carries evidence boundaries into a text-only summary with earlier photos", async () => {
+  it.each([false, true])("carries earlier photos and evidence boundaries into summary; documents=%s", async (documents) => {
+    if (documents) {
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+      ragMock.retrieveNodeChunks.mockResolvedValueOnce([{ docId: "d1", filename: "drive.pdf", page: 1, content: "Indicator reference." }]);
+    }
+    const realVisual = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    veMock.renderPriorLookObservationsSection.mockImplementationOnce((values) => realVisual.renderPriorLookObservationsSection(values as never));
     veMock.loadRecentLookObservations.mockResolvedValueOnce([{
       observationId: "summary-led", sessionId: "summary-session", text: "A green indicator is lit.",
       obsKind: "property", trust: "candidate", confidence: null, fileId: PHOTO,
       photoHash: "summary-hash", observedAt: CAPTURED_AT, hazards: [],
     }]);
-    await (await POST(req({ message: "What do the photos establish together?", mode: "general" }), params)).text();
+    await (await POST(req({ message: "What do the photos establish together?", ...(documents ? {} : { mode: "general" }) }), params)).text();
     const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
     const system = messages.find(m => m.role === "system")?.content ?? "";
+    expect(veMock.renderPriorLookObservationsSection).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ observationId: "summary-led" })]));
+    expect(messages.some(m => m.role === "user" && m.content.includes("A green indicator is lit."))).toBe(true);
+    expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[1]).toHaveLength(documents ? 1 : 0);
     expect(system).toContain("Preserve each claim's evidence type when summarizing");
     expect(system).toContain("not supplied does not mean not performed");
     expect(system).toContain("An illuminated indicator is an observation, not an independent measurement");
