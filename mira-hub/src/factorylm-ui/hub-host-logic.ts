@@ -229,12 +229,17 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-): ChatBody & { threadId: string | null; mode?: "general" } {
+  rider?: { visualEvidence?: { fileId: string; capturedAt: string } },
+): ChatBody & { threadId: string | null; mode?: "general"; visualEvidence?: { fileId: string; capturedAt: string } } {
   const base = buildChatBody(question, [...docIds], history);
+  const visual = rider?.visualEvidence;
   return {
     ...base,
     threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
-    ...(docIds.length === 0 ? { mode: "general" as const } : {}),
+    // #4019: a photo turn is served on its visual claim (like mobile), so it is
+    // never forced into general mode, which would switch notebook retrieval off.
+    ...(docIds.length === 0 && !visual ? { mode: "general" as const } : {}),
+    ...(visual ? { visualEvidence: visual } : {}),
   };
 }
 

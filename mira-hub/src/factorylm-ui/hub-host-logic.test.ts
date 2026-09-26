@@ -81,6 +81,22 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
     expect(body.sourceDocIds).toEqual(["doc-a"]);
     expect("mode" in body).toBe(false);
   });
+  // #4019: a photo turn rides the /look fileId, exactly like mobile's send —
+  // and, like mobile, it is NOT forced into general mode: the route serves a
+  // visual claim with no sources (chat route: `visualClaimFileId`), and general
+  // mode would switch notebook retrieval off for a notebook that has sources.
+  it("a photo rider carries visualEvidence and is not forced into general mode", () => {
+    const rider = { visualEvidence: { fileId: "f-1", capturedAt: "2026-09-26T19:00:00Z" } };
+    const body = chatBodyFor("what is this", [], history, sel, rider);
+    expect(body.visualEvidence).toEqual(rider.visualEvidence);
+    expect("mode" in body).toBe(false);
+  });
+  it("no rider leaves the body byte-identical to before", () => {
+    // clientRequestId is minted per call; everything else must match.
+    const strip = ({ clientRequestId: _id, ...rest }: ReturnType<typeof chatBodyFor>) => rest;
+    expect(strip(chatBodyFor("q", [], history, sel, undefined))).toEqual(strip(chatBodyFor("q", [], history, sel)));
+    expect("visualEvidence" in chatBodyFor("q", ["d"], [], sel)).toBe(false);
+  });
   it("the legacy selection posts threadId null, a named thread posts its id", () => {
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "legacy" }).threadId).toBeNull();
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "abc" }).threadId).toBe("abc");

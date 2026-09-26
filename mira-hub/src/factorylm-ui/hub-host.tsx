@@ -23,13 +23,14 @@ import {
   PROFILES,
   createShellState,
   shellReducer,
+  type Attachment,
   type InteractionPart,
   type InteractionTurn,
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
 import { FactoryLMShell, type HostHooks } from "@factorylm/ui";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
@@ -39,7 +40,8 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
+import { composeHubSend, type HeldFile } from "./hub-attachments";
+import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
@@ -130,6 +132,9 @@ export function HubShellHost() {
   // detail of the selection that replaced it (Codex #3839 F3).
   const detailAbortRef = useRef<AbortController | null>(null);
   const [detailGate] = useState(() => latestRequestGate());
+
+  // The web adapter holds the picked bytes until onSend uploads them (#4019).
+  const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(shellReducer, undefined, () =>
     shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
@@ -324,6 +329,47 @@ export function HubShellHost() {
     }
   }, [selection, loadDetail, loadNotebooks]);
 
+  /**
+   * #4019 — attachments ride the turn they were attached to. Upload through the
+   * existing doors (hub-attachments.ts), then ONE canonical send with the
+   * re-read scope and/or the photo rider. A failed upload never lets the
+   * question go out alone: the draft comes back with a plain-language error.
+   * The bytes are released either way — the Composer already dropped the chip,
+   * so keeping them would re-attach an invisible file to a later send (#3863).
+   */
+  const composeAndSend = useCallback(async (
+    text: string,
+    files: readonly HeldFile[],
+    sel: HubSelection,
+    nodeId: string,
+    fallbackScope: readonly string[],
+    history: ReturnType<typeof historyRows>,
+  ) => {
+    setBusy(true);
+    dispatch({ type: "set-send-error", error: null });
+    let composed: Awaited<ReturnType<typeof composeHubSend>>;
+    try {
+      composed = await composeHubSend(
+        { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId },
+        { fetch: (...a) => fetch(...a), apiBase: API_BASE, newKey: () => crypto.randomUUID(), maxUploadMb: MAX_UPLOAD_MB },
+      );
+    } catch {
+      composed = { question: text, failure: "The attachment didn't upload — check the connection." };
+    } finally {
+      for (const f of files) adapter.forget(f.attachment.id);
+    }
+    if (composed.failure) {
+      setBusy(false);
+      dispatch({ type: "set-send-error", error: `${composed.failure} Attach it again, then send.` });
+      dispatch({ type: "set-draft", draft: text });
+      return;
+    }
+    const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
+    await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
+    // Uploaded but not searchable stays visible rather than being swallowed.
+    if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
+  }, [adapter, send]);
+
   /** Create a project through the same contract as the legacy "New notebook" button. */
   const createNotebook = useCallback(async (body: { displayName: string; identitySourceType?: "user" }): Promise<string | null> => {
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/`, {
@@ -343,7 +389,7 @@ export function HubShellHost() {
    * route in general mode (no sources selected), so it persists, streams and
    * lands under Recent like every other conversation.
    */
-  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string) => {
+  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string, files: readonly HeldFile[] = []) => {
     let notebookId: string | null = plan.kind === "existing" ? plan.notebookId : null;
     if (plan.kind === "create") {
       setBusy(true);
@@ -356,12 +402,36 @@ export function HubShellHost() {
     if (!notebookId) { dispatch({ type: "set-draft", draft: q }); return; }
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
-    await send(chatBodyFor(q, [], [], sel), q, sel);
-  }, [createNotebook, select, send]);
+    if (files.length === 0) {
+      await send(chatBodyFor(q, [], [], sel), q, sel);
+      return;
+    }
+    // The upload door needs the notebook's own namespace node (every notebook
+    // has one); a HOME send knows only the id, so read it first.
+    const { status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`);
+    if (status === 401) { setSignedOut(true); return; }
+    if (!data?.notebook?.nodeId) {
+      for (const f of files) adapter.forget(f.attachment.id);
+      dispatch({ type: "set-send-error", error: "That project can't hold files yet. Attach it again, then send." });
+      dispatch({ type: "set-draft", draft: q });
+      return;
+    }
+    await composeAndSend(q, files, sel, data.notebook.nodeId, [], []);
+  }, [adapter, createNotebook, select, send, composeAndSend]);
 
-  const onSend = useCallback((text: string) => {
+  const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
-    if (!q || busy) return;
+    // #4019: pair each chip with the bytes the adapter held for it.
+    const files: HeldFile[] = [];
+    for (const attachment of attachments) {
+      const file = adapter.heldFile(attachment.id);
+      if (file) files.push({ attachment, file });
+    }
+    if (attachments.length > 0 && files.length === 0) {
+      // Never send the question as if the file were attached.
+      throw new Error("That attachment is no longer available. Attach it again, then send.");
+    }
+    if ((!q && files.length === 0) || busy) return;
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
     // RETURNS, so a send before the data loaded used to discard the
     // technician's question. Throwing is the Composer's documented contract
@@ -371,12 +441,16 @@ export function HubShellHost() {
     if (!selection) {
       const plan = homeSendPlan(notebooks);
       if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
-      void sendFromHome(plan, q);
+      void sendFromHome(plan, q, files);
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    if (files.length > 0) {
+      void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
+      return;
+    }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [busy, selection, notebooks, detail, docIds, send, sendFromHome]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
@@ -449,8 +523,6 @@ export function HubShellHost() {
     const text = sources.length ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
   }, [view.thread.turns, citations]);
-
-  const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const hooks: HostHooks = {
     onSend,

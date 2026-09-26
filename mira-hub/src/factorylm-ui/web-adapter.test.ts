@@ -26,6 +26,23 @@ function deps(over: Partial<WebAdapterDeps> = {}): WebAdapterDeps {
 }
 
 describe("attachments", () => {
+  // #4019: the adapter used to return only the descriptor and drop the File, so
+  // the host had nothing to upload. It holds the bytes until the host takes them.
+  it("holds the picked bytes by attachment id until the host forgets them", async () => {
+    const f = file("g120.pdf", "application/pdf");
+    const a = createWebAdapter(deps({ pickFile: async () => f }));
+    const picked = await a.attachFile();
+    expect(a.heldFile(picked!.id)).toBe(f);
+    a.forget(picked!.id);
+    expect(a.heldFile(picked!.id)).toBeUndefined();
+  });
+
+  it("a dismissed chooser holds nothing", async () => {
+    const a = createWebAdapter(deps({ pickFile: async () => null }));
+    expect(await a.attachPhoto()).toBeNull();
+    expect(a.heldFile("att_1")).toBeUndefined();
+  });
+
   it("maps a chosen PDF to a pdf attachment", async () => {
     const a = createWebAdapter(deps({ pickFile: async () => file("g120.pdf", "application/pdf") }));
     expect(await a.attachFile()).toEqual({
