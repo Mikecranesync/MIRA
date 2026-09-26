@@ -165,7 +165,6 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 | Var | Default | Meaning |
 |---|---|---|
 | `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
-| `MIRA_NOTEBOOK_PROVIDER` | unset (canonical cascade) | Exact `"openai"`, with `MIRA_CANONICAL_SEAM=1`, selects only OpenAI `gpt-5.5-2026-04-23` using `OPENAI_API_KEY`. Authorized local comparison only: run with the session's tested spending guard and record the provider/model. No silent fallback when OpenAI is unavailable. Unset restores the normal cascade. This option does not authorize a production provider or cost change. |
 | `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
@@ -199,6 +198,16 @@ Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scop
 
 `/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.
 
-The local `MIRA_NOTEBOOK_PROVIDER=openai` comparison applies only to notebook
+## Local comparison setting (not deployed by Compose)
+
+`MIRA_NOTEBOOK_PROVIDER` defaults to unset. Exact `openai`, together with
+`MIRA_CANONICAL_SEAM=1`, selects only OpenAI `gpt-5.5-2026-04-23` with
+`OPENAI_API_KEY`. No fallback substitutes another answer provider. Run only with
+the session spending guard and record model/provider identity; unset restores
+the normal cascade. This authorizes no production provider or cost change.
+
+This local test setting is kept outside the deployment inventory tables because
+it is deliberately absent from SaaS/staging Compose. The local
+`MIRA_NOTEBOOK_PROVIDER=openai` comparison applies only to notebook
 answer generation with the canonical seam enabled. The semantic safety judge
 retains its existing Groq → Cerebras → Together registry and fail-closed behavior.
