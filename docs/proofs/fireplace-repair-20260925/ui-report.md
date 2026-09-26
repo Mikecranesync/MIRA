@@ -1,5 +1,14 @@
 # UI repair handoff — 2026-09-25
 
+## Start here — plain-language summary
+
+This records repairs to the screens and buttons: saved conversations, opening photos, upload progress, and retry. Earlier automated checks passed. The main report explains what was subsequently tested on the phone.
+
+[Read the complete plain-language report on GitHub](https://github.com/Mikecranesync/MIRA/pull/3999#issuecomment-5841521419). It separates what works, what still fails, and what has actually been published.
+
+<details>
+<summary>Technical test record for developers</summary>
+
 Implementation: `89e21505da1ee4071edb7a7df9687867b71bc7e7` (`fix(mobile): preserve photo retry context and conversation reachability`). Integration already includes the existing #3845 attachment and #3807 Sources repairs. No replacement architecture or case-specific diagnostic answer was introduced.
 
 ## Root causes and repairs
@@ -30,3 +39,5 @@ Implementation: `89e21505da1ee4071edb7a7df9687867b71bc7e7` (`fix(mobile): preser
 Root owns phone/build execution. At this report's creation, root reports that the mounted-project Sources panel/sheet opens and preparation acknowledgement appears immediately (29 ms). These are root's ongoing physical observations, not independently executed by this worker. Original-photo viewing, both conversation-switch directions, failed-photo explicit retry/exactly-one send, dismiss isolation, and unchanged-versus-edited text draft retry still require root's physical acceptance record. Automated success does not establish device or diagnostic acceptance.
 
 Private photos, screenshots, and phone/backend evidence remain local and must not be published. This worker performed no commit, push, install, deployment, or device action; root created the integration commit. No source edits followed this handoff.
+
+</details>

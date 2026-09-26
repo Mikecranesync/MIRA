@@ -43,7 +43,7 @@ vi.mock("@/lib/nameplate", () => ({
 vi.mock("@/lib/nameplate/detect", () => ({ resolveRecognitionImage: vi.fn() }));
 vi.mock("@/lib/nameplate/passes", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/nameplate/passes")>();
-  return { ...real, togetherVisionCall: vi.fn() };
+  return { ...real, togetherVisionCall: vi.fn(), openaiVisionCall: vi.fn() };
 });
 // The raw DB pool must never be touched by this route for product data (no
 // knowledge_entries write). The Turn Flight Recorder's ledger write is the one
@@ -60,8 +60,14 @@ import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { recordLookObservation } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
-import { togetherVisionCall } from "@/lib/nameplate/passes";
+import { togetherVisionCall, openaiVisionCall } from "@/lib/nameplate/passes";
 import pool from "@/lib/db";
+
+vi.mock("@/lib/nameplate/preprocess", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/nameplate/preprocess")>()),
+  prepareInspectionImage: vi.fn(),
+}));
+import { prepareInspectionImage } from "@/lib/nameplate/preprocess";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const NODE_ID = "99999999-8888-7777-6666-555555555555";
@@ -114,6 +120,7 @@ function armVision(observation: string, model = "vision-test") {
 }
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
   vi.resetAllMocks();
   vi.mocked(sessionOr401).mockResolvedValue(session);
   vi.mocked(getNotebook).mockResolvedValue(notebook);
@@ -481,4 +488,41 @@ it('decodes a complete escaped JSON object, never truncated JSON or arbitrary pr
  const response=await POST(makeReq(),makeParams(NOTEBOOK_ID));
  expect(response.status).toBe(200);
  expect((await response.json()).observation.text).toBe(intended.observation);
+});
+
+
+describe('opt-in LOOK provider and working image',()=>{
+ it('sends normalized pixels only to vision; retains original bytes and tenant scope',async()=>{
+  vi.stubEnv('LOOK_VISION_PROVIDER','openai');vi.stubEnv('OPENAI_API_KEY','test');vi.stubEnv('LOOK_IMAGE_PREPROCESS','1');
+  vi.mocked(isRecognizerConfigured).mockReturnValue(false);
+  const normalized=Buffer.from('normalized working view');
+  vi.mocked(prepareInspectionImage).mockResolvedValue({buffer:normalized,mimeType:'image/jpeg',metadata:{originalWidth:4000,originalHeight:3000,width:1932,height:2576,rotationDegrees:270,osdRotation:270,osdConfidence:1.68,osdStatus:'accepted'}});
+  vi.mocked(openaiVisionCall).mockResolvedValue({text:'{"observation":"A printed diagram","hazards":[]}',model:'gpt-5.5',finishReason:'stop'});
+  const response=await POST(makeReq({content:JPEG_MAGIC}),makeParams(NOTEBOOK_ID));
+  expect(response.status).toBe(200);
+  expect(parkOrReuseFile).toHaveBeenCalledWith(expect.objectContaining({tenantId:TENANT_ID,buffer:Buffer.from(JPEG_MAGIC)}));
+  expect(openaiVisionCall).toHaveBeenCalledWith(expect.objectContaining({images:[{base64:normalized.toString('base64'),mimeType:'image/jpeg'}]}));
+  expect(recordLookObservation).toHaveBeenCalledWith(expect.objectContaining({tenantId:TENANT_ID,notebookId:NOTEBOOK_ID,createdBy:'u_1',fileId:FILE_ID}));
+  expect(togetherVisionCall).not.toHaveBeenCalled();
+  expect(await response.json()).toMatchObject({provider:'openai',preprocessing:{rotationDegrees:270},fileId:FILE_ID});
+ });
+ it('returns retained photo and distinct preprocessing failure without invoking either provider',async()=>{
+  vi.stubEnv('LOOK_VISION_PROVIDER','openai');vi.stubEnv('OPENAI_API_KEY','test');vi.stubEnv('LOOK_IMAGE_PREPROCESS','1');
+  vi.mocked(prepareInspectionImage).mockRejectedValue(new Error('osd_timeout'));
+  const response=await POST(makeReq(),makeParams(NOTEBOOK_ID));
+  expect(response.status).toBe(502);
+  expect(await response.json()).toMatchObject({reason:'preprocessing_error',fileId:FILE_ID,observation:null});
+  expect(openaiVisionCall).not.toHaveBeenCalled();expect(togetherVisionCall).not.toHaveBeenCalled();
+ });
+ it('validates OpenAI JSON through the same inspection contract and bounded retry',async()=>{
+  vi.stubEnv('LOOK_VISION_PROVIDER','openai');vi.stubEnv('OPENAI_API_KEY','test');
+  vi.mocked(openaiVisionCall).mockResolvedValue({text:'not JSON',model:'gpt-5.5',finishReason:'stop'});
+  expect((await POST(makeReq(),makeParams(NOTEBOOK_ID))).status).toBe(502);
+  expect(openaiVisionCall).toHaveBeenCalledTimes(2);expect(recordLookObservation).not.toHaveBeenCalled();
+ });
+ it('does not silently fall back from an unknown opt-in provider',async()=>{
+  vi.stubEnv('LOOK_VISION_PROVIDER','typo');
+  expect((await POST(makeReq(),makeParams(NOTEBOOK_ID))).status).toBe(503);
+  expect(openaiVisionCall).not.toHaveBeenCalled();expect(togetherVisionCall).not.toHaveBeenCalled();
+ });
 });

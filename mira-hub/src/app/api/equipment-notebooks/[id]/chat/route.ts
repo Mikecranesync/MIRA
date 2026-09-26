@@ -188,6 +188,17 @@ function answerGateEnabled(): boolean {
   return process.env.NOTEBOOK_ANSWER_GATE !== "0";
 }
 
+const VISUAL_REASONING_PROMPT = `VISUAL REASONING:
+- Photo descriptions are fallible model readings, not direct electrical measurements. Distinguish printed labels, visible states, technician reports, and inference. Previous assistant answers are not evidence and must not be attributed to the technician.
+- Preserve legible component names, relay/terminal identifiers and AC/DC qualifiers exactly. Do not substitute a familiar component or complete unreadable text.
+- An empty-looking screw face does not establish a missing wire, continuity, absent power or a fault. A dark indicator does not prove a relay or circuit is de-energized. Do not infer hidden terminations or contact state from appearance alone.
+- A wiring drawing does not establish controller program logic or a Boolean enable sequence. Describe only traced connections; request the logic/manual for unshown behavior.
+- Do not rename screw heads as indicator lights or assign status meanings that are not printed or supported by matching documentation. If the observation is ambiguous, say so locally.
+- When a current photo is attached, "this photo" and "this drawing" mean the CURRENT photo, never an earlier one. Lead with its subject even if it differs from earlier pictures.
+- Indicator color alone does not establish voltage, healthy operation, a contact position, a relay coil state or absence of a fault. Quote a printed legend when present; otherwise state only the observed light and request the matching reference for meaning. Do not add a typical-meaning table as if it describes this device.
+- Use all supplied photo observations for comparison, naming current versus earlier photos. Do not claim the original pixels are visible to you when only descriptions are supplied.
+- Retrieved manuals describe their own equipment; retrieval does not establish the photographed equipment identity. Do not assign a document's manufacturer/model to a photographed component unless independent photo or technician evidence establishes that match. Preserve label-to-component associations in observations; unassigned labels remain unassigned.`;
+
 const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
@@ -251,15 +262,7 @@ HONESTY:
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
-VISUAL REASONING:
-- Photo descriptions are fallible model readings, not direct electrical measurements. Distinguish printed labels, visible states, technician reports, and inference. Previous assistant answers are not evidence and must not be attributed to the technician.
-- Preserve legible component names, relay/terminal identifiers and AC/DC qualifiers exactly. Do not substitute a familiar component or complete unreadable text.
-- An empty-looking screw face does not establish a missing wire, continuity, absent power or a fault. A dark indicator does not prove a relay or circuit is de-energized. Do not infer hidden terminations or contact state from appearance alone.
-- A wiring drawing does not establish controller program logic or a Boolean enable sequence. Describe only traced connections; request the logic/manual for unshown behavior.
-- Do not rename screw heads as indicator lights or assign status meanings that are not printed or supported by matching documentation. If the observation is ambiguous, say so locally.
-- When a current photo is attached, "this photo" and "this drawing" mean the CURRENT photo, never an earlier one. Lead with its subject even if it differs from earlier pictures.
-- Indicator color alone does not establish voltage, healthy operation, a contact position, a relay coil state or absence of a fault. Quote a printed legend when present; otherwise state only the observed light and request the matching reference for meaning. Do not add a typical-meaning table as if it describes this device.
-- Use all supplied photo observations for comparison, naming current versus earlier photos. Do not claim the original pixels are visible to you when only descriptions are supplied.
+${VISUAL_REASONING_PROMPT}
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on electrical equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized. A LOTO heading cannot make checking for present supply voltage a de-energized procedure. Passive interpretation of photographed indicators or printed ratings requires no equipment action.`;
 
@@ -2190,7 +2193,9 @@ async function handleChatTurn(
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = docGrounded
+    ? BASE_SYSTEM_PROMPT + (lookContext ? `\n\n${VISUAL_REASONING_PROMPT}` : "")
+    : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective

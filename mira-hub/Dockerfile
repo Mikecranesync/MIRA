@@ -30,6 +30,8 @@ ENV NEXT_PUBLIC_PIPELINE_API_URL=$NEXT_PUBLIC_PIPELINE_API_URL
 RUN npm run build
 
 FROM base AS runner
+# Opt-in LOOK orientation: fixed native OSD binary + Apache-2.0 orientation data.
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-osd
 WORKDIR /app/mira-hub
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

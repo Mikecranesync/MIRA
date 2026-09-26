@@ -1,5 +1,14 @@
 # Backend repair checkpoint — 2026-09-25
 
+## Start here — plain-language summary
+
+This records repairs to the part of MIRA that reads evidence and writes answers. Software checks passed, but real photo answers still contain mistakes. Later emulator findings supersede any older progress claim below.
+
+[Read the complete plain-language report on GitHub](https://github.com/Mikecranesync/MIRA/pull/3999#issuecomment-5841521419). It separates what works, what still fails, and what has actually been published.
+
+<details>
+<summary>Technical test record for developers</summary>
+
 Candidate base: `7e45def2b98898861041a23104dd5b7224c307a8` (root's combined current-main + existing navigation/retry repairs). Root subsequently committed backend as `32787374d`. At the first checkpoint this worker made no commits, pushes, deployments, DB operations, provider changes or live API calls. Subsequent explicitly authorized local diagnostics are recorded below. Physical candidate grading is still required. Original staging observations were on older `24f90b7`; these causes were inspected in current candidate source.
 
 ## Causes and changes
@@ -51,3 +60,21 @@ Live round3 still fails visual accuracy: sideways safety schematic LOOK502; brea
 Diagnostic-only rotated and multiview controls preserve originals and improve CURRENT SENSOR/sheet identification, but still misread E-STOP/440R. No preprocessing was added to production. Authenticated Together model listing identified public Qwen3-VL 8B/32B/235B candidates with Apache-2.0 metadata; model listing is not successful inference proof. Parent owns further bounded comparisons.
 
 Verification logs: `/tmp/fireplace-eof-red.log` (2 failed/13 passed), `/tmp/fireplace-eof-green.log` (15 passed), `/tmp/fireplace-and-green.log` (117 passed), and `/tmp/fireplace-round2-checkpoint-full.log` (295 files /3893 tests passed). Latest pre-EOF full suite was295 files/3889 tests; tsc remained33 baseline-only diagnostics in `/tmp/fireplace-round2-final-tsc.log`. The actual model controls are not replaced by these mocks.
+
+Final bounded diagnostic: upright full safety drawing plus four native-resolution quadrants returned200/stop and correctly read AB/440R/CURRENT SENSOR/sheet4of5, but still E-STOP→F-STOP and exceeded eight labels. Raw result: private-backend-diagnostic/quadrants/PXL_20260925_092954021.jpg.json. This is partial improvement, not clean acceptance; no production transform was added. Separate authorized worker tested listed Qwen235B/32B/8B: all actual inference requests returned400 model_not_available (dedicated endpoint required). No runtime provider/model configuration was changed.
+
+### Evaluator correction
+Root re-inspected the original safety drawing at full resolution: F-STOP may be the literal printed label (including C-FSTOP-PR), so earlier E→F grading is withdrawn. It is not demonstrated model error. Root's subsequent audit of the native-quadrant output found AB/440R/CURRENT SENSOR/DC24/120VAC and the other reported labels plausible. That control is potentially useful and must not be called failed solely on the earlier F/E assumption. This correction changes evaluator grading only; no hints were sent to MIRA.
+
+### Existing PrintSense provider comparison
+Reused `printsense.interpret._generate_with_provider` with original image bytes, its existing schema/system prompt, and neutral question. OpenAI default gpt-5.5 works with staging key (91s drawing /77s panel); original sideways drawing still includes incorrect442R/C-STOPPRT/TLOW240VAC readings. Panel reads1489-M and fullACS035 model plus printed AmberOver/GreenUnder without assigning an electrical LED state, but requires independent fine-label audit. Existing Anthropic default claude-opus-4-8 returns400 insufficient API credit balance; no retry or account changes. Capability registry marks both defaults formally untested; actual working inference is not formal qualification. Fourth/final call is an authorized upright OpenAI control, pending.
+
+PrintSense already contains Pillow/Tesseract content-based orientation in `printsense/preprocess.py`; local pytesseract is absent (tesseract binary present), so normal local preprocessing only resizes. Current Hub has no PrintSense interpreter call or OpenAI/Anthropic vision adapter found. No provider architecture/runtime change was made.
+
+Fourth PrintSense diagnostic completed80s: upright OpenAI improves AB/440R/CURRENT SENSOR/FLOW SWITCH and correctly separates vendor5399-E001 from UniversalN/A, but exhausts12000 outputtokens and ends mid-JSON. No valid graph pass; no provider integration. Details: private-backend-diagnostic/print-provider-comparison/REPORT.md. Existing nameplate agreement functions are field-limited and select a winner, not a generic prose verification gate; no new framework or source edits made during frozen physical checkpoint.
+
+Matching-contract follow-up (two explicitly authorized calls): OpenAI gpt-5.5 with EXACT current Hub INSPECTION_PROMPT, original images, neutral question, medium reasoning and4096 total output budget. Both completed with validJSON in~10s. Original sideways safety print confidently becomes AIR SAFETY MODULE/LOCKOUT SAFETY RELAY/START SWITCH/TEMP SWITCH/COMB PASS THRU JUMPER: clear inaccurate transcription. Panel preserves1489/fullACS035/two green indicators but supply rating needs audit. Provider swap alone does not solve original-photo correctness. Exact status/usage/raw JSON: private-backend-diagnostic/openai-look-contract/. No source changes or new adapter.
+
+Automatic preprocessing control: installed missing pytesseract only under disposable `/tmp/mira-fireplace-localqa/python-deps`; existing Tesseract binary used. Existing `printsense.preprocess.prepare_print_image` detected rotate270/orientation_conf1.68 above its1.0 threshold, automatically corrected original4000x3000 to1932x2576. No manual orientation hint. One exact-LOOK-prompt OpenAI control completed validJSON in14.57s with AB SAFETY MODULE/440R/TB104/TB105/K2/K1(FIRE)/24VDC+/120VAC NEUTRAL and correct vendor5399-E001/revD/sheet4of5, distinguishing drawing from hardware/logic. No clear invented labels/counts in this concise result; independent root visual audit still required. Evidence: private-backend-diagnostic/auto-orientation/ (actual OSD/hashes plus raw response). No production preprocessing/provider change.
+
+</details>

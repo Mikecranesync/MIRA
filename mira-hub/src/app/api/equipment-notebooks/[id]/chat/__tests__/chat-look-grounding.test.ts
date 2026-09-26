@@ -130,6 +130,31 @@ beforeEach(() => {
 });
 
 describe("#3788 — a verified photo's observation reaches the model's user content", () => {
+  it("keeps visual uncertainty rules when a verified photo and document excerpts reach the provider together", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([
+      { docId: "d1", filename: "drive.pdf", page: 1, content: "A drive status indicator is described here." },
+    ]);
+    await (await POST(req({ message: "What can you tell from this photo?", visualEvidence: { fileId: PHOTO } }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    const system = messages.find((m) => m.role === "system")!.content;
+    expect(system).toContain("Indicator color alone does not establish voltage");
+    expect(system).toContain("Previous assistant answers are not evidence");
+    expect(ragMock.buildManualUserContent).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([expect.objectContaining({ docId: "d1" })]), LOOK_SENTINEL);
+  });
+
+  it("leaves the document-only prompt unchanged when no photo evidence is present", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([
+      { docId: "d1", filename: "drive.pdf", page: 1, content: "A drive status indicator is described here." },
+    ]);
+    await (await POST(req({ message: "What does the manual say?" }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    expect(messages.find((m) => m.role === "system")!.content).not.toContain("VISUAL REASONING:");
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+  });
+
   it("verified fileId: loadVisualEvidenceForPhoto is called with the SERVER fileId, and its render rides buildManualUserContent's visual-context arg", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
 

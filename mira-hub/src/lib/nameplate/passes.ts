@@ -604,6 +604,40 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
   return { text: body.choices?.[0]?.message?.content ?? "{}", model, finishReason: body.choices?.[0]?.finish_reason ?? null };
 };
 
+/** Opt-in notebook LOOK adapter; existing nameplate defaults do not call it.
+ * Mirrors PrintSense's Responses/high-detail protocol with stricter completion.
+ */
+export const openaiVisionCall: VisionCall = async ({ prompt, images }) => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("recognizer_not_configured");
+  const model = process.env.LOOK_VISION_MODEL || "gpt-5.5";
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model, store: false, max_output_tokens: 4096, reasoning: { effort: "medium" },
+      input: [{ role: "user", content: [
+        { type: "input_text", text: prompt },
+        ...images.map((image) => ({ type: "input_image", detail: "high",
+          image_url: `data:${image.mimeType};base64,${image.base64}` })),
+      ] }],
+    }),
+  });
+  if (!response.ok) throw new Error(`recognizer_provider_error_${response.status}`);
+  const body = await response.json() as {
+    status?: string;
+    model?: string;
+    output?: { type?: string; content?: { type?: string; text?: string }[] }[];
+  };
+  if (body.status !== "completed") throw new Error("vision_incomplete_response");
+  const text = (body.output ?? []).filter((item) => item.type === "message")
+    .flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text")
+    .map((item) => item.text ?? "").join("");
+  if (!text.trim()) throw new Error("vision_empty_response");
+  return { text, model: body.model || model, finishReason: "stop" };
+};
+
 export function safeJson(text: string): Record<string, unknown> | null {
   try {
     const v = JSON.parse(text);
