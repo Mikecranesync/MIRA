@@ -18,6 +18,12 @@ describe("GENERAL_SYSTEM_PROMPT never implies a documentation search (#4015)", (
     expect(general).toBeTruthy();
     expect(general![1]).toContain("You searched NO documentation");
     expect(general![1]).toContain("the documentation does not specify");
-    expect(general![1]).toContain("I don't have this machine's manual");
+    expect(general![1]).toContain("I'm answering from general knowledge, not this machine's manual");
+  });
+
+  it("the identity-bound abstain never claims the manual is absent (#4015)", () => {
+    // A zero-hit model-scoped search is not proof the library lacks the manual.
+    expect(routeText).not.toContain("manual in the library yet");
+    expect(routeText).toContain("manual pages I have, so I won't guess a documented value");
   });
 });
