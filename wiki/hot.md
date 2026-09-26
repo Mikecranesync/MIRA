@@ -1,3 +1,19 @@
+# Hot Cache — 2026-09-25 — proposed Owner Proxy contract
+
+The [Owner Proxy reuse audit](../docs/product/OWNER_PROXY_RECONNAISSANCE.md)
+links the proposed owner principles, refinement mission rules and first fireplace
+benchmark. This is documentation for review, not operational acceptance or permission
+to start a new service. Existing Foreman, Answer Radar and Turn Flight Recorder are
+the reuse candidates; refresh active owners before connecting them.
+
+[PR #3999 findings](https://github.com/Mikecranesync/MIRA/pull/3999#issuecomment-5841521419)
+remain the first proving ground. Emulator investigation still found inaccurate answers;
+frozen five-photo/Pixel/web acceptance remains incomplete. Preserve the active repair
+worktree. The supplied First Mission section is truncated; obtain its remainder before
+treating the proposed contract as a complete mission dispatch. No merge or deployment.
+
+---
+
 # Hot Cache — 2026-09-19 — customer-ready unified experience release train
 
 **Start here:** [`docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md`](../docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md).
