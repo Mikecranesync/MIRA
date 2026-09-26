@@ -39,6 +39,7 @@ const domainMock = vi.hoisted(() => ({
   // Now returns the row id (equipment-notebooks.ts fix, this lane) — the
   // packet's `persistence.turn_row_id` / `ids.turn_id` depend on it.
   listTurns: vi.fn(async () => [] as unknown[]),
+  normalizeNotebookThreadId: (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null),
   recordTurn: vi.fn(async () => "ffffffff-ffff-4fff-8fff-ffffffffffff"),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
   getNotebook: vi.fn(async () => ({
@@ -451,6 +452,63 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(call[3].equipmentType).toBe("HMIs");
   });
 
+  it("2d. #4004: identity-bound + empty scoped retrieval + documented-value question → honest abstain, no provider call", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(
+        chatReq({
+          message: "what supply voltage does the TP700 Comfort panel need and what is its operating temperature range",
+          mode: "general",
+        }),
+        params,
+      ),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Siemens TP700 Comfort manual");
+    expect(fr.some((f) => f.kind === "content")).toBe(false);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.decision).toBe("insufficient_evidence");
+    expect(p.answer_gate.reason).toBe("identity_bound_no_manual");
+    const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerStatus: string; answerText: string };
+    expect(rec.answerStatus).toBe("insufficient_evidence");
+    expect(rec.answerText).toContain("won't guess");
+  });
+
+  it("2e. #4004 control: identity-bound + empty retrieval + a CONCEPTUAL question still answers (general lane)", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("Check the power supply and the boot log first."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("answered");
+  });
+
+  it("2f. #4004 control: identity-bound WITH scoped chunks + documented-value question → grounded, not abstained", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
+    const fetchMock = vi.fn(async () => providerStream("The panel needs 24 V DC [1]."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "what supply voltage does the TP700 Comfort need", mode: "general" }), params));
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.message ?? "").not.toContain("manual in the library");
+  });
+
+  it("2g. #4004 control: a manufacturer-only notebook (no model) keeps the pre-existing path — not identity-bound", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("Typical panels use 24 V DC; check the nameplate."));
+    vi.stubGlobal("fetch", fetchMock);
+    await (await POST(chatReq({ message: "what supply voltage does it need", mode: "general" }), params)).text();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk(DOC_A, "")] as never);
@@ -545,6 +603,42 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.retrieval.oem_manufacturer_source).toBe("photo");
     // VISUAL_EVIDENCE_DROPPED must NOT fire: the evidence reached context.
     expect((persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].anomalies.map((a) => a.code)).not.toContain("VISUAL_EVIDENCE_DROPPED");
+  });
+
+  it("4b. scenario 4: a photo uploaded WITHOUT a threadId (pre-#3968 app) is still recalled in the thread that answered from it", async () => {
+    const TH = "thrd_" + "a".repeat(32);
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" });
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "t1", threadId: TH, question: "what is this", answerStatus: "answered", answerText: "A panel.", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "workspace_evidence", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
+    ] as never);
+    // Thread-scoped lookup misses (the LOOK was stored under "legacy"); the
+    // legacy-thread lookup for the SAME verified photo finds it.
+    veMock.loadVisualEvidenceForPhoto
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "Siemens TP700 Comfort, Supply 24 Vdc", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("From the earlier photo it is 24 Vdc.")));
+    await (await POST(chatReq({ message: "what voltage was it?", mode: "general", threadId: TH }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const scopes = veMock.loadVisualEvidenceForPhoto.mock.calls.map((c) => (c as unknown[])[3] as { threadId: string | null; allowLegacy?: boolean });
+    expect(scopes[0]).toMatchObject({ threadId: TH, allowLegacy: true });
+    expect(scopes[1]).toMatchObject({ threadId: null });
+    expect(packetOf().retrieval.prior_visual_observations_considered).toBe(1);
+  });
+
+  it("4c. scenario 4 control: with no threadId on the chat there is no second (legacy) lookup", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" });
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "t1", threadId: null, question: "what is this", answerStatus: "answered", answerText: "A panel.", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "workspace_evidence", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
+    ] as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce(null as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I can't see an earlier photo.")));
+    await (await POST(chatReq({ message: "what voltage was it?", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(veMock.loadVisualEvidenceForPhoto).toHaveBeenCalledTimes(1);
   });
 
   it("4a. the newest recalled photo alone selects OEM identity when an older photo is a different model", async () => {

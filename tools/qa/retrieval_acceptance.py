@@ -199,9 +199,13 @@ class Hub:
             raise RuntimeError(f"look failed: {st} {j}")
         return hd.get("x-mira-trace-id"), j
 
-    def diagnostics(self, notebook_id: str, trace_id: str | None, attempts: int = 8) -> dict[str, Any]:
+    def diagnostics(
+        self, notebook_id: str, trace_id: str | None, attempts: int = 8
+    ) -> dict[str, Any]:
         if not trace_id:
-            raise RuntimeError(f"no x-mira-trace-id on the chat response for notebook {notebook_id} (flight recorder disabled?)")
+            raise RuntimeError(
+                f"no x-mira-trace-id on the chat response for notebook {notebook_id} (flight recorder disabled?)"
+            )
         for _ in range(attempts):
             st, _, j = self.json(
                 "GET", f"/api/equipment-notebooks/{notebook_id}/turns/diagnostics/?limit=5"
@@ -359,10 +363,16 @@ def run(args: argparse.Namespace) -> int:
         r.get("oem_manufacturer_source") == "notebook",
         str(r.get("oem_manufacturer_source")),
     )
+    # Traceability applies to candidates that WERE returned. Zero candidates is
+    # the correct outcome when the corpus has no manual for the bound model
+    # (#3970 scopes to the model; the old ">0" only passed on the wrong-family
+    # V20 chunks #3966 was filed about) — and is acceptable ONLY together with
+    # an honest insufficient_evidence, never an answer (#4004).
     row.check(
-        "candidates traceable (source_url#page ids)",
-        r["candidate_count"] > 0 and len(r["returned_doc_ids"]) > 0,
-        f"{r['candidate_count']} / {len(r['returned_doc_ids'])}",
+        "candidates traceable (source_url#page ids), or none + honest abstain",
+        (r["candidate_count"] > 0 and len(r["returned_doc_ids"]) > 0)
+        or (r["candidate_count"] == 0 and w["status"] == "insufficient_evidence"),
+        f"{r['candidate_count']} / {len(r['returned_doc_ids'])} status={w['status']}",
     )
     honest = (
         w["status"] == "answered" and w["citations"] > 0 and w["basis"] == "oem_documentation"
