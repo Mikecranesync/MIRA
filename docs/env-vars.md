@@ -197,3 +197,17 @@ Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scop
 | `MIRA_TRACE_VIEWER_URL_TEMPLATE` | unset | Optional trace-viewer URL template with a `{traceId}` placeholder (e.g. a Langfuse trace URL), surfaced by the turn diagnostics endpoint. `null` when unset. |
 
 `/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.
+
+## Local comparison setting (not deployed by Compose)
+
+`MIRA_NOTEBOOK_PROVIDER` defaults to unset. Exact `openai`, together with
+`MIRA_CANONICAL_SEAM=1`, selects only OpenAI `gpt-5.5-2026-04-23` with
+`OPENAI_API_KEY`. No fallback substitutes another answer provider. Run only with
+the session spending guard and record model/provider identity; unset restores
+the normal cascade. This authorizes no production provider or cost change.
+
+This local test setting is kept outside the deployment inventory tables because
+it is deliberately absent from SaaS/staging Compose. The local
+`MIRA_NOTEBOOK_PROVIDER=openai` comparison applies only to notebook
+answer generation with the canonical seam enabled. The semantic safety judge
+retains its existing Groq → Cerebras → Together registry and fail-closed behavior.

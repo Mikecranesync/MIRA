@@ -80,3 +80,14 @@ describe("prompt abstention directives (#3764)", () => {
     expect(routeText).toContain("generic value");
   });
 });
+
+describe('photo reasoning boundary (#3992, #3997)', () => {
+  it('does not force diagnosis for a neutral observation question', () => {
+    expect(routeText).not.toContain('Lead with the most likely cause or the first thing to check');
+    expect(routeText).toContain('For a description or interpretation request, answer that request');
+  });
+  it('keeps prior assistant guesses distinct from operator evidence', () => {
+    expect(routeText).toContain('Previous assistant answers are not evidence');
+    expect(routeText).toContain('A wiring drawing does not establish controller program logic');
+  });
+});

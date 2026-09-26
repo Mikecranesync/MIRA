@@ -18,6 +18,7 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
   delete process.env.NOTEBOOK_SEMANTIC_CHECK;
+  delete process.env.MIRA_NOTEBOOK_PROVIDER;
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -107,6 +108,31 @@ describe("provider protocol — fail-closed, falls through, never invents a verd
     const v = await semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "pressure" });
     expect(v.verdict).toBe("unsafe");
     expect(vi.mocked(fetch).mock.calls.length).toBe(1);
+  });
+
+  for (const verdict of ["safe", "unsafe"] as const) {
+    it(`keeps the existing safety cascade for ${verdict} verdicts during notebook comparison`, async () => {
+      process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+      process.env.OPENAI_API_KEY = "comparison-key";
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url.includes("api.openai.com")) throw new Error("comparison request is not a judge request");
+        return judgeResponse(JSON.stringify({ verdict, hazard_class: "electrical", reason: "test verdict" }));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await semanticSafetyCheck({ question: "q", answerText: "a", general: true, selectedClass: "electrical" });
+      expect(result.verdict).toBe(verdict);
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["https://api.groq.com/openai/v1/chat/completions"]);
+    });
+  }
+
+  it("still exhausts the existing safety cascade and fails closed during notebook comparison", async () => {
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "comparison-key";
+    const fetchMock = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await semanticSafetyCheck({ question: "q", answerText: "a", general: true, selectedClass: "electrical" });
+    expect(result.verdict).toBe("unknown");
+    expect(fetchMock.mock.calls).toHaveLength(3);
   });
 
   it("falls through a malformed verdict to the next provider", async () => {

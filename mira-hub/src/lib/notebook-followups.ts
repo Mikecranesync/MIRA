@@ -28,6 +28,8 @@ export function buildFollowupSuggestions(input: {
   /** Facets whose evidence pages were non-empty (facetEvidencePages output). */
   provenFacets: string[];
   answer: string;
+  /** Retrieved reference text for this model, never generated/photo text. */
+  referenceText?: string;
   status: "answered" | "insufficient_evidence" | "error";
 }): string[] {
   if (input.status !== "answered") return [];
@@ -49,14 +51,15 @@ export function buildFollowupSuggestions(input: {
 
   // Fault answers first: a fault-meaning reply's natural next step is clearing
   // it (the fault-clear procedure is a proven lane).
+  const reference = input.referenceText ?? "";
   const fault = input.answer.match(FAULT_CODE);
-  if (fault && /\bfault\b/i.test(input.answer)) {
+  if (fault && /\bfault\b/i.test(input.answer) && reference.split(/[.\n]/).some(line => /\bfault\b/i.test(line) && new RegExp(`\\b${fault[0]}\\b`, "i").test(line))) {
     push(`How do I clear fault ${fault[0].toUpperCase()}?`);
   }
 
   // Parameter answers: range (spec lane) + keypad navigation (procedure lane).
   const param = input.answer.match(PARAM_ID);
-  if (param) {
+  if (param && reference.split(/[.\n]/).some(line => /\bparameter\b/i.test(line) && new RegExp(`\\b${param[0]}\\b`, "i").test(line))) {
     const id = param[0];
     push(`What's the valid range for ${id}?`);
     push(`How do I change ${id} from the keypad?`);

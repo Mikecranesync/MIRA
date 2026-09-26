@@ -1,21 +1,10 @@
-/**
- * preprocess.ts — dependency-free introspection of a nameplate photo.
- *
- * ⚠️ WHAT THIS FILE DELIBERATELY DOES NOT DO: rotate, crop, deskew, or contrast-
- * stretch pixels. Node has no built-in image codec, so any real pixel work needs
- * a native decoder (`sharp`) or a browser `<canvas>`. `sharp` is NOT a declared
- * dependency of mira-hub (it is only physically present as a Next.js transitive),
- * and adding a native image library to the server bundle is a decision for a
- * human, not a silent import. `benchmarks/nameplate/run.ts` measures what
- * rotation would buy (a lot, on a rotated label) using a dev-only dynamic
- * import, so the decision can be made on numbers.
- *
- * What IS feasible with zero dependencies — and what measurably matters — is
- * reading the JPEG/PNG *headers*: dimensions and the EXIF orientation tag. A
- * phone photo of a nameplate is routinely stored un-rotated with an orientation
- * flag, and vision providers do not reliably honor that flag. Knowing it lets us
- * TELL the model which way the text runs, which costs nothing and needs no codec.
+/** Header introspection plus opt-in bounded inspection working views.
+ * Pixel preprocessing ports printsense/preprocess.py: 1000px OSD probe,
+ * confidence >=1.0, correction rotation, 2576px long edge and JPEG95.
+ * Originals are never modified. Nameplate callers retain header-only behavior.
  */
+import { spawn } from "node:child_process";
+import sharp from "sharp";
 
 export type ImageInfo = {
   format: "jpeg" | "png" | "unknown";
@@ -185,4 +174,89 @@ export function orientationHint(info: ImageInfo): string | null {
   }
   if (!parts.length) return null;
   return parts.join(" ");
+}
+
+
+export type OrientationReading = { rotation: number; confidence: number };
+export type InspectionPreprocessing = {
+  originalWidth: number; originalHeight: number; width: number; height: number;
+  rotationDegrees: number; osdRotation: number | null; osdConfidence: number | null;
+  osdStatus: "accepted" | "low_confidence" | "unavailable";
+};
+
+/** Fixed command/args, bounded stdin/stdout/stderr/runtime; never a shell. */
+export function readInspectionOrientation(probe: Buffer): Promise<OrientationReading> {
+  if (probe.length > 4 * 1024 * 1024) return Promise.reject(new Error("osd_probe_too_large"));
+  return new Promise((resolve, reject) => {
+    const child = spawn("tesseract", ["stdin", "stdout", "--psm", "0", "-l", "osd"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, OMP_THREAD_LIMIT: "1" },
+    });
+    let output = "";
+    let diagnostic = "";
+    let bytes = 0;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) { child.kill("SIGKILL"); reject(error); return; }
+      const rotation = Number(output.match(/^Rotate:\s*(\d+)\s*$/m)?.[1]);
+      const confidence = Number(output.match(/^Orientation confidence:\s*([\d.]+)\s*$/m)?.[1]);
+      if (![0, 90, 180, 270].includes(rotation) || !Number.isFinite(confidence)) {
+        reject(new Error("osd_invalid_output"));
+      } else resolve({ rotation, confidence });
+    };
+    const timer = setTimeout(() => finish(new Error("osd_timeout")), 5000);
+    child.on("error", () => finish(new Error("osd_unavailable")));
+    child.stdin.on("error", () => finish(new Error("osd_input_error")));
+    const consume = (chunk: Buffer, stdout: boolean) => {
+      bytes += chunk.length;
+      if (bytes > 16 * 1024) { finish(new Error("osd_output_too_large")); return; }
+      if (stdout) output += chunk.toString("utf8");
+      else diagnostic += chunk.toString("utf8");
+    };
+    child.stdout.on("data", (chunk: Buffer) => consume(chunk, true));
+    child.stderr.on("data", (chunk: Buffer) => consume(chunk, false));
+    child.on("close", (code) => {
+      if (code !== 0 && /Too few characters/i.test(diagnostic)) {
+        // Valid hardware photos may have too little text for OSD: no rotation.
+        output = "Rotate: 0\nOrientation confidence: 0\n";
+        finish();
+      } else finish(code === 0 ? undefined : new Error("osd_failed"));
+    });
+    child.stdin.end(probe);
+  });
+}
+
+/** PrintSense image semantics; explicit opt-in requires a working OSD runtime. */
+export async function prepareInspectionImage(
+  input: Buffer,
+  readOrientation: (probe: Buffer) => Promise<OrientationReading> = readInspectionOrientation,
+): Promise<{ buffer: Buffer; mimeType: "image/jpeg"; metadata: InspectionPreprocessing }> {
+  if (input.length > 8 * 1024 * 1024) throw new Error("inspection_image_too_large");
+  const options = { limitInputPixels: 20_000_000, failOn: "error" as const, animated: false };
+  const image = sharp(input, options);
+  const header = await image.metadata();
+  if (!header.width || !header.height || header.width * header.height > 20_000_000) {
+    throw new Error("inspection_image_pixels_exceeded");
+  }
+  // OSD scores depend on the probe filter. Linear sampling passed the private
+  // schematic rotation controls where lanczos3 fell below the confidence gate.
+  // Keep full-resolution rendering below independent of this probe filter.
+  const probe = await image.clone().resize({ width: 1000, height: 1000, fit: "inside", kernel: "linear", withoutEnlargement: true, fastShrinkOnLoad: false }).png().toBuffer();
+  const reading = await readOrientation(probe);
+  const valid = reading && [0, 90, 180, 270].includes(reading.rotation) && Number.isFinite(reading.confidence);
+  const accepted = Boolean(valid && reading!.confidence >= 1.0);
+  // Tesseract returns the clockwise correction; sharp rotates clockwise.
+  // Python's PIL equivalent is rotate(-reading.rotation).
+  const rotationDegrees = accepted ? reading!.rotation : 0;
+  const { data, info } = await image.clone().rotate(rotationDegrees)
+    .resize({ width: 2576, height: 2576, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 95 }).toBuffer({ resolveWithObject: true });
+  return { buffer: data, mimeType: "image/jpeg", metadata: {
+    originalWidth: header.width, originalHeight: header.height, width: info.width, height: info.height,
+    rotationDegrees, osdRotation: valid ? reading!.rotation : null, osdConfidence: valid ? reading!.confidence : null,
+    osdStatus: accepted ? "accepted" : valid ? "low_confidence" : "unavailable",
+  } };
 }

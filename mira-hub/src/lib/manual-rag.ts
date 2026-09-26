@@ -322,7 +322,16 @@ export function __resetCorpusManufacturersCache(): void {
  *  observation text (a LOOK/nameplate reading), or null. Pure once the list
  *  is known; exported so the route can test it without a database. */
 export function manufacturerFromObservationText(text: string, manufacturers: readonly string[]): string | null {
-  const hay = text.toLowerCase();
+  // A catalog-number heading is not a CAT manufacturer claim. Mask only the
+  // heading before a number-bearing identifier; retain separate real CAT
+  // mentions (and ordinary prose such as "CAT no power"). Unlike the OCR
+  // field parser in nameplate/passes.ts (parseCatalogNumber), prose matching
+  // requires a heading and a digit-bearing value: bare CAT + model is ambiguous.
+  // Match CAT boundaries exactly as below, including underscore separators.
+  const hay = text.toLowerCase().replace(
+    /(?<![a-z0-9])cat(?![a-z0-9])[\s.:/_-]*(?:no\b\.?|number\b|#)(?=\s*:?\s*[a-z0-9-]*\d)/gi,
+    " ",
+  );
   if (!hay.trim()) return null;
   for (const name of manufacturers) {
     const needle = name.toLowerCase();

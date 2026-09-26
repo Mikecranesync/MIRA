@@ -24,6 +24,7 @@ import {
 
 const ENV = { ...process.env };
 beforeEach(() => {
+  delete process.env.MIRA_NOTEBOOK_PROVIDER;
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
@@ -209,5 +210,42 @@ describe("usage frame", () => {
     for (const leak of ["question", "answer", "content", "excerpt", "citation"]) {
       expect(json).not.toContain(leak);
     }
+  });
+});
+
+
+describe("explicit OpenAI notebook comparison", () => {
+  it("does not change the shared registry used by safety judging", () => {
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    expect(canonicalProviders().map(p => p.name)).toEqual(["Groq", "Cerebras", "Together"]);
+  });
+
+  it("pins provider and model only on explicit opt-in, with no silent fallback", () => {
+    process.env.OPENAI_API_KEY = "openai-test-key";
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    expect(canonicalProviders("notebook")).toEqual([{
+      name: "OpenAI", url: "https://api.openai.com/v1/chat/completions",
+      key: "openai-test-key", model: "gpt-5.5-2026-04-23",
+    }]);
+    delete process.env.OPENAI_API_KEY;
+    expect(canonicalProviders("notebook").filter(p => p.key)).toEqual([]);
+  });
+
+  it("uses the reasoning-model output bound without unsupported sampling fields", () => {
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    const messages = [{ role: "user", content: "Describe the observations and limits." }];
+    expect(buildRequestBody(canonicalProviders("notebook")[0], messages, 800)).toEqual({
+      model: "gpt-5.5-2026-04-23", messages, stream: true,
+      stream_options: { include_usage: true }, max_completion_tokens: 800,
+      reasoning_effort: "medium", store: false,
+    });
+  });
+
+  it("prices the pinned model's reported usage instead of treating it as free", () => {
+    const result = usageFromRaw("OpenAI", "gpt-5.5-2026-04-23",
+      { prompt_tokens: 1000, completion_tokens: 100, prompt_tokens_details: { cached_tokens: 200 } },
+      "primary", []);
+    expect(result.costUsdEstimate).toBeCloseTo(0.0071, 6);
+    expect(result.provider).toBe("OpenAI");
   });
 });

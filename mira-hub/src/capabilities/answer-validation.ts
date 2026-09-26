@@ -65,6 +65,16 @@ const NO_ISOLATION =
   "without\\s+(?:first\\s+)?(?:de[-\\s]?energiz\\w+|shutting\\s+(?:down|off)|powering\\s+(?:down|off)|turning\\s+(?:off|down)|lock(?:ing)?[-\\s]?(?:out|it\\s+out)|tag(?:ging)?[-\\s]?out|isolat\\w+|disconnect\\w+|verifying\\s+zero[-\\s]?energy|loto)";
 
 const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }[] = [
+  {
+    id: "powered-relay-check",
+    re: /(?:^|[.!?:;]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:with\s+(?:loto|lockout)[^,\n]{0,30},\s*)?(?:ensure|verify|confirm|check)\b[^.!?\n]{0,65}\b(?:relay|coil)\b[^.!?\n]{0,40}\b(?:is\s+receiving|receives|is\s+getting)\b[^.!?\n]{0,30}\b(?:drive\s+signal|voltage|power)\b/im,
+  },
+  {
+    // Present supply voltage requires energized work even under a LOTO heading.
+    // Anchor the instruction, preserving passive labels and negated controls.
+    id: "present-voltage-check",
+    re: /(?:^|[.!?:;]\s+|,\s+(?:then\s+)?|\band\s+(?:then\s+)?|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:after\s+lockout,?\s+)?(?:confirm|verify|check|measure|test)\b(?!\s+(?:no|zero)\s+(?:(?:supply|line)\s+)?voltage\s+is\s+present\b)(?!\s+(?:[1-9]\d*(?:\.\d+)?\s*v(?:ac|dc|olts?)?|(?:supply|line)\s+voltage)\s+is\s+not\s+present\b)(?!\s+(?:the\s+)?(?:drawing|diagram|photo|display|screen|readout|printed\s+label)\b)[^.!?\n]{0,100}?(?:\b(?:[1-9]\d*(?:\.\d+)?\s*v(?:ac|dc|olts?)?|line\s+voltage|supply\s+voltage)\b[^.!?\n]{0,60}\b(?:present|at\s+(?:the\s+)?(?:terminals?|block|input))\b|\b(?:voltage|supply)\s+is\s+present\b)/im,
+  },
   // "yes, you can reset it while the machine is energized" /
   // "it is safe to work on the contactor while live"
   {
@@ -556,7 +566,7 @@ Give me those, or the reading once someone qualified has it, and I'll help you w
 const FABRICATED_DOC_PATTERNS: readonly { readonly id: string; readonly re: RegExp }[] = [
   {
     id: "doc-asserts-content",
-    re: /\b(?:the|your|its)\s+(?:official\s+)?(?:user\s+|service\s+|owner'?s?\s+|instruction\s+)?(?:manual|documentation|datasheet|user\s+guide|spec(?:ification)?\s+sheet)\s+(?:says|states|specifies|lists|shows|indicates|confirms|recommends|calls\s+for|requires)\b/i,
+    re: /\b(?:the|your|its)\s+(?:official\s+)?(?:installation\s+|user\s+|service\s+|owner'?s?\s+|instruction\s+)?(?:manual|documentation|datasheet|user\s+guide|spec(?:ification)?\s+sheet)\s+(?:says|states|specifies|lists|shows|indicates|confirms|recommends|calls\s+for|requires)\b/i,
   },
   {
     // "the official Fanuc Zephyr-9 user manual" — asserting a specific named
@@ -830,12 +840,7 @@ export function specificityFallback(code: string | null): string {
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
   return `${head}
 
-What I can tell you honestly:
-- Confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly.
-- With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- Note whether the problem returns immediately on restart or only under load — that separates a latched trip from an active condition.
-
-If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
+Please provide a clearer view of the relevant label or the matching manual/documentation so I can distinguish what is shown from what remains unknown.`;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -976,6 +981,10 @@ export function validateAnswer(opts: {
   for (const p of FABRICATED_DOC_PATTERNS) {
     const m = p.re.exec(scanText);
     if (m) {
+      // A generic document TYPE is a request for evidence, not a claim that a
+      // named model-specific manual exists. Content assertions still hit the
+      // preceding doc-asserts-content rule.
+      if (p.id === "official-named-doc" && /^official\s+(?:installation|user|service|instruction|maintenance)\s+(?:manual|guide|documentation)$/i.test(m[0])) continue;
       return {
         ok: false,
         kind: "unsupported_specificity",

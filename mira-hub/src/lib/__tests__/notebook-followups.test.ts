@@ -35,6 +35,7 @@ describe("buildFollowupSuggestions", () => {
       plan: { shape: "single_fact", facets: [] },
       provenFacets: [],
       answer: "P042 [Decel Time 1] sets the deceleration time [1].",
+      referenceText: "Parameter P042: Decel Time 1.",
       status: "answered",
     });
     expect(s).toContain("What's the valid range for P042?");
@@ -46,6 +47,7 @@ describe("buildFollowupSuggestions", () => {
       plan: { shape: "single_fact", facets: [] },
       provenFacets: [],
       answer: "Fault F004 [UnderVoltage] means the DC bus voltage fell below its minimum [1].",
+      referenceText: "Fault F004: UnderVoltage.",
       status: "answered",
     });
     expect(s).toContain("How do I clear fault F004?");
@@ -68,4 +70,22 @@ describe("buildFollowupSuggestions", () => {
     });
     expect(many.length).toBeLessThanOrEqual(3);
   });
+});
+
+
+describe("photo tokens are not parameter evidence (#3993)", () => {
+  it("does not turn a terminal label into a keypad setting", () => {
+    expect(buildFollowupSuggestions({plan: {shape: "single_fact", facets: []}, provenFacets: [],
+      answer: 'The module is labeled B1C B22 B23 B43.', status: 'answered'})).toEqual([]);
+  });
+  it("does not trust an invented parameter claim without documentation", () => {
+    expect(buildFollowupSuggestions({plan: {shape: "single_fact", facets: []}, provenFacets: [],
+      answer: 'Parameter B22 controls the burner.', status: 'answered'})).toEqual([]);
+  });
+});
+
+
+it("does not mistake a longer fault token in documentation for the answered fault", () => {
+  expect(buildFollowupSuggestions({plan: {shape: 'single_fact', facets: []}, provenFacets: [],
+    answer: 'Fault F01 means overload.', referenceText: 'Fault F010 means something else.', status: 'answered'})).toEqual([]);
 });

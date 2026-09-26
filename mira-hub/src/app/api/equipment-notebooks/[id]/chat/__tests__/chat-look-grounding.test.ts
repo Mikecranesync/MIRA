@@ -77,7 +77,7 @@ const veMock = vi.hoisted(() => ({
     hazards: [] as { code: "arcing" | "exposed_conductor" | "active_fire" | "smoke"; confidence: number }[],
   })),
   renderLookObservationSection: vi.fn((row: unknown | null) => (row ? LOOK_SENTINEL : "")),
-  renderPriorLookObservationsSection: vi.fn((rows: unknown[]) => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
+  renderPriorLookObservationsSection: vi.fn((rows: unknown[]): string => (rows && rows.length ? "## PRIOR-LOOK-CTX" : "")),
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
@@ -92,7 +92,7 @@ vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async 
 const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
   canonicalProviders: vi.fn(() => [{ name: "groq", url: "https://x/y", key: "k", model: "m" }]),
-  buildRequestBody: vi.fn(() => ({})),
+  buildRequestBody: vi.fn((_provider: unknown, messages: unknown) => ({ messages })),
   maxOutputTokens: vi.fn(() => 1000),
   routeReasonFor: vi.fn(() => "ok"),
   exhaustedUsage: vi.fn(() => ({ status: "error" })),
@@ -130,6 +130,31 @@ beforeEach(() => {
 });
 
 describe("#3788 — a verified photo's observation reaches the model's user content", () => {
+  it("keeps visual uncertainty rules when a verified photo and document excerpts reach the provider together", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([
+      { docId: "d1", filename: "drive.pdf", page: 1, content: "A drive status indicator is described here." },
+    ]);
+    await (await POST(req({ message: "What can you tell from this photo?", visualEvidence: { fileId: PHOTO } }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    const system = messages.find((m) => m.role === "system")!.content;
+    expect(system).toContain("Indicator color alone does not establish voltage");
+    expect(system).toContain("Previous assistant answers are not evidence");
+    expect(ragMock.buildManualUserContent).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([expect.objectContaining({ docId: "d1" })]), LOOK_SENTINEL);
+  });
+
+  it("leaves the document-only prompt unchanged when no photo evidence is present", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce([
+      { docId: "d1", filename: "drive.pdf", page: 1, content: "A drive status indicator is described here." },
+    ]);
+    await (await POST(req({ message: "What does the manual say?" }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    expect(messages.find((m) => m.role === "system")!.content).not.toContain("VISUAL REASONING:");
+    expect(veMock.loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+  });
+
   it("verified fileId: loadVisualEvidenceForPhoto is called with the SERVER fileId, and its render rides buildManualUserContent's visual-context arg", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
 
@@ -416,5 +441,81 @@ describe("standalone LOOK recall in the selected conversation", () => {
     });
     const call = ragMock.buildManualUserContent.mock.calls.at(-1);
     expect(String(call?.[2] ?? "")).toContain("PRIOR-LOOK-CTX");
+  });
+});
+
+
+describe("multi-photo evidence continuity (#3962)", () => {
+  it.each([false, true])("retains five distinct earlier observations, including with a new attachment=%s", async (attached) => {
+    const rows = Array.from({length: 5}, (_, i) => ({
+      observationId: `o${i}`, sessionId: `s${i}`, text: `Earlier distinct drawing ${i}`,
+      obsKind: 'property', trust: 'candidate', confidence: null,
+      fileId: `55555555-5555-4555-8555-55555555555${i}`, photoHash: `hash${i}`,
+      observedAt: `2026-09-23T12:0${i}:00.000Z`, hazards: [],
+    }));
+    veMock.loadRecentLookObservations.mockResolvedValueOnce(rows);
+    const realVisual = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    veMock.renderPriorLookObservationsSection.mockImplementationOnce((values) => realVisual.renderPriorLookObservationsSection(values as never));
+    if (attached) filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    const res = await POST(req({message: 'Compare all the drawings I supplied.', mode: 'general',
+      ...(attached ? {visualEvidence: {fileId: PHOTO}} : {})}), params);
+    expect(res.status).toBe(200);
+    const retained = veMock.renderPriorLookObservationsSection.mock.calls.at(-1)?.[0] as {fileId: string}[];
+    expect(retained?.map(r => r.fileId).sort()).toEqual(rows.map(r => r.fileId).sort());
+    await res.text(); // complete the stream so the provider request is assembled
+    const sent = JSON.stringify(seamMock.buildRequestBody.mock.calls.at(-1)?.[1]);
+    for (const row of rows) expect(sent).toContain(row.text);
+  });
+});
+
+
+describe("fresh photo owns the current referent", () => {
+  const history = [
+    { role: "user", content: "What does parameter P042 mean?" },
+    { role: "assistant", content: "P042 is a deceleration parameter." },
+  ];
+  it.each([true, false])("new verified photo=%s preserves history without forcing the old topic", async (attached) => {
+    if (attached) filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    await (await POST(req({
+      message: "Here is another photo of the same equipment. What does it show?",
+      history, mode: "general",
+      ...(attached ? { visualEvidence: { fileId: PHOTO } } : {}),
+    }), params)).text();
+    const question = ragMock.buildManualUserContent.mock.calls.at(-1)?.[0] ?? "";
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    expect(messages.some(m => m.role === "assistant" && m.content.includes("P042"))).toBe(true);
+    if (attached) {
+      expect(question).not.toContain("SYSTEM NOTE");
+      expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[2]).toContain(LOOK_SENTINEL);
+    } else {
+      expect(question).toContain("SYSTEM NOTE");
+      expect(question).toContain("P042");
+    }
+  });
+});
+
+
+describe("summary preserves the kind of evidence", () => {
+  it.each([false, true])("carries earlier photos and evidence boundaries into summary; documents=%s", async (documents) => {
+    if (documents) {
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+      ragMock.retrieveNodeChunks.mockResolvedValueOnce([{ docId: "d1", filename: "drive.pdf", page: 1, content: "Indicator reference." }]);
+    }
+    const realVisual = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    veMock.renderPriorLookObservationsSection.mockImplementationOnce((values) => realVisual.renderPriorLookObservationsSection(values as never));
+    veMock.loadRecentLookObservations.mockResolvedValueOnce([{
+      observationId: "summary-led", sessionId: "summary-session", text: "A green indicator is lit.",
+      obsKind: "property", trust: "candidate", confidence: null, fileId: PHOTO,
+      photoHash: "summary-hash", observedAt: CAPTURED_AT, hazards: [],
+    }]);
+    await (await POST(req({ message: "What do the photos establish together?", ...(documents ? {} : { mode: "general" }) }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    const system = messages.find(m => m.role === "system")?.content ?? "";
+    expect(veMock.renderPriorLookObservationsSection).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ observationId: "summary-led" })]));
+    expect(messages.some(m => m.role === "user" && m.content.includes("A green indicator is lit."))).toBe(true);
+    expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[1]).toHaveLength(documents ? 1 : 0);
+    expect(system).toContain("Preserve each claim's evidence type when summarizing");
+    expect(system).toContain("not supplied does not mean not performed");
+    expect(system).toContain("An illuminated indicator is an observation, not an independent measurement");
   });
 });

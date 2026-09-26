@@ -169,10 +169,32 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return selected && notebooks.some((nb) => nb.id === selected) ? selected : notebooks[0]?.id ?? null;
   }, [notebooks, selected]);
 
+  const rememberCompletedThread = useCallback((notebookId: string, threadId: string, question: string) => {
+    setNotebooks((current) => current?.map((notebook) => {
+      if (notebook.id !== notebookId) return notebook;
+      const existing = notebook.threads?.find((thread) => thread.id === threadId);
+      const now = new Date().toISOString();
+      return { ...notebook, threads: [
+        { id: threadId, notebookId, title: existing?.title || question, createdAt: existing?.createdAt || now,
+          updatedAt: now, turnCount: (existing?.turnCount ?? 0) + 1, sharedLegacy: threadId === LEGACY_THREAD_ID },
+        ...(notebook.threads ?? []).filter((thread) => thread.id !== threadId),
+      ] };
+    }) ?? current);
+  }, []);
+
   const startNewThread = useCallback((notebookId?: string | null): string | null => {
     const id = notebookId ?? preferredNotebookId();
     if (!id) return null;
     const threadId = createThreadId();
+    // Keep the initial conversation reachable before opening another draft.
+    // Fresh notebooks have no server summaries yet; their legacy row must not
+    // disappear when the first named thread makes the list nonempty.
+    setNotebooks((current) => current?.map((notebook) => notebook.id !== id ? notebook : {
+      ...notebook,
+      threads: [
+        ...(notebook.threads?.length ? notebook.threads : [{ id: LEGACY_THREAD_ID, notebookId: id, title: notebook.displayName, createdAt: notebook.createdAt ?? "", updatedAt: notebook.createdAt ?? "", turnCount: 0, sharedLegacy: true }]),
+      ],
+    }) ?? current);
     setSelected(id);
     setSelectedThreadId(threadId);
     setDraftThreadId(threadId);
@@ -402,7 +424,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           meta={{
             notebookId: "home",
             threadId: "home",
-            projectId: selected ? `project-${selected}` : "project-home",
+            // HOME is unbound: the remembered project is only a navigation
+            // preference, not the context of this empty conversation.
+            projectId: "project-home",
             title: "FactoryLM",
             asset: null,
             identityConfirmed: false,
@@ -431,6 +455,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         initialSensorStart={queuedSensorStart}
         onInitialSensorStartConsumed={() => setQueuedSensorStart(null)}
         onNewThread={startNewThread}
+        onThreadCompleted={rememberCompletedThread}
         onCreateProject={onCreateProject}
       />
     </div>

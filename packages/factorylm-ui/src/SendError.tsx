@@ -25,6 +25,8 @@ export interface SendErrorProps {
    *  nothing to name and only the draft fallback applies. */
   readonly turnId?: string;
   readonly hooks?: HostHooks;
+  /** Validation failed before a turn existed: retry the visible composer. */
+  readonly retryCurrentComposer?: () => void;
 }
 
 /**
@@ -37,17 +39,21 @@ export interface SendErrorProps {
  * draft-only Retry is a dead button. Try again renders only when one of the two
  * paths exists; the same rule Stop follows.
  */
-export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorProps) {
+export function SendError({ error, dispatch, draft, turnId, hooks, retryCurrentComposer }: SendErrorProps) {
   if (!error) return null;
 
-  const hostRetry = turnId && hooks?.onRetry ? hooks.onRetry : undefined;
+  const hostRetry = hooks?.onRetry;
   const draftRetry = Boolean(draft.trim() && hooks?.onSend);
-  const canRetry = Boolean(hostRetry) || draftRetry;
+  const canRetry = Boolean(retryCurrentComposer) || Boolean(hostRetry) || draftRetry;
 
   const retry = () => {
+    if (retryCurrentComposer) {
+      retryCurrentComposer();
+      return;
+    }
     if (hostRetry) {
       dispatch({ type: "set-send-error", error: null });
-      hostRetry(turnId as string);
+      hostRetry(turnId ?? "");
       return;
     }
     const text = draft.trim();

@@ -298,7 +298,11 @@ function idCapture(m: RegExpMatchArray | null): { value: string; raw: string } |
 }
 
 /** Labelled part / catalog number: `Motor P/N AZM911AC-D`, `Catalog: 2080-LC20-20QWB`,
- * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`. */
+ * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`.
+ * This OCR field parser deliberately accepts bare CAT + identifier. Prose
+ * manufacturer routing in manual-rag.ts uses a narrower heading mask so a real
+ * CAT model or "CAT no power" is not erased. Keep their different roles explicit.
+ */
 export function parseCatalogNumber(lines: string[]): { value: string; raw: string } | null {
   const patterns = [
     new RegExp(`P\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
@@ -570,7 +574,7 @@ export type VisionCall = (args: {
   images: VisionImage[];
   temperature: number;
   maxTokens: number;
-}) => Promise<{ text: string; model: string }>;
+}) => Promise<{ text: string; model: string; finishReason?: string | null }>;
 
 /**
  * Together vision call. Deliberately mirrors `index.ts`'s provider contract
@@ -600,8 +604,43 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
     }),
   });
   if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
-  const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
-  return { text: body.choices?.[0]?.message?.content ?? "{}", model };
+  const body = (await resp.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
+  return { text: body.choices?.[0]?.message?.content ?? "{}", model, finishReason: body.choices?.[0]?.finish_reason ?? null };
+};
+
+/** Opt-in notebook LOOK adapter; existing nameplate defaults do not call it.
+ * Uses original detail so the provider does not downsample small inspection labels
+ * to the high-detail 2,500-patch budget. Completion remains strictly checked.
+ */
+export const openaiVisionCall: VisionCall = async ({ prompt, images }) => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("recognizer_not_configured");
+  const model = process.env.LOOK_VISION_MODEL || "gpt-5.5";
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model, store: false, max_output_tokens: 4096, reasoning: { effort: "medium" },
+      input: [{ role: "user", content: [
+        { type: "input_text", text: prompt },
+        ...images.map((image) => ({ type: "input_image", detail: "original",
+          image_url: `data:${image.mimeType};base64,${image.base64}` })),
+      ] }],
+    }),
+  });
+  if (!response.ok) throw new Error(`recognizer_provider_error_${response.status}`);
+  const body = await response.json() as {
+    status?: string;
+    model?: string;
+    output?: { type?: string; content?: { type?: string; text?: string }[] }[];
+  };
+  if (body.status !== "completed") throw new Error("vision_incomplete_response");
+  const text = (body.output ?? []).filter((item) => item.type === "message")
+    .flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text")
+    .map((item) => item.text ?? "").join("");
+  if (!text.trim()) throw new Error("vision_empty_response");
+  return { text, model: body.model || model, finishReason: "stop" };
 };
 
 export function safeJson(text: string): Record<string, unknown> | null {

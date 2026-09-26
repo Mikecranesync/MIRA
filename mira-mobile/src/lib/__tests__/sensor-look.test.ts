@@ -49,6 +49,12 @@ describe("SENSOR_MODES", () => {
 });
 
 describe("lookAtPhoto request shape", () => {
+  it("preserves an explicit failed observation-save result alongside the original and reading", async () => {
+    uploadMultipart.mockResolvedValue({ status: 200, data: { fileId: "saved-photo", observation: { text: "Panel" }, observationSaved: false } });
+    const result = await lookAtPhoto("nb", new File(["x"], "panel.jpg", { type: "image/jpeg" }), "key");
+    expect(result).toMatchObject({ fileId: "saved-photo", observation: { text: "Panel" }, observationSaved: false });
+  });
+
   it("posts multipart image + clientKey to the notebook's /look/ route", async () => {
     uploadMultipart.mockResolvedValue({
       status: 200,

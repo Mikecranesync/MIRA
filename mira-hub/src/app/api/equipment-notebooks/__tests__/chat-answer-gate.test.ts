@@ -256,7 +256,7 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
 });
 
 describe("E10 — general-lane invented specificity is replaced with the controlled fallback", () => {
-  it("replaces an invented fault-code meaning, keeps the general_reasoning label", async () => {
+  it("replaces an invented fault-code meaning without certifying a basis", async () => {
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "n1" } as never);
     ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
     vi.stubGlobal(
@@ -272,13 +272,14 @@ describe("E10 — general-lane invented specificity is replaced with the control
 
     expect(released).toContain("I can't verify what ZX-9987 means");
     expect(released).not.toContain("encoder has lost synchronization");
-    expect(frames.find((f) => f.kind === "evidence")).toMatchObject({ basis: "general_reasoning" });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
     expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
-    expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+    expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "insufficient_evidence" });
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
     const turn = lastTurn();
-    expect(turn.basis).toBe("general_reasoning");
+    expect(turn.basis).toBeNull();
+    expect(turn.answerStatus).toBe("insufficient_evidence");
     expect(turn.answerText).toContain("I can't verify what ZX-9987 means");
     expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("lost synchronization");
   });
@@ -838,4 +839,13 @@ describe("grounded pass-through (regression)", () => {
     expect(lastTurn().basis).toBe("oem_documentation");
     expect(lastTurn().answerText).toContain("below 200 C");
   });
+});
+
+it('a specificity replacement is insufficient evidence, not a grounded answer',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>completingProvider('According to the manual, this terminal is the main power feed.')));
+ const response=await POST(chatReq({message:'What does this photograph show?',mode:'general',sourceDocIds:[]}),params);
+ const frames=parseFrames(await response.text());
+ expect(frames.find(f=>f.kind==='status')).toMatchObject({status:'insufficient_evidence'});
+ expect(frames.find(f=>f.kind==='evidence'&&'basis' in f)).toBeUndefined();
+ expect(lastTurn().basis).toBeNull();
 });

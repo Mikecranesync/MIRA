@@ -1,3 +1,221 @@
+# Current checkpoint — catalog retrieval repaired, S fails answer quality
+
+Goal ACTIVE. Current runtime backend source 8bc2308352568c9033e2d7dc1a6c486374884238,
+frozen macOS bundle /tmp/mira-fireplace-localqa/frozen-host-8bc230835, on4450
+(exec32307). Only budget guard loaded, no injected fault. Version endpoint verified.
+Mobile emulator5554 still build16/source f1, CDP9343, original five-photo driver.
+S reverse-order exec31560 COMPLETE exit0; five observations/six answers; all
+retrieval sets empty despite CAT.NO. still present. Narrow D repair PASS. Overall
+S FAIL E: summary claims full manual/schematic would settle most unknowns including
+actual voltage, fuse health and physical relay/wiring condition. B tiny print UNKNOWN.
+Q now FAIL D: raw production retrieval reproduced exact four unrelated refs; CAT.NO.
+heading misclassified as CAT vendor. The fix masks heading before digit-bearing
+identifiers, keeps genuine CAT mentions. Red5/green162; production build passed.
+Raw before/after evidence in private emulator-q folder; all failed runs preserved.
+Independent Claude review exec6454 TERMINAL exit0; source findings delivered.
+Separator/boundary gaps reproduced red8; follow-up green173 including real matcher
+in chat-handler test. OCR parser/prose matcher cross-referenced; bareCAT+model
+ambiguity documented. Follow-up source not yet frozen/replayed. Stop gate returned approve; preserved
+/tmp/mira-hub-stop-build-catalog-followup-pass.log. Generated .next cleared after
+verification to leave room for later hooks; frozen runtime artifact preserved.
+Archive recompression exec17679 COMPLETE exit0; original f1 runtime stopped143.
+frozen-host-f1c73144b.tar.xz preserves all14632 files; decompressed tar SHA256
+aa5bb2146af08c6bab979b6bf875f320fefee97565ae5afae37ab1e33bbe25c5 verified
+identical to the original gzip archive before removing old encoding. Never remove
+current frozen-host-8bc230835. Docker remains storage-I/O impaired; no shared restart.
+Latest spending5.68/8; authoritative ignored ledger; no further paid calls needed
+until answer-layer bounded repair/freeze. New original-order T not started because
+S already demonstrates E failure. Next: repair documents-vs-
+actual-state distinction using existing answer instructions, prove opposite controls,
+freeze/replay. Pixel locked; web handoffs pending. No merge/deploy/issue closure.
+
+Earlier checkpoints follow; superseded where above differs.
+
+---
+# Current checkpoint — f1 persistence repair and frozen P/Q/R
+
+Goal ACTIVE. Latest code f1c73144b2d86102c727b966ac7f72e03b58dd3c.
+Frozen host backend on4450, exec95245, /tmp/mira-fireplace-localqa/frozen-host-f1c73144b.
+No fault injector in acceptance runtime. Docker builder has storage I/O errors;
+do not restart shared VM or delete images. Backend artifact independent of .next.
+Emulator build16/CDP9343; physical Pixel locked onbuild15; web handoffs pending.
+P controlled save-failure/retry PASS narrow: question/photo retained, one saved
+observation/link/answer after retry. Does not prove live connection-timeout retry;
+real ledger+mock pool covers that deterministically. 511Hub/53mobile tests pass,
+Hub/mobile builds pass, Claude source review37573 terminal no concrete defects.
+Q reverse-order complete: five observations, six answers, summary five observations.
+Overall UNKNOWN: tiny print, retrieval relevance, summary manual/state wording.
+R original-order complete exec41788 exit0: five saved readings/six answers,
+summary allfive. OverallUNKNOWN; earlier failure not reproduced in either order.
+Budget after R5.269545/8; refresh authoritative private ledger before calls.
+Root build gate returned approve this turn; log preserved at
+/tmp/mira-hub-stop-build-root-verified-20260926.log. Inactive generated .next cleared
+after build to retain space; active frozen artifact preserved. No bypass.
+CI exactf1 DeepEval and lifecycle guard still red; no merge/deploy/issueclosure.
+Latest novice report: docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md.
+
+Earlier checkpoints follow; superseded where above differs.
+
+---
+# Current checkpoint — N/O frozen replay exposes persistence failure
+
+Read OWNER-CHECKPOINT-20260926.md for novice report. Goal ACTIVE.
+Frozen backend a6375845f89fb15867b33c98009dee1a45120eaf now on4450;
+container mira-fireplace-frozen-a6375845f. Previous b5 stopped/preserved.
+Claude review35158 terminal exit0 no source-supported findings; saved privately.
+N session19001 terminal; O85273 terminal. Safety37732 and38622 terminal.
+N narrow E improvement; overallUNKNOWN. O FAIL C: photo2 observation write timed
+out and LOOK silently continued. Logs /tmp/mira-fireplace-localqa/backend-a637.log.
+Source route LOOK464-483 catches recordLookObservation failure and continues;
+withTenantContext currently pool.connect before callback, no retry. Next bounded
+mission: preserve photo interpretation durably/recover visibly. Avoid blind retry
+on uncertain COMMIT. Tests and existing route failure contract need inspection.
+All private N/O/safety evidence copied into ignored overnight-runtime.
+N notebook46167b29-33d8-4fc9-9be8-9f570799b45e;
+O f2613014-1c9e-4371-ad86-205e2610db19. O includes two followup safety controls.
+Emulator resumed SAME AVD via adb emu avd start after authoritative stopped state.
+APK15 CDP9343. Pixel still locked; no bypass. Browser handoffs still pending.
+Budget ledger authoritative; report has current amount. No more calls needed now.
+CI env drift was local flag mistakenly in deployment inventory; moved to explicit
+local-test subsection without Compose or allowlist changes; checker passes.
+CI DeepEval3 unexpected failures and lifecycle exact-review/rationale remain.
+No merge/deploy/label/issueclosure. Old notes below may be stale.
+
+---
+# Next candidate: 2cff474bf — safety provider scope repaired
+
+Local build gate passed; red3/green507 and real-route21 (including one new test).
+Claude read-only review still running: exec35158, PID47680; stream
+/tmp/mira-fireplace-localqa/review-safety-scope-stream.jsonl. Do not restart from timeout.
+Current frozen backend remains b5; new repair not installed/replayed yet.
+Emulator adb console says virtual device stopped, ping alive; can resume same AVD
+using console after build space recovered. CDP20732 and adb9223 are waiting on
+that stopped device; no restart from timeout. Private failed M run preserved.
+Build logs /tmp/mira-hub-stop-build-2cff-pass.log. OpenAI accounted3.412805/8.
+Next: review outcome, frozen Docker build from full2cff SHA, replace only local4450
+backend, resume existing emulator, new named original/reverse-order runs, grade.
+Phone remains securely locked; user unlock and web handoffs pending.
+
+---
+# Latest checkpoint — b5 comparison is not accepted
+
+## Latest checkpoint — local build recovery and comparison review
+
+Both the repair branch and shared workspace local build gates now pass. Its earlier failure was a full
+host disk (`ENOSPC`), not a compiler error. Generated build output and downloaded
+installer caches were removed; source, installed applications, private photos,
+recorded failures and frozen test images were preserved. No gate was bypassed.
+
+Candidate backend source: `b5b5314f2a4701dcd48a3a2786c15f36ae7493e4`.
+The opt-in OpenAI notebook comparison has 75 passing focused checks and a passing
+Docker build. Default production routing was not changed. These checks do not
+prove answer quality or safety acceptance.
+
+Claude's read-only review found that the existing safety checker builds its own
+request using older parameter names. The new OpenAI selection also reaches that
+checker, so the local guard rejects that request before it is sent. Code inspection
+confirmed the mismatch. The checker fails closed: it cannot supply a valid verdict.
+This comparison remains unaccepted pending a bounded compatibility repair and
+safe/unsafe opposite controls. Tight reasoning budgets and operator flag mismatch
+also need explicit validation. The review process was stopped after its findings
+were saved because its stop hook repeatedly retriggered the same disk failure.
+
+The five-photo emulator run **M is UNKNOWN/incomplete**: disk exhaustion interrupted
+recording during photo 2. Its partial results and failure log were preserved; no
+successful replay is claimed. Emulator and Pixel both have mobile build 15, source
+`054d6c9283f7eca29a91a5a00d3812b5cd2b96c7`. The physical Pixel is securely locked,
+so a fresh physical run awaits Mike unlocking it. Web continuity still needs the
+existing browser handoff. Local health also reports missing `INGEST_URL`; complete
+service readiness has not been established.
+
+OpenAI accounting now reserves **$3.412805 of $8** across 43 calls,
+including the earlier $1 reserve and any calls without confirmed usage. Reservations
+are retained after interruption. No more calls were needed for build recovery.
+Jev remains an observer, never a release or safety approval authority.
+
+Next bounded mission: repair the comparison/safety-check request compatibility,
+prove both allowed and disallowed cases, freeze again, then replay without replacing
+failed evidence. The original J/K/L synthesis failures remain open. No merge,
+production deployment, or safety-issue closure occurred.
+
+
+---
+Earlier handoff (superseded where above differs):
+
+# Current overnight handoff — 2026-09-26 summary-input investigation
+
+Goal remains active; do not claim a working app or mark product acceptance PASS.
+See docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md.
+Worktree: /Users/charlienode/.codex/worktrees/fireplace-repair-loop/MIRA.
+Branch codex/fireplace-repair-loop; PR3999 draft; governance PR4001 separate.
+
+Current runtime: immutable local backend source 0b631a1c80076b9786b0db7b6dabab2d453dbfd9,
+container mira-fireplace-frozen-0b631a1c8, localhost:4450 through existing TLS bridge on port 4443.
+Physical Pixel serial 55081JEBF07026, staging package only, build 15 source
+054d6c9283f7eca29a91a5a00d3812b5cd2b96c7, APK hash in owner report and private identity.
+The installed hash was verified. Frozen backend and new mobile are explicitly
+different source identities; do not relabel the full L run as a build 15 replay.
+
+J/K/L: five original photos + summary each, diagnostic packets and private layers
+grades saved; all FAIL. L fixes the voltage/current certainty wording but still
+asserts an unproved drawing-to-hardware match. First demonstrated remaining layer E.
+Three extra phone photos exercised. Forced upload failure -> retry, cold reopen,
+original viewing, home-label repair and persisted unconfirmed-caption repair have
+physical evidence. Latest caption repair: 1 failed / 45 passed before repair, 67 passing adapter checks, bundle
+build, APK 15, six correct unconfirmed captions on reopened L. Hub review test
+coverage strengthened: 131 focused checks. SQLAlchemy 2.1 driver default failure
+reproduced; six existing declarations bounded below 2.1, five real-PG tests pass.
+
+Actual Groq request input now captured privately during a repeated summary on L.
+The Pixel repeat remains FAIL. Reconstructing its original ten-message history,
+then trying no assistant history, explicit attribution, no topic hint, or higher
+reasoning all failed; high reasoning at 800 tokens returns no visible answer.
+Same-context OpenAI comparison more faithful once, not product acceptance.
+Private evidence and manifest: overnight-runtime/summary-investigation-manifest.json.
+The temporary diagnostic container is stopped; original frozen backend restored.
+Claude mechanism review finished (handle 84100 terminal). Findings saved at
+/tmp/mira-fireplace-localqa/review-summary-mechanism-findings.txt and private runtime.
+Its stop hook had hit disk exhaustion; parent cleared generated root build output,
+reran repair stop gate successfully, then review exited. No gate bypass.
+Per-photo type tags, local-uncertainty LOOK wording, full-resolution image input,
+and Qwen3.8 low/none comparisons all rejected. Do not repeat these variants.
+Actual observation text already retains image type: no structured type was lost.
+Summary packets have zero chunks: changing general-mode gating is not their fix.
+Next bounded work: use that review to choose a source-supported experiment;
+avoid more speculative prompt accumulation or a new architecture. The attached-photo + explicit earlier-drawing question control now PASSes reference
+separation on Pixel build15; small-print correctness remains unverified. Check CI, including DeepEval offline failure whose failed-log
+fetch was empty. Formal exact-head/body Codex review remains separate from Claude.
+Claude reviews c8687,500cf and0b631 are informational; latest source review found
+no prompt contradictions and coverage gaps now addressed. No safety issue closed.
+
+Web continuity UNKNOWN. User has pending async requests: local browser certificate
+warning decision; sign in to trusted app-staging.factorylm.com as dana@synthetic.test.
+Do not bypass browser security warnings. Existing staging web is a different deployed
+version, so record its identity if used. CUA stagingContinuityTab was marked handoff.
+
+OpenAI account ledger is authoritative at private-backend-diagnostic/overnight-runtime/
+openai-spend-ledger.json; /tmp/mira-fireplace-localqa/openai-spend-ledger.json symlinks
+there. $3.047985 accounted (39 recorded calls + $1 earlier reserve), $8 hard ceiling.
+Both host and container guards use this one ledger. No unguarded calls, no top-ups.
+Jev stays existing shadow only; J/K/L summary overreach flags match observed concerns,
+not an accuracy metric. Do not promote it to a safety, auth, billing or release gate.
+
+Private evidence: ignored proof folder private-backend-diagnostic/overnight-20260926;
+/tmp/mira-fireplace-localqa also has ongoing scripts and additional snapshots.
+Preserve failures, original contracts and corrections. J/K/L notebook ids live in
+contracts. Full L notebook: 8b6aeba6-25c5-467a-9c37-34717cab173d. Restored on phone now.
+Current CDP forward tcp:9342 points at the Pixel WebView; refresh after any restart.
+Use existing tools/mobile-e2e/cdp.mjs and device.py with foreground guards.
+JDK/SDK for local APK builds: JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools. Private init-gradle files
+supply version and local-test TLS/API endpoint only; do not commit those overrides.
+
+No merge, production deploy, significant architecture/schema/vendor/safety changes.
+The root PLAN scope is the governing eight-item overnight contract; older handoff
+below is historical and must not displace this scope.
+
+---
+
 # HANDOFF — complete interaction capture (#3939)
 
 **PR:** [#3964](https://github.com/Mikecranesync/MIRA/pull/3964) · **Branch:** `feat/turn-capture-lifecycle`

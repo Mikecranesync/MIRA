@@ -157,6 +157,7 @@ export function NotebookScreen({
   onInitialSensorStartConsumed,
   onInitialAddSourcesConsumed,
   onNewThread,
+  onThreadCompleted,
   onCreateProject,
 }: {
   id: string;
@@ -176,6 +177,8 @@ export function NotebookScreen({
   onInitialAddSourcesConsumed?: () => void;
   /** Root-owned THRD-0 creation, used by the shared shell's New chat control. */
   onNewThread?: (notebookId?: string | null) => void;
+  /** Promote a populated thread into the root navigation cache immediately. */
+  onThreadCompleted?: (notebookId: string, threadId: string, question: string) => void;
   /** Root-owned project creation, used by the shared shell's New project
    *  control (#3896). Without it the drawer honestly disables the control —
    *  which is what technicians saw inside every conversation. */
@@ -262,8 +265,14 @@ export function NotebookScreen({
   const initialSensorConsumed = useRef(false);
   const initialAddSourcesConsumed = useRef(false);
   useEffect(() => {
-    if (!openAddSources || initialAddSourcesConsumed.current) return;
+    if (!openAddSources) {
+      initialAddSourcesConsumed.current = false;
+      return;
+    }
+    if (initialAddSourcesConsumed.current) return;
     initialAddSourcesConsumed.current = true;
+    setPanel("sources");
+    setSheetOpen(true);
     onInitialAddSourcesConsumed?.();
   }, [openAddSources, onInitialAddSourcesConsumed]);
 
@@ -420,6 +429,7 @@ export function NotebookScreen({
         }
       } else {
         setLiveTurns((t) => [...t, { q: question, a }]);
+        onThreadCompleted?.(id, threadId ?? "legacy", question);
       }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;

@@ -271,7 +271,7 @@ export async function recordLookObservation(opts: {
       [sessionId, opts.tenantId, evidenceId, text],
     );
     return { sessionId, evidenceId, observationId: String(o.rows[0].id) };
-  });
+  }, { retryConnectionTimeout: true });
 }
 
 /**
@@ -756,7 +756,7 @@ export async function loadRecentLookObservations(
         AND o.review_state <> 'rejected' AND o.superseded_by IS NULL
         AND coalesce(o.normalized_value, o.raw_value, '') <> ''
       GROUP BY e.capture_meta->>'file_id'
-      ORDER BY max(o.created_at) DESC LIMIT 2`,
+      ORDER BY max(o.created_at) DESC LIMIT 12`,
     [tenantId, scope.ownerUserId, scope.notebookId, scope.threadId ?? "legacy"],
   );
   const rows: VisualEvidenceRow[] = [];

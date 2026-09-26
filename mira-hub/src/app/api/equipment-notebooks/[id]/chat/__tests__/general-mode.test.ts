@@ -228,3 +228,16 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(turn?.basis ?? null).toBeNull();
   });
 });
+
+
+describe('provider truncation is not an answer', () => {
+  it.each(['length', 'content_filter', 'tool_calls', 'eof'])('does not release or persist a %s-terminated buffer as answered', async (termination) => {
+    nbMock.validateChatSources.mockResolvedValue({ok:false,error:'no_sources_selected'});
+    const stream = 'data: '+JSON.stringify({choices:[{delta:{content:'The system has these inputs: unfinished'},finish_reason:termination === 'eof' ? null : termination}]})+'\n\n'+(termination === 'eof' ? '' : 'data: [DONE]\n\n');
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(stream,{status:200})));
+    const result=await frames(await POST(req({message:'Describe the drawing',mode:'general'}),params));
+    expect(result.find(f=>f.kind==='status')).toMatchObject({status:'error'});
+    expect(result.filter(f=>f.kind==='content').map(f=>f.content).join('')).not.toContain('unfinished');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT,NB,expect.objectContaining({answerStatus:'error'}));
+  });
+});

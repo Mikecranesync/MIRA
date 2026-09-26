@@ -855,3 +855,21 @@ describe("thread assembly + library conversion", () => {
     });
   });
 });
+
+
+describe("saved photo confidence caption", () => {
+  const row = (id: string, evidence: NotebookServerTurn["evidence"] = [], basis = "workspace_evidence"): NotebookServerTurn => ({
+    id, question: "What does the evidence show?", answerStatus: "answered", answerText: "An indicator is lit.", evidence, basis,
+  });
+  it("retains unconfirmed current and earlier-photo captions after reopening", () => {
+    const restored = hydrateMessages([row("photo", [VISUAL]), row("summary")]);
+    expect(restored[1].parts).toContainEqual({ type: "basis", basis: "workspace_evidence", label: "Grounded in the attached photo — an unconfirmed reading." });
+    expect(restored[3].parts).toContainEqual({ type: "basis", basis: "workspace_evidence", label: "Grounded in a photo attached earlier in this conversation — an unconfirmed reading." });
+  });
+  it("does not borrow a future photo or relabel documents as photo evidence", () => {
+    const restored = hydrateMessages([row("before"), row("photo", [VISUAL]), row("manual", [], "oem_documentation")]);
+    expect(restored[1].parts).toContainEqual({ type: "basis", basis: "workspace_evidence", label: null });
+    expect(restored[5].parts).toContainEqual({ type: "basis", basis: "oem_documentation", label: null });
+    expect(hydrateMessages([row("different-thread")])[1].parts).toContainEqual({ type: "basis", basis: "workspace_evidence", label: null });
+  });
+});

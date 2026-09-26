@@ -77,6 +77,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
     initialQuestion?: string | null;
     initialSensorStart?: "read-scan" | null;
     onExit: () => void;
+    onNewThread?: (id: string) => void;
     onCreateProject?: () => void;
   }) => {
     props.backRef.current = () => {
@@ -92,9 +93,11 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
         data-initial-sensor={props.initialSensorStart ?? ""}
+        data-projects={JSON.stringify(props.unifiedShell?.projects)}
         data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
         {props.unifiedShell ? <button onClick={() => props.unifiedShell?.onOpenItem({ kind: "thread", id: "notebook-nb-b:thread-thrd-b1", label: "General question" })}>open-b</button> : null}
+        <button onClick={() => props.onNewThread?.(props.id)}>new-chat-from-notebook</button>
         <button onClick={() => props.onCreateProject?.()}>create-project-from-notebook</button>
         <div data-testid="footer">{props.unifiedShell?.navigationFooter as never}</div>
       </div>
@@ -148,6 +151,9 @@ describe("UnifiedRoot", () => {
 
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
     expect(screen.queryByTestId("nb")).toBeNull();
+    // HOME sends to an unbound conversation; showing Drive A here implies
+    // the machine conversation is open but has lost its saved messages.
+    expect(screen.queryByRole("navigation", { name: "Context" })?.textContent ?? "").not.toContain("Drive A");
     const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
     fireEvent.input(box, { target: { value: "Why did the conveyor stop?" } });
     fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
@@ -224,6 +230,12 @@ describe("UnifiedRoot", () => {
     // was killed and relaunched.
     expect(nb.getAttribute("data-id")).toBe("nb-general");
     expect(JSON.parse(nb.getAttribute("data-project-names") ?? "[]")).toContain("Pixel pre-read");
+    const original = "notebook-nb-general:thread-legacy";
+    fireEvent.click(screen.getByText("new-chat-from-notebook"));
+    expect(screen.getByTestId("nb").getAttribute("data-projects")).toContain(original);
+    fireEvent.click(screen.getByText("new-chat-from-notebook"));
+    expect(screen.getByTestId("nb").getAttribute("data-projects")).toContain(original);
+
   });
 
   it("selecting an existing thread restores that thread id under its Project", async () => {
@@ -299,6 +311,25 @@ describe("UnifiedRoot", () => {
     // the technician is never told.
     const handed = claimAttachments();
     expect(handed.map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
+  it("turns an attachment-only HOME send into a real first question", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(/bearing\.jpg/);
+
+    // The composer intentionally permits a photo with no typed text. HOME must
+    // queue the honest default question, or the notebook rejects the blank
+    // initial question and leaves the photo armed for some later message.
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What am I looking at, and what should I check?");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
   });
 
   it("gives source management its own drawer entry, separate from the composer", async () => {
