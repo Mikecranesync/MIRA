@@ -377,7 +377,8 @@ def _repo_with_squash_orphan(tmp_path):
 @real_durability
 def test_branch_only_commit_is_not_durable(tmp_path, monkeypatch):
     monkeypatch.setenv("EVIDENCE_BASE_REF", "main")
-    repo, _on_main, on_branch = _repo_with_squash_orphan(tmp_path)
+    repo, on_main, on_branch = _repo_with_squash_orphan(tmp_path)
+    _git(repo, "tag", "unrelated", on_main)  # tags were fetched; none contain it
     assert ep.commit_is_durable(repo, on_branch) is False
 
 
@@ -394,6 +395,14 @@ def test_tagged_branch_commit_is_durable(tmp_path, monkeypatch):
     repo, _on_main, on_branch = _repo_with_squash_orphan(tmp_path)
     _git(repo, "tag", "evidence-pin", on_branch)
     assert ep.commit_is_durable(repo, on_branch) is True
+
+
+@real_durability
+def test_no_tags_fetched_is_not_a_verdict(tmp_path, monkeypatch):
+    # #4007 review §2: a checkout without tags must not fail every PR.
+    monkeypatch.setenv("EVIDENCE_BASE_REF", "main")
+    repo, _on_main, on_branch = _repo_with_squash_orphan(tmp_path)
+    assert ep.commit_is_durable(repo, on_branch) is None
 
 
 @real_durability

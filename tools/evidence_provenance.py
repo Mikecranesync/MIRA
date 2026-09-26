@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import ast
 import datetime as _dt
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -164,6 +165,8 @@ def commit_exists(root: Path, sha: str) -> bool:
 # merely EXISTS today can vanish tomorrow — and `provenance_sha_unknown` then
 # fails the capability-closure job, and with it CI Gate, for every PR (#3974
 # post-merge review). Evidence must be pinned to history that stays.
+# A tag also anchors evidence, but a tag is only as durable as its protection:
+# pin evidence to its squash commit on main once that exists (#4007 review).
 DURABLE_BASE_REFS = ("origin/main", "main")
 
 
@@ -172,12 +175,11 @@ def commit_is_durable(root: Path, sha: str) -> bool | None:
 
     True/False is a verdict; None means "cannot tell here" (shallow/partial
     clone, no base ref fetched, git missing) and is never a finding, for the
-    same reason as `commit_exists`. `EVIDENCE_BASE_REF` overrides the base ref.
+    same reason as `commit_exists`. `EVIDENCE_BASE_REF` overrides the base ref
+    for tests; CI must not set it (a mutable ref is not durable history).
     """
     if not history_is_complete(root):
         return None
-    import os
-
     refs = (
         [os.environ["EVIDENCE_BASE_REF"]]
         if os.environ.get("EVIDENCE_BASE_REF")
@@ -206,6 +208,16 @@ def commit_is_durable(root: Path, sha: str) -> bool | None:
             return True
         if r.returncode != 1:
             return None  # git error (bad object etc.): not a verdict
+        any_tag = subprocess.run(
+            ["git", "-C", str(root), "tag", "--list"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if any_tag.returncode != 0 or not any_tag.stdout.strip():
+            # No tags fetched at all is a checkout setting, not a defect: a
+            # False here would turn every PR red on fetch-tags alone.
+            return None
         tags = subprocess.run(
             ["git", "-C", str(root), "tag", "--contains", sha],
             capture_output=True,
