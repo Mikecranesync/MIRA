@@ -46,22 +46,53 @@ def test_recall_fault_code_drops_a_suffix_model_row():
 
 def test_one_product_scopes_every_code():
     q = "PowerFlex 525 throwing F004 after the jam"
-    assert _fault_code_scopes(q, ["F004"], ["PowerFlex 525"]) == {"F004": "PowerFlex 525"}
+    assert _fault_code_scopes(q, ["F004"], ["PowerFlex 525"]) == [("F004", "PowerFlex 525")]
 
 
 def test_no_product_is_unscoped():
-    assert _fault_code_scopes("drive shows F004", ["F004"], []) == {"F004": None}
+    assert _fault_code_scopes("drive shows F004", ["F004"], []) == [("F004", None)]
 
 
 def test_two_products_each_code_takes_its_nearest_product_in_either_order():
     q = "PowerFlex 525 F004 and PowerFlex 40 F4"
     for products in (["PowerFlex 525", "PowerFlex 40"], ["PowerFlex 40", "PowerFlex 525"]):
-        assert _fault_code_scopes(q, ["F004", "F4"], products) == {
-            "F004": "PowerFlex 525",
-            "F4": "PowerFlex 40",
-        }
+        assert sorted(_fault_code_scopes(q, ["F004", "F4"], products)) == [
+            ("F004", "PowerFlex 525"),
+            ("F4", "PowerFlex 40"),
+        ]
 
 
 def test_two_products_and_an_unlocatable_code_is_not_promoted():
     q = "PowerFlex 525 and PowerFlex 40 both show fault 4"
-    assert _fault_code_scopes(q, ["F4"], ["PowerFlex 525", "PowerFlex 40"]) == {}
+    assert _fault_code_scopes(q, ["F4"], ["PowerFlex 525", "PowerFlex 40"]) == []
+
+
+# Codex #4026 round 2 F1: a code equally near two different machines in the same
+# clause is ambiguous and is not promoted, whatever the product-list order.
+def test_a_code_equidistant_from_two_products_in_one_clause_is_not_promoted():
+    q = "PowerFlex 525 F004 PowerFlex 40"
+    for products in (["PowerFlex 525", "PowerFlex 40"], ["PowerFlex 40", "PowerFlex 525"]):
+        assert _fault_code_scopes(q, ["F004"], products) == []
+
+
+# The review's own example resolves by clause, identically in either order.
+def test_clause_structure_decides_codex_example_deterministically():
+    q = "PowerFlex 525 and F004 PowerFlex 40"
+    for products in (["PowerFlex 525", "PowerFlex 40"], ["PowerFlex 40", "PowerFlex 525"]):
+        assert _fault_code_scopes(q, ["F004"], products) == [("F004", "PowerFlex 40")]
+
+
+# A clause with a code but no product, when several are named, is ambiguous.
+def test_a_code_in_a_clause_with_no_product_is_not_promoted():
+    q = "PowerFlex 525 and PowerFlex 40, and it shows F004"
+    assert _fault_code_scopes(q, ["F004"], ["PowerFlex 525", "PowerFlex 40"]) == []
+
+
+# Codex #4026 round 2 F2: the same code on two machines is looked up for both.
+def test_the_same_code_on_two_machines_is_looked_up_for_each():
+    q = "F004 on PowerFlex 525 and F004 on PowerFlex 40"
+    for products in (["PowerFlex 525", "PowerFlex 40"], ["PowerFlex 40", "PowerFlex 525"]):
+        assert sorted(_fault_code_scopes(q, ["F004"], products)) == [
+            ("F004", "PowerFlex 40"),
+            ("F004", "PowerFlex 525"),
+        ]
