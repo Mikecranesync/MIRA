@@ -208,3 +208,19 @@ and photo comparisons must remain usable. Deterministic checks only prove prompt
 assembly; acceptance needs a new frozen live summary replay and controls. Keep J/K
 failures and exact candidate identities. Files: existing chat route, its LOOK
 prompt-assembly regression tests, and owner evidence report.
+
+## Bounded compatibility repair discovered by CI
+
+The unit job's five visual-store tests fail because SQLAlchemy 2.1.1 silently
+changes the unspecified PostgreSQL driver to psycopg 3, while MIRA's requirements
+install psycopg2. Current main last passed these tests with SQLAlchemy 2.0.54.
+The unchanged store reproduces the missing-driver error in a clean 2.1.1
+scratch environment without connecting to a database; the same store selects
+psycopg2 under 2.0.54 and all five existing disposable-Postgres tests pass.
+Smallest compatibility repair: constrain the six existing Python service
+SQLAlchemy requirement declarations to the supported 2.0 series. Keep each
+existing lower bound, installed driver, database configuration and schema.
+No new dependency or driver migration. Open/merged PR checks found no competing
+SQLAlchemy compatibility repair. Acceptance: dependency resolution selects 2.0,
+existing real-Postgres tenant isolation tests pass, and CI independently reruns.
+This does not change the frozen Hub image being exercised on the Pixel.
