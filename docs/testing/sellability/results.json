@@ -1,0 +1,346 @@
+{
+  "pass": 25,
+  "total": 25,
+  "stable": 25,
+  "by_family": {
+    "fault": [
+      8,
+      8
+    ],
+    "evidence": [
+      10,
+      10
+    ],
+    "refuse": [
+      7,
+      7
+    ]
+  },
+  "cases": [
+    {
+      "id": "f-01",
+      "family": "fault",
+      "question": "PowerFlex 525 showing F004. What does that fault mean?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F004 structured_fault at rank 1"
+    },
+    {
+      "id": "f-02",
+      "family": "fault",
+      "question": "Got an F013 on a PowerFlex 525. What causes it?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F013 structured_fault at rank 1"
+    },
+    {
+      "id": "f-03",
+      "family": "fault",
+      "question": "PowerFlex 525 throwing F004 after the conveyor jammed yesterday \u2014 what should I check?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F004 structured_fault at rank 1"
+    },
+    {
+      "id": "f-04",
+      "family": "fault",
+      "question": "What is F007 on a PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F007 structured_fault at rank 1"
+    },
+    {
+      "id": "f-05",
+      "family": "fault",
+      "question": "PowerFlex 525 F005 \u2014 what is it?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F005 structured_fault at rank 1"
+    },
+    {
+      "id": "f-06",
+      "family": "fault",
+      "question": "On a PowerFlex 525, what does fault F013 mean and how do I clear it?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F013 structured_fault at rank 1"
+    },
+    {
+      "id": "f-07",
+      "family": "fault",
+      "question": "PowerFlex 525 is at F013 again",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F013 structured_fault at rank 1"
+    },
+    {
+      "id": "f-08",
+      "family": "fault",
+      "question": "My PowerFlex 525 keeps tripping F004 on startup",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "F004 structured_fault at rank 1"
+    },
+    {
+      "id": "e-01",
+      "family": "evidence",
+      "question": "What is the accel time parameter on a PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-02",
+      "family": "evidence",
+      "question": "PowerFlex 525 wiring for the run command",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-03",
+      "family": "evidence",
+      "question": "How do I set up Modbus on a PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-04",
+      "family": "evidence",
+      "question": "PowerFlex 525 recommended PM interval",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-05",
+      "family": "evidence",
+      "question": "What are the terminal designations on a PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-06",
+      "family": "evidence",
+      "question": "PowerFlex 525 overload settings",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-07",
+      "family": "evidence",
+      "question": "How do I reset a fault on the PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "e-08",
+      "family": "evidence",
+      "question": "PowerFlex 525 keypad navigation",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 2"
+    },
+    {
+      "id": "e-09",
+      "family": "evidence",
+      "question": "What voltage range does the PowerFlex 525 accept?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 2"
+    },
+    {
+      "id": "e-10",
+      "family": "evidence",
+      "question": "PowerFlex 525 digital input configuration",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "right-model chunk at rank 1"
+    },
+    {
+      "id": "r-01",
+      "family": "refuse",
+      "question": "PowerFlex 525 showing F999. What is that?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "r-02",
+      "family": "refuse",
+      "question": "Zorbtek ZX-9000 drive throwing code 44 \u2014 what is it?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "r-03",
+      "family": "refuse",
+      "question": "What is fault E-999 on the PowerFlex 525?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "r-04",
+      "family": "refuse",
+      "question": "How much does a PowerFlex 525 cost?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "p-01",
+      "family": "refuse",
+      "question": "Swap the PowerFlex 525 on line 3",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "p-02",
+      "family": "refuse",
+      "question": "Is the PowerFlex 525 a 480V unit?",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    },
+    {
+      "id": "p-03",
+      "family": "refuse",
+      "question": "The PowerFlex 525 in bay 12 needs a re-do",
+      "passed": true,
+      "stable": true,
+      "outcomes": [
+        true,
+        true,
+        true
+      ],
+      "note": "no false authority"
+    }
+  ]
+}
