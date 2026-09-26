@@ -303,3 +303,8 @@ Files: manual-rag.ts and its existing tests; this plan/evidence reports.
 Acceptance: catalog-only labels yield no CAT identity; real CAT name still routes;
 other actual brands remain available; exact raw Q rerun excludes the four unrelated
 references; frozen product evidence required before overall acceptance.
+
+Claude follow-up: separator/boundary variants reproduced (8 failing checks).
+Repair the same matcher; use it directly in the chat-recorder test and document
+why its prose rules differ from nameplate/passes.ts's OCR parser (comment only).
+173 checks pass and stop gate approves. No frozen acceptance claimed for follow-up.

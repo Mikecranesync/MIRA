@@ -56,13 +56,13 @@ const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   retrieveManualChunks: vi.fn(async () => [] as unknown[]),
   corpusManufacturers: vi.fn(async () => ["Siemens", "Allen-Bradley", "Automation Direct"]),
-  manufacturerFromObservationText: vi.fn((text: string, names: readonly string[]) =>
-    names.find((n) => text.toLowerCase().includes(n.toLowerCase())) ?? null,
-  ),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
-vi.mock("@/lib/manual-rag", () => ragMock);
+vi.mock("@/lib/manual-rag", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/manual-rag")>();
+  return { ...ragMock, manufacturerFromObservationText: actual.manufacturerFromObservationText };
+});
 
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
@@ -406,6 +406,19 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
     expect(p.retrieval.oem_manufacturer_source).toBe("photo");
     expect(p.visual_evidence.observation_in_context).toBe(true);
+  });
+
+  it("catalog headings alone do not trigger an OEM search through the real matcher", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    ragMock.corpusManufacturers.mockResolvedValueOnce(["CAT", "Siemens"]);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "Contactor label CAT_NO. X123", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The photo shows a catalog label.")));
+    await (await POST(chatReq({ message: "What does this photo show?", mode: "general", visualEvidence: { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" } }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(packetOf().retrieval.strategy).toBe("skipped_general_mode");
+    expect(packetOf().context.system_prompt_kind).toBe("general");
   });
 
   it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {

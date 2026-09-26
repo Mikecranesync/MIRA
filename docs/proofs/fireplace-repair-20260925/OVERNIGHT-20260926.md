@@ -372,3 +372,43 @@ Next bounded mission: repair the comparison/safety-check request compatibility,
 prove both allowed and disallowed cases, freeze again, then replay without replacing
 failed evidence. The original J/K/L synthesis failures remain open. No merge,
 production deployment, or safety-issue closure occurred.
+
+
+## Catalog heading caused wrong-reference retrieval — 2026-09-26
+
+Q's unexpected references are now a demonstrated D (retrieval) failure, not
+merely a model warning. The photo interpretation retained a catalog-number
+heading. `manufacturerFromObservationText` matched CAT inside that heading;
+manufacturer-scoped BM25 then treated it as a vendor. Running the existing TS
+retrieval function against staging in a read-only transaction reproduced all
+four source IDs from the actual recorded turn, including unrelated crane/motor
+records. The image interpretation did not invent that vendor; retrieval did.
+
+Source `8bc2308352568c9033e2d7dc1a6c486374884238` masks catalog headings before
+number-bearing identifiers during manufacturer matching. Genuine CAT mentions,
+including a separate CAT logo alongside a catalog heading, remain usable. No
+benchmark identity, equipment diagnosis, ranking overhaul or schema was added.
+Five catalog-label cases failed before repair; 162 checks across manual-rag,
+notebook-query and the real chat recorder passed afterward. The raw replay now
+chooses an actual manufacturer present in the reading and returns none of the
+four unrelated references. No relevant manual is better than an unrelated one.
+
+Production build passed. Frozen macOS artifact hash
+`55a5fe36693cd8b766cd4e2100fe1df49c53053084add7aff3a844da9646ed75`, built
+`2026-09-26T09:01:02.009787+00:00`. Emulator remains build16 from f1c73144b;
+only the backend changed. New reverse-order replay S completed: five stored readings, six answers,
+summary context all five. The catalog heading remained in the interpretation,
+with no unrelated references on any turn. Narrow D repair PASS. Overall S FAIL E:
+the summary claimed a schematic/manual would settle most uncertainties in a list
+that includes actual voltage, fuse health and physical relay/wiring state. Those
+require appropriate physical observation/testing. Fine-print B remains UNKNOWN.
+Claude
+read-only review completed and returned concrete separator/boundary gaps. Eight
+new cases failed before follow-up; 173 checks now pass, including a chat-handler
+case using the actual matcher. Broader OCR parser reuse would erase real CAT
+mentions, so their distinct roles are cross-referenced. Bare CAT + model remains
+ambiguous and is explicitly covered as an unchanged limitation. The follow-up
+repair still needs a frozen replay.
+The previous f1 bundle was archived and all 14,632 regular files byte-compared
+against the archive before removing its inactive unpacked copy. Private replay
+and raw retrieval evidence remain local and ignored by Git.

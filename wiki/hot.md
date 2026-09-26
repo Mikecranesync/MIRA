@@ -1,3 +1,14 @@
+# Hot Cache — 2026-09-26 — Catalog-label retrieval repair, answer failure remains
+
+PR #3999 runtime8bc230835 repairs CAT.NO. catalog-label confusion in the existing
+manufacturer matcher. Red5/green162; build passes. Frozen reverse-order S preserves
+five readings, excludes unrelated refs, but FAILS E: a manual cannot establish
+actual voltage/fuse/relay/wiring state. Claude review found separator gaps; follow-up red8/green173 including route
+coverage, not yet frozen/replayed. Physical/web
+proof pending. See current owner report and HANDOFF.md. No release acceptance.
+
+---
+
 # Hot Cache — 2026-09-26 — Fireplace recovery remains unaccepted
 
 PR #3999: bounded photo-save repair at f1c73144b. Frozen emulator build16

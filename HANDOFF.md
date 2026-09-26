@@ -1,3 +1,37 @@
+# Current checkpoint — catalog retrieval repaired, S fails answer quality
+
+Goal ACTIVE. Current runtime backend source 8bc2308352568c9033e2d7dc1a6c486374884238,
+frozen macOS bundle /tmp/mira-fireplace-localqa/frozen-host-8bc230835, on4450
+(exec32307). Only budget guard loaded, no injected fault. Version endpoint verified.
+Mobile emulator5554 still build16/source f1, CDP9343, original five-photo driver.
+S reverse-order exec31560 COMPLETE exit0; five observations/six answers; all
+retrieval sets empty despite CAT.NO. still present. Narrow D repair PASS. Overall
+S FAIL E: summary claims full manual/schematic would settle most unknowns including
+actual voltage, fuse health and physical relay/wiring condition. B tiny print UNKNOWN.
+Q now FAIL D: raw production retrieval reproduced exact four unrelated refs; CAT.NO.
+heading misclassified as CAT vendor. The fix masks heading before digit-bearing
+identifiers, keeps genuine CAT mentions. Red5/green162; production build passed.
+Raw before/after evidence in private emulator-q folder; all failed runs preserved.
+Independent Claude review exec6454 TERMINAL exit0; source findings delivered.
+Separator/boundary gaps reproduced red8; follow-up green173 including real matcher
+in chat-handler test. OCR parser/prose matcher cross-referenced; bareCAT+model
+ambiguity documented. Follow-up source not yet frozen/replayed. Stop gate returned approve; preserved
+/tmp/mira-hub-stop-build-catalog-followup-pass.log. Generated .next cleared after
+verification to leave room for later hooks; frozen runtime artifact preserved.
+Archive recompression exec17679 COMPLETE exit0; original f1 runtime stopped143.
+frozen-host-f1c73144b.tar.xz preserves all14632 files; decompressed tar SHA256
+aa5bb2146af08c6bab979b6bf875f320fefee97565ae5afae37ab1e33bbe25c5 verified
+identical to the original gzip archive before removing old encoding. Never remove
+current frozen-host-8bc230835. Docker remains storage-I/O impaired; no shared restart.
+Latest spending5.68/8; authoritative ignored ledger; no further paid calls needed
+until answer-layer bounded repair/freeze. New original-order T not started because
+S already demonstrates E failure. Next: repair documents-vs-
+actual-state distinction using existing answer instructions, prove opposite controls,
+freeze/replay. Pixel locked; web handoffs pending. No merge/deploy/issue closure.
+
+Earlier checkpoints follow; superseded where above differs.
+
+---
 # Current checkpoint — f1 persistence repair and frozen P/Q/R
 
 Goal ACTIVE. Latest code f1c73144b2d86102c727b966ac7f72e03b58dd3c.

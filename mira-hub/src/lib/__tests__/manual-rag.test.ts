@@ -792,17 +792,25 @@ describe("buildDocScopedSystemPrompt", () => {
 
 
 describe("manufacturerFromObservationText catalog labels", () => {
-  it.each(["CAT.NO. X123", "CAT. NO. X123", "Cat No: X123", "CAT # X123", "Cat. Number X123"])(
+  it.each(["CAT.NO. X123", "CAT. NO. X123", "Cat No: X123", "CAT # X123", "Cat. Number X123", "CAT-NO. X123", "CAT:NO. X123", "CAT/NO. X123", "CAT..NO. X123", "CAT_NO. X123", "_CAT NO. X123"])(
     "does not infer CAT equipment from catalog label %s", (label) => {
       expect(manufacturerFromObservationText(`Contactor label: ${label}`, ["CAT"])).toBeNull();
       expect(manufacturerFromObservationText(`Siemens contactor. ${label}`, ["CAT", "Siemens"])).toBe("Siemens");
     },
   );
-  it.each(["CAT motor", "CAT no power", "Manufacturer: CAT; CAT.NO. X123", "CAT.NO. X123; a separate CAT logo is visible"])(
+  it.each(["CAT motor", "CAT no power", "CAT nova5 pump", "CAT numberplate5", "Manufacturer: CAT; CAT.NO. X123", "CAT.NO. X123; a separate CAT logo is visible"])(
     "keeps a real CAT manufacturer mention in %s", (text) => {
       expect(manufacturerFromObservationText(text, ["CAT"])).toBe("CAT");
     },
   );
+  it("handles the caller's joined observations without losing a separate CAT mention", () => {
+    expect(manufacturerFromObservationText("Siemens contactor\nCAT_NO. X123", ["CAT", "Siemens"])).toBe("Siemens");
+    expect(manufacturerFromObservationText("CAT motor\nCAT_NO. X123", ["CAT"])).toBe("CAT");
+  });
+  it("leaves ambiguous bare CAT model text unchanged rather than erasing genuine equipment", () => {
+    // Known limit: this text alone cannot distinguish a catalog value from a CAT model.
+    expect(manufacturerFromObservationText("CAT 1756-L71", ["CAT"])).toBe("CAT");
+  });
   it("does not confuse longer manufacturer names or equipment categories", () => {
     expect(manufacturerFromObservationText("CATTRON radio, category control", ["CAT", "CATTRON"])).toBe("CATTRON");
   });

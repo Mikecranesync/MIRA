@@ -298,7 +298,11 @@ function idCapture(m: RegExpMatchArray | null): { value: string; raw: string } |
 }
 
 /** Labelled part / catalog number: `Motor P/N AZM911AC-D`, `Catalog: 2080-LC20-20QWB`,
- * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`. */
+ * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`.
+ * This OCR field parser deliberately accepts bare CAT + identifier. Prose
+ * manufacturer routing in manual-rag.ts uses a narrower heading mask so a real
+ * CAT model or "CAT no power" is not erased. Keep their different roles explicit.
+ */
 export function parseCatalogNumber(lines: string[]): { value: string; raw: string } | null {
   const patterns = [
     new RegExp(`P\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
