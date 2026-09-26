@@ -1,3 +1,63 @@
+# Current overnight handoff — 2026-09-26 02:47 EDT
+
+Goal remains active; do not claim a working app or mark product acceptance PASS.
+See docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md.
+Worktree: /Users/charlienode/.codex/worktrees/fireplace-repair-loop/MIRA.
+Branch codex/fireplace-repair-loop; PR3999 draft; governance PR4001 separate.
+
+Current runtime: immutable local backend source 0b631a1c80076b9786b0db7b6dabab2d453dbfd9,
+container mira-fireplace-frozen-0b631a1c8, localhost:4450 through existing TLS bridge on port 4443.
+Physical Pixel serial 55081JEBF07026, staging package only, build 15 source
+054d6c9283f7eca29a91a5a00d3812b5cd2b96c7, APK hash in owner report and private identity.
+The installed hash was verified. Frozen backend and new mobile are explicitly
+different source identities; do not relabel the full L run as a build 15 replay.
+
+J/K/L: five original photos + summary each, diagnostic packets and private layers
+grades saved; all FAIL. L fixes the voltage/current certainty wording but still
+asserts an unproved drawing-to-hardware match. First demonstrated remaining layer E.
+Three extra phone photos exercised. Forced upload failure -> retry, cold reopen,
+original viewing, home-label repair and persisted unconfirmed-caption repair have
+physical evidence. Latest caption repair: 1 failed / 45 passed before repair, 67 passing adapter checks, bundle
+build, APK 15, six correct unconfirmed captions on reopened L. Hub review test
+coverage strengthened: 131 focused checks. SQLAlchemy 2.1 driver default failure
+reproduced; six existing declarations bounded below 2.1, five real-PG tests pass.
+
+Next bounded work: trace the remaining drawing-to-hardware attribution in actual
+assembled provider inputs / existing validation; avoid another speculative prompt
+pile or new architecture. Run the Claude-raised attached-photo + earlier-topic
+opposite control. Check CI, including DeepEval offline failure whose failed-log
+fetch was empty. Formal exact-head/body Codex review remains separate from Claude.
+Claude reviews c8687,500cf and0b631 are informational; latest source review found
+no prompt contradictions and coverage gaps now addressed. No safety issue closed.
+
+Web continuity UNKNOWN. User has pending async requests: local browser certificate
+warning decision; sign in to trusted app-staging.factorylm.com as dana@synthetic.test.
+Do not bypass browser security warnings. Existing staging web is a different deployed
+version, so record its identity if used. CUA stagingContinuityTab was marked handoff.
+
+OpenAI account ledger is authoritative at private-backend-diagnostic/overnight-runtime/
+openai-spend-ledger.json; /tmp/mira-fireplace-localqa/openai-spend-ledger.json symlinks
+there. $2.55775 accounted (31 recorded calls + $1 earlier reserve), $8 hard ceiling.
+Both host and container guards use this one ledger. No unguarded calls, no top-ups.
+Jev stays existing shadow only; J/K/L summary overreach flags match observed concerns,
+not an accuracy metric. Do not promote it to a safety, auth, billing or release gate.
+
+Private evidence: ignored proof folder private-backend-diagnostic/overnight-20260926;
+/tmp/mira-fireplace-localqa also has ongoing scripts and additional snapshots.
+Preserve failures, original contracts and corrections. J/K/L notebook ids live in
+contracts. Full L notebook: 8b6aeba6-25c5-467a-9c37-34717cab173d. Restored on phone now.
+Current CDP forward tcp:9342 points at the Pixel WebView; refresh after any restart.
+Use existing tools/mobile-e2e/cdp.mjs and device.py with foreground guards.
+JDK/SDK for local APK builds: JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools. Private init-gradle files
+supply version and local-test TLS/API endpoint only; do not commit those overrides.
+
+No merge, production deploy, significant architecture/schema/vendor/safety changes.
+The root PLAN scope is the governing eight-item overnight contract; older handoff
+below is historical and must not displace this scope.
+
+---
+
 # HANDOFF — complete interaction capture (#3939)
 
 **PR:** [#3964](https://github.com/Mikecranesync/MIRA/pull/3964) · **Branch:** `feat/turn-capture-lifecycle`

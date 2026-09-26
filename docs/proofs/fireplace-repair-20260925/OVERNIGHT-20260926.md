@@ -194,3 +194,41 @@ not a claim that current main has been rerun and proven broken.
 [SQLAlchemy's migration notes](https://docs.sqlalchemy.org/en/21/changelog/migration_21.html)
 confirm the changed default. The independent review and staging gates remain
 separate unmet requirements. No merge or deployment has occurred.
+
+## Later checkpoint: K, L, three extra cases and recovery
+
+[Current owner report](OWNER-CHECKPOINT-20260926.md) supersedes earlier status
+summaries without deleting their evidence. K reversed all five photos on the J
+candidate and reproduced unsupported electrical/functional state claims. L used
+backend `0b631a1c80076b9786b0db7b6dabab2d453dbfd9` after the bounded summary repair;
+its electrical-measurement uncertainty improved, but its drawing/hardware match
+claim remains unsupported. All three have five recorded observations and six
+provider-identified answers; all remain FAIL.
+
+The three selected additional originals were exercised on the physical Pixel.
+A forced local-backend outage preserved the question and exposed Try again;
+restoring the backend and retrying produced one photo answer. Reopening L after
+a cold app restart preserved six answers and five photos with identical text.
+Original viewing loaded a visible 4000 × 3000 image. Inspection also caught a
+separate confidence-caption loss on saved turns. Its regression failed before
+repair (1 failed, 45 passed); afterward 67 adapter checks passed and the mobile
+bundle built. Pixel build 15 reopens L with all six unconfirmed-photo captions.
+
+Claude's summary review found the wording general and consistent, but its test
+needed to prove actual observation delivery and the document-grounded path.
+Those coverage gaps were repaired: 131 focused Hub checks pass. This does not
+turn L's generative FAIL into PASS. The separate mixed-topic/photo concern from
+the earlier review remains an unproven control to execute.
+
+The SQLAlchemy compatibility repair bounds the six existing service declarations
+to `<2.1`, preserving lower bounds and psycopg2. The unchanged store failed to
+construct its PostgreSQL engine with 2.1.1 and selected psycopg2 under resolved
+2.0.54; five existing real-Postgres migration/isolation tests then passed. No
+schema, database data, or driver migration was performed.
+
+207 private evidence files, including original photos, failed runs and final
+review text, were preserved under the ignored proof directory. The initial
+manifest hash is `ad5259a72121ab0483bf1bb82219153452d2033eb3548ac97fb60793f4765c85`.
+The L run template initially carried stale J identity fields; its original
+contract and explicit correction are both retained. Version-endpoint and
+per-turn records independently establish the actual L backend source.
