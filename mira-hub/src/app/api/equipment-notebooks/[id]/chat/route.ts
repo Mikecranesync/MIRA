@@ -2772,8 +2772,20 @@ async function handleChatTurn(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          outputRejected = { kind: validation.kind, violation: validation.violation };
-          answerText = validation.replacement;
+          if (validation.kind === "energized_warning") {
+            // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
+            // replacement is the candidate with a warning above it, served as
+            // an ordinary answered turn — not a Safety STOP. The existing
+            // non-terminal energized directive (#3841) rides the evidence
+            // frame so web + mobile render the same warning chip.
+            answerText = validation.replacement;
+            if (!hazardEntries.some((e) => e.trigger === ENERGIZED_ELECTRICAL_HAZARD)) {
+              hazardEntries.push({ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD });
+            }
+          } else {
+            outputRejected = { kind: validation.kind, violation: validation.violation };
+            answerText = validation.replacement;
+          }
         }
       }
 

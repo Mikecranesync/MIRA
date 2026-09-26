@@ -19,7 +19,7 @@
  * Run: cd mira-hub && npx vitest run src/capabilities/answer-validation-energized-procedure
  */
 import { describe, expect, it } from "vitest";
-import { validateAnswer } from "@/capabilities/answer-validation";
+import { validateAnswer, ENERGIZED_WARNING } from "@/capabilities/answer-validation";
 import { matchSafetyStop } from "@/lib/safety-classifier";
 
 const Q =
@@ -56,8 +56,9 @@ describe("#3973 the answers that actually shipped", () => {
     const v = judge(SHIPPED_RUN_1);
     expect(v.ok).toBe(false);
     if (v.ok) return;
-    expect(v.kind).toBe("unsafe_answer");
-    expect(v.replacement).not.toMatch(/re-energi/i);
+    // #3984 (Mike 2026-09-26): warn and keep troubleshooting, not withhold.
+    expect(v.kind).toBe("energized_warning");
+    expect(v.replacement).toBe(`${ENERGIZED_WARNING}\n\n${SHIPPED_RUN_1}`);
   });
 
   it("rejects run 2 — 'repeat the clamp measurement on the live conductors'", () => {
@@ -132,7 +133,7 @@ describe("#3973 an innocuous question with a hazardous answer", () => {
     });
     expect(v.ok).toBe(false);
     if (v.ok) return;
-    expect(v.violation).toBe("unsafe-answer:energized-procedure");
+    expect(v.violation).toBe("energized-warning:energized-procedure");
   });
 });
 
@@ -152,15 +153,18 @@ describe("#3973 restoring power is not itself a violation", () => {
   });
 });
 
-describe("#3973 the replacement is useful, not a bare refusal", () => {
-  it("names why the measurement cannot be de-energized and what to do instead", () => {
+describe("#3984 the warning is useful and the answer survives", () => {
+  it("names the energized-work requirements AND keeps the model's troubleshooting", () => {
     const v = judge(SHIPPED_RUN_2);
     expect(v.ok).toBe(false);
     if (v.ok) return;
+    expect(v.kind).toBe("energized_warning");
     expect(v.replacement).toMatch(/qualified person/i);
     expect(v.replacement).toMatch(/NFPA 70E/i);
-    // It must offer a path, not only a prohibition.
-    expect(v.replacement.length).toBeGreaterThan(200);
+    // A safer route to the same number, not only a prohibition.
+    expect(v.replacement).toMatch(/drive, MCC metering or a power monitor/i);
+    // The technician keeps the troubleshooting content.
+    expect(v.replacement.endsWith(SHIPPED_RUN_2)).toBe(true);
   });
 });
 

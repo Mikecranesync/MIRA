@@ -34,7 +34,10 @@ export type AnswerValidation =
   | { ok: true }
   | {
       ok: false;
-      kind: "unsafe_answer" | "unsupported_specificity";
+      /** `energized_warning` (#3984, Mike 2026-09-26) is NOT a withhold: the
+       *  replacement is the candidate itself with a warning above it, and the
+       *  caller serves it as an ordinary answered turn. */
+      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning";
       /** Machine-readable id, e.g. `unsafe-answer:permits-energized`. */
       violation: string;
       /** Bounded excerpt of the matched text, for server logs only. */
@@ -528,24 +531,6 @@ function restoreEnergyToMeasure(text: string): string | null {
   return null;
 }
 
-/** The permitted response for this hazard category. Not a bare refusal: a
- *  clamp-meter current reading has no de-energized form, so "de-energize
- *  first" would be useless advice. It names why, hands the work to the people
- *  NFPA 70E puts it with, and gives routes to the same number that do not put
- *  the technician inside an arc-flash boundary. */
-export const ENERGIZED_PROCEDURE_WITHHELD = `I can't walk you through taking that reading.
-
-A clamp-meter current measurement only exists while the conductor is carrying load, so there is no de-energized version of it. Taking it means working on an energized conductor, which is energized work under NFPA 70E: a qualified person, an energized-work permit, an arc-flash risk assessment and the PPE that assessment specifies. That is not something to work through from a chat answer.
-
-Ways to get the same number without opening the enclosure:
-- Read the current off equipment that already measures it — the VFD or soft-starter display, the MCC's metering, or an installed power monitor.
-- Have a qualified electrician take the reading, or fit permanent CTs / a power monitor so the value is available without live work.
-- If an IR window is fitted, a thermal scan often finds a loose or failing connection on a humming feeder before a current reading does.
-
-What you can safely gather right now: when the hum started, whether it tracks load, what was worked on recently, and anything visible or audible from outside the enclosure.
-
-Give me those, or the reading once someone qualified has it, and I'll help you work out what it means.`;
-
 /* ------------------------------------------------------------------------ *
  * B. General-lane specificity (no invented specifics, no invented sources)  *
  * ------------------------------------------------------------------------ */
@@ -838,6 +823,22 @@ What I can tell you honestly:
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
 
+/** #3984: the permitted response for an energized restore-to-measure answer is
+ *  the answer itself, with this warning above it. Short on purpose — the
+ *  technician keeps troubleshooting; this is a caution, not a stop. */
+export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
+
+function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
+  if (!restore) return { ok: true };
+  return {
+    ok: false,
+    kind: "energized_warning",
+    violation: "energized-warning:energized-procedure",
+    detail: restore.slice(0, 160),
+    replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
+  };
+}
+
 /* ------------------------------------------------------------------------ *
  * Entry point                                                               *
  * ------------------------------------------------------------------------ */
@@ -913,41 +914,26 @@ export function validateAnswer(opts: {
     }
   }
 
-  // A4 (#3973): restoring power in order to take a reading. Runs BEFORE the
-  // generic clause rule because the same sentence usually satisfies both, and
-  // this rule's response is the useful one — "de-energize first" is not
-  // actionable advice for a measurement that only exists while the conductor
-  // is live.
+  // A4 (#3973 → #3984): restoring power in order to take a reading.
   //
-  // UNCONDITIONAL, after measuring the alternative. It was first written to
-  // fire only when the caller had classified the turn
-  // (`matchSafetyStop` → ENERGIZED_ELECTRICAL_HAZARD), on the theory that
-  // "re-energize" needs the category's blast radius to be safe. Both halves of
-  // that were checked and the gate lost: the classifier is a QUESTION test and
-  // returns null for "The MCC is humming weird. What should I check?", so a
-  // gated rule would miss a hazardous ANSWER to an innocuous question — the
-  // exact shape of #3973 one step earlier. And the feared false positives do
-  // not occur: "only after the work is complete may the feeder be
-  // re-energized", "after the repair, re-energize and confirm the drive comes
-  // up", "turn the disconnect back on and verify the contactor pulls in" all
-  // pass, because the narrow MEASURE_ACTION set below excludes work/replace/
-  // service/verify. Pinned as controls in
-  // answer-validation-energized-procedure.test.ts.
+  // OWNER DECISION 2026-09-26 (Mike, #3984): this category WARNS and lets the
+  // technician keep troubleshooting — it no longer withholds the answer. The
+  // detector below is unchanged; only the response changed. Rationale from the
+  // owner: an energized state gets a clear warning, then MIRA moves on; the
+  // withhold path turned every restore-then-measure answer into a dead end and
+  // was on track to become another prolonged safety mission (#3982 over-block,
+  // #3984 under-block). Every OTHER hazard rule (A1, A2's non-energized
+  // relations, A3) still replaces the answer with the Safety STOP.
+  //
+  // Detection stays unconditional and runs before A2 for the same reason as
+  // before: the same sentence usually satisfies A2's `energized` relation, and
+  // letting A2 stop it would silently re-impose the withhold.
   const restore = restoreEnergyToMeasure(scanText);
-  if (restore) {
-    return {
-      ok: false,
-      kind: "unsafe_answer",
-      violation: "unsafe-answer:energized-procedure",
-      detail: restore.slice(0, 160),
-      replacement: ENERGIZED_PROCEDURE_WITHHELD,
-    };
-  }
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
   const hazard = clauseHazardViolation(affirmationScanText);
-  if (hazard) {
+  if (hazard && !(restore && hazard.relId === "energized")) {
     return {
       ok: false,
       kind: "unsafe_answer",
@@ -971,7 +957,7 @@ export function validateAnswer(opts: {
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
-  if (!general || refused) return { ok: true };
+  if (!general || refused) return energizedWarningOr(restore, answerText);
 
   for (const p of FABRICATED_DOC_PATTERNS) {
     const m = p.re.exec(scanText);
@@ -1024,7 +1010,7 @@ export function validateAnswer(opts: {
     };
   }
 
-  return { ok: true };
+  return energizedWarningOr(restore, answerText);
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the

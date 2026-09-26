@@ -21,7 +21,7 @@
  * preservation tests in answer-validation-unicode-hyphen.test.ts instead.
  */
 import { describe, expect, it } from "vitest";
-import { validateAnswer, type AnswerValidation } from "./answer-validation";
+import { validateAnswer, type AnswerValidation, ENERGIZED_WARNING } from "./answer-validation";
 
 const check = (answerText: string, question = "How do I get the phase currents?"): AnswerValidation =>
   validateAnswer({ answerText, question, general: true, served: true, refused: false });
@@ -157,6 +157,12 @@ describe("#3973 the corpus also proves detection-only", () => {
         const mutated = mutate(seed);
         const r = check(mutated);
         if (r.ok) continue;
+        // #3984: an energized warning deliberately SERVES the candidate under a
+        // warning — the no-fragment contract applies to withholding kinds only.
+        if (r.kind === "energized_warning") {
+          expect(r.replacement.startsWith(ENERGIZED_WARNING), `${mname} lost the warning`).toBe(true);
+          continue;
+        }
         // the replacement is a fixed deterministic string; no fragment of the
         // candidate — mutated or otherwise — may appear in it
         for (let i = 0; i + 20 <= mutated.length; i += 10) {
