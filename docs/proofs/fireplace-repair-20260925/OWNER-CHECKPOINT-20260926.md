@@ -57,19 +57,27 @@ Defer automatic fixes or verdicts until judged examples establish their reliabil
 Use deterministic checks for missing photos, lost turns and broken links. Never
 use Jev to approve safety, permissions, billing, or releases.
 
-The OpenAI ledger accounts for **$2.56 of the $8 limit**: $1.55775 from 31 measured
+The OpenAI ledger accounts for **$2.639 of the $8 limit**: $1.639015 from 33 measured
 requests plus a $1 reserve for earlier calls without captured usage. The guard
 reserves cost before each call. OpenAI comparisons are another opinion, not an
 answer key. An earlier claim that higher detail fixed a decimal point was
 corrected: the readings differed, and that difference alone proved no improvement.
+
+The latest Pixel repeat still invents a match between drawing symbols and the
+installed hardware. Capturing the actual model input confirmed all five photo
+observations arrived. Removing history, adding attribution wording, removing a
+topic hint, and increasing reasoning did not yield an acceptable repair. Those
+experiments are preserved; none was installed. One OpenAI comparison using the
+same reconstructed context handled the separation better, but it is not proof
+that the app works or a decision to switch its production model.
 
 ## Software checks and review
 
 - 131 focused Hub context checks passed after the summary change and review fixes.
 - 67 mobile adapter checks passed after the saved-caption repair; the mobile build passed.
 - Claude reviewed the frozen summary change. Its test-coverage findings were addressed.
-  Its separate concern about a photo attached alongside an earlier-topic question
-  still needs an opposite-control test.
+  A Pixel control with a new photo plus a question about an earlier drawing correctly
+  kept both references separate. That narrow pass does not prove every ambiguous follow-up.
 - CI exposed a database dependency changing its default driver. The same error
   reproduced locally. Keeping the existing supported SQLAlchemy series restored
   all five real-Postgres isolation tests. Current GitHub checks remain separate;

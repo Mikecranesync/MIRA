@@ -1,4 +1,4 @@
-# Current overnight handoff — 2026-09-26 02:47 EDT
+# Current overnight handoff — 2026-09-26 summary-input investigation
 
 Goal remains active; do not claim a working app or mark product acceptance PASS.
 See docs/proofs/fireplace-repair-20260925/OWNER-CHECKPOINT-20260926.md.
@@ -22,10 +22,18 @@ build, APK 15, six correct unconfirmed captions on reopened L. Hub review test
 coverage strengthened: 131 focused checks. SQLAlchemy 2.1 driver default failure
 reproduced; six existing declarations bounded below 2.1, five real-PG tests pass.
 
-Next bounded work: trace the remaining drawing-to-hardware attribution in actual
-assembled provider inputs / existing validation; avoid another speculative prompt
-pile or new architecture. Run the Claude-raised attached-photo + earlier-topic
-opposite control. Check CI, including DeepEval offline failure whose failed-log
+Actual Groq request input now captured privately during a repeated summary on L.
+The Pixel repeat remains FAIL. Reconstructing its original ten-message history,
+then trying no assistant history, explicit attribution, no topic hint, or higher
+reasoning all failed; high reasoning at 800 tokens returns no visible answer.
+Same-context OpenAI comparison more faithful once, not product acceptance.
+Private evidence and manifest: overnight-runtime/summary-investigation-manifest.json.
+The temporary diagnostic container is stopped; original frozen backend restored.
+Claude read-only mechanism review handle 84100 was launched; inspect its terminal
+result before another review. Stream at /tmp/mira-fireplace-localqa/review-summary-mechanism-stream.jsonl.
+Next bounded work: use that review to choose a source-supported experiment;
+avoid more speculative prompt accumulation or a new architecture. The attached-photo + explicit earlier-drawing question control now PASSes reference
+separation on Pixel build15; small-print correctness remains unverified. Check CI, including DeepEval offline failure whose failed-log
 fetch was empty. Formal exact-head/body Codex review remains separate from Claude.
 Claude reviews c8687,500cf and0b631 are informational; latest source review found
 no prompt contradictions and coverage gaps now addressed. No safety issue closed.
@@ -37,7 +45,7 @@ version, so record its identity if used. CUA stagingContinuityTab was marked han
 
 OpenAI account ledger is authoritative at private-backend-diagnostic/overnight-runtime/
 openai-spend-ledger.json; /tmp/mira-fireplace-localqa/openai-spend-ledger.json symlinks
-there. $2.55775 accounted (31 recorded calls + $1 earlier reserve), $8 hard ceiling.
+there. $2.639015 accounted (33 recorded calls + $1 earlier reserve), $8 hard ceiling.
 Both host and container guards use this one ledger. No unguarded calls, no top-ups.
 Jev stays existing shadow only; J/K/L summary overreach flags match observed concerns,
 not an accuracy metric. Do not promote it to a safety, auth, billing or release gate.

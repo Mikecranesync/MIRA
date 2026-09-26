@@ -232,3 +232,64 @@ manifest hash is `ad5259a72121ab0483bf1bb82219153452d2033eb3548ac97fb60793f4765c
 The L run template initially carried stale J identity fields; its original
 contract and explicit correction are both retained. Version-endpoint and
 per-turn records independently establish the actual L backend source.
+
+## Exact-input investigation after build recovery
+
+The local build failure was disk exhaustion during Next.js packaging. Removed
+only regenerable build output and a scratch dependency installation. Both real
+stop gates then returned `approve`; source, photos, frozen images and failed
+evidence remain intact. This is a build recovery, not product acceptance.
+
+A further physical Pixel summary on app build 15/backend `0b631a1c8` reproduced
+the unsupported drawing-to-installed-hardware match. A private, local fetch
+instrumentation module recorded the actual outgoing Groq request body (no
+credentials or provider reasoning). All five observations reached the request.
+The original frozen backend was restored after capture; no production change.
+
+For diagnostic comparisons, removed the last summary question/answer from that
+captured history to reconstruct the earlier summary input. This is a reconstruction,
+not a claim that the earlier request bytes were recorded. Same original source,
+system context and first ten history messages were retained.
+
+| Diagnostic variant | Observed result | Decision |
+| --- | --- | --- |
+| Existing Groq input, reconstructed | Still invents a drawing/hardware match and indicator association | FAIL |
+| Remove assistant history | Different unsupported claims, including invented absence of measurements | Reject this repair |
+| Add explicit photo-attribution instruction | Still promotes drawing-only labels to physical hardware | Reject this repair |
+| High reasoning, existing 800-token cap | Empty visible answer; completion ended at token limit | Reject this configuration |
+| High reasoning, 2048-token cap | Still attributes an unestablished component to the enclosure | Reject this configuration |
+| Remove automatic topic hint | Still conflates drawing/device labels and invents absence of measurements | Does not solve the failure |
+| OpenAI comparison with same reconstructed context/history | Keeps drawing labels separate from photographed hardware in this one answer | Useful comparison; not product acceptance |
+
+The existing deterministic validator receives a boolean saying some evidence is
+available; it does not check each claimed relationship against that evidence.
+The semantic safety check serves a different purpose. Neither fact authorizes
+weakening safety or promoting Jev from observation to a release gate.
+
+All failed variants and the actual repeat are retained privately with a hashed
+manifest. No extra prompt change or reasoning configuration was installed.
+OpenAI accounted total: **$2.583845 of $8**, including the earlier $1 reserve.
+The comparison used `gpt-5.5-2026-04-23`; it is not ChatGPT UI testing, an original
+image rereading, or an independently verified diagnosis.
+
+### Current photo plus earlier-topic control
+
+Physical Pixel build 15/backend `0b631a1c8`: attached the terminal close-up and
+asked both what it shows and which label appeared in the large block on the
+first drawing. MIRA described the current terminal board and attributed the
+requested label to the earlier drawing correctly. **PASS for this reference
+separation control only.** New small-print readings and other ambiguous pronouns
+are not thereby verified. This provides concrete evidence against treating the
+earlier broad `topicHint` concern as a demonstrated P0 defect.
+
+Updated OpenAI total after that photo: **$2.639015 / $8**, 33 measured calls plus
+the retained $1 reserve. Original private control input/output and assessment
+are preserved.
+
+Jev also flagged the new failing summary as overreach (reported confidence 0.91,
+270 ms). The mixed-topic control received a lower-confidence overreach flag
+(0.43, 240 ms) despite passing the narrow reference-separation check. These judge
+signals are triage prompts, not a replacement for grading individual dimensions.
+The mixed-topic packet also records three retrieved excerpts; their relevance
+has not been independently graded. Its reference PASS must not become a retrieval
+or whole-answer PASS.
