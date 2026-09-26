@@ -27,9 +27,10 @@ import { uploadSourceWarningCopy } from "../lib/resource-copy";
 import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "./attachment-handoff";
 
-/** Shared with the legacy surface so both say the same thing (see #3837). */
 const PHOTO_ANALYSIS_UNAVAILABLE =
   "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
+const MULTIPLE_PHOTOS_UNSUPPORTED =
+  "Send one photo at a time so MIRA can keep each answer tied to the right image.";
 
 /** The rider shape the notebook's send path already accepts for Sensor. */
 export interface VisualEvidenceRider {
@@ -55,6 +56,26 @@ function describe(file: File): Attachment {
     kind: file.type.startsWith("image/") ? "photo" : file.type === PDF_MIME ? "pdf" : "file",
     status: "ready",
   };
+}
+
+/** The same attachment-only question is used before and after HOME handoff. */
+export function questionForAttachments(raw: string, attachments: readonly Attachment[]): string {
+  const text = raw.trim();
+  if (text) return text;
+  return attachments.some((attachment) => attachment.kind === "photo")
+    ? "What am I looking at, and what should I check?"
+    : "What is in this document?";
+}
+
+/**
+ * The chat API accepts one `visualEvidence` rider, so pretending to support
+ * multiple photos would upload one and silently detach the rest. Throw before
+ * Composer releases its chips; the technician can remove one and send again.
+ */
+export function assertSupportedAttachments(attachments: readonly Attachment[]): void {
+  if (attachments.filter((attachment) => attachment.kind === "photo").length > 1) {
+    throw new Error(MULTIPLE_PHOTOS_UNSUPPORTED);
+  }
 }
 
 /**
@@ -135,12 +156,11 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     const text = raw.trim();
     if (items.length === 0 || !notebookId) return { question: text };
 
+    assertSupportedAttachments(items.map((item) => item.attachment));
     const photo = items.find((x) => x.attachment.kind === "photo");
     const documents = items.filter((x) => x.attachment.kind !== "photo");
     // An attachment with no typed question still deserves a question.
-    const question = text || (photo
-      ? "What am I looking at, and what should I check?"
-      : "What is in this document?");
+    const question = questionForAttachments(text, items.map((item) => item.attachment));
 
     // A failure must leave the bytes armed for Try again. `held` still has
     // them (they are dropped only on success, below), but the composer has
@@ -174,18 +194,27 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
           return { question, failure: "The photo didn't upload — try again." };
         }
         if (!look.observation) {
-          // Parked but never read. The server returns the saved file with a
-          // null observation when vision fails (502) or is unconfigured (503),
-          // so this is an ordinary outage, not an exception. Asking anyway
-          // would answer from nothing about a picture nothing has read — the
-          // same failure the fileId check above prevents, one step later.
+          // A saved file ID proves storage, not visual understanding. Do not
+          // let retrieval answer the technician from an unrelated manual when
+          // LOOK could not describe the image.
           retain();
           return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
         }
+        // Chat resolves visual evidence through this notebook's file links.
+        // A stored/analyzed file without that link would silently lose grounding.
+        if (!look.attachment?.linkId || look.attachment.notebookId !== notebookId) {
+          retain();
+          return { question, failure: "The photo couldn't be linked to this conversation. Try again." };
+        }
+        // Keep model-generated LOOK prose out of the technician's question.
+        // The engine classifies that string as operator-authored input, so a
+        // negated observation such as "no burn marks" would otherwise trip an
+        // immediate safety stop (#3852). The structured rider carries the
+        // visual context without changing the text being classified.
         rider = {
           visualEvidence: {
             fileId: look.fileId,
-            capturedAt: look.observation?.capturedAt ?? new Date().toISOString(),
+            capturedAt: look.observation.capturedAt,
           },
         };
       }

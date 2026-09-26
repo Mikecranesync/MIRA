@@ -227,7 +227,11 @@ describe("UnifiedChat", () => {
   // answered without it (no /look/ upload, no visualEvidence rider).
   it("uploads a HOME-stashed attachment for the question that thread was created with", async () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
-    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-home-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    resources.lookAtPhoto.mockResolvedValue({
+      fileId: "file-home-9",
+      attachment: { linkId: "link-photo", notebookId: "nb-1" },
+      observation: { text: "No visible damage, burn marks, or corrosion.", capturedAt: "2026-09-16T00:00:00" },
+    });
 
     // Stash exactly as the HOME shell does before it opens the new notebook.
     const home = renderHook(() => useUnifiedAttachments(null));
@@ -247,6 +251,62 @@ describe("UnifiedChat", () => {
       "what is this",
       expect.objectContaining({ visualEvidence: expect.objectContaining({ fileId: "file-home-9" }) }),
     ));
+  });
+
+  it.each([
+    { retryPath: "draft fallback", turns: [] as NotebookServerTurn[], canRetry: false },
+    { retryPath: "prior host turn", turns: [TURN], canRetry: true },
+  ])("refuses multiple photos on $retryPath before clearing their chips or uploading only one", async ({ turns, canRetry }) => {
+    nativePick.pickPhoto
+      .mockResolvedValueOnce(new File(["a"], "left.jpg", { type: "image/jpeg" }))
+      .mockResolvedValueOnce(new File(["b"], "right.jpg", { type: "image/jpeg" }));
+    const h = handlers();
+    render(
+      <UnifiedChat turns={turns} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={canRetry}
+        chatError={null} handlers={h} meta={META} />,
+    );
+
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    }
+    await screen.findByText(/left\.jpg/);
+    await screen.findByText(/right\.jpg/);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.change(box, { target: { value: "compare these" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" }).textContent).toMatch(/one photo at a time/i));
+    expect(screen.getByText(/left\.jpg/)).toBeTruthy();
+    expect(screen.getByText(/right\.jpg/)).toBeTruthy();
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
+    expect(h.onSend).not.toHaveBeenCalled();
+    expect(h.onRetry).not.toHaveBeenCalled();
+
+    // A validation error has no sent turn to retry. The error surface must
+    // retry the current composer with its visible chips, never resend text alone.
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
+    expect(h.onSend).not.toHaveBeenCalled();
+    expect(h.onRetry).not.toHaveBeenCalled();
+    expect(screen.getByText(/left\.jpg/)).toBeTruthy();
+    expect(screen.getByText(/right\.jpg/)).toBeTruthy();
+
+    resources.lookAtPhoto.mockResolvedValue({
+      fileId: "file-left",
+      attachment: { linkId: "link-left", notebookId: "nb-1" },
+      observation: { text: "Left panel.", capturedAt: "2026-09-24T00:00:00Z" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove right.jpg" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(
+      "compare these",
+      { visualEvidence: { fileId: "file-left", capturedAt: "2026-09-24T00:00:00Z" } },
+    ));
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/left\.jpg/)).toBeNull();
+    expect(screen.queryByText(/right\.jpg/)).toBeNull();
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {
@@ -269,7 +329,11 @@ describe("UnifiedChat", () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     resources.lookAtPhoto
       .mockRejectedValueOnce(new Error("Network request failed"))
-      .mockResolvedValue({ fileId: "file-retry-1", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({
+        fileId: "file-retry-1",
+        attachment: { linkId: "link-photo", notebookId: "nb-1" },
+        observation: { text: "A bearing box.", capturedAt: "2026-09-17T00:00:00" },
+      });
     const h = handlers();
     // A prior turn exists, so the shell supplies a turnId and SendError prefers
     // the host retry — the same condition the phone was in.

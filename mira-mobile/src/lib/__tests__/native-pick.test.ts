@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The nameplate/PDF picker seam.
 //
 // The old path was a hidden <input type="file" capture="environment">. On
@@ -133,12 +134,57 @@ describe("pickPdf — native", () => {
 });
 
 describe("web", () => {
-  it("does NOT call the native plugin off-device", async () => {
+  it("settles cancellation without needing a window focus event", async () => {
     state.native = false;
-    // No DOM picker is opened here either — the caller keeps its <input> for web.
-    const f = await pickNameplatePhoto();
+    let settled = false;
+    const pending = pickNameplatePhoto().then((file) => { settled = true; return file; });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    input.dispatchEvent(new Event("cancel"));
+    await Promise.resolve();
+    expect(settled).toBe(true);
+    expect(await pending).toBeNull();
+    expect(input.isConnected).toBe(false);
     expect(pickImages).not.toHaveBeenCalled();
-    expect(f).toBeNull();
+  });
+
+  it.each([
+    ["photo", pickNameplatePhoto],
+    ["document", pickPdf],
+  ] as const)("waits for the %s selection even when focus arrives first", async (_kind, pick) => {
+    state.native = false;
+    vi.useFakeTimers();
+    let settled = false;
+    const pending = pick().then((file) => { settled = true; return file; });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    try {
+      window.dispatchEvent(new Event("focus"));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(settled).toBe(false);
+      expect(input.isConnected).toBe(true);
+      const selected = new File(["selection"], "selected.jpg", { type: "image/jpeg" });
+      Object.defineProperty(input, "files", { configurable: true, value: [selected] });
+      input.dispatchEvent(new Event("change"));
+      expect(await pending).toBe(selected);
+      expect(input.isConnected).toBe(false);
+    } finally {
+      input.remove();
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses a browser file input without calling the native plugin off-device", async () => {
+    state.native = false;
+    const pending = pickNameplatePhoto();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const selected = new File(["photo"], "browser.jpg", { type: "image/jpeg" });
+    Object.defineProperty(input, "files", { configurable: true, value: [selected] });
+    input?.dispatchEvent(new Event("change"));
+
+    const f = await pending;
+    expect(pickImages).not.toHaveBeenCalled();
+    expect(f).toBe(selected);
+    expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
   it("reports that it cannot serve the pick, so the caller can fall back", async () => {

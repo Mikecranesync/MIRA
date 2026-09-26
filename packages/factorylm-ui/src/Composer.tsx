@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useState, type Dispatch, type FormEvent, type KeyboardEvent, type MutableRefObject } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { Overlay } from "./Overlay";
 import { machineName, type HostHooks } from "./parts";
@@ -11,6 +11,8 @@ export interface ComposerProps {
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
   readonly hooks?: HostHooks;
+  /** Lets the error surface retry this exact composer with its visible chips. */
+  readonly retryRef?: MutableRefObject<(() => void) | null>;
   /** The attachment sheet is the top-most layer (FactoryLMShell decides via topLayer). */
   readonly attachmentTrapsTab?: boolean;
 }
@@ -47,7 +49,7 @@ function describeFailure(operation: AdapterOperation, error: unknown): string {
   return `${verb} failed${detail}. Try again.`;
 }
 
-export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab = true }: ComposerProps) {
+export function Composer({ state, dispatch, adapter, hooks, retryRef, attachmentTrapsTab = true }: ComposerProps) {
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -117,6 +119,14 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       dispatch({ type: "set-send-error", error: null });
     }
   };
+
+  useLayoutEffect(() => {
+    if (!retryRef) return;
+    retryRef.current = send;
+    return () => {
+      if (retryRef.current === send) retryRef.current = null;
+    };
+  }, [retryRef, send]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

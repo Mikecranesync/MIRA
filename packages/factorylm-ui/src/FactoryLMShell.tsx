@@ -31,6 +31,8 @@ export interface FactoryLMShellProps {
    * The composer, header, navigation and layers are identical for both.
    */
   readonly conversationSurface?: ConversationSurface;
+  /** Route a pre-send validation retry through the current composer chips. */
+  readonly retryComposerOnError?: boolean;
 }
 
 export type ConversationSurface = "classic" | "assistant";
@@ -125,8 +127,9 @@ export function closeLayerAction(layer: LayerName): ShellAction {
   }
 }
 
-export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic", retryComposerOnError = false }: FactoryLMShellProps) {
   const narrowViewport = useNarrowViewport();
+  const composerRetry = useRef<(() => void) | null>(null);
   // `layered` rather than the old `mobile`: the drawer overlays the page on any
   // narrow viewport, which is what the stylesheet has always done.
   const layered = navigationIsLayer(state, narrowViewport);
@@ -192,8 +195,8 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       {conversationSurface === "assistant"
         ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
-      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
+      {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} retryCurrentComposer={retryComposerOnError ? () => composerRetry.current?.() : undefined} /> : null}
+      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} retryRef={composerRetry} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>
       <Inspector state={state} />
