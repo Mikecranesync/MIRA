@@ -1,4 +1,13 @@
 /**
+ * #3984 (owner decision, Mike 2026-09-26) — an energized restore-to-measure
+ * answer is SERVED with a warning above it, and troubleshooting continues.
+ * This file previously pinned the #3973 withhold (no byte of the procedure on
+ * the wire, terminal safety frame, persisted safety_stop). That behaviour was
+ * deliberately retired: the detector is unchanged, the response is now a
+ * non-terminal warning. What is pinned below is the new contract, end to end
+ * through the real route, plus the controls that keep it from spreading.
+ *
+ * Original header (#3973), kept for provenance:
  * #3973 — the energized-electrical procedure must never reach the wire.
  *
  * Complement to `chat-electrical-hazard-live-stream.test.ts` (#3841), which
@@ -62,7 +71,8 @@ const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) })
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
-import { ENERGIZED_PROCEDURE_WITHHELD } from "@/capabilities/answer-validation";
+import { ENERGIZED_WARNING } from "@/capabilities/answer-validation";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -125,8 +135,6 @@ function frames(body: string): Array<Record<string, unknown>> {
     });
 }
 
-const PROHIBITED = [/re-?energi[sz]e/i, /live conductors/i, /repeat the clamp measurement/i];
-
 beforeEach(() => {
   vi.clearAllMocks();
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
@@ -138,170 +146,126 @@ beforeEach(() => {
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
 });
 
-describe("#3973 the procedure never reaches the client", () => {
-  it("emits not one byte of the prohibited procedure", async () => {
-    stubProvider(SHIPPED);
+function contentOf(text: string): string {
+  return frames(text)
+    .filter((f) => f.kind === "content")
+    .map((f) => String(f.content ?? ""))
+    .join("");
+}
+
+function evidenceFrame(text: string): Record<string, unknown> | undefined {
+  return frames(text).find((f) => f.kind === "evidence");
+}
+
+function recorded(): Record<string, unknown> {
+  return (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
+}
+
+/** Each fixture is a detected restore-to-measure answer (the detector's own
+ *  tests prove detection); here we pin what the ROUTE does with it. */
+const DETECTED: Array<[string, string]> = [
+  ["the answer a Pixel received 2026-09-23", SHIPPED],
+  ["the live staging bytes with U+2011 (2026-09-24)", STAGING_RESTORE_POWER_LEAK_2026_09_24],
+  ["a numbered procedure, ASCII hyphen", "4. Re-energize the panel.\n5. Clamp each phase and record the current."],
+  ["a numbered procedure, U+2011 hyphen", "4. Re\u2011energize the panel.\n5. Clamp each phase and record the current."],
+  ["a cross-sentence procedure", "Re-energize the panel. Then clamp each phase and record the current."],
+];
+
+describe("#3984 warn and keep troubleshooting — the answer is served", () => {
+  it.each(DETECTED)("%s: warning first, then the model's answer", async (_label, draft) => {
+    stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    for (const re of PROHIBITED) expect(text).not.toMatch(re);
+    const content = contentOf(text);
+    expect(content.startsWith(ENERGIZED_WARNING)).toBe(true);
+    // The troubleshooting content is NOT withheld.
+    const firstLine = draft.split("\n")[0].trim();
+    expect(content).toContain(firstLine);
   });
 
-  it("serves the category's permitted response instead", async () => {
-    stubProvider(SHIPPED);
+  it.each(DETECTED)("%s: non-terminal — no safety frame, no safety_stop, status answered", async (_label, draft) => {
+    stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const content = frames(text)
-      .filter((f) => f.kind === "content")
-      .map((f) => String(f.content ?? ""))
-      .join("");
-    expect(content.length).toBeGreaterThan(0);
-    // It is the replacement, and the replacement is useful, not a bare stop.
-    expect(ENERGIZED_PROCEDURE_WITHHELD).toContain("qualified");
-    // The served text IS the category replacement, byte for byte.
-    expect(content.replace(/\s+/g, " ").trim()).toBe(ENERGIZED_PROCEDURE_WITHHELD.replace(/\s+/g, " ").trim());
-    for (const re of PROHIBITED) expect(content).not.toMatch(re);
+    expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+    const status = frames(text).find((f) => f.kind === "status");
+    expect(status?.status).toBe("answered");
+    const rec = recorded();
+    expect(rec.answerStatus).toBe("answered");
+    expect((rec.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(false);
   });
 
-  it("never persists the rejected draft", async () => {
+  it.each(DETECTED)("%s: the energized directive rides the evidence frame and is persisted (web + mobile warning chip)", async (_label, draft) => {
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    const ev = evidenceFrame(text);
+    const entries = (ev?.hazardEntries ?? []) as Array<{ kind: string; trigger: string }>;
+    expect(entries.filter((e) => e.trigger === ENERGIZED_ELECTRICAL_HAZARD)).toHaveLength(1);
+    const persisted = recorded().evidence as Array<{ kind: string; trigger?: string }>;
+    expect(persisted.some((e) => e.kind === "safety_notice" && e.trigger === ENERGIZED_ELECTRICAL_HAZARD)).toBe(true);
+  });
+
+  it("persists the warned answer, not a replacement stop", async () => {
     stubProvider(SHIPPED);
     await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const call = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
-    const persisted = String(call.answerText ?? "");
-    for (const re of PROHIBITED) expect(persisted).not.toMatch(re);
+    const answer = String(recorded().answerText ?? "");
+    expect(answer.startsWith(ENERGIZED_WARNING)).toBe(true);
+    expect(answer).toContain("Re-energize the feeder");
   });
 
-  it("is TERMINAL, not advisory: a rejection emits the safety frame that suppresses success chrome", async () => {
-    stubProvider(SHIPPED);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const safety = frames(text).find((f) => f.kind === "safety");
-    expect(safety).toBeDefined();
-    expect(String(safety?.trigger)).toContain("energized-procedure");
-  });
-
-  it("persists a safety_stop so the reload is terminal too (cold-launch hydration)", async () => {
-    stubProvider(SHIPPED);
-    await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const call = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
-    const evidence = call.evidence as Array<{ kind: string; trigger?: string }>;
-    expect(evidence.some((e) => e.kind === "safety_stop")).toBe(true);
+  it("an innocuous question still gets the warning — the directive is added even when the QUESTION was not classified", async () => {
+    stubProvider("Re-energize the panel. Then clamp each phase and record the current.");
+    const text = await (await POST(chatReq({ message: "The MCC is humming weird. What should I check?", sourceDocIds: [DOC_A] }), params)).text();
+    expect(contentOf(text).startsWith(ENERGIZED_WARNING)).toBe(true);
+    const entries = (evidenceFrame(text)?.hazardEntries ?? []) as Array<{ trigger: string }>;
+    expect(entries.some((e) => e.trigger === ENERGIZED_ELECTRICAL_HAZARD)).toBe(true);
   });
 });
 
-describe("#3973 control — a safe answer in the same category is untouched", () => {
-  it("passes a safe answer through verbatim", async () => {
+describe("#3984 controls — the warning does not spread", () => {
+  it("a safe answer in the same category passes through verbatim, with no warning prepended", async () => {
     stubProvider(SAFE);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const content = frames(text)
-      .filter((f) => f.kind === "content")
-      .map((f) => String(f.content ?? ""))
-      .join("");
+    const content = contentOf(text);
     expect(content).toContain("VFD display");
-    // Advisory, not terminal: no safety frame on an accepted answer.
+    expect(content).not.toContain(ENERGIZED_WARNING);
     expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
   });
-});
 
-/**
- * #3973 R3 — the same route, against the answer staging ACTUALLY served on
- * 2026-09-24 after A4 shipped. The model spelled it "Re\u2011energize"
- * (U+2011 NON-BREAKING HYPHEN) and every hyphen-sensitive rule in the floor is
- * written against ASCII, so A4 missed it and the technician got the procedure.
- * The fixture is the live bytes.
- */
-describe("#3973 R3 — a Unicode hyphen does not get the procedure onto the wire", () => {
-  const LIVE_LEAK = STAGING_RESTORE_POWER_LEAK_2026_09_24;
-  // Unicode-aware: the ASCII PROHIBITED list above cannot see these spellings,
-  // which is precisely how the leak got out.
-  const PROHIBITED_U = [
-    /re[-\u2010-\u2015\s]?energi[sz]e/i,
-    /close the feeder breaker/i,
-    /one phase at a time/i,
-    /clamp[-\u2010-\u2015\s]?on ammeter/i,
-  ];
-
-  it("the fixture is the live bytes, with a non-breaking hyphen", () => {
-    expect(LIVE_LEAK).toContain("Re\u2011energize");
-    expect(LIVE_LEAK.toLowerCase()).not.toContain("re-energize");
-    // and it is exactly the shape this issue is about
-    for (const re of PROHIBITED_U) expect(LIVE_LEAK).toMatch(re);
-  });
-
-  it("emits not one byte of it", async () => {
-    stubProvider(LIVE_LEAK);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    for (const re of PROHIBITED_U) expect(text).not.toMatch(re);
-  });
-
-  it("serves the category replacement instead", async () => {
-    stubProvider(LIVE_LEAK);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const content = frames(text)
-      .filter((f) => f.kind === "content")
-      .map((f) => String(f.content ?? ""))
-      .join("");
-    expect(content.replace(/\s+/g, " ").trim()).toBe(
-      ENERGIZED_PROCEDURE_WITHHELD.replace(/\s+/g, " ").trim(),
-    );
-  });
-
-  it("never persists it", async () => {
-    stubProvider(LIVE_LEAK);
-    await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const persisted = JSON.stringify(domainMock.recordTurn.mock.calls);
-    for (const re of PROHIBITED_U) expect(persisted).not.toMatch(re);
-  });
-
-  /**
-   * `AnswerValidation.detail` is a 160-char SLICE OF THE HAZARDOUS TEXT. It is
-   * meant for the server log only. #3916 is the standing proof that internal
-   * violation fields do reach the technician when nothing pins them, so pin it:
-   * the detail slice must not appear in the stream or in what is persisted.
-   */
-  it("the validation detail slice — a cut of the hazardous text — never reaches the wire", async () => {
-    stubProvider(LIVE_LEAK);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const persisted = JSON.stringify(domainMock.recordTurn.mock.calls);
-    // any 24-char window of the leaked answer is enough to be a leak
-    for (let i = 0; i + 24 <= LIVE_LEAK.length; i += 24) {
-      const window = LIVE_LEAK.slice(i, i + 24).trim();
-      if (window.length < 20) continue;
-      expect(text).not.toContain(window);
-      expect(persisted).not.toContain(window);
-    }
-  });
-});
-
-
-describe("review repair — numbered procedures and safe external readings on the wire", () => {
-  it.each(["-", "\u2011"])("withholds a numbered procedure with %s and persists a terminal stop", async (hyphen) => {
-    const draft = `4. Re${hyphen}energize the panel.\n5. Clamp each phase and record the current.`;
-    stubProvider(draft);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    expect(text).not.toContain("Clamp each phase");
-    expect(text).not.toContain(`Re${hyphen}energize`);
-    expect(frames(text).find((f) => f.kind === "safety")?.trigger).toContain("energized-procedure");
-    const recorded = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
-    expect(String(recorded.answerText)).not.toContain("Clamp each phase");
-    expect((recorded.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(true);
-  });
-
-  it.each([
-    "Re-energize the panel. Read current on the VFD display and then measure voltage across the terminals.",
-    "Restore power. De-energize the panel, lock out and verify zero voltage, then re-energize and measure phase current.",
-  ])("withholds mixed actions before emission and persistence: %s", async (draft) => {
-    stubProvider(draft);
-    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    expect(text).not.toContain(draft);
-    expect(frames(text).find((f) => f.kind === "safety")?.trigger).toContain("energized-procedure");
-    const recorded = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
-    expect(String(recorded.answerText)).not.toContain(draft);
-    expect((recorded.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(true);
-  });
-
-  it("serves a safe restart/display reading without a terminal frame", async () => {
+  it("a safe restart/display reading (#3982) is served untouched", async () => {
     const draft = "Bring the conveyor motor back on and check the amp draw on the VFD display after it stabilizes.";
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    const content = frames(text).filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
-    expect(content).toBe(draft + "\n");
+    expect(contentOf(text)).toBe(draft + "\n");
     expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+  });
+
+  it.each([
+    "1. Re-energize the drive and read the current at the input terminals.\n2. Reach into the guard opening to reposition the sensor while the conveyor is running.",
+    "Re-energize the panel and clamp each phase to record the current, then reach into the guard opening while the conveyor is running.",
+    "Re-energize the panel. Clamp each phase and record the current.\nThen loosen the fitting while the line is still pressurized.",
+    "Re-energize the panel. Clamp each phase and record the current.\nReset the fault at the contactor while it is energized.",
+  ])("#4005 review: restore-to-measure PLUS another hazard still STOPS — the energized exemption never hides another hazard: %s", async (draft) => {
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    expect(contentOf(text).toLowerCase()).not.toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
+  });
+
+  it("#4005 re-review: a prohibited measurement does not shield a sibling hazard clause once A4 fired", async () => {
+    // Without A4, "Never probe …, and reset …" passes: the prohibition sits in
+    // the same sentence's bearing clauses. With A4 fired the probe clause is
+    // masked and the reset-while-energized clause is judged on its own — the
+    // prohibition never bound the reset. Deliberate over-stop direction.
+    stubProvider("Re-energize the panel and read the current.\nNever probe the live terminals, and reset the fault while the drive is energized.");
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    expect(contentOf(text).toLowerCase()).not.toContain("reset the fault while the drive is energized");
+  });
+
+  it("a non-energized hazard rule still STOPS — the owner decision is scoped to energized states", async () => {
+    // A1 lockout-bypass affirmation: unchanged, still the terminal Safety STOP.
+    stubProvider("You don't need to lock out the conveyor for this, just reach in and clear the jam.");
+    const text = await (await POST(chatReq({ message: "Conveyor jammed, how do I clear it?", sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    expect(contentOf(text)).not.toContain(ENERGIZED_WARNING);
   });
 });

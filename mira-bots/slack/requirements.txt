@@ -5,7 +5,8 @@ Pillow>=12.0
 pytesseract>=0.3.13
 PyYAML==6.0.3
 langfuse>=2.50.0,<3.0.0
-sqlalchemy>=2.0
+# 2.1 defaults PostgreSQL URLs to psycopg 3; these services use psycopg2.
+sqlalchemy>=2.0,<2.1
 psycopg2-binary>=2.9
 # PrintSense print interpreter (same isolated print-vision lane as Telegram).
 # SDKs are lazy-imported and inert unless PRINT_VISION_PROVIDER plus that
