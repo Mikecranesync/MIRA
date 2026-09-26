@@ -249,6 +249,36 @@ describe("UnifiedChat", () => {
     ));
   });
 
+  // #4014 review (mira-f1): a PDF attached on HOME rides the thread it creates.
+  // The queued question calls onSend(text, []) with an EMPTY pending list, so
+  // only the hasCarried() clause keeps it from taking the plain text path, and
+  // with it the upload and the scope re-read. Simplifying that guard would
+  // silently re-open the ungrounded-manual defect, which only a device walk
+  // would otherwise catch.
+  it("grounds the question a HOME-carried manual was attached to", async () => {
+    nativePick.pickDocument.mockResolvedValue(new File(["%PDF"], "gs10.pdf", { type: "application/pdf" }));
+    resources.getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb-1", nodeId: "node-1" },
+      sources: [{ docId: "doc-carried", enabledByDefault: true, matchState: "user_confirmed" }],
+    });
+    resources.uploadSourceToNotebook.mockResolvedValue({ attached: true, duplicate: false, warning: null });
+
+    const home = renderHook(() => useUnifiedAttachments(null));
+    let picked: Attachment | null = null;
+    await act(async () => { picked = await home.result.current.attachFile(); });
+    act(() => { home.result.current.stashForHandoff([picked as Attachment]); });
+    home.unmount();
+
+    const h = handlers();
+    render(
+      <UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false}
+        chatError={null} handlers={h} meta={META} initialQuestion="what is the carrier limit" />,
+    );
+
+    await waitFor(() => expect(resources.uploadSourceToNotebook).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith("what is the carrier limit", undefined, ["doc-carried"]));
+  });
+
   it("routes the shared shell Scan machine action to the host scanner", async () => {
     const h = { ...handlers(), onScanMachine: vi.fn(async () => null) };
     render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
