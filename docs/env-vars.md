@@ -198,3 +198,7 @@ Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scop
 | `MIRA_TRACE_VIEWER_URL_TEMPLATE` | unset | Optional trace-viewer URL template with a `{traceId}` placeholder (e.g. a Langfuse trace URL), surfaced by the turn diagnostics endpoint. `null` when unset. |
 
 `/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.
+
+The local `MIRA_NOTEBOOK_PROVIDER=openai` comparison applies only to notebook
+answer generation with the canonical seam enabled. The semantic safety judge
+retains its existing Groq → Cerebras → Together registry and fail-closed behavior.

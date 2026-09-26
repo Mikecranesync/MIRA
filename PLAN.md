@@ -260,3 +260,14 @@ runtime/guard, frozen image and physical replay. Owner-authorized $8 total testi
 ceiling applies. No production configuration change or deployment. Acceptance still
 requires original-order, changed-order and opposite-control evidence; a model
 comparison alone does not count as a working app. Failure preserves the old runtime.
+
+## Review repair: keep notebook provider selection out of safety judging
+
+Confirmed first failure: the explicit notebook comparison flag changed the shared
+provider registry used by the safety judge, whose request body does not support
+the comparison model. Reuse the existing registry with an explicit notebook scope;
+the chat route opts in, and the unchanged safety judge retains its original cascade.
+No safety prompt, verdict parser, timeout, selector or fail-closed policy changes.
+Prove safe/unsafe verdict transport, fallback and exhaustion under the comparison
+flag, plus continued notebook pinning and unchanged defaults. Model correctness
+still requires separate frozen product replay.

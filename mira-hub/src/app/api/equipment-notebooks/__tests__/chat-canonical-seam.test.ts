@@ -112,6 +112,7 @@ const groundedChunks = [
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.MIRA_NOTEBOOK_PROVIDER;
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
@@ -157,6 +158,28 @@ describe("flag OFF — production path unchanged (rollback behaviour)", () => {
 describe("flag ON — canonical seam", () => {
   beforeEach(() => {
     process.env.MIRA_CANONICAL_SEAM = "1";
+  });
+
+  it("compares the notebook answer through OpenAI while the real safety judge stays on Groq", async () => {
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "comparison-key";
+    process.env.NOTEBOOK_ANSWER_GATE = "1";
+    const calls: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      calls.push({ url: String(url), body });
+      if (body.stream === false) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+          verdict: "safe", hazard_class: "none", reason: "definition only",
+        }) } }] }));
+      }
+      return providerStream("F004 indicates DC bus undervoltage [1].", { prompt_tokens: 200, completion_tokens: 20 });
+    }));
+    const f = await frames(await POST(chatReq({ message: "what is F004", sourceDocIds: [DOC_A] }), params));
+    expect(calls.filter(c => c.body.stream === true).map(c => c.url)).toEqual(["https://api.openai.com/v1/chat/completions"]);
+    expect(calls.filter(c => c.body.stream === false).map(c => c.url)).toEqual(["https://api.groq.com/openai/v1/chat/completions"]);
+    expect(f.find(x => x.kind === "usage")?.provider).toBe("OpenAI");
+    expect(f.some(x => x.kind === "content")).toBe(true);
   });
 
   it("calls Groq first and requests usage", async () => {

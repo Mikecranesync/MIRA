@@ -215,21 +215,26 @@ describe("usage frame", () => {
 
 
 describe("explicit OpenAI notebook comparison", () => {
+  it("does not change the shared registry used by safety judging", () => {
+    process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
+    expect(canonicalProviders().map(p => p.name)).toEqual(["Groq", "Cerebras", "Together"]);
+  });
+
   it("pins provider and model only on explicit opt-in, with no silent fallback", () => {
     process.env.OPENAI_API_KEY = "openai-test-key";
     process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
-    expect(canonicalProviders()).toEqual([{
+    expect(canonicalProviders("notebook")).toEqual([{
       name: "OpenAI", url: "https://api.openai.com/v1/chat/completions",
       key: "openai-test-key", model: "gpt-5.5-2026-04-23",
     }]);
     delete process.env.OPENAI_API_KEY;
-    expect(canonicalProviders().filter(p => p.key)).toEqual([]);
+    expect(canonicalProviders("notebook").filter(p => p.key)).toEqual([]);
   });
 
   it("uses the reasoning-model output bound without unsupported sampling fields", () => {
     process.env.MIRA_NOTEBOOK_PROVIDER = "openai";
     const messages = [{ role: "user", content: "Describe the observations and limits." }];
-    expect(buildRequestBody(canonicalProviders()[0], messages, 800)).toEqual({
+    expect(buildRequestBody(canonicalProviders("notebook")[0], messages, 800)).toEqual({
       model: "gpt-5.5-2026-04-23", messages, stream: true,
       stream_options: { include_usage: true }, max_completion_tokens: 800,
       reasoning_effort: "medium", store: false,

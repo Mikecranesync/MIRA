@@ -102,11 +102,13 @@ export function canonicalSeamEnabled(): boolean {
  * `mira-bots/shared/inference/router.py` so the two runtimes cannot silently
  * serve different models for the same question.
  */
-export function canonicalProviders(): CanonicalProvider[] {
+export function canonicalProviders(scope?: "notebook"): CanonicalProvider[] {
   // Explicit operator opt-in for the authorized local comparison. Keep the
   // default cascade unchanged and do not silently substitute another model
   // when a comparison provider is unavailable. The normal caller filters keys.
-  if (process.env.MIRA_NOTEBOOK_PROVIDER === "openai") {
+  // Safety judging uses this registry too; notebook experiments must not
+  // change its established provider protocol or fail-closed behavior.
+  if (scope === "notebook" && process.env.MIRA_NOTEBOOK_PROVIDER === "openai") {
     return [{
       name: "OpenAI",
       url: "https://api.openai.com/v1/chat/completions",

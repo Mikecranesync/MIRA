@@ -2347,7 +2347,7 @@ async function handleChatTurn(
 
       // ONE cascade definition per turn. Flag off => byte-identical legacy list.
       const seam = canonicalSeamEnabled();
-      const cascadeProviders = seam ? canonicalProviders() : providers();
+      const cascadeProviders = seam ? canonicalProviders("notebook") : providers();
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
       let turnUsage: TurnUsage | null = null;
