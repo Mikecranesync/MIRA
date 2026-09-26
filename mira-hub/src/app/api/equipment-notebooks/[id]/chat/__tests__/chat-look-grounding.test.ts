@@ -493,3 +493,20 @@ describe("fresh photo owns the current referent", () => {
     }
   });
 });
+
+
+describe("summary preserves the kind of evidence", () => {
+  it("carries evidence boundaries into a text-only summary with earlier photos", async () => {
+    veMock.loadRecentLookObservations.mockResolvedValueOnce([{
+      observationId: "summary-led", sessionId: "summary-session", text: "A green indicator is lit.",
+      obsKind: "property", trust: "candidate", confidence: null, fileId: PHOTO,
+      photoHash: "summary-hash", observedAt: CAPTURED_AT, hazards: [],
+    }]);
+    await (await POST(req({ message: "What do the photos establish together?", mode: "general" }), params)).text();
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    const system = messages.find(m => m.role === "system")?.content ?? "";
+    expect(system).toContain("Preserve each claim's evidence type when summarizing");
+    expect(system).toContain("not supplied does not mean not performed");
+    expect(system).toContain("An illuminated indicator is an observation, not an independent measurement");
+  });
+});

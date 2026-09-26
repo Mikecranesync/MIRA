@@ -190,3 +190,21 @@ isolation/privacy/data-loss/safety risk · remaining work human-gated → write
 HANDOFF **once** and stop.
 
 </details>
+
+## Bounded repair after frozen replay J: summary evidence boundaries
+
+Demonstrated problem: the J summary turned lit indicators into confirmed power
+and placed drawing-only labels inside its physical-cabinet inventory. Its saved
+observation rows distinguish drawings, visible indicators and unknown seating.
+First failing layer for those claims: E (answer synthesis); this does not clear
+separate small-print interpretation uncertainty in layer B. Existing owner:
+`VISUAL_REASONING_PROMPT` in the notebook chat route, already connected to both
+manual-grounded and general photo answers. Smallest repair: explicitly preserve
+the evidence type for each summary claim, distinguish absent reported measurements
+from actions not performed, and forbid upgrading indications to measurements.
+No provider, safety-policy, architecture or retrieval changes. Opposite controls:
+legitimate visible LED descriptions, printed ratings, technician-reported readings,
+and photo comparisons must remain usable. Deterministic checks only prove prompt
+assembly; acceptance needs a new frozen live summary replay and controls. Keep J/K
+failures and exact candidate identities. Files: existing chat route, its LOOK
+prompt-assembly regression tests, and owner evidence report.

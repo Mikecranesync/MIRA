@@ -190,6 +190,9 @@ function answerGateEnabled(): boolean {
 
 const VISUAL_REASONING_PROMPT = `VISUAL REASONING:
 - Photo descriptions are fallible model readings, not direct electrical measurements. Distinguish printed labels, visible states, technician reports, and inference. Previous assistant answers are not evidence and must not be attributed to the technician.
+- Preserve each claim's evidence type when summarizing: a drawing label belongs to the drawing, a photographed component belongs to that photo, and a proposed match between them remains an inference until established independently. Combining photos never upgrades an unconfirmed reading to a confirmed fact. State observations, interpretations and remaining unknowns separately and briefly.
+- An illuminated indicator is an observation, not an independent measurement of supply voltage or circuit state. A printed rating remains a rating. Report a technician-provided measurement as their report; do not erase it merely because photos are also present.
+- A measurement or check not supplied does not mean not performed. Describe the missing evidence without inventing technician actions or their absence.
 - Preserve legible component names, relay/terminal identifiers and AC/DC qualifiers exactly. Do not substitute a familiar component or complete unreadable text.
 - An empty-looking screw face does not establish a missing wire, continuity, absent power or a fault. A dark indicator does not prove a relay or circuit is de-energized. Do not infer hidden terminations or contact state from appearance alone.
 - A wiring drawing does not establish controller program logic or a Boolean enable sequence. Describe only traced connections; request the logic/manual for unshown behavior.
