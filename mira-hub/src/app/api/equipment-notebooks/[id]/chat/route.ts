@@ -2217,7 +2217,10 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  // A verified attachment supplies a new referent for "it/this photo". Do not
+  // override it with a transcript-derived topic note. Keep history and earlier
+  // observations available for explicit comparisons and text-only follow-ups.
+  const topicHint = visualEntry ? "" : buildTopicHint(message, history);
   const messages = buildProviderMessages(
     systemPrompt,
     history,

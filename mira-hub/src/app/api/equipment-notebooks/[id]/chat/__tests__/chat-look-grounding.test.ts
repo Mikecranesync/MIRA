@@ -467,3 +467,29 @@ describe("multi-photo evidence continuity (#3962)", () => {
     for (const row of rows) expect(sent).toContain(row.text);
   });
 });
+
+
+describe("fresh photo owns the current referent", () => {
+  const history = [
+    { role: "user", content: "What does parameter P042 mean?" },
+    { role: "assistant", content: "P042 is a deceleration parameter." },
+  ];
+  it.each([true, false])("new verified photo=%s preserves history without forcing the old topic", async (attached) => {
+    if (attached) filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    await (await POST(req({
+      message: "Here is another photo of the same equipment. What does it show?",
+      history, mode: "general",
+      ...(attached ? { visualEvidence: { fileId: PHOTO } } : {}),
+    }), params)).text();
+    const question = ragMock.buildManualUserContent.mock.calls.at(-1)?.[0] ?? "";
+    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+    expect(messages.some(m => m.role === "assistant" && m.content.includes("P042"))).toBe(true);
+    if (attached) {
+      expect(question).not.toContain("SYSTEM NOTE");
+      expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[2]).toContain(LOOK_SENTINEL);
+    } else {
+      expect(question).toContain("SYSTEM NOTE");
+      expect(question).toContain("P042");
+    }
+  });
+});
