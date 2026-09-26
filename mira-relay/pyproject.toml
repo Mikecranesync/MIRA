@@ -8,7 +8,7 @@ dependencies = [
     # NeonDB writes for POST /api/v1/tags/ingest (tag_events + live_signal_cache).
     # Same SQLAlchemy NullPool pattern as mira-pipeline. Imported lazily inside
     # NeonTagStore, so the in-memory test path does not require them.
-    "sqlalchemy>=2,<3",
+    "sqlalchemy>=2,<2.1",  # 2.1 defaults postgresql:// to psycopg 3; relay uses psycopg2 (#4006)
     "psycopg2-binary>=2.9,<3",
 ]
 
