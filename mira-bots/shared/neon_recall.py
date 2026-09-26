@@ -511,6 +511,12 @@ def recall_fault_code(
             rows = conn.execute(text(sql), params).mappings().fetchall()
 
         results = [dict(r) for r in rows]
+        if model:
+            # ILIKE '%PowerFlex 40%' also matches PowerFlex 400/40P; a same-code
+            # row for another drive must never be promoted (Codex #4026 F1).
+            results = [
+                r for r in results if _row_matches_model(str(r.get("equipment_model") or ""), model)
+            ]
         if results:
             logger.info(
                 "FAULT_CODE_LOOKUP code=%s model=%s hits=%d",
@@ -598,6 +604,53 @@ def _model_suffix_exclude_regex(name: str) -> str:
     """
     escaped = re.sub(r"([\\.^$*+?()\[\]{}|])", r"\\\1", name)
     return f"(^|[^0-9A-Za-z]){escaped}[0-9A-Za-z]"
+
+
+def _row_matches_model(equipment_model: str, model: str) -> bool:
+    """True when `equipment_model` names `model` itself, not a suffix variant.
+
+    Same rule as ``_product_search`` (#2914): "PowerFlex 40" matches
+    "PowerFlex 40" / "Allen-Bradley PowerFlex 40 (22B)" but not "PowerFlex 400",
+    "PowerFlex 40P" or "PowerFlex 401".
+    """
+    if not re.search(re.escape(model), equipment_model, re.IGNORECASE):
+        return False
+    return not re.search(_model_suffix_exclude_regex(model), equipment_model, re.IGNORECASE)
+
+
+def _fault_code_scopes(
+    query_text: str, codes: list[str], products: list[str]
+) -> dict[str, str | None]:
+    """Which named product each extracted fault code belongs to.
+
+    - No product named -> every code unscoped (None), as before #3337.
+    - One product -> every code scoped to it.
+    - Several products -> each code takes the product whose mention is nearest
+      to the code's own mention. A code whose mention cannot be found in the
+      text is left out entirely (not promoted) rather than scoped arbitrarily.
+    """
+    if not products:
+        return dict.fromkeys(codes)
+    if len(products) == 1:
+        return dict.fromkeys(codes, products[0])
+    lq = query_text.lower()
+    spans = []
+    for p in products:
+        for m in re.finditer(re.escape(p.lower()), lq):
+            spans.append((m.start(), m.end(), p))
+    scopes: dict[str, str | None] = {}
+    for code in codes:
+        m = re.search(r"(?<![0-9a-z])" + re.escape(code.lower()) + r"(?![0-9a-z])", lq)
+        if not m or not spans:
+            continue
+        pos = m.start()
+
+        def distance(span: tuple[int, int, str]) -> int:
+            start, end, _ = span
+            return pos - end if end <= pos else start - pos
+
+        scopes[code] = min(spans, key=distance)[2]
+    return scopes
 
 
 def _product_search(
@@ -1085,10 +1138,16 @@ def recall_knowledge(
                 # heuristic will always have edges, the scope constraint does not.
                 #
                 # No product named => None => unconstrained, exactly as before.
-                _fc_model = _extract_product_names(query_text)
-                _fc_model = _fc_model[0] if _fc_model else None
+                # Each code is scoped to the product named nearest to it; with
+                # several products, a code that cannot be placed is skipped
+                # rather than scoped to an arbitrary one (Codex #4026 F2).
+                _fc_scopes = _fault_code_scopes(
+                    query_text, fault_codes[:3], _extract_product_names(query_text)
+                )
                 for fc in fault_codes[:3]:
-                    fc_rows = recall_fault_code(fc, tenant_id, model=_fc_model)
+                    if fc not in _fc_scopes:
+                        continue
+                    fc_rows = recall_fault_code(fc, tenant_id, model=_fc_scopes[fc])
                     for row in fc_rows:
                         # Format structured data as a pseudo-chunk for prompt injection
                         content = (
