@@ -171,6 +171,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
   SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
@@ -1352,7 +1353,20 @@ async function handleChatTurn(
         const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
         for (const fid of linkedHistorical) {
           if (out.some((row) => row.fileId === fid)) continue;
-          const row = await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true });
+          // App builds before #3968 upload the photo with no threadId, so its
+          // observation is stored under the "legacy" thread while the chat runs
+          // in a real thread — the scoped lookup then misses a photo this very
+          // conversation already answered from. `fid` is verified (answered turn
+          // in this thread + notebook link) and ownership is still enforced, so
+          // accepting the same notebook's legacy-thread row widens nothing else.
+          // SAFETY DEPENDENCY: `{ threadId: null }` drops the thread filter, so
+          // this is only safe because `seen` comes from listTurns(…, { threadId })
+          // answered turns of THIS thread (verifyVisualEntry checks notebook, not
+          // thread). Widening `seen` would make this a cross-thread read — pinned
+          // by chat-flight-recorder "4b".
+          const row =
+            (await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, allowLegacy: true })) ??
+            (scope.threadId ? await loadVisualEvidenceForPhoto(c, ctx.tenantId, fid, { ...scope, threadId: null }) : null);
           if (row) out.push(row);
         }
         return out.sort((a, b) => Date.parse(b.observedAt ?? "") - Date.parse(a.observedAt ?? "")).slice(0, 2);
@@ -1951,17 +1965,32 @@ async function handleChatTurn(
   // gate exactly as it was — and a turn with no `machineEvidence` at all can
   // never reach the third clause, which is what keeps document refusal
   // behaviour byte-identical.
-  if (chunks.length === 0 && !general && !groundedMachineEntry) {
-    // Gate G — abstain honestly, persist the turn, never call the provider.
-    const abstainAnswerText = visualEntry
-      ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+  // #4004: a notebook bound to a specific model, whose correctly-scoped OEM
+  // search found no manual for that model, must not answer a documented-value
+  // question (supply voltage, ratings, wiring, parameters, fault codes …) from
+  // general knowledge with no citation. That is exactly the "honest
+  // refuse-to-cite" #3970 promised and never implemented. Conceptual questions
+  // on the same notebook are not matched and keep the general lane.
+  const missingModelManual =
+    // A photo in this turn (or recalled from the conversation) is evidence of
+    // its own — a nameplate can answer "what voltage" — so it keeps the lane.
+    oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
+    !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
+      ? `${oemManufacturer!.name} ${oemModel.value}`
       : null;
+  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {
+    // Gate G — abstain honestly, persist the turn, never call the provider.
+    const abstainAnswerText = missingModelManual
+      ? `I don't have the ${missingModelManual} manual in the library yet, so I can't give you its documented values — and I won't guess them. Upload the manual to this notebook (or photograph the nameplate) and ask again; I'll answer from it and show you the page.`
+      : visualEntry
+        ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+        : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: "gate_g_no_evidence",
+      reason: missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -1973,7 +2002,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": "gate_g_no_evidence",
+        "mira.answer_gate.reason": missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -2032,9 +2061,7 @@ async function handleChatTurn(
         const status: NotebookStatusFrame = {
           kind: "status",
           status: "insufficient_evidence",
-          message: visualEntry
-            ? "I saw your photo, but I couldn't find anything about it in the selected sources."
-            : "I couldn't find that in the selected sources.",
+          message: abstainAnswerText ?? "I couldn't find that in the selected sources.",
         };
         if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
         controller.enqueue(enc.encode(sse(sources)));
