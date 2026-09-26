@@ -56,13 +56,36 @@ function toAttachment(file: File, id: string): Attachment {
   };
 }
 
-export function createWebAdapter(deps: WebAdapterDeps): PlatformAdapter {
+/**
+ * The shell only carries the small `Attachment` descriptor; the bytes stay with
+ * the adapter, keyed by the id the chip shows, until the host uploads them
+ * (#4019 — before this they were dropped and the host had nothing to send).
+ */
+export interface HubWebAdapter extends PlatformAdapter {
+  heldFile(id: string): File | undefined;
+  forget(id: string): void;
+}
+
+const MAX_HELD = 8;
+
+export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
+  const held = new Map<string, File>();
   const pick = async (accept: string, capture?: "environment" | "user"): Promise<Attachment | null> => {
     const file = await deps.pickFile(accept, capture);
-    return file ? toAttachment(file, deps.newId()) : null;
+    if (!file) return null;
+    const attachment = toAttachment(file, deps.newId());
+    held.set(attachment.id, file);
+    // A removed chip sends the adapter no event, so bound what is held: the
+    // oldest file is released past MAX_HELD (Map keeps insertion order). A
+    // chip whose bytes were released fails closed at send ("attach it again").
+    while (held.size > MAX_HELD) held.delete(held.keys().next().value as string);
+    return attachment;
   };
 
   return {
+    heldFile: (id: string) => held.get(id),
+    forget: (id: string) => { held.delete(id); },
+
     attachPhoto: () => pick(IMAGE_ACCEPT),
 
     attachFile: () => pick(FILE_ACCEPT),

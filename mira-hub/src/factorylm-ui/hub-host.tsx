@@ -23,13 +23,14 @@ import {
   PROFILES,
   createShellState,
   shellReducer,
+  type Attachment,
   type InteractionPart,
   type InteractionTurn,
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
 import { FactoryLMShell, type HostHooks } from "@factorylm/ui";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
@@ -39,7 +40,8 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
+import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
+import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
@@ -125,11 +127,17 @@ export function HubShellHost() {
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // The upload half of an attached send (#4019 round 2 F2): Stop and thread
+  // changes abort it too, so a slow upload can never post afterwards.
+  const uploadAbortRef = useRef<AbortController | null>(null);
   // Detail loads are independent of the chat stream: their own abort handle and
   // a latest-request gate so a slow, superseded GET can never overwrite the
   // detail of the selection that replaced it (Codex #3839 F3).
   const detailAbortRef = useRef<AbortController | null>(null);
   const [detailGate] = useState(() => latestRequestGate());
+
+  // The web adapter holds the picked bytes until onSend uploads them (#4019).
+  const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(shellReducer, undefined, () =>
     shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
@@ -205,6 +213,7 @@ export function HubShellHost() {
   /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
     abortRef.current?.abort();
+    uploadAbortRef.current?.abort();
     detailGate.invalidate();
     detailAbortRef.current?.abort();
     setDetail(null);
@@ -324,6 +333,73 @@ export function HubShellHost() {
     }
   }, [selection, loadDetail, loadNotebooks]);
 
+  /**
+   * #4019 — attachments ride the turn they were attached to. Upload through the
+   * existing doors (hub-attachments.ts), then ONE canonical send with the
+   * re-read scope and/or the photo rider. A failed upload never lets the
+   * question go out alone: the draft comes back with a plain-language error.
+   * The bytes are released either way — the Composer already dropped the chip,
+   * so keeping them would re-attach an invisible file to a later send (#3863).
+   */
+  const composeAndSend = useCallback(async (
+    text: string,
+    files: readonly HeldFile[],
+    sel: HubSelection,
+    nodeId: string,
+    fallbackScope: readonly string[],
+    history: ReturnType<typeof historyRows>,
+    existing?: AbortController,
+  ) => {
+    setBusy(true);
+    dispatch({ type: "set-send-error", error: null });
+    // A HOME send created its controller before the node read (round 3 F2);
+    // reuse it so a Stop or navigation during that read already counts.
+    const ctrl = existing ?? new AbortController();
+    if (!existing) {
+      uploadAbortRef.current?.abort();
+      uploadAbortRef.current = ctrl;
+    }
+    let outcome: Awaited<ReturnType<typeof runAttachedSend>>;
+    try {
+      outcome = await runAttachedSend({
+        signal: ctrl.signal,
+        compose: () => composeHubSend(
+          { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId, baseScope: fallbackScope },
+          {
+            fetch: (input, init) => fetch(input, { ...init, signal: ctrl.signal }),
+            apiBase: API_BASE,
+            newKey: () => crypto.randomUUID(),
+            maxUploadMb: MAX_UPLOAD_MB,
+          },
+        ),
+        send: async (composed) => {
+          const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
+          await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
+        },
+      });
+    } catch {
+      outcome = { question: text, failure: "The attachment didn't upload — check the connection." };
+    } finally {
+      for (const f of files) adapter.forget(f.attachment.id);
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
+    }
+    if (outcome === "sent") return;
+    setBusy(false);
+    // Stopped or navigated away: nothing was posted; the question goes back
+    // only if the technician is still on the thread it was typed in.
+    if (outcome === "cancelled") {
+      if (selectionRef.current?.notebookId === sel.notebookId && selectionRef.current?.threadId === sel.threadId) {
+        dispatch({ type: "set-draft", draft: text });
+      }
+      return;
+    }
+    dispatch({
+      type: "set-send-error",
+      error: outcome.reattach === false ? outcome.failure! : `${outcome.failure} Attach it again, then send.`,
+    });
+    dispatch({ type: "set-draft", draft: text });
+  }, [adapter, send]);
+
   /** Create a project through the same contract as the legacy "New notebook" button. */
   const createNotebook = useCallback(async (body: { displayName: string; identitySourceType?: "user" }): Promise<string | null> => {
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/`, {
@@ -343,7 +419,7 @@ export function HubShellHost() {
    * route in general mode (no sources selected), so it persists, streams and
    * lands under Recent like every other conversation.
    */
-  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string) => {
+  const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string, files: readonly HeldFile[] = []) => {
     let notebookId: string | null = plan.kind === "existing" ? plan.notebookId : null;
     if (plan.kind === "create") {
       setBusy(true);
@@ -356,12 +432,48 @@ export function HubShellHost() {
     if (!notebookId) { dispatch({ type: "set-draft", draft: q }); return; }
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
-    await send(chatBodyFor(q, [], [], sel), q, sel);
-  }, [createNotebook, select, send]);
+    if (files.length === 0) {
+      await send(chatBodyFor(q, [], [], sel), q, sel);
+      return;
+    }
+    // Round 3 F2: own the operation from here, so Stop or opening another
+    // thread during the node read cancels it before anything uploads.
+    const ctrl = new AbortController();
+    uploadAbortRef.current = ctrl;
+    setBusy(true);
+    // The upload door needs the notebook's own namespace node (every notebook
+    // has one); a HOME send knows only the id, so read it first.
+    const target = await resolveUploadNode(() =>
+      getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`, ctrl.signal),
+    );
+    if (ctrl.signal.aborted) {
+      for (const f of files) adapter.forget(f.attachment.id);
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
+      setBusy(false);
+      return;
+    }
+    if (target.kind !== "ok") {
+      if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
+      setBusy(false);
+    }
+    if (target.kind === "signed_out") { setSignedOut(true); return; }
+    if (target.kind === "failed") {
+      // Codex #4024 F4: the Composer already cleared the draft — hand it back.
+      for (const f of files) adapter.forget(f.attachment.id);
+      dispatch({ type: "set-send-error", error: "Couldn't open the project to upload into. Attach the file again, then send." });
+      dispatch({ type: "set-draft", draft: q });
+      return;
+    }
+    await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
+  }, [adapter, createNotebook, select, send, composeAndSend]);
 
-  const onSend = useCallback((text: string) => {
+  const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
-    if (!q || busy) return;
+    // #4019: pair each chip with the bytes the adapter held for it. Throws
+    // (Composer keeps the draft AND the chips) on a missing file or a second
+    // photo, before anything uploads (Codex #4024 F1/F3).
+    const files = pairAttachments(attachments, (id) => adapter.heldFile(id));
+    if ((!q && files.length === 0) || busy) return;
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
     // RETURNS, so a send before the data loaded used to discard the
     // technician's question. Throwing is the Composer's documented contract
@@ -371,14 +483,18 @@ export function HubShellHost() {
     if (!selection) {
       const plan = homeSendPlan(notebooks);
       if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
-      void sendFromHome(plan, q);
+      void sendFromHome(plan, q, files);
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    if (files.length > 0) {
+      void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
+      return;
+    }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [busy, selection, notebooks, detail, docIds, send, sendFromHome]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend]);
 
-  const onStop = useCallback(() => { abortRef.current?.abort(); }, []);
+  const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
@@ -449,8 +565,6 @@ export function HubShellHost() {
     const text = sources.length ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
   }, [view.thread.turns, citations]);
-
-  const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const hooks: HostHooks = {
     onSend,

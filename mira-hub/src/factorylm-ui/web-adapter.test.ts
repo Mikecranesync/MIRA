@@ -26,6 +26,35 @@ function deps(over: Partial<WebAdapterDeps> = {}): WebAdapterDeps {
 }
 
 describe("attachments", () => {
+  // #4019: the adapter used to return only the descriptor and drop the File, so
+  // the host had nothing to upload. It holds the bytes until the host takes them.
+  it("holds the picked bytes by attachment id until the host forgets them", async () => {
+    const f = file("g120.pdf", "application/pdf");
+    const a = createWebAdapter(deps({ pickFile: async () => f }));
+    const picked = await a.attachFile();
+    expect(a.heldFile(picked!.id)).toBe(f);
+    a.forget(picked!.id);
+    expect(a.heldFile(picked!.id)).toBeUndefined();
+  });
+
+  // Codex #4024 round 2 F3: removing a chip gives the adapter no event, so the
+  // held bytes are bounded — the oldest is released once more than 8 are held.
+  it("holds at most the 8 most recent files", async () => {
+    let n = 0;
+    const a = createWebAdapter(deps({ pickFile: async () => file(`f${++n}.pdf`, "application/pdf") }));
+    const ids: string[] = [];
+    for (let i = 0; i < 9; i++) ids.push((await a.attachFile())!.id);
+    expect(a.heldFile(ids[0])).toBeUndefined();
+    expect(a.heldFile(ids[1])).toBeDefined();
+    expect(a.heldFile(ids[8])).toBeDefined();
+  });
+
+  it("a dismissed chooser holds nothing", async () => {
+    const a = createWebAdapter(deps({ pickFile: async () => null }));
+    expect(await a.attachPhoto()).toBeNull();
+    expect(a.heldFile("att_1")).toBeUndefined();
+  });
+
   it("maps a chosen PDF to a pdf attachment", async () => {
     const a = createWebAdapter(deps({ pickFile: async () => file("g120.pdf", "application/pdf") }));
     expect(await a.attachFile()).toEqual({

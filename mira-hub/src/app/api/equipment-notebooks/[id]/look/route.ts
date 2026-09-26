@@ -417,6 +417,10 @@ async function handleLookTurn(
     // evidence can ground on it. FAIL-OPEN: a ledger write must never fail the
     // LOOK turn — the photo is already parked and the observation is returned to
     // the client regardless (Law 1: the bytes/observation must survive).
+    // #4024 round 3: the write stays fail-open for LOOK itself, but the client
+    // is told whether it landed — a chat turn that re-sends this photo grounds
+    // on the PERSISTED observation, so an unpersisted one must not be sent.
+    let observationPersisted = false;
     try {
       await recordLookObservation({
         tenantId: ctx.tenantId,
@@ -429,6 +433,7 @@ async function handleLookTurn(
         capturedAt,
         createdBy: ctx.userId ?? null,
       });
+      observationPersisted = true;
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
     }
@@ -463,6 +468,7 @@ async function handleLookTurn(
     return NextResponse.json({
       ...retained,
       observation: { text: inspection.text, capturedAt, provenance: "phone_photo" as const, model: reply.model },
+      observationPersisted,
       traceId: rootTraceId,
     }, { headers: traceHeaders });
   } catch (err) {
