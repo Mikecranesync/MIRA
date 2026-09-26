@@ -40,7 +40,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { composeHubSend, type HeldFile } from "./hub-attachments";
+import { composeHubSend, pairAttachments, type HeldFile } from "./hub-attachments";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
@@ -350,7 +350,7 @@ export function HubShellHost() {
     let composed: Awaited<ReturnType<typeof composeHubSend>>;
     try {
       composed = await composeHubSend(
-        { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId },
+        { text, files, notebookId: sel.notebookId, nodeId, threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId, baseScope: fallbackScope },
         { fetch: (...a) => fetch(...a), apiBase: API_BASE, newKey: () => crypto.randomUUID(), maxUploadMb: MAX_UPLOAD_MB },
       );
     } catch {
@@ -360,14 +360,15 @@ export function HubShellHost() {
     }
     if (composed.failure) {
       setBusy(false);
-      dispatch({ type: "set-send-error", error: `${composed.failure} Attach it again, then send.` });
+      dispatch({
+        type: "set-send-error",
+        error: composed.reattach === false ? composed.failure : `${composed.failure} Attach it again, then send.`,
+      });
       dispatch({ type: "set-draft", draft: text });
       return;
     }
     const rider = composed.visualEvidence ? { visualEvidence: composed.visualEvidence } : undefined;
     await send(chatBodyFor(composed.question, composed.scope ?? fallbackScope, history, sel, rider), composed.question, sel);
-    // Uploaded but not searchable stays visible rather than being swallowed.
-    if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
   }, [adapter, send]);
 
   /** Create a project through the same contract as the legacy "New notebook" button. */
@@ -408,11 +409,19 @@ export function HubShellHost() {
     }
     // The upload door needs the notebook's own namespace node (every notebook
     // has one); a HOME send knows only the id, so read it first.
-    const { status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`);
+    let status = 0;
+    let data: Detail | null = null;
+    try {
+      ({ status, data } = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`));
+    } catch {
+      // Codex #4024 F4: the Composer already cleared the draft; a network
+      // error here must hand the question back, not vanish.
+      data = null;
+    }
     if (status === 401) { setSignedOut(true); return; }
     if (!data?.notebook?.nodeId) {
       for (const f of files) adapter.forget(f.attachment.id);
-      dispatch({ type: "set-send-error", error: "That project can't hold files yet. Attach it again, then send." });
+      dispatch({ type: "set-send-error", error: "Couldn't open the project to upload into. Attach the file again, then send." });
       dispatch({ type: "set-draft", draft: q });
       return;
     }
@@ -421,16 +430,10 @@ export function HubShellHost() {
 
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
-    // #4019: pair each chip with the bytes the adapter held for it.
-    const files: HeldFile[] = [];
-    for (const attachment of attachments) {
-      const file = adapter.heldFile(attachment.id);
-      if (file) files.push({ attachment, file });
-    }
-    if (attachments.length > 0 && files.length === 0) {
-      // Never send the question as if the file were attached.
-      throw new Error("That attachment is no longer available. Attach it again, then send.");
-    }
+    // #4019: pair each chip with the bytes the adapter held for it. Throws
+    // (Composer keeps the draft AND the chips) on a missing file or a second
+    // photo, before anything uploads (Codex #4024 F1/F3).
+    const files = pairAttachments(attachments, (id) => adapter.heldFile(id));
     if ((!q && files.length === 0) || busy) return;
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
     // RETURNS, so a send before the data loaded used to discard the

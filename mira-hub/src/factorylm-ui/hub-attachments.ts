@@ -14,9 +14,13 @@
  * After a document upload the notebook's scope is re-read, because the host's
  * `docIds` were computed before the upload: sending with them would answer the
  * very turn the manual was attached to without the manual (the #4014 class).
+ * The ids this send attached are ALWAYS in the returned scope, even when the
+ * re-read fails or lags (Codex #4024 F2).
  *
  * Fail closed: an attachment that did not make it never lets its question go
- * out alone — least of all a photo question with no photo.
+ * out alone — least of all a photo question with no photo. That includes a
+ * document that uploaded but cannot be indexed (F5), and a second photo the
+ * one-photo turn contract cannot carry (F3).
  */
 import type { Attachment } from "../../../packages/factorylm-interaction/src";
 import { enabledDocIds } from "./hub-host-logic";
@@ -43,12 +47,35 @@ export interface ComposedHubSend {
   readonly question: string;
   /** Present only when a photo was attached and read. */
   readonly visualEvidence?: { fileId: string; capturedAt: string };
-  /** The scope re-read after a document upload; absent = keep the host's. */
+  /** The scope to send with; always contains any document this send attached. */
   readonly scope?: readonly string[];
-  /** A document uploaded but is not searchable — say so with the answer. */
-  readonly warning?: string;
   /** The attachment did not make it; the caller must NOT send. */
   readonly failure?: string;
+  /** false when re-attaching the same file cannot help (it was saved but is unreadable). */
+  readonly reattach?: boolean;
+}
+
+/**
+ * Pair each composer chip with the bytes the web adapter held for it. Throws —
+ * which the Composer turns into a kept draft, kept chips and a plain error —
+ * when any chip lost its bytes (a partial send would answer as though every
+ * file were attached; Codex #4024 F1) or when more than one photo rides (the
+ * turn carries one visualEvidence rider; F3).
+ */
+export function pairAttachments(
+  attachments: readonly Attachment[],
+  heldFile: (id: string) => File | undefined,
+): HeldFile[] {
+  const files: HeldFile[] = [];
+  for (const attachment of attachments) {
+    const file = heldFile(attachment.id);
+    if (!file) throw new Error(`${attachment.name} is no longer available. Remove it and attach it again.`);
+    files.push({ attachment, file });
+  }
+  if (files.filter((f) => f.attachment.kind === "photo").length > 1) {
+    throw new Error("Attach one photo per question.");
+  }
+  return files;
 }
 
 async function body(res: Response): Promise<Record<string, unknown>> {
@@ -60,23 +87,36 @@ async function body(res: Response): Promise<Record<string, unknown>> {
 }
 
 export async function composeHubSend(
-  opts: { text: string; files: readonly HeldFile[]; notebookId: string; nodeId: string; threadId: string | null },
+  opts: {
+    text: string;
+    files: readonly HeldFile[];
+    notebookId: string;
+    nodeId: string;
+    threadId: string | null;
+    /** The host's scope before this send. */
+    baseScope: readonly string[];
+  },
   deps: HubUploadDeps,
 ): Promise<ComposedHubSend> {
   const text = opts.text.trim();
-  if (opts.files.length === 0) return { question: text };
+  if (opts.files.length === 0) return { question: text, scope: opts.baseScope };
 
   const nb = encodeURIComponent(opts.notebookId);
-  const photo = opts.files.find((f) => f.attachment.kind === "photo");
+  const photos = opts.files.filter((f) => f.attachment.kind === "photo");
+  const photo = photos[0];
   const documents = opts.files.filter((f) => f.attachment.kind !== "photo");
   const question = text || (photo ? "What am I looking at, and what should I check?" : "What is in this document?");
+
+  // The chat turn carries ONE visualEvidence rider (same as mobile); refuse
+  // before any upload rather than silently dropping the second photo.
+  if (photos.length > 1) return { question, failure: "Attach one photo per question." };
 
   const tooBig = opts.files.find((f) => f.file.size > deps.maxUploadMb * 1024 * 1024);
   if (tooBig) return { question, failure: `${tooBig.attachment.name} is over the ${deps.maxUploadMb} MB limit.` };
 
-  let warning: string | undefined;
-  let scope: readonly string[] | undefined;
+  let scope: readonly string[] = opts.baseScope;
   if (documents.length > 0) {
+    const attached: string[] = [];
     for (const doc of documents) {
       const fd = new FormData();
       fd.append("file", doc.file);
@@ -89,11 +129,16 @@ export async function composeHubSend(
         return { question, failure: `${doc.attachment.name} didn't upload — try again.` };
       }
       if (!d.indexed || !d.uploadId) {
-        // Parked but not searchable (image-only PDF etc.) — honest, not silent.
-        warning = `${doc.attachment.name} was saved, but it couldn't be indexed for chat${
-          typeof d.warning === "string" && d.warning ? ` (${d.warning})` : ""
-        }.`;
-        continue;
+        // Parked but not searchable (image-only PDF etc.). The question was
+        // about this file, so answering without it would be a general answer
+        // dressed as a grounded one (Codex #4024 F5): stop and say so.
+        return {
+          question,
+          reattach: false,
+          failure: `${doc.attachment.name} was saved to this project, but it couldn't be read for chat${
+            typeof d.warning === "string" && d.warning ? ` (${d.warning})` : ""
+          }, so I didn't send your question. Try a text-based PDF, or send the question without the file.`,
+        };
       }
       const att = await deps.fetch(`${deps.apiBase}/api/equipment-notebooks/${nb}/sources/`, {
         method: "POST",
@@ -103,6 +148,7 @@ export async function composeHubSend(
       if (!att.ok) {
         return { question, failure: `${doc.attachment.name} uploaded, but it couldn't be added as a source — try again.` };
       }
+      attached.push(String(d.uploadId));
     }
     // A failed re-read leaves the host's scope in charge rather than failing an
     // upload that already succeeded.
@@ -117,8 +163,10 @@ export async function composeHubSend(
         if (Array.isArray(sources)) scope = enabledDocIds(sources as Parameters<typeof enabledDocIds>[0]);
       }
     } catch {
-      scope = undefined;
+      // Keep the base scope; the attached ids are added below either way.
     }
+    // The documents this send attached ride it no matter what the re-read said.
+    scope = [...scope, ...attached.filter((id) => !scope.includes(id))];
   }
 
   let visualEvidence: ComposedHubSend["visualEvidence"];
@@ -143,10 +191,5 @@ export async function composeHubSend(
     };
   }
 
-  return {
-    question,
-    ...(visualEvidence ? { visualEvidence } : {}),
-    ...(scope ? { scope } : {}),
-    ...(warning ? { warning } : {}),
-  };
+  return { question, scope, ...(visualEvidence ? { visualEvidence } : {}) };
 }

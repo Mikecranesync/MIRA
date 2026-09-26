@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { composeHubSend, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
+import { composeHubSend, pairAttachments, PHOTO_ANALYSIS_UNAVAILABLE, type HubUploadDeps } from "./hub-attachments";
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -47,7 +47,7 @@ function server(over: Partial<Record<"files" | "sources" | "detail" | "look", ()
   return { calls, deps };
 }
 
-const base = { notebookId: "nb-1", nodeId: "node-1", threadId: "t-1" };
+const base = { notebookId: "nb-1", nodeId: "node-1", threadId: "t-1", baseScope: ["doc-old"] as readonly string[] };
 
 describe("composeHubSend — documents", () => {
   it("uploads to the node, attaches as a source, and re-reads the scope so THIS turn is grounded", async () => {
@@ -73,11 +73,13 @@ describe("composeHubSend — documents", () => {
     expect(out.question).toBe("What is in this document?");
   });
 
-  it("a file that uploads but cannot be indexed is sent with an honest warning, not silently", async () => {
+  // Codex #4024 F5: a document that cannot ground the turn must not let its
+  // question go out as an ungrounded general answer.
+  it("a file that uploads but cannot be indexed fails closed — the question is not sent without it", async () => {
     const { calls, deps } = server({ files: () => new Response(JSON.stringify({ indexed: false, warning: "image-only PDF" }), { status: 201 }) });
     const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("a1", "pdf", "scan.pdf"), file: file("scan.pdf") }] }, deps);
-    expect(out.failure).toBeUndefined();
-    expect(out.warning).toMatch(/couldn't be indexed|image-only/i);
+    expect(out.failure).toMatch(/couldn't be read for chat/i);
+    expect(out.reattach).toBe(false);
     expect(calls.some((c) => c.url.endsWith("/sources/"))).toBe(false);
   });
 
@@ -97,11 +99,18 @@ describe("composeHubSend — documents", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("a failed scope re-read leaves the host's scope in charge (undefined), not an empty scope", async () => {
+  // Codex #4024 F2: a failed re-read must never send the pre-upload scope.
+  it("a failed scope re-read still sends WITH the new document (base scope + the attached id)", async () => {
     const { deps } = server({ detail: () => new Response("", { status: 500 }) });
     const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("a1", "pdf", "m.pdf"), file: file("m.pdf") }] }, deps);
     expect(out.failure).toBeUndefined();
-    expect(out.scope).toBeUndefined();
+    expect(out.scope).toEqual(["doc-old", "doc-new"]);
+  });
+
+  it("a re-read that somehow omits the new document still includes it", async () => {
+    const { deps } = server({ detail: () => new Response(JSON.stringify({ sources: [{ docId: "doc-old", enabledByDefault: true, matchState: "user_confirmed" }] })) });
+    const out = await composeHubSend({ ...base, text: "q", files: [{ attachment: att("a1", "pdf", "m.pdf"), file: file("m.pdf") }] }, deps);
+    expect(out.scope).toEqual(["doc-old", "doc-new"]);
   });
 });
 
@@ -133,11 +142,46 @@ describe("composeHubSend — photos", () => {
   });
 });
 
+describe("composeHubSend — more than one photo (Codex #4024 F3)", () => {
+  it("refuses before any upload — the turn carries one photo, so a second would be silently dropped", async () => {
+    const { calls, deps } = server();
+    const out = await composeHubSend({
+      ...base, text: "compare these",
+      files: [{ attachment: att("p1", "photo", "a.jpg"), file: file("a.jpg") }, { attachment: att("p2", "photo", "b.jpg"), file: file("b.jpg") }],
+    }, deps);
+    expect(out.failure).toMatch(/one photo/i);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("composeHubSend — no attachments", () => {
   it("is a pass-through with no network call", async () => {
     const { calls, deps } = server();
     const out = await composeHubSend({ ...base, text: " hi ", files: [] }, deps);
-    expect(out).toEqual({ question: "hi" });
+    expect(out).toEqual({ question: "hi", scope: ["doc-old"] });
     expect(calls).toHaveLength(0);
+  });
+});
+
+// Codex #4024 F1/F3: decided synchronously in onSend, BEFORE the Composer clears
+// the chips — a throw there keeps every chip and the draft.
+describe("pairAttachments", () => {
+  const held = new Map<string, File>([["a1", file("m.pdf")], ["p1", file("a.jpg")], ["p2", file("b.jpg")]]);
+  const get = (id: string) => held.get(id);
+
+  it("pairs every chip with its bytes", () => {
+    expect(pairAttachments([att("a1", "pdf", "m.pdf"), att("p1", "photo", "a.jpg")], get).map((f) => f.attachment.id)).toEqual(["a1", "p1"]);
+  });
+
+  it("throws when ANY chip lost its bytes — never a partial send", () => {
+    expect(() => pairAttachments([att("a1", "pdf", "m.pdf"), att("gone", "pdf", "x.pdf")], get)).toThrow(/x\.pdf/);
+  });
+
+  it("throws on a second photo before anything uploads", () => {
+    expect(() => pairAttachments([att("p1", "photo", "a.jpg"), att("p2", "photo", "b.jpg")], get)).toThrow(/one photo/i);
+  });
+
+  it("no attachments is an empty pairing", () => {
+    expect(pairAttachments([], get)).toEqual([]);
   });
 });
