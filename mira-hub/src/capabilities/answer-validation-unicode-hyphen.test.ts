@@ -22,7 +22,7 @@
  * fix. They are pinned anyway so the fix cannot introduce that failure later.
  */
 import { describe, it, expect } from "vitest";
-import { validateAnswer } from "./answer-validation";
+import { validateAnswer, ENERGIZED_WARNING } from "./answer-validation";
 
 import { STAGING_RESTORE_POWER_LEAK_2026_09_24 as LIVE_LEAK } from "./__fixtures__/staging-restore-power-leak-2026-09-24";
 
@@ -42,30 +42,31 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
   it("blocks the answer staging actually served, verbatim", () => {
     const r = check(LIVE_LEAK);
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
   });
 
   it("blocks the minimal restore-to-measure sentence with a U+2011 hyphen", () => {
     const r = check(`Re${NBH}energize for measurement, then clamp each phase and record the current.`);
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
   });
 
   it("blocks it identically with an ASCII hyphen — the two spellings agree", () => {
     const uni = check(`Re${NBH}energize for measurement, then clamp each phase and record the current.`);
     const asc = check("Re-energize for measurement, then clamp each phase and record the current.");
-    expect(uni).toEqual(asc);
+    // #3984: the replacement now carries the candidate itself, so the bytes
+    // differ by spelling; the VERDICT must agree.
+    expect(uni.ok === false && [uni.kind, uni.violation]).toEqual(asc.ok === false && [asc.kind, asc.violation]);
   });
 
-  it("does not leak the prohibited procedure into the replacement", () => {
+  it("#3984: serves the answer under the energized warning instead of withholding it", () => {
     const r = check(LIVE_LEAK);
     expect(r.ok).toBe(false);
     if (r.ok === false) {
-      const out = r.replacement.toLowerCase();
-      expect(out).not.toContain("re-energize");
-      expect(out).not.toContain(`re${NBH}energize`.toLowerCase());
-      expect(out).not.toContain("close the feeder breaker");
-      expect(out).not.toContain("one phase at a time");
+      expect(r.kind).toBe("energized_warning");
+      expect(r.replacement.startsWith(ENERGIZED_WARNING)).toBe(true);
+      // The displayed text is the ORIGINAL candidate (the fold is detection-only).
+      expect(r.replacement.endsWith(LIVE_LEAK)).toBe(true);
     }
   });
 
@@ -102,8 +103,10 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
       "Re\u2011energize for measurement, close the feeder breaker, then clamp each phase and record the current. Don\u2019t skip the PPE.";
     const plain =
       "Re-energize for measurement, close the feeder breaker, then clamp each phase and record the current. Don't skip the PPE.";
-    expect(check(fancy)).toEqual(check(plain));
-    expect(check(fancy).ok).toBe(false);
+    // #3984: the replacement embeds the candidate, so compare the verdict.
+    const f = check(fancy), p = check(plain);
+    expect(f.ok === false && [f.kind, f.violation]).toEqual(p.ok === false && [p.kind, p.violation]);
+    expect(f.ok).toBe(false);
   });
 
   it("a zero-width space inside the hazard token does not bypass the floor", () => {
@@ -111,7 +114,7 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
       "Re-ener\u200Bgize for measurement, then clamp each phase and record the current.",
     );
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
   });
 
   /* ---- en/em dash are load-bearing here and must NOT be folded ---- */
@@ -149,7 +152,7 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
     for (const h of ["\uFE63", "\uFF0D"]) {
       const r = check(`Re${h}energize for measurement, then clamp each phase and record the current.`);
       expect(r.ok).toBe(false);
-      expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+      expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
     }
   });
 
