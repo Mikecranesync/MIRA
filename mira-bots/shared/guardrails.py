@@ -1035,6 +1035,38 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(pattern.search(msg_lower) for pattern in SESSION_FOLLOWUP_PATTERNS)
 
 
+# #4015 item 4 — a back-reference to MIRA's own earlier words ("you said…")
+# arriving when MIRA has said NOTHING in this conversation. detect_session_followup
+# stands down on IDLE / no session context, so without this the LLM router picked
+# a lane and, about half the time, invented a FIX_STEP for a wiring check nobody
+# gave (staging-gate run 36257246461: context=1, confirmed by a second draw).
+# Deliberately narrow: only "you <said|mentioned|told me|suggested|recommended>",
+# so "they told me…" / "the manual said…" keep their normal routing.
+_ORPHAN_BACK_REFERENCE_RE = re.compile(
+    r"\byou\s+(?:just\s+|already\s+)?(?:said|mentioned|told\s+me|suggested|recommended)\b"
+)
+
+ORPHAN_BACK_REFERENCE_REPLY = (
+    "I don't see an earlier message from me in this conversation, so I'm not sure "
+    "what I'm supposed to have said. Which machine are you on, and what is it doing? "
+    "If you paste what you were told, I'll pick it up from there."
+)
+
+
+def is_orphan_back_reference(message: str, history: list | None) -> bool:
+    """True when the technician quotes MIRA back but MIRA has not spoken yet.
+
+    Stands down when any assistant turn exists (the session-followup lane owns
+    that) and when a cross-session ``[MIRA MEMORY …]`` block is injected (the
+    reference may be to a prior session the memory carries).
+    """
+    if not message or "[MIRA MEMORY" in message:
+        return False
+    if any(isinstance(h, dict) and h.get("role") == "assistant" for h in (history or [])):
+        return False
+    return bool(_ORPHAN_BACK_REFERENCE_RE.search(message.lower()))
+
+
 _SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
 
 

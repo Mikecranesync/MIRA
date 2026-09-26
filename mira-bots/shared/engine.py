@@ -71,11 +71,13 @@ from .guardrails import (
     CONTROL_ACTION_REFUSAL,
     GREETING_PATTERNS,
     INTENT_KEYWORDS,
+    ORPHAN_BACK_REFERENCE_REPLY,
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
     detect_session_followup,
     is_control_action_request,
+    is_orphan_back_reference,
     resolve_option_selection,
     strip_mentions,
     vendor_support_url,
@@ -1248,6 +1250,8 @@ _H4_SKIP_REPLIES: frozenset[str] = frozenset(
 _H4_SKIP_DISPATCH_KINDS = frozenset(
     {
         "control_action_refusal",
+        # #4015: a clarifying question when the tech quotes MIRA before MIRA spoke.
+        "orphan_back_reference",
         "uns_confirm_request",
         "uns_confirm_yes",
         "uns_confirm_no",
@@ -3272,6 +3276,26 @@ class Supervisor:
                     trace_id,
                     state.get("state", "IDLE"),
                     dispatch_kind="control_action_refusal",
+                )
+
+            # #4015 item 4 — "you said to check the wiring" when MIRA has not
+            # said anything in this conversation. With no assistant turn in
+            # history the reference has nothing to resolve against; letting the
+            # LLM router pick a lane invented a FIX_STEP about half the time
+            # (staging-gate run 36257246461). Ask instead. LLM-free, like the
+            # control refusal above; keyword safety still outranks it.
+            if _keyword_intent != "safety" and is_orphan_back_reference(
+                message, (state.get("context") or {}).get("history", [])
+            ):
+                logger.info("ORPHAN_BACK_REFERENCE chat_id=%s msg=%r", chat_id, message[:120])
+                self._record_exchange(chat_id, state, message, ORPHAN_BACK_REFERENCE_REPLY)
+                tl_flush()
+                return self._make_result(
+                    ORPHAN_BACK_REFERENCE_REPLY,
+                    "high",
+                    trace_id,
+                    state.get("state", "IDLE"),
+                    dispatch_kind="orphan_back_reference",
                 )
 
             try:
