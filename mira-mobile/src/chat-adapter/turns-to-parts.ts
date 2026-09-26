@@ -219,7 +219,7 @@ function assistantParts(opts: {
  *  legacy render applies: STRM-2 stopped turns keep the partial and drop
  *  citations/basis/cards; `answerBody` humanizes status-only turns. */
 export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
-  return rows.flatMap((t): AdapterMessage[] => {
+  return rows.flatMap((t, index): AdapterMessage[] => {
     const user = userMessage(`${t.id}-q`, t.question);
     const safetyNotice = terminalSafetyNotice(t);
     // #3893: non-terminal energized directive persisted on the row — reloads as
@@ -227,6 +227,15 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
     // contract (`comparableProjection.safetyNotice`).
     const safetyDirective = directiveSafetyNotice(t) ?? undefined;
     const visualEvidence = visualObservationEntries(t.evidence ?? []);
+    // The saved basis omits the live caption. Reconstruct only what this
+    // thread's durable photo entries establish; never upgrade its trust on reload.
+    const basisLabel = t.basis !== "workspace_evidence"
+      ? null
+      : visualEvidence.length > 0
+        ? "Grounded in the attached photo — an unconfirmed reading."
+        : rows.slice(0, index).some((earlier) => visualObservationEntries(earlier.evidence ?? []).length > 0)
+          ? "Grounded in a photo attached earlier in this conversation — an unconfirmed reading."
+          : null;
     if (isStoppedTurn(t)) {
       return [
         user,
@@ -268,6 +277,7 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
           machine: machineEvidenceEntries(t.evidence ?? []),
           visual: visualEvidence,
           basis: t.basis,
+          basisLabel,
           safetyTrigger: safetyNotice?.trigger,
           safetyDirective,
           identityDisputed: hasIdentityDispute(t.evidence),

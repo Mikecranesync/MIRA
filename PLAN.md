@@ -224,3 +224,18 @@ No new dependency or driver migration. Open/merged PR checks found no competing
 SQLAlchemy compatibility repair. Acceptance: dependency resolution selects 2.0,
 existing real-Postgres tenant isolation tests pass, and CI independently reruns.
 This does not change the frozen Hub image being exercised on the Pixel.
+
+## Bounded repair found while reopening L: photo confidence caption
+
+Demonstrated problem: a live photo answer says its reading is unconfirmed, but
+reopening the same stored turn displays the generic workspace-evidence caption.
+The photo card still says "Verified: no"; answer text survives unchanged. First
+failing layer: C/G, persisted-turn display reconstruction. Existing owner:
+`hydrateMessages` already reads durable visual-observation entries and accepts
+`basisLabel` in `assistantParts`, but does not supply it for stored notebook rows.
+Smallest repair: reconstruct the unconfirmed photo caption only when the saved
+basis is workspace evidence and a current/earlier photo exists in this loaded
+thread. Keep document/machine/general bases unchanged; do not infer photos from
+future turns or another thread. No schema or trust-state change. Regression:
+live-vs-restored photo caption, earlier-photo summary, no-photo/other-basis controls.
+Acceptance: new APK on Pixel restores L's six answers with the unconfirmed labels.
