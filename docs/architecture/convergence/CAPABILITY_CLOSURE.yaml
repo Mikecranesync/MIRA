@@ -82,18 +82,20 @@ capabilities:
       - capability-closure
     evidence:
       - path: tests/test_evidence_provenance.py
-        observed_at: "2026-09-24"
+        observed_at: "2026-09-26"
         note: >-
-          29 provenance rule tests plus 3 packet-classification and caller controls. Mutation-tested three
+          37 provenance rule tests (re-observed 2026-09-26 at the #4007 review
+          commit, pinned by tag evidence/evidence_provenance_gate/2026-09-26b so a
+          squash merge cannot orphan it; to be re-stamped onto main after merge). Mutation-tested three
           ways rather than assumed: gutting the observation-control check,
           letting INCONCLUSIVE count as proof, and removing the commit-existence
           check each turn the suite red, and restoring each turns it green
           again. A linter shown only passing input cannot be told apart from one
           that returns an empty list.
         provenance:
-          commit_sha: "4ebd8b91747f2a8fa14ce2cf3b77a3ac3593d2e0"
+          commit_sha: "88aff302940d09cbb77241837db466dc199f8775"
           environment: local
-          observed_at: "2026-09-24"
+          observed_at: "2026-09-26"
           outcome: pass
           observation:
             mechanism: >-
