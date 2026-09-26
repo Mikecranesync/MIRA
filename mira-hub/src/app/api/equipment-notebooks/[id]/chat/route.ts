@@ -251,6 +251,7 @@ HONESTY:
 - You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Say what it typically is and that it must be verified against the unit's own manual.
 - If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
+- You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
@@ -1980,8 +1981,11 @@ async function handleChatTurn(
       : null;
   if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
+    // #4015: "couldn't find that in the documentation I have", not "I don't have
+    // the manual" — a zero-hit scoped search does not prove the manual is absent
+    // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     const abstainAnswerText = missingModelManual
-      ? `I don't have the ${missingModelManual} manual in the library yet, so I can't give you its documented values — and I won't guess them. Upload the manual to this notebook (or photograph the nameplate) and ask again; I'll answer from it and show you the page.`
+      ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
         : null;
