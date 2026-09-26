@@ -239,3 +239,24 @@ thread. Keep document/machine/general bases unchanged; do not infer photos from
 future turns or another thread. No schema or trust-state change. Regression:
 live-vs-restored photo caption, earlier-photo summary, no-photo/other-basis controls.
 Acceptance: new APK on Pixel restores L's six answers with the unconfirmed labels.
+
+## Bounded local final-answer provider comparison (2026-09-26)
+
+Evidence: current Groq synthesis repeatedly invents drawing-to-hardware links despite
+correctly delivered observations. Source-type tags, prompt additions, history removal,
+reasoning-budget changes and another Groq model did not establish a repair. One
+same-context OpenAI comparison retained the source distinction. That is a hypothesis
+to test through the real carrier, not a product PASS or production-provider decision.
+
+Reuse `mira-hub/src/lib/inference/canonical-cascade.ts`: explicit opt-in OpenAI
+selection with pinned model; standard existing streaming, safety gates, persistence,
+and provider/usage telemetry. No alternate reasoning pipeline, source edits to safety,
+or default-provider change. Tests own request compatibility, exact provider identity,
+output bounds and unchanged default cascade. Local budget guard must reserve before
+streaming Chat Completions requests and retain a reservation when usage is absent.
+
+Scope: existing canonical provider module and tests, env documentation, local test
+runtime/guard, frozen image and physical replay. Owner-authorized $8 total testing
+ceiling applies. No production configuration change or deployment. Acceptance still
+requires original-order, changed-order and opposite-control evidence; a model
+comparison alone does not count as a working app. Failure preserves the old runtime.

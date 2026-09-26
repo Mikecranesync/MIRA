@@ -65,6 +65,8 @@ export type TurnUsage = {
  * a fabricated 0 (0 would read as "this turn was free").
  */
 const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
+  // Pinned gpt-5.5 comparison model only; no arbitrary OpenAI model override.
+  OpenAI: { input: 5, output: 30 },
   Groq: { input: 0.15, output: 0.75 },
   Cerebras: { input: 0.1, output: 0.6 },
   Together: { input: 0.88, output: 0.88 },
@@ -101,6 +103,17 @@ export function canonicalSeamEnabled(): boolean {
  * serve different models for the same question.
  */
 export function canonicalProviders(): CanonicalProvider[] {
+  // Explicit operator opt-in for the authorized local comparison. Keep the
+  // default cascade unchanged and do not silently substitute another model
+  // when a comparison provider is unavailable. The normal caller filters keys.
+  if (process.env.MIRA_NOTEBOOK_PROVIDER === "openai") {
+    return [{
+      name: "OpenAI",
+      url: "https://api.openai.com/v1/chat/completions",
+      key: process.env.OPENAI_API_KEY,
+      model: "gpt-5.5-2026-04-23",
+    }];
+  }
   return [
     {
       name: "Groq",
@@ -208,6 +221,17 @@ export function buildRequestBody(
   messages: unknown[],
   maxTokens: number,
 ): Record<string, unknown> {
+  if (provider.name === "OpenAI") {
+    return {
+      model: provider.model,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+      max_completion_tokens: maxTokens,
+      reasoning_effort: "medium",
+      store: false,
+    };
+  }
   return {
     model: provider.model,
     messages,
