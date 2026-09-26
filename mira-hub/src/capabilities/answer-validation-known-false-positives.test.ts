@@ -4,7 +4,7 @@
  * code controls, not deployed acceptance or authority to clear holds.
  */
 import { describe, expect, it } from "vitest";
-import { validateAnswer, ENERGIZED_PROCEDURE_WITHHELD } from "./answer-validation";
+import { validateAnswer, ENERGIZED_WARNING } from "./answer-validation";
 
 const check = (answerText: string, question: string, general = true) =>
   validateAnswer({ answerText, question, general, served: true, refused: false });
@@ -87,16 +87,16 @@ describe("#3982 — permit safe restart-then-read answers", () => {
   });
 
   it("permits the external-display alternative recommended by its replacement", () => {
-    // A4's replacement tells the technician to read the current off the VFD
-    // display; A4 then blocks an answer for saying exactly that.
-    expect(ENERGIZED_PROCEDURE_WITHHELD).toContain("VFD");
+    // A4's warning tells the technician to read the value off the drive or
+    // MCC metering; A4 must not then flag an answer for saying exactly that.
+    expect(ENERGIZED_WARNING).toMatch(/drive, MCC metering/);
     expect(check(FALSE_POSITIVES[2], "q").ok).toBe(true);
   });
 
   it("and the REAL hazard must keep blocking — any fix has to preserve this", () => {
     const r = check("Re-energize the panel, then clamp each phase and record the current.", "q");
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
   });
 });
 
@@ -114,7 +114,7 @@ describe("#3984 — reject numbered and cross-sentence energized procedures", ()
   it("the same-sentence shape IS caught — this is what the fixtures cover", () => {
     const r = check(SAME_SENTENCE, "How do I get the phase currents?");
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("unsafe-answer:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
   });
 
   it("rejects the cross-sentence procedure", () => {
@@ -128,6 +128,7 @@ describe("#3984 — reject numbered and cross-sentence energized procedures", ()
   it("the ASCII and U+2011 spellings behave identically — this is NOT a Unicode gap", () => {
     const uni = check(CROSS_SENTENCE.replace(/-/g, "\u2011"), "q");
     const asc = check(CROSS_SENTENCE, "q");
-    expect(uni).toEqual(asc);
+    // #3984: replacement embeds the candidate, so compare the verdict.
+    expect(uni.ok === false && [uni.kind, uni.violation]).toEqual(asc.ok === false && [asc.kind, asc.violation]);
   });
 });
