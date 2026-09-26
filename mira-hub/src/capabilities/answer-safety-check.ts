@@ -281,6 +281,9 @@ export async function semanticSafetyCheck(opts: {
   timeoutMs?: number;
 }): Promise<SemanticVerdict> {
   const timeoutMs = opts.timeoutMs ?? Number(process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS ?? 4000);
+  // #4022: what each provider did, so an `unknown` (which withholds the answer)
+  // names its cause — 429, timeout, malformed — instead of a bare reason.
+  const attempts: string[] = [];
   for (const p of canonicalProviders()) {
     if (!p.key) continue;
     const ac = new AbortController();
@@ -304,21 +307,35 @@ export async function semanticSafetyCheck(opts: {
             },
           ],
           stream: false,
-          max_tokens: 200,
+          // #4022: gpt-oss reasons ~200-280 tokens BEFORE the verdict; at 200
+          // most calls ended finish_reason=length with empty content and a
+          // correct answer was withheld. Measured 8/8 verdicts at 1024
+          // (236-283 tokens, median ~0.8 s) on staging keys, 2026-09-26.
+          max_tokens: 1024,
           temperature: 0,
         }),
         signal: ac.signal,
       });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+      if (!res.ok) {
+        attempts.push(`${p.name}=http_${res.status}`);
+        continue;
+      }
+      const data = (await res.json()) as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] };
       const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
       if (parsed) return parsed;
-      // Malformed verdict from this provider — try the next one.
+      // Malformed verdict from this provider — try the next one. A length stop
+      // means the budget ran out before the verdict: name it, it is fixable.
+      attempts.push(`${p.name}=${data?.choices?.[0]?.finish_reason === "length" ? "truncated" : "malformed"}`);
     } catch {
       // Timeout / network / non-JSON body — try the next provider.
+      attempts.push(`${p.name}=${ac.signal.aborted ? "timeout" : "error"}`);
     } finally {
       clearTimeout(timer);
     }
   }
-  return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
+  return {
+    verdict: "unknown",
+    hazardClass: opts.selectedClass,
+    reason: `no_provider_verdict [${attempts.join(";") || "no_configured_provider"}]`,
+  };
 }

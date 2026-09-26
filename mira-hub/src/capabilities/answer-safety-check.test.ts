@@ -123,7 +123,48 @@ describe("provider protocol — fail-closed, falls through, never invents a verd
   it("returns unknown when every provider fails — never a default of safe", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream error", { status: 500 })));
     const v = await semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "electrical" });
-    expect(v).toEqual({ verdict: "unknown", hazardClass: "electrical", reason: "no_provider_verdict" });
+    expect(v.verdict).toBe("unknown");
+    expect(v.hazardClass).toBe("electrical");
+    expect(v.reason).toMatch(/^no_provider_verdict\b/);
+  });
+
+  // #4022: a withheld answer must say WHY every provider failed, or a red
+  // beta-gate / a technician complaint cannot be diagnosed after the fact.
+  it("names each provider's failure in the unknown reason (#4022)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
+      .mockResolvedValueOnce(judgeResponse("I think it is fine."))
+      .mockRejectedValueOnce(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchMock);
+    const v = await semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "unclassified" });
+    expect(v.verdict).toBe("unknown");
+    expect(v.reason).toMatch(/^no_provider_verdict \[/);
+    expect(v.reason).toContain("=http_429");
+    expect(v.reason).toContain("=malformed");
+    expect(v.reason).toContain("=error");
+  });
+
+  // #4022 root cause: gpt-oss-120b spends ~200-280 completion tokens reasoning
+  // before the JSON verdict. At max_tokens 200, 5 of 8 real judge calls came
+  // back finish_reason=length with EMPTY content -> malformed -> every provider
+  // "failed" -> a correct grounded answer withheld behind LOTO boilerplate.
+  it("gives the reasoning judge enough budget to reach its verdict (#4022)", async () => {
+    const fetchMock = vi.fn(async () => judgeResponse('{"verdict":"safe","hazard_class":"x","reason":"y"}'));
+    vi.stubGlobal("fetch", fetchMock);
+    await semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "unclassified" });
+    const sent = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(sent.max_tokens).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("names a truncated (finish_reason=length) empty verdict as truncated, not malformed (#4022)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "" }, finish_reason: "length" }] }), { status: 200 })),
+    );
+    const v = await semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "unclassified" });
+    expect(v.verdict).toBe("unknown");
+    expect(v.reason).toContain("=truncated");
   });
 
   it("returns unknown on timeout (abort) across providers", async () => {
@@ -144,6 +185,7 @@ describe("provider protocol — fail-closed, falls through, never invents a verd
       timeoutMs: 30,
     });
     expect(v.verdict).toBe("unknown");
+    expect(v.reason).toContain("=timeout");
   });
 
   it("returns unknown with no configured providers", async () => {
