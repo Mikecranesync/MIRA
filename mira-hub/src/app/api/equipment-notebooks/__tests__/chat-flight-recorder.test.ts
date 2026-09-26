@@ -59,6 +59,14 @@ const ragMock = vi.hoisted(() => ({
   manufacturerFromObservationText: vi.fn((text: string, names: readonly string[]) =>
     names.find((n) => text.toLowerCase().includes(n.toLowerCase())) ?? null,
   ),
+  // The route is tested with a deterministic identity seam; the real parser's
+  // conflict and alias behavior is covered in manual-rag.test.ts.
+  resolveModelFromObservationText: vi.fn((text: string) => {
+    const tp = text.match(/\bTP\s*\d{3,4}\b/i)?.[0].replace(/\s+/g, "").toUpperCase() ?? null;
+    const v20 = /\b(?:SINAMICS\s*)?V\s*20\b/i.test(text) ? "V20" : null;
+    if (tp && v20) return { model: null, ambiguous: true };
+    return { model: tp ?? v20, ambiguous: false };
+  }),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
@@ -388,9 +396,12 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(text).toContain("[1]");
     const [, , opts] = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, unknown, string, { manufacturer: string; allowTenantFallback: boolean }];
     void opts;
-    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; allowTenantFallback: boolean }];
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { manufacturer: string; model?: string | null; allowTenantFallback: boolean }];
     expect(call[3].manufacturer).toBe("Siemens");
+    expect(call[3].model).toBe("TP700 Comfort");
     expect(call[3].allowTenantFallback).toBe(false);
+    expect(p.retrieval.oem_model).toBe("TP700 Comfort");
+    expect(p.retrieval.oem_model_source).toBe("notebook");
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
   });
 
@@ -406,6 +417,38 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.retrieval.strategy).toBe("oem_corpus_bm25");
     expect(p.retrieval.oem_manufacturer_source).toBe("photo");
     expect(p.visual_evidence.observation_in_context).toBe(true);
+  });
+
+
+  it("2c. #3966 NEGATIVE CONTROL: TP700 identity passes model so retrieval cannot manufacturer-fall-through to V20", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    // Empty retrieval is the honest refuse-to-cite outcome when no TP700 manual
+    // is in corpus — the invariant under test is that opts carry model/type.
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => providerStream("I don't have a matching manual for this TP700.")),
+    );
+    await (
+      await POST(
+        chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }),
+        params,
+      )
+    ).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.oem_corpus_searched).toBe(true);
+    expect(p.retrieval.oem_model).toBe("TP700 Comfort");
+    expect(p.retrieval.oem_model_source).toBe("notebook");
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      string,
+      { manufacturer: string; model?: string | null; equipmentType?: string | null },
+    ];
+    expect(call[3].manufacturer).toBe("Siemens");
+    expect(call[3].model).toBe("TP700 Comfort");
+    expect(call[3].equipmentType).toBe("HMIs");
   });
 
   it("3. notebook with an attached manual → notebook retrieval, source_doc_count > 0 (unchanged path)", async () => {
@@ -502,6 +545,77 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.retrieval.oem_manufacturer_source).toBe("photo");
     // VISUAL_EVIDENCE_DROPPED must NOT fire: the evidence reached context.
     expect((persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].anomalies.map((a) => a.code)).not.toContain("VISUAL_EVIDENCE_DROPPED");
+  });
+
+  it("4a. the newest recalled photo alone selects OEM identity when an older photo is a different model", async () => {
+    const olderFile = "55555555-5555-4555-8555-555555555555";
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "old", threadId: "th", answerStatus: "answered", answerText: "A panel.", evidence: [{ kind: "visual_observation", fileId: olderFile, capturedAt: "2026-09-22T04:00:00Z", provenance: "phone_photo" }] },
+      { id: "new", threadId: "th", answerStatus: "answered", answerText: "A drive.", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:00:00Z", provenance: "phone_photo" }] },
+    ] as never);
+    filesMock.photoLinkedToTarget
+      .mockResolvedValueOnce({ fileId: FILE_ID, capturedAt: "2026-09-22T05:00:00Z" })
+      .mockResolvedValueOnce({ fileId: olderFile, capturedAt: "2026-09-22T04:00:00Z" });
+    veMock.loadVisualEvidenceForPhoto
+      .mockResolvedValueOnce({ text: "Siemens SINAMICS V20 drive", fileId: FILE_ID, observedAt: "2026-09-22T05:00:00Z" } as never)
+      .mockResolvedValueOnce({ text: "Siemens TP700 Comfort panel", fileId: olderFile, observedAt: "2026-09-22T04:00:00Z" } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I need the matching manual.")));
+    await (await POST(chatReq({ message: "what should I check on the last photo?", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.visual_evidence.prior_turn_observation_count).toBe(2);
+    expect(p.retrieval.oem_model).toBe("V20");
+    expect(p.retrieval.oem_model_source).toBe("photo");
+    const call = ragMock.retrieveManualChunks.mock.calls[0] as unknown as [unknown, string, string, { model: string }];
+    expect(call[3].model).toBe("V20");
+    expect(ragMock.resolveModelFromObservationText).toHaveBeenCalledWith("Siemens SINAMICS V20 drive");
+  });
+
+  it("4aa. conflicting models in one LOOK observation skip OEM citation retrieval", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ text: "Siemens TP700 Comfort panel beside SINAMICS V20 drive", fileId: FILE_ID } as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The photo describes more than one machine; identify which one you mean.")));
+    const res = await POST(chatReq({ message: "what should I check?", mode: "general", visualEvidence: { fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00.000Z" } }), params);
+    expect(res.status).toBe(200);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.retrieval.oem_corpus_searched).toBe(false);
+    expect(p.retrieval.oem_model).toBeNull();
+    expect(p.retrieval.zero_result_reason).toBe("ambiguous_model_observation");
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+  });
+
+  it("4b. #3966 NEGATIVE CONTROL: identity extraction failure skips OEM citation but answers the turn", async () => {
+    // A parser failure cannot turn a TP700 observation into Siemens-wide BM25:
+    // a V20 chunk would be a wrong-machine citation. The turn still answers.
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: FILE_ID, capturedAt: "2026-09-22T00:00:00Z" });
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    domainMock.listTurns.mockResolvedValueOnce([
+      { id: "t1", threadId: "th", question: "what is this", answerStatus: "answered", answerText: "…", evidence: [{ kind: "visual_observation", fileId: FILE_ID, capturedAt: "2026-09-22T05:13:53Z", provenance: "phone_photo" }], basis: "general_reasoning", createdAt: "2026-09-22T05:14:04Z", ownerUserId: "u1" },
+    ] as never);
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({ observationId: "o1", sessionId: "s1", text: "Siemens TP700 Comfort, Supply 24 Vdc max 0.85 A", obsKind: "look", trust: "candidate", confidence: null, fileId: FILE_ID, photoHash: null, observedAt: null } as never);
+    ragMock.resolveModelFromObservationText.mockImplementationOnce(() => {
+      throw new Error("identity seam unavailable");
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("From the earlier photo it is 24 Vdc.")));
+    const res = await POST(chatReq({ message: "what voltage was it?", mode: "general", history: [{ role: "user", content: "what is this" }, { role: "assistant", content: "…" }] }), params);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    // The turn survived and still recalled the photo …
+    expect(p.visual_evidence.prior_turn_observation_count).toBe(1);
+    // … but no manufacturer-only retrieval or OEM citation is allowed.
+    expect(p.retrieval.oem_model).toBeNull();
+    expect(p.retrieval.oem_model_source).toBeNull();
+    expect(p.retrieval.oem_corpus_searched).toBe(false);
+    expect(p.retrieval.zero_result_reason).toBe("model_extraction_failed");
+    expect(p.retrieval.returned_doc_ids).toEqual([]);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(framesOf(text).find((f) => f.kind === "sources")?.citations ?? []).toEqual([]);
   });
 
   it("6. token usage lands in the packet (staging rows showed tokens=None/None)", async () => {

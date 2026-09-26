@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { inferEquipmentType } from "@/lib/equipment-type";
 import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
@@ -214,6 +215,15 @@ const MODEL_PATTERNS: RegExp[] = [
   /\bacs\s*(\d{3,4})\b/i, //              ACS355 → 355
   /\b(gs\d{1,2}[a-z]?)\b/i, //            GS10 → GS10
   /\b([auvj]1000)\b/i, //                 A1000/V1000/U1000/J1000
+  // #3966 — HMI / Comfort / Siemens catalog + SINAMICS V20 family tokens.
+  // Capture the discriminating token (TP700, 6AV…, COMFORT, V20) so identity-
+  // bound OEM retrieval can scope (or refuse) instead of manufacturer-only BM25.
+  /\b(tp\s*\d{3,4})\b/i, //              TP700 / TP 1200
+  /\b(ktp\s*\d{2,4})\b/i, //             KTP700
+  /\b(6av[0-9a-z.-]+)\b/i, //             6AV2124-0GC01-0AX0
+  /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
+  /\b(v20)\b/i, //                        V20 (drive family)
+  /\b(comfort)\b/i, //                    Comfort panel family
 ];
 
 /**
@@ -229,6 +239,41 @@ export function extractModelNumber(query: string): string | null {
   return null;
 }
 
+/**
+ * Model / family token from a LOOK / nameplate observation (#3966).
+ * Reuses extractModelNumber patterns so notebook.model and photo text share one
+ * detector. Null ⇒ no model/family evidence in the observation.
+ */
+export function modelFromObservationText(text: string): string | null {
+  return resolveModelFromObservationText(text).model;
+}
+
+/** Resolve model tokens within ONE observation, refusing to pick between
+ * different specific models. Comfort is a family hint; a TP/KTP panel and its
+ * 6AV order number can describe the same nameplate. */
+export function resolveModelFromObservationText(text: string): { model: string | null; ambiguous: boolean } {
+  const found = new Set<string>();
+  for (const pattern of MODEL_PATTERNS) {
+    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+      let token = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
+      if (token === "SINAMICSV20") token = "V20";
+      found.add(token);
+    }
+  }
+  if (found.size > 1 && [...found].some((token) => /^(?:K?TP\d|6AV)/.test(token))) {
+    found.delete("COMFORT");
+  }
+  const tokens = [...found];
+  if (tokens.length === 0) return { model: null, ambiguous: false };
+  if (tokens.length === 1) return { model: tokens[0], ambiguous: false };
+  const panel = tokens.filter((token) => /^K?TP\d/.test(token));
+  const catalog = tokens.filter((token) => /^6AV/.test(token));
+  if (tokens.length === 2 && panel.length === 1 && catalog.length === 1) {
+    return { model: panel[0], ambiguous: false };
+  }
+  return { model: null, ambiguous: true };
+}
+
 // #2178 — ordered retrieval scopes, most-specific first. When a model is named we
 // try {model (+vendor)} FIRST so citations match the asked model; if that model
 // isn't in the corpus the pass returns nothing and we degrade to vendor-only then
@@ -239,11 +284,25 @@ function scopeCascade(
   mfr: string | null,
   model: string | null,
   allowTenantFallback: boolean,
+  /**
+   * #3966 — when the caller already resolved equipment identity (notebook.model
+   * or LOOK observation), do NOT silently expand to manufacturer-only /
+   * tenant-wide scopes for citation. Empty model-scoped results become an
+   * honest refuse-to-cite rather than a wrong-family Siemens VFD manual.
+   * Query-extracted models (#2178) keep the vendor fallback.
+   */
+  identityBound = false,
 ): Array<{ mfr: string | null; model: string | null }> {
   const scopes: Array<{ mfr: string | null; model: string | null }> = [];
   if (model) scopes.push({ mfr, model }); // model (+ vendor if known) — most specific
-  if (mfr) scopes.push({ mfr, model: null }); // vendor only
-  if (allowTenantFallback || (!mfr && !model)) scopes.push({ mfr: null, model: null }); // tenant-wide
+  if (!identityBound) {
+    if (mfr) scopes.push({ mfr, model: null }); // vendor only
+    if (allowTenantFallback || (!mfr && !model)) scopes.push({ mfr: null, model: null }); // tenant-wide
+  } else if (!model && mfr) {
+    // Identity bound by equipment type only (no model token) — allow vendor
+    // scope; retrieveManualChunks will filter wrong-family hits.
+    scopes.push({ mfr, model: null });
+  }
   if (scopes.length === 0) scopes.push({ mfr: null, model: null }); // never empty
   return scopes;
 }
@@ -336,21 +395,70 @@ export async function retrieveManualChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { manufacturer?: string | null; topK?: number; allowTenantFallback?: boolean } = {},
+  opts: {
+    manufacturer?: string | null;
+    /** Caller-resolved model/family (notebook.model or LOOK). Preferred over query extraction. */
+    model?: string | null;
+    /** Optional UNS equipment class for wrong-family filtering (#3966). */
+    equipmentType?: string | null;
+    topK?: number;
+    allowTenantFallback?: boolean;
+  } = {},
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
-  const model = extractModelNumber(q); // #2178 — null for most queries
+  const callerModel = (opts.model ?? "").trim() || null;
+  // Prefer identity-bound model from notebook/LOOK over query extraction (#3966).
+  const resolvedCaller = callerModel ? resolveModelFromObservationText(callerModel) : null;
+  if (resolvedCaller?.ambiguous) return [];
+  // Only known tokens are shortened. Unknown caller models retain their exact,
+  // narrower value; a conflicting identity never widens to vendor BM25.
+  const model = callerModel
+    ? resolvedCaller?.model ?? callerModel
+    : extractModelNumber(q); // #2178 — null for most queries
+  const identityBound = callerModel !== null;
 
   // Walk the scopes most-specific-first, stopping at the first non-empty result.
   // For a model-free query this is identical to the old vendor→tenant behavior.
-  const scopes = scopeCascade(mfr || null, model, allowTenantFallback);
+  // Identity-bound calls skip vendor/tenant expansion when a model token is set.
+  const scopes = scopeCascade(mfr || null, model, allowTenantFallback, identityBound);
+
+  const assetType =
+    (opts.equipmentType ?? "").trim() ||
+    (model ? inferEquipmentType({ modelNumber: model, title: model }) : "") ||
+    null;
+
+  const rejectWrongFamily = (hits: ManualChunk[]): ManualChunk[] => {
+    if (!assetType || assetType === "Other") return hits;
+    return hits.filter((c) => {
+      // A model-scoped hit has already matched the caller's model in SQL.
+      // Classify explicit model evidence before weaker title/URL hints (which
+      // may name connected equipment) or manufacturer defaults (AB => PLCs).
+      if (identityBound && model) {
+        const modelType = inferEquipmentType({ modelNumber: c.modelNumber });
+        if (modelType !== "Other") return modelType === assetType;
+        return true; // Unknown model label, but SQL still established identity.
+      }
+      const hitType = inferEquipmentType({
+        modelNumber: c.modelNumber,
+        title: c.title,
+        sourceUrl: c.sourceUrl,
+        manufacturer: c.manufacturer,
+      });
+      // Unclassified hits stay (don't over-refuse); classified disagreements go.
+      if (hitType === "Other") return true;
+      return hitType === assetType;
+    });
+  };
+
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
-      const hits = await runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+      const hits = rejectWrongFamily(
+        await runBm25Query(client, tenantId, text, topK, s.mfr, s.model),
+      );
       if (hits.length > 0) return hits;
     }
     return [];
@@ -399,15 +507,29 @@ async function runBm25Query(
     params.push(`%${manufacturer}%`);
     mfrClause = `AND manufacturer ILIKE $${params.length}`;
   }
-  // #2178 — scope to the asked model. Word-boundary-safe via the exclusion
-  // pattern ("753" must not match "7530"), mirroring neon_recall._product_search.
+  // #2178/#3966 — numeric legacy tokens remain substrings ("525" matches
+  // "PowerFlex 525"). Alphabetic identity tokens need both boundaries:
+  // TP700 must not admit KTP700, TP7000, or TP7001. Quote arbitrary caller
+  // text as a regex literal before passing it as a SQL parameter.
   let modelClause = "";
   if (model) {
-    params.push(`%${model}%`);
-    const likeIdx = params.length;
-    params.push(`%${model}0%`);
-    const exclIdx = params.length;
-    modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
+    if (/^\d{2,4}[a-z]?$/i.test(model)) {
+      params.push(`%${model}%`);
+      const likeIdx = params.length;
+      params.push(`%${model}0%`);
+      const exclIdx = params.length;
+      modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
+    } else {
+      const literal = model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Match the same internal whitespace accepted by model resolution.
+      // Outer boundaries still exclude sibling or prefixed model identities.
+      const panel = /^(TP\d{3,4}|KTP\d{2,4})$/i.test(model)
+        ? /^(K?TP)(\d+)$/i.exec(model) : null;
+      const token = panel ? `${panel[1]}[[:space:]]*${panel[2]}`
+        : /^V20$/i.test(model) ? "V[[:space:]]*20" : literal;
+      params.push(`(^|[^[:alnum:]])${token}($|[^[:alnum:]])`);
+      modelClause = `AND model_number ~* $${params.length}`;
+    }
   }
   params.push(topK);
   const limitParam = `$${params.length}`;

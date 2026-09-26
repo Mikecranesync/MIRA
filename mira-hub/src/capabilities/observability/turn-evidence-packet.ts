@@ -106,6 +106,15 @@ export type TurnEvidencePacketRetrieval = {
   oem_corpus_searched: boolean;
   /** Where the OEM manufacturer scope came from when oem_corpus_searched. */
   oem_manufacturer_source: "notebook" | "photo" | null;
+  /**
+   * #3966 — the model/family identity retrieval was bound to, when one was
+   * resolved. Non-null means retrieval was identity-bound and MUST NOT have
+   * fallen through to a manufacturer-only scope (which is how an HMI photo
+   * cited a SINAMICS V20 drive manual).
+   */
+  oem_model: string | null;
+  /** Where that model came from when oem_model is non-null. */
+  oem_model_source: "notebook" | "photo" | null;
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;
@@ -310,6 +319,8 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       returned_doc_ids: [],
       oem_corpus_searched: false,
       oem_manufacturer_source: null,
+      oem_model: null,
+      oem_model_source: null,
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
     },

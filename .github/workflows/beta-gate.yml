@@ -49,6 +49,7 @@ on:
       - "tests/beta/**"
       - "mira-hub/src/lib/node-knowledge-ingest.ts"
       - "mira-hub/src/lib/manual-rag.ts"
+      - "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts"
       - "mira-hub/src/app/api/namespace/node/**"
       - "mira-hub/scripts/provision-beta-gate.ts"
       # Every load-bearing dependency of the notebook lane: a change to any of
@@ -548,6 +549,12 @@ jobs:
         env:
           MIRA_ENFORCE_APPROVED_RETRIEVAL: "true"
         run: node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/approved-source-admission
+
+      - name: OEM model specificity (real SQL, disposable Postgres)
+        working-directory: mira-hub
+        env:
+          MIRA_ENFORCE_APPROVED_RETRIEVAL: "true"
+        run: node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts src/lib/__tests__/manual-rag-model-scope.integration.test.ts
 
       - uses: actions/setup-python@v6
         with:
