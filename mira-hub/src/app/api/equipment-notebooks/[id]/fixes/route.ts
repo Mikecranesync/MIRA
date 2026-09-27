@@ -44,6 +44,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   }
 
+  // A repair is filed against the machine the notebook is bound to. A QR/NFC
+  // selection is not a confirmation — the sticker may be on the wrong machine
+  // — so a machine-scoped fix is refused until a technician confirms it
+  // (Codex #4057 post-cap F4). Unbound notebooks record against themselves.
+  if (notebook.asset && !notebook.asset.confirmedAt) {
+    return NextResponse.json(
+      { error: "asset_not_confirmed", message: "Confirm which machine this is before recording a fix." },
+      { status: 409 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
