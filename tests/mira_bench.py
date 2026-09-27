@@ -55,6 +55,8 @@ from mira_bench_scorer import (  # noqa: E402
     DIMENSIONS,
     MAX_LLM_TOTAL,
     MAX_TOTAL,
+    combine_repeats,
+    graded_pair_totals,
     score_answer,
     score_retrieval,
 )
@@ -397,15 +399,78 @@ async def generate_baseline(router: InferenceRouter, question: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def ask_product(base: str, question: str) -> tuple[str, list[dict]]:
+    """Ask the REAL product: the public, no-login quickstart answer endpoint.
+
+    The harness lane builds its own "MIRA" (own prompt, own rerank, own SQL
+    fallback) and never touches the engine a technician talks to. This lane
+    sends the question exactly as a stranger would and grades what comes back.
+    Citations are appended so the judge can see them, as a technician would.
+    """
+    async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+        resp = await client.post(
+            f"{base.rstrip('/')}/api/quickstart/ask/", json={"question": question}
+        )
+    if resp.status_code != 200:
+        return f"[PRODUCT ERROR HTTP {resp.status_code}]", []
+    data = resp.json()
+    citations = data.get("citations") or []
+    chunks = [
+        {
+            "manufacturer": c.get("title"),
+            "source_page": c.get("page"),
+            "source_url": c.get("url"),
+            "content": f"{c.get('title') or ''} {c.get('url') or ''}",
+        }
+        for c in citations
+    ]
+    answer = str(data.get("answer") or "")
+    if citations:
+        answer += "\n\nSources:\n" + "\n".join(
+            f"[{c.get('index')}] {c.get('title')} {c.get('url') or ''} p.{c.get('page') or '?'}"
+            for c in citations
+        )
+    return answer, chunks
+
+
 async def run_question(
     router: InferenceRouter,
     q: dict[str, Any],
     tenant_id: str,
+    *,
+    mira_source: str = "harness",
+    product_base: str = "",
 ) -> dict[str, Any]:
     qid = q["id"]
     question = q["question"]
     equipment = q.get("equipment") or []
     logger.info("Q %s — %s (equipment=%s)", qid, question, equipment)
+
+    if mira_source == "quickstart":
+        (grounded_answer, retrieved), baseline_answer = await asyncio.gather(
+            ask_product(product_base, question),
+            generate_baseline(router, question),
+        )
+        expected = q.get("expected_answer_components") or []
+        grounded_score, baseline_score = await asyncio.gather(
+            score_answer(router, question, expected, grounded_answer, "MIRA-grounded"),
+            score_answer(router, question, expected, baseline_answer, "ungrounded-LLM"),
+        )
+        retrieval_metrics = score_retrieval(retrieved, q.get("required_documents") or [])
+        retrieval_metrics["rerank"] = {"rerank": "product", "note": "server-side retrieval"}
+        return {
+            "id": qid,
+            "category": q.get("category"),
+            "difficulty": q.get("difficulty"),
+            "equipment": equipment,
+            "question": question,
+            "embedding_ok": None,
+            "retrieval": retrieval_metrics,
+            "grounded_answer": grounded_answer,
+            "baseline_answer": baseline_answer,
+            "grounded_score": grounded_score,
+            "baseline_score": baseline_score,
+        }
 
     embedding = await embed_text(question)
     if embedding is None:
@@ -483,6 +548,30 @@ def render_report(results: list[dict[str, Any]], meta: dict[str, Any]) -> str:
     )
     lines.append("")
 
+    # Aggregate over questions where BOTH sides were graded — an unreadable
+    # judge reply is ungraded, never a zero (see mira_bench_scorer).
+    pt = graded_pair_totals(results)
+    paired = [
+        r for r in results
+        if r["grounded_score"].get("total") is not None
+        and r["baseline_score"].get("total") is not None
+    ]
+    lines.append(
+        f"**Lane:** {meta.get('mira_source', 'harness')}"
+        + (f" ({meta['product_base']})" if meta.get("product_base") else "")
+        + f" · **repeats:** {meta.get('repeats', 1)} (median)"
+        + f" · **judge:** {', '.join(meta.get('judge_models') or ['?'])}"
+    )
+    lines.append(
+        f"**Graded pairs:** {pt['graded_pairs']}/{pt['questions']}"
+        f" · **embeddings ok:** {meta.get('embedding_ok', '?')}"
+    )
+    lines.append("")
+    all_results = results
+    results = paired
+    if not results:
+        lines.append("**No question had both answers graded — this run is INCONCLUSIVE.**")
+        return "\n".join(lines)
     gtot = sum(r["grounded_score"]["total"] for r in results)
     btot = sum(r["baseline_score"]["total"] for r in results)
     gtot_raw = sum(r["grounded_score"]["total_raw"] for r in results)
@@ -537,7 +626,7 @@ def render_report(results: list[dict[str, Any]], meta: dict[str, Any]) -> str:
 
     lines.append("## Per-question detail")
     lines.append("")
-    for r in results:
+    for r in all_results:
         lines.append(f"### {r['id']} · {r['category']} · {r['difficulty']}")
         lines.append("")
         lines.append(f"**Q:** {r['question']}")
@@ -663,7 +752,27 @@ async def main() -> int:
         default="",
         help="Comma-separated question IDs to run (default: all)",
     )
+    ap.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="Ask each question N times and keep the median graded run per side",
+    )
+    ap.add_argument(
+        "--mira-source",
+        choices=("harness", "quickstart"),
+        default="harness",
+        help="harness = the in-test RAG stand-in; quickstart = the real product's public ask endpoint",
+    )
+    ap.add_argument(
+        "--product-base",
+        default="",
+        help="Base URL for --mira-source quickstart (e.g. https://app-staging.factorylm.com)",
+    )
     args = ap.parse_args()
+    if args.mira_source == "quickstart" and not args.product_base:
+        print("ERROR: --mira-source quickstart needs --product-base", file=sys.stderr)
+        return 2
     args.output.mkdir(parents=True, exist_ok=True)
 
     if "NEON_DATABASE_URL" not in os.environ:
@@ -701,12 +810,22 @@ async def main() -> int:
         "cascade": " → ".join(p.name for p in router.providers),
         "questions": len(questions),
         "version": "v2",
+        "mira_source": args.mira_source,
+        "product_base": args.product_base,
+        "repeats": max(1, args.repeats),
     }
 
     results: list[dict[str, Any]] = []
     for q in questions:
         try:
-            r = await run_question(router, q, tenant_id)
+            runs = [
+                await run_question(
+                    router, q, tenant_id,
+                    mira_source=args.mira_source, product_base=args.product_base,
+                )
+                for _ in range(max(1, args.repeats))
+            ]
+            r = combine_repeats(runs)
         except Exception as exc:
             logger.exception("Q %s crashed: %s", q["id"], exc)
             r = {
@@ -729,13 +848,13 @@ async def main() -> int:
                 "baseline_answer": "",
                 "grounded_score": {
                     "scores": {d: 0 for d in DIMENSIONS},
-                    "total": 0, "total_raw": 0, "llm_total": 0, "notes": "",
+                    "total": None, "total_raw": None, "llm_total": None, "notes": "", "graded": False,
                     "factual": {"score_1to5": 0, "matched": [], "missing": [], "ratio": 0.0},
                     "fabrication": {"penalty": 0, "n_claims": 0, "n_unsupported": 0, "flagged": []},
                 },
                 "baseline_score": {
                     "scores": {d: 0 for d in DIMENSIONS},
-                    "total": 0, "total_raw": 0, "llm_total": 0, "notes": "",
+                    "total": None, "total_raw": None, "llm_total": None, "notes": "", "graded": False,
                     "factual": {"score_1to5": 0, "matched": [], "missing": [], "ratio": 0.0},
                     "fabrication": {"penalty": 0, "n_claims": 0, "n_unsupported": 0, "flagged": []},
                 },
@@ -745,10 +864,21 @@ async def main() -> int:
         gtot = r["grounded_score"]["total"]
         btot = r["baseline_score"]["total"]
         logger.info(
-            "Q %s done — grounded=%d/%d baseline=%d/%d chunks=%d",
+            "Q %s done — grounded=%s/%d baseline=%s/%d chunks=%d",
             r["id"], gtot, MAX_TOTAL, btot, MAX_TOTAL, r["retrieval"]["n_chunks"],
         )
 
+    meta["judge_models"] = sorted(
+        {
+            str(r[side].get("judge_model"))
+            for r in results
+            for side in ("grounded_score", "baseline_score")
+            if r[side].get("judge_model")
+        }
+    )
+    emb = [r.get("embedding_ok") for r in results if r.get("embedding_ok") is not None]
+    meta["embedding_ok"] = f"{sum(1 for e in emb if e)}/{len(emb)}" if emb else "n/a"
+    meta["totals"] = graded_pair_totals(results)
     raw_path = args.output / "mira-bench-raw.json"
     md_path = args.output / "mira-bench-results.md"
     with raw_path.open("w") as f:

@@ -34,6 +34,11 @@ on:
         options:
           - "true"
           - "false"
+      product_base:
+        description: "Real-product lane target: the public quickstart ask endpoint"
+        required: false
+        default: "https://app-staging.factorylm.com"
+        type: string
 
 permissions:
   contents: read
@@ -47,11 +52,21 @@ jobs:
   benchmark:
     name: mira-bench (staging)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     # Same environment + secret names as staging-gate.yml so the same Doppler
     # service token can serve both workflows.
     environment: staging
+
+    # Ollama sidecar for the harness lane's vector recall — same image and
+    # model as staging-gate.yml. Until 2026-09-27 this job pointed
+    # OLLAMA_BASE_URL at a dead port, so every run was BM25-only while the
+    # pinned baseline had been set WITH embeddings.
+    services:
+      ollama:
+        image: ollama/ollama:0.4.1
+        ports:
+          - 11434:11434
 
     steps:
       - uses: actions/checkout@v6
@@ -92,6 +107,22 @@ jobs:
           # already in telegram/requirements.txt. Belt-and-suspenders pin:
           pip install pyyaml httpx 'psycopg2-binary>=2.9' 'sqlalchemy>=2'
 
+      - name: Wait for Ollama and pre-pull embed model
+        if: steps.check_files.outputs.missing == '0'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:11434/api/tags >/dev/null; then
+              echo "ollama up after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          curl -sf -X POST http://localhost:11434/api/pull \
+            -d '{"name":"nomic-embed-text:latest","stream":false}' \
+            -o /tmp/ollama-pull.json
+          curl -sf http://localhost:11434/api/tags | grep -q nomic-embed-text
+
       - name: Prep output dir
         if: steps.check_files.outputs.missing == '0'
         id: prep
@@ -106,10 +137,10 @@ jobs:
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
 
-      - name: Run mira_bench (staging Neon, read-only)
+      - name: Run mira_bench — real product lane (gated)
         if: steps.check_files.outputs.missing == '0'
         id: bench
-        env:
+        env: &bench_env
           # Match staging-gate.yml secrets so one env serves both.
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
@@ -121,16 +152,28 @@ jobs:
           MIRA_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
           QUICKSTART_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
           MIRA_DB_PATH: ${{ runner.temp }}/mira-stg.db
-          # No Ollama on the GitHub runner — embedding will return None and
-          # the bench will gracefully fall back to BM25 + structured-fault
-          # streams (see mira-bots/shared/neon_recall.py:614). This is a
-          # documented degradation, not a failure: the locked baseline
-          # threshold has a 6% buffer to absorb it.
-          OLLAMA_BASE_URL: http://localhost:1
+          OLLAMA_BASE_URL: http://localhost:11434
+          PRODUCT_BASE: ${{ inputs.product_base || 'https://app-staging.factorylm.com' }}
+        # Grades the answer a stranger actually gets from the deployed
+        # product's public ask endpoint — not a stand-in built by the test.
+        # Each question is asked 3 times; the median graded run counts.
         run: |
           set -o pipefail
-          python tests/mira_bench.py --output "${{ steps.prep.outputs.out }}" \
-              2>&1 | tee "${{ steps.prep.outputs.out }}/bench-stdout.log"
+          python tests/mira_bench.py --output "${{ steps.prep.outputs.out }}/product" \
+              --mira-source quickstart --product-base "$PRODUCT_BASE" --repeats 3 \
+              2>&1 | tee "${{ steps.prep.outputs.out }}/bench-product-stdout.log"
+
+      - name: Run mira_bench — harness lane (diagnostic, not gated)
+        if: always() && steps.check_files.outputs.missing == '0'
+        continue-on-error: true
+        env: *bench_env
+        # The in-test RAG stand-in, kept only as a retrieval diagnostic: it
+        # exposes per-question chunks/relevance that the product lane cannot.
+        run: |
+          set -o pipefail
+          python tests/mira_bench.py --output "${{ steps.prep.outputs.out }}/harness" \
+              --mira-source harness --repeats 1 \
+              2>&1 | tee "${{ steps.prep.outputs.out }}/bench-harness-stdout.log"
 
       - name: Upload results
         if: always() && steps.check_files.outputs.missing == '0'
@@ -143,17 +186,28 @@ jobs:
       - name: Check regression vs locked baseline
         if: always() && steps.check_files.outputs.missing == '0' && steps.bench.outcome == 'success'
         id: regression
-        continue-on-error: true
+        # Exit codes: 0 pass, 1 regression, 2 inconclusive/operational. Only a
+        # real regression (1) files an issue; before 2026-09-27 every non-zero
+        # exit was treated as a regression.
         run: |
+          set +e
           python3 scripts/check_benchmark_regression.py \
-              --raw "${{ steps.prep.outputs.out }}/mira-bench-raw.json" \
+              --raw "${{ steps.prep.outputs.out }}/product/mira-bench-raw.json" \
               --baseline .github/baselines/mira-bench.json \
               --issue-out benchmark_regression_issue.md \
               --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Report card
+        if: always() && steps.check_files.outputs.missing == '0' && steps.bench.outcome == 'success'
+        run: |
+          python3 scripts/bench_report_card.py \
+              "${{ steps.prep.outputs.out }}/product/mira-bench-raw.json" \
+              | tee "${{ steps.prep.outputs.out }}/REPORT-CARD.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: File regression issue
         if: |
-          steps.regression.outcome == 'failure' &&
+          steps.regression.outputs.rc == '1' &&
           (github.event_name == 'schedule' || inputs.open_issue == 'true') &&
           hashFiles('benchmark_regression_issue.md') != ''
         env:
@@ -179,8 +233,12 @@ jobs:
                 --body-file benchmark_regression_issue.md
           fi
 
-      - name: Fail the job if regression detected
-        if: steps.regression.outcome == 'failure'
+      - name: Fail the job if regression detected or inconclusive
+        if: steps.regression.outputs.rc != '0'
         run: |
-          echo "::error::benchmark regression — see issue + artifact"
+          if [ "${{ steps.regression.outputs.rc }}" = "1" ]; then
+            echo "::error::benchmark regression — see issue + artifact"
+          else
+            echo "::error::benchmark INCONCLUSIVE — the grader or setup failed, not MIRA; see artifact"
+          fi
           exit 1
