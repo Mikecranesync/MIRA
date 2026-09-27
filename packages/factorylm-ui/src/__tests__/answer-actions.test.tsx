@@ -28,6 +28,14 @@ describe("speakableText", () => {
     expect(spoken).not.toContain("#");
   });
 
+  it("keeps a fenced block's contents and drops only the fences and language label", () => {
+    const spoken = speakableText("Set the drive parameter as follows:\n```text\nP1.01 = 8 s\n```\nRestart.");
+    expect(spoken).toContain("P1.01 = 8 s");
+    expect(spoken).toContain("Restart.");
+    expect(spoken).not.toContain("```");
+    expect(spoken).not.toContain("text\n");
+  });
+
   it("keeps link text and leaves plain prose unchanged", () => {
     expect(speakableText("See [the manual](https://x/y.pdf) page 4")).toBe("See the manual page 4");
     expect(speakableText("Reset the drive")).toBe("Reset the drive");

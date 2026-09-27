@@ -38,7 +38,9 @@ export function spokenAnswerText(turn: Pick<InteractionTurn, "parts">): string {
 export function speakableText(text: string): string {
   return text
     .replace(/\s*\[\d+(?:\s*[,–-]\s*\d+)*\]/g, "")
-    .replace(/```[\s\S]*?```/g, " ")
+    // Keep a fenced block's CONTENTS (it may hold "P1.01 = 8 s"); drop only the
+    // fences and any language label (Codex #4058 round 3).
+    .replace(/```[^\n`]*\n?([\s\S]*?)```/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
