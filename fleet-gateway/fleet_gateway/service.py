@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from fleet_gateway.audit import AuditLog
 from fleet_gateway.auth import require_bearer
-from fleet_gateway.cao import CAOClient
+from fleet_gateway.cao import CAOClient, review_capability_gap
 from fleet_gateway.contract import (
     ALLOWED_PROVIDERS,
     ALLOWED_ROLES,
@@ -25,11 +26,14 @@ from fleet_gateway.errors import (
     DeniedToolError,
     FleetGatewayError,
     NotFoundError,
+    ReviewerCapabilityError,
 )
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.router import NodeRouter
 from fleet_gateway.store import ArtifactStore
 from fleet_gateway.worktree import WorktreeProvisioner, worktrees_from_env
+
+logger = logging.getLogger("fleet-gateway")
 
 
 def _nonempty(value: Any) -> bool:
@@ -343,6 +347,10 @@ class FleetGatewayService:
             self._session_nodes[session_id] = role
         if hasattr(target.cao, "record_worktree"):
             target.cao.record_worktree(session_id, worktree)
+        if role == "charlie":
+            self._reject_lane_without_execution(
+                target, launched, session_id, worktree_path, spec, terminal_id
+            )
         record = {
             **spec,
             "session_id": session_id,
@@ -373,6 +381,54 @@ class FleetGatewayService:
                 "worktree": worktree,
                 "artifact": str(artifact_path.name),
             }
+        )
+
+    def _reject_lane_without_execution(
+        self,
+        target: Any,
+        launched: dict[str, Any],
+        session_id: str,
+        worktree_path: Path,
+        spec: dict[str, Any],
+        terminal_id: str,
+    ) -> None:
+        """Fail closed when a Charlie review lane cannot execute (#3817).
+
+        A lane without Bash preflights BLOCKED and idles in tmux forever. Stop it, remove
+        the Gateway's own fresh worktree, record why, and raise — never leave it running.
+        Cleanup failures are logged but never mask the capability error.
+        """
+        gap = review_capability_gap(launched.get("allowed_tools"))
+        if gap is None:
+            return
+        cleanup: list[str] = []
+        try:
+            target.cao.stop_worker(session_id)
+            cleanup.append("session stopped")
+        except Exception as exc:  # noqa: BLE001 — must not mask the capability error
+            logger.warning("reviewer-capability reject: stop %s failed: %s", session_id, exc)
+            cleanup.append(f"session stop FAILED ({exc})")
+        try:
+            target.worktrees.remove(worktree_path)
+            cleanup.append("worktree removed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("reviewer-capability reject: remove %s failed: %s", worktree_path, exc)
+            cleanup.append(f"worktree removal FAILED ({exc})")
+        self.artifacts.write_task(
+            {
+                **spec,
+                "session_id": session_id,
+                "terminal_id": terminal_id,
+                "status": "rejected",
+                "claimed": False,
+                "blockers": [f"reviewer lane cannot execute: {gap}"],
+                "worktree": str(worktree_path),
+            }
+        )
+        raise ReviewerCapabilityError(
+            f"charlie review lane cannot execute ({gap}); {', '.join(cleanup)}. "
+            "Grant execute_bash via the CAO launch (the Gateway requests it) or a local "
+            "reviewer profile override on that node."
         )
 
     def _message_worker(self, params: dict[str, Any], requester: str) -> dict[str, Any]:
@@ -442,6 +498,11 @@ class FleetGatewayService:
         session_role = str(stored.get("role") or (artifact or {}).get("role") or "").strip().lower()
         if session_role != "charlie":
             raise ContractViolation("request_review is Charlie only")
+        gap = review_capability_gap(stored.get("allowed_tools"))
+        if gap:
+            raise ReviewerCapabilityError(
+                f"session {session_id} cannot run an independent review: {gap}"
+            )
         spec = {
             "session_id": session_id,
             "git_ref": git_ref,

@@ -238,10 +238,20 @@ def test_loopback_launch_posts_to_cao_sessions_with_mapping():
     # codex provider mapping check
     captured_codex: list = []
 
+    # Real CAO 2.5 returns the terminal's resolved allowed_tools on create; a charlie
+    # launch reads them back, so the fixture must carry them (else a fallback GET fires).
+    charlie_resp = json.dumps(
+        {
+            "id": "abcdef12",
+            "session_name": "issue-1234-abc12345",
+            "allowed_tools": ["execute_bash", "fs_read", "fs_list", "@cao-mcp-server"],
+        }
+    ).encode()
+
     def fake_urlopen2(req, timeout=None):  # noqa: ARG001
         captured_codex.append(req)
         mock_resp = MagicMock()
-        mock_resp.read.return_value = launch_resp
+        mock_resp.read.return_value = charlie_resp
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
         return mock_resp
@@ -264,3 +274,4 @@ def test_loopback_launch_posts_to_cao_sessions_with_mapping():
     codex_url = captured_codex[0].full_url
     assert "agent_profile=reviewer" in codex_url, "charlie → reviewer profile mapping"
     assert "provider=codex" in codex_url, "codex → codex provider mapping (pass-through)"
+    assert "allowed_tools=execute_bash" in codex_url, "charlie lane must request execute_bash"

@@ -33,3 +33,12 @@ class CaoConfigError(FleetGatewayError):
     """CAO adapter refused a non-loopback or credentialed URL."""
 
     http_status = 500
+
+
+class ReviewerCapabilityError(FleetGatewayError):
+    """A Charlie review lane was launched (or asked to review) without the ability to execute.
+
+    Fail-closed: the lane is stopped rather than left idling on a BLOCKED preflight.
+    """
+
+    http_status = 424
