@@ -68,6 +68,7 @@ DIMENSIONS: list[str] = LLM_DIMENSIONS + ["factual_accuracy"]
 
 MAX_LLM_TOTAL = 5 * len(LLM_DIMENSIONS)  # 30
 MAX_TOTAL = 5 * len(DIMENSIONS)  # 35 — LLM 6 + factual_accuracy
+JUDGE_MAX_TOKENS = 1024
 
 JUDGE_SYSTEM = """You are an expert industrial maintenance engineer grading answers about
 PLC programming, VFD configuration, and Modbus communications.
@@ -127,6 +128,23 @@ def _extract_json(text: str) -> dict[str, Any] | None:
         return json.loads(m.group(0))
     except Exception:
         return None
+
+
+# A judge reply cut off by the token cap usually still carries all six scores
+# before the free-text `notes` (the field order is fixed by JUDGE_SYSTEM). Only
+# 1-5 digits are accepted — a salvage must never invent or clamp a grade.
+_DIM_RE = {d: re.compile(rf'"{d}"\s*:\s*(\d+)') for d in LLM_DIMENSIONS}
+
+
+def _salvage_scores(text: str) -> dict[str, int] | None:
+    """Recover the six scores from a truncated judge reply, or None."""
+    found: dict[str, int] = {}
+    for d, rx in _DIM_RE.items():
+        m = rx.search(text or "")
+        if not m or not 1 <= int(m.group(1)) <= 5:
+            return None
+        found[d] = int(m.group(1))
+    return found
 
 
 def _clamp(v: Any) -> int:
@@ -404,26 +422,41 @@ async def _llm_judge(
         {"role": "system", "content": JUDGE_SYSTEM},
         {"role": "user", "content": user_msg},
     ]
+    # 512 was too small: the judge's `notes` ran past the cap on 5 of 20 grades
+    # (run 36310765032) and each was scored 0. Give it room to close the JSON.
     content, usage = await router.complete(
-        messages, max_tokens=512, session_id=f"bench-judge-{candidate_label}"
+        messages, max_tokens=JUDGE_MAX_TOKENS, session_id=f"bench-judge-{candidate_label}"
     )
+    judge_model = usage.get("model") or usage.get("provider", "?")
     parsed = _extract_json(content)
-    if not parsed:
+    salvaged = False
+    if parsed and all(d in parsed for d in LLM_DIMENSIONS):
+        scores = {d: _clamp(parsed.get(d, 0)) for d in LLM_DIMENSIONS}
+    else:
+        scores = _salvage_scores(content)
+        salvaged = scores is not None
+    if scores is None:
+        # Ungraded, NOT zero: a broken grader says nothing about the answer.
         return {
-            "scores": {d: 0 for d in LLM_DIMENSIONS},
-            "llm_total": 0,
+            "scores": {d: None for d in LLM_DIMENSIONS},
+            "llm_total": None,
+            "graded": False,
+            "salvaged": False,
             "notes": "",
             "error": "judge returned unparseable output",
             "raw": content[:400],
             "provider": usage.get("provider", "?"),
+            "judge_model": judge_model,
         }
-    scores = {d: _clamp(parsed.get(d, 0)) for d in LLM_DIMENSIONS}
     return {
         "scores": scores,
         "llm_total": sum(scores.values()),
-        "notes": str(parsed.get("notes", ""))[:600],
+        "graded": True,
+        "salvaged": salvaged,
+        "notes": str((parsed or {}).get("notes", ""))[:600],
         "error": None,
         "provider": usage.get("provider", "?"),
+        "judge_model": judge_model,
     }
 
 
@@ -448,7 +481,8 @@ async def score_answer(
       factual           : full factual-accuracy detail dict
       fabrication       : full fabrication-penalty detail dict
       total_raw         : llm_total + factual_accuracy_1to5 (1-35)
-      total             : max(0, total_raw - fabrication.penalty)
+      total             : max(0, total_raw - fabrication.penalty), or None
+                          when the judge could not be read (graded=False)
       notes             : LLM judge rationale
       provider          : which cascade tier scored this
       error             : str or None
@@ -462,8 +496,13 @@ async def score_answer(
     scores = dict(judge["scores"])
     scores["factual_accuracy"] = fact["score_1to5"]
     llm_total = judge["llm_total"]
-    total_raw = llm_total + fact["score_1to5"]
-    total = max(0, total_raw - fab["penalty"])
+    if judge["graded"]:
+        total_raw = llm_total + fact["score_1to5"]
+        total = max(0, total_raw - fab["penalty"])
+    else:
+        # No numeric total at all, so no aggregate can silently count it as 0.
+        total_raw = None
+        total = None
     return {
         "scores": scores,
         "llm_total": llm_total,
@@ -471,9 +510,12 @@ async def score_answer(
         "fabrication": fab,
         "total_raw": total_raw,
         "total": total,
+        "graded": judge["graded"],
+        "salvaged": judge["salvaged"],
         "notes": judge.get("notes", ""),
         "error": judge.get("error"),
         "provider": judge.get("provider", "?"),
+        "judge_model": judge.get("judge_model", "?"),
         # raw judge content if it failed to parse
         "raw": judge.get("raw", ""),
     }
@@ -550,3 +592,71 @@ if __name__ == "__main__":
         print(json.dumps(out, indent=2))
 
     asyncio.run(_main())
+
+
+# ---------------------------------------------------------------------------
+# Aggregation that cannot count a broken grader as a zero
+# ---------------------------------------------------------------------------
+
+
+def combine_repeats(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collapse N runs of one question into one record, per side, by median.
+
+    One run of 10 questions is noise (a single question moves the total 10%),
+    so the weekly bench asks each question N times. Each side keeps the whole
+    run whose graded total is the low median — answer, scores and total stay
+    consistent with each other. A side with no graded run stays ungraded.
+    """
+    if not runs:
+        raise ValueError("combine_repeats needs at least one run")
+    record = dict(runs[0])
+    for side, answer_key in (
+        ("grounded_score", "grounded_answer"),
+        ("baseline_score", "baseline_answer"),
+    ):
+        graded = [r for r in runs if r[side].get("total") is not None]
+        if graded:
+            graded.sort(key=lambda r: r[side]["total"])
+            pick = graded[(len(graded) - 1) // 2]
+            record[side] = pick[side]
+            record[answer_key] = pick[answer_key]
+            if side == "grounded_score":
+                record["retrieval"] = pick.get("retrieval", record.get("retrieval"))
+        else:
+            record[side] = runs[0][side]
+            record[answer_key] = runs[0][answer_key]
+    record["repeats"] = [
+        {
+            "grounded": r["grounded_score"].get("total"),
+            "baseline": r["baseline_score"].get("total"),
+            "judge_model": r["grounded_score"].get("judge_model"),
+        }
+        for r in runs
+    ]
+    return record
+
+
+def graded_pair_totals(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """MIRA vs ungrounded totals over questions where BOTH sides were graded.
+
+    Paired, so an ungraded answer can neither sink one side nor hand the other
+    a free win. `scaled_*` projects the paired sum back onto the full question
+    count so the numbers stay comparable with a /(n*35) baseline.
+    """
+    pairs = [
+        r
+        for r in results
+        if r["grounded_score"].get("total") is not None
+        and r["baseline_score"].get("total") is not None
+    ]
+    n, k = len(results), len(pairs)
+    mira = sum(r["grounded_score"]["total"] for r in pairs)
+    base = sum(r["baseline_score"]["total"] for r in pairs)
+    return {
+        "questions": n,
+        "graded_pairs": k,
+        "mira": mira,
+        "baseline": base,
+        "scaled_mira": round(mira * n / k) if k else 0,
+        "scaled_baseline": round(base * n / k) if k else 0,
+    }
