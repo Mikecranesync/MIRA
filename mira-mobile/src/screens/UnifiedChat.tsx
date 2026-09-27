@@ -27,8 +27,20 @@ import {
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
-import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
+import {
+  FactoryLMShell,
+  closeLayerAction,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  serverTurnIdFor,
+  spokenAnswerText,
+  topLayer,
+  type HostHooks,
+} from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
+import { ApiError, request } from "../api/client";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -310,10 +322,61 @@ export function UnifiedChat({
     onInitialQuestionSent?.();
   }, [busy, onSend, initialQuestion, onInitialQuestionSent]);
 
+  // Read-aloud for gloved / hands-in-the-panel use. Null where the WebView has
+  // no Web Speech, in which case no button renders. Stopped on unmount.
+  const readAloud = useMemo(() => createReadAloud(), []);
+  const fixRequestIds = useMemo(() => createFixRequestIds(), []);
+  useEffect(() => () => readAloud?.stop(), [readAloud]);
+  // Switching notebook or thread stops an answer that is still being read.
+  useEffect(() => {
+    readAloud?.scope(`${meta.notebookId ?? ""}:${meta.threadId ?? ""}`);
+  }, [readAloud, meta.notebookId, meta.threadId]);
+  const onReadAloud = useCallback((turnId: string) => {
+    const turn = state.thread.turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    // The same citation ids renderText turns into chips: only those "[n]" are
+    // citation marks; any other bracketed number is spoken.
+    const ids = new Set<string>();
+    for (const part of turn.parts) {
+      const c = part.type === "source" ? citations.get(part.source.id) : undefined;
+      if (c) ids.add(c.citationId);
+    }
+    readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
+  }, [readAloud, state.thread.turns, citations]);
+
+  // Plant memory (migration 095): record what fixed the machine under the
+  // question this answer replied to; platform dialogs are the capture UI.
+  const onRecordFix = useCallback(async (turnId: string) => {
+    const symptom = fixSymptomFor(state.thread.turns, turnId);
+    // Filed under the machine THIS answer was served for (Codex #4058 post-cap
+    // F1); a live answer has no server turn yet and offers no button.
+    const sourceTurnId = serverTurnIdFor(turnId);
+    if (!meta.notebookId || !symptom || !sourceTurnId) return;
+    const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
+    if (!fix) return;
+    const clientRequestId = fixRequestIds.idFor(turnId, fix);
+    try {
+      await request(`/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/fixes/`, {
+        method: "POST",
+        json: { symptom, fix, clientRequestId, sourceTurnId },
+      });
+      fixRequestIds.settle(turnId, fix);
+      window.alert("Saved. MIRA will use this fix on this machine next time.");
+    } catch (e) {
+      const refusal = e instanceof ApiError ? fixRefusalMessage(e.detail) : null;
+      if (refusal) fixRequestIds.settle(turnId, fix);
+      window.alert(refusal ?? "Could not save the fix. Check the connection and try again.");
+    }
+  }, [fixRequestIds, meta.notebookId, state.thread.turns]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
     onCopy,
+    ...(readAloud ? { onReadAloud } : {}),
+    ...(meta.notebookId
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
