@@ -8,6 +8,12 @@
 #   * Apply fabrication_penalty when an answer asserts a contradictory
 #     value (e.g. "register 40001", "19200 baud" for a GS11, parity Even).
 #
+# v3 (2026-09-27) — Q02/Q03/Q05 corrected. v2 copied the GS10 values from
+# tools/seeds/gs10-vfd-knowledge.sql, which contradicts the bench-verified
+# plc/GS10_Integration_Guide.md (and device-profiles/gs10.yaml) on the
+# register map and the serial defaults. The key now follows the guide, so an
+# answer that repeats the seed's values is graded wrong, as it should be.
+#
 # Each question carries:
 #   expected_answer_components — facts that MUST appear (scored as 1-5)
 #   required_documents         — for retrieval-coverage heuristic
@@ -43,10 +49,10 @@ questions:
     difficulty: easy
     equipment: [GS10]
     expected_answer_components:
-      - "19200 baud"       # GS10 seed P09.01 = 2 -> 19200 bps
-      - "8 data bits"
+      - "38400 baud"       # factory default P09.01 = 384 (plc/GS10_Integration_Guide.md)
+      - "8 data bits"      # factory default P09.04 = 13 -> RTU 8N2
       - "no parity"
-      - "1 stop bit"
+      - "2 stop bits"
       - "RS-485"
     required_documents:
       - "GS10 user manual"
@@ -59,9 +65,9 @@ questions:
     difficulty: medium
     equipment: [GS10]
     expected_answer_components:
-      - "0x2000"            # GS10 frequency reference register
+      - "0x2001"            # GS10 frequency setpoint; 0x2000 is the control-command bitfield
       - "frequency"
-      - "0.01 Hz"
+      - "0.1 Hz"            # value / 10 -> 0.0-400.0 Hz
       - "function code 06"
       - "holding register"
     required_documents:
@@ -92,7 +98,7 @@ questions:
     difficulty: medium
     equipment: [GS10]
     expected_answer_components:
-      - "0x2200"            # GS10 current-fault register
+      - "0x2100"            # Status Monitor 1: low byte = error code
       - "fault code"
       - "function code 03"
       - "holding register"
