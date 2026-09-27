@@ -46,6 +46,20 @@ const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveManualChunks", () => {
+  it("does not scope a two-model question to one of the models (#4031)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "How do I wire RS-485 between a Micro820 and a GS10 VFD?");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).not.toMatch(/AND model_number (ILIKE|~\*)/);
+  });
+
+  it("still scopes a single-model question to that model (#2178 control)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "How do I wire RS-485 to a GS10 VFD?");
+    expect(calls[0].sql).toMatch(/AND model_number ~\*/);
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])GS10($|[^[:alnum:]])");
+  });
+
   it("returns empty for empty query without touching DB", async () => {
     const { client, calls } = makeClient([]);
     const out = await retrieveManualChunks(client, "tenant-1", "   ");
@@ -857,6 +871,14 @@ describe("retrieveManualChunks fault-code prioritization (#1875)", () => {
 });
 
 describe("isRefusalAnswer (#1875 phantom-citation gate)", () => {
+  it("detects the refusal written with a curly apostrophe (#4032)", () => {
+    expect(
+      isRefusalAnswer(
+        "I don\u2019t have manuals for that in the public knowledge base — sign up to upload your own.",
+      ),
+    ).toBe(true);
+  });
+
   it("detects the quickstart cite-or-refuse sentence (case-insensitive, mid-answer)", () => {
     expect(
       isRefusalAnswer(
