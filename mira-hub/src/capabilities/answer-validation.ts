@@ -859,10 +859,30 @@ If you add this machine's manual as a source and ask again, I'll give you the ex
  *  technician keeps troubleshooting; this is a caution, not a stop. */
 export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
 
+/** #4067: the step the banner quotes, as the technician reads it in the
+ *  answer. `detail` is a detection fragment of the FOLDED copy (a regex match
+ *  or a clause), so quoting it directly leaked ". " list-split debris, cut the
+ *  step mid-parenthesis, and rewrote U+2011 hyphens to ASCII. Instead, quote
+ *  the ORIGINAL answer line that contains the fragment — markup stripped,
+ *  whitespace collapsed, cut at a word with "…". Detection is untouched. */
+function flaggedStepQuote(detail: string, answerText: string): string {
+  const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+  const core = squash(foldForDetection(detail)).replace(/^[.,;:!?\s]+/, "");
+  const probe = core.slice(0, 60);
+  const line = probe
+    ? answerText.split(/\n+/).find((l) => squash(foldForDetection(l)).includes(probe))
+    : undefined;
+  const text = squash((line ?? core).replace(/[*`]/g, "")).replace(/^[.,;:!?\s]+/, "");
+  if (text.length <= 160) return text;
+  const cut = text.slice(0, 160);
+  const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), 80));
+  return `${atWord.replace(/[\s.,;:—–-]+$/, "")}…`;
+}
+
 /** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
  *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
 function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
-  const step = detail.replace(/\s+/g, " ").trim().slice(0, 160);
+  const step = flaggedStepQuote(detail, answerText);
   return {
     ok: false,
     kind: "hazard_warning",
