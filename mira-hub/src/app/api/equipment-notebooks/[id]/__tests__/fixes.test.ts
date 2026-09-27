@@ -70,7 +70,7 @@ describe("GET /api/equipment-notebooks/[id]/fixes", () => {
     const res = await GET(req(), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ fixes });
-    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, 10);
+    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, null, 10);
   });
 });
 

@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   }
 
-  const fixes = await listFixRecords(ctx.tenantId, id, 10);
+  const fixes = await listFixRecords(ctx.tenantId, id, notebook.asset?.entityId ?? null, 10);
   return NextResponse.json({ fixes });
 }
 
