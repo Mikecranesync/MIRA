@@ -1467,7 +1467,9 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
 # ABOVE the answer. Mirrors hazardBanner() in mira-hub/src/lib/safety-classifier.ts.
 _HAZARD_BANNER_CLASSES: tuple[tuple[re.Pattern[str], str], ...] = (
     (
-        re.compile(r"smoke|fire|burning|burn mark|melted|exploded|shocked|arcing|arc flashing|arc-flashing"),
+        re.compile(
+            r"smoke|fire|burning|burn mark|melted|exploded|shocked|arcing|arc flashing|arc-flashing"
+        ),
         "\u26a0\ufe0f Possible active incident. If anything is smoking, arcing or burning, or someone was shocked: "
         "get clear, isolate power from a safe distance and call for help first. The steps below are for once "
         "the scene is safe.",
