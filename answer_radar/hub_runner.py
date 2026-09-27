@@ -25,6 +25,7 @@ import importlib.util
 import json
 import sys
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any
@@ -50,9 +51,21 @@ def load_hub_client():
 
 
 def assert_staging(base: str) -> None:
-    host = base.split("://", 1)[-1].split("/", 1)[0]
-    if host not in STAGING_HOSTS:
-        raise SystemExit(f"answer radar hub runs refuse non-staging targets (got {host})")
+    """Exactly https://app-staging.factorylm.com — the session cookie never
+    travels over plaintext or to a look-alike host (Codex #4063 F3)."""
+    u = urllib.parse.urlsplit(base.strip())
+    if (
+        u.scheme != "https"
+        or u.hostname not in STAGING_HOSTS
+        or u.port is not None
+        or u.username is not None
+        or u.password is not None
+        or u.netloc != u.hostname
+        or u.path not in ("", "/")
+        or u.query
+        or u.fragment
+    ):
+        raise SystemExit(f"answer radar hub runs refuse non-staging targets (got {base!r})")
 
 
 def deployed_sha(hub) -> str:
@@ -146,6 +159,12 @@ def run_question_hub(
     answer_status = classify_answer(content, st)
     if status == "insufficient_evidence" and answer_status is AnswerStatus.ANSWERED:
         answer_status = AnswerStatus.ABSTAINED
+    # Codex #4063 F4: an HTTP 200 stream whose status frame says error is an
+    # engine error ("No answer provider available."), not MIRA's answer.
+    if status == "error":
+        answer_status = AnswerStatus.ERROR
+    # Codex #4063 F5: no packet means retrieval is UNKNOWN, never "0 candidates".
+    chunk_count = None if "error" in retrieval else int(retrieval.get("candidate_count") or 0)
 
     doc_ids = [str(x) for x in (retrieval.get("returned_doc_ids") or [])]
     record = EvaluationRecord(
@@ -158,7 +177,7 @@ def run_question_hub(
         answer_status=answer_status,
         citations=citations,
         source_documents=doc_ids[:10],
-        retrieved_chunk_count=int(retrieval.get("candidate_count") or 0),
+        retrieved_chunk_count=chunk_count,
         best_evidence_tier=EvidenceTier.TRUSTED_INDEPENDENT if citations else EvidenceTier.NONE,
         total_answer_time_ms=total_ms,
         time_to_first_answer_ms=total_ms,

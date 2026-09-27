@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import json
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -96,8 +97,12 @@ def run_hub_batch(questions: list[QuestionRecord], out_dir: Path, hub, condition
                 "hub": summary,
             }
         )
-    path = out_dir / f"batch-hub-{condition}-{stamp}.json"
-    path.write_text(json.dumps(results, indent=2, default=str) + "\n", encoding="utf-8")
+    # Codex #4063 F7: never overwrite an earlier run's evidence — seconds plus a
+    # run id, created exclusively.
+    run_stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+    path = out_dir / f"batch-hub-{condition}-{run_stamp}-{uuid.uuid4().hex[:6]}.json"
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(results, indent=2, default=str) + "\n")
     print(f"\n[batch ] wrote {path}  (deployed {sha})", file=sys.stderr)
     return path
 

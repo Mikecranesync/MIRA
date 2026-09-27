@@ -7,6 +7,7 @@ serves. This is the route both the Hub web app and the phone app post to, with t
 `mira-mobile/src/api/resources.ts`). So one run grades the answers on both surfaces.
 
 The account was a throwaway staging stranger (`provision-beta-gate.ts`), swept afterwards.
+(The wrapper now exits non-zero and names the tenant if that sweep ever fails; Codex #4063 F6.)
 There were two conditions:
 
 | Condition | Meaning | VCAD | Citations | Manual search |
@@ -14,8 +15,11 @@ There were two conditions:
 | `new_chat` | tech opens a chat and types | **0 / 6** | 0 / 6 | **skipped** (`skipped_general_mode`) on all 6 |
 | `machine_selected` | chat bound (user-confirmed) to the question's make + model | **0 / 6** | 0 / 6 | searched, **0 candidates** on all 6 |
 
-Two fresh independent graders (verifier and adversary, Sonnet, `DIFFERENT_MODEL_SAME_PROVIDER`)
-FAIL all 12 answers. They agree on every verdict. Scorecards: `SCORECARD-hub-new_chat.txt`,
+Two fresh graders (verifier and adversary) FAIL all 12 answers. **Correction (Codex #4062 F2):**
+both were Claude Sonnet sessions, which proves only `SAME_MODEL_DIFFERENT_RUN`, a non-promoting
+class. The earlier `DIFFERENT_MODEL_SAME_PROVIDER` label was wrong, and `score.py` now derives
+the class from the models recorded in each grade file. Every verdict here is FAIL, so no
+outcome changes; a future PASS by same-model graders cannot be counted as verified. They agree on every verdict. Scorecards: `SCORECARD-hub-new_chat.txt`,
 `SCORECARD-hub-machine_selected.txt`. Grades: `grades/` (per condition in `grades-<condition>/`).
 
 ## What is wrong (root causes, with evidence)
@@ -47,6 +51,10 @@ FAIL all 12 answers. They agree on every verdict. Scorecards: `SCORECARD-hub-new
    It is safe and honest but asks for the **wrong** manual: the register map is in the Baykon
    BX11-EN indicator's manual, and the search only ever looked at the bound Mitsubishi identity.
    (`score.py` labels the row `correct_abstention` from its status; the verdict is still FAIL.)
+   **Build caveat (Codex #4063 F2):** that re-ask ran against staging `0994b31a453c`, not
+   `772dc292721f`. So `batch-hub-machine_selected-scored-004-rerun.json` mixes two deployments,
+   and its scorecard is **not** a single-build result: five rows are 772dc2927, and seed 004 is
+   0994b31a4. `score.py` now refuses a mixed-build batch. The next run grades all six on one build.
 5. **A bare refusal.** Seed 006 `new_chat`: "I'm sorry, but I can't help with that." — no
    reason given and no next step (`unhelpful_refusal`).
 

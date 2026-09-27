@@ -42,10 +42,9 @@ def _verdict_from(path: Path, grader_id: str) -> GraderVerdict | None:
         return None
     return GraderVerdict(
         grader_id=grader_id,
-        # Graders A and B are distinct roles (verifier vs adversary) run as separate
-        # sessions. That is at least a different run of the same model, and in practice a
-        # different lane — but we record the class we can actually prove.
-        independence_class=IndependenceClass.DIFFERENT_MODEL_SAME_PROVIDER,
+        # Provisional: score() sets the class it can PROVE from the recorded models
+        # (#4062 F2). Two sessions of one model are self-consistency, not independence.
+        independence_class=IndependenceClass.SAME_MODEL_DIFFERENT_RUN,
         correctness=int(raw["correctness"]),
         evidence=int(raw["evidence"]),
         safety=int(raw["safety"]),
@@ -59,9 +58,38 @@ def _verdict_from(path: Path, grader_id: str) -> GraderVerdict | None:
     )
 
 
+def _independence(grades_dir: Path, sid: str) -> IndependenceClass:
+    """The strongest class the recorded grader identities actually prove.
+
+    Missing or identical `grader_model` values prove only a different run of the
+    same model (non-promoting). Distinct models from one provider prove
+    DIFFERENT_MODEL_SAME_PROVIDER; distinct providers prove INDEPENDENT_PROVIDER_MODEL.
+    """
+    ids = []
+    for prefix in ("grade-A-", "grade-B-"):
+        try:
+            raw = json.loads((grades_dir / f"{prefix}{sid}.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
+        ids.append((raw.get("grader_provider"), raw.get("grader_model")))
+    (pa, ma), (pb, mb) = ids
+    if not ma or not mb or ma == mb:
+        return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
+    if pa and pb and pa != pb:
+        return IndependenceClass.INDEPENDENT_PROVIDER_MODEL
+    return IndependenceClass.DIFFERENT_MODEL_SAME_PROVIDER
+
+
 def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
     """Join grades to the batch, apply the rubric, render the report."""
     batch = json.loads(batch_path.read_text(encoding="utf-8"))
+    # Codex #4063 F2: a scorecard measures ONE deployment. A rerun from another
+    # build is scored in its own batch, never spliced into this one.
+    versions = sorted({str(item["evaluation"]["mira_version"]) for item in batch})
+    if len(versions) > 1:
+        raise SystemExit(
+            f"{batch_path.name} mixes deployments {versions}; score each build's rows separately"
+        )
     graded: list[tuple[EvaluationRecord, object]] = []
     rows: list[dict] = []
     gaps: list[str] = []
@@ -87,6 +115,9 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             if v:
                 rec.grader_verdicts.append(v)
 
+        independence = _independence(grades_dir, sid)
+        for v in rec.grader_verdicts:
+            v.independence_class = independence
         if rec.grader_verdicts:
             rec.failure_class = rec.grader_verdicts[0].failure_class
 
@@ -98,6 +129,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
                 "status": rec.answer_status.value,
                 "chunks": rec.retrieved_chunk_count,
                 "graders": len(rec.grader_verdicts),
+                "independence": independence.value,
                 "scores": [v.total for v in rec.grader_verdicts],
                 "outcome": result.outcome,
                 "verified_correct": result.verified_correct,
@@ -105,7 +137,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
                 "reasons": result.reasons,
             }
         )
-        if rec.retrieved_chunk_count == 0:
+        if rec.retrieved_chunk_count == 0:  # None (unknown) is not a gap
             gaps.append(f"{q['manufacturer']} {q['model']} — 0 retrieved chunks")
 
     report = build_report(

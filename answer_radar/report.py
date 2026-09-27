@@ -129,7 +129,7 @@ def build_report(
     median = times[len(times) // 2] if times else 0
 
     scorable = [rec for rec, res in graded if res.counts_as_attempt]
-    with_citations = sum(1 for rec in scorable if rec.retrieved_chunk_count > 0)
+    with_citations = sum(1 for rec in scorable if (rec.retrieved_chunk_count or 0) > 0)
     coverage = round(100.0 * with_citations / len(scorable), 1) if scorable else 0.0
 
     verified = sum(1 for _, res in graded if res.verified_correct)
