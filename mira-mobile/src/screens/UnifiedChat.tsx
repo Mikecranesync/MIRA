@@ -34,6 +34,7 @@ import {
   createReadAloud,
   fixRefusalMessage,
   fixSymptomFor,
+  serverTurnIdFor,
   spokenAnswerText,
   topLayer,
   type HostHooks,
@@ -339,14 +340,17 @@ export function UnifiedChat({
   // question this answer replied to; platform dialogs are the capture UI.
   const onRecordFix = useCallback(async (turnId: string) => {
     const symptom = fixSymptomFor(state.thread.turns, turnId);
-    if (!meta.notebookId || !symptom) return;
+    // Filed under the machine THIS answer was served for (Codex #4058 post-cap
+    // F1); a live answer has no server turn yet and offers no button.
+    const sourceTurnId = serverTurnIdFor(turnId);
+    if (!meta.notebookId || !symptom || !sourceTurnId) return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
     const clientRequestId = fixRequestIds.idFor(turnId, fix);
     try {
       await request(`/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/fixes/`, {
         method: "POST",
-        json: { symptom, fix, clientRequestId },
+        json: { symptom, fix, clientRequestId, sourceTurnId },
       });
       fixRequestIds.settle(turnId, fix);
       window.alert("Saved. MIRA will use this fix on this machine next time.");
@@ -362,7 +366,9 @@ export function UnifiedChat({
     renderText,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
-    ...(meta.notebookId ? { onRecordFix: (turnId: string) => void onRecordFix(turnId) } : {}),
+    ...(meta.notebookId
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would

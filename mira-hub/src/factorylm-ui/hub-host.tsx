@@ -35,6 +35,7 @@ import {
   createReadAloud,
   fixRefusalMessage,
   fixSymptomFor,
+  serverTurnIdFor,
   spokenAnswerText,
   type HostHooks,
 } from "@factorylm/ui";
@@ -595,7 +596,10 @@ export function HubShellHost() {
   const onRecordFix = useCallback(async (turnId: string) => {
     const notebookId = selectionRef.current?.notebookId;
     const symptom = fixSymptomFor(view.thread.turns, turnId);
-    if (!notebookId || !symptom || typeof window === "undefined") return;
+    // The server files the fix under the machine THIS answer was served for
+    // (Codex #4058 post-cap F1), so the answer's server turn id travels with it.
+    const sourceTurnId = serverTurnIdFor(turnId);
+    if (!notebookId || !symptom || !sourceTurnId || typeof window === "undefined") return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
     const clientRequestId = fixRequestIds.idFor(turnId, fix);
@@ -603,7 +607,7 @@ export function HubShellHost() {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/fixes/`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ symptom, fix, clientRequestId }),
+        body: JSON.stringify({ symptom, fix, clientRequestId, sourceTurnId }),
       });
       if (res.ok) {
         fixRequestIds.settle(turnId, fix);
@@ -624,7 +628,9 @@ export function HubShellHost() {
     renderText,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
-    ...(selection?.notebookId ? { onRecordFix: (turnId: string) => void onRecordFix(turnId) } : {}),
+    ...(selection?.notebookId
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,

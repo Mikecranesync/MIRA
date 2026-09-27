@@ -25,6 +25,7 @@ export {
   createReadAloud,
   fixRefusalMessage,
   fixSymptomFor,
+  serverTurnIdFor,
   speakableText,
   spokenAnswerText,
   type FixRequestIds,

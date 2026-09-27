@@ -84,6 +84,12 @@ export interface HostHooks {
    */
   readonly onRecordFix?: (turnId: string) => void;
   /**
+   * Whether this answer can be recorded against. The server files a fix under
+   * the machine the answer was served for, so an answer with no saved server
+   * turn yet offers no button. Absent means every answered turn qualifies.
+   */
+  readonly canRecordFix?: (turnId: string) => boolean;
+  /**
    * Open the host's real machine scanner. This keeps the shell's Scan affordance
    * routed through the existing native scanner instead of a reducer-only mock.
    */

@@ -13,6 +13,7 @@ import {
   createReadAloud,
   fixRefusalMessage,
   fixSymptomFor,
+  serverTurnIdFor,
   speakableText,
   spokenAnswerText,
 } from "../answer-actions";
@@ -232,6 +233,28 @@ describe("action row", () => {
     expect(fixes).toEqual([id!]);
   });
 
+  it("hides Record what fixed it on an answer the host cannot record against (Codex #4058 post-cap F1)", () => {
+    const asked: string[] = [];
+    const view = renderHarness({
+      surface: "web",
+      fixture: "grounded-answer",
+      conversationSurface: "assistant",
+      hooks: {
+        onReadAloud: () => {},
+        onRecordFix: () => {},
+        canRecordFix: (id) => {
+          asked.push(id);
+          return false;
+        },
+      },
+    });
+    views.push(view);
+    const turn = view.container.querySelector<HTMLElement>('[data-turn-id][data-role="assistant"]');
+    expect(turn?.querySelector('[aria-label="Read aloud"]')).not.toBeNull();
+    expect(turn?.querySelector('[aria-label="Record what fixed it"]')).toBeNull();
+    expect(asked).toContain(turn!.dataset.turnId!);
+  });
+
   it("renders neither control without its hook", () => {
     const view = renderHarness({
       surface: "web",
@@ -270,7 +293,26 @@ describe("record-fix request ids", () => {
     expect(fixRefusalMessage("asset_not_confirmed")).toContain("Confirm which machine");
     expect(fixRefusalMessage("asset_binding_changed")).toContain("machine changed");
     expect(fixRefusalMessage("request_id_conflict")).not.toBeNull();
+    expect(fixRefusalMessage("answer_machine_mismatch")).toContain("different machine");
+    expect(fixRefusalMessage("source_turn_not_found")).toContain("Reload");
     expect(fixRefusalMessage("HTTP 503")).toBeNull();
     expect(fixRefusalMessage(undefined)).toBeNull();
+  });
+});
+
+describe("serverTurnIdFor (Codex #4058 post-cap F1)", () => {
+  const ROW = "0b7c1a2e-3f4d-4a5b-8c6d-7e8f90a1b2c3";
+
+  it("reads the server turn uuid behind a persisted answer id, lower-cased", () => {
+    expect(serverTurnIdFor(`${ROW}-a`)).toBe(ROW);
+    expect(serverTurnIdFor(`${ROW.toUpperCase()}-a`)).toBe(ROW);
+  });
+
+  it("is null for a question, a live or pending answer, or anything else", () => {
+    expect(serverTurnIdFor(`${ROW}-q`)).toBeNull();
+    expect(serverTurnIdFor("live-0-a")).toBeNull();
+    expect(serverTurnIdFor("pending-a")).toBeNull();
+    expect(serverTurnIdFor(`x${ROW}-a`)).toBeNull();
+    expect(serverTurnIdFor(`${ROW}-a-a`)).toBeNull();
   });
 });

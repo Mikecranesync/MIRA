@@ -94,8 +94,23 @@ export function createFixRequestIds(newId: () => string = () => crypto.randomUUI
   };
 }
 
+/** The server turn id behind a shell answer id. Both hosts name a persisted
+ *  answer `<server turn uuid>-a`; a live or pending answer (`live-0-a`,
+ *  `pending-a`) has no server row yet, so it cannot be recorded against — the
+ *  server reads the machine the answer was served for from that row (Codex
+ *  #4058 post-cap F1). Null means "hide Record what fixed it". */
+const SERVER_ANSWER_ID = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-a$/i;
+
+export function serverTurnIdFor(turnId: string): string | null {
+  const m = SERVER_ANSWER_ID.exec(turnId);
+  return m ? m[1].toLowerCase() : null;
+}
+
 const FIX_REFUSALS: Record<string, string> = {
   asset_not_confirmed: "Confirm which machine this is before recording a fix.",
+  answer_machine_mismatch:
+    "That answer was about a different machine than this chat is on now. Record the fix from an answer about this machine.",
+  source_turn_not_found: "That answer isn't saved in this chat. Reload and try again.",
   asset_binding_changed: "This chat's machine changed while saving. Check the machine and record the fix again.",
   request_id_conflict: "That fix could not be saved. Record it again.",
 };

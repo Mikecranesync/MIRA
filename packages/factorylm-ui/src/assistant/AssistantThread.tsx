@@ -97,6 +97,7 @@ function TurnMessage() {
   // (safety_stop) IS a real answer a technician may want to keep, so it counts.
   const isAssistant = turn?.role === "assistant";
   const isAnswered = turn?.lifecycle === "completed" || turn?.lifecycle === "safety_stop";
+  const recordFix = !!hooks?.onRecordFix && (hooks.canRecordFix?.(id) ?? true);
   return <MessagePrimitive.Root
     className="fl-turn fl-turn--aui"
     data-turn-id={id}
@@ -105,7 +106,7 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
-    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback || hooks?.onReadAloud || hooks?.onRecordFix) ? (
+    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback || hooks?.onReadAloud || recordFix) ? (
       <div className="fl-turn__actions">
         {hooks?.onCopy ? (
           <button
@@ -129,7 +130,7 @@ function TurnMessage() {
             <SpeakerIcon className="fl-turn__action-icon" />
           </button>
         ) : null}
-        {hooks?.onRecordFix ? (
+        {recordFix ? (
           <button
             type="button"
             className="fl-turn__action"
