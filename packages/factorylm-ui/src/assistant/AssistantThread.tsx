@@ -23,7 +23,7 @@ import {
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { createContext, useContext, useMemo, type Dispatch } from "react";
 import { ConversationBar, RunCard } from "../Conversation";
-import { CopyIcon, RegenerateIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
+import { CopyIcon, RecordFixIcon, RegenerateIcon, SpeakerIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
@@ -105,7 +105,7 @@ function TurnMessage() {
     data-context-machine-id={turn?.context.machineId ?? ""}
   >
     <MessagePrimitive.Parts components={partComponents} />
-    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback) ? (
+    {isAssistant && isAnswered && (hooks?.onCopy || hooks?.onRegenerate || hooks?.onFeedback || hooks?.onReadAloud || hooks?.onRecordFix) ? (
       <div className="fl-turn__actions">
         {hooks?.onCopy ? (
           <button
@@ -116,6 +116,28 @@ function TurnMessage() {
             onClick={() => hooks.onCopy?.(id)}
           >
             <CopyIcon className="fl-turn__action-icon" />
+          </button>
+        ) : null}
+        {hooks?.onReadAloud ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Read aloud"
+            title="Read answer aloud"
+            onClick={() => hooks.onReadAloud?.(id)}
+          >
+            <SpeakerIcon className="fl-turn__action-icon" />
+          </button>
+        ) : null}
+        {hooks?.onRecordFix ? (
+          <button
+            type="button"
+            className="fl-turn__action"
+            aria-label="Record what fixed it"
+            title="Record what fixed it"
+            onClick={() => hooks.onRecordFix?.(id)}
+          >
+            <RecordFixIcon className="fl-turn__action-icon" />
           </button>
         ) : null}
         {hooks?.onRegenerate ? (

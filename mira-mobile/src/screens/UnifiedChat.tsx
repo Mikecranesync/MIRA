@@ -27,8 +27,9 @@ import {
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
-import { FactoryLMShell, closeLayerAction, topLayer, type HostHooks } from "@factorylm/ui";
+import { FactoryLMShell, answerText, closeLayerAction, createReadAloud, fixSymptomFor, topLayer, type HostHooks } from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
+import { request } from "../api/client";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -310,10 +311,39 @@ export function UnifiedChat({
     onInitialQuestionSent?.();
   }, [busy, onSend, initialQuestion, onInitialQuestionSent]);
 
+  // Read-aloud for gloved / hands-in-the-panel use. Null where the WebView has
+  // no Web Speech, in which case no button renders. Stopped on unmount.
+  const readAloud = useMemo(() => createReadAloud(), []);
+  useEffect(() => () => readAloud?.stop(), [readAloud]);
+  const onReadAloud = useCallback((turnId: string) => {
+    const turn = state.thread.turns.find((t) => t.id === turnId);
+    if (turn) readAloud?.toggle(turnId, answerText(turn));
+  }, [readAloud, state.thread.turns]);
+
+  // Plant memory (migration 095): record what fixed the machine under the
+  // question this answer replied to; platform dialogs are the capture UI.
+  const onRecordFix = useCallback(async (turnId: string) => {
+    const symptom = fixSymptomFor(state.thread.turns, turnId);
+    if (!meta.notebookId || !symptom) return;
+    const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
+    if (!fix) return;
+    try {
+      await request(`/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/fixes/`, {
+        method: "POST",
+        json: { symptom, fix },
+      });
+      window.alert("Saved. MIRA will use this fix on this machine next time.");
+    } catch {
+      window.alert("Could not save the fix. Check the connection and try again.");
+    }
+  }, [meta.notebookId, state.thread.turns]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
     onCopy,
+    ...(readAloud ? { onReadAloud } : {}),
+    ...(meta.notebookId ? { onRecordFix: (turnId: string) => void onRecordFix(turnId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would

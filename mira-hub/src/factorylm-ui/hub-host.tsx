@@ -29,7 +29,7 @@ import {
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
-import { FactoryLMShell, type HostHooks } from "@factorylm/ui";
+import { FactoryLMShell, answerText, createReadAloud, fixSymptomFor, type HostHooks } from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
@@ -566,10 +566,43 @@ export function HubShellHost() {
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
   }, [view.thread.turns, citations]);
 
+  // Read-aloud: created once; null where the browser has no Web Speech, in which
+  // case the hook is omitted and the shell renders no button. Stopped on unmount.
+  const readAloud = useMemo(() => createReadAloud(), []);
+  useEffect(() => () => readAloud?.stop(), [readAloud]);
+  const onReadAloud = useCallback((turnId: string) => {
+    const turn = view.thread.turns.find((t) => t.id === turnId);
+    if (turn) readAloud?.toggle(turnId, answerText(turn));
+  }, [readAloud, view.thread.turns]);
+
+  // Plant memory (migration 095): record what fixed the machine, filed under
+  // the question this answer replied to. The platform prompt/alert dialogs are
+  // the capture UI (commodity-before-custom); the next answer on this notebook
+  // is grounded on the record.
+  const onRecordFix = useCallback(async (turnId: string) => {
+    const notebookId = selectionRef.current?.notebookId;
+    const symptom = fixSymptomFor(view.thread.turns, turnId);
+    if (!notebookId || !symptom || typeof window === "undefined") return;
+    const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
+    if (!fix) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/fixes/`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ symptom, fix }),
+      });
+      window.alert(res.ok ? "Saved. MIRA will use this fix on this machine next time." : "Could not save the fix. Try again.");
+    } catch {
+      window.alert("Could not save the fix. Check the connection and try again.");
+    }
+  }, [view.thread.turns]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
     onCopy,
+    ...(readAloud ? { onReadAloud } : {}),
+    ...(selection?.notebookId ? { onRecordFix: (turnId: string) => void onRecordFix(turnId) } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
