@@ -1801,6 +1801,8 @@ async function handleChatTurn(
       ? "model_extraction_failed"
       : oemIdentity.ambiguous
       ? "ambiguous_model_observation"
+      : oemRetrievalFailed
+      ? "oem_query_failed"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
       !oemRetrieval || chunks.length === 0

@@ -78,8 +78,13 @@ const GENERIC_CLASS_WHY =
 // every morning", "the drive trips") is unaffected.
 // Pass 8: only "a/an" + an EQUIPMENT noun is a class subject — "after a power
 // outage" or "for a minute" says nothing about which equipment is meant.
-const GENERIC_CLASS_SUBJECT =
-  /\ban?\s+(?:[\w-]+\s+)?(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)\b/i;
+const EQUIPMENT_NOUN =
+  "(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)";
+const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
+// Pass 9: "THE drive trips after we replaced a contactor" — a definite
+// equipment subject with a symptom is a problem on real equipment; the
+// incidental "a contactor" must not turn it into a class question.
+const DEFINITE_EQUIPMENT_SUBJECT = new RegExp(`\\bthe\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
 
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
@@ -122,7 +127,10 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   const teaching =
     STRONG_DEFINITIONAL.test(q) ||
     HOW_IT_WORKS.test(q) ||
-    (!bound && (WEAK_DEFINITIONAL.test(q) || GENERIC_CLASS_WHY.test(q) || GENERIC_CLASS_SUBJECT.test(q)));
+    (!bound &&
+      (WEAK_DEFINITIONAL.test(q) ||
+        GENERIC_CLASS_WHY.test(q) ||
+        (GENERIC_CLASS_SUBJECT.test(q) && !(DEFINITE_EQUIPMENT_SUBJECT.test(q) && SYMPTOM.test(q)))));
   if (teaching) return false;
   // #4069 F4: a binding word alone ("what does this machine do?") is not a
   // problem to work — declining it would be the over-block. Require a

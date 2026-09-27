@@ -534,6 +534,17 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(String(status?.message)).not.toContain("Upload");
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(packetOf().answer_gate.reason).toBe("identity_bound_retrieval_failed");
+    // Codex #4069 pass 9 F2: an outage is not recorded as a completed empty search.
+    expect(packetOf().retrieval.zero_result_reason).toBe("oem_query_failed");
+  });
+
+  it("2k2. Codex #4069 pass 9 F2: a COMPLETED empty OEM search still records no_matches", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValue([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.zero_result_reason).toBe("no_matches");
   });
 
   it("2l. #4068 owner decision ('allow with a warning'): related-manual answers carry a fixed server-written warning", async () => {

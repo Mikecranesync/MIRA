@@ -79,6 +79,10 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What should I check when this drive trips?", "PowerFlex 525"],
     // Codex #4069 pass 8: an incidental "a power outage" is not a class subject.
     ["The drive trips after a power outage; what should I check first?", "PowerFlex 525"],
+    // Codex #4069 pass 9 F1: an incidental "a contactor" does not make a
+    // symptom on THE drive a class question.
+    ["The drive trips after we replaced a contactor; what should I check first?", "PowerFlex 525"],
+    ["the conveyor motor faults whenever a sensor is blocked", "GS10"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -101,6 +105,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What should I check when a VFD trips on overload?", "PowerFlex 525"],
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
+    ["What should I check when a contactor trips?", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
