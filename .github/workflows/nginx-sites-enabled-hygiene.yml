@@ -118,7 +118,11 @@ jobs:
           fi
           echo "Confirmation token accepted."
           # `disable` reaches a root shell on the prod box: file names only.
-          if ! printf '%s' "$DISABLE" | grep -qE '^[A-Za-z0-9._ -]*$'; then
+          # bash regex, not `printf | grep`: grep matches no line on EMPTY input
+          # (so check mode failed) and tests each line separately (so an
+          # embedded newline passed). [[ =~ ]] tests the whole string once.
+          NAME_RE='^[A-Za-z0-9._ -]*$'
+          if ! [[ "$DISABLE" =~ $NAME_RE ]]; then
             echo "::error::disable may contain only vhost file names ([A-Za-z0-9._-], space-separated)."
             exit 1
           fi
@@ -137,7 +141,8 @@ jobs:
           MODE: ${{ inputs.mode || 'check' }}
           DISABLE: ${{ inputs.disable }}
         run: |
-          printf '%s' "$DISABLE" | grep -qE '^[A-Za-z0-9._ -]*$' || { echo "::error::invalid disable list"; exit 1; }
+          NAME_RE='^[A-Za-z0-9._ -]*$'
+          [[ "$DISABLE" =~ $NAME_RE ]] || { echo "::error::invalid disable list"; exit 1; }
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
             ubuntu@40.160.141.61 "sudo env MODE='${MODE}' DISABLE='${DISABLE}' bash -s" << 'ENDSSH'
           set -uo pipefail
