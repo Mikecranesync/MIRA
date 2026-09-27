@@ -131,6 +131,28 @@ describe("retrieveManualChunks", () => {
     expect(calls[0].sql).not.toContain("replace(");
   });
 
+  it("widens to OR in the same scope when the only AND hit is near-zero rank (#4035)", async () => {
+    // Staging Q06: AND in the Micro820 scope returned one row at ts_rank_cd 0.0004;
+    // OR in that same scope holds the chunk that actually answers (rank 1.7).
+    const weak = row({ content: "MSG_MODBUS ErrorID table", source_page: 2, rank: 0.0004 });
+    const strong = row({ content: "PLC-001 CCW serial port config", source_page: 0, rank: 1.7 });
+    const { client, calls } = makeClient([[weak], [strong, weak]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "configure Modbus on the Micro820 in CCW");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(calls[1].sql).toBe(calls[0].sql.replace(
+      /plainto_tsquery\('english', \$2\)/g,
+      "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))",
+    )); // same scope clauses, only the tsquery differs
+    expect(out.map((c) => c.content)).toEqual(["PLC-001 CCW serial port config", "MSG_MODBUS ErrorID table"]);
+  });
+
+  it("does NOT widen when an AND hit has a real rank (#4035 control)", async () => {
+    const { client, calls } = makeClient([[row({ rank: 0.05 })]]);
+    await retrieveManualChunks(client, "tenant-1", "configure Modbus on the Micro820 in CCW");
+    expect(calls).toHaveLength(1);
+  });
+
   it("skips manufacturer filter entirely when none provided", async () => {
     const { client, calls } = makeClient([[row()]]);
     await retrieveManualChunks(client, "tenant-1", "torque");
