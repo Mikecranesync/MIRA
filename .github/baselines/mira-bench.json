@@ -1,63 +1,63 @@
 {
   "_comment": "Locked baseline for tests/mira_bench.py. Update when an intentional regression-or-improvement lands and is reviewed. See .github/workflows/mira-benchmark-weekly.yml and scripts/check_benchmark_regression.py.",
-  "version": "v3",
+  "version": "v4",
   "mira_source": "quickstart",
   "product_base": "https://app-staging.factorylm.com",
   "set_at": "2026-09-27",
-  "set_from_run": "https://github.com/Mikecranesync/MIRA/actions/runs/36311766520 (artifact mira-bench-2026-09-27/product/mira-bench-raw.json)",
+  "set_from_run": "https://github.com/Mikecranesync/MIRA/actions/runs/36321419312 (artifact mira-bench-2026-09-27/product/mira-bench-raw.json; staging at 3b8f9fb31, same SHA as production)",
   "judge_model": "groq/openai/gpt-oss-120b",
   "repeats": 3,
   "max_total_per_question": 35,
   "questions": 10,
   "max_total": 350,
   "thresholds": {
-    "mira_total_min": 154,
-    "mira_advantage_min": -51,
-    "_doc": "Re-pinned from the REAL product (staging /api/quickstart/ask/, median of 3) with the v3 answer key. The v2 numbers (282 vs 255) were a harness stand-in graded by an older judge against a key copied from a wrong seed, and are not comparable. mira_total_min = 164 - 10 (~6% judge variance). mira_advantage_min = -39 - 12: the product currently TRAILS the plain LLM (refuses 4/10 questions with 'no manuals in the public knowledge base'; GS10 seed #4031 feeds wrong registers). This gate only catches backsliding; raise both floors as #4031 and the refusals are fixed."
+    "mira_total_min": 237,
+    "mira_advantage_min": 43,
+    "_doc": "Re-pinned after the 2026-09-27 fixes (always answer, safety flags not blocks, corrected GS10 KB, tech's language, inline isolation). 252 vs 189. mira_total_min = 252 - 15 (~6% judge variance). mira_advantage_min = 63 - 20 (the plain LLM control swings up to ~15 between runs). History: v3 164 vs 203 earlier the same day."
   },
   "baseline_run": {
-    "mira_total": 164,
-    "baseline_total": 203,
-    "mira_minus_baseline": -39,
+    "mira_total": 252,
+    "baseline_total": 189,
+    "mira_minus_baseline": 63,
     "per_question": {
       "Q01": {
-        "mira": 13,
-        "baseline": 21
+        "mira": 23,
+        "baseline": 20
       },
       "Q02": {
-        "mira": 9,
-        "baseline": 13
+        "mira": 14,
+        "baseline": 12
       },
       "Q03": {
-        "mira": 8,
-        "baseline": 19
+        "mira": 23,
+        "baseline": 16
       },
       "Q04": {
-        "mira": 11,
+        "mira": 29,
         "baseline": 28
       },
       "Q05": {
-        "mira": 18,
-        "baseline": 16
+        "mira": 30,
+        "baseline": 13
       },
       "Q06": {
-        "mira": 11,
-        "baseline": 25
+        "mira": 25,
+        "baseline": 21
       },
       "Q07": {
-        "mira": 11,
-        "baseline": 27
+        "mira": 25,
+        "baseline": 25
       },
       "Q08": {
-        "mira": 28,
-        "baseline": 18
-      },
-      "Q09": {
-        "mira": 30,
+        "mira": 31,
         "baseline": 19
       },
+      "Q09": {
+        "mira": 29,
+        "baseline": 18
+      },
       "Q10": {
-        "mira": 25,
+        "mira": 23,
         "baseline": 17
       }
     }
