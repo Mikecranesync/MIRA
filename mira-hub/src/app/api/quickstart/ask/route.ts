@@ -14,6 +14,7 @@ import {
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { englishSearchQuery } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 
 export const dynamic = "force-dynamic";
@@ -183,7 +184,9 @@ export async function POST(req: Request) {
   const messages: CascadeMessage[] = [
     {
       role: "system",
-      content: safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      content: withStepSafety(
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      ),
     },
     { role: "user", content: userMsg },
   ];
@@ -214,7 +217,7 @@ export async function POST(req: Request) {
   // model refuses, it cited nothing, so the citation list is a lie. (#1875)
   // Model citation hygiene (#4032): some providers emit their own tool-citation
   // markers ("【1†L3-L4】"); normalize them to the [n] form the page renders.
-  const answerText = result.content.replace(/【(\d{1,2})†[^】]*】/g, "[$1]");
+  const answerText = normalizeCitationMarkers(result.content);
   // Ship only the sources the answer actually cited: a general-guidance answer
   // must not arrive with six unrelated source cards (the #1875 contradiction,
   // generalized now that the route answers instead of refusing).

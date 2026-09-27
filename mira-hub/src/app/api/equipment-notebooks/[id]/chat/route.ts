@@ -86,6 +86,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -2177,11 +2178,11 @@ async function handleChatTurn(
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = withAnswerLanguage(
+  const systemPrompt = withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
       : withVisual + machineContext,
-  );
+ ));
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -2675,7 +2676,7 @@ async function handleChatTurn(
         endRoot();
         return;
       }
-      let answerText = responseBuffer.join("");
+      let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as

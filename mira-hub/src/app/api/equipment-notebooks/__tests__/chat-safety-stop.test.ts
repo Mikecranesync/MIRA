@@ -371,6 +371,8 @@ describe("notebook chat safety hard-stop", () => {
     expect(systems.some((s) => s.includes("Translate the maintenance technician's question to English"))).toBe(true);
     // …and the answer prompt tells the model to reply in Spanish.
     expect(systems.some((s) => s.includes("Answer in the language the technician wrote in"))).toBe(true);
+    // …and every answer prompt writes isolation into the step it belongs to.
+    expect(systems.some((s) => s.includes("SAFETY IN THE STEPS"))).toBe(true);
   });
 
   it("does not stop an ordinary maintenance question", async () => {

@@ -13,6 +13,7 @@ import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
@@ -229,9 +230,9 @@ export async function POST(req: Request) {
   const messages: CascadeMessage[] = [
     {
       role: "system",
-      content: withAnswerLanguage(
+      content: withStepSafety(withAnswerLanguage(
         safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
-      ),
+      )),
     },
     {
       role: "user",
@@ -278,13 +279,14 @@ export async function POST(req: Request) {
   //    shipped every retrieved card. Keying on the MARKERS the answer actually
   //    used is phrasing-independent: no `[n]` resolving to a returned source
   //    means nothing was cited, whatever words were chosen.
-  const citations: ManualSource[] = selectCitations(chunks, result.content);
+  const answerText = normalizeCitationMarkers(result.content);
+  const citations: ManualSource[] = selectCitations(chunks, answerText);
 
   // L5 honesty badge: the basis is what the answer actually used, not what
   // was retrieved — chunks the model did not cite are a retrieval miss.
   return NextResponse.json(
     {
-      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${result.content}` : result.content,
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
       citations,
       provider: result.provider,
       basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
