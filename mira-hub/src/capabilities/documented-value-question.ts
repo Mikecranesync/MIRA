@@ -89,7 +89,7 @@ const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
 const SYMPTOM =
-  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
 // Procedure words: "wire", "install", "configure"… — a generic "how do I wire
 // a VFD?" is teaching, so these count only when bound to THIS machine
 // (Codex #4069 pass 6 F3).
@@ -102,6 +102,8 @@ const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i
 // Anything after the "what does X mean" clause beyond a location ("on my
 // drive") — another clause or question — makes it a mixed question.
 const SECOND_CLAUSE = /[,;?]\s*\S|\b(?:and|also|but|why|how|when|where|should|can|could|is|are|was|keeps?)\b/i;
+// A question that marks itself as general knowledge, not this machine.
+const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
 // A condition on the machine's state ("when it overheats", "if the fan is
 // blocked", "after the swap") — never part of a pure concept question.
 const CONDITION_CLAUSE = /\b(?:when|whenever|while|if|after|once|since)\s+(?:it|the|my|this|our|its|we|i)\b/i;
@@ -150,11 +152,19 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
   // ("how does my drive work when it trips on F005?") is troubleshooting.
   if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
+  // Pass 13: a described symptom ("what is causing the drive to trip every
+  // morning?") is a problem to work, bound or not — unless the question marks
+  // itself as general ("in general", "generally", "difference between", …).
+  // Lean to declining (owner decision): the class, not one phrasing.
+  if (SYMPTOM.test(q) && !GENERAL_MARKER.test(q)) return true;
   // Pass 12: "how does my drive work WHEN IT OVERHEATS" is a condition on this
   // machine, not a concept question. Bound + a condition clause is never teaching.
   const conditional = bound && CONDITION_CLAUSE.test(q);
   const teaching =
     !conditional &&
-    (STRONG_DEFINITIONAL.test(q) || HOW_IT_WORKS.test(q) || (!bound && WEAK_DEFINITIONAL.test(q)));
+    (STRONG_DEFINITIONAL.test(q) ||
+      GENERAL_MARKER.test(q) ||
+      HOW_IT_WORKS.test(q) ||
+      (!bound && WEAK_DEFINITIONAL.test(q)));
   return !teaching;
 }

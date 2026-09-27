@@ -94,6 +94,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["How does my drive work when it overheats?", "PowerFlex 525"],
     ["how does this drive work if the fan is blocked", "PowerFlex 525"],
     ["the drive is overheating, what should I look at", "PowerFlex 525"],
+    // Codex #4069 pass 13: a symptom declines unless the question is explicitly general.
+    ["What is causing the drive to trip every morning?", "PowerFlex 525"],
+    ["what is making the conveyor stop randomly", "GS10"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -124,6 +127,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
     ["what is the difference between a contactor and a relay", "GS10"],
+    ["What is a VFD?", "PowerFlex 525"],
+    ["generally, why do drives fault on overvoltage", "PowerFlex 525"],
     ["explain how PNP sensors are wired in general", "GS10"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
 
