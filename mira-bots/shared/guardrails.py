@@ -1460,3 +1460,61 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
     if asset_identified:
         result = f"{asset_identified} \u2014 {result}"
     return result
+
+
+# OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+# A safety-classified turn is answered; this one-to-two-line banner is shown
+# ABOVE the answer. Mirrors hazardBanner() in mira-hub/src/lib/safety-classifier.ts.
+_HAZARD_BANNER_CLASSES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"smoke|fire|burning|burn mark|melted|exploded|shocked|arcing|arc flashing|arc-flashing"
+        ),
+        "\u26a0\ufe0f Possible active incident. If anything is smoking, arcing or burning, or someone was shocked: "
+        "get clear, isolate power from a safe distance and call for help first. The steps below are for once "
+        "the scene is safe.",
+    ),
+    (
+        re.compile(r"live|energized|exposed wire|480|600v|arc flash"),
+        "\u26a0\ufe0f Energized electrical work. Qualified person, arc-flash PPE and an energized-work permit "
+        "(NFPA 70E). De-energize and verify zero energy whenever the task allows.",
+    ),
+    (
+        re.compile(r"lockout|tagout|loto|cut (the )?power|disconnect|isolat|safe to work"),
+        "\u26a0\ufe0f Isolation. Lock and tag every energy source (electrical, pneumatic, hydraulic, gravity) "
+        "and verify zero energy before hands-on work.",
+    ),
+    (
+        re.compile(r"confined"),
+        "\u26a0\ufe0f Confined space. Entry permit, atmosphere test and an attendant before entry.",
+    ),
+    (
+        re.compile(r"pressure|hydraulic|pneumatic|bleed"),
+        "\u26a0\ufe0f Stored pressure. Bleed and block hydraulic/pneumatic energy and verify zero pressure first.",
+    ),
+    (
+        re.compile(r"chemical|ammonia|chlorine|acid|caustic"),
+        "\u26a0\ufe0f Chemical hazard. Check the SDS and wear the PPE it lists.",
+    ),
+    (
+        re.compile(r"fall|height|ladder"),
+        "\u26a0\ufe0f Working at height. Fall protection and a stable platform.",
+    ),
+    (
+        re.compile(r"rotating|guard|moving|conveyor|pinch|entangle"),
+        "\u26a0\ufe0f Moving machinery. Lock out motion and block gravity-loaded parts before reaching in.",
+    ),
+    (
+        re.compile(r"hot work|weld|torch|grind"),
+        "\u26a0\ufe0f Hot work. Hot-work permit and a fire watch.",
+    ),
+)
+
+
+def hazard_banner(message: str) -> str:
+    """One-to-two-line hazard banner shown above the answer on a flagged turn."""
+    msg = (message or "").lower()
+    for pattern, banner in _HAZARD_BANNER_CLASSES:
+        if pattern.search(msg):
+            return banner
+    return "\u26a0\ufe0f Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work."
