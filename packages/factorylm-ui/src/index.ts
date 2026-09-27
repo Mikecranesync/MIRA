@@ -19,4 +19,14 @@ export {
   turnToThreadMessage,
   useInteractionRuntime,
 } from "./assistant";
-export { answerText, createReadAloud, fixSymptomFor, speakableText, spokenAnswerText, type ReadAloud } from "./answer-actions";
+export {
+  answerText,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  speakableText,
+  spokenAnswerText,
+  type FixRequestIds,
+  type ReadAloud,
+} from "./answer-actions";

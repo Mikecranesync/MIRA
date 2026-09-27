@@ -65,6 +65,47 @@ export function fixSymptomFor(turns: readonly InteractionTurn[], answerTurnId: s
   return null;
 }
 
+/** Idempotency keys for "Record what fixed it". The fix table is append-only
+ *  and the server requires a `clientRequestId`: the SAME fix for the same
+ *  answer keeps its id until it is saved, so a retry after a lost response
+ *  replays the stored record instead of writing a second one. */
+export interface FixRequestIds {
+  idFor(turnId: string, fix: string): string;
+  /** Forget the id once the save succeeded (or the server refused it). */
+  settle(turnId: string, fix: string): void;
+}
+
+export function createFixRequestIds(newId: () => string = () => crypto.randomUUID()): FixRequestIds {
+  const pending = new Map<string, string>();
+  const key = (turnId: string, fix: string) => `${turnId}\u0000${fix}`;
+  return {
+    idFor(turnId, fix) {
+      const k = key(turnId, fix);
+      let id = pending.get(k);
+      if (!id) {
+        id = newId();
+        pending.set(k, id);
+      }
+      return id;
+    },
+    settle(turnId, fix) {
+      pending.delete(key(turnId, fix));
+    },
+  };
+}
+
+const FIX_REFUSALS: Record<string, string> = {
+  asset_not_confirmed: "Confirm which machine this is before recording a fix.",
+  asset_binding_changed: "This chat's machine changed while saving. Check the machine and record the fix again.",
+  request_id_conflict: "That fix could not be saved. Record it again.",
+};
+
+/** The message for a POST /fixes error code, or null when the code is not a
+ *  refusal the technician can act on (network/server: keep the id, retry). */
+export function fixRefusalMessage(code: string | null | undefined): string | null {
+  return (code && FIX_REFUSALS[code]) || null;
+}
+
 type Synth = Pick<SpeechSynthesis, "speak" | "cancel" | "speaking">;
 type UtteranceCtor = new (text: string) => SpeechSynthesisUtterance;
 

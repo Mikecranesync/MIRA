@@ -27,9 +27,19 @@ import {
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
-import { FactoryLMShell, closeLayerAction, createReadAloud, fixSymptomFor, spokenAnswerText, topLayer, type HostHooks } from "@factorylm/ui";
+import {
+  FactoryLMShell,
+  closeLayerAction,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  spokenAnswerText,
+  topLayer,
+  type HostHooks,
+} from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
-import { request } from "../api/client";
+import { ApiError, request } from "../api/client";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -314,6 +324,7 @@ export function UnifiedChat({
   // Read-aloud for gloved / hands-in-the-panel use. Null where the WebView has
   // no Web Speech, in which case no button renders. Stopped on unmount.
   const readAloud = useMemo(() => createReadAloud(), []);
+  const fixRequestIds = useMemo(() => createFixRequestIds(), []);
   useEffect(() => () => readAloud?.stop(), [readAloud]);
   // Switching notebook or thread stops an answer that is still being read.
   useEffect(() => {
@@ -331,16 +342,20 @@ export function UnifiedChat({
     if (!meta.notebookId || !symptom) return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
+    const clientRequestId = fixRequestIds.idFor(turnId, fix);
     try {
       await request(`/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/fixes/`, {
         method: "POST",
-        json: { symptom, fix },
+        json: { symptom, fix, clientRequestId },
       });
+      fixRequestIds.settle(turnId, fix);
       window.alert("Saved. MIRA will use this fix on this machine next time.");
-    } catch {
-      window.alert("Could not save the fix. Check the connection and try again.");
+    } catch (e) {
+      const refusal = e instanceof ApiError ? fixRefusalMessage(e.detail) : null;
+      if (refusal) fixRequestIds.settle(turnId, fix);
+      window.alert(refusal ?? "Could not save the fix. Check the connection and try again.");
     }
-  }, [meta.notebookId, state.thread.turns]);
+  }, [fixRequestIds, meta.notebookId, state.thread.turns]);
 
   const hooks: HostHooks = {
     onSend,

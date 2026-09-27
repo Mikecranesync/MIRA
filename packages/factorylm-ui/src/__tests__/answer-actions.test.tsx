@@ -7,7 +7,15 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { getFixture, type InteractionTurn } from "@factorylm/interaction";
-import { answerText, createReadAloud, fixSymptomFor, speakableText, spokenAnswerText } from "../answer-actions";
+import {
+  answerText,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  speakableText,
+  spokenAnswerText,
+} from "../answer-actions";
 import { renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -234,5 +242,35 @@ describe("action row", () => {
     views.push(view);
     expect(view.container.querySelector('[aria-label="Read aloud"]')).toBeNull();
     expect(view.container.querySelector('[aria-label="Record what fixed it"]')).toBeNull();
+  });
+});
+
+describe("record-fix request ids", () => {
+  const counter = () => {
+    let n = 0;
+    return () => `id-${(n += 1)}`;
+  };
+
+  it("keeps one id for the same fix until it is saved, so a retry cannot duplicate it", () => {
+    const ids = createFixRequestIds(counter());
+    const first = ids.idFor("t1", "replaced the fuse");
+    expect(ids.idFor("t1", "replaced the fuse")).toBe(first);
+    ids.settle("t1", "replaced the fuse");
+    expect(ids.idFor("t1", "replaced the fuse")).not.toBe(first);
+  });
+
+  it("gives a different fix, or the same fix under another answer, its own id", () => {
+    const ids = createFixRequestIds(counter());
+    const a = ids.idFor("t1", "replaced the fuse");
+    expect(ids.idFor("t1", "reset the overload")).not.toBe(a);
+    expect(ids.idFor("t2", "replaced the fuse")).not.toBe(a);
+  });
+
+  it("names the refusals a technician can act on and nothing else", () => {
+    expect(fixRefusalMessage("asset_not_confirmed")).toContain("Confirm which machine");
+    expect(fixRefusalMessage("asset_binding_changed")).toContain("machine changed");
+    expect(fixRefusalMessage("request_id_conflict")).not.toBeNull();
+    expect(fixRefusalMessage("HTTP 503")).toBeNull();
+    expect(fixRefusalMessage(undefined)).toBeNull();
   });
 });

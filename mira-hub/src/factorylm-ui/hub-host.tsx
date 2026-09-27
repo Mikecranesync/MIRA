@@ -29,7 +29,15 @@ import {
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
-import { FactoryLMShell, createReadAloud, fixSymptomFor, spokenAnswerText, type HostHooks } from "@factorylm/ui";
+import {
+  FactoryLMShell,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  spokenAnswerText,
+  type HostHooks,
+} from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
@@ -569,6 +577,7 @@ export function HubShellHost() {
   // Read-aloud: created once; null where the browser has no Web Speech, in which
   // case the hook is omitted and the shell renders no button. Stopped on unmount.
   const readAloud = useMemo(() => createReadAloud(), []);
+  const fixRequestIds = useMemo(() => createFixRequestIds(), []);
   useEffect(() => () => readAloud?.stop(), [readAloud]);
   // Switching notebook or thread stops an answer that is still being read.
   useEffect(() => {
@@ -589,17 +598,26 @@ export function HubShellHost() {
     if (!notebookId || !symptom || typeof window === "undefined") return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
+    const clientRequestId = fixRequestIds.idFor(turnId, fix);
     try {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/fixes/`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ symptom, fix }),
+        body: JSON.stringify({ symptom, fix, clientRequestId }),
       });
-      window.alert(res.ok ? "Saved. MIRA will use this fix on this machine next time." : "Could not save the fix. Try again.");
+      if (res.ok) {
+        fixRequestIds.settle(turnId, fix);
+        window.alert("Saved. MIRA will use this fix on this machine next time.");
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const refusal = fixRefusalMessage(body?.error);
+      if (refusal) fixRequestIds.settle(turnId, fix);
+      window.alert(refusal ?? "Could not save the fix. Try again.");
     } catch {
       window.alert("Could not save the fix. Check the connection and try again.");
     }
-  }, [view.thread.turns]);
+  }, [fixRequestIds, view.thread.turns]);
 
   const hooks: HostHooks = {
     onSend,
