@@ -476,8 +476,6 @@ export async function retrieveManualChunks(
     return [];
   };
 
-  let main = await firstNonEmpty(q);
-
   // #4068 (owner decision 2026-09-27, "both"): an identity-bound model with no
   // manual pages of its own may fall back to the SAME manufacturer — but only
   // within the SAME, classified equipment family, judged strictly on each hit's
@@ -487,16 +485,26 @@ export async function retrieveManualChunks(
   // are marked so the route can record the widened scope and cite the sibling
   // model under its real name. If this is empty too, the route's honest
   // decline (Gate G) handles the turn.
-  if (main.length === 0 && identityBound && model && mfr && assetType && assetType !== "Other") {
-    const vendorHits = await runBm25Query(client, tenantId, q, topK, mfr, null);
-    main = vendorHits
+  const familyFallbackAllowed = identityBound && !!model && !!mfr && !!assetType && assetType !== "Other";
+  const familyFallback = async (text: string): Promise<ManualChunk[]> => {
+    if (!familyFallbackAllowed) return [];
+    // The family filter runs AFTER SQL ranking, so fetch a wider window than
+    // topK: otherwise a manufacturer's higher-ranked other-family pages fill
+    // the LIMIT and hide a matching-family page ranked just below them.
+    const window = topK * FAMILY_FALLBACK_WINDOW;
+    const vendorHits = await runBm25Query(client, tenantId, text, window, mfr, null);
+    return vendorHits
       .filter(
         (c) =>
           inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
           assetType,
       )
+      .slice(0, topK)
       .map((c) => ({ ...c, retrievalScope: "vendor_fallback" as const }));
-  }
+  };
+
+  let main = await firstNonEmpty(q);
+  if (main.length === 0) main = await familyFallback(q);
 
   const codes = extractFaultCodes(q);
   if (codes.length === 0) return main;
@@ -504,8 +512,10 @@ export async function retrieveManualChunks(
   // Code pass: query on the code(s) alone (the terse form that reliably surfaces
   // the documenting chunk), down the SAME scope cascade — so a fault-code lookup
   // for a named model stays scoped to that model's manual (#2178), not the
-  // vendor's nearest sibling.
-  const codeHits = await firstNonEmpty(codes.join(" "));
+  // vendor's nearest sibling. When the model has no pages, the terse code query
+  // gets the same family fallback as the verbose one (#4068).
+  let codeHits = await firstNonEmpty(codes.join(" "));
+  if (codeHits.length === 0) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 
   return dedupeChunks([...codeHits, ...main]).slice(0, topK);
@@ -527,6 +537,9 @@ export function isRefusalAnswer(answer: string | null | undefined): boolean {
   const normalized = answer.replace(/[\u2018\u2019]/g, "'").toLowerCase();
   return normalized.includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
+
+/** #4068 — the same-family fallback ranks topK × this many vendor rows before filtering by family. */
+export const FAMILY_FALLBACK_WINDOW = 5;
 
 /** Below this ts_rank_cd an AND hit is noise, not evidence (#4035: 0.0004 vs a real hit's ~1). */
 export const WEAK_AND_RANK = 0.01;

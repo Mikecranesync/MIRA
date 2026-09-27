@@ -509,6 +509,18 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.answer_gate.reason).toBe("identity_bound_no_evidence");
   });
 
+  it("2j. Codex #4069 F1: a mixed teaching+troubleshooting question about this machine still declines", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "How does my drive work when it trips on F005, and what should I check first?", mode: "general" }), params),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("insufficient_evidence");
+  });
+
   it("2i. #4068: a hazard turn is never swallowed by the new decline (owner decision: flag, never block)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

@@ -16,6 +16,7 @@ import {
   retrieveNodeChunks,
   buildDocScopedSystemPrompt,
   type ManualChunk,
+  FAMILY_FALLBACK_WINDOW,
 } from "../manual-rag";
 
 afterEach(() => {
@@ -1102,6 +1103,30 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out).toHaveLength(1);
     expect(out[0].retrievalScope).toBeUndefined();
     expect(calls).toHaveLength(1);
+  });
+
+  it("Codex #4069 F2: widens the ranked window so higher-ranked other-family pages cannot hide a same-family page", async () => {
+    const drives = Array.from({ length: 6 }, (_, i) => ({ ...powerflexDrive(), source_url: `https://oem.example/pf${i}.pdf` }));
+    const { client, calls } = makeClient([[], [], [...drives, compactLogixDh485()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the swap", {
+      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    // The vendor query asked for topK × FAMILY_FALLBACK_WINDOW rows, not topK.
+    expect(calls[2].params).toContain(6 * FAMILY_FALLBACK_WINDOW);
+  });
+
+  it("Codex #4069 F3: the terse fault-code pass also gets the same-family fallback", async () => {
+    const f005 = { ...compactLogixDh485(), content: "Fault F005: communication timeout on the DH-485 channel." };
+    // verbose: model AND, model OR, vendor AND, vendor OR — all empty;
+    // terse code: model AND, model OR empty, vendor AND hits.
+    const { client } = makeClient([[], [], [], [], [], [], [f005]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it keep throwing F005 after the converter swap", {
+      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].content).toContain("F005");
+    expect(out[0].retrievalScope).toBe("vendor_fallback");
   });
 
   it("classifies the SLC 500 family as PLCs so the fallback can run for it", () => {

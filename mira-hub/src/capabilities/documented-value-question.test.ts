@@ -72,6 +72,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["it stopped communicating after we replaced the module", "PLX32"],
     ["why does my GS10 fault when the conveyor starts", "GS10"],
     ["how do I connect this indicator to the PLC over Modbus TCP", "BX11-EN"],
+    // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine.
+    ["How does my drive work when it trips on F005, and what should I check first?", "PowerFlex 525"],
+    ["what does F005 mean on my drive and how do I clear it", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -87,6 +90,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is an actuator used for", "AC 01.2"],
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
+    // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
+    ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
 
   it("an empty question is not about anything", () => {

@@ -76,6 +76,11 @@ const GENERIC_CLASS_WHY =
 const TROUBLESHOOTING =
   /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|recover|reset|replace|replaced|swap(?:ped)?|install|configure|set\s+up|connect|wire|troubleshoot|check\s+first|should\s+I\s+check|pass\s?code|password|unlock|register|registers|firmware|bootloader)\b/i;
 
+// "what does fault code X mean", "what does F005 mean on my drive".
+const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i;
+// …and asks what to DO about it.
+const PROCEDURE_ASK = /\b(?:check|fix|reset|recover|clear|repair|replace|troubleshoot|resolve|get\s+rid)\b/i;
+
 /**
  * #4068 (owner decision 2026-09-27) — is this a question about THIS equipment
  * (a problem to work, a procedure to follow), as opposed to a teaching question?
@@ -90,6 +95,14 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   const q = question.trim();
   if (!q) return false;
   const bound = BINDING.test(q) || namesModel(q, boundModel);
+  // Codex #4069 F1: a question that is about THIS machine AND works a problem
+  // ("how does my drive work when it trips on F005, what should I check?") is
+  // troubleshooting, whatever teaching phrasing it opens with.
+  // A pure "what does code X mean" stays with the answer floor's code-meaning
+  // rule (E10, answer-validation.ts), exactly as #4004 leaves it — unless the
+  // question also asks what to DO about it.
+  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q)) return false;
+  if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
   const teaching =
     STRONG_DEFINITIONAL.test(q) ||
     HOW_IT_WORKS.test(q) ||
