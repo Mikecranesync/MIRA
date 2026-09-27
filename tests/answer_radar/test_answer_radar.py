@@ -450,10 +450,12 @@ from answer_radar import hub_runner  # noqa: E402
 class _FakeHub:
     """Records requests; answers like the Hub chat route (SSE) + diagnostics."""
 
-    def __init__(self, content: str = "Replace the interface. [1]", status: str = "answered"):
+    def __init__(
+        self, content: str = "Replace the interface. [1]", status: str = "answered", message=None
+    ):
         self.created: list[dict] = []
         self.bodies: list[dict] = []
-        self.content, self.status = content, status
+        self.content, self.status, self.message = content, status, message
 
     def create_notebook(self, name: str, **identity: str) -> dict:
         self.created.append({"name": name, **identity})
@@ -462,9 +464,9 @@ class _FakeHub:
     def _req(self, method, path, body=None, headers=None):
         self.bodies.append(_json.loads(body))
         frames = [
-            {"kind": "content", "content": self.content},
+            *([{"kind": "content", "content": self.content}] if self.content else []),
             {"kind": "sources", "citations": [{"label": "1747-AIC manual", "page": 3}]},
-            {"kind": "status", "status": self.status},
+            {"kind": "status", "status": self.status, "message": self.message},
             {"kind": "evidence", "basis": "oem_documentation"},
         ]
         raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames).encode()
@@ -524,3 +526,17 @@ def test_hub_runner_refuses_production() -> None:
 
 def test_hub_runner_reuses_the_acceptance_client() -> None:
     assert hub_runner.load_hub_client().__name__ == "Hub"
+
+
+def test_a_declined_turn_is_graded_on_the_message_the_client_shows() -> None:
+    """The abstain text rides the status frame; the app renders it as the reply."""
+    hub = _FakeHub(
+        content="",
+        status="insufficient_evidence",
+        message="I couldn't find that in the Baykon BX11-EN manual pages I have.",
+    )
+    rec, _ = hub_runner.run_question_hub(
+        _question(), hub, condition="machine_selected", mira_version="a", stamp="s"
+    )
+    assert rec.answer_text.startswith("I couldn't find that")
+    assert rec.answer_status is AnswerStatus.ABSTAINED

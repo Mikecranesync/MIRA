@@ -23,9 +23,8 @@ Citation coverage:         0.0%
 Median answer time:        5208 ms
 
 TOP FAILURES
-   3x  insufficient_evidence
+   4x  insufficient_evidence
    2x  hallucination
-   1x  empty_answer
 
 KNOWLEDGE TO ACQUIRE
   - AUMA AC 01.2 — 0 retrieved chunks
@@ -97,15 +96,15 @@ PER-QUESTION
     "chunks": 0,
     "graders": 2,
     "scores": [
-      20,
-      20
+      64,
+      70
     ],
     "outcome": "correct_abstention",
     "verified_correct": false,
-    "failure_class": "empty_answer",
+    "failure_class": "insufficient_evidence",
     "reasons": [
-      "total 20 < 85",
-      "correctness 0 < 34"
+      "total 64 < 85",
+      "correctness 20 < 34"
     ]
   },
   {

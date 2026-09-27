@@ -38,9 +38,15 @@ FAIL all 12 answers. They agree on every verdict. Scorecards: `SCORECARD-hub-new
    - a USB/serial firmware recovery for the AUMA AC 01.2 (graders: the documented paths are
      Bluetooth CDT or SD card);
    - WinPISA as the SPC-100 tool (graders: WinPISA is SPC200-only).
-4. **An empty answer reached the client.** For seed 004 `machine_selected`, the route returned
-   `status=insufficient_evidence` with **no content** at all. The scorer files it as an
-   abstention; the graders scored it 20/100 (`empty_answer`).
+4. **~~An empty answer reached the client.~~ CORRECTED — that was a harness bug.** A declined
+   turn carries its text in the SSE `status` frame's `message`, not in `content`, and the first
+   runner read only `content`. Fixed in `hub_runner.py` (test proven red-then-green). Seed 004 was
+   re-asked. The real reply is a fixed decline: "I couldn't find that in the Mitsubishi FX5U manual
+   pages I have, so I won't guess a documented value. Upload the manual…"
+   (`rerun-FIELD-SEED-004-machine_selected.json`). Two fresh graders re-graded it: 64 and 70, FAIL.
+   It is safe and honest but asks for the **wrong** manual: the register map is in the Baykon
+   BX11-EN indicator's manual, and the search only ever looked at the bound Mitsubishi identity.
+   (`score.py` labels the row `correct_abstention` from its status; the verdict is still FAIL.)
 5. **A bare refusal.** Seed 006 `new_chat`: "I'm sorry, but I can't help with that." — no
    reason given and no next step (`unhelpful_refusal`).
 

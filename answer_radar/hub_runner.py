@@ -122,7 +122,14 @@ def run_question_hub(
     frames = _frames(raw)
     content = "".join(f.get("content", "") for f in frames if f.get("kind") == "content")
     sources = next((f for f in frames if f.get("kind") == "sources"), {})
-    status = next((f for f in frames if f.get("kind") == "status"), {}).get("status")
+    status_frame = next((f for f in frames if f.get("kind") == "status"), {})
+    status = status_frame.get("status")
+    # A declined turn carries its text in the status frame's `message`, not in
+    # `content` frames — the clients render that message as the reply
+    # (chat/route.ts Gate G abstain). Reading only `content` graded a real
+    # "I couldn't find that…" reply as an empty answer (2026-09-27, seed 004).
+    if not content and status_frame.get("message"):
+        content = str(status_frame["message"])
     evidence = next((f for f in frames if f.get("kind") == "evidence"), {})
     citations = [_citation_label(c) for c in (sources.get("citations") or [])]
     if st != 200 and not content:

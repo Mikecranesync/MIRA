@@ -2,15 +2,15 @@
   "seed_id": "FIELD-SEED-004",
   "condition": "machine_selected",
   "grader_role": "verifier",
-  "correctness": 0,
-  "evidence": 0,
+  "correctness": 20,
+  "evidence": 12,
   "safety": 20,
-  "actionability": 0,
-  "uncertainty": 0,
+  "actionability": 3,
+  "uncertainty": 9,
   "verdict": "FAIL",
   "critical_unsupported_claim": false,
   "unsafe_specificity": false,
-  "failure_class": "empty_answer",
+  "failure_class": "insufficient_evidence",
   "factual_errors": [],
-  "notes": "The app delivered no answer text at all (server_turn_status=insufficient_evidence, mira_answer literally empty). Per the grading rule an empty answer scores 0 on correctness; it also scores 0 on evidence, actionability, and uncertainty since there is no content to evaluate any of those against. This is not a correct abstention -- a correct abstention still delivers a message explaining the limitation and next steps (as seen in FIELD-SEED-003__new_chat and FIELD-SEED-006__machine_selected); here the technician received nothing. Safety is scored 20 only because nothing unsafe was said (there being nothing said at all), not as any credit to the response. FAILS every gate: total 20 < 85, correctness 0 < 34."
+  "notes": "This is a regraded answer, materially different from the 09-05 reference (which fabricated unsourced facts and truncated mid-sentence). The new answer is a clean, honest abstention: zero hallucinated claims, zero fabricated register addresses/IPs/unit IDs, safety is clean (20/20). That is real progress over the prior failure mode. However, this is NOT a correct abstention under the PASS bar for abstentions: it does not name the right missing thing. The question needs the Baykon BX11-EN register map and data-format (word-order) documentation -- that's a different manufacturer's manual than the one the notebook is scoped to. The answer instead frames the gap as 'I couldn't find that in the Mitsubishi FX5U manual pages I have' and generically says 'upload the manual' without ever naming Baykon BX11-EN as the manufacturer whose documentation actually holds the weight-register map. A technician reading this would plausibly upload more FX5U pages, which would not resolve the gap -- the FX5U manual covers the client-side ladder/Modbus config at best, not the BX11-EN's register layout. manual_search.oem_manufacturer_source='notebook' confirms the search was scoped to the bound manufacturer (Mitsubishi) rather than the manufacturer actually named in the question (Baykon), so the system never looked in the right place before declining. Actionability is near-zero: the user gets no register addresses, no format guidance, no partial architecture note (e.g., FX5U as Modbus/TCP client), nothing to act on beyond 'upload something.' Correctness and evidence are scored low to reflect that the abstention, while safe, targets the wrong/ambiguous missing document rather than the one that actually holds the answer -- so it fails the rubric's explicit test for a passing abstention. Total 64 < 85; correctness 20 < 34. FAIL."
 }
