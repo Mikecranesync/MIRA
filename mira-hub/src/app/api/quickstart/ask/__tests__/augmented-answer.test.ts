@@ -85,4 +85,18 @@ describe("POST /api/quickstart/ask — answers instead of refusing", () => {
     const body = await (await POST(req({ question: "safety precautions before wiring a VFD to a PLC" }))).json();
     expect(body.citations).toEqual([]);
   });
+
+  it("a bare provider marker 【1】 still ships its source card (#4032)", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk(1), chunk(2)]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "Write 300 for 30.0 Hz【1】.", provider: "groq" });
+    const body = await (await POST(req({ question: "GS10 speed register?" }))).json();
+    expect(body.answer).toContain("30.0 Hz[1]");
+    expect(body.citations.map((c: { index: number }) => c.index)).toEqual([1]);
+  });
+
+  it("every answer prompt carries the inline-isolation rule", async () => {
+    await POST(req({ question: "How do I replace the GS10 cooling fan?" }));
+    const messages = cascade.cascadeComplete.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>;
+    expect(messages.find((m) => m.role === "system")!.content).toContain("SAFETY IN THE STEPS");
+  });
 });

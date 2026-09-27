@@ -22,6 +22,7 @@ import {
 } from "@/lib/approved-context";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { withAnswerLanguage } from "@/capabilities/answer-language";
+import { withStepSafety } from "@/capabilities/answer-shape";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -551,12 +552,12 @@ export async function POST(
     machinePacket?.active_conditions.find((c) => c.next_check)?.next_check ?? null;
   const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
-  const systemPrompt = withAnswerLanguage(
+  const systemPrompt = withStepSafety(withAnswerLanguage(
     appendManualContext(
       safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag)}` : withMachineMemory,
       manualChunks,
     ),
-  );
+  ));
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
   const approvedSummary = {
