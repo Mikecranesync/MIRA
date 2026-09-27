@@ -88,5 +88,22 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
     expect(q).toContain("reset the fault while the machine is energized");
     expect(q.length).toBeLessThanOrEqual(161);
   });
+
+  // Round-2 safety review (e1df3445): the quote must follow the detector's
+  // match POSITION, not the first textual copy of the flagged words.
+  it("R4: reported speech earlier in the answer — quotes the instruction the detector flagged", () => {
+    const q = quoteOf(
+      'He said, "Reset the fault while the machine is energized," but that is actually unsafe advice. ' +
+        "Reset the fault while the machine is energized to speed up the test.",
+    );
+    expect(q).toContain("to speed up the test");
+    expect(q).not.toContain("He said");
+  });
+
+  it("R5: a dash bullet does not lead the quote", () => {
+    expect(quoteOf("— Reset the fault while the machine is energized to finish the test quickly.\n")).toBe(
+      "Reset the fault while the machine is energized to finish the test quickly.",
+    );
+  });
 });
 

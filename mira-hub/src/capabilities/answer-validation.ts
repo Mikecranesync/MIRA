@@ -356,8 +356,13 @@ const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(
  *  hazard action or the energized/no-isolation relation). A warning or
  *  negation in an unrelated clause ("There is risk, but …", "Do not
  *  hesitate: …") never exempts. Detection only, never rewriting. */
-function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
+function clauseHazardViolation(text: string): { relId: string; sentence: string; index: number } | null {
+  let cursor = 0;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    // Offset in `text` of this sentence, so the banner can quote exactly the
+    // occurrence that was flagged (#4067). Split pieces appear in order.
+    const index = text.indexOf(sentence, cursor);
+    cursor = index + sentence.length;
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
@@ -379,7 +384,7 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
     const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
-    return { relId, sentence };
+    return { relId, sentence, index };
   }
   return null;
 }
@@ -868,9 +873,10 @@ export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below
  *  collapsed, cut at a word with "…". Anchoring on the fragment's POSITION
  *  matters: a one-line paragraph must never quote its harmless opening
  *  sentence as the unsafe step. Detection is untouched. */
-export function flaggedStepQuote(detail: string, answerText: string): string {
+export function flaggedStepQuote(detail: string, answerText: string, scanIndex?: number): string {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
-  const stripLead = (s: string) => s.replace(/^[.,;:!?\s]+/, "");
+  // Leading punctuation and list bullets (".", "—", "–", "•", "- ") never lead a quote.
+  const stripLead = (s: string) => s.replace(/^(?:[.,;:!?\s—–•·]|-(?=\s))+/, "");
   const clean = (s: string) => stripLead(squash(foldForDetection(s)));
   const core = clean(detail);
   // Probes, most specific first. The WHOLE fragment disambiguates repeated
@@ -879,8 +885,12 @@ export function flaggedStepQuote(detail: string, answerText: string): string {
   // the original never had, so the text before that gap is the next probe.
   const beforeMask = clean(detail.split(/\s{3,}/)[0] ?? "");
   const probes = [core, beforeMask, core.slice(0, 60)].filter((p, i, all) => p && all.indexOf(p) === i);
-  let at: { line: string; index: number } | null = null;
-  for (const p of probes) {
+  // The detector's own match position is authoritative (round-2 review: a
+  // text search finds the FIRST copy of the words, e.g. in reported speech,
+  // not the occurrence that was flagged). Text probes are the fallback.
+  let at: { line: string; index: number } | null =
+    scanIndex === undefined ? null : locateScanIndex(scanIndex + (detail.length - stripLead(detail).length), answerText);
+  for (const p of at ? [] : probes) {
     at = locateFolded(p, answerText);
     if (at) break;
   }
@@ -900,6 +910,28 @@ function finishQuote(text: string): string {
   const cut = text.slice(0, 160);
   const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), 80));
   return `${atWord.replace(/[\s.,;:—–-]+$/, "")}…`;
+}
+
+/** Map an offset in the detection scan text (the fold of `answerText`; the
+ *  masks are length-preserving) back to the original answer's line + offset.
+ *  Folds one code point at a time; if that does not reproduce the whole-text
+ *  fold exactly, the mapping is refused and callers fall back to text probes. */
+function locateScanIndex(scanIndex: number, answerText: string): { line: string; index: number } | null {
+  let folded = "";
+  const map: number[] = [];
+  let i = 0;
+  for (const cp of answerText) {
+    const f = foldForDetection(cp);
+    folded += f;
+    for (let k = 0; k < f.length; k++) map.push(i);
+    i += cp.length;
+  }
+  if (folded !== foldForDetection(answerText)) return null;
+  const orig = map[scanIndex];
+  if (orig === undefined) return null;
+  const lineStart = answerText.lastIndexOf("\n", orig - 1) + 1;
+  const nl = answerText.indexOf("\n", orig);
+  return { line: answerText.slice(lineStart, nl < 0 ? undefined : nl), index: orig - lineStart };
 }
 
 /** Find a folded-text probe in the ORIGINAL answer: fold each line one
@@ -949,8 +981,8 @@ function oneSentence(text: string): string {
 
 /** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
  *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
-function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
-  const step = flaggedStepQuote(detail, answerText);
+function hazardWarning(violation: string, detail: string, answerText: string, scanIndex?: number): AnswerValidation {
+  const step = flaggedStepQuote(detail, answerText, scanIndex);
   return {
     ok: false,
     kind: "hazard_warning",
@@ -1035,7 +1067,7 @@ export function validateAnswer(opts: {
     .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
     const m = p.re.exec(affirmationScanText);
-    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
+    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText, m.index);
   }
 
   // A4 (#3973 → #3984): restoring power in order to take a reading.
@@ -1068,7 +1100,7 @@ export function validateAnswer(opts: {
     restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
   );
   if (hazard) {
-    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText, hazard.index);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
