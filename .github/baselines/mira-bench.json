@@ -1,31 +1,65 @@
 {
   "_comment": "Locked baseline for tests/mira_bench.py. Update when an intentional regression-or-improvement lands and is reviewed. See .github/workflows/mira-benchmark-weekly.yml and scripts/check_benchmark_regression.py.",
-  "version": "v2",
-  "set_at": "2026-05-23",
-  "set_from_run": "docs/evaluations/runs/2026-05-23-v2/mira-bench-raw.json",
+  "version": "v3",
+  "mira_source": "quickstart",
+  "product_base": "https://app-staging.factorylm.com",
+  "set_at": "2026-09-27",
+  "set_from_run": "https://github.com/Mikecranesync/MIRA/actions/runs/36311766520 (artifact mira-bench-2026-09-27/product/mira-bench-raw.json)",
+  "judge_model": "groq/openai/gpt-oss-120b",
+  "repeats": 3,
   "max_total_per_question": 35,
   "questions": 10,
   "max_total": 350,
   "thresholds": {
-    "mira_total_min": 260,
-    "mira_advantage_min": 15,
-    "_doc": "mira_total_min: hard floor for MIRA grounded total (baseline was 282; floor is 282 - 22 ≈ 6% buffer for run-to-run LLM-judge variance). mira_advantage_min: MIRA must beat the ungrounded baseline by at least this many points (baseline advantage was 27)."
+    "mira_total_min": 154,
+    "mira_advantage_min": -51,
+    "_doc": "Re-pinned from the REAL product (staging /api/quickstart/ask/, median of 3) with the v3 answer key. The v2 numbers (282 vs 255) were a harness stand-in graded by an older judge against a key copied from a wrong seed, and are not comparable. mira_total_min = 164 - 10 (~6% judge variance). mira_advantage_min = -39 - 12: the product currently TRAILS the plain LLM (refuses 4/10 questions with 'no manuals in the public knowledge base'; GS10 seed #4031 feeds wrong registers). This gate only catches backsliding; raise both floors as #4031 and the refusals are fixed."
   },
   "baseline_run": {
-    "mira_total": 282,
-    "baseline_total": 255,
-    "mira_minus_baseline": 27,
+    "mira_total": 164,
+    "baseline_total": 203,
+    "mira_minus_baseline": -39,
     "per_question": {
-      "Q01": {"mira": 26, "baseline": 26},
-      "Q02": {"mira": 33, "baseline": 19},
-      "Q03": {"mira": 30, "baseline": 22},
-      "Q04": {"mira": 22, "baseline": 31},
-      "Q05": {"mira": 26, "baseline": 23},
-      "Q06": {"mira": 25, "baseline": 30},
-      "Q07": {"mira": 32, "baseline": 29},
-      "Q08": {"mira": 33, "baseline": 21},
-      "Q09": {"mira": 33, "baseline": 28},
-      "Q10": {"mira": 22, "baseline": 26}
+      "Q01": {
+        "mira": 13,
+        "baseline": 21
+      },
+      "Q02": {
+        "mira": 9,
+        "baseline": 13
+      },
+      "Q03": {
+        "mira": 8,
+        "baseline": 19
+      },
+      "Q04": {
+        "mira": 11,
+        "baseline": 28
+      },
+      "Q05": {
+        "mira": 18,
+        "baseline": 16
+      },
+      "Q06": {
+        "mira": 11,
+        "baseline": 25
+      },
+      "Q07": {
+        "mira": 11,
+        "baseline": 27
+      },
+      "Q08": {
+        "mira": 28,
+        "baseline": 18
+      },
+      "Q09": {
+        "mira": 30,
+        "baseline": 19
+      },
+      "Q10": {
+        "mira": 25,
+        "baseline": 17
+      }
     }
   }
 }
