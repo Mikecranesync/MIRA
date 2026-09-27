@@ -586,8 +586,16 @@ export function HubShellHost() {
   }, [readAloud, selection?.notebookId, selection?.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
-    if (turn) readAloud?.toggle(turnId, spokenAnswerText(turn));
-  }, [readAloud, view.thread.turns]);
+    if (!turn) return;
+    // The same citation ids renderText turns into chips: only those "[n]" are
+    // citation marks; any other bracketed number is spoken.
+    const ids = new Set<string>();
+    for (const part of turn.parts) {
+      const c = part.type === "source" ? citations.get(part.source.id) : undefined;
+      if (c) ids.add(c.citationId);
+    }
+    readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
+  }, [readAloud, view.thread.turns, citations]);
 
   // Plant memory (migration 095): record what fixed the machine, filed under
   // the question this answer replied to. The platform prompt/alert dialogs are

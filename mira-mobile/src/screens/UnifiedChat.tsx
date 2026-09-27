@@ -333,8 +333,16 @@ export function UnifiedChat({
   }, [readAloud, meta.notebookId, meta.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = state.thread.turns.find((t) => t.id === turnId);
-    if (turn) readAloud?.toggle(turnId, spokenAnswerText(turn));
-  }, [readAloud, state.thread.turns]);
+    if (!turn) return;
+    // The same citation ids renderText turns into chips: only those "[n]" are
+    // citation marks; any other bracketed number is spoken.
+    const ids = new Set<string>();
+    for (const part of turn.parts) {
+      const c = part.type === "source" ? citations.get(part.source.id) : undefined;
+      if (c) ids.add(c.citationId);
+    }
+    readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
+  }, [readAloud, state.thread.turns, citations]);
 
   // Plant memory (migration 095): record what fixed the machine under the
   // question this answer replied to; platform dialogs are the capture UI.

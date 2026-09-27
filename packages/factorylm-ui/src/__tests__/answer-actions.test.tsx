@@ -29,8 +29,23 @@ function turnsOf(fixture: Parameters<typeof getFixture>[0]): readonly Interactio
 }
 
 describe("speakableText", () => {
+  it("drops only this turn's citation marks and keeps technical identifiers intact (Codex #4058 post-cap F1)", () => {
+    const spoken = speakableText(
+      "Set output [1] ON and output [2] OFF [1]. Clear fault [1234] on VFD_01, then VFD_02. _Verify_ the __run__ lamp.",
+      new Set(["1"]),
+    );
+    expect(spoken).toBe("Set output [1] ON and output [2] OFF. Clear fault [1234] on VFD_01, then VFD_02. Verify the run lamp.");
+  });
+
+  it("drops no bracketed number at all when the turn has no citations", () => {
+    expect(speakableText("Set output [1] ON [2].")).toBe("Set output [1] ON [2].");
+  });
+
   it("drops citation marks and markdown syntax a voice would read out", () => {
-    const spoken = speakableText("**Check** the `P1.01` accel time [1].\n\n- Set it to 8 s [2, 3]\n## Next");
+    const spoken = speakableText(
+      "**Check** the `P1.01` accel time [1].\n\n- Set it to 8 s [2][3]\n## Next",
+      new Set(["1", "2", "3"]),
+    );
     expect(spoken).toBe("Check the P1.01 accel time.\nSet it to 8 s\nNext");
     expect(spoken).not.toContain("[");
     expect(spoken).not.toContain("*");
@@ -108,10 +123,10 @@ describe("createReadAloud", () => {
   it("speaks the cleaned answer, and a second press on the same answer stops it", () => {
     const f = fakeSynth();
     const ra = createReadAloud(f.synth, f.Utterance)!;
-    ra.toggle("t1", "Reset the drive [1].");
+    ra.toggle("t1", "**Reset** the drive.");
     expect(f.spoken).toEqual(["Reset the drive."]);
     expect(f.synth.speaking).toBe(true);
-    ra.toggle("t1", "Reset the drive [1].");
+    ra.toggle("t1", "**Reset** the drive.");
     expect(f.synth.speaking).toBe(false);
     expect(f.spoken).toHaveLength(1);
   });

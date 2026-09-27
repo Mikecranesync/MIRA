@@ -26,18 +26,34 @@ export function answerText(turn: Pick<InteractionTurn, "parts">): string {
  * technician listening with their hands in a panel must hear "de-energize and
  * verify" before the steps, exactly as the screen shows it (Codex #4058 F1).
  */
-export function spokenAnswerText(turn: Pick<InteractionTurn, "parts">): string {
+export function spokenAnswerText(
+  turn: Pick<InteractionTurn, "parts">,
+  citationIds: ReadonlySet<string> = NO_CITATIONS,
+): string {
   const notices = turn.parts
     .filter((p): p is Extract<InteractionPart, { type: "safety_notice" }> => p.type === "safety_notice")
     .map((p) => `${p.notice.severity === "stop" ? "Stop" : "Warning"}. ${p.notice.message.trim()}`);
-  return [...notices, answerText(turn)].filter((t) => t.trim()).join("\n\n");
+  return [...notices, dropCitationMarks(answerText(turn), citationIds)].filter((t) => t.trim()).join("\n\n");
+}
+
+const NO_CITATIONS: ReadonlySet<string> = new Set();
+
+/** Drop the answer's OWN citation marks. `[n]` is a citation only when `n` is
+ *  one of this turn's citation ids (the renderers' chip rule) AND it sits where
+ *  a citation sits — closing a clause: before punctuation, another mark, or the
+ *  end of a line. So "fault [1234]" and "set output [1] ON" are spoken, never
+ *  silently deleted, even when the turn also cites source 1 (Codex #4058 post-cap F1). */
+function dropCitationMarks(text: string, citationIds: ReadonlySet<string>): string {
+  return text.replace(/\s*\[(\d+)\](?=\s*(?:[.,;:!?)\]\[]|$))/gm, (mark, n: string) => (citationIds.has(n) ? "" : mark));
 }
 
 /** Text fit for a speech engine: no citation marks, no markdown syntax. A
- *  voice reading "bracket one" or "asterisk asterisk" is worse than silence. */
-export function speakableText(text: string): string {
-  return text
-    .replace(/\s*\[\d+(?:\s*[,–-]\s*\d+)*\]/g, "")
+ *  voice reading "bracket one" or "asterisk asterisk" is worse than silence —
+ *  but a technical token must survive intact: only `[n]` marks naming one of
+ *  `citationIds` are dropped, and `_` is removed only as an emphasis delimiter
+ *  at a word edge, never inside an identifier like VFD_01 (Codex #4058 post-cap F1). */
+export function speakableText(text: string, citationIds: ReadonlySet<string> = NO_CITATIONS): string {
+  return dropCitationMarks(text, citationIds)
     // Keep a fenced block's CONTENTS (it may hold "P1.01 = 8 s"); drop only the
     // fences and any language label (Codex #4058 round 3).
     .replace(/```[^\n`]*\n?([\s\S]*?)```/g, "$1")
@@ -45,7 +61,8 @@ export function speakableText(text: string): string {
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/(\*\*|__|\*|_|~~)/g, "")
+    .replace(/(\*\*|\*|~~)/g, "")
+    .replace(/(?<![A-Za-z0-9])_{1,2}(?=\S)|(?<=\S)_{1,2}(?![A-Za-z0-9])/g, "")
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "\n")
     .trim();
