@@ -1917,7 +1917,7 @@ async function handleChatTurn(
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
-        ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have, or in related manuals from the same maker, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
+        ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
         : null;

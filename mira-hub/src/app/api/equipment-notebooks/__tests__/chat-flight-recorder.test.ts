@@ -570,6 +570,16 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     }
   });
 
+  it("2n. Codex #4069 pass 5 F3: an unclassified model's decline never claims related manuals were searched", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "XR-9000" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    const fr = await frames(await POST(chatReq({ message: "it stopped communicating, what should I check first", mode: "general" }), params));
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("Allen-Bradley XR-9000 manuals");
+    expect(msg).not.toContain("related manuals");
+  });
+
   it("2i. #4068: a hazard turn is never swallowed by the new decline (owner decision: flag, never block)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

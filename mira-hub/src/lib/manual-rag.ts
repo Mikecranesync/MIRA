@@ -597,7 +597,10 @@ async function runBm25Query(
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
   if (manufacturer) {
-    params.push(`%${manufacturer}%`);
+    // Codex #4069: a stored manufacturer is DATA, never a LIKE pattern —
+    // escape %, _ and \\ (Postgres LIKE's default escape) so "%" cannot
+    // widen the same-manufacturer boundary to every vendor.
+    params.push(`%${manufacturer.replace(/[\\%_]/g, "\\$&")}%`);
     mfrClause = `AND manufacturer ILIKE $${params.length}`;
   }
   // #2178/#3966 — numeric legacy tokens remain substrings ("525" matches

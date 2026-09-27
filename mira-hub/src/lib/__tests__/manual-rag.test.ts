@@ -1182,6 +1182,19 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
   });
 
+  it("Codex #4069 pass 5 F2: a '%' manufacturer is matched literally, never as a wildcard", async () => {
+    const { client, calls } = makeClient([]);
+    await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
+      manufacturer: "%", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    const mfrParams = calls.flatMap((c) => {
+      const m = c.sql.match(/manufacturer ILIKE \$(\d+)/);
+      return m ? [String(c.params[Number(m[1]) - 1])] : [];
+    });
+    expect(mfrParams.length).toBeGreaterThan(0);
+    expect(mfrParams.every((p) => p === "%\\%%")).toBe(true);
+  });
+
   it("the window is wide (topK x 20 rows per vendor name)", () => {
     expect(FAMILY_FALLBACK_WINDOW).toBeGreaterThanOrEqual(20);
   });
