@@ -563,3 +563,10 @@ class TestEnergizedHazardWordBoundary:
     def test_standalone_words_still_trigger(self):
         assert detect_energized_electrical_hazard_intent("can i check the bus with a meter while it's live?")
         assert detect_energized_electrical_hazard_intent("480v busbar: i'll probe it while running.")
+        for msg in (
+            "480v bus is hot, grabbing my voltmeter now.",
+            "clampmeter on the 480v feeder while it's running",
+            "ammeter reading on the mcc bucket",
+            "3ph480v feeder, measure it while live",
+        ):
+            assert detect_energized_electrical_hazard_intent(msg), msg

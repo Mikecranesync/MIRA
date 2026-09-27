@@ -233,6 +233,13 @@ _ENERGIZED_WORK_INTENT = frozenset(
         "while active",
         "clamp meter",  # Clamp meters MUST be used de-energized per NFPA 70E
         "multimeter",
+        "voltmeter",
+        "ammeter",
+        "wattmeter",
+        "ohmmeter",
+        "megohmmeter",
+        "clampmeter",
+        "fluke",
         "meter",  # General measurement (but careful: "meter reading")
         "measure",  # "measure while live", "need to measure"
         "measure voltage",
@@ -251,7 +258,10 @@ _ENERGIZED_WORK_INTENT = frozenset(
 
 
 def _starts_at_word(msg: str, phrase: str) -> bool:
-    return re.search(r"(?<![a-z0-9])" + re.escape(phrase), msg) is not None
+    # A phrase that starts with a digit ("480v") may follow letters ("3ph480v");
+    # only a preceding digit ("1480v") makes it a different number.
+    blocker = r"(?<![0-9])" if phrase[:1].isdigit() else r"(?<![a-z0-9])"
+    return re.search(blocker + re.escape(phrase), msg) is not None
 
 
 def detect_energized_electrical_hazard_intent(message: str) -> bool:

@@ -172,6 +172,15 @@ describe("detectEnergizedElectricalHazardIntent", () => {
     expect(
       detectEnergizedElectricalHazardIntent("480V busbar: I'll probe it while running."),
     ).toBe(true);
+     // Review of #4036: compound meter names and glued voltages must still count.
+    for (const msg of [
+      "480V bus is hot, grabbing my voltmeter now.",
+      "clampmeter on the 480V feeder while it's running",
+      "ammeter reading on the MCC bucket",
+      "3ph480v feeder, measure it while live",
+    ]) {
+      expect(detectEnergizedElectricalHazardIntent(msg), msg).toBe(true);
+    }
   });
 
   it("transformer/DC bus mention without hazard intent does NOT trigger", () => {

@@ -108,6 +108,13 @@ export const ENERGIZED_WORK_INTENT = [
   "while active",
   "clamp meter",
   "multimeter",
+  "voltmeter",
+  "ammeter",
+  "wattmeter",
+  "ohmmeter",
+  "megohmmeter",
+  "clampmeter",
+  "fluke",
   "meter",
   "measure",
   "measure voltage",
@@ -136,7 +143,10 @@ export const ENERGIZED_WORK_INTENT = [
 function startsAtWord(msg: string, phrase: string): boolean {
   let i = msg.indexOf(phrase);
   while (i !== -1) {
-    if (i === 0 || !/[a-z0-9]/.test(msg[i - 1])) return true;
+    // A phrase that starts with a digit ("480v") may follow letters ("3ph480v",
+    // "at480v") — only a preceding digit ("1480v") makes it a different number.
+    const blocker = /^[0-9]/.test(phrase) ? /[0-9]/ : /[a-z0-9]/;
+    if (i === 0 || !blocker.test(msg[i - 1])) return true;
     i = msg.indexOf(phrase, i + 1);
   }
   return false;
