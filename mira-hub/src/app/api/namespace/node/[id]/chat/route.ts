@@ -33,6 +33,7 @@ import {
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
@@ -364,9 +365,11 @@ export async function POST(
           name: nodeRow.name,
           unsPath: nodeRow.uns_path,
         });
-  const systemPrompt = appendManualContext(
-    safetyFlag ? `${baseSystemPrompt}\n\n${flagDirectiveFor(safetyFlag)}` : baseSystemPrompt,
-    nodeChunks,
+  const systemPrompt = withAnswerLanguage(
+    appendManualContext(
+      safetyFlag ? `${baseSystemPrompt}\n\n${flagDirectiveFor(safetyFlag)}` : baseSystemPrompt,
+      nodeChunks,
+    ),
   );
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
   const approvedSourceCount = nodeSources.filter((s) => s.verified).length;

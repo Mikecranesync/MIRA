@@ -85,6 +85,7 @@ import {
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -2174,9 +2175,11 @@ async function handleChatTurn(
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = docGrounded
-    ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
-    : withVisual + machineContext;
+  const systemPrompt = withAnswerLanguage(
+    docGrounded
+      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
+      : withVisual + machineContext,
+  );
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides

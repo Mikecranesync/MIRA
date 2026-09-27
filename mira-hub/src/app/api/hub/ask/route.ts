@@ -12,6 +12,7 @@ import {
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
@@ -225,7 +226,9 @@ export async function POST(req: Request) {
   const messages: CascadeMessage[] = [
     {
       role: "system",
-      content: safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      content: withAnswerLanguage(
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      ),
     },
     {
       role: "user",

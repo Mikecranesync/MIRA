@@ -359,6 +359,16 @@ describe("notebook chat safety hard-stop", () => {
     expect(system).toContain("SAFETY FLAG: which cable to pull");
   });
 
+  it("tells the model to answer in the technician's language (100x plan move 5)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Respuesta.");
+    await POST(chatReq({ message: "¿cómo reinicio la falla del variador?", sourceDocIds: [DOC_A] }), params);
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const sentBody = JSON.parse(String(init.body)) as { messages: Array<{ role: string; content: string }> };
+    const system = sentBody.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain("Answer in the language the technician wrote in");
+  });
+
   it("does not stop an ordinary maintenance question", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     const res = await POST(
