@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksForDocumentedValue } from "./documented-value-question";
+import { asksAboutThisEquipment, asksForDocumentedValue } from "./documented-value-question";
 
 describe("#4004 asksForDocumentedValue", () => {
   it.each([
@@ -51,4 +51,45 @@ describe("#4004 asksForDocumentedValue", () => {
     "why would I lower the carrier frequency",
     "",
   ])("not a documented-value question: %s", (q) => expect(asksForDocumentedValue(q)).toBe(false));
+});
+
+// #4068 (owner decision 2026-09-27): a machine-bound notebook whose search found
+// nothing citable declines honestly for a question about THIS equipment — but a
+// teaching question keeps answering (#4010 over-block guard).
+describe("#4068 asksAboutThisEquipment", () => {
+  it.each([
+    // The Answer Radar seeds, verbatim.
+    [
+      "An Allen-Bradley SLC 5/03 is on a DH-485 network. A technician wants to replace the existing protocol-aware interface with a USR-N540 transparent RS-485-to-Ethernet converter. After the swap the PLC stops communicating. Why does this happen and what should be checked first?",
+      "SLC 5/03",
+    ],
+    [
+      "An AUMA AC 01.2 actuator controller lost power during a firmware update and is now stuck in bootloader mode. How do I recover it?",
+      "AC 01.2",
+    ],
+    ["the drive trips on overcurrent every morning, what should I check", "PowerFlex 525"],
+    ["how do I reset the pass code on the hoist", "Lodestar"],
+    ["it stopped communicating after we replaced the module", "PLX32"],
+    ["why does my GS10 fault when the conveyor starts", "GS10"],
+    ["how do I connect this indicator to the PLC over Modbus TCP", "BX11-EN"],
+  ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
+
+  it.each([
+    // Teaching questions — must never get "upload the manual".
+    ["how does a VFD work", "PowerFlex 525"],
+    ["how does this drive work", "PowerFlex 525"],
+    ["what is DH-485", "SLC 5/03"],
+    ["what does PNP mean", "GS10"],
+    ["what's the difference between RS-485 and RS-232", "PLX32"],
+    ["explain how Modbus TCP works", "PLX32"],
+    ["why do VFDs trip on overcurrent in general", "GS10"],
+    ["what is a watchdog timer", "SLC 5/03"],
+    ["what is an actuator used for", "AC 01.2"],
+    ["Why does a VFD trip on overload?", "PowerFlex 525"],
+    ["why do VFDs trip on overvoltage during decel", "GS10"],
+  ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
+
+  it("an empty question is not about anything", () => {
+    expect(asksAboutThisEquipment("   ", "GS10")).toBe(false);
+  });
 });

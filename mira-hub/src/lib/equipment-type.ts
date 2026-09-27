@@ -30,6 +30,7 @@ const MODEL_HINTS: Hint[] = [
   { test: /\bcompactlogix\b|\bcontrollogix\b|\bmicrologix\b|\bflexlogix\b|\bsoftlogix\b/i, type: "PLCs" },
   { test: /\bmicro8[0-9]{2}\b|\bmicro1400\b|\bmicro820\b|\bmicro850\b|\bmicro870\b/i, type: "PLCs" },
   { test: /\bplc-?\d/i, type: "PLCs" },
+  { test: /\bslc[ -]?500\b|\bslc[ -]?5\/0?[1-5]\b/i, type: "PLCs" }, // Allen-Bradley SLC 500 (#4068)
   { test: /\bs7-?\d{3,4}\b/i, type: "PLCs" },
   { test: /\bdo-?more\b|\bproductivity\d{3,4}\b|\bclick\b|\bdl\d{2,3}\b/i, type: "PLCs" },
   { test: /\bfx[1-9][a-z]?\b|\bq\d{2}\b|\bl-?series\b/i, type: "PLCs" }, // Mitsubishi

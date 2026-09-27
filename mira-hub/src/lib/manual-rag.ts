@@ -55,6 +55,12 @@ export interface ManualChunk {
   chunkIndex?: number | null;
   title: string;
   rank: number;
+  /**
+   * #4068 — set only on hits from the same-manufacturer fallback: the bound
+   * model had no manual pages, so these come from a sibling model of the same
+   * equipment family. The route records it and labels the source honestly.
+   */
+  retrievalScope?: "vendor_fallback";
   verified?: boolean;
 }
 
@@ -470,7 +476,27 @@ export async function retrieveManualChunks(
     return [];
   };
 
-  const main = await firstNonEmpty(q);
+  let main = await firstNonEmpty(q);
+
+  // #4068 (owner decision 2026-09-27, "both"): an identity-bound model with no
+  // manual pages of its own may fall back to the SAME manufacturer — but only
+  // within the SAME, classified equipment family, judged strictly on each hit's
+  // own model/title/URL (no manufacturer default, and "Other" never passes).
+  // That keeps #3966 closed: a TP700 HMI still never reaches a SINAMICS V20
+  // (VFD) chunk, and an unclassified bound model gets no fallback at all. Hits
+  // are marked so the route can record the widened scope and cite the sibling
+  // model under its real name. If this is empty too, the route's honest
+  // decline (Gate G) handles the turn.
+  if (main.length === 0 && identityBound && model && mfr && assetType && assetType !== "Other") {
+    const vendorHits = await runBm25Query(client, tenantId, q, topK, mfr, null);
+    main = vendorHits
+      .filter(
+        (c) =>
+          inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
+          assetType,
+      )
+      .map((c) => ({ ...c, retrievalScope: "vendor_fallback" as const }));
+  }
 
   const codes = extractFaultCodes(q);
   if (codes.length === 0) return main;

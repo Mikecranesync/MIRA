@@ -480,14 +480,44 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(rec.answerText).toContain("won't guess");
   });
 
-  it("2e. #4004 control: identity-bound + empty retrieval + a CONCEPTUAL question still answers (general lane)", async () => {
+  it("2e. #4004/#4068 control: identity-bound + empty retrieval + a CONCEPTUAL question still answers (general lane)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
-    const fetchMock = vi.fn(async () => providerStream("Check the power supply and the boot log first."));
+    const fetchMock = vi.fn(async () => providerStream("A resistive touch panel senses pressure between two layers."));
     vi.stubGlobal("fetch", fetchMock);
-    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    const fr = await frames(await POST(chatReq({ message: "how does a touch panel work", mode: "general" }), params));
     expect(fetchMock).toHaveBeenCalled();
     expect(fr.find((f) => f.kind === "status")?.status).toBe("answered");
+  });
+
+  it("2h. #4068 (owner decision 2026-09-27): identity-bound + nothing citable + a troubleshooting question → honest decline, no provider call", async () => {
+    // Before #4068 this turn answered from general reasoning with no citation
+    // (it was 2e's old fixture). The owner chose: widen to the same family,
+    // then decline honestly — never an uncited answer about THIS machine.
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Siemens TP700 Comfort manuals");
+    expect(String(status?.message)).toContain("won't guess");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.reason).toBe("identity_bound_no_evidence");
+  });
+
+  it("2i. #4068: a hazard turn is never swallowed by the new decline (owner decision: flag, never block)", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("De-energize and apply lockout/tagout before opening the panel."));
+    vi.stubGlobal("fetch", fetchMock);
+    await (
+      await POST(chatReq({ message: "the panel keeps rebooting, I need to work on the live panel to check it, what should I check", mode: "general" }), params)
+    ).text();
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("2f. #4004 control: identity-bound WITH scoped chunks + documented-value question → grounded, not abstained", async () => {

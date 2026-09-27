@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
+import { inferEquipmentType } from "../equipment-type";
 import {
   appendManualContext,
   boundBm25Query,
@@ -298,10 +299,14 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
       },
     );
     expect(out).toEqual([]);
-    // Only the model-scoped pass ran (AND + OR). No manufacturer-only query.
-    expect(calls.length).toBe(2);
-    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
-    expect(calls.every((c) => c.params.includes("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])"))).toBe(true);
+    // The model-scoped pass ran first (AND + OR). #4068 (owner decision
+    // 2026-09-27) then allows ONE same-manufacturer fallback query — and the
+    // #3966 guarantee still holds: the V20 (VFD) chunk it returns is dropped
+    // for an HMI, so nothing reaches the answer.
+    expect(calls.length).toBe(3);
+    expect(calls.slice(0, 2).every((c) => c.sql.includes("model_number ~*"))).toBe(true);
+    expect(calls.slice(0, 2).every((c) => c.params.includes("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])"))).toBe(true);
+    expect(calls[2].sql.includes("model_number ~*")).toBe(false);
   });
 
   it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
@@ -1036,5 +1041,71 @@ describe("buildDocScopedSystemPrompt", () => {
     expect(prompt).toContain("ONLY the documentation provided");
     expect(prompt).toContain("[n]");
     expect(prompt.toLowerCase()).toContain("safety");
+  });
+});
+
+
+describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
+  const compactLogixDh485 = () =>
+    row({
+      manufacturer: "Rockwell Automation",
+      model_number: "CompactLogix",
+      title: "Logix 5000 Controllers on DH-485 Networks",
+      source_url: "https://oem.example/logix-dh485.pdf",
+      content: "The DH-485 protocol uses RS-485 half-duplex. You must use a 1761-NET-AIC converter.",
+    });
+  const powerflexDrive = () =>
+    row({
+      manufacturer: "Rockwell Automation",
+      model_number: "PowerFlex 70",
+      title: "PowerFlex 70 User Manual",
+      source_url: "https://oem.example/pf70.pdf",
+      content: "Comm loss action selects the drive's response to a loss of communication.",
+    });
+  const unclassified = () =>
+    row({
+      manufacturer: "Rockwell Automation",
+      model_number: "1756 UM001  EN P",
+      title: "User Manual",
+      source_url: "https://oem.example/um001.pdf",
+      content: "Configure the serial port for DH-485.",
+    });
+
+  it("an SLC 5/03 with no pages of its own gets only same-family (PLC) pages, marked as fallback", async () => {
+    // Model scope AND + OR empty, then the vendor query returns a PLC page, a
+    // drive page and an unclassified page.
+    const { client, calls } = makeClient([[], [], [compactLogixDh485(), powerflexDrive(), unclassified()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the converter swap", {
+      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    expect(out[0].retrievalScope).toBe("vendor_fallback");
+    expect(calls).toHaveLength(3);
+    expect(calls[2].sql.includes("model_number ~*")).toBe(false);
+  });
+
+  it("an unclassified bound model gets NO fallback query at all", async () => {
+    const { client, calls } = makeClient([[], [], [compactLogixDh485()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
+      manufacturer: "Allen-Bradley", model: "XR-9000", equipmentType: null, allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("a model-scope hit never widens and is not marked as fallback", async () => {
+    const own = row({ manufacturer: "Rockwell Automation", model_number: "SLC 5/03", title: "SLC 500 Manual", source_url: "https://oem.example/slc.pdf" });
+    const { client, calls } = makeClient([[own]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it fault", {
+      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].retrievalScope).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("classifies the SLC 500 family as PLCs so the fallback can run for it", () => {
+    expect(inferEquipmentType({ modelNumber: "SLC 5/03" })).toBe("PLCs");
+    expect(inferEquipmentType({ modelNumber: "SLC 500" })).toBe("PLCs");
   });
 });

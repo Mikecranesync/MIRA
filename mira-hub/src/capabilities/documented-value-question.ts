@@ -61,3 +61,39 @@ export function asksForDocumentedValue(question: string, boundModel?: string | n
   if (WEAK_DEFINITIONAL.test(q) && !bound) return false;
   return DOCUMENTED_VALUE.test(q) && ASKS_FOR_VALUE.test(q);
 }
+
+// #4068 — "how does <anything> work" is teaching, bound or not: declining it
+// with "upload the manual" is the over-block the #4010 review rejected.
+const HOW_IT_WORKS = /\bhow\s+(?:does|do)\b[^?.!]{0,60}?\bwork(?:s|ing)?\b/i;
+
+// "why does a VFD trip…", "why do VFDs…", "when would an encoder…" — a question
+// about a CLASS of equipment (indefinite article or bare plural), not this one.
+// Only teaching when nothing binds it to the notebook's machine.
+const GENERIC_CLASS_WHY =
+  /\b(?:why|when|how\s+often)\s+(?:does|do|would|can|might|will|is|are)\s+(?:an?\s+[\w-]+|[\w-]+s)\b/i;
+
+// Troubleshooting language: the technician is working a problem on real equipment.
+const TROUBLESHOOTING =
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|recover|reset|replace|replaced|swap(?:ped)?|install|configure|set\s+up|connect|wire|troubleshoot|check\s+first|should\s+I\s+check|pass\s?code|password|unlock|register|registers|firmware|bootloader)\b/i;
+
+/**
+ * #4068 (owner decision 2026-09-27) — is this a question about THIS equipment
+ * (a problem to work, a procedure to follow), as opposed to a teaching question?
+ *
+ * Used for exactly one decision: when a notebook is bound to a model and the
+ * OEM search (model scope, then same-family fallback) found nothing citable,
+ * such a question gets an honest decline instead of an uncited general answer.
+ * Teaching questions ("how does a VFD work", "what does PNP mean") never match
+ * — they keep the general lane, exactly as before.
+ */
+export function asksAboutThisEquipment(question: string, boundModel?: string | null): boolean {
+  const q = question.trim();
+  if (!q) return false;
+  const bound = BINDING.test(q) || namesModel(q, boundModel);
+  const teaching =
+    STRONG_DEFINITIONAL.test(q) ||
+    HOW_IT_WORKS.test(q) ||
+    (!bound && (WEAK_DEFINITIONAL.test(q) || GENERIC_CLASS_WHY.test(q)));
+  if (teaching) return false;
+  return bound || TROUBLESHOOTING.test(q) || asksForDocumentedValue(q, boundModel);
+}
