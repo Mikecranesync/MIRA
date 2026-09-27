@@ -13,6 +13,8 @@ import {
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { englishSearchQuery } from "@/capabilities/answer-language";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 
 export const dynamic = "force-dynamic";
 
@@ -149,11 +151,13 @@ export async function POST(req: Request) {
   // it never replaces the answer.
   const safetyTrigger = matchSafetyStop(question);
 
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const searchQuery = await englishSearchQuery(question, translateForSearch);
   // Pull the top-K chunks.
   let chunks: ManualChunk[] = [];
   try {
     chunks = await withTenantContext(quickstartTenantId(), async (client) =>
-      retrieveManualChunks(client, quickstartTenantId(), question, {
+      retrieveManualChunks(client, quickstartTenantId(), searchQuery, {
         manufacturer,
         topK: 6,
       }),

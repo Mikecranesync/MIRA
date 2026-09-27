@@ -85,7 +85,8 @@ import {
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
-import { withAnswerLanguage } from "@/capabilities/answer-language";
+import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -1641,7 +1642,8 @@ async function handleChatTurn(
     })(),
   ]);
 
-  const retrievalQuery = buildRetrievalQuery(message, history);
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
   const retrievalSpan = tracer.startSpan("retrieval.execute", undefined, rootCtx);
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
