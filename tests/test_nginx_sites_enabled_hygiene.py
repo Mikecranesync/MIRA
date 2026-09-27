@@ -32,7 +32,20 @@ _DEPLOY = _ROOT / ".github" / "workflows" / "deploy-vps.yml"
 # Live vhosts read off the prod box 2026-08-10. Two are regular files, not
 # symlinks — that is the whole reason the guard cannot key on symlink-ness.
 _REAL_VHOSTS_NOT_SYMLINKS = ("cmms.factorylm.com", "factorylm-landing")
-_REAL_VHOST_SYMLINKS = ("factorylm", "factorylm-paths", "mira", "plane", "preview", "remoteme", "updates.factorylm.com")
+_REAL_VHOST_SYMLINKS = (
+    "factorylm",
+    "factorylm-paths",
+    "mira",
+    "plane",
+    "preview",
+    "remoteme",
+    "updates.factorylm.com",
+)
+# The OVH prod host (40.160.141.61) since the #3800 migration. Read off the box
+# 2026-09-27 (hygiene run 36325006196): four symlinks and no backups at all.
+# staging-factorylm is installed by deploy-nginx-stg.yml and serves
+# app-staging/staging.factorylm.com.
+_OVH_REAL_VHOST_SYMLINKS = ("recovery-ovh", "staging-factorylm", "updates.factorylm.com")
 
 _KNOWN_BAKS = (
     "factorylm-landing.bak.2026-05-13-csp",
@@ -85,7 +98,7 @@ def test_allowlists_match_between_the_two_workflows(hygiene_text, deploy_text):
 
 def test_every_real_vhost_is_allowlisted(hygiene_text):
     allow = _allow_list(hygiene_text)
-    for name in _REAL_VHOSTS_NOT_SYMLINKS + _REAL_VHOST_SYMLINKS:
+    for name in _REAL_VHOSTS_NOT_SYMLINKS + _REAL_VHOST_SYMLINKS + _OVH_REAL_VHOST_SYMLINKS:
         assert name in allow, f"{name} is a LIVE vhost and would be flagged as an offender"
 
 
@@ -146,9 +159,22 @@ def test_fix_captures_a_baseline_before_moving(hygiene_text):
     assert baseline_at < first_mv, "baseline must be captured before any file moves"
 
 
-def test_symlinks_are_never_moved(hygiene_text):
-    """Every symlink in the directory points into sites-available and is real."""
+def test_symlinks_are_moved_only_when_named_in_disable(hygiene_text):
+    """Every symlink points into sites-available and is a real vhost. Only a
+    human naming it in `disable` may retire one (mira-preview, #3641)."""
     assert 'if [ -L "$SE/$b" ]; then' in hygiene_text
+    branch = hygiene_text[hygiene_text.index('if [ -L "$SE/$b" ]; then') :]
+    branch = branch[: branch.index('mv "$SE/$b"')]
+    assert 'case " $DISABLE " in' in branch
+    assert "continue" in branch, "an unnamed symlink must be skipped"
+
+
+def test_disable_names_are_validated_before_reaching_the_root_shell(hygiene_text):
+    """`disable` is interpolated into `sudo env ... bash -s` on the prod box."""
+    guard = "grep -qE '^[A-Za-z0-9._ -]*$'"
+    assert hygiene_text.count(guard) >= 2, "validate in the guard AND right before ssh"
+    ssh_at = hygiene_text.index("DISABLE='${DISABLE}'")
+    assert hygiene_text.rindex(guard, 0, ssh_at) < ssh_at
 
 
 # --- the probe set matches reality -------------------------------------------
@@ -178,7 +204,7 @@ def test_probe_pins_to_loopback(hygiene_text):
     assert "127.0.0.1" in hygiene_text
 
 
-# --- the deploy guard fails on new offenders, warns on the known backlog ------
+# --- the deploy guard fails on any offender -----------------------------------
 
 
 def test_deploy_guard_fails_on_an_unknown_offender(deploy_text):
@@ -187,16 +213,15 @@ def test_deploy_guard_fails_on_an_unknown_offender(deploy_text):
     assert "exit 1" in guard[:600]
 
 
-def test_deploy_guard_only_warns_on_the_pre_existing_backups(deploy_text):
-    """Hard-failing on state that already exists would break every deploy."""
-    assert "KNOWN_PENDING" in deploy_text
+def test_deploy_guard_is_strict_with_no_backlog(deploy_text):
+    """The 10 backups KNOWN_PENDING tolerated lived on the retired DigitalOcean
+    droplet; the OVH host has none (#3641). A tolerated backlog would now only
+    hide a reintroduced backup, so the guard has no warn-only branch."""
+    start = deploy_text.index("nginx sites-enabled hygiene")
+    step = deploy_text[start : deploy_text.index("- name: Notify failure", start)]
+    assert 'KNOWN_PENDING="' not in step
     for bak in _KNOWN_BAKS:
-        assert bak in deploy_text, f"{bak} missing from KNOWN_PENDING — would fail the next deploy"
-
-
-def test_deploy_guard_tells_you_to_delete_known_pending_once_clean(deploy_text):
-    """The backlog must retire itself visibly rather than becoming permanent."""
-    assert "DELETE KNOWN_PENDING" in deploy_text
+        assert bak not in step
 
 
 def test_deploy_guard_is_read_only(deploy_text):

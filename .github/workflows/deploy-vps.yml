@@ -787,31 +787,23 @@ jobs:
         # (`cmms.factorylm.com` and `factorylm-landing` are regular files and
         # are live). Rationale in full: nginx-sites-enabled-hygiene.yml.
         #
-        # KNOWN_PENDING is the 10 backups that already existed when this guard
-        # shipped (verified on prod 2026-08-10). They warn; anything NOT in that
-        # list FAILS the deploy, so the hole is closed for new occurrences today
-        # without breaking deploys on pre-existing state. Run
-        # nginx-sites-enabled-hygiene.yml (mode=fix) to clear them, then DELETE
-        # KNOWN_PENDING here — the guard then becomes strict on its own.
+        # Strict: anything not in ALLOW fails the deploy. The warn-only
+        # KNOWN_PENDING backlog was removed 2026-09-27 (#3641) — its 10 backups
+        # lived on the retired DigitalOcean droplet and do not exist on OVH.
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
             ubuntu@40.160.141.61 'sudo bash -s' << 'ENDSSH'
           set -uo pipefail
           SE=/etc/nginx/sites-enabled
-          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview recovery-ovh remoteme stg-factorylm updates.factorylm.com"
-          KNOWN_PENDING="factorylm-landing.bak.2026-05-13-csp factorylm-landing.bak.20260509-203650 mira.bak.20260426-082325 mira.bak.20260506-094431 mira.bak.20260509-121505 mira.bak.before-scan-restore-20260518-215310 mira.bak.cra-20260504-024235 mira.bak.inbox mira.bak.phase1 mira.bak.scan-deploy-20260504-224027"
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview recovery-ovh remoteme staging-factorylm stg-factorylm updates.factorylm.com"
 
-          known=""; unknown=""
+          unknown=""
           for f in "$SE"/*; do
             [ -e "$f" ] || continue
             b=$(basename "$f")
             case " $ALLOW " in *" $b "*) continue ;; esac
-            case " $KNOWN_PENDING " in
-              *" $b "*) known="$known $b" ;;
-              *)        unknown="$unknown $b" ;;
-            esac
+            unknown="$unknown $b"
           done
-          known=$(echo "$known" | xargs || true)
           unknown=$(echo "$unknown" | xargs || true)
 
           if [ -n "$unknown" ]; then
@@ -822,12 +814,7 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$known" ]; then
-            echo "::warning::$(echo "$known" | wc -w) known pre-existing backup(s) still live in $SE (#3173): $known"
-            echo "::warning::Clear with nginx-sites-enabled-hygiene.yml (mode=fix), then drop KNOWN_PENDING from deploy-vps.yml."
-          else
-            echo "✅ $SE is clean — #3173 is done; DELETE KNOWN_PENDING from deploy-vps.yml to make this guard strict."
-          fi
+          echo "✅ $SE holds only expected vhosts (#3173, strict)."
           ENDSSH
 
       - name: Notify failure
