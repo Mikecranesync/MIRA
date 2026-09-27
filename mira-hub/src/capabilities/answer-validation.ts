@@ -897,9 +897,19 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
+  /** Plant memory (migration 095): the text of the recorded fixes the answer
+   *  CITED. A specific setting/rating in the answer is then allowed only when
+   *  every number in it appears in this recorded text — repair history the
+   *  technician wrote down, never a value the model invented or an OEM spec. */
+  recordedFixText?: string;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
+  const fromRecordedFix = (matched: string): boolean => {
+    if (!opts.recordedFixText) return false;
+    const nums = matched.match(/\d+(?:[.,]\d+)?/g);
+    return Boolean(nums && nums.length > 0 && nums.every((n) => opts.recordedFixText!.includes(n)));
+  };
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -1005,7 +1015,7 @@ export function validateAnswer(opts: {
   }
 
   const es = EXACT_SETTING_RE.exec(scanText);
-  if (es) {
+  if (es && !fromRecordedFix(es[0])) {
     return {
       ok: false,
       kind: "unsupported_specificity",
@@ -1017,7 +1027,7 @@ export function validateAnswer(opts: {
 
   if (!evidenceSufficient) {
     const er = unsupportedExactRating(scanText);
-    if (er) {
+    if (er && !fromRecordedFix(er)) {
       return {
         ok: false,
         kind: "unsupported_specificity",
