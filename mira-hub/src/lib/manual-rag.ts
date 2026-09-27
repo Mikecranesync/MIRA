@@ -416,9 +416,15 @@ export async function retrieveManualChunks(
   if (resolvedCaller?.ambiguous) return [];
   // Only known tokens are shortened. Unknown caller models retain their exact,
   // narrower value; a conflicting identity never widens to vendor BM25.
+  // #4031 — a question that names two different models ("wire RS-485 between a
+  // Micro820 and a GS10") is about both; scoping to whichever pattern matched
+  // first filtered the other device's manual out and the answer refused. Only
+  // the query-extracted path widens; an identity-bound caller still refuses above.
   const model = callerModel
     ? resolvedCaller?.model ?? callerModel
-    : extractModelNumber(q); // #2178 — null for most queries
+    : resolveModelFromObservationText(q).ambiguous
+      ? null
+      : extractModelNumber(q); // #2178 — null for most queries
   const identityBound = callerModel !== null;
 
   // Walk the scopes most-specific-first, stopping at the first non-empty result.
@@ -490,7 +496,10 @@ export const QUICKSTART_REFUSAL_MARK =
 /** True when an answer is the quickstart cite-or-refuse refusal. */
 export function isRefusalAnswer(answer: string | null | undefined): boolean {
   if (!answer) return false;
-  return answer.toLowerCase().includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
+  // Models emit either apostrophe; "don’t" (U+2019) shipped citation cards
+  // under a refusal on staging 2026-09-27 (#4032).
+  const normalized = answer.replace(/[\u2018\u2019]/g, "'").toLowerCase();
+  return normalized.includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
 
 async function runBm25Query(
