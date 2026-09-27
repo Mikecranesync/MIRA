@@ -58,6 +58,7 @@ import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
 import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
+import { liveTurnsSignature, mapLiveAnswersToServerIds, unmappedLiveAnswers } from "../unified/live-turn-ids";
 import {
   citationIndex,
   contextFor,
@@ -587,6 +588,42 @@ function UnifiedChatForNotebook({
     return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null);
   }, [baseThread, settledManualSearches, follow?.key, follow?.status]);
 
+  // #4061: the answer just received has no server turn id (`live-<i>-a`), so
+  // it could not offer "Record what fixed it" until the notebook was reopened.
+  // Once the stream is idle, re-read the persisted turns (as the Hub does) and
+  // pair each live answer with its row. The mapping is only honoured for the
+  // exact live list it was built from; anything unpaired keeps no button.
+  const liveSig = liveTurnsSignature(meta.notebookId, attachmentThreadId, liveTurns);
+  const [liveIds, setLiveIds] = useState<{ sig: string; ids: ReadonlyMap<string, string> }>({ sig: "", ids: new Map() });
+  const currentLiveIds = liveIds.sig === liveSig ? liveIds.ids : null;
+  useEffect(() => {
+    const notebookId = meta.notebookId;
+    if (busy || !notebookId || unmappedLiveAnswers(liveTurns, currentLiveIds ?? new Map()).length === 0) return;
+    let cancelled = false;
+    const rendered = new Set(turns.map((t) => t.id.toLowerCase()));
+    getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? null })
+      .then((detail) => {
+        if (cancelled) return;
+        const ids = mapLiveAnswersToServerIds(liveTurns, detail.turns, {
+          alreadyRendered: rendered,
+          threadId: attachmentThreadId ?? null,
+        });
+        setLiveIds({ sig: liveSig, ids });
+      })
+      // No id means no Record button — the safe default; the notebook reopen
+      // path still offers it from the persisted row.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // `currentLiveIds` is derived from `liveSig`; re-running on it would refetch
+    // after every successful mapping.
+  }, [busy, liveSig, meta.notebookId, attachmentThreadId]);
+  const recordTurnIdFor = useCallback(
+    (turnId: string) => serverTurnIdFor(turnId) ?? currentLiveIds?.get(turnId) ?? null,
+    [currentLiveIds],
+  );
+
   useEffect(() => {
     dispatch({
       type: "hydrate",
@@ -962,8 +999,8 @@ function UnifiedChatForNotebook({
   const onRecordFix = useCallback(async (turnId: string) => {
     const symptom = fixSymptomFor(state.thread.turns, turnId);
     // Filed under the machine THIS answer was served for (Codex #4058 post-cap
-    // F1); a live answer has no server turn yet and offers no button.
-    const sourceTurnId = serverTurnIdFor(turnId);
+    // F1); a live answer resolves through its re-read persisted row (#4061).
+    const sourceTurnId = recordTurnIdFor(turnId);
     if (!meta.notebookId || !symptom || !sourceTurnId) return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
@@ -980,7 +1017,7 @@ function UnifiedChatForNotebook({
       if (refusal) fixRequestIds.settle(turnId, fix);
       window.alert(refusal ?? "Could not save the fix. Check the connection and try again.");
     }
-  }, [fixRequestIds, meta.notebookId, state.thread.turns]);
+  }, [fixRequestIds, meta.notebookId, recordTurnIdFor, state.thread.turns]);
 
   // Keep a photo from this conversation as one of the machine's sources; the
   // re-read stores the new scope so the next question can cite it.
@@ -1011,7 +1048,7 @@ function UnifiedChatForNotebook({
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
     ...(meta.notebookId
-      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => recordTurnIdFor(turnId) !== null }
       : {}),
     ...(meta.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope: async () => await refreshPromotedScope() === true, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
