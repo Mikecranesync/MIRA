@@ -27,6 +27,8 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncio
+
 import pytest
 
 sys.path.insert(0, "mira-bots")
@@ -134,21 +136,25 @@ async def test_static_label_when_live_tags_preamble_present(supervisor):
 
 
 @pytest.mark.asyncio
-async def test_safety_still_wins_over_pack(supervisor):
-    """A message that BOTH names a drive with a pack AND trips the safety
-    short-circuit must return the safety STOP — never a pack answer. This
-    proves the fast-path is placed AFTER the safety return, never before it."""
+async def test_safety_flags_and_still_answers(supervisor):
+    """Owner decision 2026-09-27 ("no answer blocking, just safety flags"): a
+    message that trips the safety classifier is FLAGGED, not stopped. The
+    hazard banner leads the reply, the supervisor alert still fires, and the
+    turn continues to a real answer instead of the old fixed STOP text."""
+    alert = AsyncMock(return_value=True)
     with (
         patch("shared.engine.route_intent", new=_mock_route_intent("safety_concern")),
-        patch("shared.engine.push_safety_alert", new=AsyncMock(return_value=True)),
+        patch("shared.engine.push_safety_alert", new=alert),
     ):
         reply = await supervisor.process("chat-safety", "the gs10 is arc flashing what do I do")
 
-    assert "STOP" in reply
-    assert "de-energize" in reply.lower()
-    # Must NOT be the pack answer — no fault-card content leaked through.
-    assert "CE10" not in reply
-    assert "[Source:" not in reply
+    assert reply.startswith("\u26a0\ufe0f Possible active incident."), reply[:120]
+    assert "isolate power" in reply.lower()
+    assert "STOP \u2014 describe the hazard" not in reply
+    banner, _, rest = reply.partition("\n\n")
+    assert rest.strip(), "the answer must follow the banner"
+    await asyncio.sleep(0)
+    alert.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
