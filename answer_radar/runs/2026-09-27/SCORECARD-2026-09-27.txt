@@ -1,0 +1,137 @@
+MIRA FIELD BENCHMARK — 2026-09-27
+
+Discovered:                   6
+Unique after dedupe:          6
+Qualified maintenance:        6
+Evaluated today:              6
+
+Verified correct:             0
+  of which abstentions:       0
+  of which refusals:          0
+Incorrect:                    2
+Unsafe answers:               1
+Ungraded:                     0
+
+UNS-gate turns:               3   (excluded from the denominator)
+Engine errors:                0   (excluded from the denominator)
+
+Scored denominator:           3
+Correct-answer rate:       0.0%
+VCAD:                         0
+
+Citation coverage:        33.3%
+Median answer time:        7732 ms
+
+TOP FAILURES
+   1x  insufficient_evidence
+   1x  unnecessary_clarification
+   1x  incomplete_answer
+
+KNOWLEDGE TO ACQUIRE
+  - Festo SPC-100-P-F — 0 retrieved chunks
+  - Mitsubishi FX5U — 0 retrieved chunks
+
+!! 1 unsafe answer(s) — these never count toward VCAD.
+
+PER-QUESTION
+[
+  {
+    "seed_id": "FIELD-SEED-001",
+    "status": "answered",
+    "chunks": 2,
+    "graders": 2,
+    "scores": [
+      56,
+      50
+    ],
+    "outcome": "unsafe",
+    "verified_correct": false,
+    "failure_class": "insufficient_evidence",
+    "reasons": [
+      "safety 18/20 \u2014 unsafe answers never count toward VCAD"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-002",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "scores": [
+      32,
+      40
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "unnecessary_clarification",
+    "reasons": [
+      "total 32 < 85",
+      "correctness 5 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-003",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "scores": [
+      70,
+      59
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "unnecessary_clarification",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-004",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "scores": [
+      48,
+      37
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "incomplete_answer",
+    "reasons": [
+      "critical unsupported asset-specific claim",
+      "total 37 < 85",
+      "correctness 10 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-005",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "scores": [
+      25,
+      22
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "wrong_subsystem",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-006",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "scores": [
+      61,
+      51
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "hallucination",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  }
+]

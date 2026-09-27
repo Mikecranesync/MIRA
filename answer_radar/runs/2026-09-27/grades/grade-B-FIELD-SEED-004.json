@@ -1,0 +1,36 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "grader_role": "adversary",
+  "correctness": 10,
+  "evidence": 2,
+  "safety": 20,
+  "actionability": 3,
+  "uncertainty": 2,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_answer",
+  "factual_errors": [
+    {
+      "claim": "add a Modbus TCP Client (type `MELSEC-NET`)",
+      "why_wrong": "MELSEC-NET is Mitsubishi's own proprietary PLC-to-PLC network protocol family (MELSECNET/H, MELSECNET/10) — it is not a 'type' of Modbus TCP client and has nothing to do with configuring Modbus/TCP communication on an FX5U. This conflates two distinct protocols and would send a technician looking in the wrong GX Works3 configuration screen entirely.",
+      "severity": "critical"
+    },
+    {
+      "claim": "The answer provides the register addresses that hold the weight value",
+      "why_wrong": "The response is truncated mid-table exactly at the point where it should list the actual register addresses (net/tare/gross weight) — the core of the technician's question. Nothing is ever provided; the table header appears with zero data rows.",
+      "severity": "critical"
+    },
+    {
+      "claim": "The answer addresses 'what I need to get right about data format'",
+      "why_wrong": "The second half of the question — word-order/endianness (big-endian vs little-endian) compatibility between the FX5U and BX11-EN, which is a documented, commonly-mismatched requirement for this exact integration — is never mentioned anywhere in the answer.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Unit ID (Slave ID) – usually 1 for the BX11-EN",
+      "why_wrong": "Stated as a specific device fact with no citation and zero retrieved chunks to support it, then followed immediately by 'I don't have specific documentation indexed for this' — a confident specific claim contradicted by the honesty disclaimer that follows it.",
+      "severity": "major"
+    }
+  ],
+  "notes": "Independently found a protocol-confusion error the reference notes did not flag: labeling the Modbus TCP client configuration as type 'MELSEC-NET', which is Mitsubishi's separate proprietary PLC network protocol, not a Modbus/TCP client type — this would misdirect a technician in GX Works3. Beyond that, the answer is a generic Modbus/TCP network-setup checklist (IP addressing, ping test, GX Works3 navigation) applicable to any Modbus device, delivered with zero retrieved chunks and several specific but unsupported claims (Unit ID usually 1, MELSEC-NET). It then truncates mid-table at the exact moment it must answer the two things actually asked — which registers hold weight, and the data-format/word-order requirement — leaving both completely unanswered. The KB-gap admission at the end contradicts the confident specifics stated earlier in the same answer. FAILS: total 37 << 85, correctness 10 < 34, and contains a critical unsupported/incorrect protocol claim."
+}

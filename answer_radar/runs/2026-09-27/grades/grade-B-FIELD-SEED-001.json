@@ -1,0 +1,31 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "grader_role": "adversary",
+  "correctness": 22,
+  "evidence": 2,
+  "safety": 18,
+  "actionability": 5,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "[Source: Rockwell Automation CompactLogix — Communication]",
+      "why_wrong": "The question is about an SLC 5/03 (a different, older Rockwell product line, PLC-5/SLC-500 family) on DH-485, not CompactLogix. Both retrieved excerpts are generic (one about CompactLogix's own DH-485 caveat, one an unrelated I/O parameter table) and neither substantiates the specific claim 'use a 1761-NET-AIC.' Citing a different product's manual as the source for a specific fix is not evidence — it is a wrong-product citation dressed as grounding.",
+      "severity": "major"
+    },
+    {
+      "claim": "First check the converter's mode",
+      "why_wrong": "Presented as an actionable first troubleshooting step, but no configuration mode on a truly transparent RS-485-to-Ethernet converter can make it protocol-aware for DH-485 (no token-passing arbitration, no TX-EN control line, no half-duplex turnaround handling). This implies a config fix may exist when the real fix is hardware replacement (1747-AIC / 1761-NET-AIC), and buries that correct answer as an 'or' alternative rather than stating it as the primary and only real fix.",
+      "severity": "major"
+    },
+    {
+      "claim": "(implicit) no mention of voltage risk",
+      "why_wrong": "DH-485's RJ45 port uses 0-5V RS-485 levels, not Ethernet voltages; blindly wiring a converter meant for a different signaling scheme risks damaging the port/processor. This equipment-damage risk is omitted entirely, which matters even though safety_class is 'none' because it is a real hardware-protection consideration directly relevant to 'swapping a converter'.",
+      "severity": "minor"
+    }
+  ],
+  "notes": "Core diagnosis (transparent converter cannot speak DH-485's token-passing protocol) is directionally correct, and the suggested fix (1761-NET-AIC) is a genuinely correct part of the ground truth. But the answer is delivered with a citation to the wrong product line (CompactLogix, not SLC 5/03) atop only 2 generic, non-specific retrieved excerpts, and the real fix is offered as a conditional afterthought behind a vague 'check the mode' step that has no actual remedy for a transparent device. Omits token-passing/TX-EN/half-duplex architecture and the 0-5V vs Ethernet voltage damage risk entirely. Confident, specific technical guidance (which converter, what to use instead) resting on zero real supporting evidence and one misattributed citation. FAILS: total 50 << 85, correctness 22 < 34."
+}

@@ -1,0 +1,31 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "grader_role": "verifier",
+  "correctness": 2,
+  "evidence": 2,
+  "safety": 20,
+  "actionability": 0,
+  "uncertainty": 1,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "wrong_subsystem",
+  "factual_errors": [
+    {
+      "claim": "Before I can give you a confident diagnosis, could you share one more detail — what exact fault code, alarm number, or behaviour is the equipment showing right now? ... 1. Fault/alarm code displayed (e.g. F001, AL-14, OC) ... 3. Sensor reading (e.g. pressure at 120 PSI, temp at 90°C)",
+      "why_wrong": "The question is about an intermittent Modbus/TCP communication loss between a ProSoft PLX32 gateway and a Yokogawa CENTUM DCS, where ModScan can still poll the same registers successfully — a networking/protocol diagnostic problem, not a fault-code or sensor-reading diagnosis. This is a templated response for an entirely different problem class (a drive/motor/process fault), and does not engage with the actual question (connection handling, gateway behavior, why a direct poller succeeds when the gateway fails) at all.",
+      "severity": "critical"
+    },
+    {
+      "claim": "[Source: Rockwell Automation PowerFlex 70]",
+      "why_wrong": "PowerFlex 70 is a Rockwell Automation VFD product line, completely unrelated to a ProSoft Modbus gateway / Yokogawa CENTUM DCS communication question. This is a mismatched/fabricated citation attributing the reply to the wrong manufacturer's document for the wrong equipment class, while the citations array is empty.",
+      "severity": "critical"
+    },
+    {
+      "claim": "(Note: I removed a citation because I haven't established which machine you're working on ... Tell me the make and model — or the asset tag ...)",
+      "why_wrong": "The question already specifies manufacturer=ProSoft, model=PLX32, and names the counterpart system (Yokogawa CENTUM DCS) explicitly. Asking for make/model again is an unnecessary clarification on top of the wrong-subsystem confusion.",
+      "severity": "major"
+    }
+  ],
+  "notes": "This is a severe wrong-subsystem failure: the reply is a generic drive/machine-fault intake template (fault codes like F001/AL-14/OC, sensor readings like PSI/°C) misapplied to a Modbus/TCP gateway communication-loss question, and it is stamped with a completely unrelated VFD-manual citation (PowerFlex 70) despite zero real citations being present. Nothing in the reply engages with connection handling, gateway pooling, timeouts, or any explanation for why a direct Modbus poller (ModScan) succeeds when the gateway intermittently fails — the actual substance of the question. Safety is not compromised (no unsafe instruction), but correctness, evidence, and actionability all collapse. Fails badly on every threshold (total 25<85, correctness 2<34) and carries a critical unsupported/fabricated claim (the mismatched citation)."
+}

@@ -1,0 +1,26 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "grader_role": "verifier",
+  "correctness": 20,
+  "evidence": 3,
+  "safety": 20,
+  "actionability": 2,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_answer",
+  "factual_errors": [
+    {
+      "claim": "(truncation) the answer cuts off mid-table at '3. Identify the weight registers on the BX11-EN | Register (Modbus address) | Description | Data type | Typical scaling | |---------------------------|' and never resumes",
+      "why_wrong": "This is precisely where the technician's core questions ('Which registers hold the weight value, and what do I need to get right about data format?') would be answered. Neither register addresses nor word-order/endianness/data-format guidance is ever provided — the two specific things asked for are entirely unaddressed.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Unit ID (Slave ID) – usually 1 ... Port – 502 (standard Modbus/TCP)",
+      "why_wrong": "Presented as concrete configuration fact with zero retrieved chunks and zero citations. Port 502 as the Modbus/TCP standard port is broadly true and safe to state generically, but 'Unit ID usually 1' for this specific indicator is an unverified guess stated with more confidence than the evidence (none) supports.",
+      "severity": "major"
+    }
+  ],
+  "notes": "Steps 1-2 (network/IP setup, ping test) are generic, plausible Modbus/TCP integration steps that are not specific to this hardware and carry no real risk if wrong. But the answer fails to deliver on the two specific technical questions asked — it stops before ever reaching register addresses or data-format/word-order guidance, which is the entire point of the question. Zero retrieved chunks, zero citations for any of the equipment-specific claims made along the way (unit ID, IP scheme, client/server role). The KB-gap tag at the end is honest about the underlying gap, but arrives after already presenting several unsupported specifics. Fails total (48<85) and correctness (20<34); the dominant defect is the truncation leaving the actual question unanswered, not a false claim."
+}
