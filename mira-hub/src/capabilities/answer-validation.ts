@@ -356,7 +356,9 @@ const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(
  *  hazard action or the energized/no-isolation relation). A warning or
  *  negation in an unrelated clause ("There is risk, but …", "Do not
  *  hesitate: …") never exempts. Detection only, never rewriting. */
-function clauseHazardViolation(text: string): { relId: string; sentence: string; index: number } | null {
+function clauseHazardViolation(
+  text: string,
+): { relId: string; sentence: string; index: number; focus: number } | null {
   let cursor = 0;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     // Offset in `text` of this sentence, so the banner can quote exactly the
@@ -384,7 +386,12 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string;
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
     const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
-    return { relId, sentence, index };
+    // Focus = where the hazardous RELATION sits (e.g. "while the machine is
+    // energized") — the banner quotes around it, so a long sentence can never
+    // spend its quote on harmless context (Codex #4072).
+    const relRe = rel?.re ?? NO_ISOLATION_RELATION;
+    const relAt = new RegExp(relRe.source, relRe.flags.replace("g", "")).exec(sentence);
+    return { relId, sentence, index, focus: index + (relAt?.index ?? 0) };
   }
   return null;
 }
@@ -899,9 +906,15 @@ export function flaggedStepQuote(detail: string, answerText: string, scanIndex?:
   const sentence = oneSentence(at.line.slice(start));
   const whole = stripLead(squash(sentence.replace(/[*`]/g, "")));
   if (whole.length <= 160 || at.index <= start) return finishQuote(whole);
-  // A long run-on sentence: begin AT the flagged words so the 160-char window
-  // can never be spent on a harmless opening.
-  const tail = at.line.slice(at.index, start + sentence.length);
+  // A long run-on sentence: begin just before the flagged words (at most 60
+  // chars, at a word start) so the 160-char window can never be spent on a
+  // harmless opening, yet still shows the action that goes with the hazard.
+  let from = Math.max(start, at.index - 60);
+  if (from > start && from < at.index) {
+    const space = at.line.indexOf(" ", from);
+    if (space >= 0 && space < at.index) from = space + 1;
+  }
+  const tail = at.line.slice(from, start + sentence.length);
   return finishQuote(`…${stripLead(squash(tail.replace(/[*`]/g, "")))}`);
 }
 
@@ -1100,7 +1113,7 @@ export function validateAnswer(opts: {
     restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
   );
   if (hazard) {
-    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText, hazard.index);
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText, hazard.focus);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).

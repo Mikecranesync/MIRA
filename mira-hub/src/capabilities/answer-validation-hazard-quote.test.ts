@@ -105,5 +105,18 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
       "Reset the fault while the machine is energized to finish the test quickly.",
     );
   });
+
+  // Codex round 1 (#4072 @c8ad2989): a clause-level (A2) match reports the
+  // sentence start; a long passive sentence must still show the hazard.
+  it("C1: a long passive sentence quotes the hazardous clause, not 160 chars of context", () => {
+    const answer =
+      "For context this machine has a long operating history and the technician should first review its prior trips " +
+      "and maintenance records to understand the pattern of faults over the last several months of production so that " +
+      "the fault should be reset while the machine is energized.";
+    const v = validateAnswer({ answerText: answer, question: "why does it trip", general: true, served: true, refused: false });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toMatch(/^unsafe-answer:clause-hazard-/);
+    expect(quoteOf(answer)).toContain("reset while the machine is energized");
+  });
 });
 
