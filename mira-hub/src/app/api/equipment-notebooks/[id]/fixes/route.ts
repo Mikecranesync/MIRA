@@ -24,8 +24,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   }
 
+  // Same rule as chat (Codex #4057 F3): a QR/NFC selection is not a
+  // confirmation — the sticker may be on the wrong machine — so a selected but
+  // unconfirmed asset exposes no machine-specific repair history.
+  if (notebook.asset && !notebook.asset.confirmedAt) {
+    return NextResponse.json({ fixes: [], assetConfirmed: false });
+  }
   const fixes = await listFixRecords(ctx.tenantId, id, notebook.asset?.entityId ?? null, 10);
-  return NextResponse.json({ fixes });
+  return NextResponse.json({ fixes, assetConfirmed: notebook.asset ? true : null });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

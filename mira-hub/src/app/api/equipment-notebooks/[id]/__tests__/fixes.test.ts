@@ -69,8 +69,26 @@ describe("GET /api/equipment-notebooks/[id]/fixes", () => {
     vi.mocked(listFixRecords).mockResolvedValue(fixes as never);
     const res = await GET(req(), params);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ fixes });
+    expect(await res.json()).toEqual({ fixes, assetConfirmed: null });
     expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, null, 10);
+  });
+
+  it("lists a confirmed machine's fixes, scoped to that machine", async () => {
+    const asset = { entityId: "e1", selectedVia: "qr", confirmedBy: "u1", confirmedAt: "2026-09-01T00:00:00Z" };
+    vi.mocked(getNotebook).mockResolvedValue({ id: NB, asset } as never);
+    vi.mocked(listFixRecords).mockResolvedValue([] as never);
+    const res = await GET(req(), params);
+    expect(await res.json()).toEqual({ fixes: [], assetConfirmed: true });
+    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, "e1", 10);
+  });
+
+  it("exposes no repair history for a selected-but-unconfirmed machine (QR)", async () => {
+    const asset = { entityId: "e1", selectedVia: "qr", confirmedBy: null, confirmedAt: null };
+    vi.mocked(getNotebook).mockResolvedValue({ id: NB, asset } as never);
+    vi.mocked(listFixRecords).mockClear();
+    const res = await GET(req(), params);
+    expect(await res.json()).toEqual({ fixes: [], assetConfirmed: false });
+    expect(listFixRecords).not.toHaveBeenCalled();
   });
 });
 
