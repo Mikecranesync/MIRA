@@ -339,17 +339,7 @@ export type NotebookChatFrame =
   | NotebookUsageFrame
   | NotebookEvidenceFrame
   | NotebookFollowupsFrame
-  | NotebookTraceFrame
-  | NotebookPastFixesFrame;
-
-/** Plant memory (migrations 095/096): the recorded fixes matching this
- *  question on this confirmed machine, ranked best first — a card the client
- *  shows as-is. Emitted before content and only when fixes matched; which fix
- *  the answer "used" is never inferred. Additive: clients ignore unknown kinds. */
-export type NotebookPastFixesFrame = {
-  kind: "past_fixes";
-  fixes: Array<{ id: string; date: string; symptom: string; faultCode: string | null; fix: string }>;
-};
+  | NotebookTraceFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the
@@ -376,7 +366,6 @@ const FRAME_KINDS = new Set([
   "evidence",
   "followups",
   "trace",
-  "past_fixes",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {
