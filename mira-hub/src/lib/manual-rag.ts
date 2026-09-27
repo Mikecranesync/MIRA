@@ -502,6 +502,23 @@ export function isRefusalAnswer(answer: string | null | undefined): boolean {
   return normalized.includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
 
+/** Below this ts_rank_cd an AND hit is noise, not evidence (#4035: 0.0004 vs a real hit's ~1). */
+export const WEAK_AND_RANK = 0.01;
+
+/**
+ * True when the precise AND pass found nothing worth keeping: no rows, or every
+ * row's rank is below WEAK_AND_RANK. A row with no numeric rank is not judged weak.
+ */
+export function isWeakAndResult(rows: Array<Record<string, unknown>>): boolean {
+  return rows.every((r) => {
+    const rank = Number(r.rank);
+    return Number.isFinite(rank) && rank < WEAK_AND_RANK;
+  });
+}
+
+const rowKey = (r: Record<string, unknown>): string =>
+  `${r.source_url ?? ""}|${r.source_page ?? ""}|${r.content ?? ""}`;
+
 async function runBm25Query(
   client: PoolClient,
   tenantId: string,
@@ -578,8 +595,16 @@ async function runBm25Query(
   };
 
   let rows = await run(AND_TSQUERY);
-  if (rows.length === 0) {
-    rows = await run(OR_TSQUERY);
+  if (isWeakAndResult(rows)) {
+    // #4035 — an AND match can be technically non-empty but useless: one chunk at
+    // ts_rank_cd ~0.0004 (stemming mismatch, e.g. "configure"→"configur" vs a
+    // chunk's "CONFIG"). That used to satisfy the scope and suppress the OR pass,
+    // so the answer refused. Union with OR in the SAME scope; strongest first.
+    const seen = new Set(rows.map(rowKey));
+    const extra = (await run(OR_TSQUERY)).filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
+    rows = [...rows, ...extra]
+      .sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0))
+      .slice(0, topK);
   }
 
   return rows.map((r: Record<string, unknown>) => ({
