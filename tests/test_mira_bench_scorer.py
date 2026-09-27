@@ -113,3 +113,28 @@ def test_graded_pair_totals_excludes_a_question_if_either_side_is_ungraded():
     t = scorer.graded_pair_totals(res)
     assert (t["graded_pairs"], t["mira"], t["baseline"]) == (2, 50, 30)
     assert (t["scaled_mira"], t["scaled_baseline"]) == (100, 60)
+
+
+def test_8n2_framing_satisfies_the_gs10_default_components():
+    # The GS10 factory default is RTU 8N2; an answer that says "8N2" names all three.
+    fa = scorer.score_factual_accuracy(
+        "Defaults are 38400 baud, 8N2 over RS-485.",
+        ["38400 baud", "8 data bits", "no parity", "2 stop bits", "RS-485"],
+    )
+    assert fa["missing"] == []
+
+
+def test_question_key_matches_the_bench_verified_gs10_guide():
+    # The v2 key copied a GS10 seed that contradicts plc/GS10_Integration_Guide.md.
+    import yaml
+
+    qs = {
+        q["id"]: q
+        for q in yaml.safe_load(open(Path(__file__).parent / "mira_bench_questions.yaml"))[
+            "questions"
+        ]
+    }
+    assert "0x2001" in qs["Q03"]["expected_answer_components"]
+    assert "0x2100" in qs["Q05"]["expected_answer_components"]
+    assert "38400 baud" in qs["Q02"]["expected_answer_components"]
+    assert "0x2200" not in qs["Q05"]["expected_answer_components"]

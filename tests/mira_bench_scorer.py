@@ -197,6 +197,9 @@ def _component_matches(component: str, answer: str) -> bool:
     eight_n_one = "8n1" in a or "8-n-1" in a or "8,n,1" in a
     if c in {"8 data bits", "1 stop bit", "no parity"} and eight_n_one:
         return True
+    eight_n_two = "8n2" in a or "8-n-2" in a or "8,n,2" in a
+    if c in {"8 data bits", "2 stop bits", "no parity"} and eight_n_two:
+        return True
 
     # Token-set containment — "function code 03" → tokens {function, code, 03}
     toks = [t for t in c.split() if len(t) >= 2]
