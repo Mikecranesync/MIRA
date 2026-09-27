@@ -27,7 +27,7 @@ import {
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
-import { FactoryLMShell, answerText, closeLayerAction, createReadAloud, fixSymptomFor, topLayer, type HostHooks } from "@factorylm/ui";
+import { FactoryLMShell, closeLayerAction, createReadAloud, fixSymptomFor, spokenAnswerText, topLayer, type HostHooks } from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { request } from "../api/client";
 import type { NotebookServerTurn } from "../api/resources";
@@ -321,7 +321,7 @@ export function UnifiedChat({
   }, [readAloud, meta.notebookId, meta.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = state.thread.turns.find((t) => t.id === turnId);
-    if (turn) readAloud?.toggle(turnId, answerText(turn));
+    if (turn) readAloud?.toggle(turnId, spokenAnswerText(turn));
   }, [readAloud, state.thread.turns]);
 
   // Plant memory (migration 095): record what fixed the machine under the

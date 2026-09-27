@@ -20,6 +20,19 @@ export function answerText(turn: Pick<InteractionTurn, "parts">): string {
     .trim();
 }
 
+/**
+ * What read-aloud speaks for a turn: every safety notice FIRST, in order and in
+ * the shell's own words ("Stop." / "Warning." + message), then the answer. A
+ * technician listening with their hands in a panel must hear "de-energize and
+ * verify" before the steps, exactly as the screen shows it (Codex #4058 F1).
+ */
+export function spokenAnswerText(turn: Pick<InteractionTurn, "parts">): string {
+  const notices = turn.parts
+    .filter((p): p is Extract<InteractionPart, { type: "safety_notice" }> => p.type === "safety_notice")
+    .map((p) => `${p.notice.severity === "stop" ? "Stop" : "Warning"}. ${p.notice.message.trim()}`);
+  return [...notices, answerText(turn)].filter((t) => t.trim()).join("\n\n");
+}
+
 /** Text fit for a speech engine: no citation marks, no markdown syntax. A
  *  voice reading "bracket one" or "asterisk asterisk" is worse than silence. */
 export function speakableText(text: string): string {
@@ -86,7 +99,9 @@ export function createReadAloud(
       scopeKey = key;
     },
     toggle(turnId, text) {
-      if (current === turnId && synth.speaking) {
+      // Keyed on this controller's own utterance, not synth.speaking: a second
+      // press before playback starts must still stop (Codex #4058 F2).
+      if (current === turnId && active !== null) {
         stop();
         return;
       }

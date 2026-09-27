@@ -29,7 +29,7 @@ import {
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
-import { FactoryLMShell, answerText, createReadAloud, fixSymptomFor, type HostHooks } from "@factorylm/ui";
+import { FactoryLMShell, createReadAloud, fixSymptomFor, spokenAnswerText, type HostHooks } from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
@@ -576,7 +576,7 @@ export function HubShellHost() {
   }, [readAloud, selection?.notebookId, selection?.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
-    if (turn) readAloud?.toggle(turnId, answerText(turn));
+    if (turn) readAloud?.toggle(turnId, spokenAnswerText(turn));
   }, [readAloud, view.thread.turns]);
 
   // Plant memory (migration 095): record what fixed the machine, filed under

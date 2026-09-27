@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { getFixture, type InteractionTurn } from "@factorylm/interaction";
-import { answerText, createReadAloud, fixSymptomFor, speakableText } from "../answer-actions";
+import { answerText, createReadAloud, fixSymptomFor, speakableText, spokenAnswerText } from "../answer-actions";
 import { renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -154,6 +154,41 @@ describe("read-aloud lifecycle (Codex #4058)", () => {
     expect(f.synth.speaking).toBe(true);
     ra.scope("nb2:t9");
     expect(f.synth.speaking).toBe(false);
+  });
+});
+
+describe("read-aloud speaks safety first (Codex #4058 round 2)", () => {
+  it("speaks every safety notice before the answer, in order, in the shell's words", () => {
+    const base = turnsOf("grounded-answer")[0]!;
+    const turn: InteractionTurn = {
+      ...base,
+      id: "a",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Replace the contactor [1]." },
+        { type: "safety_notice", notice: { severity: "stop", message: "De-energize, lock out, and verify absence of voltage." } },
+        { type: "safety_notice", notice: { severity: "warning", message: "Stored energy in the DC bus." } },
+      ],
+    };
+    const spoken = spokenAnswerText(turn);
+    expect(spoken).toBe(
+      "Stop. De-energize, lock out, and verify absence of voltage.\n\nWarning. Stored energy in the DC bus.\n\nReplace the contactor [1].",
+    );
+    expect(spoken.indexOf("De-energize")).toBeLessThan(spoken.indexOf("Replace the contactor"));
+  });
+
+  it("a second press before playback starts stops instead of restarting", () => {
+    const utterances: string[] = [];
+    let cancels = 0;
+    // An engine that has queued but not yet started speaking.
+    const synth = { speaking: false, speak: (u: SpeechSynthesisUtterance) => void utterances.push(u.text), cancel: () => void (cancels += 1) };
+    class Utterance { text: string; onend: (() => void) | null = null; constructor(t: string) { this.text = t; } }
+    const ra = createReadAloud(synth, Utterance as unknown as new (t: string) => SpeechSynthesisUtterance)!;
+    ra.toggle("A", "answer A");
+    const cancelsAfterFirst = cancels;
+    ra.toggle("A", "answer A");
+    expect(utterances).toEqual(["answer A"]);
+    expect(cancels).toBeGreaterThan(cancelsAfterFirst);
   });
 });
 
