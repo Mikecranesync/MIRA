@@ -33,7 +33,30 @@ export function spokenAnswerText(
   const notices = turn.parts
     .filter((p): p is Extract<InteractionPart, { type: "safety_notice" }> => p.type === "safety_notice")
     .map((p) => `${p.notice.severity === "stop" ? "Stop" : "Warning"}. ${p.notice.message.trim()}`);
-  return [...notices, dropCitationMarks(answerText(turn), citationIds)].filter((t) => t.trim()).join("\n\n");
+  // Citation marks are dropped from PROSE only; code spans come back verbatim,
+  // fences and backticks included, so speakableText still sees them as code
+  // (Codex #4058 post-cap F1, round 3: a fenced "set output [1]" must survive).
+  const answer = withCodeProtected(answerText(turn), (prose) => dropCitationMarks(prose, citationIds), (raw) => raw);
+  return [...notices, answer].filter((t) => t.trim()).join("\n\n");
+}
+
+/** Apply `transform` to the prose only: fenced blocks and inline code are lifted
+ *  out first and put back through `restore(raw, body)` — `raw` is the span as
+ *  written, `body` its contents without fences, backticks, or language label. */
+function withCodeProtected(
+  text: string,
+  transform: (prose: string) => string,
+  restore: (raw: string, body: string) => string,
+): string {
+  const code: { raw: string; body: string }[] = [];
+  const keep = (raw: string, body: string) => `\u0000${code.push({ raw, body }) - 1}\u0000`;
+  const prose = text
+    .replace(/```[^\n`]*\n?([\s\S]*?)```/g, (raw, body: string) => keep(raw, body))
+    .replace(/`([^`]*)`/g, (raw, body: string) => keep(raw, body));
+  return transform(prose).replace(/\u0000(\d+)\u0000/g, (_m, i: string) => {
+    const c = code[Number(i)];
+    return c ? restore(c.raw, c.body) : "";
+  });
 }
 
 const NO_CITATIONS: ReadonlySet<string> = new Set();
@@ -53,23 +76,21 @@ function dropCitationMarks(text: string, citationIds: ReadonlySet<string>): stri
  *  `citationIds` are dropped, and `_` is removed only as an emphasis delimiter
  *  at a word edge, never inside an identifier like VFD_01 (Codex #4058 post-cap F1). */
 export function speakableText(text: string, citationIds: ReadonlySet<string> = NO_CITATIONS): string {
-  // Code is spoken VERBATIM (Codex #4058 post-cap F1): lift fenced blocks and
-  // inline spans out first — keeping a fence's contents ("P1.01 = 8 s") but not
-  // its fences or language label — so no later pass can eat a `2*base`, a
-  // fenced "# comment" / "- item", or an "[1]" inside code. Restored at the end.
-  const code: string[] = [];
-  const keep = (body: string) => `\u0000${code.push(body) - 1}\u0000`;
-  const prose = text
-    .replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_m, body: string) => keep(body))
-    .replace(/`([^`]*)`/g, (_m, body: string) => keep(body));
-  return dropCitationMarks(prose, citationIds)
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*+]\s+/gm, "")
-    // Emphasis delimiters only at a word edge — never inside a token such as
-    // VFD_01 or 2*base.
-    .replace(/(?<![A-Za-z0-9])(\*\*|\*|~~|__|_)(?=\S)|(?<=\S)(\*\*|\*|~~|__|_)(?![A-Za-z0-9])/g, "")
-    .replace(/\u0000(\d+)\u0000/g, (_m, i: string) => code[Number(i)] ?? "")
+  // Code is spoken VERBATIM (Codex #4058 post-cap F1): fenced blocks keep their
+  // contents ("P1.01 = 8 s") but not fences or language label, and no pass can
+  // eat a `2*base`, a fenced "# comment" / "- item", or an "[1]" inside code.
+  return withCodeProtected(
+    text,
+    (prose) =>
+      dropCitationMarks(prose, citationIds)
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+        .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+        .replace(/^\s*[-*+]\s+/gm, "")
+        // Emphasis delimiters only at a word edge — never inside a token such as
+        // VFD_01 or 2*base.
+        .replace(/(?<![A-Za-z0-9])(\*\*|\*|~~|__|_)(?=\S)|(?<=\S)(\*\*|\*|~~|__|_)(?![A-Za-z0-9])/g, ""),
+    (_raw, body) => body,
+  )
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "\n")
     .trim();

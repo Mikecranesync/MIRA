@@ -124,6 +124,16 @@ describe("createReadAloud", () => {
     return { synth, Utterance: Utterance as unknown as new (t: string) => SpeechSynthesisUtterance, spoken, cancels: () => cancels };
   }
 
+  it("the host path (spokenAnswerText → read-aloud) keeps a numbered code line and drops only the prose citation (Codex #4058 post-cap F1, round 3)", () => {
+    const turn = {
+      parts: [{ type: "text" as const, text: "Energize the coil [1].\n```\nset output [1]\n```\nThen check `out [1]`." }],
+    };
+    const text = spokenAnswerText(turn, new Set(["1"]));
+    const f = fakeSynth();
+    createReadAloud(f.synth, f.Utterance)!.toggle("t1", text);
+    expect(f.spoken).toEqual(["Energize the coil.\nset output [1]\nThen check out [1]."]);
+  });
+
   it("is null where the platform cannot speak", () => {
     expect(createReadAloud(undefined, undefined)).toBeNull();
   });
