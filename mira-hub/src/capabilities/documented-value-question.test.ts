@@ -102,6 +102,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what's going on with the conveyor", "GS10"],
     ["what is the problem with the hoist", "Lodestar"],
     ["what are the settings for the drive", "PowerFlex 525"],
+    // Codex #4069 pass 15: the code-meaning exception needs an actual fault code.
+    ["What does the flashing red light mean on my drive?", "PowerFlex 525"],
+    ["what does it mean when the drive beeps twice", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -133,6 +136,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
     ["what is the difference between a contactor and a relay", "GS10"],
     ["What is a VFD?", "PowerFlex 525"],
+    ["what does IGBT stand for", "PowerFlex 525"],
     ["generally, why do drives fault on overvoltage", "PowerFlex 525"],
     ["explain how PNP sensors are wired in general", "GS10"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));

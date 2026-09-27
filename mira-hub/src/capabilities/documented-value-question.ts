@@ -14,6 +14,8 @@
  * it never makes an answer less guarded than it was.
  */
 
+import { hasFaultCodeToken } from "./answer-validation";
+
 // A documentation-only quantity or artifact of THIS equipment.
 const DOCUMENTED_VALUE =
   /\b(?:(?:supply|input|output|operating|rated|nominal|control|coil)\s+(?:voltage|current|power|frequency)|voltage|amperage|amps?\b|current\s+(?:rating|draw)|power\s+(?:rating|consumption|supply)|(?:operating|ambient|storage)\s+temperature|temperature\s+range|rating|ratings|spec(?:s|ification|ifications)?|datasheet|data\s+sheet|dimensions?|weight|torque|pressure\s+rating|ip\s?\d{2}\b|ip\s+rating|enclosure\s+rating|part\s+number|catalog\s+number|wiring|pin\s?out|terminal\s+(?:assignment|layout|designation)s?|parameter|default\s+setting|factory\s+setting|(?:carrier|switching|pwm)\s+frequency|(?:max(?:imum)?|min(?:imum)?|base)\s+frequency|(?:accel(?:eration)?|decel(?:eration)?|ramp)\s+time|(?:fuse|breaker|wire|cable|conductor)\s+(?:size|sizing|gauge|rating))\b/i;
@@ -37,7 +39,7 @@ const ASKS_FOR_VALUE =
 //    "… mean", "used for", "in general", "what a/an …", "explain what/how".
 //  - A WEAK frame ("what is voltage?") is conceptual only when nothing binds it.
 const STRONG_DEFINITIONAL =
-  /\b(?:what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
+  /\b(?:what\s+an?\b|difference\s+between|means?\b|stands?\s+for\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
 const WEAK_DEFINITIONAL =
   /\bwhat(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)/i;
 // #4068 pass 10: strong binding words name this machine outright; weak ones
@@ -107,6 +109,8 @@ const SECOND_CLAUSE = /[,;?]\s*\S|\b(?:and|also|but|why|how|when|where|should|ca
 // ("what is wrong with…", "what's going on with…", "what is the problem…").
 const CONCEPT_DEFINITION =
   /^\s*what(?:'s|\s+is|\s+are)\s+(?:an?\s+)?(?!(?:wrong|going|happening|causing|making|up|the|this|its|it|my|your|that|these|those)\b)[\w/.+-]+(?:\s+[\w/.+-]+){0,3}\s*\??\s*$/i;
+// "what does the/this/that/it …" — the thing meant is on a machine, not a term.
+const MACHINE_STATE_MEANING = /\bwhat\s+(?:does|do)\s+(?:the|this|that|it|my|our)\b/i;
 // A question that marks itself as general knowledge, not this machine.
 const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
 // A condition on the machine's state ("when it overheats", "if the fan is
@@ -148,7 +152,16 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // the symptom word "fault").
   // Pass 11 F1: only a PURE meaning question qualifies — any second clause
   // ("…, and why is it overheating?", "…? how do I stop it") ends the exception.
-  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q)) {
+  // Pass 15: only a question about an actual fault CODE qualifies — "what does
+  // the flashing red light mean on my drive" is a machine-state question E10
+  // does not cover, so it takes the bound-machine decline like any other.
+  // A meaning question about a STATE of this machine ("what does the flashing
+  // light mean on my drive", "what does it mean when the drive beeps") is a
+  // problem to work; "what does PNP mean" (a term) still teaches.
+  if (CODE_MEANING.test(q) && !hasFaultCodeToken(q) && (bound || MACHINE_STATE_MEANING.test(q))) {
+    return true;
+  }
+  if (CODE_MEANING.test(q) && hasFaultCodeToken(q) && !PROCEDURE_ASK.test(q)) {
     const rest = q.replace(CODE_MEANING, " ");
     // Mixed: the "mean" in the first clause must not read as the teaching
     // list's "what does X mean" — lean to declining (owner decision).
