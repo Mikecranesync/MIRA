@@ -40,6 +40,10 @@ const STRONG_DEFINITIONAL =
   /\b(?:what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
 const WEAK_DEFINITIONAL =
   /\bwhat(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)/i;
+// #4068 pass 10: strong binding words name this machine outright; weak ones
+// (pronouns) may refer back to a generic subject in the same question.
+const STRONG_BINDING = /\b(?:this|my|your|our|these|those)\b|\b(?:on|for|of)\s+the\b/i;
+const WEAK_BINDING = /\b(?:it|its|that)\b/i;
 const BINDING =
   /\b(?:this|its|it|my|your|our|that|these|those)\b|\b(?:on|for|of)\s+the\b/i;
 
@@ -115,14 +119,24 @@ const PROCEDURE_ASK = /\b(?:check|fix|reset|recover|clear|repair|replace|trouble
 export function asksAboutThisEquipment(question: string, boundModel?: string | null): boolean {
   const q = question.trim();
   if (!q) return false;
-  const bound = BINDING.test(q) || namesModel(q, boundModel);
+  // Codex #4069 pass 10 F1: "it"/"its"/"that" refer back to the nearest
+  // subject — in "why does a VFD trip when it overheats" that is "a VFD", not
+  // the notebook's machine. They bind only when no generic class subject is named.
+  const genericSubject = GENERIC_CLASS_WHY.test(q) || GENERIC_CLASS_SUBJECT.test(q);
+  const bound =
+    STRONG_BINDING.test(q) ||
+    namesModel(q, boundModel) ||
+    (WEAK_BINDING.test(q) && !genericSubject);
   // Codex #4069 F1: a question that is about THIS machine AND works a problem
   // ("how does my drive work when it trips on F005, what should I check?") is
   // troubleshooting, whatever teaching phrasing it opens with.
   // A pure "what does code X mean" stays with the answer floor's code-meaning
   // rule (E10, answer-validation.ts), exactly as #4004 leaves it — unless the
   // question also asks what to DO about it.
-  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q)) return false;
+  // Pass 10 F2: …unless another clause describes a symptom ("…and why does it
+  // keep tripping?"). The code-meaning clause itself is excluded, since "what
+  // does fault code X mean" contains the symptom word "fault".
+  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q) && !SYMPTOM.test(q.replace(CODE_MEANING, " "))) return false;
   if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
   const teaching =
     STRONG_DEFINITIONAL.test(q) ||

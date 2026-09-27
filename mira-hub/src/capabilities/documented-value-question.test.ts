@@ -83,6 +83,10 @@ describe("#4068 asksAboutThisEquipment", () => {
     // symptom on THE drive a class question.
     ["The drive trips after we replaced a contactor; what should I check first?", "PowerFlex 525"],
     ["the conveyor motor faults whenever a sensor is blocked", "GS10"],
+    // Codex #4069 pass 10: a pronoun on THIS drive still binds; a mixed
+    // code-meaning + symptom question is troubleshooting.
+    ["Why does my drive trip when it overheats?", "PowerFlex 525"],
+    ["What does F005 mean on my drive, and why does it keep tripping?", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -106,6 +110,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
     ["What should I check when a contactor trips?", "PowerFlex 525"],
+    // Codex #4069 pass 10 F1: "it" refers back to "a VFD", not the notebook.
+    ["Why does a VFD trip when it overheats?", "PowerFlex 525"],
+    ["What does F005 mean?", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
