@@ -125,7 +125,7 @@ jobs:
           MODE: ${{ inputs.mode || 'check' }}
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            root@165.245.138.91 "MODE='${MODE}' bash -s" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo env MODE='${MODE}' bash -s" << 'ENDSSH'
           set -uo pipefail
 
           SE=/etc/nginx/sites-enabled
