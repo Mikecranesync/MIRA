@@ -268,9 +268,27 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
     pending_justification = 0
     allowlist_entries = allowlist.get("approved", {})
 
+    # The line number in a key is a locator, not the identity (#4043). The identity
+    # is the full-context hash, which is already salted with the source path — so an
+    # approval whose hash matches a read in the same file still covers that read
+    # after unrelated edits shift it to a new line. A read whose CONTENT changed has
+    # a different hash and gets no such match, so it still fails closed below.
+    by_hash = {}
+    for allowlist_key, entry in allowlist_entries.items():
+        approved_hash = entry.get("query_sha256")
+        if approved_hash:
+            by_hash.setdefault((allowlist_key.rsplit(":", 1)[0], approved_hash), allowlist_key)
+    matched_keys = set()
+
     for read in reads:
         key = f"{read['file']}:{read['line_num']}"
         classification = read["classification"]
+        exact = allowlist_entries.get(key)
+        if not (exact and _approval_matches(exact, read)):
+            moved = by_hash.get((read["file"], context_sha256(read["file"], read["query"])))
+            if moved:
+                key = moved
+        matched_keys.add(key)
 
         # TENANT-ONLY and UNFILTERED must be explicitly allowlisted
         if classification in ["TENANT-ONLY", "UNFILTERED"]:
@@ -316,9 +334,8 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                     pending_justification += 1
 
     # Check for stale allowlist entries (files that no longer read knowledge_entries)
-    current_keys = {f"{r['file']}:{r['line_num']}" for r in reads}
     for allowlist_key in allowlist_entries:
-        if allowlist_key not in current_keys:
+        if allowlist_key not in matched_keys:
             # Could be a moved line or removed code — just warn
             errors.append(
                 f"⚠️  {allowlist_key} - Allowlist entry not found in code\n"
