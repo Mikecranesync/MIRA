@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { familySqlPattern, inferEquipmentType } from "@/lib/equipment-type";
+import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
@@ -502,8 +502,8 @@ export async function retrieveManualChunks(
     // the LIMIT and hide a matching-family page ranked just below them.
     // The family predicate runs IN SQL, before LIMIT, so other-family rows
     // never fill the window; the exact JS family check below still applies.
-    const familyPattern = familySqlPattern(assetType!);
-    if (!familyPattern) return [];
+    const familyTerms = familySqlTerms(assetType!);
+    if (familyTerms.length === 0) return [];
     const window = topK * FAMILY_FALLBACK_WINDOW;
     // Codex #4069 F2: the corpus stores one vendor under several names
     // ("Allen-Bradley" / "Rockwell Automation"); search every spelling in the
@@ -511,7 +511,7 @@ export async function retrieveManualChunks(
     const names = manufacturerSearchNames(mfr);
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
-      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyPattern)));
+      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms)));
     }
     return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
       .filter(
@@ -601,9 +601,10 @@ async function runBm25Query(
    *  post-filter (the family fallback), whose strong AND rows may all be
    *  discarded afterwards. */
   alwaysOr = false,
-  /** #4069: a Postgres ARE applied to model/title/URL BEFORE the LIMIT, so
-   *  other-family rows cannot fill the window (familySqlPattern). */
-  familyPattern: string | null = null,
+  /** #4069: the exact family predicate (familySqlTerms) applied to
+   *  model/title/URL BEFORE the LIMIT, so other-family rows — including ones
+   *  that merely MENTION the family — cannot fill the window. */
+  familyTerms: Array<{ match: string; unless: string | null }> | null = null,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
@@ -639,9 +640,16 @@ async function runBm25Query(
     }
   }
   let familyClause = "";
-  if (familyPattern) {
-    params.push(familyPattern);
-    familyClause = `AND (coalesce(model_number, '') || ' ' || coalesce(metadata->>'title', '') || ' ' || coalesce(source_url, '')) ~* $${params.length}`;
+  if (familyTerms && familyTerms.length > 0) {
+    const hay = `(coalesce(model_number, '') || ' ' || coalesce(metadata->>'title', '') || ' ' || coalesce(source_url, ''))`;
+    const ors = familyTerms.map((t) => {
+      params.push(t.match);
+      const m = `${hay} ~* $${params.length}`;
+      if (!t.unless) return `(${m})`;
+      params.push(t.unless);
+      return `(${m} AND ${hay} !~* $${params.length})`;
+    });
+    familyClause = `AND (${ors.join(" OR ")})`;
   }
   params.push(topK);
   const limitParam = `$${params.length}`;

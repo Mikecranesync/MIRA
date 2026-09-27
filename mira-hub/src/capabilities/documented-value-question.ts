@@ -72,6 +72,12 @@ const HOW_IT_WORKS = /\bhow\s+(?:does|do)\b[^?.!]{0,60}?\bwork(?:s|ing)?\b/i;
 const GENERIC_CLASS_WHY =
   /\b(?:why|when|how\s+often)\s+(?:does|do|would|can|might|will|is|are)\s+(?:an?\s+[\w-]+|[\w-]+s)\b/i;
 
+// Codex #4069 pass 7 F2: an unbound question about "a VFD" / "an encoder" is
+// about a CLASS of equipment ("what should I check when a VFD trips?"), not
+// this machine — teaching. Contextual shorthand without an article ("it trips
+// every morning", "the drive trips") is unaffected.
+const GENERIC_CLASS_SUBJECT = /\ban?\s+[a-z][\w/-]*/i;
+
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
 const SYMPTOM =
@@ -113,7 +119,7 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   const teaching =
     STRONG_DEFINITIONAL.test(q) ||
     HOW_IT_WORKS.test(q) ||
-    (!bound && (WEAK_DEFINITIONAL.test(q) || GENERIC_CLASS_WHY.test(q)));
+    (!bound && (WEAK_DEFINITIONAL.test(q) || GENERIC_CLASS_WHY.test(q) || GENERIC_CLASS_SUBJECT.test(q)));
   if (teaching) return false;
   // #4069 F4: a binding word alone ("what does this machine do?") is not a
   // problem to work — declining it would be the over-block. Require a

@@ -117,10 +117,10 @@ export type TurnEvidencePacketRetrieval = {
   oem_model_source: "notebook" | "photo" | null;
   /**
    * #4068 — which OEM scope produced the chunks: the bound model's own pages,
-   * or the same-manufacturer / same-family fallback. Null when no OEM search
-   * ran or it returned nothing.
+   * the same-manufacturer / same-family fallback, or — with no model bound —
+   * a manufacturer-only search. Null when no OEM search ran or it returned nothing.
    */
-  oem_scope: "model" | "vendor_fallback" | null;
+  oem_scope: "model" | "vendor_fallback" | "manufacturer" | null;
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;

@@ -601,6 +601,15 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(fr.find((f) => f.kind === "status")?.message ?? "").not.toContain("manual in the library");
   });
 
+  it("2o. Codex #4069 pass 7 F3: a manufacturer-only notebook's OEM hits are recorded as manufacturer scope, never model scope", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Check the 24 V supply [1].")));
+    await (await POST(chatReq({ message: "why does the panel reboot", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.oem_scope).toBe("manufacturer");
+  });
+
   it("2g. #4004 control: a manufacturer-only notebook (no model) keeps the pre-existing path — not identity-bound", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

@@ -76,6 +76,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["How does my drive work when it trips on F005, and what should I check first?", "PowerFlex 525"],
     ["what does F005 mean on my drive and how do I clear it", "PowerFlex 525"],
     ["How do I wire this drive?", "PowerFlex 525"],
+    ["What should I check when this drive trips?", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -94,6 +95,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 6 F3: a generic procedure question is teaching.
     ["How do I wire a VFD?", "PowerFlex 525"],
     ["how do I configure a Modbus TCP client", "FX5U"],
+    // Codex #4069 pass 7 F2: a generic class symptom question is teaching.
+    ["What should I check when a VFD trips on overload?", "PowerFlex 525"],
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).

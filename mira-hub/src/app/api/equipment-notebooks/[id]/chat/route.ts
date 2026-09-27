@@ -1802,12 +1802,14 @@ async function handleChatTurn(
       : oemIdentity.ambiguous
       ? "ambiguous_model_observation"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
-    const oemScope: "model" | "vendor_fallback" | null =
+    const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
       !oemRetrieval || chunks.length === 0
         ? null
         : chunks.some((c) => c.retrievalScope === "vendor_fallback")
           ? "vendor_fallback"
-          : "model";
+          : oemModel
+            ? "model"
+            : "manufacturer";
     rec.stage("retrieval", {
       strategy: retrievalStrategy,
       executed: retrievalExecuted,

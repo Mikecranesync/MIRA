@@ -138,16 +138,23 @@ function normalizeTypeLabel(raw: string): string {
     .join(" ");
 }
 
+const toAre = (re: RegExp) => `(?:${re.source.replace(/\\b/g, "\\y")})`;
+
 /**
- * #4068 / Codex #4069 — a Postgres ARE (`~*`) that matches any row whose model,
- * title or URL hits one of `type`'s model hints. A NECESSARY condition for
- * `inferEquipmentType({modelNumber, title, sourceUrl}) === type` (without a
- * manufacturer default), so the same-family fallback can filter BEFORE the SQL
- * LIMIT; the exact JS check still runs afterwards. JS `\b` is Postgres `\y`;
- * every other construct in MODEL_HINTS (`\s`, `\d`, classes, `(?:…)`,
- * alternation) is ARE-compatible. Null when the type has no model hints.
+ * #4068 / Codex #4069 — the SQL form of `inferEquipmentType(...) === type`
+ * (model/title/URL; no manufacturer default), honouring hint PRECEDENCE: a row
+ * is `type` iff some `type` hint matches AND no EARLIER hint of another type
+ * does (the classifier returns the first matching hint). One term per `type`
+ * hint: `match` must hold and `unless` (the earlier other-family hints) must
+ * not. Postgres AREs: JS `\\b` is `\\y`; every other construct in
+ * MODEL_HINTS is ARE-compatible. Empty when the type has no model hints.
  */
-export function familySqlPattern(type: string): string | null {
-  const parts = MODEL_HINTS.filter((h) => h.type === type).map((h) => `(?:${h.test.source.replace(/\\b/g, "\\y")})`);
-  return parts.length ? parts.join("|") : null;
+export function familySqlTerms(type: string): Array<{ match: string; unless: string | null }> {
+  const terms: Array<{ match: string; unless: string | null }> = [];
+  MODEL_HINTS.forEach((h, i) => {
+    if (h.type !== type) return;
+    const earlier = MODEL_HINTS.slice(0, i).filter((e) => e.type !== type).map((e) => toAre(e.test));
+    terms.push({ match: toAre(h.test), unless: earlier.length ? earlier.join("|") : null });
+  });
+  return terms;
 }

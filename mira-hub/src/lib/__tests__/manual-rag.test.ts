@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
-import { familySqlPattern, inferEquipmentType } from "../equipment-type";
+import { familySqlTerms, inferEquipmentType } from "../equipment-type";
 import {
   appendManualContext,
   boundBm25Query,
@@ -1079,11 +1079,19 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
     if (re) rows = rows.filter((r) => new RegExp(posix(String(params[Number(re[1]) - 1])), "i").test(String(r.model_number ?? "")));
     const il = sql.match(/model_number ILIKE \$(\d+) AND model_number NOT ILIKE \$(\d+)/);
     if (il) rows = rows.filter((r) => like(String(params[Number(il[1]) - 1]), String(r.model_number ?? "")) && !like(String(params[Number(il[2]) - 1]), String(r.model_number ?? "")));
-    // The family prefilter (Postgres ARE): \y is a word boundary, i.e. JS \b.
-    const fam = sql.match(/coalesce\(source_url, ''\)\) ~\* \$(\d+)/);
-    if (fam) {
-      const re = new RegExp(String(params[Number(fam[1]) - 1]).replace(/\\y/g, "\\b"), "i");
-      rows = rows.filter((r) => re.test(`${r.model_number ?? ""} ${r.title ?? ""} ${r.source_url ?? ""}`));
+    // The family predicate: an OR of `(hay ~* $a [AND hay !~* $b])` groups.
+    // Evaluated from the SQL the query actually built (Postgres \y = JS \b).
+    const famStart = sql.indexOf("AND (((coalesce(model_number");
+    if (famStart >= 0) {
+      const famSql = sql.slice(famStart, sql.indexOf("\n", famStart) === -1 ? undefined : sql.indexOf("\n", famStart));
+      const groups = famSql.split(") OR (").map((g) => ({
+        pos: [...g.matchAll(/(?<!!)~\* \$(\d+)/g)].map((x) => new RegExp(String(params[Number(x[1]) - 1]).replace(/\\y/g, "\\b"), "i")),
+        neg: [...g.matchAll(/!~\* \$(\d+)/g)].map((x) => new RegExp(String(params[Number(x[1]) - 1]).replace(/\\y/g, "\\b"), "i")),
+      }));
+      rows = rows.filter((r) => {
+        const hay = `${r.model_number ?? ""} ${r.title ?? ""} ${r.source_url ?? ""}`;
+        return groups.some((g) => g.pos.every((re) => re.test(hay)) && g.neg.every((re) => !re.test(hay)));
+      });
     }
     const lim = sql.match(/LIMIT \$(\d+)/);
     const limit = lim ? Number(params[Number(lim[1]) - 1]) : rows.length;
@@ -1215,14 +1223,25 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     const { client, calls } = corpusClient([...Array.from({ length: 150 }, (_, i) => drive(i)), plc({ rank: 0.01 })]);
     const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
     expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
-    expect(calls.some((c) => /coalesce\(source_url, ''\)\) ~\* \$\d+/.test(c.sql))).toBe(true);
+    expect(calls.some((c) => c.sql.includes("AND (((coalesce(model_number"))).toBe(true);
   });
 
-  it("familySqlPattern: Postgres word boundaries, one alternative per hint, null for a type with no hints", () => {
-    const plcPattern = familySqlPattern("PLCs")!;
-    expect(plcPattern).toContain("\\y");
-    expect(plcPattern).not.toContain("\\b");
-    expect(familySqlPattern("Other")).toBeNull();
+  it("familySqlTerms: Postgres word boundaries, precedence via `unless`, empty for a type with no hints", () => {
+    const plc = familySqlTerms("PLCs");
+    expect(plc.length).toBeGreaterThan(0);
+    expect(plc.every((t) => t.match.includes("\\y") && !t.match.includes("\\b"))).toBe(true);
+    // PowerFlex (a VFD hint) precedes the Logix PLC hint, so it is an exclusion there.
+    expect(plc.some((t) => /logix/i.test(t.match) && /powerflex/i.test(t.unless ?? ""))).toBe(true);
+    expect(familySqlTerms("Other")).toEqual([]);
+  });
+
+  it("Codex #4069 pass 7 F1: PowerFlex pages that MENTION CompactLogix cannot fill the family window", async () => {
+    const mentions = Array.from({ length: 150 }, (_, i) =>
+      row({ manufacturer: "Rockwell Automation", model_number: "PowerFlex 525", title: "PowerFlex to CompactLogix communication", source_url: `https://oem.example/pf-cl-${i}.pdf`, rank: 0.9 }),
+    );
+    const { client } = corpusClient([...mentions, plc({ rank: 0.01 })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
   });
 
   it("the window is wide (topK x 20 rows per vendor name)", () => {
