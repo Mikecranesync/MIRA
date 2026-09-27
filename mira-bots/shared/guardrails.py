@@ -250,6 +250,10 @@ _ENERGIZED_WORK_INTENT = frozenset(
 )
 
 
+def _starts_at_word(msg: str, phrase: str) -> bool:
+    return re.search(r"(?<![a-z0-9])" + re.escape(phrase), msg) is not None
+
+
 def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """Detect intent to work on energized high-voltage equipment.
 
@@ -265,8 +269,10 @@ def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """
     msg = message.lower().strip()
 
-    has_voltage_context = any(phrase in msg for phrase in _LETHAL_VOLTAGE_CONTEXT)
-    has_energized_intent = any(phrase in msg for phrase in _ENERGIZED_WORK_INTENT)
+    # A phrase must start at a word boundary: plain substring matching read
+    # "modbus" as "bus" and "parameter" as "meter" (parity with safety-classifier.ts).
+    has_voltage_context = any(_starts_at_word(msg, p) for p in _LETHAL_VOLTAGE_CONTEXT)
+    has_energized_intent = any(_starts_at_word(msg, p) for p in _ENERGIZED_WORK_INTENT)
 
     return has_voltage_context and has_energized_intent
 

@@ -133,15 +133,27 @@ export const ENERGIZED_WORK_INTENT = [
  * Deterministic (no LLM) — blocks dangerous prompts before chat routing.
  * Mirrors Python's `detect_energized_electrical_hazard_intent()`.
  */
+function startsAtWord(msg: string, phrase: string): boolean {
+  let i = msg.indexOf(phrase);
+  while (i !== -1) {
+    if (i === 0 || !/[a-z0-9]/.test(msg[i - 1])) return true;
+    i = msg.indexOf(phrase, i + 1);
+  }
+  return false;
+}
+
 export function detectEnergizedElectricalHazardIntent(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
   if (!msg) return false;
 
+  // A phrase must start at a word boundary: plain substring matching read
+  // "modbus" as "bus" (voltage context) and "parameter" as "meter" (energized
+  // intent), so "read a parameter over Modbus" hard-stopped as energized work.
   const hasVoltageContext = LETHAL_VOLTAGE_CONTEXT.some((phrase) =>
-    msg.includes(phrase)
+    startsAtWord(msg, phrase)
   );
   const hasEnergizedIntent = ENERGIZED_WORK_INTENT.some((phrase) =>
-    msg.includes(phrase)
+    startsAtWord(msg, phrase)
   );
 
   return hasVoltageContext && hasEnergizedIntent;

@@ -157,6 +157,23 @@ describe("detectEnergizedElectricalHazardIntent", () => {
     expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
   });
 
+  it("a Modbus parameter read is not energized work (word boundary, benchmark Q01)", () => {
+    // "modbus" contains "bus" and "parameter" contains "meter"; substring matching
+    // hard-stopped this ordinary question on the public quickstart.
+    const msg = "How do I read a parameter from a GS11 drive using a Micro820 over Modbus RTU?";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+    expect(matchSafetyStop(msg)).toBeNull();
+  });
+
+  it("the standalone words still trigger (control for the word-boundary rule)", () => {
+    expect(
+      detectEnergizedElectricalHazardIntent("Can I check the bus with a meter while it's live?"),
+    ).toBe(true);
+    expect(
+      detectEnergizedElectricalHazardIntent("480V busbar: I'll probe it while running."),
+    ).toBe(true);
+  });
+
   it("transformer/DC bus mention without hazard intent does NOT trigger", () => {
     const msg = "The DC bus capacitors look discolored but no active faults.";
     expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
