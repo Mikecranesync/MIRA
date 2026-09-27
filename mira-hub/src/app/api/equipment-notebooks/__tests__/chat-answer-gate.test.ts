@@ -313,7 +313,7 @@ describe("E10 — general-lane invented specificity is replaced with the control
       }),
     );
     const res = await POST(
-      chatReq({ message: "Why does a VFD trip on overload?", sourceDocIds: [], mode: "general" }),
+      chatReq({ message: "Why do VFDs trip on overload, in general?", sourceDocIds: [], mode: "general" }),
       params,
     );
     const frames = parseFrames(await res.text());

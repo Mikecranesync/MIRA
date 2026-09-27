@@ -268,7 +268,7 @@ describe("recordTurn throwing still persists a packet", () => {
     domainMock.recordTurn.mockRejectedValueOnce(new Error("write unavailable"));
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance.")));
     const res = await POST(
-      chatReq({ message: "q", mode: "general", clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
+      chatReq({ message: "how does a VFD work", mode: "general", clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
       params,
     );
     // recordTurn failure with a clientRequestId calls controller.error(); the

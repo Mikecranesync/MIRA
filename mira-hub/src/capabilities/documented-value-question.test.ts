@@ -87,6 +87,18 @@ describe("#4068 asksAboutThisEquipment", () => {
     // code-meaning + symptom question is troubleshooting.
     ["Why does my drive trip when it overheats?", "PowerFlex 525"],
     ["What does F005 mean on my drive, and why does it keep tripping?", "PowerFlex 525"],
+    // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
+    // notebook with nothing citable, anything outside the narrow teaching list
+    // declines — including generic-class and procedure questions that earlier
+    // passes routed to the general lane.
+    ["What does this machine do?", "PowerFlex 525"],
+    ["How do I wire a VFD?", "PowerFlex 525"],
+    ["how do I configure a Modbus TCP client", "FX5U"],
+    ["What should I check when a VFD trips on overload?", "PowerFlex 525"],
+    ["Why does a VFD trip on overload?", "PowerFlex 525"],
+    ["why do VFDs trip on overvoltage during decel", "GS10"],
+    ["What should I check when a contactor trips?", "PowerFlex 525"],
+    ["Why does a VFD trip when it overheats?", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -100,22 +112,16 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["why do VFDs trip on overcurrent in general", "GS10"],
     ["what is a watchdog timer", "SLC 5/03"],
     ["what is an actuator used for", "AC 01.2"],
-    // Codex #4069 round-3 F4: a binding word alone is not a problem to work.
-    ["What does this machine do?", "PowerFlex 525"],
-    // Codex #4069 pass 6 F3: a generic procedure question is teaching.
-    ["How do I wire a VFD?", "PowerFlex 525"],
-    ["how do I configure a Modbus TCP client", "FX5U"],
-    // Codex #4069 pass 7 F2: a generic class symptom question is teaching.
-    ["What should I check when a VFD trips on overload?", "PowerFlex 525"],
-    ["Why does a VFD trip on overload?", "PowerFlex 525"],
-    ["why do VFDs trip on overvoltage during decel", "GS10"],
-    ["What should I check when a contactor trips?", "PowerFlex 525"],
-    // Codex #4069 pass 10 F1: "it" refers back to "a VFD", not the notebook.
-    ["Why does a VFD trip when it overheats?", "PowerFlex 525"],
     ["What does F005 mean?", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
+    ["what is the difference between a contactor and a relay", "GS10"],
+    ["explain how PNP sensors are wired in general", "GS10"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
+
+  it.each(["thanks", "ok, got it", "Thank you!"])("an acknowledgement never declines: %s", (q) => {
+    expect(asksAboutThisEquipment(q, "GS10")).toBe(false);
+  });
 
   it("an empty question is not about anything", () => {
     expect(asksAboutThisEquipment("   ", "GS10")).toBe(false);

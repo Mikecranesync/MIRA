@@ -85,10 +85,6 @@ const GENERIC_CLASS_WHY =
 const EQUIPMENT_NOUN =
   "(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)";
 const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
-// Pass 9: "THE drive trips after we replaced a contactor" — a definite
-// equipment subject with a symptom is a problem on real equipment; the
-// incidental "a contactor" must not turn it into a class question.
-const DEFINITE_EQUIPMENT_SUBJECT = new RegExp(`\\bthe\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
 
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
@@ -106,52 +102,42 @@ const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i
 // …and asks what to DO about it.
 const PROCEDURE_ASK = /\b(?:check|fix|reset|recover|clear|repair|replace|troubleshoot|resolve|get\s+rid)\b/i;
 
+// Acknowledgements are not questions — never decline "thanks".
+const ACKNOWLEDGEMENT = /^(?:thanks?|thank\s+you|ty|ok(?:ay)?|got\s+it|cool|great|perfect|nice|understood)\b[\s,.!]*(?:got\s+it|thanks?)?[\s.!]*$/i;
+
 /**
- * #4068 (owner decision 2026-09-27) — is this a question about THIS equipment
- * (a problem to work, a procedure to follow), as opposed to a teaching question?
+ * #4068 — should a machine-bound notebook with NOTHING citable decline this
+ * question honestly instead of giving an uncited general answer?
  *
- * Used for exactly one decision: when a notebook is bound to a model and the
- * OEM search (model scope, then same-family fallback) found nothing citable,
- * such a question gets an honest decline instead of an uncited general answer.
- * Teaching questions ("how does a VFD work", "what does PNP mean") never match
- * — they keep the general lane, exactly as before.
+ * OWNER DECISION 2026-09-27 (Mike, after ten review passes each found new
+ * phrasings misclassified in both directions): **lean to declining.** Decline
+ * unless the question is on a short, high-confidence teaching list — how does
+ * X work, what is X / what does X mean, the difference between, explain, used
+ * for, in general — or is a pure fault-code-meaning question (E10, #4004).
+ * Occasionally declining a general question is the accepted residual; an
+ * uncited answer about this machine is not.
  */
 export function asksAboutThisEquipment(question: string, boundModel?: string | null): boolean {
   const q = question.trim();
-  if (!q) return false;
-  // Codex #4069 pass 10 F1: "it"/"its"/"that" refer back to the nearest
-  // subject — in "why does a VFD trip when it overheats" that is "a VFD", not
-  // the notebook's machine. They bind only when no generic class subject is named.
+  if (!q || ACKNOWLEDGEMENT.test(q)) return false;
+  // Pass 10 F1: "it"/"its"/"that" refer back to the nearest subject — in "why
+  // does a VFD trip when it overheats" that is "a VFD", not the notebook's
+  // machine. They bind only when no generic class subject is named.
   const genericSubject = GENERIC_CLASS_WHY.test(q) || GENERIC_CLASS_SUBJECT.test(q);
   const bound =
     STRONG_BINDING.test(q) ||
     namesModel(q, boundModel) ||
     (WEAK_BINDING.test(q) && !genericSubject);
-  // Codex #4069 F1: a question that is about THIS machine AND works a problem
-  // ("how does my drive work when it trips on F005, what should I check?") is
-  // troubleshooting, whatever teaching phrasing it opens with.
   // A pure "what does code X mean" stays with the answer floor's code-meaning
-  // rule (E10, answer-validation.ts), exactly as #4004 leaves it — unless the
-  // question also asks what to DO about it.
-  // Pass 10 F2: …unless another clause describes a symptom ("…and why does it
-  // keep tripping?"). The code-meaning clause itself is excluded, since "what
-  // does fault code X mean" contains the symptom word "fault".
+  // rule (E10, answer-validation.ts), exactly as #4004 leaves it — unless it
+  // also asks what to DO, or another clause describes a symptom (pass 10 F2;
+  // the code-meaning clause itself is excluded, since "fault code" contains
+  // the symptom word "fault").
   if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q) && !SYMPTOM.test(q.replace(CODE_MEANING, " "))) return false;
+  // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
+  // ("how does my drive work when it trips on F005?") is troubleshooting.
   if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
   const teaching =
-    STRONG_DEFINITIONAL.test(q) ||
-    HOW_IT_WORKS.test(q) ||
-    (!bound &&
-      (WEAK_DEFINITIONAL.test(q) ||
-        GENERIC_CLASS_WHY.test(q) ||
-        (GENERIC_CLASS_SUBJECT.test(q) && !(DEFINITE_EQUIPMENT_SUBJECT.test(q) && SYMPTOM.test(q)))));
-  if (teaching) return false;
-  // #4069 F4: a binding word alone ("what does this machine do?") is not a
-  // problem to work — declining it would be the over-block. Require a
-  // troubleshooting or what-to-do signal, or a documented-value ask.
-  return (
-    SYMPTOM.test(q) ||
-    (bound && (PROCEDURE_VERBS.test(q) || PROCEDURE_ASK.test(q))) ||
-    asksForDocumentedValue(q, boundModel)
-  );
+    STRONG_DEFINITIONAL.test(q) || HOW_IT_WORKS.test(q) || (!bound && WEAK_DEFINITIONAL.test(q));
+  return !teaching;
 }
