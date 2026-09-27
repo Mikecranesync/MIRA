@@ -156,6 +156,10 @@ export type NotebookBasisEvidenceFrame = {
    *  A disputed answered turn repeats the marker here after the early marker
    *  frame; readers therefore keep the turn unconfirmed throughout. */
   identityDisputed?: boolean;
+  /** Plant memory (migration 095): ids of the technician-recorded fixes that
+   *  were in this turn's reference context, so an answer resting on one names
+   *  it. Additive; older clients ignore it. */
+  recordedFixIds?: string[];
 };
 
 /**
