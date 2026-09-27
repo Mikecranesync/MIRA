@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateFixInput } from "@/capabilities/fix-records";
+import { isUuid, validateFixInput } from "@/capabilities/fix-records";
 
 describe("validateFixInput", () => {
   it("accepts a minimal valid body", () => {
@@ -11,6 +11,7 @@ describe("validateFixInput", () => {
         fix: "Reset E-stop",
         faultCode: null,
         sourceTurnId: null,
+        clientRequestId: null,
       });
     }
   });
@@ -114,5 +115,23 @@ describe("validateFixInput", () => {
       ok: false,
       error: "invalid_source_turn_id",
     });
+  });
+});
+
+describe("clientRequestId / isUuid", () => {
+  it("accepts a UUID client request id, normalised to lower case", () => {
+    const r = validateFixInput({ symptom: "s", fix: "f", clientRequestId: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" });
+    expect(r).toEqual({ ok: true, value: expect.objectContaining({ clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }) });
+  });
+
+  it("rejects a malformed client request id", () => {
+    expect(validateFixInput({ symptom: "s", fix: "f", clientRequestId: "retry-1" })).toEqual({ ok: false, error: "invalid_client_request_id" });
+  });
+
+  it("isUuid guards every value the route casts to ::uuid", () => {
+    expect(isUuid("22222222-2222-4222-8222-222222222222")).toBe(true);
+    expect(isUuid("not-a-uuid")).toBe(false);
+    expect(isUuid("../x")).toBe(false);
+    expect(isUuid("")).toBe(false);
   });
 });

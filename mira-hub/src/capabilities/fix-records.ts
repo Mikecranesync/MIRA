@@ -36,6 +36,9 @@ export type ValidatedFixInput = {
   fix: string;
   faultCode: string | null;
   sourceTurnId: string | null;
+  /** Stable per-fix id from the client; a retry with the same id returns the
+   *  record already stored instead of a duplicate (migration 097). */
+  clientRequestId: string | null;
 };
 
 export type ValidateFixInputResult =
@@ -85,7 +88,15 @@ export function validateFixInput(body: unknown): ValidateFixInputResult {
     sourceTurnId = b.sourceTurnId;
   }
 
-  return { ok: true, value: { symptom, fix, faultCode, sourceTurnId } };
+  let clientRequestId: string | null = null;
+  if (b.clientRequestId !== undefined && b.clientRequestId !== null) {
+    if (typeof b.clientRequestId !== "string" || !UUID_RE.test(b.clientRequestId)) {
+      return { ok: false, error: "invalid_client_request_id" };
+    }
+    clientRequestId = b.clientRequestId.toLowerCase();
+  }
+
+  return { ok: true, value: { symptom, fix, faultCode, sourceTurnId, clientRequestId } };
 }
 
 function mapRow(r: Record<string, unknown>): FixRecord {
@@ -101,36 +112,75 @@ function mapRow(r: Record<string, unknown>): FixRecord {
   };
 }
 
+export type InsertFixResult =
+  | { status: "created"; fix: FixRecord }
+  | { status: "existing"; fix: FixRecord }
+  | { status: "binding_changed" };
+
+const RETURN_COLS = `id::text AS id, notebook_id::text AS notebook_id, equipment_entity_id,
+                 symptom, fault_code, fix, recorded_by, created_at`;
+
+/** True for a string the route can safely hand to a `::uuid` cast. */
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 /**
- * Insert a technician-confirmed fix record. Caller (the route) has already
- * validated the input and confirmed the notebook belongs to this tenant —
- * this function trusts `notebook.id` and does not re-check ownership.
+ * Insert a technician-confirmed fix record — atomically against the notebook's
+ * CURRENT binding (Codex #4057 post-split F1). One statement reads the
+ * notebook row `FOR SHARE` and inserts only if it is still bound to the
+ * machine the route checked (`expectedEntityId`) and, when bound, still
+ * confirmed. A concurrent re-bind either waits for this insert or wins first,
+ * in which case nothing is inserted (`binding_changed`) — a 201 can never
+ * point at a machine the notebook no longer lists.
+ *
+ * With a `clientRequestId`, a retry returns the stored record (`existing`)
+ * instead of a second, un-deletable row (F2, migration 097).
  */
 export async function insertFixRecord(
   tenantId: string,
-  notebook: { id: string; equipmentEntityId: string | null },
+  notebookId: string,
+  expectedEntityId: string | null,
   input: ValidatedFixInput,
   recordedBy: string | null,
-): Promise<FixRecord> {
+): Promise<InsertFixResult> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `INSERT INTO asset_fix_records
-         (tenant_id, notebook_id, equipment_entity_id, symptom, fault_code, fix, recorded_by, source_turn_id)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::uuid)
-       RETURNING id::text AS id, notebook_id::text AS notebook_id, equipment_entity_id,
-                 symptom, fault_code, fix, recorded_by, created_at`,
+         (tenant_id, notebook_id, equipment_entity_id, symptom, fault_code, fix,
+          recorded_by, source_turn_id, client_request_id)
+       SELECT $1::uuid, n.id, n.equipment_entity_id, $4, $5, $6, $7, $8::uuid, $9::uuid
+         FROM equipment_notebooks n
+        WHERE n.id = $2::uuid
+          AND n.tenant_id = $1::uuid
+          AND n.equipment_entity_id IS NOT DISTINCT FROM $3
+          AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL)
+          FOR SHARE
+       ON CONFLICT (tenant_id, notebook_id, client_request_id)
+          WHERE client_request_id IS NOT NULL DO NOTHING
+       RETURNING ${RETURN_COLS}`,
       [
         tenantId,
-        notebook.id,
-        notebook.equipmentEntityId,
+        notebookId,
+        expectedEntityId,
         input.symptom,
         input.faultCode,
         input.fix,
         recordedBy,
         input.sourceTurnId,
+        input.clientRequestId,
       ],
     );
-    return mapRow(res.rows[0] as Record<string, unknown>);
+    if (res.rows.length > 0) return { status: "created", fix: mapRow(res.rows[0] as Record<string, unknown>) };
+    if (input.clientRequestId) {
+      const prior = await c.query(
+        `SELECT ${RETURN_COLS} FROM asset_fix_records
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND client_request_id = $3::uuid`,
+        [tenantId, notebookId, input.clientRequestId],
+      );
+      if (prior.rows.length > 0) return { status: "existing", fix: mapRow(prior.rows[0] as Record<string, unknown>) };
+    }
+    return { status: "binding_changed" };
   });
 }
 
@@ -145,23 +195,39 @@ export async function insertFixRecord(
  * Chat grounding and the past-fixes card ship separately (branch
  * feat/plant-memory-chat-card), together with their UI rendering.
  */
+export const FIX_PAGE_DEFAULT = 10;
+export const FIX_PAGE_MAX = 50;
+
+/**
+ * One page, newest first, ordered by (created_at, id) so the order is total and
+ * stable. `before` is the id of the last record of the previous page; the next
+ * page starts strictly after it (Codex #4057 post-split F3). A `before` id that
+ * is not a record of this notebook yields an empty page, never another
+ * notebook's rows. `nextCursor` is set only when another page exists.
+ */
 export async function listFixRecords(
   tenantId: string,
   notebookId: string,
   equipmentEntityId: string | null,
-  limit = 10,
-): Promise<FixRecord[]> {
+  opts: { limit?: number; before?: string | null } = {},
+): Promise<{ fixes: FixRecord[]; nextCursor: string | null }> {
+  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? FIX_PAGE_DEFAULT), 1), FIX_PAGE_MAX);
+  const before = opts.before ?? null;
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT id::text AS id, notebook_id::text AS notebook_id, equipment_entity_id,
-              symptom, fault_code, fix, recorded_by, created_at
-         FROM asset_fix_records
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
-          AND equipment_entity_id IS NOT DISTINCT FROM $3
-        ORDER BY created_at DESC
+      `SELECT ${RETURN_COLS}
+         FROM asset_fix_records f
+        WHERE f.tenant_id = $1::uuid AND f.notebook_id = $2::uuid
+          AND f.equipment_entity_id IS NOT DISTINCT FROM $3
+          AND ($5::uuid IS NULL OR (f.created_at, f.id) < (
+                SELECT p.created_at, p.id FROM asset_fix_records p
+                 WHERE p.id = $5::uuid AND p.tenant_id = $1::uuid AND p.notebook_id = $2::uuid))
+        ORDER BY f.created_at DESC, f.id DESC
         LIMIT $4`,
-      [tenantId, notebookId, equipmentEntityId, limit],
+      [tenantId, notebookId, equipmentEntityId, limit + 1, before],
     );
-    return (res.rows as Record<string, unknown>[]).map(mapRow);
+    const rows = (res.rows as Record<string, unknown>[]).map(mapRow);
+    const page = rows.slice(0, limit);
+    return { fixes: page, nextCursor: rows.length > limit ? page[page.length - 1]!.id : null };
   });
 }
