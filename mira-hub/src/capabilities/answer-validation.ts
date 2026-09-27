@@ -871,10 +871,31 @@ export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below
 export function flaggedStepQuote(detail: string, answerText: string): string {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
   const stripLead = (s: string) => s.replace(/^[.,;:!?\s]+/, "");
-  const core = stripLead(squash(foldForDetection(detail)));
-  const at = core ? locateFolded(core.slice(0, 60), answerText) : null;
-  const source = at ? oneSentence(at.line.slice(sentenceStart(at.line, at.index))) : core;
-  const text = stripLead(squash(source.replace(/[*`]/g, "")));
+  const clean = (s: string) => stripLead(squash(foldForDetection(s)));
+  const core = clean(detail);
+  // Probes, most specific first. The WHOLE fragment disambiguates repeated
+  // wording (an exempted twin sentence shares its opening). A masked clause
+  // (maskLiveMeasurementClauses / permit masking) leaves a run of spaces that
+  // the original never had, so the text before that gap is the next probe.
+  const beforeMask = clean(detail.split(/\s{3,}/)[0] ?? "");
+  const probes = [core, beforeMask, core.slice(0, 60)].filter((p, i, all) => p && all.indexOf(p) === i);
+  let at: { line: string; index: number } | null = null;
+  for (const p of probes) {
+    at = locateFolded(p, answerText);
+    if (at) break;
+  }
+  if (!at) return finishQuote(stripLead(squash(core.replace(/[*`]/g, ""))));
+  const start = sentenceStart(at.line, at.index);
+  const sentence = oneSentence(at.line.slice(start));
+  const whole = stripLead(squash(sentence.replace(/[*`]/g, "")));
+  if (whole.length <= 160 || at.index <= start) return finishQuote(whole);
+  // A long run-on sentence: begin AT the flagged words so the 160-char window
+  // can never be spent on a harmless opening.
+  const tail = at.line.slice(at.index, start + sentence.length);
+  return finishQuote(`…${stripLead(squash(tail.replace(/[*`]/g, "")))}`);
+}
+
+function finishQuote(text: string): string {
   if (text.length <= 160) return text;
   const cut = text.slice(0, 160);
   const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), 80));

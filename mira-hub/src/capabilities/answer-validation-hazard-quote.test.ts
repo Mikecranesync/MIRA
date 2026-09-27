@@ -61,4 +61,32 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
       "Open the panel while the drive is live",
     );
   });
+
+  // Safety-review findings on 89f9a4dd (PARTIAL Claude-lane review).
+  it("R1: repeated wording — quotes the sentence detection flagged, not an earlier exempted twin", () => {
+    const shared =
+      "The fault should be reset while the machine is energized during the scheduled maintenance window as instructed by the supervisor";
+    const q = quoteOf(`${shared} under no circumstances. ${shared} to save time.`);
+    expect(q).toContain("to save time");
+    expect(q).not.toContain("under no circumstances");
+  });
+
+  it("R2: masked-clause detail — quotes the real sentence, never the masked debris", () => {
+    const answer =
+      "Restore power to the drive and measure the voltage at the output terminals. " +
+      "The fault should be reset while the machine is energized, then the current on each phase should be measured.";
+    const q = quoteOf(answer);
+    expect(q).not.toMatch(/,\s*\.$/);
+    expect(q).toContain("The fault should be reset while the machine is energized");
+  });
+
+  it("R3: a long run-on sentence — the quote shows the hazardous words, not the harmless opening", () => {
+    const preamble =
+      "For context many technicians ask whether the panel needs power for the test and whether the drive can stay on line " +
+      "during the whole diagnostic sequence and in that case the recommendation that follows applies to this model and you can ";
+    const q = quoteOf(`${preamble}reset the fault while the machine is energized to finish the test quickly.`);
+    expect(q).toContain("reset the fault while the machine is energized");
+    expect(q.length).toBeLessThanOrEqual(161);
+  });
 });
+
