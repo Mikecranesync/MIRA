@@ -108,6 +108,13 @@ export const ENERGIZED_WORK_INTENT = [
   "while active",
   "clamp meter",
   "multimeter",
+  "voltmeter",
+  "ammeter",
+  "wattmeter",
+  "ohmmeter",
+  "megohmmeter",
+  "clampmeter",
+  "fluke",
   "meter",
   "measure",
   "measure voltage",
@@ -133,15 +140,30 @@ export const ENERGIZED_WORK_INTENT = [
  * Deterministic (no LLM) — blocks dangerous prompts before chat routing.
  * Mirrors Python's `detect_energized_electrical_hazard_intent()`.
  */
+function startsAtWord(msg: string, phrase: string): boolean {
+  let i = msg.indexOf(phrase);
+  while (i !== -1) {
+    // A phrase that starts with a digit ("480v") may follow letters ("3ph480v",
+    // "at480v") — only a preceding digit ("1480v") makes it a different number.
+    const blocker = /^[0-9]/.test(phrase) ? /[0-9]/ : /[a-z0-9]/;
+    if (i === 0 || !blocker.test(msg[i - 1])) return true;
+    i = msg.indexOf(phrase, i + 1);
+  }
+  return false;
+}
+
 export function detectEnergizedElectricalHazardIntent(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
   if (!msg) return false;
 
+  // A phrase must start at a word boundary: plain substring matching read
+  // "modbus" as "bus" (voltage context) and "parameter" as "meter" (energized
+  // intent), so "read a parameter over Modbus" hard-stopped as energized work.
   const hasVoltageContext = LETHAL_VOLTAGE_CONTEXT.some((phrase) =>
-    msg.includes(phrase)
+    startsAtWord(msg, phrase)
   );
   const hasEnergizedIntent = ENERGIZED_WORK_INTENT.some((phrase) =>
-    msg.includes(phrase)
+    startsAtWord(msg, phrase)
   );
 
   return hasVoltageContext && hasEnergizedIntent;

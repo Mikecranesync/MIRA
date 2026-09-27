@@ -233,6 +233,13 @@ _ENERGIZED_WORK_INTENT = frozenset(
         "while active",
         "clamp meter",  # Clamp meters MUST be used de-energized per NFPA 70E
         "multimeter",
+        "voltmeter",
+        "ammeter",
+        "wattmeter",
+        "ohmmeter",
+        "megohmmeter",
+        "clampmeter",
+        "fluke",
         "meter",  # General measurement (but careful: "meter reading")
         "measure",  # "measure while live", "need to measure"
         "measure voltage",
@@ -250,6 +257,13 @@ _ENERGIZED_WORK_INTENT = frozenset(
 )
 
 
+def _starts_at_word(msg: str, phrase: str) -> bool:
+    # A phrase that starts with a digit ("480v") may follow letters ("3ph480v");
+    # only a preceding digit ("1480v") makes it a different number.
+    blocker = r"(?<![0-9])" if phrase[:1].isdigit() else r"(?<![a-z0-9])"
+    return re.search(blocker + re.escape(phrase), msg) is not None
+
+
 def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """Detect intent to work on energized high-voltage equipment.
 
@@ -265,8 +279,10 @@ def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """
     msg = message.lower().strip()
 
-    has_voltage_context = any(phrase in msg for phrase in _LETHAL_VOLTAGE_CONTEXT)
-    has_energized_intent = any(phrase in msg for phrase in _ENERGIZED_WORK_INTENT)
+    # A phrase must start at a word boundary: plain substring matching read
+    # "modbus" as "bus" and "parameter" as "meter" (parity with safety-classifier.ts).
+    has_voltage_context = any(_starts_at_word(msg, p) for p in _LETHAL_VOLTAGE_CONTEXT)
+    has_energized_intent = any(_starts_at_word(msg, p) for p in _ENERGIZED_WORK_INTENT)
 
     return has_voltage_context and has_energized_intent
 
