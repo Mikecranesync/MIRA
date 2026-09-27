@@ -359,6 +359,20 @@ describe("notebook chat safety hard-stop", () => {
     expect(system).toContain("SAFETY FLAG: which cable to pull");
   });
 
+  it("tells the model to answer in the technician's language (100x plan move 5)", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Respuesta.");
+    await POST(chatReq({ message: "¿cómo reinicio la falla del variador?", sourceDocIds: [DOC_A] }), params);
+    const systems = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([, init]) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as { messages: Array<{ role: string; content: string }> };
+      return body.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    });
+    // The Spanish question is first translated for the English manual search…
+    expect(systems.some((s) => s.includes("Translate the maintenance technician's question to English"))).toBe(true);
+    // …and the answer prompt tells the model to reply in Spanish.
+    expect(systems.some((s) => s.includes("Answer in the language the technician wrote in"))).toBe(true);
+  });
+
   it("does not stop an ordinary maintenance question", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     const res = await POST(

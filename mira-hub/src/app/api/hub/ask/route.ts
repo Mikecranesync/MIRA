@@ -12,6 +12,8 @@ import {
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
@@ -177,6 +179,8 @@ export async function POST(req: Request) {
     );
   }
 
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const searchQuery = await englishSearchQuery(question, translateForSearch);
   let chunks: ManualChunk[] = [];
   let retrievalFailed = false;
   {
@@ -203,7 +207,7 @@ export async function POST(req: Request) {
     // matching comment in `api/assets/[id]/chat/route.ts`.
     const client = await pool.connect();
     try {
-      chunks = await retrieveManualChunks(client, ctx.tenantId, question, {
+      chunks = await retrieveManualChunks(client, ctx.tenantId, searchQuery, {
         manufacturer,
         topK: 6,
       });
@@ -225,7 +229,9 @@ export async function POST(req: Request) {
   const messages: CascadeMessage[] = [
     {
       role: "system",
-      content: safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      content: withAnswerLanguage(
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      ),
     },
     {
       role: "user",
