@@ -15,7 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
   createShellState,
@@ -41,12 +41,13 @@ import {
 } from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
-import type { NotebookServerTurn } from "../api/resources";
+import { getNotebookDetail, type NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
 import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
+import { liveTurnsSignature, mapLiveAnswersToServerIds, unmappedLiveAnswers } from "../unified/live-turn-ids";
 import {
   citationIndex,
   contextFor,
@@ -161,6 +162,42 @@ export function UnifiedChat({
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+
+  // #4061: the answer just received has no server turn id (`live-<i>-a`), so
+  // it could not offer "Record what fixed it" until the notebook was reopened.
+  // Once the stream is idle, re-read the persisted turns (as the Hub does) and
+  // pair each live answer with its row. The mapping is only honoured for the
+  // exact live list it was built from; anything unpaired keeps no button.
+  const liveSig = liveTurnsSignature(meta.notebookId, attachmentThreadId, liveTurns);
+  const [liveIds, setLiveIds] = useState<{ sig: string; ids: ReadonlyMap<string, string> }>({ sig: "", ids: new Map() });
+  const currentLiveIds = liveIds.sig === liveSig ? liveIds.ids : null;
+  useEffect(() => {
+    const notebookId = meta.notebookId;
+    if (busy || !notebookId || unmappedLiveAnswers(liveTurns, currentLiveIds ?? new Map()).length === 0) return;
+    let cancelled = false;
+    const rendered = new Set(turns.map((t) => t.id.toLowerCase()));
+    getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? null })
+      .then((detail) => {
+        if (cancelled) return;
+        const ids = mapLiveAnswersToServerIds(liveTurns, detail.turns, {
+          alreadyRendered: rendered,
+          threadId: attachmentThreadId ?? null,
+        });
+        setLiveIds({ sig: liveSig, ids });
+      })
+      // No id means no Record button — the safe default; the notebook reopen
+      // path still offers it from the persisted row.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // `currentLiveIds` is derived from `liveSig`; re-running on it would refetch
+    // after every successful mapping.
+  }, [busy, liveSig, meta.notebookId, attachmentThreadId]);
+  const recordTurnIdFor = useCallback(
+    (turnId: string) => serverTurnIdFor(turnId) ?? currentLiveIds?.get(turnId) ?? null,
+    [currentLiveIds],
+  );
 
   useEffect(() => {
     dispatch({
@@ -349,8 +386,8 @@ export function UnifiedChat({
   const onRecordFix = useCallback(async (turnId: string) => {
     const symptom = fixSymptomFor(state.thread.turns, turnId);
     // Filed under the machine THIS answer was served for (Codex #4058 post-cap
-    // F1); a live answer has no server turn yet and offers no button.
-    const sourceTurnId = serverTurnIdFor(turnId);
+    // F1); a live answer resolves through its re-read persisted row (#4061).
+    const sourceTurnId = recordTurnIdFor(turnId);
     if (!meta.notebookId || !symptom || !sourceTurnId) return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
     if (!fix) return;
@@ -367,7 +404,7 @@ export function UnifiedChat({
       if (refusal) fixRequestIds.settle(turnId, fix);
       window.alert(refusal ?? "Could not save the fix. Check the connection and try again.");
     }
-  }, [fixRequestIds, meta.notebookId, state.thread.turns]);
+  }, [fixRequestIds, meta.notebookId, recordTurnIdFor, state.thread.turns]);
 
   const hooks: HostHooks = {
     onSend,
@@ -375,7 +412,7 @@ export function UnifiedChat({
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
     ...(meta.notebookId
-      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => recordTurnIdFor(turnId) !== null }
       : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
