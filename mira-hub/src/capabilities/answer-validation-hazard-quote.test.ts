@@ -131,5 +131,27 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
     expect(q).toContain("While the machine is energized");
     expect(q).toContain("the fault should be reset");
   });
+
+  // Codex round 3 (#4072 @8560de2a).
+  it("C3: a flagged sentence over 400 chars is quoted complete — relation AND action", () => {
+    const context =
+      "the operator should review the maintenance history and check prior events and note all relevant timestamps and " +
+      "compare them against the shift log and the alarm journal and the drive event buffer and the PLC diagnostic buffer " +
+      "and the historian trend for motor current and bus voltage and heatsink temperature over the previous three shifts " +
+      "and then summarize the findings for the maintenance planner and the line supervisor ";
+    const answer = `While the machine is energized, ${context}before the fault should be reset.`;
+    expect(answer.length).toBeGreaterThan(400);
+    const q = quoteOf(answer);
+    expect(q).toContain("While the machine is energized");
+    expect(q).toContain("the fault should be reset");
+  });
+
+  it("C4: rigging — quotes the affirmative overloaded lift, not an identical earlier prohibition", () => {
+    const answer = "Never lift the 4-ton load using the 2-ton hoist. You should lift the 4-ton load using the 2-ton hoist.";
+    const v = validateAnswer({ answerText: answer, question: "can I lift it", general: true, served: true, refused: false });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsafe-answer:rigging-overload");
+    expect(quoteOf(answer)).toBe("You should lift the 4-ton load using the 2-ton hoist.");
+  });
 });
 

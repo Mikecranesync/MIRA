@@ -226,12 +226,14 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
 const RIGGING_RE =
   /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
 
-function riggingOverload(text: string): string | null {
+function riggingOverload(text: string): { detail: string; index: number } | null {
   const m = RIGGING_RE.exec(text);
   if (!m) return null;
   const unit = (u: string) => (u.startsWith("t") ? "t" : u.startsWith("kg") ? "kg" : "lb");
   if (unit(m[2].toLowerCase()) !== unit(m[4].toLowerCase())) return null;
-  return parseFloat(m[1]) > parseFloat(m[3]) ? m[0].slice(0, 160) : null;
+  // The offset lets the banner quote THIS lift, not an identical earlier
+  // prohibition the regex skipped (Codex #4072 round 3).
+  return parseFloat(m[1]) > parseFloat(m[3]) ? { detail: m[0].slice(0, 160), index: m.index } : null;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -877,9 +879,9 @@ export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below
  *  step mid-parenthesis, and rewrote U+2011 hyphens to ASCII. Instead, quote
  *  the WHOLE ORIGINAL sentence the detector flagged (located by its match
  *  position when available; a list item's marker stays with it) — markup
- *  stripped, whitespace collapsed; only a sentence over QUOTE_MAX is windowed
- *  around the flagged relation. Anchoring on POSITION matters: the banner must
- *  never quote a harmless sentence as the unsafe step. Detection is untouched. */
+ *  stripped, whitespace collapsed, never truncated. Anchoring on POSITION
+ *  matters: the banner must never quote a harmless sentence as the unsafe
+ *  step. Detection is untouched. */
 export function flaggedStepQuote(detail: string, answerText: string, scanIndex?: number): string {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
   // Leading punctuation and list bullets (".", "—", "–", "•", "- ") never lead a quote.
@@ -901,34 +903,14 @@ export function flaggedStepQuote(detail: string, answerText: string, scanIndex?:
     at = locateFolded(p, answerText);
     if (at) break;
   }
-  if (!at) return finishQuote(stripLead(squash(core.replace(/[*`]/g, ""))));
+  if (!at) return stripLead(squash(core.replace(/[*`]/g, "")));
   const start = sentenceStart(at.line, at.index);
   const sentence = oneSentence(at.line.slice(start));
-  const whole = stripLead(squash(sentence.replace(/[*`]/g, "")));
-  // Quote the flagged sentence WHOLE whenever it is reasonably sized: every
-  // window heuristic can cut off either the relation or the action (Codex
-  // #4072 round 2), and a longer banner is a small price for naming the
-  // right step. Only a pathological sentence (> QUOTE_MAX) is windowed.
-  if (whole.length <= QUOTE_MAX || at.index <= start) return finishQuote(whole);
-  // Pathological run-on sentence: begin just before the flagged relation (at
-  // most 60 chars, at a word start) so the window is never spent on a
-  // harmless opening.
-  let from = Math.max(start, at.index - 60);
-  if (from > start && from < at.index) {
-    const space = at.line.indexOf(" ", from);
-    if (space >= 0 && space < at.index) from = space + 1;
-  }
-  const tail = at.line.slice(from, start + sentence.length);
-  return finishQuote(`…${stripLead(squash(tail.replace(/[*`]/g, "")))}`);
-}
-
-const QUOTE_MAX = 400;
-
-function finishQuote(text: string): string {
-  if (text.length <= QUOTE_MAX) return text;
-  const cut = text.slice(0, QUOTE_MAX);
-  const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), QUOTE_MAX / 2));
-  return `${atWord.replace(/[\s.,;:—–-]+$/, "")}…`;
+  // The WHOLE flagged sentence, always. Every window heuristic tried (160
+  // chars, sentence-anchored, relation-anchored, 400-char cap) was shown by
+  // review to cut off either the hazard relation or the action; naming the
+  // right step outweighs a longer banner (Codex #4072 rounds 1-3).
+  return stripLead(squash(sentence.replace(/[*`]/g, "")));
 }
 
 /** Map an offset in the detection scan text (the fold of `answerText`; the
@@ -1124,7 +1106,7 @@ export function validateAnswer(opts: {
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
-  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
+  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig.detail, answerText, rig.index);
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
