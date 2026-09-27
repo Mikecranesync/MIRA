@@ -83,7 +83,10 @@ jobs:
           # fails OPEN, and the tests would grade an unexercised code path.
           # pytest-asyncio so the shared asyncio_mode="auto" ini option is
           # recognized here (see #2553).
-          pip install 'psycopg2-binary>=2.9' pytest pytest-asyncio pyyaml 'sqlalchemy>=2.0'
+          # sqlalchemy <2.1: 2.1 made psycopg (v3) the default postgresql://
+          # driver, and only psycopg2 is installed here — the same pin #4009
+          # applied to every psycopg2 service.
+          pip install 'psycopg2-binary>=2.9' pytest pytest-asyncio pyyaml 'sqlalchemy>=2.0,<2.1'
 
       - name: Resolve migration plan
         id: plan
