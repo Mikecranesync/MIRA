@@ -1069,7 +1069,7 @@ approved:
       with engine.connect() as conn:
               rows = conn.execute(
                   text(
-  "tests/mira_bench.py:218":
+  "tests/mira_bench.py:220":
     approved_classification: TENANT-ONLY
     query_sha256: "f222ad049e1602178d270775b195f4ef2db15d5dc940cb29761af54bcb009bff"
     reason: "TODO: justify this read pattern"
