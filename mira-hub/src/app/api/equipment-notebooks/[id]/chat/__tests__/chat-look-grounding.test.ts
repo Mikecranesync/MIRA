@@ -187,19 +187,10 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(call[2] ?? "").toBe("");
   });
 
-  it("BUG (production, not this policy change): a server-stored high-confidence photo hazard loses its flag entirely when Gate G's zero-evidence abstain fires first", async () => {
-    // OWNER DECISION 2026-09-27: intent is "flag, don't block" — a photo
-    // hazard should carry a banner exactly like a text-triggered one. But
-    // this request has no sourceDocIds and no `mode: "general"`, so it falls
-    // into the SAME pre-existing "chunks.length === 0" abstain gate ("Gate
-    // G") documented in chat-safety-stop.test.ts's BUG describe block — a
-    // technician looking at LIVE ARCING (confidence 0.99) gets "I saw your
-    // photo, but I couldn't find anything about it in the selected sources."
-    // with ZERO safety framing. This is worse than both the old hard stop
-    // and the intended policy. See the neighbouring test below (`mode:
-    // "general"`) for the shape this SHOULD produce when Gate G is not in
-    // the way, and the session report for the full evidence. EXPECTED TO
-    // FAIL until the gate ordering is fixed in production code.
+  it("a photo hazard with no sources is not swallowed by the zero-evidence abstain: banner + answer", async () => {
+    // Found by the 2026-09-27 test rewrite: with no sources and no mode, the
+    // flagged turn used to fall into Gate G and lose the flag entirely. The
+    // route now sends a flagged turn to the general lane.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
       observationId: "o1",
@@ -214,6 +205,11 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       hazards: [{ code: "arcing", confidence: 0.99 }],
     });
 
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Get clear and call an electrician." } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
     const res = await POST(
       req({
         message: "what am I looking at here",
@@ -223,7 +219,8 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     );
     const text = await res.text();
 
-    expect(text).toContain("⚠️");
+    expect(text).toContain("Possible active incident");
+    expect(text).toContain("electrician"); // answer streams word by word
   });
 
   it("a server-stored high-confidence photo hazard is flagged (banner above) but still answered when the turn is not swallowed by Gate G", async () => {
@@ -400,10 +397,7 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("BUG (production, not this policy change): F1 sticky MAX hazard loses its flag entirely when Gate G's zero-evidence abstain fires first", async () => {
-    // Same root cause as the earlier BUG test in this file: no sourceDocIds,
-    // no `mode: "general"` ⇒ Gate G fires before the hazard banner is ever
-    // applied. EXPECTED TO FAIL until the gate ordering is fixed.
+  it("F1 sticky MAX hazard with no sources is flagged and answered, not swallowed by the abstain", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
       observationId: "o2",
@@ -418,6 +412,11 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       hazards: [{ code: "arcing", confidence: 0.9 }],
     });
 
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Get clear and call an electrician." } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
     const res = await POST(
       req({
         message: "what am I looking at here",
@@ -427,7 +426,8 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     );
     const text = await res.text();
 
-    expect(text).toContain("⚠️");
+    expect(text).toContain("Possible active incident");
+    expect(text).toContain("electrician"); // answer streams word by word
   });
 
   it("F1 sticky MAX: older LOOK with high hazard + newer LOOK with empty hazards → still flagged (MAX across all active rows), and still answered", async () => {

@@ -176,38 +176,30 @@ describe("notebook chat safety hard-stop", () => {
     expect(frames.at(-1)).toBe("[DONE]");
   });
 
-  describe("BUG (production, not this policy change) — Gate G's zero-evidence abstain swallows the flag entirely", () => {
-    // 2026-09-27 investigation: the terminal safety-stop branch removed by
-    // 6cc21ec8a used to intercept EVERY safetyTrigger unconditionally, before
-    // the pre-existing "chunks.length === 0" abstain gate ("Gate G", route.ts
-    // ~L1874-ish, "insufficient evidence" / "I couldn't find that in the
-    // selected sources"). With that branch gone, a hazard report that hits
-    // Gate G (zero retrieved chunks — the DEFAULT ragMock behaviour in this
-    // file, and a realistic outcome for a notebook whose search finds
-    // nothing) now returns the ordinary abstain response with ZERO safety
-    // framing: no banner (only applied later, on the served-answer path Gate
-    // G never reaches), no X-Safety-Stop header (removed), no safety_notice
-    // evidence entry (only added by the deleted branch or the energized
-    // directive). This is WORSE than both the pre-2026-09-27 hard stop and
-    // the intended flag-and-answer policy — the hazard vanishes without a
-    // trace. These two tests assert the INTENDED behaviour (a flag must
-    // still appear) and are EXPECTED TO FAIL until the gate ordering is
-    // fixed in production code. See the session report for the exact
-    // evidence and root cause.
-    it("a hazard report with genuinely zero retrieved chunks should still carry the safety banner", async () => {
+  describe("a flagged hazard is never swallowed by the zero-evidence abstain or the no-sources gate", () => {
+    // Found by the 2026-09-27 test rewrite: with the terminal stop removed, a
+    // hazard report that retrieved nothing fell into Gate G's abstain and lost
+    // every trace of the flag. The route now sends a flagged turn past Gate G
+    // to the general lane, so the tech gets the banner and an answer.
+    it("a hazard report with zero retrieved chunks is answered under the banner", async () => {
+      stubProvider("Back away and cut power at the disconnect.");
       const res = await POST(
         chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A] }),
         params,
       );
-      const frames = await readFrames(res);
-      expect(answerText(frames)).toContain("⚠️");
+      const text = answerText(await readFrames(res));
+      expect(text).toContain("Possible active incident");
+      expect(text).toContain("Back away and cut power");
+      expect(fetch).toHaveBeenCalled();
     });
 
-    it("stops even with no sources attached, instead of returning no_sources_selected", async () => {
+    it("with no sources attached, a hazard report is still answered under the banner", async () => {
       domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+      stubProvider("Get medical attention first.");
       const res = await POST(chatReq({ message: "i just got shocked by the panel", sourceDocIds: [] }), params);
-      const frames = await readFrames(res);
-      expect(answerText(frames)).toContain("⚠️");
+      const text = answerText(await readFrames(res));
+      expect(text).toContain("Possible active incident");
+      expect(text).toContain("Get medical attention first.");
     });
   });
 

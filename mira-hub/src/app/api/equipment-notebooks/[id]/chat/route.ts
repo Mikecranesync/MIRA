@@ -1462,10 +1462,10 @@ async function handleChatTurn(
   // flagged turn continues to retrieval and generation like any other, and
   // its safety_notice (hazardEntries above) is persisted with the answer so
   // the banner survives reload and device switches (spec §10).
-  // Evaluated AFTER the safety stop, deliberately: a hazard report is never
-  // answered with "re-select the machine". The stop above persisted about no
-  // machine (state !== "resolved" → null snapshot), which is the honest record.
-  if (boundAsset.state === "unresolvable") {
+  // A hazard report is never answered with "re-select the machine": a flagged
+  // turn skips this 422 and is answered (banner + general answer) about no
+  // machine in particular — the null snapshot below is the honest record.
+  if (boundAsset.state === "unresolvable" && !safetyTrigger) {
     // Fail closed. Quietly answering as if unbound is the downgrade
     // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
     // would keep showing the last stored machine name while answering about
@@ -1872,7 +1872,10 @@ async function handleChatTurn(
     !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
       ? `${oemManufacturer!.name} ${oemModel.value}`
       : null;
-  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {
+  // A flagged hazard turn is never swallowed by this abstain (owner decision
+  // 2026-09-27): with no documents it takes the general lane, so the tech gets
+  // the hazard banner and an answer instead of "couldn't find that".
+  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent

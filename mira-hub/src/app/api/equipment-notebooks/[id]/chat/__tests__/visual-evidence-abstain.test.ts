@@ -187,19 +187,17 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(persisted.evidence).toEqual([]);
   });
 
-  it("a hazard report still verifies and retains the attached photo — the photo survives Gate G's abstain (BUG: the safety banner does not)", async () => {
-    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
-    // flags". This test's ORIGINAL premise (a terminal Safety STOP) no
-    // longer exists — but this file's whole scenario is Gate G's
-    // zero-evidence abstain (`ragMock.retrieveNodeChunks` resolves `[]` by
-    // design, per this file's beforeEach comment), which is the SAME
-    // production defect documented in chat-safety-stop.test.ts's BUG
-    // describe block: the hazard banner is only applied on the served-
-    // answer path, which Gate G's early abstain never reaches. Split here
-    // into what still works (photo verification/persistence — Gate G
-    // already preserved visual evidence before this policy change) and what
-    // is broken (the safety flag itself, EXPECTED TO FAIL).
+  it("a hazard report with a photo is answered under the banner and still verifies and retains the photo", async () => {
+    // OWNER DECISION 2026-09-27: flag, never block. A flagged turn is no longer
+    // swallowed by Gate G's zero-evidence abstain (found by the test rewrite):
+    // it takes the general lane, so the tech gets the banner and an answer,
+    // and the verified photo is still carried and persisted.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Cut power at the disconnect from a safe distance." } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
 
     const res = await POST(
       req({
@@ -214,35 +212,19 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT, PHOTO, "equipment_notebook", NB);
 
     const out = await frames(res);
-    // Still true today: the photo is verified and its marker frame survives
-    // the abstain, unaffected by the safety-flag defect below.
-    expect(out).toContainEqual({
-      kind: "evidence",
-      visualEvidence: {
-        kind: "visual_observation",
-        fileId: PHOTO,
-        capturedAt: CAPTURED_AT,
-        provenance: "phone_photo",
-      },
-    });
-    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as {
+    expect(
+      out.some((f) => f.kind === "evidence" && (f.visualEvidence as { fileId?: string } | undefined)?.fileId === PHOTO),
+    ).toBe(true);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls.at(-1) as unknown[])[2] as {
       answerStatus: string;
       answerText: string | null;
       evidence: Record<string, unknown>[];
     };
-    expect(persisted.evidence).toContainEqual({
-      kind: "visual_observation",
-      fileId: PHOTO,
-      capturedAt: CAPTURED_AT,
-      provenance: "phone_photo",
-    });
-
-    // BUG: neither the live stream nor the persisted turn carries ANY safety
-    // framing for a hazard report that lands in Gate G's zero-evidence
-    // abstain. Currently: answerStatus "insufficient_evidence", answerText
-    // is the generic "I couldn't find that…" refusal, no banner anywhere.
+    expect(persisted.evidence).toContainEqual(expect.objectContaining({ kind: "visual_observation", fileId: PHOTO }));
+    expect(persisted.answerStatus).toBe("answered");
+    expect(persisted.answerText).toMatch(/^⚠️ \*\*Possible active incident/);
     const content = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
-    expect(content).toContain("⚠️");
+    expect(content).toContain("Possible active incident");
   });
 
   it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {

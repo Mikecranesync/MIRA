@@ -226,11 +226,11 @@ describe("every persisted turn is owned by the authenticated technician", () => 
     expect(turn.threadId).toBe("thrd_a");
   });
 
-  it("safety-stop turn (no sources) is owned by the session user", async () => {
+  it("flagged hazard turn (no sources) is answered and owned by the session user", async () => {
     const res = await POST(req({ message: "there is smoke coming from the drive panel", sourceDocIds: [] }), params);
     expect(res.status).toBe(200);
     await frames(res);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled(); // 2026-09-27: flagged turns are answered, not stopped
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
     const turn = (nbMock.recordTurn.mock.calls[0] as unknown[])[2] as { ownerUserId?: string };
     expect(turn.ownerUserId).toBe(USER_A);
@@ -434,21 +434,10 @@ describe("a zero-source SAFETY STOP is persisted like every other turn (asset sn
     });
   });
 
-  it("BUG (production, not this policy change): an UNRESOLVABLE binding now DOES block a hazard report with 're-select the machine' — the invariant this test protected is broken", async () => {
-    // The comment this test's assertions were written against ("Evaluated
-    // AFTER the safety stop, deliberately: a hazard report is never answered
-    // with 're-select the machine'") describes code that no longer exists:
-    // 6cc21ec8a deleted the unconditional terminal safety-stop branch that
-    // used to run BEFORE the `boundAsset.state === "unresolvable"` 422 check
-    // (route.ts ~L1468), with nothing replacing it there. So today, for ANY
-    // request shape — grounded, zero-source, or `mode: "general"` — an
-    // unresolvable binding 422s FIRST, and a technician reporting smoke gets
-    // "This notebook points at equipment that is no longer available… Re-
-    // select the machine" instead of any safety response at all. This is a
-    // distinct defect from the Gate-G swallow documented elsewhere in this
-    // session (a different gate, same root cause: deleting the
-    // unconditional pre-empt broke every check that used to run after it).
-    // EXPECTED TO FAIL until a hazard check is restored ahead of this 422.
+  it("an UNRESOLVABLE binding never answers a hazard report with 're-select the machine' — the flagged turn is answered under the banner", async () => {
+    // Found by the 2026-09-27 test rewrite: removing the terminal stop let the
+    // unresolvable-binding 422 fire first on hazard reports. The route now
+    // skips that 422 for a flagged turn.
     nbMock.resolveBoundAsset.mockResolvedValue({ state: "unresolvable", entityId: ASSET });
     for (const body of [
       { message: SMOKE, sourceDocIds: [DOC_A] },
@@ -519,10 +508,10 @@ describe("a disputed identity is on the wire FIRST on every path — live ≡ hy
     expect(finalEvidence).toMatchObject({ kind: "evidence", basis: "general_reasoning", identityDisputed: true });
   });
 
-  it("control: an UNDISPUTED safety stop and abstention emit no evidence frame at all (wire unchanged)", async () => {
+  it("control: an UNDISPUTED flagged turn and an abstention carry no identity-dispute marker", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
-    const stop = await frames(await POST(req({ message: SMOKE, sourceDocIds: [] }), params));
-    expect(stop.some((f) => f.kind === "evidence")).toBe(false);
+    const flagged = await frames(await POST(req({ message: SMOKE, sourceDocIds: [] }), params));
+    expect(flagged.some((f) => f.kind === "evidence" && f.identityDisputed === true)).toBe(false);
     notebookOwnedByTenant();
     const abstain = await frames(await POST(req({ message: "Which coil?", sourceDocIds: [DOC_A] }), params));
     expect(abstain.some((f) => f.kind === "evidence")).toBe(false);
