@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatRecordedFixes, validateFixInput, type FixRecord } from "@/capabilities/fix-records";
+import {
+  answerCitesRecordedFix,
+  formatRecordedFixes,
+  isRecordedFixEntry,
+  relevantFixes,
+  validateFixInput,
+  type FixRecord,
+} from "@/capabilities/fix-records";
 
 function fix(overrides: Partial<FixRecord> = {}): FixRecord {
   return {
@@ -170,5 +177,38 @@ describe("formatRecordedFixes", () => {
     ]);
     expect(out).toContain("symptom: Line 1 Line 2 Line 3; fault F1 F2 → fix: Step 1 Step 2");
     expect(out).not.toContain("\n\n");
+  });
+});
+
+describe("relevantFixes", () => {
+  const trip = fix({ id: "a", symptom: "drive trips oC on accel", faultCode: "oC", fix: "raised accel time" });
+  const belt = fix({ id: "b", symptom: "conveyor stalls under load", fix: "replaced drive belt" });
+
+  it("keeps fixes sharing a meaningful word with the question", () => {
+    expect(relevantFixes("it trips on accel", [trip, belt]).map((f) => f.id)).toEqual(["a"]);
+  });
+
+  it("returns every fix for a repair-history question", () => {
+    expect(relevantFixes("what did we do last time", [trip, belt]).map((f) => f.id)).toEqual(["a", "b"]);
+  });
+
+  it("returns none for an unrelated question, and none from an empty list", () => {
+    expect(relevantFixes("what is the baud rate", [trip, belt])).toEqual([]);
+    expect(relevantFixes("it trips on accel", [])).toEqual([]);
+  });
+});
+
+describe("answerCitesRecordedFix / isRecordedFixEntry", () => {
+  it("detects the citation form the prompt asks for, case-insensitively", () => {
+    expect(answerCitesRecordedFix("Recorded fix (2026-09-20): raise accel")).toBe(true);
+    expect(answerCitesRecordedFix("per the recorded fix, raise accel")).toBe(true);
+    expect(answerCitesRecordedFix("Check the DC bus")).toBe(false);
+  });
+
+  it("accepts only a well-formed evidence entry", () => {
+    expect(isRecordedFixEntry({ kind: "recorded_fix", fixIds: ["a"] })).toBe(true);
+    expect(isRecordedFixEntry({ kind: "recorded_fix", fixIds: [1] })).toBe(false);
+    expect(isRecordedFixEntry({ kind: "identity_dispute" })).toBe(false);
+    expect(isRecordedFixEntry(null)).toBe(false);
   });
 });

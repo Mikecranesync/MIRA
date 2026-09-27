@@ -178,7 +178,15 @@ import {
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
-import { formatRecordedFixes, listFixRecords } from "@/capabilities/fix-records";
+import {
+  RECORDED_FIX_LABEL,
+  answerCitesRecordedFix,
+  formatRecordedFixes,
+  isRecordedFixEntry,
+  listFixRecords,
+  relevantFixes,
+  type RecordedFixEntry,
+} from "@/capabilities/fix-records";
 import {
   selectForSemanticCheck,
   semanticCheckEnabled,
@@ -655,6 +663,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+  // Plant memory: a fix-cited answer replays with the same label and fix ids.
+  const fixEntry = turn.evidence.find(isRecordedFixEntry) ?? null;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -685,7 +695,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           emit({
             kind: "evidence",
             basis,
-            label: replayBasisLabel(basis),
+            label: basis === "workspace_evidence" && fixEntry && !visualEvidence ? RECORDED_FIX_LABEL : replayBasisLabel(basis),
+            ...(fixEntry ? { recordedFixIds: fixEntry.fixIds } : {}),
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
@@ -1879,10 +1890,50 @@ async function handleChatTurn(
     !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
       ? `${oemManufacturer!.name} ${oemModel.value}`
       : null;
+  // Plant memory (migrations 095/096): fixes a technician recorded on THIS
+  // notebook, recalled BEFORE the evidence gate so a relevant recorded fix can
+  // answer "what fixed this last time?" even when no document chunk matches
+  // (Codex #4057 F5). Guards:
+  //   - only the machine the notebook is bound to now, and only once a
+  //     technician CONFIRMED that binding — a QR selection alone could be the
+  //     wrong machine (F2/F6); an unbound notebook recalls its own records;
+  //   - never on an identity-disputed turn;
+  //   - only fixes relevant to this question (relevantFixes).
+  // They are tenant-typed free text, so they ride the hardened reference-DATA
+  // channel next to the question, never the system prompt (F3). Fail-open.
+  let recordedFixes = "";
+  let recordedFixIds: string[] = [];
+  const fixScopeEligible =
+    !identityDisputed &&
+    (boundAsset.state === "unbound" || (boundAsset.state === "resolved" && Boolean(boundAsset.confirmedAt)));
+  if (fixScopeEligible) {
+    try {
+      const fixes = await listFixRecords(
+        ctx.tenantId,
+        notebookId,
+        boundAsset.state === "resolved" ? boundAsset.entityId : null,
+        3,
+      );
+      const relevant = Array.isArray(fixes) ? relevantFixes(message, fixes) : [];
+      if (relevant.length > 0) {
+        recordedFixes = formatRecordedFixes(relevant);
+        recordedFixIds = relevant.map((f) => f.id);
+      }
+    } catch (err) {
+      console.warn(`[notebook-chat] recorded fixes unavailable notebook=${notebookId}: ${(err as Error).message}`);
+    }
+  }
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
-  // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry && !safetyTrigger) {
+  // the hazard banner and an answer instead of "couldn't find that". A relevant
+  // recorded fix is evidence of its own and keeps the turn out of Gate G, but
+  // never overrides the documented-value refusal (missingModelManual).
+  if (
+    chunks.length === 0 &&
+    ((!general && recordedFixIds.length === 0) || missingModelManual) &&
+    !groundedMachineEntry &&
+    !safetyTrigger
+  ) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -2128,31 +2179,6 @@ async function handleChatTurn(
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
-  // Plant memory (migrations 095/096): fixes a technician recorded on THIS
-  // notebook for the machine it is bound to NOW. They are tenant-typed free
-  // text, so they ride the injection-hardened reference-DATA channel next to
-  // the question — never the system prompt (Codex #4057 F3) — and are
-  // withheld entirely when this turn disputes the notebook's machine (F2).
-  // Fail-open: no rows, a read error, or an env without 095 leaves the prompt
-  // byte-identical to before.
-  let recordedFixes = "";
-  let recordedFixIds: string[] = [];
-  if (!identityDisputed) {
-    try {
-      const fixes = await listFixRecords(
-        ctx.tenantId,
-        notebookId,
-        boundAsset.state === "resolved" ? boundAsset.entityId : null,
-        3,
-      );
-      if (Array.isArray(fixes) && fixes.length > 0) {
-        recordedFixes = formatRecordedFixes(fixes);
-        recordedFixIds = fixes.map((f) => f.id);
-      }
-    } catch (err) {
-      console.warn(`[notebook-chat] recorded fixes unavailable notebook=${notebookId}: ${(err as Error).message}`);
-    }
-  }
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
@@ -2980,6 +3006,8 @@ async function handleChatTurn(
         citations: emittedCitations,
         sourceSnapshot: docIds,
       };
+      const fixCited = recordedFixIds.length > 0 && answerCitesRecordedFix(answerText);
+      const fixEntries: RecordedFixEntry[] = fixCited ? [{ kind: "recorded_fix", fixIds: recordedFixIds }] : [];
       const evidenceFrame: NotebookBasisEvidenceFrame = groundedMachineEntry
         ? groundedMachineEntry.freshness === "live"
           ? {
@@ -3021,22 +3049,22 @@ async function handleChatTurn(
                   ? "Grounded in a photo attached earlier in this conversation — an unconfirmed reading."
                   : "Grounded in the attached photo — an unconfirmed reading.",
               }
-            : recordedFixIds.length > 0
+            : fixCited
               ? {
-                  // Plant memory (Codex #4057 F4): the only evidence in context
-                  // is a fix a technician recorded on this machine — the
-                  // tenant's own record, not a document and not the model's
-                  // general knowledge.
+                  // Plant memory (Codex #4057 F4): the answer CITED a fix a
+                  // technician recorded on this machine — the tenant's own
+                  // record, not a document and not general knowledge. Presence
+                  // in the context alone never earns this label.
                   kind: "evidence",
                   basis: "workspace_evidence",
-                  label: "Grounded in a fix recorded on this machine — technician-reported, not documentation.",
+                  label: RECORDED_FIX_LABEL,
                 }
               : {
                   kind: "evidence",
                   basis: "general_reasoning",
                   label: "General guidance — not grounded in this machine's documents.",
                 };
-      if (recordedFixIds.length > 0) evidenceFrame.recordedFixIds = recordedFixIds;
+      if (fixCited) evidenceFrame.recordedFixIds = recordedFixIds;
       if (machineEntry) evidenceFrame.machineEvidence = machineEntry;
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
@@ -3066,7 +3094,7 @@ async function handleChatTurn(
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...fixEntries, ...disputeEntries]
             : [...hazardEntries, ...emittedCitations, ...disputeEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
