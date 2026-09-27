@@ -137,3 +137,17 @@ function normalizeTypeLabel(raw: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ");
 }
+
+/**
+ * #4068 / Codex #4069 — a Postgres ARE (`~*`) that matches any row whose model,
+ * title or URL hits one of `type`'s model hints. A NECESSARY condition for
+ * `inferEquipmentType({modelNumber, title, sourceUrl}) === type` (without a
+ * manufacturer default), so the same-family fallback can filter BEFORE the SQL
+ * LIMIT; the exact JS check still runs afterwards. JS `\b` is Postgres `\y`;
+ * every other construct in MODEL_HINTS (`\s`, `\d`, classes, `(?:…)`,
+ * alternation) is ARE-compatible. Null when the type has no model hints.
+ */
+export function familySqlPattern(type: string): string | null {
+  const parts = MODEL_HINTS.filter((h) => h.type === type).map((h) => `(?:${h.test.source.replace(/\\b/g, "\\y")})`);
+  return parts.length ? parts.join("|") : null;
+}

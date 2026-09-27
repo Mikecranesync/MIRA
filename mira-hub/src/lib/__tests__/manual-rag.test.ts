@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
-import { inferEquipmentType } from "../equipment-type";
+import { familySqlPattern, inferEquipmentType } from "../equipment-type";
 import {
   appendManualContext,
   boundBm25Query,
@@ -1079,6 +1079,12 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
     if (re) rows = rows.filter((r) => new RegExp(posix(String(params[Number(re[1]) - 1])), "i").test(String(r.model_number ?? "")));
     const il = sql.match(/model_number ILIKE \$(\d+) AND model_number NOT ILIKE \$(\d+)/);
     if (il) rows = rows.filter((r) => like(String(params[Number(il[1]) - 1]), String(r.model_number ?? "")) && !like(String(params[Number(il[2]) - 1]), String(r.model_number ?? "")));
+    // The family prefilter (Postgres ARE): \y is a word boundary, i.e. JS \b.
+    const fam = sql.match(/coalesce\(source_url, ''\)\) ~\* \$(\d+)/);
+    if (fam) {
+      const re = new RegExp(String(params[Number(fam[1]) - 1]).replace(/\\y/g, "\\b"), "i");
+      rows = rows.filter((r) => re.test(`${r.model_number ?? ""} ${r.title ?? ""} ${r.source_url ?? ""}`));
+    }
     const lim = sql.match(/LIMIT \$(\d+)/);
     const limit = lim ? Number(params[Number(lim[1]) - 1]) : rows.length;
     rows.sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
@@ -1203,6 +1209,20 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating and shows F005", SLC);
     expect(out.map((c) => c.modelNumber)).toEqual(["SLC 5/03"]);
     expect(out.some((c) => c.retrievalScope === "vendor_fallback")).toBe(false);
+  });
+
+  it("Codex #4069 pass 6 F1: the family predicate runs BEFORE the SQL limit — 150 higher-ranked drive rows in BOTH passes cannot hide a PLC page", async () => {
+    const { client, calls } = corpusClient([...Array.from({ length: 150 }, (_, i) => drive(i)), plc({ rank: 0.01 })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    expect(calls.some((c) => /coalesce\(source_url, ''\)\) ~\* \$\d+/.test(c.sql))).toBe(true);
+  });
+
+  it("familySqlPattern: Postgres word boundaries, one alternative per hint, null for a type with no hints", () => {
+    const plcPattern = familySqlPattern("PLCs")!;
+    expect(plcPattern).toContain("\\y");
+    expect(plcPattern).not.toContain("\\b");
+    expect(familySqlPattern("Other")).toBeNull();
   });
 
   it("the window is wide (topK x 20 rows per vendor name)", () => {
