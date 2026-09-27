@@ -72,9 +72,16 @@ const HOW_IT_WORKS = /\bhow\s+(?:does|do)\b[^?.!]{0,60}?\bwork(?:s|ing)?\b/i;
 const GENERIC_CLASS_WHY =
   /\b(?:why|when|how\s+often)\s+(?:does|do|would|can|might|will|is|are)\s+(?:an?\s+[\w-]+|[\w-]+s)\b/i;
 
-// Troubleshooting language: the technician is working a problem on real equipment.
-const TROUBLESHOOTING =
-  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|recover|reset|replace|replaced|swap(?:ped)?|install|configure|set\s+up|connect|wire|troubleshoot|check\s+first|should\s+I\s+check|pass\s?code|password|unlock|register|registers|firmware|bootloader)\b/i;
+// Symptoms: a problem is happening on real equipment ("it stopped
+// communicating", "the drive trips every morning") — enough on their own.
+const SYMPTOM =
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|check\s+first|should\s+I\s+check)\b/i;
+// Procedure words: "wire", "install", "configure"… — a generic "how do I wire
+// a VFD?" is teaching, so these count only when bound to THIS machine
+// (Codex #4069 pass 6 F3).
+const PROCEDURE_VERBS =
+  /\b(?:recover|reset|replace|replaced|swap(?:ped)?|install|configure|set\s+up|connect|wire|troubleshoot|pass\s?code|password|unlock|register|registers|firmware|bootloader)\b/i;
+const TROUBLESHOOTING = new RegExp(`${SYMPTOM.source}|${PROCEDURE_VERBS.source}`, "i");
 
 // "what does fault code X mean", "what does F005 mean on my drive".
 const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i;
@@ -111,5 +118,9 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // #4069 F4: a binding word alone ("what does this machine do?") is not a
   // problem to work — declining it would be the over-block. Require a
   // troubleshooting or what-to-do signal, or a documented-value ask.
-  return TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q) || asksForDocumentedValue(q, boundModel);
+  return (
+    SYMPTOM.test(q) ||
+    (bound && (PROCEDURE_VERBS.test(q) || PROCEDURE_ASK.test(q))) ||
+    asksForDocumentedValue(q, boundModel)
+  );
 }

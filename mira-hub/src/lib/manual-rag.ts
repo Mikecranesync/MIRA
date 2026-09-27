@@ -535,6 +535,10 @@ export async function retrieveManualChunks(
   // outrank) the bound model's own pages — the code fallback runs only when
   // the main pass found nothing of the bound model's.
   const mainIsOwnModel = main.length > 0 && main.every((c) => c.retrievalScope !== "vendor_fallback");
+  // Pass 6 F2: the bound model's own fault-code page beats sibling pages from
+  // the verbose fallback — return own-model evidence alone, so the answer's
+  // sources, warning and prompt describe each page accurately.
+  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel) return codeHits.slice(0, topK);
   if (codeHits.length === 0 && !mainIsOwnModel) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 

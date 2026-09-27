@@ -1070,7 +1070,8 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
     let rows = corpus.filter(
       (r) =>
         (isOr ? r.or !== false : r.and !== false) &&
-        (!Array.isArray(r.matches) || (r.matches as string[]).some((w) => text.includes(w.toLowerCase()))),
+        (!Array.isArray(r.matches) || (r.matches as string[]).some((w) => text.includes(w.toLowerCase()))) &&
+        (typeof r.exactText !== "string" || text.trim() === r.exactText.toLowerCase()),
     );
     const m = sql.match(/manufacturer ILIKE \$(\d+)/);
     if (m) rows = rows.filter((r) => like(String(params[Number(m[1]) - 1]), String(r.manufacturer ?? "")));
@@ -1193,6 +1194,15 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     });
     expect(mfrParams.length).toBeGreaterThan(0);
     expect(mfrParams.every((p) => p === "%\\%%")).toBe(true);
+  });
+
+  it("Codex #4069 pass 6 F2: an own-model fault-code page replaces sibling pages from the verbose fallback", async () => {
+    const sibling = plc({ content: "Check the DH-485 converter.", matches: ["communicating"] });
+    const ownCode = plc({ model_number: "SLC 5/03", title: "SLC 500 Fault Codes", source_url: "https://oem.example/slc-faults.pdf", content: "F005: DH-485 timeout.", exactText: "F005" });
+    const { client } = corpusClient([sibling, ownCode]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating and shows F005", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["SLC 5/03"]);
+    expect(out.some((c) => c.retrievalScope === "vendor_fallback")).toBe(false);
   });
 
   it("the window is wide (topK x 20 rows per vendor name)", () => {

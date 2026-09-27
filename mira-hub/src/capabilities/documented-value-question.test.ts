@@ -75,6 +75,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine.
     ["How does my drive work when it trips on F005, and what should I check first?", "PowerFlex 525"],
     ["what does F005 mean on my drive and how do I clear it", "PowerFlex 525"],
+    ["How do I wire this drive?", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([
@@ -90,6 +91,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is an actuator used for", "AC 01.2"],
     // Codex #4069 round-3 F4: a binding word alone is not a problem to work.
     ["What does this machine do?", "PowerFlex 525"],
+    // Codex #4069 pass 6 F3: a generic procedure question is teaching.
+    ["How do I wire a VFD?", "PowerFlex 525"],
+    ["how do I configure a Modbus TCP client", "FX5U"],
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
