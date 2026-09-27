@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { liveTurnsSignature, mapLiveAnswersToServerIds, unmappedLiveAnswers } from "../live-turn-ids";
+import { liveTurnsSignature, mapLiveAnswersToServerIds, nextLookupDelayMs, unmappedLiveAnswers } from "../live-turn-ids";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -67,4 +67,37 @@ describe("mapLiveAnswersToServerIds — the answer just received gets its server
     expect(liveTurnsSignature("nb", "t1", [live("other")])).not.toBe(before);
     expect(liveTurnsSignature("nb", "t1", [live("q")])).toBe(before);
   });
+
+  // Codex review F1 (#4073 @623b4706): identity must be established or no button.
+  it("F1: another device's same-question row makes the pairing ambiguous — no button, never a guess", () => {
+    const m = mapLiveAnswersToServerIds(
+      [live("GS10 trips oC")],
+      [
+        row(A, "GS10 trips oC", { createdAt: "2026-09-27T20:01:00Z" }), // other device, persisted first
+        row(B, "GS10 trips oC", { createdAt: "2026-09-27T20:01:05Z" }), // this device's own row
+      ],
+      { alreadyRendered: new Set() },
+    );
+    expect(m.size).toBe(0);
+  });
+
+  it("F1: a row missing from the API window (fewer rows than live answers) maps nothing for that question", () => {
+    const liveTurns = Array.from({ length: 51 }, () => live("same"));
+    const rows = Array.from({ length: 50 }, (_, i) =>
+      row(`${String(i).padStart(8, "0")}-1111-4111-8111-111111111111`, "same", { createdAt: `2026-09-27T20:${String(i).padStart(2, "0")}:00Z` }),
+    );
+    expect(mapLiveAnswersToServerIds(liveTurns, rows, { alreadyRendered: new Set() }).size).toBe(0);
+  });
+
+  it("F1: other questions still map when one question is ambiguous", () => {
+    const m = mapLiveAnswersToServerIds([live("dup"), live("unique")], [row(A, "dup"), row(B, "dup"), row(C, "unique")], {
+      alreadyRendered: new Set(),
+    });
+    expect([...m.entries()]).toEqual([["live-1-a", C]]);
+  });
+
+  it("F2: a failed re-read retries three times with backoff, then stops", () => {
+    expect([1, 2, 3, 4].map(nextLookupDelayMs)).toEqual([2000, 5000, 15000, null]);
+  });
 });
+

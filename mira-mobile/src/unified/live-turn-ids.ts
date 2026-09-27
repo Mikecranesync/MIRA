@@ -12,8 +12,9 @@
  * `sourceTurnId`), and it is only sent when tracing is enabled.
  *
  * Pure: pairs live answered turns with newly persisted server rows by question
- * text, oldest first. Anything it cannot pair stays unmapped (no button) —
- * never guessed.
+ * text, oldest first, only when the pairing is one-to-one per question.
+ * Anything it cannot pair with certainty stays unmapped (no button) — never
+ * guessed.
  */
 
 export interface LiveTurnLike {
@@ -55,16 +56,28 @@ export function mapLiveAnswersToServerIds(
     })
     .map(({ t }) => t);
 
-  const used = new Set<string>();
-  const out = new Map<string, string>();
+  // Identity rule (Codex #4073 F1): rows carry no request id, so a pairing is
+  // only sound when, for a question, the new persisted rows and this screen's
+  // answered live turns correspond one-to-one. Another device's same-question
+  // row (one row too many) or a row outside the API's 50-turn window (one too
+  // few) makes that question ambiguous — it maps nothing and offers no button.
+  const byQuestion = new Map<string, PersistedTurnLike[]>();
+  for (const c of candidates) {
+    const q = norm(c.question);
+    byQuestion.set(q, [...(byQuestion.get(q) ?? []), c]);
+  }
+  const liveByQuestion = new Map<string, number[]>();
   liveTurns.forEach((turn, i) => {
     if (turn.a.status !== "answered") return;
     const q = norm(turn.q);
-    const hit = candidates.find((c) => !used.has(c.id) && norm(c.question) === q);
-    if (!hit) return;
-    used.add(hit.id);
-    out.set(`live-${i}-a`, hit.id.toLowerCase());
+    liveByQuestion.set(q, [...(liveByQuestion.get(q) ?? []), i]);
   });
+  const out = new Map<string, string>();
+  for (const [q, indexes] of liveByQuestion) {
+    const rows = byQuestion.get(q) ?? [];
+    if (rows.length !== indexes.length) continue;
+    indexes.forEach((i, k) => out.set(`live-${i}-a`, rows[k].id.toLowerCase()));
+  }
   return out;
 }
 
@@ -86,4 +99,11 @@ export function liveTurnsSignature(
   liveTurns: readonly LiveTurnLike[],
 ): string {
   return JSON.stringify([notebookId ?? "", threadId ?? "", liveTurns.map((t) => [norm(t.q), t.a.status])]);
+}
+
+/** Codex #4073 F2: a failed re-read is retried a bounded number of times while
+ *  the same live list is on screen, then left alone (reopen still works). */
+const LOOKUP_RETRY_DELAYS_MS = [2_000, 5_000, 15_000] as const;
+export function nextLookupDelayMs(failedAttempts: number): number | null {
+  return LOOKUP_RETRY_DELAYS_MS[failedAttempts - 1] ?? null;
 }
