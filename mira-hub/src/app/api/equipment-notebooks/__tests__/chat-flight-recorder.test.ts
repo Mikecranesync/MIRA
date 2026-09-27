@@ -544,10 +544,12 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
     expect(fetchMock).toHaveBeenCalled();
     const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
-    expect(shown.startsWith("⚠️ No Allen-Bradley SLC 5/03 manual was found")).toBe(true);
+    expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
     expect(shown).toContain("confirm them in your SLC 5/03 manual before you act");
     const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
     expect(rec.answerText).toContain("uses a related manual");
+    // Post-cap F3: a query miss is never presented as an absent manual.
+    expect(shown).not.toMatch(/manual was found|manual was not found|no .* manual exists/i);
     const sent = JSON.stringify((fetchMock.mock.calls[0] as unknown[])[1]);
     expect(sent).toContain("RELATED-MANUAL EXCERPTS");
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
@@ -562,7 +564,7 @@ describe("retrieval routing is decided by evidence context, not by general mode 
       vi.stubGlobal("fetch", vi.fn(async () => providerStream("A related CompactLogix manual says DH-485 needs a 1761-NET-AIC [1].")));
       const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
       const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
-      expect(shown.startsWith("⚠️ No Allen-Bradley SLC 5/03 manual was found")).toBe(true);
+      expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
     } finally {
       process.env.NOTEBOOK_ANSWER_GATE = "0";
     }

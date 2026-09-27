@@ -531,7 +531,11 @@ export async function retrieveManualChunks(
   // vendor's nearest sibling. When the model has no pages, the terse code query
   // gets the same family fallback as the verbose one (#4068).
   let codeHits = await firstNonEmpty(codes.join(" "));
-  if (codeHits.length === 0) codeHits = await familyFallback(codes.join(" "));
+  // Post-cap F1: never let a sibling model's fault-code page join (let alone
+  // outrank) the bound model's own pages — the code fallback runs only when
+  // the main pass found nothing of the bound model's.
+  const mainIsOwnModel = main.length > 0 && main.every((c) => c.retrievalScope !== "vendor_fallback");
+  if (codeHits.length === 0 && !mainIsOwnModel) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 
   return dedupeChunks([...codeHits, ...main]).slice(0, topK);
@@ -665,9 +669,10 @@ async function runBm25Query(
     // so the answer refused. Union with OR in the SAME scope; strongest first.
     const seen = new Set(rows.map(rowKey));
     const extra = (await run(OR_TSQUERY)).filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
-    rows = [...rows, ...extra]
-      .sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0))
-      .slice(0, topK);
+    rows = [...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    // Post-cap F2: a post-filtering caller (alwaysOr) filters BEFORE limiting,
+    // so strong AND rows it will discard cannot crowd its OR rows out here.
+    if (!alwaysOr) rows = rows.slice(0, topK);
   }
 
   return rows.map((r: Record<string, unknown>) => ({

@@ -1062,7 +1062,16 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
   const posix = (re: string) => re.replace(/\[\[:alnum:\]\]/g, "A-Za-z0-9").replace(/\[\[:space:\]\]/g, "\\s");
   const query = vi.fn(async (sql: string, params: unknown[]) => {
     calls.push({ sql, params });
-    let rows = [...corpus];
+    // Rows may opt out of one pass: `and: false` (OR-only match) or `or: false`.
+    const isOr = sql.includes("to_tsquery('english', replace(");
+    // …and may declare `matches` (words it contains); then it matches only a
+    // query text ($2) containing one of them. Otherwise text is not modelled.
+    const text = String(params[1] ?? "").toLowerCase();
+    let rows = corpus.filter(
+      (r) =>
+        (isOr ? r.or !== false : r.and !== false) &&
+        (!Array.isArray(r.matches) || (r.matches as string[]).some((w) => text.includes(w.toLowerCase()))),
+    );
     const m = sql.match(/manufacturer ILIKE \$(\d+)/);
     if (m) rows = rows.filter((r) => like(String(params[Number(m[1]) - 1]), String(r.manufacturer ?? "")));
     const re = sql.match(/model_number ~\* \$(\d+)/);
@@ -1148,6 +1157,29 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     const { client } = corpusClient([plc({ content: "Fault F005: communication timeout on the DH-485 channel." })]);
     const out = await retrieveManualChunks(client, "tenant-1", "why does it keep throwing F005 after the converter swap", SLC);
     expect(out.some((c) => c.content.includes("F005") && c.retrievalScope === "vendor_fallback")).toBe(true);
+  });
+
+  it("post-cap F1: a sibling fault-code page never joins the bound model's own pages", async () => {
+    const own = plc({ model_number: "SLC 5/03", title: "SLC 500 Modular Hardware", source_url: "https://oem.example/slc.pdf", content: "Check the DH-485 cable and AIC+ link.", matches: ["communicating"] });
+    const siblingCode = plc({ content: "Fault F005: communication timeout.", source_url: "https://oem.example/f005.pdf", matches: ["f005"] });
+    // The fake applies model scope, so "own" answers the main pass; the F005
+    // code pass finds no SLC page, and the CompactLogix F005 page must NOT be added.
+    const { client } = corpusClient([own, siblingCode]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating and shows F005", SLC);
+    expect(out.some((c) => c.modelNumber === "SLC 5/03")).toBe(true);
+    expect(out.some((c) => c.retrievalScope === "vendor_fallback")).toBe(false);
+  });
+
+  it("post-cap F2: with alwaysOr, strong other-family AND rows cannot crowd an OR same-family row out before filtering", async () => {
+    // 150 strong drive rows match only the AND pass (they fill its LIMIT); the
+    // PLC row matches only the OR pass. Merged, the PLC row must survive to the
+    // family filter instead of being sliced away with the drive rows.
+    const { client } = corpusClient([
+      ...Array.from({ length: 150 }, (_, i) => ({ ...drive(i), or: false })),
+      plc({ rank: 0.01, and: false }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
   });
 
   it("the window is wide (topK x 20 rows per vendor name)", () => {

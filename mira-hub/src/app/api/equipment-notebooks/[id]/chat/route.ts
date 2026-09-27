@@ -2209,12 +2209,12 @@ async function handleChatTurn(
   ];
   const relatedManualWarning =
     oemModel && fallbackSources.length > 0
-      ? `⚠️ No ${oemManufacturer?.name ?? ""} ${oemModel.value} manual was found, so this answer uses a related manual (${fallbackSources.join(", ")}). ` +
+      ? `⚠️ No page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question, so this answer uses a related manual (${fallbackSources.join(", ")}). ` +
         `Its steps and values may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
       : null;
   const vendorFallbackDirective =
     oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")
-      ? `\n\nRELATED-MANUAL EXCERPTS — no pages of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual were found; ` +
+      ? `\n\nRELATED-MANUAL EXCERPTS — no page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question; ` +
         `these excerpts come from related ${oemManufacturer?.name ?? "same-manufacturer"} manuals named in each excerpt header. ` +
         `Say that the source is a related manual when you cite it. Use them only for behaviour and protocols the models share. ` +
         `Do NOT present a value from them (rating, parameter, address, setting) as the ${oemModel.value}'s own specification, and do NOT ` +
