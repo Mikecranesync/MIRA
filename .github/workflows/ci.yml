@@ -529,6 +529,12 @@ jobs:
         # not exercised.
         run: pytest tests/test_gate7_review.py -v
 
+      - name: GS10 KB seeds agree with the bench-verified device profile (#4031)
+        # MIRA cites these seeds live; a wrong register map here is a wrong
+        # instruction to a technician. Named explicitly for the same reason as
+        # the steps above. Hermetic: reads two .sql files and a YAML profile.
+        run: pytest tests/test_gs10_seed_facts.py -v
+
       - name: eval-fixer fragment helper (naming, host lock, publish)
         # tools/eval_fixer_fragment.py: fragment naming + fail-closed worker id,
         # the host+date lock, and — added after the fourth stranding incident —
