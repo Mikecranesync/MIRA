@@ -108,5 +108,8 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
     HOW_IT_WORKS.test(q) ||
     (!bound && (WEAK_DEFINITIONAL.test(q) || GENERIC_CLASS_WHY.test(q)));
   if (teaching) return false;
-  return bound || TROUBLESHOOTING.test(q) || asksForDocumentedValue(q, boundModel);
+  // #4069 F4: a binding word alone ("what does this machine do?") is not a
+  // problem to work — declining it would be the over-block. Require a
+  // troubleshooting or what-to-do signal, or a documented-value ask.
+  return TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q) || asksForDocumentedValue(q, boundModel);
 }

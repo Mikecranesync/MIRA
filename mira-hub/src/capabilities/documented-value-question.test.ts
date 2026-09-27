@@ -88,6 +88,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["why do VFDs trip on overcurrent in general", "GS10"],
     ["what is a watchdog timer", "SLC 5/03"],
     ["what is an actuator used for", "AC 01.2"],
+    // Codex #4069 round-3 F4: a binding word alone is not a problem to work.
+    ["What does this machine do?", "PowerFlex 525"],
     ["Why does a VFD trip on overload?", "PowerFlex 525"],
     ["why do VFDs trip on overvoltage during decel", "GS10"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).

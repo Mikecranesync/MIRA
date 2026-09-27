@@ -304,10 +304,10 @@ describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
     // 2026-09-27) then allows ONE same-manufacturer fallback query — and the
     // #3966 guarantee still holds: the V20 (VFD) chunk it returns is dropped
     // for an HMI, so nothing reaches the answer.
-    expect(calls.length).toBe(3);
     expect(calls.slice(0, 2).every((c) => c.sql.includes("model_number ~*"))).toBe(true);
     expect(calls.slice(0, 2).every((c) => c.params.includes("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])"))).toBe(true);
-    expect(calls[2].sql.includes("model_number ~*")).toBe(false);
+    expect(calls.length).toBeGreaterThan(2);
+    expect(calls.slice(2).every((c) => !c.sql.includes("model_number ~*"))).toBe(true);
   });
 
   it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
@@ -1046,112 +1046,111 @@ describe("buildDocScopedSystemPrompt", () => {
 });
 
 
+/**
+ * A fake pool that APPLIES the predicates runBm25Query builds — manufacturer
+ * ILIKE, model regex / ILIKE, and LIMIT — over an in-memory corpus, ranked by
+ * each row's `rank`. The full-text match is not modelled (every row "matches"
+ * both AND and OR), so these tests prove scoping and filtering, not BM25.
+ */
+/** The model-scope predicate (not the selected `model_number` column). */
+const MODEL_FILTER = /model_number (?:~\*|ILIKE) \$\d+/;
+
+function corpusClient(corpus: Array<Record<string, unknown>>) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const like = (pat: string, v: string) =>
+    new RegExp(`^${pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*")}$`, "i").test(v);
+  const posix = (re: string) => re.replace(/\[\[:alnum:\]\]/g, "A-Za-z0-9").replace(/\[\[:space:\]\]/g, "\\s");
+  const query = vi.fn(async (sql: string, params: unknown[]) => {
+    calls.push({ sql, params });
+    let rows = [...corpus];
+    const m = sql.match(/manufacturer ILIKE \$(\d+)/);
+    if (m) rows = rows.filter((r) => like(String(params[Number(m[1]) - 1]), String(r.manufacturer ?? "")));
+    const re = sql.match(/model_number ~\* \$(\d+)/);
+    if (re) rows = rows.filter((r) => new RegExp(posix(String(params[Number(re[1]) - 1])), "i").test(String(r.model_number ?? "")));
+    const il = sql.match(/model_number ILIKE \$(\d+) AND model_number NOT ILIKE \$(\d+)/);
+    if (il) rows = rows.filter((r) => like(String(params[Number(il[1]) - 1]), String(r.model_number ?? "")) && !like(String(params[Number(il[2]) - 1]), String(r.model_number ?? "")));
+    const lim = sql.match(/LIMIT \$(\d+)/);
+    const limit = lim ? Number(params[Number(lim[1]) - 1]) : rows.length;
+    rows.sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    return { rows: rows.slice(0, limit) };
+  });
+  return { client: { query } as unknown as PoolClient, calls };
+}
+
 describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
-  const compactLogixDh485 = () =>
+  const plc = (o: Record<string, unknown> = {}) =>
     row({
       manufacturer: "Rockwell Automation",
       model_number: "CompactLogix",
       title: "Logix 5000 Controllers on DH-485 Networks",
       source_url: "https://oem.example/logix-dh485.pdf",
       content: "The DH-485 protocol uses RS-485 half-duplex. You must use a 1761-NET-AIC converter.",
+      rank: 0.5,
+      ...o,
     });
-  const powerflexDrive = () =>
+  const drive = (i: number) =>
     row({
       manufacturer: "Rockwell Automation",
       model_number: "PowerFlex 70",
       title: "PowerFlex 70 User Manual",
-      source_url: "https://oem.example/pf70.pdf",
-      content: "Comm loss action selects the drive's response to a loss of communication.",
+      source_url: `https://oem.example/pf70-${i}.pdf`,
+      content: `Comm loss action ${i}.`,
+      rank: 0.9,
     });
   const unclassified = () =>
-    row({
-      manufacturer: "Rockwell Automation",
-      model_number: "1756 UM001  EN P",
-      title: "User Manual",
-      source_url: "https://oem.example/um001.pdf",
-      content: "Configure the serial port for DH-485.",
-    });
+    row({ manufacturer: "Rockwell Automation", model_number: "1756 UM001  EN P", title: "User Manual", source_url: "https://oem.example/um001.pdf", rank: 0.8 });
+  const SLC = { manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false };
 
   it("an SLC 5/03 with no pages of its own gets only same-family (PLC) pages, marked as fallback", async () => {
-    // Model scope AND + OR empty, then the vendor query returns a PLC page, a
-    // drive page and an unclassified page.
-    const { client, calls } = makeClient([[], [], [compactLogixDh485(), powerflexDrive(), unclassified()]]);
-    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the converter swap", {
-      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
-    });
+    const { client } = corpusClient([plc(), drive(1), unclassified()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the converter swap", SLC);
     expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
     expect(out[0].retrievalScope).toBe("vendor_fallback");
-    // Model scope (AND + OR), then one vendor query per alias-group spelling
-    // (Codex #4069 F2) — none of them model-scoped.
-    expect(calls.length).toBeGreaterThan(2);
-    expect(calls.slice(2).every((c) => !c.sql.includes("model_number ~*"))).toBe(true);
   });
 
-  it("an unclassified bound model gets NO fallback query at all", async () => {
-    const { client, calls } = makeClient([[], [], [compactLogixDh485()]]);
+  it("Codex #4069 F2/F3: an Allen-Bradley notebook reaches 'Rockwell Automation' rows, even below many other-family rows", async () => {
+    const { client, calls } = corpusClient([...Array.from({ length: 30 }, (_, i) => drive(i)), plc()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the swap", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    // The vendor queries asked for topK × FAMILY_FALLBACK_WINDOW rows.
+    expect(calls.some((c) => c.params.includes(6 * FAMILY_FALLBACK_WINDOW))).toBe(true);
+  });
+
+  it("Codex #4069 round-3 F1: the bound model's OWN page stored under the alias name is a model-scope hit, not a fallback", async () => {
+    const own = plc({ model_number: "SLC 5/03", title: "SLC 500 Modular Hardware", source_url: "https://oem.example/slc.pdf" });
+    const { client } = corpusClient([own, plc()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it fault", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["SLC 5/03"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
+  it("Codex #4069 round-3 F3: the fallback always runs the OR pass, so strong other-family AND rows cannot suppress it", async () => {
+    const { client, calls } = corpusClient([plc()]);
+    await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    // Only the "rockwell" spelling's AND pass returns a (strong) row; an empty
+    // AND pass runs OR anyway, so the proof must look at THAT spelling.
+    const rockwellVendor = calls.filter((c) => !MODEL_FILTER.test(c.sql) && c.params.includes("%rockwell%"));
+    expect(rockwellVendor.some((c) => c.sql.includes("plainto_tsquery('english', $2)") && !c.sql.includes("replace("))).toBe(true);
+    expect(rockwellVendor.some((c) => c.sql.includes("to_tsquery('english', replace("))).toBe(true);
+  });
+
+  it("an unclassified bound model gets NO fallback", async () => {
+    const { client, calls } = corpusClient([plc()]);
     const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
       manufacturer: "Allen-Bradley", model: "XR-9000", equipmentType: null, allowTenantFallback: false,
     });
     expect(out).toEqual([]);
-    expect(calls).toHaveLength(2);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => MODEL_FILTER.test(c.sql))).toBe(true);
   });
 
-  it("a model-scope hit never widens and is not marked as fallback", async () => {
-    const own = row({ manufacturer: "Rockwell Automation", model_number: "SLC 5/03", title: "SLC 500 Manual", source_url: "https://oem.example/slc.pdf" });
-    const { client, calls } = makeClient([[own]]);
-    const out = await retrieveManualChunks(client, "tenant-1", "why does it fault", {
-      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0].retrievalScope).toBeUndefined();
-    expect(calls).toHaveLength(1);
+  it("Codex #4069 F3 (round 1): the terse fault-code pass also gets the same-family fallback", async () => {
+    const { client } = corpusClient([plc({ content: "Fault F005: communication timeout on the DH-485 channel." })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it keep throwing F005 after the converter swap", SLC);
+    expect(out.some((c) => c.content.includes("F005") && c.retrievalScope === "vendor_fallback")).toBe(true);
   });
 
-  it("Codex #4069 F2: widens the ranked window so higher-ranked other-family pages cannot hide a same-family page", async () => {
-    const drives = Array.from({ length: 6 }, (_, i) => ({ ...powerflexDrive(), source_url: `https://oem.example/pf${i}.pdf` }));
-    const { client, calls } = makeClient([[], [], [...drives, compactLogixDh485()]]);
-    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the swap", {
-      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
-    });
-    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
-    // The vendor query asked for topK × FAMILY_FALLBACK_WINDOW rows, not topK.
-    expect(calls[2].params).toContain(6 * FAMILY_FALLBACK_WINDOW);
-  });
-
-  it("Codex #4069 F3: the terse fault-code pass also gets the same-family fallback", async () => {
-    const f005 = { ...compactLogixDh485(), content: "Fault F005: communication timeout on the DH-485 channel." };
-    // verbose: model AND, model OR, vendor AND, vendor OR — all empty;
-    // terse code: model AND, model OR empty, vendor AND hits.
-    const { client } = makeClient([[], [], [], [], [], [], [f005]]);
-    const out = await retrieveManualChunks(client, "tenant-1", "why does it keep throwing F005 after the converter swap", {
-      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0].content).toContain("F005");
-    expect(out[0].retrievalScope).toBe("vendor_fallback");
-  });
-
-  it("Codex #4069 F2: an Allen-Bradley notebook reaches rows stored as 'Rockwell Automation' (predicate-aware fixture)", async () => {
-    // This client APPLIES the manufacturer ILIKE and the model clause, so a
-    // query for "%Allen-Bradley%" really cannot see a Rockwell Automation row.
-    const corpus = [compactLogixDh485(), powerflexDrive()];
-    const calls: Array<{ sql: string; params: unknown[] }> = [];
-    const query = vi.fn(async (sql: string, params: unknown[]) => {
-      calls.push({ sql, params });
-      if (sql.includes("model_number ~*") || sql.includes("model_number ILIKE")) return { rows: [] };
-      const mfrIdx = sql.match(/manufacturer ILIKE \$(\d+)/);
-      if (!mfrIdx) return { rows: [] };
-      const needle = String(params[Number(mfrIdx[1]) - 1]).replace(/%/g, "").toLowerCase();
-      return { rows: corpus.filter((r) => String(r.manufacturer).toLowerCase().includes(needle)) };
-    });
-    const out = await retrieveManualChunks({ query } as unknown as PoolClient, "tenant-1", "the PLC stops communicating after the swap", {
-      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
-    });
-    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
-    expect(out[0].retrievalScope).toBe("vendor_fallback");
-  });
-
-  it("Codex #4069 F3: the window is wide (topK x 20 rows per vendor name)", async () => {
+  it("the window is wide (topK x 20 rows per vendor name)", () => {
     expect(FAMILY_FALLBACK_WINDOW).toBeGreaterThanOrEqual(20);
   });
 

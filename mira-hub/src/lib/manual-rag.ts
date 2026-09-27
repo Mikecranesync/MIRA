@@ -466,11 +466,20 @@ export async function retrieveManualChunks(
     });
   };
 
+  // #4069 F1: an identity-bound model scope searches every spelling in the
+  // manufacturer's alias group — an "Allen-Bradley" notebook's own SLC 5/03
+  // pages may be stored as "Rockwell Automation". Model and tenant predicates
+  // are unchanged; other scopes keep their single-name query.
+  const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
+    const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
+    if (names.length <= 1) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    const merged: ManualChunk[] = [];
+    for (const name of names) merged.push(...(await runBm25Query(client, tenantId, text, topK, name, s.model)));
+    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank)).slice(0, topK);
+  };
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
-      const hits = rejectWrongFamily(
-        await runBm25Query(client, tenantId, text, topK, s.mfr, s.model),
-      );
+      const hits = rejectWrongFamily(await scopeQuery(text, s));
       if (hits.length > 0) return hits;
     }
     return [];
@@ -498,7 +507,7 @@ export async function retrieveManualChunks(
     const names = manufacturerSearchNames(mfr);
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
-      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null)));
+      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true)));
     }
     return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
       .filter(
@@ -576,6 +585,10 @@ async function runBm25Query(
   topK: number,
   manufacturer: string | null,
   model: string | null = null,
+  /** #4069 F3: union the OR pass even when AND is strong — for callers that
+   *  post-filter (the family fallback), whose strong AND rows may all be
+   *  discarded afterwards. */
+  alwaysOr = false,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
@@ -645,7 +658,7 @@ async function runBm25Query(
   };
 
   let rows = await run(AND_TSQUERY);
-  if (isWeakAndResult(rows)) {
+  if (alwaysOr || isWeakAndResult(rows)) {
     // #4035 — an AND match can be technically non-empty but useless: one chunk at
     // ts_rank_cd ~0.0004 (stemming mismatch, e.g. "configure"→"configur" vs a
     // chunk's "CONFIG"). That used to satisfy the scope and suppress the OR pass,
