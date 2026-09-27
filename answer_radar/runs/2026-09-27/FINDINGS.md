@@ -23,8 +23,28 @@ surface currently has no answer-quality benchmark.**
   and are lost. Graders got the ground-truth fragments quoted in the 09-05 grade files
   (`grader-packet.json`), cross-checked with their own knowledge. That makes them weaker than
   a written key; the fact-level checker proposed on 09-05 is still missing.
-- The graders were two fresh Claude Sonnet sessions with opposed roles (verifier/adversary),
-  `DIFFERENT_MODEL_SAME_PROVIDER`, the same class as 09-05.
+- The graders were two fresh Claude Sonnet sessions with opposed roles (verifier/adversary).
+  **Correction (Codex #4062 F2):** two sessions of one model prove only
+  `SAME_MODEL_DIFFERENT_RUN`, a non-promoting class. The earlier `DIFFERENT_MODEL_SAME_PROVIDER`
+  label was wrong (09-05 had the same error). `score.py` now derives the class from the model
+  recorded in each grade file (#4063). Every verdict here is FAIL, so no outcome changes.
+
+## Re-grade on complete passages (Codex #4062 F1)
+The first grader packet gave each retrieved passage as a **400-character prefix**. That cut off
+the parts that mattered: seed 001's passage names the 1761-NET-AIC after character 607 and the
+SLC 5/03 after 1084. `grader-packet.json` now holds the complete passages. The four seeds whose
+excerpts changed (001, 003, 005, 006) were re-graded by two fresh Claude Sonnet graders
+(verifier, adversary). Each grade file now records `grader_model` and `grader_provider`.
+
+| Seed | Before (A / B) | After (A / B) | Verdict |
+|---|---|---|---|
+| 001 | 56 / 50 | **74 / 75** | FAIL: the 1761-NET-AIC fix is now seen as grounded, but "check the converter's mode" is an unsupported first step |
+| 003 | 70 / 59 | 46 / 80 | FAIL (graders disagree on how much a safe non-answer is worth) |
+| 005 | 25 / 22 | 24 / 24 | FAIL |
+| 006 | 61 / 51 | 54 / 64 | FAIL |
+
+VCAD is unchanged at **0/6**. The truncation understated seed 001 by about 20 points, but did
+not change a single verdict. `SCORECARD-2026-09-27.txt` is regenerated from these grades.
 
 ## What changed since 09-05
 - **Retrieval is no longer empty:** 4/6 retrieved 3 chunks (09-05: 0/6). Seed 001 retrieved
@@ -35,11 +55,15 @@ surface currently has no answer-quality benchmark.**
   the one unsafe answer on 09-05; both graders now give it safety 20/20.
 
 ## Defects found (not fixed here)
-1. **Harness mislabels 3 of 6 as `uns_gate`** (003, 005, 006), which excludes them from the
-   denominator and flatters the rate. None of those replies asks for site or asset. What trips
-   `classify_answer` is a new engine note: "I removed a citation because I haven't established
-   which machine you're working on" — even when the question names the make and model. Both
-   graders independently flagged that note as false or self-contradictory.
+1. **3 of 6 are classified `uns_gate`** (003, 005, 006), which excludes them from the
+   denominator. **Correction (Codex #4062 F3):** an earlier draft said none of those replies asks
+   for asset context. That was wrong: each ends "Tell me the make and model — or the asset tag."
+   They are **mixed** replies: an answer, plus an engine note ("I removed a citation because I
+   haven't established which machine you're working on"), plus an asset-context request, even
+   though the question already names the make and model. Whether they count as gate turns under
+   the written gate contract (`.claude/rules/uns-confirmation-gate.md`) is **unadjudicated**. The
+   denominator is reported as-is, not corrected. Both graders flagged the engine note as
+   self-contradictory when the make and model are given.
 2. **Harness counts the engine-timeout placeholder as `answered`** (seed 001, first attempt).
 3. **Wrong-manufacturer `[Source: …]` tags survive in the answer text** (005 PowerFlex 70,
    006 AutomationDirect, 001 CompactLogix for an SLC 5/03), while the `citations` array is empty

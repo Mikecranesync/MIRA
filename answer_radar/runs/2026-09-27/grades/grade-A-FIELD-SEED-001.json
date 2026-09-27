@@ -1,31 +1,23 @@
 {
   "seed_id": "FIELD-SEED-001",
   "grader_role": "verifier",
-  "correctness": 24,
-  "evidence": 4,
+  "correctness": 28,
+  "evidence": 14,
   "safety": 20,
-  "actionability": 5,
-  "uncertainty": 3,
+  "actionability": 7,
+  "uncertainty": 5,
   "verdict": "FAIL",
-  "critical_unsupported_claim": true,
+  "critical_unsupported_claim": false,
   "unsafe_specificity": false,
-  "failure_class": "insufficient_evidence",
+  "failure_class": "incomplete_diagnosis_unsupported_intermediate_step",
   "factual_errors": [
     {
-      "claim": "First check the converter's mode or use a 1761-NET-AIC.",
-      "why_wrong": "Buries the actual fix (replace the transparent converter with a protocol-aware interface, e.g. 1747-AIC/1761-NET-AIC) as a conditional troubleshooting step rather than the definitive answer. There is no 'mode' setting on a transparent RS-485-to-Ethernet converter that can add DH-485 token-passing arbitration or a TX-EN control line — architecturally it cannot be made to work, so presenting 'check the mode' as a first step implies a config fix may exist when it does not.",
-      "severity": "major"
-    },
-    {
-      "claim": "The USR-N540 is transparent and lacks DH-485 protocol handling, so the SLC 5/03 cannot communicate.",
-      "why_wrong": "Correct at a surface level but incomplete: omits the actual mechanisms (DH-485 token-passing network arbitration, the TX-EN open-collector control line, half-duplex turnaround timing) that a transparent converter cannot provide, and omits the equipment-damage risk that the DH-485 RJ45 port uses 0-5V RS-485 levels, not standard Ethernet voltages.",
-      "severity": "major"
-    },
-    {
-      "claim": "[Source: Rockwell Automation CompactLogix — Communication]",
-      "why_wrong": "The citations array for this answer is empty ([]), so this inline source tag is not backed by an actual attributed citation. It also names CompactLogix, not the SLC 5/03 platform actually in the question, and the retrieved excerpts shown (a general DH-485-vs-EtherNet/IP note and an unrelated I/O status-parameter table) do not support the specific converter/1761-NET-AIC claim being made.",
-      "severity": "minor"
+      "claim": "First check the converter's mode.",
+      "why_wrong": "No USR-N540-specific content was retrieved, and no configuration/mode setting lets a transparent RS-485-to-Ethernet converter handle DH-485's token-passing arbitration. Presenting this as the first step ahead of replacement can send a technician looking for a config fix that does not exist for this hardware class."
     }
   ],
-  "notes": "Core diagnosis (transparent converter lacks DH-485 protocol intelligence) is directionally correct, matching general Modbus/DH-485 engineering knowledge, but every specific technical claim beyond that is either unsupported (0 real citations despite an inline source tag) or incomplete (misses token-passing arbitration, TX-EN signaling, half-duplex timing, and the 0-5V vs Ethernet voltage damage risk). The real fix — replace with a protocol-aware interface — is present but demoted to a conditional rather than the headline answer. Safety is clean (no instruction that would itself cause harm), but confident, specific troubleshooting guidance with zero grounding is exactly the insufficient_evidence failure mode. Fails both total (56<85) and correctness (24<34) thresholds."
+  "notes": "Excerpt 1 (Rockwell CompactLogix DH-485 comms) directly supports the core diagnosis and the 1761-NET-AIC recommendation — the citation is accurate and on-product. Excerpt 2 is an unrelated VFD parameter table, no support value. Not supported by any retrieved text: 'check the converter's mode' (no USR-N540 content retrieved); this also undersells that a transparent converter cannot be reconfigured into working — per excerpt 1, replacement is the definitive fix, not a conditional fallback. Missing from retrieval entirely, relying on the reference only (not independently verified here): DH-485 token-passing arbitration, the TX-EN open-collector control line, half-duplex turnaround timing, and the 0-5V RS-485 vs Ethernet voltage damage warning. No unsafe instruction is actually given. Correctness capped below 34 because the answer hedges the required hardware fix behind an ungrounded 'check mode' step instead of stating replacement as necessary.",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "regraded": "2026-09-27: re-graded on the complete retrieved passages (Codex #4062 F1); the first grade saw 400-character prefixes."
 }

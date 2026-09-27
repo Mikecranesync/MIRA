@@ -4,28 +4,28 @@
   "correctness": 0,
   "evidence": 0,
   "safety": 20,
-  "actionability": 0,
-  "uncertainty": 2,
+  "actionability": 1,
+  "uncertainty": 3,
   "verdict": "FAIL",
   "critical_unsupported_claim": true,
   "unsafe_specificity": false,
-  "failure_class": "wrong_subsystem",
+  "failure_class": "wrong_product_citation",
   "factual_errors": [
     {
-      "claim": "[Source: Rockwell Automation PowerFlex 70]",
-      "why_wrong": "The question is about a ProSoft PLX32 Modbus/TCP gateway losing communication with a Yokogawa CENTUM DCS. A PowerFlex 70 is an unrelated Allen-Bradley AC variable-frequency drive with no connection to either device in the question. Citing its manual as 'the' source is a wrong-product citation with zero relevance — not evidence, and actively misleading in that it implies authoritative grounding that doesn't exist.",
-      "severity": "critical"
+      "claim": "\"[Source: Rockwell Automation PowerFlex 70]\"",
+      "why_wrong": "PowerFlex 70 is an unrelated Allen-Bradley AC drive; the question concerns a ProSoft PLX32 Modbus gateway and a Yokogawa CENTUM DCS. Nothing in the retrieved excerpts or the question involves a PowerFlex 70 — this is a wrong-product citation."
     },
     {
-      "claim": "could you share ... what exact fault code, alarm number, or behaviour is the equipment showing right now? (e.g. F001, AL-14, OC)",
-      "why_wrong": "The question describes an intermittent Modbus/TCP communication dropout diagnosable by comparing gateway behavior against a working ModScan poll — a networking/protocol reliability problem, not a drive/equipment fault-code scenario. Asking for a drive-style fault code (F001/AL-14/OC — VFD trip codes) is asking for information that does not exist or apply to this failure mode, and completely fails to engage with the actual diagnostic question (why does ModScan succeed when the gateway fails?).",
-      "severity": "critical"
+      "claim": "Fault/alarm-code intake template ('F001, AL-14, OC', 'trips on start', etc.) presented as the needed next step",
+      "why_wrong": "This is a VFD-fault diagnostic template, irrelevant to an intermittent Modbus-gateway communication problem; it does not engage with the actual described symptom (ModScan succeeds while the gateway fails)."
     },
     {
-      "claim": "I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it",
-      "why_wrong": "The question explicitly names both devices: 'A ProSoft PLX32 gateway' and 'a Yokogawa CENTUM DCS'. This is a false premise — the equipment was already identified in full.",
-      "severity": "major"
+      "claim": "\"I haven't established which machine you're working on\"",
+      "why_wrong": "The question explicitly names ProSoft PLX32 and Yokogawa CENTUM DCS."
     }
   ],
-  "notes": "This is a severe wrong_subsystem failure, worse than what the reference 09-05 notes describe (those graded a longer answer that at least discussed plausible network-communication causes). Here MIRA treats a Modbus/TCP gateway-vs-DCS intermittent communication question as if it were an equipment fault-code diagnostic on a drive, requesting a fault/alarm code with drive-style examples (F001, AL-14, OC) that have no bearing on a network/gateway comms issue, and cites a completely unrelated PowerFlex 70 drive manual as its source. It never engages with the actual diagnostic signal in the question (ModScan succeeds where the gateway fails — the classic connection-pool-exhaustion / persistent-vs-transient-connection signature) at all. It also falsely claims the machine hasn't been established when both devices were named explicitly. This is not merely incomplete — it is off-topic and misattributed. FAILS on every axis: total 22, correctness 0, critical unsupported/misattributed claim present."
+  "notes": "None of the three retrieved excerpts concern a ProSoft PLX32 gateway or Yokogawa CENTUM DCS — they are VFD Modbus comm-timeout/wiring chunks and an Allen-Bradley PowerFlex 'Comm Loss Action' parameter, so there is nothing in evidence to ground any answer; the poor retrieval is itself a real system failure. MIRA's answer compounds this: it ignores the fully-specified scenario and instead emits a generic VFD-fault-code intake template with the citation '[Source: Rockwell Automation PowerFlex 70]' — a wrong-product citation with zero connection to a gateway/DCS comms problem. The accompanying 'I haven't established which machine' note is false since the equipment was clearly named. No diagnostic content (connection-pool limits, TCP keep-alive/idle timeouts, ModScan's persistent-connection behavior) is present at all. This is a near-total non-answer with an actively misleading citation.",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "regraded": "2026-09-27: re-graded on the complete retrieved passages (Codex #4062 F1); the first grade saw 400-character prefixes."
 }
