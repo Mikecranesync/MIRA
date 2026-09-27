@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any
@@ -35,11 +38,26 @@ from answer_radar.schema import AnswerStatus, EvaluationRecord, EvidenceTier, Qu
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STAGING_HOSTS = ("app-staging.factorylm.com",)
+# NotebookStatusFrame.status (mira-hub/src/lib/notebook-chat-types.ts).
+TERMINAL_STATUSES = ("answered", "insufficient_evidence", "error")
 CONDITIONS = ("new_chat", "machine_selected")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: urllib would re-send the explicit Cookie header to
+    whatever host the Location names (Codex #4063 R3 F1). The 3xx is returned to
+    the caller as an HTTPError, which the Hub client reports as a status code."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def load_hub_client():
-    """The acceptance suite's `Hub` class — one HTTP client for the Hub, not two."""
+    """The acceptance suite's `Hub` class — one HTTP client for the Hub, not two —
+    with redirects refused, so the session cookie never leaves the staging origin."""
     path = REPO_ROOT / "tools/qa/retrieval_acceptance.py"
     spec = importlib.util.spec_from_file_location("_retrieval_acceptance", path)
     assert spec is not None and spec.loader is not None
@@ -47,7 +65,18 @@ def load_hub_client():
     # Its dataclasses resolve their module through sys.modules at class creation.
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
-    return mod.Hub
+
+    class RadarHub(mod.Hub):
+        def _req(self, method, path, body=None, headers=None):
+            h = {"Cookie": self.cookie, **(headers or {})}
+            req = urllib.request.Request(self.base + path, data=body, method=method, headers=h)
+            try:
+                with _NO_REDIRECT_OPENER.open(req, timeout=self.timeout) as r:
+                    return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
+            except urllib.error.HTTPError as e:
+                return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
+
+    return RadarHub
 
 
 def assert_staging(base: str) -> None:
@@ -68,11 +97,17 @@ def assert_staging(base: str) -> None:
         raise SystemExit(f"answer radar hub runs refuse non-staging targets (got {base!r})")
 
 
+_SHA = re.compile(r"^[0-9a-f]{12,40}$")
+
+
 def deployed_sha(hub) -> str:
+    """The serving build, or the run stops: an "unknown" build would compare equal
+    to itself across a mid-sweep deploy (Codex #4063 R3 F2)."""
     st, _, j = hub.json("GET", "/api/version/")
-    if st == 200 and isinstance(j, dict) and j.get("gitSha"):
-        return str(j["gitSha"])[:12]
-    return "unknown"
+    sha = str(j.get("gitSha") or "") if st == 200 and isinstance(j, dict) else ""
+    if not _SHA.match(sha):
+        raise SystemExit(f"staging /api/version/ gave no valid gitSha (HTTP {st}); refusing to run")
+    return sha[:12]
 
 
 def _frames(raw: bytes) -> list[dict[str, Any]]:
@@ -161,7 +196,12 @@ def run_question_hub(
         answer_status = AnswerStatus.ABSTAINED
     # Codex #4063 F4: an HTTP 200 stream whose status frame says error is an
     # engine error ("No answer provider available."), not MIRA's answer.
-    if status == "error":
+    # R3 F3: a 200 stream must END in exactly one recognised terminal status;
+    # a cut-off stream is an incomplete turn, never a graded answer.
+    terminal = [f.get("status") for f in frames if f.get("kind") == "status"]
+    if status == "error" or (
+        st == 200 and (len(terminal) != 1 or terminal[0] not in TERMINAL_STATUSES)
+    ):
         answer_status = AnswerStatus.ERROR
     # Codex #4063 F5: no packet means retrieval is UNKNOWN, never "0 candidates".
     # R2 F4: only an explicit integer candidate_count is a measurement.

@@ -525,7 +525,7 @@ def test_hub_runner_refuses_production() -> None:
 
 
 def test_hub_runner_reuses_the_acceptance_client() -> None:
-    assert hub_runner.load_hub_client().__name__ == "Hub"
+    assert hub_runner.load_hub_client().__mro__[1].__name__ == "Hub"
 
 
 def test_a_declined_turn_is_graded_on_the_message_the_client_shows() -> None:
@@ -789,3 +789,79 @@ def test_a_packet_without_retrieval_is_unknown_not_zero() -> None:
         _question(), _EmptyPacketHub(), condition="new_chat", mira_version="a", stamp="s"
     )
     assert rec.retrieved_chunk_count is None
+
+
+# --- Codex #4063 round 3 -------------------------------------------------------
+
+
+def test_a_cross_origin_redirect_never_receives_the_session_cookie() -> None:
+    """R3 F1: the staging cookie stays on the staging origin."""
+    import http.server
+    import threading
+
+    seen: list[str | None] = []
+
+    class Other(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.headers.get("Cookie"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    other = http.server.HTTPServer(("127.0.0.1", 0), Other)
+    other_url = f"http://127.0.0.1:{other.server_port}/login"
+
+    class Staging(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", other_url)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    staging = http.server.HTTPServer(("127.0.0.1", 0), Staging)
+    for s in (other, staging):
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        hub = hub_runner.load_hub_client()(
+            f"http://127.0.0.1:{staging.server_port}", "session=secret"
+        )
+        st, _, _ = hub._req("GET", "/api/version/")
+        assert seen == []  # the redirect was refused, never followed
+        assert st == 302
+    finally:
+        other.shutdown()
+        staging.shutdown()
+
+
+class _VersionlessHub(_FakeHub):
+    def json(self, method, path, body=None):
+        return 500, {}, None
+
+
+def test_an_unknown_deployed_version_fails_the_batch() -> None:
+    """R3 F2: a build identity is a real SHA or the run does not count."""
+    with pytest.raises(SystemExit):
+        hub_runner.deployed_sha(_VersionlessHub())
+
+
+class _TruncatedHub(_FakeHub):
+    def _req(self, method, path, body=None, headers=None):
+        self.bodies.append(_json.loads(body))
+        return (
+            200,
+            {"x-mira-trace-id": "t-1"},
+            b'data: {"kind": "content", "content": "Replace the"}\n\n',
+        )
+
+
+def test_a_stream_without_a_terminal_status_is_not_an_answer() -> None:
+    """R3 F3: the Hub never completed the turn."""
+    rec, _ = hub_runner.run_question_hub(
+        _question(), _TruncatedHub(), condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.answer_status is AnswerStatus.ERROR
