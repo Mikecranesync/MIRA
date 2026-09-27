@@ -11,7 +11,7 @@ import {
 } from "@/lib/manual-rag";
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
-import { flagDirectiveFor, hazardBanner, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
@@ -172,8 +172,8 @@ export async function POST(req: Request) {
     rateLimited("hub-ask-ip", await clientIpHash(), HUB_ASK_MAX_PER_MIN, 60_000)
   ) {
     return NextResponse.json(
-      { error: "You are asking faster than MIRA can answer. Try again in a minute." },
-      { status: 429 },
+      { error: withSafetyFlag("You are asking faster than MIRA can answer. Try again in a minute.", safetyTrigger) },
+      { status: 429, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -246,12 +246,12 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
+        answer: withSafetyFlag("Sorry — every model provider is unreachable right now. Try again in a minute.", safetyTrigger),
         citations: [],
         provider: null,
         basis: null,
       } as HubAskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 

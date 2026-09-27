@@ -12,7 +12,7 @@ import {
   type ManualSource,
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
-import { flagDirectiveFor, hazardBanner, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 
 export const dynamic = "force-dynamic";
 
@@ -193,12 +193,14 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer:
+        answer: withSafetyFlag(
           "Sorry — every model provider is unreachable right now. Try again in a minute.",
+          safetyTrigger,
+        ),
         citations: [],
         provider: null,
       } as AskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 

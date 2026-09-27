@@ -79,4 +79,12 @@ describe("POST /api/quickstart/ask — safety hard-stop (#3876)", () => {
     expect(rag.retrieveManualChunks).toHaveBeenCalledTimes(1);
     expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
   });
+
+  it("a flagged question whose providers are all down still shows its banner (review of #4040)", async () => {
+    cascade.cascadeComplete.mockResolvedValue(null);
+    const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("X-Safety-Flag")).toBeTruthy();
+    expect((await res.json()).answer).toMatch(/^⚠️/);
+  });
 });

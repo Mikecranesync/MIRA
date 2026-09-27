@@ -20,7 +20,7 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { flagDirectiveFor, hazardBanner, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -565,7 +565,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   // H4 parity (#2542) — soft KB-gap admission in the DEFAULT (non-enforced)

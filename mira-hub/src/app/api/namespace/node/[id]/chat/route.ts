@@ -32,7 +32,7 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { flagDirectiveFor, hazardBanner, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
@@ -378,7 +378,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   const nonSystemMessages = messages.filter((m) => m.role !== "system");

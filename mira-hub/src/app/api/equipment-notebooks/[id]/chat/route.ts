@@ -82,6 +82,8 @@ import {
   hazardBanner,
   matchSafetyStop,
   safetyFlagDirective,
+  safetyFlagHeaders,
+  withSafetyFlag,
 } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
@@ -1584,10 +1586,10 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Machine Memory could not be read just now. Try again in a moment.",
+          error: withSafetyFlag("Machine Memory could not be read just now. Try again in a moment.", safetyTrigger),
           code: "machine_history_read_failed",
         },
-        { status: 503 },
+        { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
@@ -1596,23 +1598,23 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Nothing was recorded in this window. Widen the window or check the gateway.",
+          error: withSafetyFlag("Nothing was recorded in this window. Widen the window or check the gateway.", safetyTrigger),
           code: "machine_window_empty",
           coverage: machineCoverage,
         },
-        { status: 422 },
+        { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json(
       {
-        error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
+        error: withSafetyFlag("Machine Memory history is not available for this machine, so there is nothing to replay.", safetyTrigger),
         code: "machine_history_unavailable",
         reason: machineUnavailableReason ?? "unavailable",
         coverage: machineCoverage,
       },
-      { status: 422 },
+      { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -2022,7 +2024,11 @@ async function handleChatTurn(
       // discriminator.
       await abandonRequestClaim();
       endRoot();
-      return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
+      const flaggedReason = withSafetyFlag(refusal.reason, safetyTrigger);
+      return NextResponse.json(
+        { error: flaggedReason, code: "approved_context", ...refusal, reason: flaggedReason },
+        { status: 412, headers: safetyFlagHeaders(safetyTrigger) },
+      );
     }
   }
   const machineSection = machinePacket
@@ -2575,7 +2581,7 @@ async function handleChatTurn(
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
-        const partialText = gate ? null : partial.length ? partial : null;
+        const partialText = gate ? null : partial.length ? (flagBanner ? `${flagBanner}\n\n${partial}` : partial) : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         const stoppedAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
         rec.stage("answer_gate", {

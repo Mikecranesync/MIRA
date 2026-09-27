@@ -839,6 +839,28 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(body.gate).toBe("approved_context");
   });
 
+  it("a flagged hazard question that hits the 412 still shows its safety banner (review of #4040)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(makeReq(userMsg("there is smoke coming from the drive")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(412);
+    expect(res.headers.get("X-Safety-Flag")).toBeTruthy();
+    const body = await res.json();
+    expect(body.gate).toBe("approved_context");
+    expect(String(body.reason)).toMatch(/^⚠️ \*\*Possible active incident/);
+  });
+
   it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {
     expect(KB_GAP_ADMISSION).toContain("knowledge base");
     expect(KB_GAP_ADMISSION).toContain(GAP_MARKER);

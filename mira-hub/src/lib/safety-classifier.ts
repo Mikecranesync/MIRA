@@ -265,6 +265,17 @@ step it applies to. One line of hazard framing at most; never a lecture in
 place of the answer. The UI already shows a safety banner above your answer.`;
 }
 
+/** A flagged turn shows its banner on EVERY outcome, including errors and
+ *  refusals (a 412, a 503, a stopped stream): prefix a user-visible message. */
+export function withSafetyFlag(text: string, trigger: string | null | undefined): string {
+  return trigger ? `${hazardBanner(trigger)}\n\n${text}` : text;
+}
+
+/** Response header naming the flag, for observability on non-answer outcomes. */
+export function safetyFlagHeaders(trigger: string | null | undefined): Record<string, string> | undefined {
+  return trigger ? { "X-Safety-Flag": trigger } : undefined;
+}
+
 /** Prompt directive for a flagged turn: the NFPA 70E directive for the
  *  energized-work sentinel, the generic flag directive for everything else. */
 export function flagDirectiveFor(trigger: string): string {
