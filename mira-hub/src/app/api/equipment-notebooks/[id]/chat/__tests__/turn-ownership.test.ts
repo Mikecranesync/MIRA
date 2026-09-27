@@ -392,58 +392,74 @@ describe("a zero-source SAFETY STOP is persisted like every other turn (asset sn
     };
   }
 
-  it("carries the CONFIRMED asset snapshot — a stop about a machine is a record about that machine", async () => {
+  it("carries the CONFIRMED asset snapshot — a flagged (not stopped) turn about a machine is still a record about that machine", async () => {
+    // OWNER DECISION 2026-09-27: no more terminal stop, so this scenario
+    // needs `mode: "general"` to clear Gate G's pre-existing zero-evidence
+    // abstain (see chat-safety-stop.test.ts's dedicated BUG describe block
+    // for the zero-source, non-general variant, which is currently swallowed
+    // by that gate — a real production defect, not this policy's doing).
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
-    const res = await POST(req({ message: SMOKE, sourceDocIds: [] }), params);
+    const res = await POST(req({ message: SMOKE, sourceDocIds: [], mode: "general" }), params);
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     await frames(res);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
     const turn = lastTurn();
     expect(turn.equipmentEntityId).toBe(ASSET);
     expect(turn.assetUnsPath).toBe(UNS);
-    expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+    expect(turn.answerStatus).toBe("answered");
+    expect(turn.answerText).toMatch(/^⚠️/);
+    expect(turn.answerText).not.toContain("SAFETY STOP");
   });
 
-  it("with a MISMATCHED asset request: the dispute is persisted and the snapshot withheld — same as any other turn", async () => {
+  it("with a MISMATCHED asset request: the dispute is persisted and the snapshot withheld — same as any other turn, now flagged not stopped", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
     const res = await POST(
-      req({ message: SMOKE, sourceDocIds: [], machineEvidence: { assetId: OTHER_ASSET, anchorAt: FAULT_AT } }),
+      req({ message: SMOKE, sourceDocIds: [], mode: "general", machineEvidence: { assetId: OTHER_ASSET, anchorAt: FAULT_AT } }),
       params,
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     await frames(res);
     expect(historyMock.fetchMachineHistory).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
     const turn = lastTurn();
     expect(turn.equipmentEntityId ?? null).toBeNull();
-    expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+    expect(turn.answerText).toMatch(/^⚠️/);
     expect(turn.evidence.find((e) => e.kind === "identity_dispute")).toMatchObject({
       kind: "identity_dispute", requestedAssetId: OTHER_ASSET, boundAssetId: ASSET,
     });
   });
 
-  it("an UNRESOLVABLE binding never blocks a hazard report: the stop is served and persisted about no machine", async () => {
-    // A technician reporting smoke must not be answered with "re-select the
-    // machine" — the safety stop is evaluated before the uns_required refusal,
-    // on the grounded AND the zero-source path.
+  it("BUG (production, not this policy change): an UNRESOLVABLE binding now DOES block a hazard report with 're-select the machine' — the invariant this test protected is broken", async () => {
+    // The comment this test's assertions were written against ("Evaluated
+    // AFTER the safety stop, deliberately: a hazard report is never answered
+    // with 're-select the machine'") describes code that no longer exists:
+    // 6cc21ec8a deleted the unconditional terminal safety-stop branch that
+    // used to run BEFORE the `boundAsset.state === "unresolvable"` 422 check
+    // (route.ts ~L1468), with nothing replacing it there. So today, for ANY
+    // request shape — grounded, zero-source, or `mode: "general"` — an
+    // unresolvable binding 422s FIRST, and a technician reporting smoke gets
+    // "This notebook points at equipment that is no longer available… Re-
+    // select the machine" instead of any safety response at all. This is a
+    // distinct defect from the Gate-G swallow documented elsewhere in this
+    // session (a different gate, same root cause: deleting the
+    // unconditional pre-empt broke every check that used to run after it).
+    // EXPECTED TO FAIL until a hazard check is restored ahead of this 422.
     nbMock.resolveBoundAsset.mockResolvedValue({ state: "unresolvable", entityId: ASSET });
-    for (const body of [{ message: SMOKE, sourceDocIds: [DOC_A] }, { message: SMOKE, sourceDocIds: [] }]) {
+    for (const body of [
+      { message: SMOKE, sourceDocIds: [DOC_A] },
+      { message: SMOKE, sourceDocIds: [], mode: "general" },
+    ]) {
       nbMock.recordTurn.mockClear();
       const res = await POST(req(body), params);
       expect(res.status).toBe(200);
-      expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
-      await frames(res);
-      expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
-      expect(fetch).not.toHaveBeenCalled();
-      expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
-      const turn = lastTurn();
-      expect(turn.equipmentEntityId ?? null).toBeNull();
-      expect(turn.evidence.some((e) => e.kind === "safety_notice")).toBe(true);
+      const fr = await frames(res);
+      const content = fr.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(content).toContain("⚠️");
     }
   });
 });
@@ -460,15 +476,21 @@ describe("a disputed identity is on the wire FIRST on every path — live ≡ hy
     nbMock.resolveBoundAsset.mockResolvedValue(confirmedBinding);
   });
 
-  it("safety stop: a basis-less dispute frame precedes the content, matching the persisted row (basis null + identity_dispute)", async () => {
+  it("flagged (not stopped) hazard: a basis-less dispute frame precedes the content, matching the persisted row (identity_dispute, no safety_stop)", async () => {
+    // `mode: "general"` clears Gate G (see the BUG describe block earlier in
+    // this file / chat-safety-stop.test.ts for the zero-source variant,
+    // which is currently swallowed — a real production defect).
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
-    const res = await POST(req({ message: SMOKE, sourceDocIds: [], machineEvidence: mismatch }), params);
+    const res = await POST(req({ message: SMOKE, sourceDocIds: [], mode: "general", machineEvidence: mismatch }), params);
     expect(res.status).toBe(200);
     const fr = await frames(res);
     expect(fr[0]).toMatchObject({ kind: "evidence", identityDisputed: true });
     expect(fr[0]).not.toHaveProperty("basis");
     expect(fr.findIndex((f) => f.kind === "content")).toBeGreaterThan(0);
-    expect(fr.some((f) => f.kind === "safety")).toBe(true);
+    // No terminal safety frame any more — the banner is ordinary content.
+    expect(fr.some((f) => f.kind === "safety")).toBe(false);
+    const content = fr.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+    expect(content).toContain("⚠️");
   });
 
   it("abstention (Gate G): dispute frame first, no basis, then the honest insufficient_evidence status", async () => {

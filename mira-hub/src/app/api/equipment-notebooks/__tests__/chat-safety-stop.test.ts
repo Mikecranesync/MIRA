@@ -42,6 +42,8 @@ const domainMock = vi.hoisted(() => ({
   // is the caller's.
   getNotebook: vi.fn(async () => ({ id: NB, displayName: "Conveyor 1" })),
   listSources: vi.fn(async () => []),
+  listTurns: vi.fn(async () => []),
+  originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
@@ -97,6 +99,32 @@ function answerText(frames: string[]): string {
     .join("");
 }
 
+function recordedTurn(): Record<string, unknown> {
+  return (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
+}
+
+/** A single retrieved chunk — needed so a turn clears the pre-existing,
+ *  independent "zero retrieved evidence" abstain gate (line ~1874 of the
+ *  route) and reaches the real flag-and-answer path this suite targets.
+ *  Without it, `chunks.length === 0` short-circuits BEFORE the hazard banner
+ *  is ever applied — see the BUG describe block below, which pins that gap
+ *  deliberately rather than papering over it here. */
+const CHUNK = { docId: DOC_A, filename: "conveyor.pdf", page: 3, content: "Reset procedure for the drive fault." };
+
+function stubProvider(answer: string) {
+  const body =
+    answer
+      .split("\n")
+      .map((line) => `data: ${JSON.stringify({ choices: [{ delta: { content: line + "\n" }, finish_reason: null }] })}\n\n`)
+      .join("") +
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n' +
+    "data: [DONE]\n\n";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })),
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Any provider call during a safety stop is a failure of the whole slice.
@@ -106,6 +134,8 @@ beforeEach(() => {
     status: "claimed",
     claimToken: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   });
+  process.env.GROQ_API_KEY = "test-key";
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
 });
 
 describe("notebook chat safety hard-stop", () => {
@@ -119,25 +149,66 @@ describe("notebook chat safety hard-stop", () => {
     expect(domainMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("stops an active hazard report before retrieval and before any provider call", async () => {
+  it("flags an active hazard report but still retrieves and still calls the provider — the banner rides the answer, not a stop", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
+    // flags". Detection is unchanged (same trigger the classifier always
+    // matched on this phrase); the RESPONSE changed — retrieval and the
+    // provider both run, the flag directive rides the system prompt, and the
+    // hazard banner is prefixed to the model's real answer instead of
+    // replacing it with SAFETY_STOP.
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Get clear of the panel and call your supervisor before doing anything else.");
     const res = await POST(
       chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A] }),
       params,
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("smoke coming");
-    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
 
     const frames = await readFrames(res);
-    expect(answerText(frames)).toContain("SAFETY STOP");
-    expect(answerText(frames)).toContain("lockout/tagout");
-    expect(frames.some((f) => f.includes('"kind":"safety"'))).toBe(true);
-    expect(frames.findIndex((f) => f.includes('"kind":"safety"'))).toBeLessThan(
-      frames.findIndex((f) => f.includes('"kind":"content"')),
-    );
+    expect(answerText(frames)).toContain("⚠️");
+    expect(answerText(frames)).toContain("Get clear of the panel and call your supervisor before doing anything else.");
+    // No terminal safety frame any more — the banner is ordinary content.
+    expect(frames.some((f) => f.includes('"kind":"safety"'))).toBe(false);
     expect(frames.at(-1)).toBe("[DONE]");
+  });
+
+  describe("BUG (production, not this policy change) — Gate G's zero-evidence abstain swallows the flag entirely", () => {
+    // 2026-09-27 investigation: the terminal safety-stop branch removed by
+    // 6cc21ec8a used to intercept EVERY safetyTrigger unconditionally, before
+    // the pre-existing "chunks.length === 0" abstain gate ("Gate G", route.ts
+    // ~L1874-ish, "insufficient evidence" / "I couldn't find that in the
+    // selected sources"). With that branch gone, a hazard report that hits
+    // Gate G (zero retrieved chunks — the DEFAULT ragMock behaviour in this
+    // file, and a realistic outcome for a notebook whose search finds
+    // nothing) now returns the ordinary abstain response with ZERO safety
+    // framing: no banner (only applied later, on the served-answer path Gate
+    // G never reaches), no X-Safety-Stop header (removed), no safety_notice
+    // evidence entry (only added by the deleted branch or the energized
+    // directive). This is WORSE than both the pre-2026-09-27 hard stop and
+    // the intended flag-and-answer policy — the hazard vanishes without a
+    // trace. These two tests assert the INTENDED behaviour (a flag must
+    // still appear) and are EXPECTED TO FAIL until the gate ordering is
+    // fixed in production code. See the session report for the exact
+    // evidence and root cause.
+    it("a hazard report with genuinely zero retrieved chunks should still carry the safety banner", async () => {
+      const res = await POST(
+        chatReq({ message: "there is smoke coming from the drive panel", sourceDocIds: [DOC_A] }),
+        params,
+      );
+      const frames = await readFrames(res);
+      expect(answerText(frames)).toContain("⚠️");
+    });
+
+    it("stops even with no sources attached, instead of returning no_sources_selected", async () => {
+      domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+      const res = await POST(chatReq({ message: "i just got shocked by the panel", sourceDocIds: [] }), params);
+      const frames = await readFrames(res);
+      expect(answerText(frames)).toContain("⚠️");
+    });
   });
 
   it("emits no citations — a stop is never dressed as a grounded answer", async () => {
@@ -155,23 +226,24 @@ describe("notebook chat safety hard-stop", () => {
     expect(sources.citations).toEqual([]);
   });
 
-  it("persists the stop with a safety_notice entry so hydration can restore it", async () => {
+  it("persists the flagged answer — the banner is baked into the stored text, so hydration renders the same warning on reload", async () => {
+    // OWNER DECISION 2026-09-27: there is no more separate safety_stop/
+    // safety_notice persistence for a generic (non-electrical) trigger — the
+    // banner text IS the durable record, since it is part of `answerText`
+    // itself and the replay path (`replayNotebookTurnResponse`) re-chunks
+    // stored `answerText` verbatim.
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Isolate the machine and confirm zero energy before touching anything.");
     const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }), params);
-    expect(domainMock.recordTurn).toHaveBeenCalledWith(
-      expect.any(String),
-      NB,
-      expect.objectContaining({
-        answerStatus: "answered",
-        answerText: SAFETY_STOP,
-        evidence: expect.arrayContaining([
-          { kind: "safety_notice", trigger: expect.any(String) },
-          { kind: "safety_stop", trigger: expect.any(String) },
-        ]),
-        model: null,
-        clientRequestId,
-      }),
-    );
+    const res = await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A], clientRequestId }), params);
+    await res.text(); // the flagged path persists lazily, inside the SSE stream — consume it first
+    const rec = recordedTurn();
+    expect(rec.answerStatus).toBe("answered");
+    expect(rec.answerText).not.toBe(SAFETY_STOP);
+    expect(String(rec.answerText)).toMatch(/^⚠️/);
+    expect(String(rec.answerText)).toContain("Isolate the machine and confirm zero energy before touching anything.");
+    expect(rec.model).not.toBeNull();
+    expect(rec.clientRequestId).toBe(clientRequestId);
   });
 
   it("replays the first persisted Safety STOP for the same client request without rerunning work", async () => {
@@ -280,23 +352,19 @@ describe("notebook chat safety hard-stop", () => {
     );
   });
 
-  it("safety_notice trigger matches the X-Safety-Stop header", async () => {
+  it("the flag directive rides the system prompt naming the SAME trigger the classifier matched (replaces the old header/notice pairing)", async () => {
+    // There is no more X-Safety-Stop header and no more safety_notice entry
+    // for a generic (non-electrical) trigger on the live path — the only
+    // structured signal that detection fired is the directive injected into
+    // the system prompt sent to the provider.
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Answer text.");
     await POST(chatReq({ message: "which cable to pull to stop it", sourceDocIds: [DOC_A] }), params);
-    const call = (domainMock.recordTurn.mock.calls as unknown as [string, string, Record<string, unknown>][])[0][2];
-    const entry = (call.evidence as { kind: string; trigger: string }[])[0];
-    expect(entry.kind).toBe("safety_notice");
-    expect(typeof entry.trigger).toBe("string");
-    expect(entry.trigger.length).toBeGreaterThan(0);
-  });
-
-  it("stops even with no sources attached, instead of returning no_sources_selected", async () => {
-    domainMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
-    const res = await POST(chatReq({ message: "i just got shocked by the panel", sourceDocIds: [] }), params);
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("got shocked");
-    expect(domainMock.recordTurn).toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const sentBody = JSON.parse(String(init.body)) as { messages: Array<{ role: string; content: string }> };
+    const system = sentBody.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain("SAFETY FLAG: which cable to pull");
   });
 
   it("does not stop an ordinary maintenance question", async () => {
@@ -322,7 +390,11 @@ describe("notebook chat safety hard-stop", () => {
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
   });
 
-  it("keeps the notebook frame grammar so an unaware client still renders it", async () => {
+  it("keeps the notebook frame grammar — content (banner + answer), sources, evidence, status — so an unaware client still renders it", async () => {
+    // There is no more terminal "safety" frame: the flagged turn streams
+    // exactly like any other answered turn, banner baked into its content.
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Do not touch it — call an electrician.");
     const res = await POST(chatReq({ message: "there is an exposed wire", sourceDocIds: [DOC_A] }), params);
     const kinds = (await readFrames(res))
       .map((f) => {
@@ -334,6 +406,6 @@ describe("notebook chat safety hard-stop", () => {
       })
       .filter((k, i, a) => k !== "content" || a[i - 1] !== "content");
 
-    expect(kinds).toEqual(["sources", "safety", "content", "status", "[DONE]"]);
+    expect(kinds).toEqual(["content", "sources", "evidence", "status", "[DONE]"]);
   });
 });

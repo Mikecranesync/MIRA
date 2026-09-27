@@ -243,29 +243,45 @@ describe("#3984 controls — the warning does not spread", () => {
     "Re-energize the panel and clamp each phase to record the current, then reach into the guard opening while the conveyor is running.",
     "Re-energize the panel. Clamp each phase and record the current.\nThen loosen the fitting while the line is still pressurized.",
     "Re-energize the panel. Clamp each phase and record the current.\nReset the fault at the contactor while it is energized.",
-  ])("#4005 review: restore-to-measure PLUS another hazard still STOPS — the energized exemption never hides another hazard: %s", async (draft) => {
+  ])("#4005 review, superseded by the 2026-09-27 owner decision: restore-to-measure PLUS another hazard still gets FLAGGED — the energized exemption never hides the other hazard's DETECTION: %s", async (draft) => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags"
+    // supersedes #3984's "still STOPS". The sibling hazard clause is still
+    // DETECTED (masking the restore/measure clause does not hide it), but the
+    // response is now a hazard_warning banner above the FULL original answer —
+    // no terminal safety frame, and the flagged clause is no longer stripped.
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
-    expect(contentOf(text).toLowerCase()).not.toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
+    expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+    const content = contentOf(text);
+    expect(content).toContain("Safety flag on a step below");
+    expect(content.toLowerCase()).toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
   });
 
-  it("#4005 re-review: a prohibited measurement does not shield a sibling hazard clause once A4 fired", async () => {
+  it("#4005 re-review, superseded by the 2026-09-27 owner decision: a prohibited measurement does not shield a sibling hazard clause once A4 fired — it is flagged, and the flagged text is still served", async () => {
     // Without A4, "Never probe …, and reset …" passes: the prohibition sits in
     // the same sentence's bearing clauses. With A4 fired the probe clause is
     // masked and the reset-while-energized clause is judged on its own — the
-    // prohibition never bound the reset. Deliberate over-stop direction.
+    // prohibition never bound the reset, so the sibling hazard is still
+    // DETECTED. Owner decision 2026-09-27 changes the RESPONSE (flag, don't
+    // strip) — detection itself is unchanged.
     stubProvider("Re-energize the panel and read the current.\nNever probe the live terminals, and reset the fault while the drive is energized.");
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
-    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
-    expect(contentOf(text).toLowerCase()).not.toContain("reset the fault while the drive is energized");
+    expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+    const content = contentOf(text);
+    expect(content).toContain("Safety flag on a step below");
+    expect(content.toLowerCase()).toContain("reset the fault while the drive is energized");
   });
 
-  it("a non-energized hazard rule still STOPS — the owner decision is scoped to energized states", async () => {
-    // A1 lockout-bypass affirmation: unchanged, still the terminal Safety STOP.
+  it("a non-energized hazard rule is flagged too, and still answered — the 2026-09-27 policy is not scoped to energized states", async () => {
+    // A1 lockout-bypass affirmation: previously a terminal Safety STOP;
+    // superseded by the 2026-09-27 "flag, don't block" policy, which is
+    // uniform across every hazard-affirmation rule, not just energized ones.
     stubProvider("You don't need to lock out the conveyor for this, just reach in and clear the jam.");
     const text = await (await POST(chatReq({ message: "Conveyor jammed, how do I clear it?", sourceDocIds: [DOC_A] }), params)).text();
-    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
-    expect(contentOf(text)).not.toContain(ENERGIZED_WARNING);
+    expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
+    const content = contentOf(text);
+    expect(content).not.toContain(ENERGIZED_WARNING);
+    expect(content).toContain("Safety flag on a step below");
+    expect(content).toContain("reach in and clear the jam");
   });
 });

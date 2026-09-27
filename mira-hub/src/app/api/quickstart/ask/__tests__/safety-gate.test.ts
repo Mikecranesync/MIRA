@@ -1,8 +1,12 @@
 /**
- * #3876 — the public stranger route must hard-stop on a safety-keyword match
- * BEFORE retrieval and before the provider call, exactly as the asset, node,
- * notebook and hub/ask chat routes do (security-boundaries.md). The classifier's
- * educational carve-out keeps the questions this route exists for answering.
+ * #3876 — the public stranger route flags a safety-keyword match with a
+ * hazard banner above the answer, exactly as the asset, node, notebook and
+ * hub/ask chat routes do (security-boundaries.md). It no longer hard-stops
+ * (OWNER DECISION 2026-09-27, Mike: "no answer blocking, just safety
+ * flags") — retrieval and the provider still run, and the flag directive
+ * rides the prompt via `X-Safety-Flag` (not `X-Safety-Stop`). The
+ * classifier's educational carve-out keeps the questions this route exists
+ * for answering.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManualChunk } from "@/lib/manual-rag";
@@ -42,15 +46,22 @@ beforeEach(() => {
 });
 
 describe("POST /api/quickstart/ask — safety hard-stop (#3876)", () => {
-  it("a hazard report stops before retrieval and the provider — SAFETY_STOP body, X-Safety-Stop header", async () => {
+  it("a hazard report is flagged (X-Safety-Flag header, banner above the answer) but retrieval and the provider still run", async () => {
+    cascade.cascadeComplete.mockResolvedValue({ content: "Isolate and verify zero energy first, then…", provider: "groq" });
     const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    const flagTrigger = res.headers.get("X-Safety-Flag");
+    expect(flagTrigger).toBeTruthy();
     const body = await res.json();
-    expect(body.answer).toContain("SAFETY STOP");
-    expect(body.citations).toEqual([]);
-    expect(rag.retrieveManualChunks).not.toHaveBeenCalled();
-    expect(cascade.cascadeComplete).not.toHaveBeenCalled();
+    expect(body.answer).toContain("⚠️");
+    expect(body.answer).toContain("Isolate and verify zero energy first, then…");
+    expect(body.answer).not.toContain("SAFETY STOP");
+    expect(rag.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain(`SAFETY FLAG: ${flagTrigger}`);
   });
 
   it("an educational safety question still answers (classifier carve-out): 'What is LOTO and when is it required'", async () => {

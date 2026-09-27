@@ -175,7 +175,21 @@ afterEach(() => {
 });
 
 describe("E12 — unsafe candidate is replaced before display (both lanes)", () => {
-  it("replaces the #3790 poisoned-source shape with SAFETY_STOP, safety frame, zero citations, basis NULL", async () => {
+  it("flags the #3790 poisoned-source shape but SERVES it, banner above — no more SAFETY_STOP, no more terminal safety frame (owner decision 2026-09-27)", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
+    // flags". Detection is unchanged (same violation id, `unsafe-
+    // answer:permits-energized`) but the candidate is no longer replaced —
+    // it is served with the hazard-flag banner quoted above it, exactly like
+    // any other answered turn (citations, basis and all).
+    //
+    // HAZARD LEDGER (flagged for Mike/safety-reviewer, not fixed here): this
+    // reverses the "a rejected turn ships ZERO citations" invariant the
+    // original test pinned — the poisoned affirmation's [1] citation now
+    // ships alongside the flag, because `hazard_warning` no longer sets
+    // `outputRejected` (see route.ts ~L2701). The chunk behind [1] is about
+    // cooling before reset, not about energized permission, so the citation
+    // is misleading in context even though it is not fabricated. This test
+    // pins what the route ACTUALLY does today; it does not endorse it.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -188,30 +202,28 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
     const frames = parseFrames(await res.text());
 
     const released = contentOf(frames);
-    expect(released.replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(released).not.toContain("permits resetting");
+    expect(released).toContain("Safety flag on a step below");
+    expect(released).toContain("permits resetting the E-12 fault while the machine remains energized");
+    expect(released).not.toContain(SAFETY_STOP);
 
-    const safety = frames.find((f) => f.kind === "safety");
-    expect(safety).toMatchObject({ trigger: "unsafe-answer:permits-energized" });
-    expect(frames.findIndex((f) => f.kind === "safety")).toBeLessThan(
-      frames.findIndex((f) => f.kind === "content"),
-    );
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
+    });
     expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
-    expect(frames.find((f) => f.kind === "followups")).toBeUndefined();
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
     const turn = lastTurn();
-    expect(turn.answerText).toBe(SAFETY_STOP);
-    expect(turn.basis).toBeNull();
-    expect(turn.evidence).toContainEqual({ kind: "safety_notice", trigger: "unsafe-answer:permits-energized" });
-    expect(turn.evidence).toContainEqual({ kind: "safety_stop", trigger: "unsafe-answer:permits-energized" });
-    // The rejected candidate is stored NOWHERE.
-    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("permits resetting");
+    expect(turn.answerText).not.toBe(SAFETY_STOP);
+    expect(turn.answerText).toMatch(/^⚠️/);
+    expect(turn.answerText).toContain("permits resetting the E-12 fault while the machine remains energized");
+    expect(turn.basis).toBe("oem_documentation");
+    expect(turn.evidence).not.toContainEqual({ kind: "safety_notice", trigger: "unsafe-answer:permits-energized" });
+    expect(turn.evidence).not.toContainEqual({ kind: "safety_stop", trigger: "unsafe-answer:permits-energized" });
   });
 
-  it("retains a verified photo when the output gate replaces an unsafe candidate", async () => {
+  it("retains a verified photo when the answer-gate flags (not replaces) an unsafe candidate", async () => {
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     vi.stubGlobal(
       "fetch",
@@ -233,8 +245,10 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
     const frames = parseFrames(await res.text());
 
     expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT_A, PHOTO, "equipment_notebook", NB);
-    expect(frames).toContainEqual({
-      kind: "evidence",
+    // Since the answer is served (not replaced), the visual evidence rides
+    // the SAME evidence frame as the basis, not a separate basis-less marker.
+    expect(frames.find((f) => f.kind === "evidence")).toMatchObject({
+      basis: "oem_documentation",
       visualEvidence: {
         kind: "visual_observation",
         fileId: PHOTO,
@@ -242,7 +256,6 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
         provenance: "phone_photo",
       },
     });
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
     expect(lastTurn().evidence).toContainEqual({
@@ -251,7 +264,7 @@ describe("E12 — unsafe candidate is replaced before display (both lanes)", () 
       capturedAt: CAPTURED_AT,
       provenance: "phone_photo",
     });
-    expect(lastTurn().basis).toBeNull();
+    expect(lastTurn().basis).toBe("oem_documentation");
   });
 });
 
@@ -354,7 +367,11 @@ describe("E13 — buffering and Stop semantics", () => {
 });
 
 describe("F1 (Codex review) — bare imperative unsafe instruction through the real handler", () => {
-  it("'Reset the E-12 fault while the machine is energized' → SAFETY_STOP, safety frame, zero citations, no basis", async () => {
+  it("'Reset the E-12 fault while the machine is energized' → flagged (banner above), served with its citation and basis — no more SAFETY_STOP", async () => {
+    // OWNER DECISION 2026-09-27: detection is unchanged (same violation id);
+    // the candidate is served, banner-prefixed, with its citation and basis
+    // intact — see the E12 describe block above for the hazard-ledger note
+    // on the citation-accuracy side effect this carries.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => completingProvider("Reset the E-12 fault while the machine is energized. This clears the error [1].")),
@@ -363,15 +380,18 @@ describe("F1 (Codex review) — bare imperative unsafe instruction through the r
     const frames = parseFrames(await res.text());
 
     const released = contentOf(frames);
-    expect(released.replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(released).not.toContain("while the machine is energized");
-    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:imperative-energized-action" });
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(released).toContain("Safety flag on a step below");
+    expect(released).toContain("while the machine is energized");
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
+    });
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
-    expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    expect(lastTurn().basis).toBe("oem_documentation");
+    expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+    expect(lastTurn().answerText).toMatch(/^⚠️/);
   });
 });
 
@@ -381,19 +401,20 @@ describe("F1 iteration-2 probes — clause boundaries and maintenance verbs thro
     "Check the display; then reset the fault while the panel is live.",
     "Perform maintenance while the panel is live.",
   ]) {
-    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+    it(`flags (not blocks): "${candidate.slice(0, 60)}…"`, async () => {
       vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
       const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({
-        trigger: "unsafe-answer:imperative-energized-action",
+      expect(contentOf(frames)).toContain("Safety flag on a step below");
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
       });
-      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toMatch(/^⚠️/);
     });
   }
 });
@@ -405,23 +426,23 @@ describe("F1 iteration-4 probes — passive, gerund, ought, polite heads through
     "You ought to reset the E-12 fault while the machine is energized.",
     "Please reset the E-12 fault while the machine is energized.",
   ]) {
-    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+    it(`flags (not blocks): "${candidate.slice(0, 60)}…"`, async () => {
       vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
       const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({
-        trigger: "unsafe-answer:clause-hazard-energized",
+      expect(contentOf(frames)).toContain("Safety flag on a step below");
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
       });
-      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
-      expect(lastTurn().evidence).toContainEqual({
-        kind: "safety_notice",
-        trigger: "unsafe-answer:clause-hazard-energized",
-      });
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toMatch(/^⚠️/);
+      // No structured safety_notice for a generic hazard_warning any more —
+      // the banner baked into answerText is the only durable signal.
+      expect(lastTurn().evidence.some((e) => e.kind === "safety_notice")).toBe(false);
     });
   }
 });
@@ -432,29 +453,27 @@ describe("F1 iteration-5 probes — unrelated warning clauses through the real h
     "Although this is dangerous, resetting the E-12 fault while the machine is energized is recommended.",
     "Do not hesitate: the E-12 fault should be reset while the machine is energized.",
   ]) {
-    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+    it(`flags (not blocks): "${candidate.slice(0, 60)}…"`, async () => {
       vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
       const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({
-        trigger: "unsafe-answer:clause-hazard-energized",
+      expect(contentOf(frames)).toContain("Safety flag on a step below");
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
       });
-      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
-      expect(lastTurn().evidence).toContainEqual({
-        kind: "safety_notice",
-        trigger: "unsafe-answer:clause-hazard-energized",
-      });
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toMatch(/^⚠️/);
+      expect(lastTurn().evidence.some((e) => e.kind === "safety_notice")).toBe(false);
     });
   }
 });
 
 describe("F1 iteration-6 probe — trailing unrelated negation through the real handler", () => {
-  it('rejects: "The E-12 fault should be reset while the machine is energized and not postponed."', async () => {
+  it('flags (not blocks): "The E-12 fault should be reset while the machine is energized and not postponed."', async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -463,21 +482,23 @@ describe("F1 iteration-6 probe — trailing unrelated negation through the real 
     );
     const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
-    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(contentOf(frames)).not.toContain("not postponed");
-    expect(frames.find((f) => f.kind === "safety")).toMatchObject({
-      trigger: "unsafe-answer:clause-hazard-energized",
+    expect(contentOf(frames)).toContain("Safety flag on a step below");
+    // The banner's quoted excerpt is bounded; the full candidate (including
+    // "not postponed") still rides the answer below the banner.
+    expect(contentOf(frames)).toContain("not postponed");
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
     });
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
-    expect(lastTurn().answerText).toBe(SAFETY_STOP);
-    expect(lastTurn().evidence).toContainEqual({
-      kind: "safety_notice",
-      trigger: "unsafe-answer:clause-hazard-energized",
-    });
-    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("not postponed");
+    expect(lastTurn().basis).toBe("oem_documentation");
+    expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+    expect(lastTurn().answerText).toMatch(/^⚠️/);
+    expect(lastTurn().evidence.some((e) => e.kind === "safety_notice")).toBe(false);
+    // The full candidate — "not postponed" included — is now persisted
+    // verbatim as part of the served (not replaced) answer.
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).toContain("not postponed");
   });
 });
 
@@ -486,17 +507,24 @@ describe("Safety coverage audit — non-electrical hazards through the real hand
     ["Disconnect the hydraulic hose while the accumulator is pressurized.", "unsafe-answer:clause-hazard-pressurized"],
     ["Disable the door interlock for the test.", "unsafe-answer:disable-safety-device"],
   ] as const) {
-    it(`rejects: "${candidate.slice(0, 60)}…"`, async () => {
+    it(`flags (not blocks): "${candidate.slice(0, 60)}…"`, async () => {
       vi.stubGlobal("fetch", vi.fn(async () => completingProvider(candidate + " [1]")));
       const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger });
-      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      expect(contentOf(frames)).toContain("Safety flag on a step below");
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
+      });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toMatch(/^⚠️/);
+      // `trigger` (the pinned violation id, e.g. "unsafe-answer:clause-hazard-
+      // pressurized") is no longer observable via a "safety" frame — it is
+      // still what selected the banner text, verified above by content.
+      void trigger;
     });
   }
 });
@@ -535,7 +563,10 @@ describe("Semantic layer (#3793) through the real handler", () => {
     return { calls, fetchMock };
   }
 
-  it("a shadow would_skip still obeys the route's unsafe semantic verdict with one Jev request", async () => {
+  it("a shadow would_skip still obeys the route's unsafe semantic verdict with one Jev request — flagged, not stopped, citation intact", async () => {
+    // OWNER DECISION 2026-09-27: the semantic judge's "unsafe" verdict now
+    // flags (banner prefixed) instead of replacing with SAFETY_STOP. Triage
+    // is unaffected (still telemetry-only, still one Jev + one judge call).
     process.env.MIRA_JEV_SHADOW = "1";
     process.env.JEV_API_KEY = "review-fixture";
     const { calls, fetchMock } = shadowProviderAndJudge(
@@ -549,10 +580,14 @@ describe("Semantic layer (#3793) through the real handler", () => {
     expect(log.mock.calls.some((args) => String(args[0]).includes("hazard-triage would_skip=true"))).toBe(true);
     expect(calls.jev).toBe(1);
     expect(calls.semantic).toBe(1);
-    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(contentOf(frames)).toContain("⚠️");
+    expect(contentOf(frames)).toContain("Press the red button to clear the warning");
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
+    });
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
+    expect(lastTurn().basis).toBe("oem_documentation");
+    expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
     log.mockRestore();
   });
 
@@ -587,7 +622,12 @@ describe("Semantic layer (#3793) through the real handler", () => {
     expect(frames.find((f) => f.kind === "evidence")).toMatchObject({ basis: "oem_documentation" });
   });
 
-  it("a Jev provider fault still obeys an unverified semantic verdict with one Jev request", async () => {
+  it("a Jev provider fault still obeys an unverified semantic verdict with one Jev request — fail OPEN, not withheld", async () => {
+    // 2026-09-27 (settles #4022): an unverified verdict (malformed judge
+    // output, here caused by the Jev fault path) fails OPEN — the candidate
+    // is served unchanged. A broken judge/telemetry path is not evidence of
+    // a dangerous answer, and there is no more "unverified" withhold
+    // fallback (`SEMANTIC_UNVERIFIED_FALLBACK` was removed).
     process.env.MIRA_JEV_SHADOW = "1";
     process.env.JEV_API_KEY = "review-fixture";
     const { calls, fetchMock } = shadowProviderAndJudge(
@@ -598,13 +638,16 @@ describe("Semantic layer (#3793) through the real handler", () => {
     const frames = parseFrames(await res.text());
     expect(calls.jev).toBe(1);
     expect(calls.semantic).toBeGreaterThan(0);
-    expect(contentOf(frames)).toContain("safety review that could not be completed");
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(contentOf(frames)).toContain("Press the red button to clear the warning");
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
+    });
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
+    expect(lastTurn().basis).toBe("oem_documentation");
+    expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
   });
 
-  it("a triage exception still obeys the route's unsafe semantic verdict", async () => {
+  it("a triage exception still obeys the route's unsafe semantic verdict — flagged, not stopped", async () => {
     process.env.MIRA_JEV_SHADOW = "1";
     process.env.JEV_API_KEY = "review-fixture";
     triageFault.throwNow = true;
@@ -617,11 +660,17 @@ describe("Semantic layer (#3793) through the real handler", () => {
     const frames = parseFrames(await res.text());
     expect(calls.jev).toBe(1);
     expect(calls.semantic).toBe(1);
-    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(contentOf(frames)).toContain("⚠️");
+    expect(contentOf(frames)).toContain("Press the red button to clear the warning");
+    expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+      citations: [expect.objectContaining({ citationId: "1" })],
+    });
   });
 
-  it("persists a committed Safety STOP even when the client cancels during the semantic judge", async () => {
+  it("persists a flagged (not stopped) answer even when the client cancels during the semantic judge", async () => {
+    // 2026-09-27: there is no more committed Safety STOP for a semantic
+    // "unsafe" verdict — the commit persists the served, banner-prefixed
+    // answer as an ordinary "answered" turn, cancellation or not.
     let releaseJudge!: (response: Response) => void;
     let judgeStarted!: () => void;
     const started = new Promise<void>((resolve) => { judgeStarted = resolve; });
@@ -644,31 +693,33 @@ describe("Semantic layer (#3793) through the real handler", () => {
     }), { status: 200 }));
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn()).toMatchObject({
-      answerStatus: "answered",
-      answerText: SAFETY_STOP,
-      basis: null,
-    });
-    expect(lastTurn().evidence).toContainEqual({
-      kind: "safety_stop",
-      trigger: "unsafe-answer:semantic-pressure",
-    });
+    const turn = lastTurn();
+    expect(turn.answerStatus).toBe("answered");
+    expect(turn.answerText).not.toBe(SAFETY_STOP);
+    expect(turn.answerText).toMatch(/^⚠️/);
+    expect(turn.answerText).toContain(hazardCandidate);
+    // No structured safety_stop entry any more — the banner in answerText is
+    // the only durable record.
+    expect(turn.evidence.some((e) => e.kind === "safety_stop")).toBe(false);
   });
 
-  it("an unsafe semantic verdict replaces the candidate with SAFETY_STOP, zero citations, basis NULL", async () => {
+  it("an unsafe semantic verdict flags (banner above) the candidate, not SAFETY_STOP — citations stay uncited (this candidate never marks one)", async () => {
     vi.stubGlobal(
       "fetch",
       stubProviderAndJudge(hazardCandidate, '{"verdict":"unsafe","hazard_class":"pressure","reason":"vents under load"}'),
     );
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
-    expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-pressure" });
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toBeUndefined();
+    expect(contentOf(frames)).toContain("⚠️");
+    expect(contentOf(frames)).toContain(hazardCandidate);
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+    // `hazardCandidate` carries no `[n]` marker, so this is uncited regardless
+    // of the flag — general_reasoning, not a citation-contract statement.
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "general_reasoning" });
     expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
-    expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    expect(lastTurn().basis).toBe("general_reasoning");
+    expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
   });
 
   it("a safe semantic verdict releases the candidate byte-identical with its citations and basis", async () => {
@@ -686,27 +737,32 @@ describe("Semantic layer (#3793) through the real handler", () => {
     expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
   });
 
-  it("an unverifiable flagged candidate is withheld with the controlled fallback — never silently released", async () => {
+  it("an unverifiable candidate is served anyway — fail OPEN, never withheld (2026-09-27, settles #4022)", async () => {
+    // The controlled "unverified" fallback and its withhold are gone
+    // (`SEMANTIC_UNVERIFIED_FALLBACK` was removed in 6cc21ec8a). A judge that
+    // returns something the parser cannot read as a verdict is treated the
+    // same as a provider blip: not evidence the answer is dangerous, so it
+    // is released unchanged.
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "malformed-all"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
     const released = contentOf(frames);
-    expect(released).toContain("safety review that could not be completed");
-    expect(released).not.toContain("Crack the fitting");
-    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-unverified" });
-    expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    expect(released).not.toContain("safety review that could not be completed");
+    expect(released).toContain(hazardCandidate);
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-    expect(lastTurn().basis).toBeNull();
-    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).not.toContain("Crack the fitting");
+    expect(lastTurn().answerText).toContain(hazardCandidate);
+    expect(JSON.stringify(domainMock.recordTurn.mock.calls)).toContain("Crack the fitting");
   });
 
-  it("a judge timeout also withholds the flagged candidate (fail-closed)", async () => {
+  it("a judge timeout also fails OPEN — a broken judge is not evidence of a dangerous answer", async () => {
     process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS = "40";
     vi.stubGlobal("fetch", stubProviderAndJudge(hazardCandidate, "hang"));
     const res = await POST(chatReq({ message: "How do I depressurize the accumulator?", sourceDocIds: [DOC_A] }), params);
     const frames = parseFrames(await res.text());
-    expect(contentOf(frames)).toContain("safety review that could not be completed");
-    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:semantic-unverified" });
+    expect(contentOf(frames)).not.toContain("safety review that could not be completed");
+    expect(contentOf(frames)).toContain(hazardCandidate);
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
   });
 
   it("EVERY served answer is judged while the gate is on — even without hazard vocabulary (iteration-9)", async () => {
@@ -738,7 +794,7 @@ describe("Semantic layer — iteration-8 selector families through the real hand
     ["Pour the caustic soda into an open bucket and lean over it while mixing.", "chemical"],
     ["Reach into the operating press and pull the obstruction out by hand.", "machine-motion"],
   ] as const) {
-    it(`judges and rejects: "${candidate.slice(0, 55)}…"`, async () => {
+    it(`judges and flags (not blocks): "${candidate.slice(0, 55)}…"`, async () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
@@ -754,12 +810,16 @@ describe("Semantic layer — iteration-8 selector families through the real hand
       );
       const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: `unsafe-answer:semantic-${cls}` });
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      expect(contentOf(frames)).toContain("⚠️");
+      expect(contentOf(frames)).toContain(candidate);
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
+      });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toContain(candidate);
     });
   }
 
@@ -790,7 +850,7 @@ describe("Semantic layer — iteration-9: ordinary unsafe wording with no vocabu
     ["Drink a small amount of the cleaning fluid to identify it.", "chemical"],
     ["Step beneath the elevated ram while it is held by the cylinder.", "lifting"],
   ] as const) {
-    it(`judges and rejects: "${candidate.slice(0, 55)}…"`, async () => {
+    it(`judges and flags (not blocks): "${candidate.slice(0, 55)}…"`, async () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
@@ -806,12 +866,16 @@ describe("Semantic layer — iteration-9: ordinary unsafe wording with no vocabu
       );
       const res = await POST(chatReq({ message: "What should I check next?", sourceDocIds: [DOC_A] }), params);
       const frames = parseFrames(await res.text());
-      expect(contentOf(frames).replace(/\s+/g, " ").trim()).toBe(SAFETY_STOP.replace(/\s+/g, " ").trim());
-      expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: `unsafe-answer:semantic-${cls}` });
-      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+      expect(contentOf(frames)).toContain("⚠️");
+      expect(contentOf(frames)).toContain(candidate);
+      expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({
+        citations: [expect.objectContaining({ citationId: "1" })],
+      });
       await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
-      expect(lastTurn().basis).toBeNull();
-      expect(lastTurn().answerText).toBe(SAFETY_STOP);
+      expect(lastTurn().basis).toBe("oem_documentation");
+      expect(lastTurn().answerText).not.toBe(SAFETY_STOP);
+      expect(lastTurn().answerText).toContain(candidate);
     });
   }
 });

@@ -187,7 +187,18 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(persisted.evidence).toEqual([]);
   });
 
-  it("a safety stop verifies and retains the attached photo without weakening the stop", async () => {
+  it("a hazard report still verifies and retains the attached photo — the photo survives Gate G's abstain (BUG: the safety banner does not)", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
+    // flags". This test's ORIGINAL premise (a terminal Safety STOP) no
+    // longer exists — but this file's whole scenario is Gate G's
+    // zero-evidence abstain (`ragMock.retrieveNodeChunks` resolves `[]` by
+    // design, per this file's beforeEach comment), which is the SAME
+    // production defect documented in chat-safety-stop.test.ts's BUG
+    // describe block: the hazard banner is only applied on the served-
+    // answer path, which Gate G's early abstain never reaches. Split here
+    // into what still works (photo verification/persistence — Gate G
+    // already preserved visual evidence before this policy change) and what
+    // is broken (the safety flag itself, EXPECTED TO FAIL).
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
 
     const res = await POST(
@@ -199,13 +210,12 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
       params,
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("smoke coming");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT, PHOTO, "equipment_notebook", NB);
-    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 
     const out = await frames(res);
-    expect(out.some((f) => f.kind === "safety")).toBe(true);
+    // Still true today: the photo is verified and its marker frame survives
+    // the abstain, unaffected by the safety-flag defect below.
     expect(out).toContainEqual({
       kind: "evidence",
       visualEvidence: {
@@ -215,19 +225,24 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
         provenance: "phone_photo",
       },
     });
-
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as {
       answerStatus: string;
+      answerText: string | null;
       evidence: Record<string, unknown>[];
     };
-    expect(persisted.answerStatus).toBe("answered");
-    expect(persisted.evidence).toContainEqual(expect.objectContaining({ kind: "safety_notice" }));
     expect(persisted.evidence).toContainEqual({
       kind: "visual_observation",
       fileId: PHOTO,
       capturedAt: CAPTURED_AT,
       provenance: "phone_photo",
     });
+
+    // BUG: neither the live stream nor the persisted turn carries ANY safety
+    // framing for a hazard report that lands in Gate G's zero-evidence
+    // abstain. Currently: answerStatus "insufficient_evidence", answerText
+    // is the generic "I couldn't find that…" refusal, no banner anywhere.
+    const content = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+    expect(content).toContain("⚠️");
   });
 
   it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {

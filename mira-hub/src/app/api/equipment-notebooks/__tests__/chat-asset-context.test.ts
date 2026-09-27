@@ -177,16 +177,27 @@ describe("turn snapshot", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("persists the asset on a safety stop", async () => {
+  it("persists the asset on a flagged (not stopped) hazard turn — the snapshot survives the 2026-09-27 policy change", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
+    // flags" — this is no longer a hard stop, so the provider DOES run; the
+    // asset snapshot must still ride the persisted (now-answered, banner-
+    // prefixed) turn exactly as it did on the old terminal stop.
     domainMock.resolveBoundAsset.mockResolvedValue(RESOLVED_CONFIRMED);
-    await POST(chatReq({ message: "there is smoke coming from the panel", sourceDocIds: [DOC_A] }), params);
+    const res = await POST(chatReq({ message: "there is smoke coming from the panel", sourceDocIds: [DOC_A] }), params);
+    await res.text(); // recordTurn runs lazily inside the SSE stream
 
+    // Not pinning an exact count: this file does not disable
+    // NOTEBOOK_SEMANTIC_CHECK, so the output-side semantic judge may add its
+    // own provider call — the point here is the provider runs at all (no
+    // hard stop), not how many times.
+    expect(fetch).toHaveBeenCalled();
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),
       NB,
-      expect.objectContaining({ equipmentEntityId: ENTITY, assetUnsPath: UNS }),
+      expect.objectContaining({ equipmentEntityId: ENTITY, assetUnsPath: UNS, answerStatus: "answered" }),
     );
-    expect(fetch).not.toHaveBeenCalled();
+    const persisted = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
+    expect(String(persisted.answerText)).toContain("⚠️");
   });
 
   it("writes nulls, not undefined, when unbound", async () => {

@@ -114,6 +114,26 @@ function req(body: unknown) {
 }
 const params = { params: Promise.resolve({ id: NB }) };
 
+/** Joins every "content" SSE frame's `content` field into one string — the
+ *  release chunker can split a phrase across frame boundaries, so a raw
+ *  substring check on the whole SSE text is not reliable. */
+function releasedContentOf(rawSSEText: string): string {
+  return rawSSEText
+    .split("\n\n")
+    .map((l) => l.replace(/^data: /, "").trim())
+    .filter((l) => l && l !== "[DONE]")
+    .map((l) => {
+      try {
+        return JSON.parse(l) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((f): f is Record<string, unknown> => f?.kind === "content")
+    .map((f) => String(f.content ?? ""))
+    .join("");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
@@ -167,7 +187,19 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(call[2] ?? "").toBe("");
   });
 
-  it("a server-stored high-confidence photo hazard stops before any answer provider", async () => {
+  it("BUG (production, not this policy change): a server-stored high-confidence photo hazard loses its flag entirely when Gate G's zero-evidence abstain fires first", async () => {
+    // OWNER DECISION 2026-09-27: intent is "flag, don't block" — a photo
+    // hazard should carry a banner exactly like a text-triggered one. But
+    // this request has no sourceDocIds and no `mode: "general"`, so it falls
+    // into the SAME pre-existing "chunks.length === 0" abstain gate ("Gate
+    // G") documented in chat-safety-stop.test.ts's BUG describe block — a
+    // technician looking at LIVE ARCING (confidence 0.99) gets "I saw your
+    // photo, but I couldn't find anything about it in the selected sources."
+    // with ZERO safety framing. This is worse than both the old hard stop
+    // and the intended policy. See the neighbouring test below (`mode:
+    // "general"`) for the shape this SHOULD produce when Gate G is not in
+    // the way, and the session report for the full evidence. EXPECTED TO
+    // FAIL until the gate ordering is fixed in production code.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
       observationId: "o1",
@@ -189,20 +221,68 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       }),
       params,
     );
+    const text = await res.text();
 
-    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(text).toContain("⚠️");
+  });
+
+  it("a server-stored high-confidence photo hazard is flagged (banner above) but still answered when the turn is not swallowed by Gate G", async () => {
+    // The `mode: "general"` variant of the same scenario — Gate G's
+    // `!general` condition does not fire here, so this pins the INTENDED
+    // 2026-09-27 contract cleanly: no hard stop, no X-Safety-Stop header,
+    // the provider runs, and the banner rides the served answer.
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "Visible arcing at an uncovered terminal.",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "arcing", confidence: 0.99 }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const body = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Get clear and call an electrician." } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join("");
+        return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }),
+    );
+
+    const res = await POST(
+      req({
+        message: "what am I looking at here",
+        mode: "general",
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+    const rawText = await res.text();
+    const content = releasedContentOf(rawText);
+
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(fetch).toHaveBeenCalled();
+    expect(content).toContain("⚠️");
+    expect(content).toContain("Get clear and call an electrician.");
+    expect(rawText).not.toContain('"kind":"safety"');
     expect(nbMock.recordTurn).toHaveBeenCalledWith(
       TENANT,
       NB,
       expect.objectContaining({
-        answerText: expect.stringContaining("SAFETY STOP"),
-        evidence: expect.arrayContaining([
-          expect.objectContaining({ kind: "safety_stop", trigger: "visual:arcing" }),
-          expect.objectContaining({ kind: "visual_observation", fileId: PHOTO }),
-        ]),
+        answerStatus: "answered",
+        answerText: expect.stringMatching(/^⚠️/),
+        evidence: expect.arrayContaining([expect.objectContaining({ kind: "visual_observation", fileId: PHOTO })]),
       }),
     );
+    const persisted = (nbMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText).not.toContain("SAFETY STOP");
   });
 
   it("preserves the zero-source refusal for an unverified photo claim", async () => {
@@ -219,7 +299,11 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("a server-stored photo hazard overrides a non-terminal energized-question directive", async () => {
+  it("a server-stored photo hazard still owns the turn's banner over a non-terminal energized-question directive — flagged and answered, not stopped", async () => {
+    // OWNER DECISION 2026-09-27: the photo hazard (visual:arcing) still wins
+    // over the question-side energized-work directive for WHICH banner is
+    // shown (the "possible active incident" framing, not the NFPA 70E
+    // directive) — but neither one is a hard stop any more.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
       observationId: "o1",
@@ -233,6 +317,15 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       observedAt: null,
       hazards: [{ code: "arcing", confidence: 0.99 }],
     });
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Get clear and call an electrician." } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ].join("");
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     const res = await POST(
       req({
@@ -242,9 +335,23 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       }),
       params,
     );
+    const rawText = await res.text();
+    const releasedContent = releasedContentOf(rawText);
 
-    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(releasedContent).toContain("⚠️ **Possible active incident.**");
+    expect(releasedContent).toContain("Get clear and call an electrician.");
+    // The visual hazard owns the banner; the question-side NFPA 70E
+    // directive must not ALSO ride the system prompt for the same turn. This
+    // file mocks the canonical-seam `buildRequestBody` to `{}`, so the
+    // actually-sent messages are read from its call args (2nd param), not
+    // from the (stubbed-away) fetch request body.
+    const sentMessages = seamMock.buildRequestBody.mock.calls[0]?.[1] as
+      | Array<{ role: string; content: string }>
+      | undefined;
+    const system = (sentMessages ?? []).filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).not.toContain("ELECTRICAL SAFETY: High-Voltage Energized Work");
   });
 
   it("ignores a client-supplied photo hazard when the server-stored descriptor is healthy", async () => {
@@ -293,10 +400,43 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("F1 sticky MAX: older LOOK with high hazard + newer LOOK with empty hazards → still stops (MAX across all active rows)", async () => {
+  it("BUG (production, not this policy change): F1 sticky MAX hazard loses its flag entirely when Gate G's zero-evidence abstain fires first", async () => {
+    // Same root cause as the earlier BUG test in this file: no sourceDocIds,
+    // no `mode: "general"` ⇒ Gate G fires before the hazard banner is ever
+    // applied. EXPECTED TO FAIL until the gate ordering is fixed.
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
+      observationId: "o2",
+      sessionId: "s1",
+      text: "No visible hazards at this time.",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "arcing", confidence: 0.9 }],
+    });
+
+    const res = await POST(
+      req({
+        message: "what am I looking at here",
+        visualEvidence: { fileId: PHOTO },
+      }),
+      params,
+    );
+    const text = await res.text();
+
+    expect(text).toContain("⚠️");
+  });
+
+  it("F1 sticky MAX: older LOOK with high hazard + newer LOOK with empty hazards → still flagged (MAX across all active rows), and still answered", async () => {
+    // OWNER DECISION 2026-09-27: the sticky-MAX hazard logic is unchanged —
+    // only the response changed (flag, don't block). `mode: "general"` keeps
+    // this scenario out of Gate G so the intended contract is pinned cleanly.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
     // loadVisualEvidenceForPhoto now aggregates: returns latest text but MAX hazard across all rows.
-    // Simulates: older LOOK arcing@0.9 + newer LOOK hazards:[] → MAX is arcing@0.9, still blocks.
+    // Simulates: older LOOK arcing@0.9 + newer LOOK hazards:[] → MAX is arcing@0.9, still flags.
     veMock.loadVisualEvidenceForPhoto.mockResolvedValueOnce({
       observationId: "o2",
       sessionId: "s1",
@@ -309,28 +449,46 @@ describe("#3788 — a verified photo's observation reaches the model's user cont
       observedAt: null,
       hazards: [{ code: "arcing", confidence: 0.9 }], // MAX from older row
     });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const body = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "It looks clear now, but keep monitoring." } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join("");
+        return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }),
+    );
 
     const res = await POST(
       req({
         message: "what am I looking at here",
+        mode: "general",
         visualEvidence: { fileId: PHOTO },
       }),
       params,
     );
+    const rawText = await res.text();
+    const content = releasedContentOf(rawText);
 
-    // Even though the latest LOOK says no hazards, the older high-confidence hazard is sticky.
-    expect(res.headers.get("X-Safety-Stop")).toBe("visual:arcing");
-    expect(fetch).not.toHaveBeenCalled();
+    // Even though the latest LOOK says no hazards, the older high-confidence
+    // hazard is sticky — it still owns the banner, but no longer the stop.
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(fetch).toHaveBeenCalled();
+    expect(content).toContain("⚠️");
+    expect(content).toContain("It looks clear now, but keep monitoring.");
+    expect(rawText).not.toContain('"kind":"safety"');
     expect(nbMock.recordTurn).toHaveBeenCalledWith(
       TENANT,
       NB,
       expect.objectContaining({
-        answerText: expect.stringContaining("SAFETY STOP"),
-        evidence: expect.arrayContaining([
-          expect.objectContaining({ kind: "safety_stop", trigger: "visual:arcing" }),
-        ]),
+        answerStatus: "answered",
+        answerText: expect.stringMatching(/^⚠️/),
       }),
     );
+    const persisted = (nbMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText).not.toContain("SAFETY STOP");
   });
 });
 

@@ -150,26 +150,37 @@ describe("#3973 Unicode mutation corpus — safe answers stay safe", () => {
   }
 });
 
-describe("#3973 the corpus also proves detection-only", () => {
+describe("#3973 the corpus also proves detection is not weakened by mutation", () => {
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // The candidate is no longer withheld/replaced for a hazard-affirmation
+  // rule (A1/A2/A3) — it is served with a hazard banner above it, mutated
+  // bytes and all. This is the opposite assertion from before the policy
+  // change (which required NO fragment of the candidate in the replacement),
+  // and is deliberately NOT weaker: every mutated form must still (a) be
+  // DETECTED (r.ok === false, same violation-producing rule) and (b) carry
+  // the safety-flag banner — the only thing that changed is that the
+  // candidate itself now also reaches the technician, quoted above it.
   for (const [name, seed] of HAZARDOUS) {
-    it(`no mutated byte of "${name}" survives into the replacement`, () => {
+    it(`detection and the safety-flag banner survive every mutated form of "${name}"`, () => {
       for (const [mname, mutate] of MUTATORS) {
         const mutated = mutate(seed);
         const r = check(mutated);
+        expect(r.ok, `LEAKED under ${mname}: ${JSON.stringify(mutated)}`).toBe(false);
         if (r.ok) continue;
-        // #3984: an energized warning deliberately SERVES the candidate under a
-        // warning — the no-fragment contract applies to withholding kinds only.
+        // #3984: A4 (restore-to-measure) already warned rather than withheld,
+        // pre-dating the 2026-09-27 policy — unchanged here.
         if (r.kind === "energized_warning") {
           expect(r.replacement.startsWith(ENERGIZED_WARNING), `${mname} lost the warning`).toBe(true);
-          continue;
+        } else {
+          expect(r.kind, `${mname} produced the wrong kind`).toBe("hazard_warning");
+          expect(
+            r.replacement.startsWith("⚠️ **Safety flag on a step below:**"),
+            `${mname} lost the safety-flag banner`,
+          ).toBe(true);
         }
-        // the replacement is a fixed deterministic string; no fragment of the
-        // candidate — mutated or otherwise — may appear in it
-        for (let i = 0; i + 20 <= mutated.length; i += 10) {
-          const window = mutated.slice(i, i + 20).trim();
-          if (window.length < 16) continue;
-          expect(r.replacement, `${mname} leaked a fragment`).not.toContain(window);
-        }
+        // and the mutated candidate itself must still reach the technician —
+        // it is quoted/served, never silently dropped.
+        expect(r.replacement, `${mname} dropped the candidate instead of flagging it`).toContain(mutated);
       }
     });
   }
