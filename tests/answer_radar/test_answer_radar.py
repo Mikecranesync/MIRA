@@ -412,3 +412,115 @@ def test_report_renders_the_headline_numbers() -> None:
     assert "VCAD:" in out
     assert "MIRA FIELD BENCHMARK" in out
     assert "excluded from the denominator" in out
+
+
+# --- 2026-09-27 classifier corrections --------------------------------------------------
+
+
+def test_the_citation_removal_note_is_not_a_uns_gate() -> None:
+    """Three real replies were filed as gate turns on 2026-09-27 because of this footnote."""
+    reply = (
+        "I don't have AUMA AC 01.2 documentation in my records. Please upload the manual.\n\n"
+        "_(Note: I removed a citation because I haven't established which machine you're "
+        "working on, so I can't attribute a manufacturer's manual to it.)_"
+    )
+    assert classify_answer(reply, 200) is not AnswerStatus.UNS_GATE
+
+
+def test_a_real_gate_question_outside_a_note_still_counts() -> None:
+    reply = "Which machine are you looking at? _(Note: citations follow once confirmed.)_"
+    assert classify_answer(reply, 200) is AnswerStatus.UNS_GATE
+
+
+def test_the_slow_turn_placeholder_is_an_engine_error_not_an_answer() -> None:
+    reply = (
+        "This is taking longer than usual — I'm still working on it. You'll get a response "
+        "within 2 minutes."
+    )
+    assert classify_answer(reply, 200) is AnswerStatus.ERROR
+
+
+# --- hub runner (the deployed Hub/mobile chat route) ------------------------------------
+
+import json as _json  # noqa: E402
+
+from answer_radar import hub_runner  # noqa: E402
+
+
+class _FakeHub:
+    """Records requests; answers like the Hub chat route (SSE) + diagnostics."""
+
+    def __init__(self, content: str = "Replace the interface. [1]", status: str = "answered"):
+        self.created: list[dict] = []
+        self.bodies: list[dict] = []
+        self.content, self.status = content, status
+
+    def create_notebook(self, name: str, **identity: str) -> dict:
+        self.created.append({"name": name, **identity})
+        return {"id": f"nb-{len(self.created)}", "nodeId": "n"}
+
+    def _req(self, method, path, body=None, headers=None):
+        self.bodies.append(_json.loads(body))
+        frames = [
+            {"kind": "content", "content": self.content},
+            {"kind": "sources", "citations": [{"label": "1747-AIC manual", "page": 3}]},
+            {"kind": "status", "status": self.status},
+            {"kind": "evidence", "basis": "oem_documentation"},
+        ]
+        raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames).encode()
+        return 200, {"x-mira-trace-id": "t-1"}, raw
+
+    def diagnostics(self, notebook_id, trace_id):
+        return {
+            "packet": {
+                "retrieval": {
+                    "strategy": "oem_corpus_bm25",
+                    "executed": True,
+                    "candidate_count": 4,
+                    "returned_doc_ids": ["a#1", "b#2"],
+                }
+            }
+        }
+
+
+def test_hub_runner_sends_exactly_the_clients_body_and_no_ground_truth() -> None:
+    hub = _FakeHub()
+    q = _question()
+    rec, summary = hub_runner.run_question_hub(
+        q, hub, condition="new_chat", mira_version="abc", stamp="s"
+    )
+    body = hub.bodies[0]
+    assert set(body) == {"message", "sourceDocIds", "mode", "clientRequestId"}
+    assert body["message"] == q.normalized_question and body["mode"] == "general"
+    assert hub.created[0].keys() == {"name"}  # new chat: no machine identity
+    assert rec.retrieved_chunk_count == 4 and rec.citations == ["1747-AIC manual p.3"]
+    assert rec.retrieval_version == "oem_corpus_bm25" and summary["trace_id"] == "t-1"
+
+
+def test_machine_selected_binds_only_the_named_identity() -> None:
+    hub = _FakeHub()
+    q = _question()
+    hub_runner.run_question_hub(q, hub, condition="machine_selected", mira_version="a", stamp="s")
+    nb = hub.created[0]
+    assert nb["manufacturer"] == q.manufacturer and nb["model"] == q.model
+    assert nb["identityStatus"] == "user_confirmed"
+
+
+def test_an_insufficient_evidence_turn_is_an_abstention() -> None:
+    hub = _FakeHub(
+        content="The attached documents don't cover this.", status="insufficient_evidence"
+    )
+    rec, _ = hub_runner.run_question_hub(
+        _question(), hub, condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.answer_status is AnswerStatus.ABSTAINED
+
+
+def test_hub_runner_refuses_production() -> None:
+    with pytest.raises(SystemExit):
+        hub_runner.assert_staging("https://app.factorylm.com")
+    hub_runner.assert_staging("https://app-staging.factorylm.com")
+
+
+def test_hub_runner_reuses_the_acceptance_client() -> None:
+    assert hub_runner.load_hub_client().__name__ == "Hub"

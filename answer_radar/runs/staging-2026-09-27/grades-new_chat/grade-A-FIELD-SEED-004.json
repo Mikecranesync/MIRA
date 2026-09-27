@@ -1,0 +1,27 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "correctness": 25,
+  "evidence": 8,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 6,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "'The BX11-EN typically places the current weight in a consecutive pair of 16-bit holding registers (e.g., 40001-40002) as a 32-bit floating-point value; confirm the exact addresses in the indicator's manual.'",
+      "why_wrong": "The guessed register addresses (40001-40002) do not match the documented BX11-EN weight registers (40003 net, 40004 tare, 40006-40007 gross). The claim is explicitly hedged ('typically', 'confirm the exact addresses') rather than stated as fact, which keeps it from being a critical unsupported claim, but it is still a specific numeric guess with no grounding.",
+      "severity": "major"
+    },
+    {
+      "claim": "GX Works3 setup details ('Modbus TCP Master channel', 'Read Holding Registers instruction', data type 'REAL', byte-swap toggle) stated without qualification",
+      "why_wrong": "Reasonable engineering guidance and directionally correct (this does correctly flag the big-endian/word-order concern the question specifically asked about), but presented with full confidence and zero citation for a controller-specific integration.",
+      "severity": "minor"
+    }
+  ],
+  "notes": "Unlike the machine_selected condition for this seed (which returned nothing), this answer is complete and actually addresses both technical sub-questions the user asked: it gives a register guess (correctly hedged as needing manual confirmation, and closes with a clarifying question asking for the exact register numbers) and it explicitly calls out the data-format concern that matters most -- Modbus word order/endianness and the need to match byte-swap settings between the FX5U and the indicator. That is the one piece of engineering reasoning in this whole batch that lines up with the ground-truth's core technical point. It omits several supporting specifics (firmware version, exact ladder instructions, function code, diagnostic registers, explicit client/server role statement) and the register guess itself is likely wrong, but because the riskiest part is explicitly caveated rather than asserted as fact, this does not rise to a critical unsupported claim. FAILS: total 65 < 85, correctness 25 < 34 -- partial credit for correct reasoning on data format, held back by an ungrounded specific register guess and missing implementation details."
+}

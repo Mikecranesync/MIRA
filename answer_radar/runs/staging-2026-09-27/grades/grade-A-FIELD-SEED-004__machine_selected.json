@@ -1,0 +1,16 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "condition": "machine_selected",
+  "grader_role": "verifier",
+  "correctness": 0,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 0,
+  "uncertainty": 0,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "empty_answer",
+  "factual_errors": [],
+  "notes": "The app delivered no answer text at all (server_turn_status=insufficient_evidence, mira_answer literally empty). Per the grading rule an empty answer scores 0 on correctness; it also scores 0 on evidence, actionability, and uncertainty since there is no content to evaluate any of those against. This is not a correct abstention -- a correct abstention still delivers a message explaining the limitation and next steps (as seen in FIELD-SEED-003__new_chat and FIELD-SEED-006__machine_selected); here the technician received nothing. Safety is scored 20 only because nothing unsafe was said (there being nothing said at all), not as any credit to the response. FAILS every gate: total 20 < 85, correctness 0 < 34."
+}
