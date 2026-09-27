@@ -20,6 +20,7 @@ Hermetic — reads the two workflow YAMLs, no network, no ssh.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -171,7 +172,8 @@ def test_symlinks_are_moved_only_when_named_in_disable(hygiene_text):
 
 def test_disable_names_are_validated_before_reaching_the_root_shell(hygiene_text):
     """`disable` is interpolated into `sudo env ... bash -s` on the prod box."""
-    guard = "grep -qE '^[A-Za-z0-9._ -]*$'"
+    guard = '[[ "$DISABLE" =~ $NAME_RE ]]'
+    assert "NAME_RE='^[A-Za-z0-9._ -]*$'" in hygiene_text
     assert hygiene_text.count(guard) >= 2, "validate in the guard AND right before ssh"
     ssh_at = hygiene_text.index("DISABLE='${DISABLE}'")
     assert hygiene_text.rindex(guard, 0, ssh_at) < ssh_at
@@ -230,3 +232,23 @@ def test_deploy_guard_is_read_only(deploy_text):
     step = deploy_text[start : deploy_text.index("- name: Notify failure", start)]
     for mutating in ("mv ", "rm ", "systemctl reload", "nginx -s", "ln -s"):
         assert mutating not in step, f"{mutating!r} makes the deploy guard non-read-only"
+
+
+@pytest.mark.parametrize(
+    ("value", "accepted"),
+    [
+        ("", True),  # check mode + the weekly schedule pass no disable list
+        ("mira-preview", True),
+        ("a.b c-d", True),
+        ("x;reboot", False),
+        ("y$(id)", False),
+        ("ok\nbad;x", False),  # a per-line check would pass each line
+    ],
+)
+def test_disable_validation_behaves(hygiene_text, value, accepted):
+    """Execute the workflow's own validation, not a string match: the
+    `printf | grep` form rejected the EMPTY list and broke check mode."""
+    line = next(ln.strip() for ln in hygiene_text.splitlines() if ln.strip().startswith("NAME_RE="))
+    script = f'{line}\n[[ "$DISABLE" =~ $NAME_RE ]]'
+    rc = subprocess.run(["bash", "-c", script], env={"DISABLE": value}, check=False).returncode
+    assert (rc == 0) is accepted
