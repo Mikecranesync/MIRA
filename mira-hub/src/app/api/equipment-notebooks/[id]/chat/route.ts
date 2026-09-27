@@ -2199,6 +2199,19 @@ async function handleChatTurn(
   // #4068: excerpts from the same-manufacturer fallback belong to a SIBLING
   // model (each excerpt header names it). Say so, and never present a sibling
   // model's value as this machine's own specification.
+  const fallbackSources = [
+    ...new Set(
+      chunks
+        .filter((c) => c.retrievalScope === "vendor_fallback")
+        .map((c) => [c.manufacturer, c.modelNumber].filter(Boolean).join(" "))
+        .filter(Boolean),
+    ),
+  ];
+  const relatedManualWarning =
+    oemModel && fallbackSources.length > 0
+      ? `⚠️ No ${oemManufacturer?.name ?? ""} ${oemModel.value} manual was found, so this answer uses a related manual (${fallbackSources.join(", ")}). ` +
+        `Its steps and values may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
+      : null;
   const vendorFallbackDirective =
     oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")
       ? `\n\nRELATED-MANUAL EXCERPTS — no pages of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual were found; ` +
@@ -2351,6 +2364,9 @@ async function handleChatTurn(
       // accepted text is released through the same frame grammar. The client
       // keeps its existing "working" state until the first content frame.
       const gate = answerGateEnabled();
+      // #4068: with the gate off, content streams live — the related-manual
+      // warning goes out as the first content, before any model text.
+      let relatedWarningStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -2479,6 +2495,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (relatedManualWarning && !relatedWarningStreamed) {
+                        relatedWarningStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${relatedManualWarning}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       const frame: NotebookContentFrame = { kind: "content", content: norm };
                       controller.enqueue(enc.encode(sse(frame)));
                     }
@@ -2833,6 +2855,16 @@ async function handleChatTurn(
       }
 
       if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+
+      // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
+      // grounded on related-manual pages (the same-family fallback) may relay
+      // that manual's steps, but ALWAYS under a fixed, server-written warning —
+      // never left to the model's phrasing. Stacked below any hazard banner.
+      if (relatedManualWarning && served && !refused && answerText) {
+        answerText = flagBanner && answerText.startsWith(flagBanner)
+          ? `${flagBanner}\n\n${relatedManualWarning}${answerText.slice(flagBanner.length)}`
+          : `${relatedManualWarning}\n\n${answerText}`;
+      }
 
       // The Jev shadow judgment (started before generation) is collected here,
       // BEFORE the commit point, for the same reason the semantic await is: the
