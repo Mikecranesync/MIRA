@@ -220,3 +220,28 @@ def test_worktree_remove_refuses_paths_outside_parent(tmp_path: Path):
     ):
         with pytest.raises(ContractViolation, match="refusing"):
             prov.remove(bad)
+
+
+def test_worktree_remove_refuses_a_worktree_holding_other_work(
+    origin_repo: tuple[Path, str], worktree_parent: Path
+):
+    repo, sha = origin_repo
+    prov = WorktreeProvisioner(repo=repo, parent=worktree_parent)
+    path = prov.create(task_id="t", session_id="s", base_commit=sha)
+    (path / "someones-notes.txt").write_text("real work")
+    with pytest.raises(ContractViolation, match="failed to remove"):
+        prov.remove(path)
+    assert path.is_dir()  # nothing discarded
+
+
+def test_worktree_remove_clears_only_its_own_proof_file(
+    origin_repo: tuple[Path, str], worktree_parent: Path
+):
+    from fleet_gateway.worktree import PROOF_FILENAME
+
+    repo, sha = origin_repo
+    prov = WorktreeProvisioner(repo=repo, parent=worktree_parent)
+    path = prov.create(task_id="t", session_id="s", base_commit=sha)
+    (path / PROOF_FILENAME).write_text("proof")
+    prov.remove(path)
+    assert not path.exists()
