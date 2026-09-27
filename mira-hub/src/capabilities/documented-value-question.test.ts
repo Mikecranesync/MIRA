@@ -87,6 +87,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     // code-meaning + symptom question is troubleshooting.
     ["Why does my drive trip when it overheats?", "PowerFlex 525"],
     ["What does F005 mean on my drive, and why does it keep tripping?", "PowerFlex 525"],
+    // Codex #4069 pass 11 F1: any second clause ends the pure code-meaning exception.
+    ["What does F005 mean on my drive, and why is it overheating?", "PowerFlex 525"],
+    ["what does F005 mean on my drive? how do I stop it", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -113,6 +116,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is a watchdog timer", "SLC 5/03"],
     ["what is an actuator used for", "AC 01.2"],
     ["What does F005 mean?", "PowerFlex 525"],
+    ["What does F005 mean on my PowerFlex 525?", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
     ["what is the difference between a contactor and a relay", "GS10"],

@@ -558,13 +558,23 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
     expect(shown).toContain("confirm them in your SLC 5/03 manual before you act");
     const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
-    expect(rec.answerText).toContain("uses a related manual");
+    expect(rec.answerText).toContain("The closest match is a related manual");
     // Post-cap F3: a query miss is never presented as an absent manual.
     expect(shown).not.toMatch(/manual was found|manual was not found|no .* manual exists/i);
     const sent = JSON.stringify((fetchMock.mock.calls[0] as unknown[])[1]);
     expect(sent).toContain("RELATED-MANUAL EXCERPTS");
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(packetOf().retrieval.oem_scope).toBe("vendor_fallback");
+  });
+
+  it("2l2. Codex #4069 pass 11 F2: gate-off, a streamed related-manual note never claims a refusal used it", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I don't have documentation covering that, so I can't answer it.")));
+    const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
+    const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    expect(shown).not.toMatch(/this answer uses|answer uses a related/i);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
   });
 
   it("2m. #4068 related-manual warning with the answer gate ON (the production default)", async () => {

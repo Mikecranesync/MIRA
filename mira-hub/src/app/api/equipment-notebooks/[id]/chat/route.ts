@@ -2213,8 +2213,11 @@ async function handleChatTurn(
   ];
   const relatedManualWarning =
     oemModel && fallbackSources.length > 0
-      ? `⚠️ No page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question, so this answer uses a related manual (${fallbackSources.join(", ")}). ` +
-        `Its steps and values may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
+      // Codex #4069 pass 11 F2: this text streams (gate off) before the answer's
+      // refusal status is known, so it states what was FOUND, never that the
+      // answer used it — true whether the model then answers or refuses.
+      ? `⚠️ No page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question. The closest match is a related manual (${fallbackSources.join(", ")}). ` +
+        `Anything taken from it may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
       : null;
   const vendorFallbackDirective =
     oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")

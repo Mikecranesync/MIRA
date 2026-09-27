@@ -99,6 +99,9 @@ const TROUBLESHOOTING = new RegExp(`${SYMPTOM.source}|${PROCEDURE_VERBS.source}`
 
 // "what does fault code X mean", "what does F005 mean on my drive".
 const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i;
+// Anything after the "what does X mean" clause beyond a location ("on my
+// drive") — another clause or question — makes it a mixed question.
+const SECOND_CLAUSE = /[,;?]\s*\S|\b(?:and|also|but|why|how|when|where|should|can|could|is|are|was|keeps?)\b/i;
 // …and asks what to DO about it.
 const PROCEDURE_ASK = /\b(?:check|fix|reset|recover|clear|repair|replace|troubleshoot|resolve|get\s+rid)\b/i;
 
@@ -133,7 +136,14 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // also asks what to DO, or another clause describes a symptom (pass 10 F2;
   // the code-meaning clause itself is excluded, since "fault code" contains
   // the symptom word "fault").
-  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q) && !SYMPTOM.test(q.replace(CODE_MEANING, " "))) return false;
+  // Pass 11 F1: only a PURE meaning question qualifies — any second clause
+  // ("…, and why is it overheating?", "…? how do I stop it") ends the exception.
+  if (CODE_MEANING.test(q) && !PROCEDURE_ASK.test(q)) {
+    const rest = q.replace(CODE_MEANING, " ");
+    // Mixed: the "mean" in the first clause must not read as the teaching
+    // list's "what does X mean" — lean to declining (owner decision).
+    return SYMPTOM.test(rest) || SECOND_CLAUSE.test(rest);
+  }
   // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
   // ("how does my drive work when it trips on F005?") is troubleshooting.
   if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
