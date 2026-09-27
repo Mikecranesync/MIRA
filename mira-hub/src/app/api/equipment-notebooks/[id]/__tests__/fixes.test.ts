@@ -73,17 +73,17 @@ describe("GET /api/equipment-notebooks/[id]/fixes", () => {
     const res = await GET(req(), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ fixes, nextCursor: "f1", assetConfirmed: null });
-    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, null, { limit: undefined, before: null });
+    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, { limit: undefined, before: null });
   });
 
-  it("passes a valid cursor and limit through, scoped to the confirmed machine", async () => {
+  it("passes a valid cursor and limit through (the machine scope is read in the same query)", async () => {
     const asset = { entityId: "e1", selectedVia: "qr", confirmedBy: "u1", confirmedAt: "2026-09-01T00:00:00Z" };
     vi.mocked(getNotebook).mockResolvedValue({ id: NB, asset } as never);
     vi.mocked(listFixRecords).mockResolvedValue({ fixes: [], nextCursor: null } as never);
     const before = "99999999-9999-4999-8999-999999999999";
     const res = await GET(req(undefined, `?before=${before}&limit=5`), params);
     expect(await res.json()).toEqual({ fixes: [], nextCursor: null, assetConfirmed: true });
-    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, "e1", { limit: 5, before });
+    expect(listFixRecords).toHaveBeenCalledWith(TENANT, NB, { limit: 5, before });
   });
 
   it("400s a malformed cursor instead of passing it to the database", async () => {
@@ -154,7 +154,7 @@ describe("POST /api/equipment-notebooks/[id]/fixes", () => {
     expect(insertFixRecord).not.toHaveBeenCalled();
   });
 
-  const VALUE = { symptom: "s", fix: "f", faultCode: null, sourceTurnId: null, clientRequestId: null };
+  const VALUE = { symptom: "s", fix: "f", faultCode: null, sourceTurnId: null, clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" };
   const CONFIRMED_NB = {
     id: NB,
     asset: { entityId: "asset-123", name: "Conveyor 1", confirmedAt: "2026-09-01T00:00:00Z" },
@@ -188,6 +188,15 @@ describe("POST /api/equipment-notebooks/[id]/fixes", () => {
     const res = await POST(req({ symptom: "s", fix: "f" }), params);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("asset_binding_changed");
+  });
+
+  it("409s a request id reused for a different fix (post-hardening F2)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(CONFIRMED_NB as never);
+    vi.mocked(validateFixInput).mockReturnValue({ ok: true, value: VALUE });
+    vi.mocked(insertFixRecord).mockResolvedValue({ status: "request_id_conflict" } as never);
+    const res = await POST(req({ symptom: "s", fix: "f" }), params);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("request_id_conflict");
   });
 
   it("expects no binding when the notebook has none", async () => {

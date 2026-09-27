@@ -46,10 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (limit !== undefined && !Number.isFinite(limit)) {
     return NextResponse.json({ error: "invalid_limit" }, { status: 400 });
   }
-  const { fixes, nextCursor } = await listFixRecords(ctx.tenantId, id, notebook.asset?.entityId ?? null, {
-    limit,
-    before,
-  });
+  const { fixes, nextCursor } = await listFixRecords(ctx.tenantId, id, { limit, before });
   return NextResponse.json({ fixes, nextCursor, assetConfirmed: notebook.asset ? true : null });
 }
 
@@ -95,6 +92,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     validated.value,
     ctx.userId ?? null,
   );
+  if (result.status === "request_id_conflict") {
+    return NextResponse.json(
+      {
+        error: "request_id_conflict",
+        message: "That request id was already used for a different fix. Send a new request id for a new fix.",
+      },
+      { status: 409 },
+    );
+  }
   if (result.status === "binding_changed") {
     return NextResponse.json(
       {

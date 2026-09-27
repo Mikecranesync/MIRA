@@ -12,6 +12,7 @@
  * and write here runs inside withTenantContext.
  */
 
+import { createHash } from "node:crypto";
 import { withTenantContext } from "@/lib/tenant-context";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,9 +37,10 @@ export type ValidatedFixInput = {
   fix: string;
   faultCode: string | null;
   sourceTurnId: string | null;
-  /** Stable per-fix id from the client; a retry with the same id returns the
-   *  record already stored instead of a duplicate (migration 097). */
-  clientRequestId: string | null;
+  /** Stable per-fix id from the client, REQUIRED: a retry with the same id
+   *  returns the record already stored instead of a duplicate (migration 097),
+   *  and an unkeyed save would have no way to be deduplicated. */
+  clientRequestId: string;
 };
 
 export type ValidateFixInputResult =
@@ -88,13 +90,15 @@ export function validateFixInput(body: unknown): ValidateFixInputResult {
     sourceTurnId = b.sourceTurnId;
   }
 
-  let clientRequestId: string | null = null;
-  if (b.clientRequestId !== undefined && b.clientRequestId !== null) {
-    if (typeof b.clientRequestId !== "string" || !UUID_RE.test(b.clientRequestId)) {
-      return { ok: false, error: "invalid_client_request_id" };
-    }
-    clientRequestId = b.clientRequestId.toLowerCase();
+  // Required (Codex #4057 post-hardening F3): the fix table is append-only,
+  // so a save that cannot be deduplicated on retry is refused.
+  if (b.clientRequestId === undefined || b.clientRequestId === null) {
+    return { ok: false, error: "client_request_id_required" };
   }
+  if (typeof b.clientRequestId !== "string" || !UUID_RE.test(b.clientRequestId)) {
+    return { ok: false, error: "invalid_client_request_id" };
+  }
+  const clientRequestId = b.clientRequestId.toLowerCase();
 
   return { ok: true, value: { symptom, fix, faultCode, sourceTurnId, clientRequestId } };
 }
@@ -115,10 +119,25 @@ function mapRow(r: Record<string, unknown>): FixRecord {
 export type InsertFixResult =
   | { status: "created"; fix: FixRecord }
   | { status: "existing"; fix: FixRecord }
+  | { status: "request_id_conflict" }
   | { status: "binding_changed" };
+
+/** What a keyed save was: the validated content and the machine it was filed
+ *  against. A retry replays only an identical fingerprint (migration 098). */
+export function requestFingerprint(input: ValidatedFixInput, equipmentEntityId: string | null): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([input.symptom, input.faultCode, input.fix, input.sourceTurnId, equipmentEntityId]),
+    )
+    .digest("hex");
+}
 
 const RETURN_COLS = `id::text AS id, notebook_id::text AS notebook_id, equipment_entity_id,
                  symptom, fault_code, fix, recorded_by, created_at`;
+// The list JOINs equipment_notebooks, which also has `id` and
+// `equipment_entity_id` — every column is qualified to the fix row.
+const LIST_COLS = `f.id::text AS id, f.notebook_id::text AS notebook_id, f.equipment_entity_id,
+                 f.symptom, f.fault_code, f.fix, f.recorded_by, f.created_at`;
 
 /** True for a string the route can safely hand to a `::uuid` cast. */
 export function isUuid(value: string): boolean {
@@ -144,12 +163,13 @@ export async function insertFixRecord(
   input: ValidatedFixInput,
   recordedBy: string | null,
 ): Promise<InsertFixResult> {
+  const fingerprint = requestFingerprint(input, expectedEntityId);
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `INSERT INTO asset_fix_records
          (tenant_id, notebook_id, equipment_entity_id, symptom, fault_code, fix,
-          recorded_by, source_turn_id, client_request_id)
-       SELECT $1::uuid, n.id, n.equipment_entity_id, $4, $5, $6, $7, $8::uuid, $9::uuid
+          recorded_by, source_turn_id, client_request_id, request_fingerprint)
+       SELECT $1::uuid, n.id, n.equipment_entity_id, $4, $5, $6, $7, $8::uuid, $9::uuid, $10
          FROM equipment_notebooks n
         WHERE n.id = $2::uuid
           AND n.tenant_id = $1::uuid
@@ -169,16 +189,22 @@ export async function insertFixRecord(
         recordedBy,
         input.sourceTurnId,
         input.clientRequestId,
+        fingerprint,
       ],
     );
     if (res.rows.length > 0) return { status: "created", fix: mapRow(res.rows[0] as Record<string, unknown>) };
-    if (input.clientRequestId) {
-      const prior = await c.query(
-        `SELECT ${RETURN_COLS} FROM asset_fix_records
-          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND client_request_id = $3::uuid`,
-        [tenantId, notebookId, input.clientRequestId],
-      );
-      if (prior.rows.length > 0) return { status: "existing", fix: mapRow(prior.rows[0] as Record<string, unknown>) };
+    const prior = await c.query(
+      `SELECT ${RETURN_COLS}, request_fingerprint FROM asset_fix_records
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND client_request_id = $3::uuid`,
+      [tenantId, notebookId, input.clientRequestId],
+    );
+    if (prior.rows.length > 0) {
+      const row = prior.rows[0] as Record<string, unknown>;
+      // Replay only the SAME save; a reused id with different content or a
+      // different machine is a conflict, never someone else's success (F2).
+      return row.request_fingerprint === fingerprint
+        ? { status: "existing", fix: mapRow(row) }
+        : { status: "request_id_conflict" };
     }
     return { status: "binding_changed" };
   });
@@ -200,7 +226,10 @@ export const FIX_PAGE_MAX = 50;
 
 /**
  * One page, newest first, ordered by (created_at, id) so the order is total and
- * stable. `before` is the id of the last record of the previous page; the next
+ * stable. The machine scope is read from the notebook's CURRENT binding in the
+ * SAME query — a re-bind between the route's check and this read can never
+ * return the previous machine's repairs, and an unconfirmed selection returns
+ * nothing (Codex #4057 post-hardening F1). `before` is the id of the last record of the previous page; the next
  * page starts strictly after it (Codex #4057 post-split F3). A `before` id that
  * is not a record of this notebook yields an empty page, never another
  * notebook's rows. `nextCursor` is set only when another page exists.
@@ -208,23 +237,24 @@ export const FIX_PAGE_MAX = 50;
 export async function listFixRecords(
   tenantId: string,
   notebookId: string,
-  equipmentEntityId: string | null,
   opts: { limit?: number; before?: string | null } = {},
 ): Promise<{ fixes: FixRecord[]; nextCursor: string | null }> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? FIX_PAGE_DEFAULT), 1), FIX_PAGE_MAX);
   const before = opts.before ?? null;
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT ${RETURN_COLS}
+      `SELECT ${LIST_COLS}
          FROM asset_fix_records f
+         JOIN equipment_notebooks n ON n.id = f.notebook_id AND n.tenant_id = f.tenant_id
         WHERE f.tenant_id = $1::uuid AND f.notebook_id = $2::uuid
-          AND f.equipment_entity_id IS NOT DISTINCT FROM $3
-          AND ($5::uuid IS NULL OR (f.created_at, f.id) < (
+          AND f.equipment_entity_id IS NOT DISTINCT FROM n.equipment_entity_id
+          AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL)
+          AND ($4::uuid IS NULL OR (f.created_at, f.id) < (
                 SELECT p.created_at, p.id FROM asset_fix_records p
-                 WHERE p.id = $5::uuid AND p.tenant_id = $1::uuid AND p.notebook_id = $2::uuid))
+                 WHERE p.id = $4::uuid AND p.tenant_id = $1::uuid AND p.notebook_id = $2::uuid))
         ORDER BY f.created_at DESC, f.id DESC
-        LIMIT $4`,
-      [tenantId, notebookId, equipmentEntityId, limit + 1, before],
+        LIMIT $3`,
+      [tenantId, notebookId, limit + 1, before],
     );
     const rows = (res.rows as Record<string, unknown>[]).map(mapRow);
     const page = rows.slice(0, limit);

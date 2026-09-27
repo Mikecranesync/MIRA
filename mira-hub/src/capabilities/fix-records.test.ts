@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isUuid, validateFixInput } from "@/capabilities/fix-records";
+import { isUuid, requestFingerprint, validateFixInput } from "@/capabilities/fix-records";
+
+const RID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 describe("validateFixInput", () => {
   it("accepts a minimal valid body", () => {
-    const res = validateFixInput({ symptom: "Won't start", fix: "Reset E-stop" });
+    const res = validateFixInput({ symptom: "Won't start", fix: "Reset E-stop", clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.value).toEqual({
@@ -11,13 +13,13 @@ describe("validateFixInput", () => {
         fix: "Reset E-stop",
         faultCode: null,
         sourceTurnId: null,
-        clientRequestId: null,
+        clientRequestId: RID,
       });
     }
   });
 
   it("trims symptom, fix, and faultCode", () => {
-    const res = validateFixInput({ symptom: "  loud noise  ", fix: "  tightened bolts  ", faultCode: "  F0004  " });
+    const res = validateFixInput({ symptom: "  loud noise  ", fix: "  tightened bolts  ", faultCode: "  F0004  ", clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.value.symptom).toBe("loud noise");
@@ -33,85 +35,85 @@ describe("validateFixInput", () => {
   });
 
   it("rejects a missing or empty symptom", () => {
-    expect(validateFixInput({ fix: "did a thing" })).toEqual({ ok: false, error: "symptom_required" });
-    expect(validateFixInput({ symptom: "   ", fix: "did a thing" })).toEqual({ ok: false, error: "symptom_required" });
-    expect(validateFixInput({ symptom: 42, fix: "did a thing" })).toEqual({ ok: false, error: "symptom_required" });
+    expect(validateFixInput({ fix: "did a thing", clientRequestId: RID })).toEqual({ ok: false, error: "symptom_required" });
+    expect(validateFixInput({ symptom: "   ", fix: "did a thing", clientRequestId: RID })).toEqual({ ok: false, error: "symptom_required" });
+    expect(validateFixInput({ symptom: 42, fix: "did a thing", clientRequestId: RID })).toEqual({ ok: false, error: "symptom_required" });
   });
 
   it("rejects a symptom over 500 chars", () => {
-    const res = validateFixInput({ symptom: "x".repeat(501), fix: "ok" });
+    const res = validateFixInput({ symptom: "x".repeat(501), fix: "ok", clientRequestId: RID });
     expect(res).toEqual({ ok: false, error: "symptom_too_long" });
   });
 
   it("accepts a symptom at exactly 500 chars", () => {
-    const res = validateFixInput({ symptom: "x".repeat(500), fix: "ok" });
+    const res = validateFixInput({ symptom: "x".repeat(500), fix: "ok", clientRequestId: RID });
     expect(res.ok).toBe(true);
   });
 
   it("rejects a missing or empty fix", () => {
-    expect(validateFixInput({ symptom: "loud noise" })).toEqual({ ok: false, error: "fix_required" });
-    expect(validateFixInput({ symptom: "loud noise", fix: "   " })).toEqual({ ok: false, error: "fix_required" });
-    expect(validateFixInput({ symptom: "loud noise", fix: [] })).toEqual({ ok: false, error: "fix_required" });
+    expect(validateFixInput({ symptom: "loud noise", clientRequestId: RID })).toEqual({ ok: false, error: "fix_required" });
+    expect(validateFixInput({ symptom: "loud noise", fix: "   ", clientRequestId: RID })).toEqual({ ok: false, error: "fix_required" });
+    expect(validateFixInput({ symptom: "loud noise", fix: [], clientRequestId: RID })).toEqual({ ok: false, error: "fix_required" });
   });
 
   it("rejects a fix over 2000 chars", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "x".repeat(2001) });
+    const res = validateFixInput({ symptom: "ok", fix: "x".repeat(2001), clientRequestId: RID });
     expect(res).toEqual({ ok: false, error: "fix_too_long" });
   });
 
   it("accepts a fix at exactly 2000 chars", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "x".repeat(2000) });
+    const res = validateFixInput({ symptom: "ok", fix: "x".repeat(2000), clientRequestId: RID });
     expect(res.ok).toBe(true);
   });
 
   it("allows an absent faultCode (defaults to null)", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "ok" });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.value.faultCode).toBeNull();
   });
 
   it("treats an empty-string faultCode as absent (null)", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "   " });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "   ", clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.value.faultCode).toBeNull();
   });
 
   it("rejects a non-string faultCode", () => {
-    expect(validateFixInput({ symptom: "ok", fix: "ok", faultCode: 4 })).toEqual({
+    expect(validateFixInput({ symptom: "ok", fix: "ok", faultCode: 4, clientRequestId: RID })).toEqual({
       ok: false,
       error: "invalid_fault_code",
     });
   });
 
   it("rejects a faultCode over 64 chars", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "F".repeat(65) });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "F".repeat(65), clientRequestId: RID });
     expect(res).toEqual({ ok: false, error: "fault_code_too_long" });
   });
 
   it("accepts a faultCode at exactly 64 chars", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "F".repeat(64) });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", faultCode: "F".repeat(64), clientRequestId: RID });
     expect(res.ok).toBe(true);
   });
 
   it("allows an absent sourceTurnId (defaults to null)", () => {
-    const res = validateFixInput({ symptom: "ok", fix: "ok" });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.value.sourceTurnId).toBeNull();
   });
 
   it("accepts a valid UUID sourceTurnId", () => {
     const id = "11111111-2222-3333-4444-555555555555";
-    const res = validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: id });
+    const res = validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: id, clientRequestId: RID });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.value.sourceTurnId).toBe(id);
   });
 
   it("rejects a non-UUID sourceTurnId", () => {
-    expect(validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: "not-a-uuid" })).toEqual({
+    expect(validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: "not-a-uuid", clientRequestId: RID })).toEqual({
       ok: false,
       error: "invalid_source_turn_id",
     });
-    expect(validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: 123 })).toEqual({
+    expect(validateFixInput({ symptom: "ok", fix: "ok", sourceTurnId: 123, clientRequestId: RID })).toEqual({
       ok: false,
       error: "invalid_source_turn_id",
     });
@@ -133,5 +135,19 @@ describe("clientRequestId / isUuid", () => {
     expect(isUuid("not-a-uuid")).toBe(false);
     expect(isUuid("../x")).toBe(false);
     expect(isUuid("")).toBe(false);
+  });
+});
+
+describe("request id is required and fingerprinted (post-hardening F2/F3)", () => {
+  it("refuses a save without a client request id", () => {
+    expect(validateFixInput({ symptom: "s", fix: "f" })).toEqual({ ok: false, error: "client_request_id_required" });
+  });
+
+  it("fingerprints the content AND the machine, deterministically", () => {
+    const v = { symptom: "s", fix: "f", faultCode: null, sourceTurnId: null, clientRequestId: RID };
+    expect(requestFingerprint(v, "m1")).toBe(requestFingerprint({ ...v }, "m1"));
+    expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint({ ...v, fix: "g" }, "m1"));
+    expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint(v, "m2"));
+    expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint(v, null));
   });
 });
