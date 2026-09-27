@@ -475,7 +475,7 @@ jobs:
           # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
           # mira-web added 2026-07-04 - no stated exclusion rationale existed
           # (docs/known-issues.md); marketing-site PRs silently did not auto-deploy.
-          TARGETS="${SERVICES:-mira-hub mira-web}"  # #3800 OVH cutover: minimal Hub+web; other services deferred
+          TARGETS="${SERVICES:-mira-hub mira-web mira-ask}"  # #3800 OVH minimal set; mira-ask restored 2026-09-27 for manual discovery
           echo "Rebuild targets: $TARGETS"
 
           # NOTE (2026-08-09): the stale-container cleanup that used to run HERE has
