@@ -66,13 +66,20 @@ const SYSTEM_PROMPT = [
   "their plant context.",
   "",
   "Rules:",
-  "- Cite-or-refuse. If the context block has no supporting chunk for the",
-  "  user's question, say so plainly: 'I don't have manuals for that in",
-  "  the public knowledge base — sign up to upload your own and I can",
-  "  help.' Do NOT invent fault codes, part numbers, torque specs, or",
-  "  manual references.",
-  "- When you do cite, use [n] markers matching the numbered chunks in the",
-  "  CONTEXT block.",
+  "- ALWAYS answer. A technician with a down machine needs help now; a",
+  "  refusal sends them to a generic chatbot that will not show its source.",
+  "- Two kinds of statement, never mixed up:",
+  "  1. From a manual: anything the CONTEXT block supports. Cite it with",
+  "     [n] markers matching the numbered chunks. Only the plain [n] form.",
+  "  2. General guidance: anything the CONTEXT does not cover. Put it",
+  "     under the heading 'General guidance (not from a manual):' and give",
+  "     practical, standard industrial-maintenance advice.",
+  "- Never state a specific parameter number, register address, terminal",
+  "  number, torque/voltage/current value, part number or fault-code meaning",
+  "  unless a CONTEXT chunk you cite says it. For those, say which manual",
+  "  section to check instead (e.g. 'the drive manual's parameter list').",
+  "- Answer in the language the technician wrote in. Keep manual titles,",
+  "  parameter names and citations as they are.",
   "- Keep answers tight — 4-8 short bullets max. A maintenance tech is",
   "  reading this on a phone in a noisy plant.",
   "- Lead with the most likely cause + a specific corrective step. Then",
@@ -87,8 +94,8 @@ const SYSTEM_PROMPT = [
  * Public, no-auth answer endpoint for the Twilio-moment landing page.
  * Runs BM25 against `knowledge_entries` (manufacturer-scoped if provided),
  * builds a grounded context, and runs the standard Groq → Cerebras →
- * Gemini cascade. The system prompt enforces cite-or-refuse — there is
- * no plant context, so any answer not backed by a chunk must be a refusal.
+ * Gemini cascade. The system prompt separates cited manual facts ([n]) from
+ * labeled general guidance; it answers instead of refusing (2026-09-27).
  *
  * Body: { manufacturer?: string; question: string }
  * Returns: { answer, citations: [{ index, title, url, page }], provider }
@@ -199,7 +206,14 @@ export async function POST(req: Request) {
   // answer that says "I don't have manuals for that" would otherwise ship with
   // up-to-6 citation cards — the contradiction reported in PR #1875. When the
   // model refuses, it cited nothing, so the citation list is a lie. (#1875)
-  const citations: ManualSource[] = isRefusalAnswer(result.content)
+  // Model citation hygiene (#4032): some providers emit their own tool-citation
+  // markers ("【1†L3-L4】"); normalize them to the [n] form the page renders.
+  const answerText = result.content.replace(/【(\d{1,2})†[^】]*】/g, "[$1]");
+  // Ship only the sources the answer actually cited: a general-guidance answer
+  // must not arrive with six unrelated source cards (the #1875 contradiction,
+  // generalized now that the route answers instead of refusing).
+  const cited = new Set([...answerText.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
+  const citations: ManualSource[] = isRefusalAnswer(answerText)
     ? []
     : chunks.map((c, i) => ({
         index: i + 1,
@@ -209,10 +223,10 @@ export async function POST(req: Request) {
         // (legacy ingest mis-stamp) so we never show an impossible page like p.1254.
         page: displayPage(c),
         verified: c.verified === true,
-      }));
+      })).filter((s) => cited.has(s.index));
 
   return NextResponse.json({
-    answer: result.content,
+    answer: answerText,
     citations,
     provider: result.provider,
   } as AskResponse);
