@@ -107,6 +107,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             answer_text=e["answer_text"],
             answer_status=AnswerStatus(e["answer_status"]),
             retrieved_chunk_count=e["retrieved_chunk_count"],
+            citations=list(e.get("citations") or []),
             best_evidence_tier=EvidenceTier(e["best_evidence_tier"]),
             total_answer_time_ms=e["total_answer_time_ms"],
         )

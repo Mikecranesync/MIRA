@@ -82,6 +82,13 @@ def run_hub_batch(questions: list[QuestionRecord], out_dir: Path, hub, condition
         record, summary = run_question_hub(
             q, hub, condition=condition, mira_version=sha, stamp=stamp
         )
+        # Codex #4063 R2 F2: a deploy mid-sweep would stamp new-build answers
+        # with the old SHA. Re-check after every turn; a change fails the batch.
+        now = deployed_sha(hub)
+        if now != sha:
+            raise SystemExit(
+                f"staging deployed {now} during the sweep (started on {sha}); rerun the batch"
+            )
         print(
             f"[hub   ] {q.question_id}  {record.answer_status.value} "
             f"({record.total_answer_time_ms} ms, {record.retrieved_chunk_count} candidates, "

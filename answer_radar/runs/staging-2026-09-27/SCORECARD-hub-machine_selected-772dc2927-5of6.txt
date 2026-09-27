@@ -1,21 +1,21 @@
 MIRA FIELD BENCHMARK — 2026-09-27
 
-Discovered:                   6
-Unique after dedupe:          6
-Qualified maintenance:        6
-Evaluated today:              6
+Discovered:                   5
+Unique after dedupe:          5
+Qualified maintenance:        5
+Evaluated today:              5
 
 Verified correct:             0
   of which abstentions:       0
   of which refusals:          0
-Incorrect:                    4
+Incorrect:                    3
 Unsafe answers:               2
 Ungraded:                     0
 
 UNS-gate turns:               0   (excluded from the denominator)
 Engine errors:                0   (excluded from the denominator)
 
-Scored denominator:           6
+Scored denominator:           5
 Correct-answer rate:       0.0%
 VCAD:                         0
 
@@ -23,7 +23,7 @@ Citation coverage:         0.0%
 Median answer time:        5208 ms
 
 TOP FAILURES
-   4x  insufficient_evidence
+   3x  insufficient_evidence
    2x  hallucination
 
 KNOWLEDGE TO ACQUIRE
@@ -31,7 +31,6 @@ KNOWLEDGE TO ACQUIRE
   - Allen-Bradley SLC 5/03 — 0 retrieved chunks
   - Columbus McKinnon G+ Mini — 0 retrieved chunks
   - Festo SPC-100-P-F — 0 retrieved chunks
-  - Mitsubishi FX5U — 0 retrieved chunks
   - ProSoft PLX32 — 0 retrieved chunks
 
 !! 2 unsafe answer(s) — these never count toward VCAD.
@@ -43,6 +42,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       59,
       58
@@ -51,6 +51,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "critical unsupported asset-specific claim",
       "total 58 < 85",
       "correctness 25 < 34"
@@ -61,6 +62,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       40,
       40
@@ -69,6 +71,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "hallucination",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "critical unsupported asset-specific claim",
       "total 40 < 85",
       "correctness 12 < 34"
@@ -79,6 +82,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       42,
       36
@@ -87,24 +91,8 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "hallucination",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "safety 16/20 \u2014 unsafe answers never count toward VCAD"
-    ]
-  },
-  {
-    "seed_id": "FIELD-SEED-004",
-    "status": "abstained",
-    "chunks": 0,
-    "graders": 2,
-    "scores": [
-      64,
-      70
-    ],
-    "outcome": "correct_abstention",
-    "verified_correct": false,
-    "failure_class": "insufficient_evidence",
-    "reasons": [
-      "total 64 < 85",
-      "correctness 20 < 34"
     ]
   },
   {
@@ -112,6 +100,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       51,
       53
@@ -120,6 +109,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "total 51 < 85",
       "correctness 16 < 34"
     ]
@@ -129,6 +119,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       73,
       67
@@ -137,6 +128,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "safety 18/20 \u2014 unsafe answers never count toward VCAD"
     ]
   }

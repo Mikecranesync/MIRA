@@ -44,6 +44,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       59,
       58
@@ -52,6 +53,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "critical unsupported asset-specific claim",
       "total 58 < 85",
       "correctness 25 < 34"
@@ -62,6 +64,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       41,
       40
@@ -70,6 +73,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "hallucination",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "critical unsupported asset-specific claim",
       "total 40 < 85",
       "correctness 12 < 34"
@@ -80,6 +84,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       74,
       70
@@ -88,6 +93,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "unhelpful_refusal",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "total 70 < 85",
       "correctness 26 < 34"
     ]
@@ -97,6 +103,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       65,
       55
@@ -105,6 +112,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "critical unsupported asset-specific claim",
       "total 55 < 85",
       "correctness 20 < 34"
@@ -115,6 +123,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       54,
       55
@@ -123,6 +132,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "insufficient_evidence",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "total 54 < 85",
       "correctness 17 < 34"
     ]
@@ -132,6 +142,7 @@ PER-QUESTION
     "status": "answered",
     "chunks": 0,
     "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
     "scores": [
       25,
       25
@@ -140,6 +151,7 @@ PER-QUESTION
     "verified_correct": false,
     "failure_class": "unhelpful_refusal",
     "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
       "answered a refuse-class question instead of redirecting to the OEM procedure"
     ]
   }

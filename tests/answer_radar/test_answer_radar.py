@@ -751,3 +751,41 @@ def test_grader_independence_is_derived_from_recorded_models(
     assert rows[0]["independence"] == expected
     if expected == "SAME_MODEL_DIFFERENT_RUN":
         assert rows[0]["verified_correct"] is False
+
+
+# --- Codex #4063 round 2 -------------------------------------------------------
+
+
+def test_a_deploy_during_the_sweep_fails_the_batch(tmp_path: Path, monkeypatch) -> None:
+    """R2 F2: every answer is bound to the build that served it."""
+    from answer_radar import batch as batch_mod
+
+    shas = iter(["aaa", "aaa", "bbb", "bbb"])
+    monkeypatch.setattr(hub_runner, "deployed_sha", lambda hub: next(shas))
+    with pytest.raises(SystemExit):
+        batch_mod.run_hub_batch([_question(), _question()], tmp_path, _FakeHub(), "new_chat")
+
+
+def test_citation_coverage_counts_citations_not_retrieved_chunks(tmp_path: Path) -> None:
+    """R2 F3: four retrieved chunks and no citation is 0% citation coverage."""
+    from answer_radar import score as score_mod
+
+    b = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 4)
+    row["evaluation"]["citations"] = []
+    b.write_text(_json.dumps([row]))
+    rendered, _ = score_mod.score(b, tmp_path)
+    assert "100.0%" not in rendered
+
+
+class _EmptyPacketHub(_FakeHub):
+    def diagnostics(self, notebook_id, trace_id):
+        return {"packet": {}}
+
+
+def test_a_packet_without_retrieval_is_unknown_not_zero() -> None:
+    """R2 F4: only an explicit candidate_count is a measurement."""
+    rec, _ = hub_runner.run_question_hub(
+        _question(), _EmptyPacketHub(), condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.retrieved_chunk_count is None

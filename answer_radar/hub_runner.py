@@ -164,7 +164,9 @@ def run_question_hub(
     if status == "error":
         answer_status = AnswerStatus.ERROR
     # Codex #4063 F5: no packet means retrieval is UNKNOWN, never "0 candidates".
-    chunk_count = None if "error" in retrieval else int(retrieval.get("candidate_count") or 0)
+    # R2 F4: only an explicit integer candidate_count is a measurement.
+    cc = retrieval.get("candidate_count")
+    chunk_count = cc if isinstance(cc, int) and not isinstance(cc, bool) else None
 
     doc_ids = [str(x) for x in (retrieval.get("returned_doc_ids") or [])]
     record = EvaluationRecord(

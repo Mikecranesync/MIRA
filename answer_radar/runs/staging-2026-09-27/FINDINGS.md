@@ -13,14 +13,23 @@ There were two conditions:
 | Condition | Meaning | VCAD | Citations | Manual search |
 |---|---|---|---|---|
 | `new_chat` | tech opens a chat and types | **0 / 6** | 0 / 6 | **skipped** (`skipped_general_mode`) on all 6 |
-| `machine_selected` | chat bound (user-confirmed) to the question's make + model | **0 / 6** | 0 / 6 | searched, **0 candidates** on all 6 |
+| `machine_selected` | chat bound (user-confirmed) to the question's make + model | **0 / 5** on 772dc2927 (+ 0 / 1 re-ask on 0994b31a4) | 0 / 6 | searched, **0 candidates** on all 6 |
 
 Two fresh graders (verifier and adversary) FAIL all 12 answers. **Correction (Codex #4062 F2):**
 both were Claude Sonnet sessions, which proves only `SAME_MODEL_DIFFERENT_RUN`, a non-promoting
 class. The earlier `DIFFERENT_MODEL_SAME_PROVIDER` label was wrong, and `score.py` now derives
 the class from the models recorded in each grade file. Every verdict here is FAIL, so no
-outcome changes; a future PASS by same-model graders cannot be counted as verified. They agree on every verdict. Scorecards: `SCORECARD-hub-new_chat.txt`,
-`SCORECARD-hub-machine_selected.txt`. Grades: `grades/` (per condition in `grades-<condition>/`).
+outcome changes; a future PASS by same-model graders cannot be counted as verified. They agree
+on every verdict.
+
+Scorecards, each a single build:
+- `SCORECARD-hub-new_chat.txt`: 6 cases on 772dc2927.
+- `SCORECARD-hub-machine_selected-772dc2927-5of6.txt`: 5 cases on 772dc2927.
+- `SCORECARD-hub-machine_selected-seed004-reask-0994b31a4.txt`: the seed-004 re-ask on 0994b31a4.
+
+Grades are in `grades-<condition>/`. The machine-selected row of the table above therefore reads
+0/5 on 772dc2927, plus 0/1 on 0994b31a4. Citation coverage counts answers that cite, not answers
+that retrieved (Codex #4063 R2 F3).
 
 ## What is wrong (root causes, with evidence)
 
@@ -52,9 +61,10 @@ outcome changes; a future PASS by same-model graders cannot be counted as verifi
    BX11-EN indicator's manual, and the search only ever looked at the bound Mitsubishi identity.
    (`score.py` labels the row `correct_abstention` from its status; the verdict is still FAIL.)
    **Build caveat (Codex #4063 F2):** that re-ask ran against staging `0994b31a453c`, not
-   `772dc292721f`. So `batch-hub-machine_selected-scored-004-rerun.json` mixes two deployments,
-   and its scorecard is **not** a single-build result: five rows are 772dc2927, and seed 004 is
-   0994b31a4. `score.py` now refuses a mixed-build batch. The next run grades all six on one build.
+   `772dc292721f`. The first published machine-selected scorecard spliced it in with the five
+   772dc2927 rows. That mixed file was removed (Codex #4063 R2 F1). The re-ask is scored on its
+   own (`…-seed004-reask-0994b31a4`). `score.py` now refuses a mixed-build batch, and the runner
+   fails a sweep if staging deploys mid-run. The next run grades all six on one build.
 5. **A bare refusal.** Seed 006 `new_chat`: "I'm sorry, but I can't help with that." — no
    reason given and no next step (`unhelpful_refusal`).
 
