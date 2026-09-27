@@ -21,7 +21,7 @@
 --   to populate. Until then, recall_knowledge() will still hit these rows
 --   via the tsvector fulltext path (migration 006_knowledge_tsvector).
 --
--- Idempotent: each chunk uses WHERE NOT EXISTS guarded on
+-- Idempotent (v2 reconciles; see the note after BEGIN). Keyed on
 -- (tenant_id, source_url, source_page). Re-running this seed is safe —
 -- no duplicate rows. The dedup index in 001_knowledge_entries.sql is a
 -- plain (non-UNIQUE) btree, so ON CONFLICT is not usable here.
@@ -36,6 +36,14 @@
 
 BEGIN;
 
+-- v2 (2026-09-27): rows are staged in seed_rows, then reconciled into
+-- knowledge_entries: a missing row is inserted; an existing row whose content
+-- or metadata differs is updated in place, and its embedding is cleared when
+-- the content changed (the old vector describes the old text — re-run
+-- tools/backfill_knowledge_embeddings.py). v1 was insert-only, so a corrected
+-- chunk could never reach an environment that already had the old one (#4031).
+CREATE TEMP TABLE seed_rows (LIKE knowledge_entries INCLUDING DEFAULTS) ON COMMIT DROP;
+
 -- ---------------------------------------------------------------------------
 -- Helper: make INSERTs idempotent against the dedup index
 -- ---------------------------------------------------------------------------
@@ -45,7 +53,7 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 
 -- chunk 0: Critical Modbus parameters
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -58,39 +66,41 @@ SELECT
     'GS10',
     'vfd',
 $content$
-AutomationDirect GS10 VFD — Critical Modbus RTU parameters (RS-485 slave).
+AutomationDirect GS10 DURApulse VFD — Modbus RTU parameters (RS-485 slave).
 
-These five parameters MUST be set before the GS10 will accept run / freq
-commands from a Modbus RTU master (e.g. Micro820 MSG_MODBUS instruction):
+Settings on the bench rig (verified on the drive; plc/GS10_Integration_Guide.md,
+device-profiles/gs10.yaml, Micro820 v4.1.9 program header):
 
-  P00.20 = 5   Frequency command source = RS-485 (Modbus RTU)
-               Default is 0 (digital keypad). If left at default, the
-               drive will ignore frequency writes to register 0x2000.
+  P09.00 = 1     Modbus slave address. Must match the Micro820 MSG_MODBUS
+                 Node/Slave field. Two GS10s on one RS-485 trunk need
+                 distinct addresses.
 
-  P00.21 = 5   Run command source       = RS-485 (Modbus RTU)
-               Default is 0 (digital keypad). If left at default, the
-               drive will ignore the run bit at register 0x2001.
+  P09.01 = 96    Baud rate. The value is baud / 100: 48 = 4800,
+                 96 = 9600, 192 = 19200, 384 = 38400. The keypad shows
+                 "9.6" for 9600.
 
-  P09.00 = 1..254  Modbus slave ID (station number)
-               Must match the slave address in the Micro820 MSG_MODBUS
-               configuration. Default 1. Two GS10s on the same RS-485
-               trunk MUST have distinct IDs.
+  P09.04 = 13    Protocol / frame = RTU, 8 data bits, No parity, 2 stop
+                 bits (8N2). Other codes: 12 = 8N1, 14 = 8E1, 15 = 8O1,
+                 17 = 8O2. P09.04 must match the Micro820 serial port
+                 exactly (8N2 is the Micro820 default).
 
-  P09.01 = 2   Baud rate = 19200 bps
-               Encoded as: 0=4800, 1=9600, 2=19200, 3=38400, 4=57600,
-               5=115200. (Confirm against the GS10 User Manual revision
-               in use — the encoding has been consistent across rev D–H
-               but always verify on the keypad before commissioning.)
+  P09.02 = 0     Comm-loss treatment: 0 = warn and keep running (use
+                 while commissioning), 1 = fault + ramp stop, 2 = fault +
+                 coast stop, 3 = ignore (factory default; not recommended).
 
-  P09.04 = 4   Modbus mode / data frame = RTU, 8-E-1 (8 data, even, 1 stop)
-               Common values: 0=ASCII 7-N-2, 1=ASCII 7-E-1, 2=ASCII 7-O-1,
-               3=RTU 8-N-2, 4=RTU 8-E-1, 5=RTU 8-O-1, 6=RTU 8-N-1.
-               P09.04 MUST match the Micro820 serial port framing exactly
-               or every Modbus read/write returns ErrorID 0x0001..0x0010
-               (parity / framing mismatch — see error code reference).
+  P09.03 = 5.0   Comm timeout in seconds. If the master goes silent for
+                 longer, the drive trips CE10 (fault code 58).
 
-Power-cycle the GS10 after changing P00.20 / P00.21 / P09.xx — these
-parameters are read at boot.
+  P00.21 = 2     Run command source = RS-485 Modbus (0 = keypad,
+                 1 = external terminals). Leave at 0 and Modbus run/stop
+                 writes are ignored.
+
+  P00.20         Frequency command source (factory default 0 = keypad).
+                 The rig sets speed by writing register 0x2001; if speed
+                 writes have no effect, check P00.20.
+
+Power-cycle the GS10 after changing P09.xx — the serial port is set up at
+boot.
 $content$,
     'mira://seeds/gs10-vfd-integration',
     0,
@@ -101,19 +111,19 @@ $content$,
         'topic', 'modbus_rtu_parameters',
         'protocol', 'modbus_rtu',
         'transport', 'rs485',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'integration_guide', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/gs10-vfd-integration'
        AND source_page = 0
 );
 
 -- chunk 1: Modbus register map
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -126,48 +136,39 @@ SELECT
     'GS10',
     'vfd',
 $content$
-AutomationDirect GS10 VFD — Modbus RTU register map (master writes / reads).
+AutomationDirect GS10 DURApulse VFD — Modbus RTU register map.
 
-Write registers (function code 0x06 single, 0x10 multiple):
-  0x2000   Frequency reference          0.01 Hz / count, write target freq
-                                        (e.g. 6000 = 60.00 Hz).
-  0x2001   Run / stop command word
-           Bit 0..1  = 00 stop, 10 run, 01 jog, 11 reserved
-           Bit 4..5  = direction (00 fwd, 10 rev)
-           Bit 12    = external fault trigger (1 = trip)
-           Bit 13    = fault reset (1 = clear)
-                       (Always pulse — set, wait one scan, clear.)
+Write registers (function code 06, preset single register):
+  0x2000 (8192)  Control command, bit field.
+                   bits 0-1: 01 = STOP, 10 = RUN, 11 = JOG + RUN
+                   bits 3-4: 01 = forward, 10 = reverse, 11 = change dir
+                 Common words: 18 (0x0012) = RUN forward,
+                               20 (0x0014) = RUN reverse, 1 = STOP.
+  0x2001 (8193)  Frequency setpoint, Hz x 10: 0-4000 = 0.0-400.0 Hz
+                 (write 300 for 30.0 Hz, 600 for 60.0 Hz).
+  0x2002 (8194)  Control code 2. Bit 1 = fault reset: write 0x0002.
 
-Read registers (function code 0x03 holding, 0x04 input):
-  0x2100   Drive status word
-           Bit 0..1  = run state (00 stop, 01 decel, 10 standby, 11 run)
-           Bit 3     = jog
-           Bit 4..5  = direction
-           Bit 6     = DC braking
-           Bit 7     = fault
-           Bit 8     = freq reached
-           Bit 12    = at command speed
-  0x2101   Frequency command           0.01 Hz / count
-  0x2102   Output frequency            0.01 Hz / count (actual drive output)
-  0x2103   Output current              0.1 A / count
-  0x2104   DC bus voltage              1 V / count
-  0x2105   Output voltage              0.1 V / count
-  0x2106   Motor RPM (calc)            1 RPM / count
-  0x2107   Motor torque                0.1 % / count, signed
-  0x2108   Heatsink temperature        1 °C / count
-  0x2200   Fault code (current)        0 = no fault, see GS10 manual ch.6
-  0x2201   Fault code (last)
-  0x2202   Fault code (2nd last)
+Read registers (function code 03, read holding registers):
+  0x2100 (8448)  Status monitor 1: low byte = current error (fault) code,
+                 high byte = warning code. 0 = no fault.
+  0x2101 (8449)  Status monitor 2: operation status bits.
+  0x2102 (8450)  Frequency command (what the PLC commanded), Hz x 10.
+  0x2103 (8451)  Output frequency (actual), Hz x 10.
+  0x2104 (8452)  Output current, A x 10.
+  0x2105 (8453)  DC bus voltage, V (about 300-340 V when powered).
+  0x2106 (8454)  Output voltage, V.
+  0x210B (8459)  Output torque, % (needs SVC mode + auto-tune).
+  0x210C (8460)  Motor speed, RPM (needs motor nameplate P05.03/P05.04).
 
-Typical Micro820 MSG_MODBUS configuration to read live telemetry:
-  Slave           = P09.00 value
-  Function        = 0x03 (Read Holding Registers)
-  Starting addr   = 0x2102  (output freq)
-  Quantity        = 4       (freq, current, dc bus, output volt)
-  Local addr      = HoldingReg[100]  (lands in HR100..HR103)
+Typical Micro820 MSG_MODBUS read for live telemetry:
+  Slave          = P09.00 value (1)
+  Function       = 03 (read holding registers)
+  Starting addr  = 8448 (0x2100)
+  Quantity       = 7   (0x2100-0x2106: fault/warning, status, freq cmd,
+                        output freq, current, DC bus, output volts)
 
-Same MSG_MODBUS block can be retargeted to 0x2200 for fault polling on a
-slower (1 Hz) scan.
+Poll 0x2100 for faults: its low byte is the fault code (for example
+58 = CE10 comm timeout).
 $content$,
     'mira://seeds/gs10-vfd-integration',
     1,
@@ -177,19 +178,19 @@ $content$,
         'document_type', 'integration_guide',
         'topic', 'modbus_register_map',
         'protocol', 'modbus_rtu',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'integration_guide', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/gs10-vfd-integration'
        AND source_page = 1
 );
 
 -- chunk 2: Common failure modes
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -206,18 +207,18 @@ AutomationDirect GS10 VFD — Common Modbus RTU / RS-485 failure modes.
 
 Ranked by frequency on first-time integrations (highest first):
 
-1. P00.20 / P00.21 not set to 5 (RS-485).
-   Symptom: Modbus reads return valid data (status word, output freq) but
-   writes to 0x2000 (freq ref) and 0x2001 (run command) appear to succeed
-   yet the drive never spins or accepts the target frequency. Keypad still
-   commands the drive.
-   Fix:    set P00.20=5 and P00.21=5, cycle power.
+1. Run source not set to RS-485 (P00.21 left at 0 = keypad).
+   Symptom: Modbus reads return valid data (status, output freq) but
+   run/stop writes to 0x2000 appear to succeed and the drive never starts.
+   Keypad still commands the drive.
+   Fix:    set P00.21=2 (RS-485). If speed writes to 0x2001 are ignored,
+           check P00.20 (frequency command source).
 
 2. Baud rate / parity mismatch between Micro820 and GS10.
    Symptom: MSG_MODBUS .ErrorID in the 0x0001..0x0010 range (RTU framing
    error, parity error, CRC mismatch — protocol-level rejection).
-   Fix:    confirm Micro820 serial port = 19200, 8 data, Even, 1 stop, RTU
-           AND P09.01=2 (19200) AND P09.04=4 (RTU 8-E-1).
+   Fix:    confirm Micro820 serial port = 9600, 8 data, No parity, 2 stop,
+           RTU AND P09.01=96 (9600) AND P09.04=13 (RTU 8N2).
 
 3. Missing 120 Ω termination resistor at far end of the RS-485 trunk.
    Symptom: intermittent ErrorID 0x0100..0x0200 (timeout / no response),
@@ -265,19 +266,19 @@ $content$,
         'document_type', 'integration_guide',
         'topic', 'failure_modes',
         'protocol', 'modbus_rtu',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'integration_guide', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/gs10-vfd-integration'
        AND source_page = 2
 );
 
 -- chunk 3: MSG_MODBUS .ErrorID diagnostic decode
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -308,9 +309,9 @@ classifies most RS-485 / Modbus RTU faults into two bands:
                        1. Micro820 serial port config in CCW (Connected
                           Components Workbench): right-click serial port
                           channel → Properties → Modbus RTU Master,
-                          19200, 8 data, Even parity, 1 stop bit.
-                       2. GS10 P09.04 = 4 (RTU 8-E-1).
-                       3. GS10 P09.01 = 2 (19200).
+                          9600, 8 data, No parity, 2 stop bits.
+                       2. GS10 P09.04 = 13 (RTU 8N2).
+                       3. GS10 P09.01 = 96 (9600).
 
   0x0100 .. 0x0200   TIMEOUT / WIRING errors
                      The GS10 never responded inside the MSG_MODBUS
@@ -335,8 +336,8 @@ Other ErrorID bands (0x0011 .. 0x00FF or > 0x0200) usually indicate
 Modbus exception responses from the slave (illegal function, illegal
 address, illegal value) — these mean comms is working but you are
 addressing a register the drive doesn't expose. Re-check the register
-map (chunk 1) and confirm P00.20 / P00.21 are set to 5 if the
-exception is on write to 0x2000 / 0x2001.
+map (chunk 1): 0x2000 = control command, 0x2001 = frequency setpoint,
+0x2002 = fault reset. Confirm P00.21 = 2 if run/stop writes are ignored.
 $content$,
     'mira://seeds/gs10-vfd-integration',
     3,
@@ -347,19 +348,19 @@ $content$,
         'topic', 'msg_modbus_errorid_decode',
         'protocol', 'modbus_rtu',
         'plc', 'micro820',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'integration_guide', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/gs10-vfd-integration'
        AND source_page = 3
 );
 
 -- chunk 4: RS-485 wiring + CCW serial port config
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -409,10 +410,10 @@ Physical separation (SAFETY):
 CCW (Connected Components Workbench) serial port config:
   Project tree → Micro820 → Embedded Serial Port (or plug-in module)
   → Properties → Driver = "Modbus RTU Master"
-                  Baud rate = 19200
+                  Baud rate = 9600
                   Data bits = 8
-                  Parity   = Even
-                  Stop bits = 1
+                  Parity   = None
+                  Stop bits = 2
                   Media    = RS-485
                   Response timeout = 1000 ms (raise to 2000 ms on
                                               noisy plants while
@@ -435,15 +436,187 @@ $content$,
         'protocol', 'modbus_rtu',
         'transport', 'rs485',
         'plc', 'micro820',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'integration_guide', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/gs10-vfd-integration'
        AND source_page = 4
+);
+
+-- chunk 5: msg_modbus_write_sequence (was hand-inserted 2026-05-15 with pre-guide values; owned here since v2)
+INSERT INTO seed_rows (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT
+    gen_random_uuid(),
+    :tenant_id,
+    'integration_guide',
+    'AutomationDirect',
+    'GS10',
+    'vfd',
+$content$
+Micro820 → GS10 run command: MSG_MODBUS write sequence (garage bench rig).
+
+CCW's MSG_MODBUS instruction takes DECIMAL register addresses in the
+ElementNumber field, not hex:
+
+  8192  Control command (0x2000)
+          1  = STOP
+          18 = RUN forward
+          20 = RUN reverse
+        The conveyor uses 18 to start and 1 to stop.
+
+  8193  Frequency setpoint (0x2001), Hz x 10.
+          300 = 30.0 Hz
+          600 = 60.0 Hz (motor nameplate frequency)
+
+  8194  Control code 2 (0x2002). Write 2 (bit 1) to reset a fault before
+        re-issuing RUN.
+
+Rung sequence (one-shot interlocked so the writes don't fire every scan):
+
+  Step 10  Write frequency  Function 06, ElementNumber 8193,
+                            LocalAddr = setpoint (Hz x 10, INT), Slave 1
+  Step 20  Write command    Function 06, ElementNumber 8192,
+                            LocalAddr = 18 or 1 (INT), Slave 1
+
+Write the frequency first, so the drive has a setpoint when RUN arrives.
+
+Micro820 embedded serial port (must match the drive):
+  Driver = Modbus RTU, Role = Master, Media = RS-485
+  Baud = 9600, Data bits = 8, Parity = None, Stop bits = 2
+
+Matching GS10 parameters (keypad; power-cycle after):
+  P09.00 = 1   slave address
+  P09.01 = 96  9600 baud
+  P09.04 = 13  RTU 8N2
+  P00.21 = 2   run command source = RS-485
+
+If the MSG block never completes (ErrorID 255), the serial-port settings
+were never downloaded to the PLC: re-download the CCW project. It is a
+download problem, not wiring.
+
+SAFETY: a Modbus STOP (writing 1 to 8192) is not safety-rated. A hung
+master, a stuck bit, a cable break or a drive fault can leave the motor
+running. Never rely on it for E-stop, lockout/tagout or guard-open
+response. Keep a hard-wired E-stop that removes drive power independent
+of Modbus.
+$content$,
+    'mira://seeds/gs10-vfd-integration',
+    5,
+    jsonb_build_object(
+        'manufacturer', 'AutomationDirect',
+        'model', 'GS10',
+        'document_type', 'integration_guide',
+        'topic', 'msg_modbus_write_sequence',
+        'protocol', 'modbus_rtu',
+        'plc', 'micro820',
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
+    ),
+    false, true, 'integration_guide', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM seed_rows
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/gs10-vfd-integration'
+       AND source_page = 5
+);
+
+-- chunk 6: register_decimal_hex_cheat_sheet (was hand-inserted 2026-05-15 with pre-guide values; owned here since v2)
+INSERT INTO seed_rows (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT
+    gen_random_uuid(),
+    :tenant_id,
+    'integration_guide',
+    'AutomationDirect',
+    'GS10',
+    'vfd',
+$content$
+GS10 Modbus register cheat sheet — decimal ↔ hex (Micro820 MSG_MODBUS uses decimal).
+
+  decimal  hex      meaning                              access
+  -------  ------   -----------------------------------  ----------
+  8192     0x2000   Control command (bit field)          write (06)
+  8193     0x2001   Frequency setpoint, Hz x 10          write (06)
+  8194     0x2002   Control code 2 (bit 1 = fault reset) write (06)
+  8448     0x2100   Status monitor 1 (low byte = fault)  read  (03)
+  8449     0x2101   Status monitor 2 (run status bits)   read  (03)
+  8450     0x2102   Frequency command, Hz x 10           read  (03)
+  8451     0x2103   Output frequency, Hz x 10            read  (03)
+  8452     0x2104   Output current, A x 10               read  (03)
+  8453     0x2105   DC bus voltage, V                    read  (03)
+  8454     0x2106   Output voltage, V                    read  (03)
+
+Control command values for register 8192:
+  1   STOP
+  18  RUN forward  (0x0012: run bit 1 + forward bit 3)
+  20  RUN reverse  (0x0014: run bit 1 + reverse bit 4)
+
+Frequency setpoint at register 8193 is Hz x 10:
+  30 Hz → 300
+  60 Hz → 600
+
+Fault reset: write 2 (0x0002) to register 8194.
+
+Function codes used by the Micro820 MSG_MODBUS block on this rig:
+  03  Read holding registers (status, fault, output telemetry)
+  06  Preset single register (command, frequency, fault reset)
+$content$,
+    'mira://seeds/gs10-vfd-integration',
+    6,
+    jsonb_build_object(
+        'manufacturer', 'AutomationDirect',
+        'model', 'GS10',
+        'document_type', 'integration_guide',
+        'topic', 'register_decimal_hex_cheat_sheet',
+        'protocol', 'modbus_rtu',
+        'plc', 'micro820',
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
+    ),
+    false, true, 'integration_guide', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM seed_rows
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/gs10-vfd-integration'
+       AND source_page = 6
+);
+
+-- Reconcile staged rows into knowledge_entries (see header note).
+UPDATE knowledge_entries k
+   SET content  = s.content,
+       metadata = s.metadata,
+       embedding = CASE WHEN k.content IS DISTINCT FROM s.content THEN NULL ELSE k.embedding END
+  FROM seed_rows s
+ WHERE k.tenant_id = s.tenant_id
+   AND k.source_url = s.source_url
+   AND k.source_page = s.source_page
+   AND (k.content, k.metadata) IS DISTINCT FROM (s.content, s.metadata);
+
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+       content, source_url, source_page, metadata,
+       is_private, verified, chunk_type, created_at
+  FROM seed_rows s
+ WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries k
+     WHERE k.tenant_id = s.tenant_id
+       AND k.source_url = s.source_url
+       AND k.source_page = s.source_page
 );
 
 COMMIT;
