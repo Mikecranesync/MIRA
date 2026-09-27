@@ -101,6 +101,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { status: 409 },
     );
   }
+  if (result.status === "source_turn_not_found") {
+    return NextResponse.json(
+      { error: "source_turn_not_found", message: "That answer isn't in this notebook. Reload and try again." },
+      { status: 404 },
+    );
+  }
+  if (result.status === "answer_machine_mismatch") {
+    // Codex #4058 post-cap F1: the answer was served for a different machine
+    // (or for none) than the one this notebook is bound to now.
+    return NextResponse.json(
+      {
+        error: "answer_machine_mismatch",
+        message: "That answer was about a different machine than this notebook is on now. Record the fix from an answer about this machine.",
+      },
+      { status: 409 },
+    );
+  }
   if (result.status === "binding_changed") {
     return NextResponse.json(
       {

@@ -36,7 +36,11 @@ export type ValidatedFixInput = {
   symptom: string;
   fix: string;
   faultCode: string | null;
-  sourceTurnId: string | null;
+  /** The answer turn the fix is recorded against, REQUIRED: the server reads
+   *  the machine that answer was served for (081's per-turn snapshot) and
+   *  refuses a fix whose answer concerned a different machine than the one
+   *  the notebook is bound to now (Codex #4058 post-cap F1). */
+  sourceTurnId: string;
   /** Stable per-fix id from the client, REQUIRED: a retry with the same id
    *  returns the record already stored instead of a duplicate (migration 097),
    *  and an unkeyed save would have no way to be deduplicated. */
@@ -50,7 +54,7 @@ export type ValidateFixInputResult =
 /**
  * Validate a POST body for recording a fix. Trims strings, enforces the same
  * length limits as the DB CHECK constraints (095), and requires a non-empty
- * symptom and fix. `sourceTurnId`, when present, must be a UUID.
+ * symptom and fix. `sourceTurnId` is required and must be a UUID.
  */
 export function validateFixInput(body: unknown): ValidateFixInputResult {
   if (typeof body !== "object" || body === null) {
@@ -82,14 +86,6 @@ export function validateFixInput(body: unknown): ValidateFixInputResult {
     }
   }
 
-  let sourceTurnId: string | null = null;
-  if (b.sourceTurnId !== undefined && b.sourceTurnId !== null) {
-    if (typeof b.sourceTurnId !== "string" || !UUID_RE.test(b.sourceTurnId)) {
-      return { ok: false, error: "invalid_source_turn_id" };
-    }
-    sourceTurnId = b.sourceTurnId;
-  }
-
   // Required (Codex #4057 post-hardening F3): the fix table is append-only,
   // so a save that cannot be deduplicated on retry is refused.
   if (b.clientRequestId === undefined || b.clientRequestId === null) {
@@ -99,6 +95,14 @@ export function validateFixInput(body: unknown): ValidateFixInputResult {
     return { ok: false, error: "invalid_client_request_id" };
   }
   const clientRequestId = b.clientRequestId.toLowerCase();
+
+  if (b.sourceTurnId === undefined || b.sourceTurnId === null) {
+    return { ok: false, error: "source_turn_id_required" };
+  }
+  if (typeof b.sourceTurnId !== "string" || !UUID_RE.test(b.sourceTurnId)) {
+    return { ok: false, error: "invalid_source_turn_id" };
+  }
+  const sourceTurnId = b.sourceTurnId.toLowerCase();
 
   return { ok: true, value: { symptom, fix, faultCode, sourceTurnId, clientRequestId } };
 }
@@ -120,7 +124,9 @@ export type InsertFixResult =
   | { status: "created"; fix: FixRecord }
   | { status: "existing"; fix: FixRecord }
   | { status: "request_id_conflict" }
-  | { status: "binding_changed" };
+  | { status: "binding_changed" }
+  | { status: "source_turn_not_found" }
+  | { status: "answer_machine_mismatch" };
 
 /** What a keyed save was: the validated content and the machine it was filed
  *  against. A retry replays only an identical fingerprint (migration 098). */
@@ -155,6 +161,13 @@ export function isUuid(value: string): boolean {
  *
  * With a `clientRequestId`, a retry returns the stored record (`existing`)
  * instead of a second, un-deletable row (F2, migration 097).
+ *
+ * The answer turn is checked in the same transaction (Codex #4058 post-cap
+ * F1): it must belong to this notebook, and the machine it was served for —
+ * `equipment_notebook_turns.equipment_entity_id`, a snapshot 081 never
+ * rewrites on rebind — must be the machine this fix is filed under. An old
+ * answer about machine A can therefore never be recorded as a fix for B after
+ * the notebook is rebound, whatever the client believes the answer concerned.
  */
 export async function insertFixRecord(
   tenantId: string,
@@ -165,6 +178,14 @@ export async function insertFixRecord(
 ): Promise<InsertFixResult> {
   const fingerprint = requestFingerprint(input, expectedEntityId);
   return withTenantContext(tenantId, async (c) => {
+    const turn = await c.query(
+      `SELECT equipment_entity_id FROM equipment_notebook_turns
+        WHERE id = $1::uuid AND tenant_id = $2::uuid AND notebook_id = $3::uuid`,
+      [input.sourceTurnId, tenantId, notebookId],
+    );
+    if (turn.rows.length === 0) return { status: "source_turn_not_found" };
+    const servedFor = ((turn.rows[0] as Record<string, unknown>).equipment_entity_id as string | null) ?? null;
+    if (servedFor !== expectedEntityId) return { status: "answer_machine_mismatch" };
     const res = await c.query(
       `INSERT INTO asset_fix_records
          (tenant_id, notebook_id, equipment_entity_id, symptom, fault_code, fix,

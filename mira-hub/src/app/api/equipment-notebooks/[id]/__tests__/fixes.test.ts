@@ -154,7 +154,7 @@ describe("POST /api/equipment-notebooks/[id]/fixes", () => {
     expect(insertFixRecord).not.toHaveBeenCalled();
   });
 
-  const VALUE = { symptom: "s", fix: "f", faultCode: null, sourceTurnId: null, clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" };
+  const VALUE = { symptom: "s", fix: "f", faultCode: null, sourceTurnId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" };
   const CONFIRMED_NB = {
     id: NB,
     asset: { entityId: "asset-123", name: "Conveyor 1", confirmedAt: "2026-09-01T00:00:00Z" },
@@ -197,6 +197,26 @@ describe("POST /api/equipment-notebooks/[id]/fixes", () => {
     const res = await POST(req({ symptom: "s", fix: "f" }), params);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("request_id_conflict");
+  });
+
+  it("404s an answer turn that is not in this notebook (Codex #4058 post-cap F1)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(CONFIRMED_NB as never);
+    vi.mocked(validateFixInput).mockReturnValue({ ok: true, value: VALUE });
+    vi.mocked(insertFixRecord).mockResolvedValue({ status: "source_turn_not_found" } as never);
+    const res = await POST(req({ symptom: "s", fix: "f" }), params);
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("source_turn_not_found");
+  });
+
+  it("409s an answer served for a different machine (Codex #4058 post-cap F1)", async () => {
+    vi.mocked(getNotebook).mockResolvedValue(CONFIRMED_NB as never);
+    vi.mocked(validateFixInput).mockReturnValue({ ok: true, value: VALUE });
+    vi.mocked(insertFixRecord).mockResolvedValue({ status: "answer_machine_mismatch" } as never);
+    const res = await POST(req({ symptom: "s", fix: "f" }), params);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("answer_machine_mismatch");
+    expect(body.message).toMatch(/different machine/);
   });
 
   it("expects no binding when the notebook has none", async () => {
