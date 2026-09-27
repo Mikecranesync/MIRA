@@ -37,6 +37,14 @@ describe("speakableText", () => {
     expect(spoken).toBe("Set output [1] ON and output [2] OFF. Clear fault [1234] on VFD_01, then VFD_02. Verify the run lamp.");
   });
 
+  it("speaks code verbatim: no delimiter, list, header, or citation pass reaches inside code (Codex #4058 post-cap F1)", () => {
+    const spoken = speakableText(
+      "Set the gain to `2*base` [1].\n```\n# keep this comment\n- keep this item\nout [1] = 1\n```\nThen **restart** 2*base drives.",
+      new Set(["1"]),
+    );
+    expect(spoken).toBe("Set the gain to 2*base.\n# keep this comment\n- keep this item\nout [1] = 1\nThen restart 2*base drives.");
+  });
+
   it("drops no bracketed number at all when the turn has no citations", () => {
     expect(speakableText("Set output [1] ON [2].")).toBe("Set output [1] ON [2].");
   });

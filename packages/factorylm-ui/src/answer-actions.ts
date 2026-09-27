@@ -53,16 +53,23 @@ function dropCitationMarks(text: string, citationIds: ReadonlySet<string>): stri
  *  `citationIds` are dropped, and `_` is removed only as an emphasis delimiter
  *  at a word edge, never inside an identifier like VFD_01 (Codex #4058 post-cap F1). */
 export function speakableText(text: string, citationIds: ReadonlySet<string> = NO_CITATIONS): string {
-  return dropCitationMarks(text, citationIds)
-    // Keep a fenced block's CONTENTS (it may hold "P1.01 = 8 s"); drop only the
-    // fences and any language label (Codex #4058 round 3).
-    .replace(/```[^\n`]*\n?([\s\S]*?)```/g, "$1")
-    .replace(/`([^`]*)`/g, "$1")
+  // Code is spoken VERBATIM (Codex #4058 post-cap F1): lift fenced blocks and
+  // inline spans out first — keeping a fence's contents ("P1.01 = 8 s") but not
+  // its fences or language label — so no later pass can eat a `2*base`, a
+  // fenced "# comment" / "- item", or an "[1]" inside code. Restored at the end.
+  const code: string[] = [];
+  const keep = (body: string) => `\u0000${code.push(body) - 1}\u0000`;
+  const prose = text
+    .replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_m, body: string) => keep(body))
+    .replace(/`([^`]*)`/g, (_m, body: string) => keep(body));
+  return dropCitationMarks(prose, citationIds)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/(\*\*|\*|~~)/g, "")
-    .replace(/(?<![A-Za-z0-9])_{1,2}(?=\S)|(?<=\S)_{1,2}(?![A-Za-z0-9])/g, "")
+    // Emphasis delimiters only at a word edge — never inside a token such as
+    // VFD_01 or 2*base.
+    .replace(/(?<![A-Za-z0-9])(\*\*|\*|~~|__|_)(?=\S)|(?<=\S)(\*\*|\*|~~|__|_)(?![A-Za-z0-9])/g, "")
+    .replace(/\u0000(\d+)\u0000/g, (_m, i: string) => code[Number(i)] ?? "")
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "\n")
     .trim();
