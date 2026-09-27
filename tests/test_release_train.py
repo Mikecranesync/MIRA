@@ -35,7 +35,12 @@ def _write(tmp_path: Path, m: dict) -> Path:
     # mirror the bits the validator reads off disk
     migs = root / "mira-hub/db/migrations"
     migs.mkdir(parents=True, exist_ok=True)
-    for name in ("001_a.sql", "094_decision_traces_lifecycle_invariant.sql"):
+    # The committed manifest's level, not the per-test `m`: tests below
+    # deliberately point `m` at a behind or missing file.
+    committed_level = yaml.safe_load((ROOT / MANIFEST_REL).read_text())["components"]["migrations"][
+        "expected"
+    ]["level"]
+    for name in ("001_a.sql", committed_level):
         (migs / name).write_text("-- test\n")
     gradle = root / "mira-mobile/android/app"
     gradle.mkdir(parents=True, exist_ok=True)
@@ -57,6 +62,7 @@ def errors_for(tmp_path: Path, m: dict) -> list[str]:
 # The real manifest must be valid, or every negative control below is vacuous.
 # --------------------------------------------------------------------------- #
 
+
 def test_the_committed_manifest_is_valid():
     f = rt.validate(ROOT)
     assert not f.errors, "the committed RELEASE_TRAIN.yaml must validate:\n" + "\n".join(f.errors)
@@ -71,6 +77,7 @@ def test_baseline_fixture_is_valid(tmp_path, manifest):
 # --------------------------------------------------------------------------- #
 # THE RULE THIS FILE EXISTS FOR
 # --------------------------------------------------------------------------- #
+
 
 def test_released_is_refused_while_a_blocker_is_open(tmp_path, manifest):
     m = copy.deepcopy(manifest)
@@ -87,12 +94,17 @@ def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest, 
     m = copy.deepcopy(manifest)
     m["release"]["state"] = "RELEASED"
     m["blockers"] = []
-    m["device_parity"]["receipts"] = [{
-        "serial": "4A111FDEE0012B", "device": "Pixel 9a", "app_version_code": 11,
-        "backend_sha": m["components"]["backend_hub"]["expected"]["sha"],
-        "flows": [fl["id"] for fl in m["acceptance"]["flows"] if fl["device"]], "date": "2026-09-24",
-        "evidence": "docs/proofs/x.md",
-    }]
+    m["device_parity"]["receipts"] = [
+        {
+            "serial": "4A111FDEE0012B",
+            "device": "Pixel 9a",
+            "app_version_code": 11,
+            "backend_sha": m["components"]["backend_hub"]["expected"]["sha"],
+            "flows": [fl["id"] for fl in m["acceptance"]["flows"] if fl["device"]],
+            "date": "2026-09-24",
+            "evidence": "docs/proofs/x.md",
+        }
+    ]
     receipt = m["device_parity"]["receipts"][0]
     if breakage == "backend":
         receipt["backend_sha"] = "a" * 40
@@ -116,6 +128,7 @@ def test_a_blocker_cannot_be_a_bare_id(tmp_path, manifest):
 # --------------------------------------------------------------------------- #
 # Drift
 # --------------------------------------------------------------------------- #
+
 
 def test_android_source_drift_is_detected(tmp_path, manifest):
     """The live case: build.gradle said versionCode 10 while the tested APK
@@ -151,6 +164,7 @@ def test_migration_level_naming_a_missing_file_is_detected(tmp_path, manifest):
 # Device parity cannot be bought with an emulator
 # --------------------------------------------------------------------------- #
 
+
 def test_device_parity_without_a_receipt_is_refused(tmp_path, manifest):
     m = copy.deepcopy(manifest)
     m["release"]["state"] = "DEVICE_PARITY"
@@ -161,11 +175,17 @@ def test_device_parity_without_a_receipt_is_refused(tmp_path, manifest):
 def test_an_emulator_receipt_is_refused(tmp_path, manifest):
     m = copy.deepcopy(manifest)
     m["release"]["state"] = "DEVICE_PARITY"
-    m["device_parity"]["receipts"] = [{
-        "serial": "emulator-5554", "device": "sdk_gphone64_arm64", "app_version_code": 11,
-        "backend_sha": "f" * 40, "flows": ["sign_in"], "date": "2026-09-24",
-        "evidence": "x",
-    }]
+    m["device_parity"]["receipts"] = [
+        {
+            "serial": "emulator-5554",
+            "device": "sdk_gphone64_arm64",
+            "app_version_code": 11,
+            "backend_sha": "f" * 40,
+            "flows": ["sign_in"],
+            "date": "2026-09-24",
+            "evidence": "x",
+        }
+    ]
     errs = errors_for(tmp_path, m)
     assert any("EMULATOR" in e for e in errs), errs
 
@@ -173,6 +193,7 @@ def test_an_emulator_receipt_is_refused(tmp_path, manifest):
 # --------------------------------------------------------------------------- #
 # Contract + component shape
 # --------------------------------------------------------------------------- #
+
 
 def test_a_surface_on_a_different_contract_is_detected(tmp_path, manifest):
     m = copy.deepcopy(manifest)
@@ -231,7 +252,9 @@ def test_every_manifest_flow_has_a_runner():
     )
 
 
-@pytest.mark.parametrize("receipts,required", [([], True), ([], False), ([{"serial": "claimed-pixel"}], True)])
+@pytest.mark.parametrize(
+    "receipts,required", [([], True), ([], False), ([{"serial": "claimed-pixel"}], True)]
+)
 def test_released_requires_substantiated_device_evidence(tmp_path, manifest, receipts, required):
     m = copy.deepcopy(manifest)
     m["release"]["state"] = "RELEASED"
@@ -244,7 +267,11 @@ def test_deployed_sha_drift_is_detected(tmp_path, manifest, monkeypatch):
     monkeypatch.setattr(rt, "_fetch", lambda url: {"gitSha": "a" * 40})
     f = rt.validate(_write(tmp_path, manifest), drift=True)
     assert any("DRIFTED backend_hub" in e for e in f.errors), f.errors
-    monkeypatch.setattr(rt, "_fetch", lambda url: {"gitSha": manifest["components"]["backend_hub"]["expected"]["sha"]})
+    monkeypatch.setattr(
+        rt,
+        "_fetch",
+        lambda url: {"gitSha": manifest["components"]["backend_hub"]["expected"]["sha"]},
+    )
     assert rt.validate(_write(tmp_path, manifest), drift=True).errors == []
 
 
@@ -257,18 +284,25 @@ def test_alias_still_has_to_match_the_release_contract(tmp_path, manifest):
 def test_machine_project_flow_cannot_pass_without_a_grounded_fixture():
     sys.path.insert(0, str(ROOT / "tools/release-train"))
     import parity_acceptance as pa
+
     class SessionProbe:
         def ask(self, nb, message, general=True):
             raise AssertionError("empty notebook must not stand in for grounded machine proof")
             return {"text": "test response " * 10}
+
     assert pa.flow_machine_project_chat(SessionProbe(), {"nb": "fixture"})[0] is None
 
 
 def test_citation_flow_requires_nonempty_shipped_citations():
     import parity_acceptance as pa
+
     class Probe:
-        def __init__(self, citations): self.citations = citations
-        def ask(self, *a, **k): return {"frames": [{"kind": "sources", "citations": self.citations}]}
+        def __init__(self, citations):
+            self.citations = citations
+
+        def ask(self, *a, **k):
+            return {"frames": [{"kind": "sources", "citations": self.citations}]}
+
     assert pa.flow_citations_evidence(Probe([]), {"nb": "fixture"})[0] is None
     assert pa.flow_citations_evidence(Probe([{"docId": "fixture"}]), {"nb": "fixture"})[0] is True
 
@@ -276,6 +310,7 @@ def test_citation_flow_requires_nonempty_shipped_citations():
 @pytest.mark.parametrize("outcome,exit_code", [(True, 0), (False, 1), (None, 2)])
 def test_parity_exit_code_preserves_unproven_flows(monkeypatch, outcome, exit_code):
     import parity_acceptance as pa
+
     monkeypatch.setattr(pa.sys, "argv", ["parity"])
     monkeypatch.setattr(pa, "curl", lambda *a, **k: '{"gitSha":"' + "a" * 40 + '"}')
     monkeypatch.setattr(pa, "Session", lambda *a: object())
