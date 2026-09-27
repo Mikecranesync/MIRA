@@ -99,5 +99,24 @@ describe("mapLiveAnswersToServerIds — the answer just received gets its server
   it("F2: a failed re-read retries three times with backoff, then stops", () => {
     expect([1, 2, 3, 4].map(nextLookupDelayMs)).toEqual([2000, 5000, 15000, null]);
   });
+
+  // Codex review round 2 (#4073 @dc18f7c9): equal counts are only proof when
+  // the server returned the COMPLETE history (fewer rows than its 50 window).
+  it("F1r2: a full 50-row window can hide our own row — equal counts prove nothing, no mapping", () => {
+    const filler = Array.from({ length: 48 }, (_, i) =>
+      row(`${String(i).padStart(8, "0")}-2222-4222-8222-222222222222`, `other ${i}`),
+    );
+    // Our FIRST "same" answer fell outside the window; the window holds another
+    // device's "same" row plus our second one.
+    const rows = [row(A, "same", { createdAt: "2026-09-27T20:00:30Z" }), ...filler, row(B, "same", { createdAt: "2026-09-27T20:59:00Z" })];
+    expect(rows).toHaveLength(50);
+    const m = mapLiveAnswersToServerIds([live("same"), live("same")], rows, { alreadyRendered: new Set() });
+    expect(m.size).toBe(0);
+  });
+
+  it("F1r2: below the window, equal counts still map", () => {
+    const m = mapLiveAnswersToServerIds([live("same"), live("same")], [row(A, "same"), row(B, "same")], { alreadyRendered: new Set() });
+    expect(m.size).toBe(2);
+  });
 });
 
