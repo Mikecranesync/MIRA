@@ -875,11 +875,11 @@ export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below
  *  answer. `detail` is a detection fragment of the FOLDED copy (a regex match
  *  or a clause), so quoting it directly leaked ". " list-split debris, cut the
  *  step mid-parenthesis, and rewrote U+2011 hyphens to ASCII. Instead, quote
- *  the ORIGINAL answer text starting at the sentence that contains the
- *  fragment (a list item's marker stays with it) — markup stripped, whitespace
- *  collapsed, cut at a word with "…". Anchoring on the fragment's POSITION
- *  matters: a one-line paragraph must never quote its harmless opening
- *  sentence as the unsafe step. Detection is untouched. */
+ *  the WHOLE ORIGINAL sentence the detector flagged (located by its match
+ *  position when available; a list item's marker stays with it) — markup
+ *  stripped, whitespace collapsed; only a sentence over QUOTE_MAX is windowed
+ *  around the flagged relation. Anchoring on POSITION matters: the banner must
+ *  never quote a harmless sentence as the unsafe step. Detection is untouched. */
 export function flaggedStepQuote(detail: string, answerText: string, scanIndex?: number): string {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
   // Leading punctuation and list bullets (".", "—", "–", "•", "- ") never lead a quote.
@@ -905,10 +905,14 @@ export function flaggedStepQuote(detail: string, answerText: string, scanIndex?:
   const start = sentenceStart(at.line, at.index);
   const sentence = oneSentence(at.line.slice(start));
   const whole = stripLead(squash(sentence.replace(/[*`]/g, "")));
-  if (whole.length <= 160 || at.index <= start) return finishQuote(whole);
-  // A long run-on sentence: begin just before the flagged words (at most 60
-  // chars, at a word start) so the 160-char window can never be spent on a
-  // harmless opening, yet still shows the action that goes with the hazard.
+  // Quote the flagged sentence WHOLE whenever it is reasonably sized: every
+  // window heuristic can cut off either the relation or the action (Codex
+  // #4072 round 2), and a longer banner is a small price for naming the
+  // right step. Only a pathological sentence (> QUOTE_MAX) is windowed.
+  if (whole.length <= QUOTE_MAX || at.index <= start) return finishQuote(whole);
+  // Pathological run-on sentence: begin just before the flagged relation (at
+  // most 60 chars, at a word start) so the window is never spent on a
+  // harmless opening.
   let from = Math.max(start, at.index - 60);
   if (from > start && from < at.index) {
     const space = at.line.indexOf(" ", from);
@@ -918,10 +922,12 @@ export function flaggedStepQuote(detail: string, answerText: string, scanIndex?:
   return finishQuote(`…${stripLead(squash(tail.replace(/[*`]/g, "")))}`);
 }
 
+const QUOTE_MAX = 400;
+
 function finishQuote(text: string): string {
-  if (text.length <= 160) return text;
-  const cut = text.slice(0, 160);
-  const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), 80));
+  if (text.length <= QUOTE_MAX) return text;
+  const cut = text.slice(0, QUOTE_MAX);
+  const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), QUOTE_MAX / 2));
   return `${atWord.replace(/[\s.,;:—–-]+$/, "")}…`;
 }
 

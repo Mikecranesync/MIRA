@@ -31,7 +31,7 @@ function quoteOf(answerText: string): string {
 describe("hazard banner quotes the flagged step's own line (#4067)", () => {
   it("quotes step 2 whole, as written, for the real staging answer", () => {
     expect(quoteOf(STAGING_GS10_ANSWER)).toBe(
-      "2. Measure DC\u2011bus voltage (with the drive powered but still locked out for safety) while you command a short test acceleration; watch for a sudden dip that…",
+      "2. Measure DC\u2011bus voltage (with the drive powered but still locked out for safety) while you command a short test acceleration; watch for a sudden dip that could cause an over\u2011current (oC) trip.",
     );
   });
 
@@ -39,7 +39,7 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
     const q = quoteOf(STAGING_GS10_ANSWER);
     expect(q).not.toMatch(/^[\s.,;:]/);
     expect(q).toContain("DC\u2011bus");
-    expect(q.length).toBeLessThanOrEqual(161);
+    expect(q.length).toBeLessThanOrEqual(401);
   });
 
   it("a one-sentence flagged answer is quoted as that sentence", () => {
@@ -86,7 +86,7 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
       "during the whole diagnostic sequence and in that case the recommendation that follows applies to this model and you can ";
     const q = quoteOf(`${preamble}reset the fault while the machine is energized to finish the test quickly.`);
     expect(q).toContain("reset the fault while the machine is energized");
-    expect(q.length).toBeLessThanOrEqual(161);
+    expect(q.length).toBeLessThanOrEqual(401);
   });
 
   // Round-2 safety review (e1df3445): the quote must follow the detector's
@@ -117,6 +117,19 @@ describe("hazard banner quotes the flagged step's own line (#4067)", () => {
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.violation).toMatch(/^unsafe-answer:clause-hazard-/);
     expect(quoteOf(answer)).toContain("reset while the machine is energized");
+  });
+
+  // Codex round 2 (#4072 @cb3d8d9c): any truncation heuristic can cut the
+  // action off. A flagged sentence up to 400 chars is quoted WHOLE.
+  it("C2: relation first, action last, >160 chars — the quote holds both", () => {
+    const answer =
+      "While the machine is energized, the operator should review the maintenance history and check prior events and note all " +
+      "relevant timestamps and compare them against the shift log and the alarm journal before the fault should be reset.";
+    const v = validateAnswer({ answerText: answer, question: "why does it trip", general: true, served: true, refused: false });
+    expect(v.ok).toBe(false);
+    const q = quoteOf(answer);
+    expect(q).toContain("While the machine is energized");
+    expect(q).toContain("the fault should be reset");
   });
 });
 
