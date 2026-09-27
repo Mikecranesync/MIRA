@@ -863,20 +863,67 @@ export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below
  *  answer. `detail` is a detection fragment of the FOLDED copy (a regex match
  *  or a clause), so quoting it directly leaked ". " list-split debris, cut the
  *  step mid-parenthesis, and rewrote U+2011 hyphens to ASCII. Instead, quote
- *  the ORIGINAL answer line that contains the fragment — markup stripped,
- *  whitespace collapsed, cut at a word with "…". Detection is untouched. */
-function flaggedStepQuote(detail: string, answerText: string): string {
+ *  the ORIGINAL answer text starting at the sentence that contains the
+ *  fragment (a list item's marker stays with it) — markup stripped, whitespace
+ *  collapsed, cut at a word with "…". Anchoring on the fragment's POSITION
+ *  matters: a one-line paragraph must never quote its harmless opening
+ *  sentence as the unsafe step. Detection is untouched. */
+export function flaggedStepQuote(detail: string, answerText: string): string {
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
-  const core = squash(foldForDetection(detail)).replace(/^[.,;:!?\s]+/, "");
-  const probe = core.slice(0, 60);
-  const line = probe
-    ? answerText.split(/\n+/).find((l) => squash(foldForDetection(l)).includes(probe))
-    : undefined;
-  const text = squash((line ?? core).replace(/[*`]/g, "")).replace(/^[.,;:!?\s]+/, "");
+  const stripLead = (s: string) => s.replace(/^[.,;:!?\s]+/, "");
+  const core = stripLead(squash(foldForDetection(detail)));
+  const at = core ? locateFolded(core.slice(0, 60), answerText) : null;
+  const source = at ? oneSentence(at.line.slice(sentenceStart(at.line, at.index))) : core;
+  const text = stripLead(squash(source.replace(/[*`]/g, "")));
   if (text.length <= 160) return text;
   const cut = text.slice(0, 160);
   const atWord = cut.slice(0, Math.max(cut.lastIndexOf(" "), 80));
   return `${atWord.replace(/[\s.,;:—–-]+$/, "")}…`;
+}
+
+/** Find a folded-text probe in the ORIGINAL answer: fold each line one
+ *  character at a time, keeping a folded→original index map, and match the
+ *  probe with flexible whitespace. Returns the original line + offset. */
+function locateFolded(probe: string, answerText: string): { line: string; index: number } | null {
+  const pattern = new RegExp(
+    probe.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"),
+  );
+  for (const line of answerText.split(/\n+/)) {
+    let folded = "";
+    const map: number[] = [];
+    for (let i = 0; i < line.length; i++) {
+      const f = foldForDetection(line[i]);
+      folded += f;
+      for (let k = 0; k < f.length; k++) map.push(i);
+    }
+    const m = pattern.exec(folded);
+    if (m) return { line, index: map[m.index] ?? 0 };
+  }
+  return null;
+}
+
+/** Start of the sentence containing `index`. A leading list marker ("2.")
+ *  is not a sentence end, so a list item is quoted with its number. */
+function sentenceStart(line: string, index: number): number {
+  const head = line.slice(0, index);
+  const boundary = /[.!?]\s+/g;
+  let start = 0;
+  for (let m = boundary.exec(head); m; m = boundary.exec(head)) {
+    if (/^\s*(?:\d+|[A-Za-z])\.$/.test(head.slice(0, m.index + 1))) continue;
+    start = m.index + m[0].length;
+  }
+  return start;
+}
+
+/** Text up to and including the first sentence end, skipping a leading
+ *  list marker ("2." is a number, not the end of the step). */
+function oneSentence(text: string): string {
+  const boundary = /[.!?](?=\s)/g;
+  for (let m = boundary.exec(text); m; m = boundary.exec(text)) {
+    if (/^\s*(?:\d+|[A-Za-z])\.$/.test(text.slice(0, m.index + 1))) continue;
+    return text.slice(0, m.index + 1);
+  }
+  return text;
 }
 
 /** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
