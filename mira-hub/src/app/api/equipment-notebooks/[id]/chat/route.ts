@@ -178,6 +178,7 @@ import {
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
+import { formatRecordedFixes, listFixRecords } from "@/capabilities/fix-records";
 import {
   selectForSemanticCheck,
   semanticCheckEnabled,
@@ -2127,11 +2128,23 @@ async function handleChatTurn(
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
+  // Plant memory (migration 095): fixes a technician recorded on THIS notebook
+  // are technician-confirmed facts, so they ride in MACHINE CONTEXT — cited as
+  // "Recorded fix", never as a manual. Fail-open: no rows, a read error, or an
+  // environment without 095 leaves the prompt byte-identical to before.
+  let recordedFixes = "";
+  try {
+    const fixes = await listFixRecords(ctx.tenantId, notebookId, 3);
+    if (Array.isArray(fixes)) recordedFixes = formatRecordedFixes(fixes);
+  } catch (err) {
+    console.warn(`[notebook-chat] recorded fixes unavailable notebook=${notebookId}: ${(err as Error).message}`);
+  }
   const machineContext =
     `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
-    `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
+    `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.` +
+    (recordedFixes ? `\n${recordedFixes}` : "");
 
   // Coverage planning (answer completeness): the answer SHAPE determines how
   // much evidence the answer owes. Family questions get an explicit EVIDENCE
