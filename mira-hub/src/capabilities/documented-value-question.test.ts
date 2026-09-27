@@ -90,6 +90,10 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 11 F1: any second clause ends the pure code-meaning exception.
     ["What does F005 mean on my drive, and why is it overheating?", "PowerFlex 525"],
     ["what does F005 mean on my drive? how do I stop it", "PowerFlex 525"],
+    // Codex #4069 pass 12: a condition on THIS machine ends the "how does X work" teaching read.
+    ["How does my drive work when it overheats?", "PowerFlex 525"],
+    ["how does this drive work if the fan is blocked", "PowerFlex 525"],
+    ["the drive is overheating, what should I look at", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
