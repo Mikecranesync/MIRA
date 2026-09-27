@@ -135,16 +135,17 @@ function sentMessages(): { system: string; user: string } {
   return { system: text("system"), user: text("user") };
 }
 
-/** The basis evidence frame the route streamed back. */
-function evidenceFrame(body: string): Record<string, unknown> | null {
+/** Every SSE frame the route streamed back, in order. */
+function frames(body: string): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
   for (const block of body.split("\n\n")) {
     const line = block.trim();
-    if (!line.startsWith("data: {")) continue;
-    const frame = JSON.parse(line.slice(6)) as Record<string, unknown>;
-    if (frame.kind === "evidence" && "basis" in frame) return frame;
+    if (line.startsWith("data: {")) out.push(JSON.parse(line.slice(6)) as Record<string, unknown>);
   }
-  return null;
+  return out;
 }
+const pastFixesFrame = (body: string) => frames(body).find((f) => f.kind === "past_fixes") ?? null;
+const evidenceFrame = (body: string) => frames(body).find((f) => f.kind === "evidence" && "basis" in f) ?? null;
 
 const CONFIRMED = {
   state: "resolved", entityId: ENTITY, name: "Discharge Conveyor",
@@ -166,21 +167,21 @@ describe("recorded fixes reach the model as reference data", () => {
     expect(system).toContain("Recorded fixes: the reference context includes fixes technicians recorded");
   });
 
-  it("leaves out fixes that have nothing to do with the question", async () => {
+  it("leaves out fixes that have nothing to do with the question — no context, no card", async () => {
     fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
     const res = await POST(chatReq({ message: "what is the baud rate", sourceDocIds: [DOC_A] }), params);
     const body = await res.text();
     expect(sentMessages().user).not.toContain("RECORDED FIXES");
-    expect(evidenceFrame(body)?.recordedFixIds).toBeUndefined();
+    expect(pastFixesFrame(body)).toBeNull();
   });
 });
 
-describe("recall scope follows the confirmed machine (F2/F6)", () => {
-  it("recalls fixes for a technician-confirmed binding, scoped to that machine", async () => {
+describe("recall scope follows the confirmed machine", () => {
+  it("recalls fixes for a technician-confirmed binding, scoped to that machine, fault-code-first", async () => {
     domainMock.resolveBoundAsset.mockResolvedValue(CONFIRMED);
     const res = await POST(chatReq({ message: "it trips oC on accel", sourceDocIds: [DOC_A] }), params);
     await res.text();
-    expect(fixMock.listFixRecords).toHaveBeenCalledWith(TENANT, NB, ENTITY, 200);
+    expect(fixMock.listFixRecords).toHaveBeenCalledWith(TENANT, NB, ENTITY, 200, ["it", "trips", "oc", "on", "accel"]);
   });
 
   it("withholds fixes while the machine is only SELECTED (QR), not confirmed", async () => {
@@ -193,15 +194,15 @@ describe("recall scope follows the confirmed machine (F2/F6)", () => {
   it("an unbound notebook recalls only fixes recorded while unbound", async () => {
     const res = await POST(chatReq({ message: "what is the baud rate", sourceDocIds: [DOC_A] }), params);
     await res.text();
-    expect(fixMock.listFixRecords).toHaveBeenCalledWith(TENANT, NB, null, 200);
+    expect(fixMock.listFixRecords).toHaveBeenCalledWith(TENANT, NB, null, 200, ["what", "is", "the", "baud", "rate"]);
   });
 });
 
-describe("a relevant fix answers even when no document matches (F5)", () => {
+describe("a relevant fix answers even when no document matches", () => {
   it("reaches the provider with the fix instead of abstaining", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
-    providerSays("Last time: [Recorded fix #1] — accel time raised to 8 s.");
+    providerSays("Last time a recorded fix raised the accel time.");
     const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
     const body = await res.text();
     expect((fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeGreaterThan(0);
@@ -218,121 +219,65 @@ describe("a relevant fix answers even when no document matches (F5)", () => {
   });
 });
 
-describe("the fix label is earned by citation and survives replay (F4)", () => {
-  it("labels and names the fix only when the answer cites it", async () => {
+describe("the past-fixes card is deterministic — never inferred from the answer's wording", () => {
+  it("is emitted before any content, ranked, and persisted; the answer carries no fix attribution", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
-    providerSays("[Recorded fix #1]: raise the accel time to 8 s.");
+    providerSays("Avoid the recorded fix; it caused overheating.");
     const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    const frame = evidenceFrame(await res.text());
-    expect(frame?.basis).toBe("workspace_evidence");
-    expect(String(frame?.label)).toContain("fix recorded on this machine");
-    expect(frame?.recordedFixIds).toEqual([FIX.id]);
-    const persisted = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { evidence: unknown[]; basis: string };
-    expect(persisted.evidence).toContainEqual({ kind: "recorded_fix", fixIds: [FIX.id] });
+    const body = await res.text();
+    const all = frames(body);
+    const cardAt = all.findIndex((f) => f.kind === "past_fixes");
+    const contentAt = all.findIndex((f) => f.kind === "content");
+    expect(cardAt).toBeGreaterThanOrEqual(0);
+    expect(contentAt === -1 || cardAt < contentAt).toBe(true);
+    expect((all[cardAt]!.fixes as Array<{ id: string; date: string }>)[0]).toMatchObject({ id: FIX.id, date: "2026-09-20" });
+    const frame = evidenceFrame(body);
+    expect(frame?.basis).toBe("general_reasoning");
+    expect(frame).not.toHaveProperty("recordedFixIds");
+    const persisted = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { evidence: Array<{ kind?: string }> };
+    expect(persisted.evidence.find((e) => e.kind === "past_fixes")).toBeDefined();
   });
 
-  it("does not claim fix grounding when the answer never cites the fix", async () => {
+  it("ranks the named fault code ahead of newer repairs that merely also 'trip'", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
-    providerSays("Check the DC bus voltage and the motor cable.");
+    const newer = (n: number) => ({ ...FIX, id: `5555555${n}-5555-4555-8555-555555555555`, symptom: `drive trips on overload ${n}`, faultCode: "OL", fix: "reset the overload relay", createdAt: `2026-09-2${n}T00:00:00Z` });
+    fixMock.listFixRecords.mockResolvedValueOnce([newer(3), newer(4), newer(5), FIX]);
     const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    const frame = evidenceFrame(await res.text());
-    expect(frame?.basis).not.toBe("workspace_evidence");
-    expect(frame?.recordedFixIds).toBeUndefined();
+    const card = pastFixesFrame(await res.text());
+    expect((card?.fixes as Array<{ id: string }>)[0]!.id).toBe(FIX.id);
+    expect(sentMessages().user).toContain("Raised P1.01 accel time");
   });
 
-  it("replays a fix-cited turn with the same label and fix ids", async () => {
+  it("replays the card exactly as it was shown", async () => {
+    const card = [{ id: FIX.id, date: "2026-09-20", symptom: FIX.symptom, faultCode: "oC", fix: "Raised P1.01 accel time to 8 s" }];
     domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
       status: "replay",
       turn: {
         id: "turn-1",
         question: "what fixed the oC trip last time",
         answerStatus: "answered",
-        answerText: "Recorded fix #1: raise the accel time to 8 s.",
+        answerText: "Last time a recorded fix raised the accel time.",
         enabledSourceDocIds: [DOC_A],
-        evidence: [{ kind: "recorded_fix", fixIds: [FIX.id] }],
+        evidence: [{ kind: "past_fixes", fixes: card }],
         model: null,
-        basis: "workspace_evidence",
+        basis: "general_reasoning",
       },
     } as never);
     const res = await POST(
       chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A], clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
       params,
     );
-    const frame = evidenceFrame(await res.text());
-    expect(frame?.basis).toBe("workspace_evidence");
-    expect(String(frame?.label)).toContain("fix recorded on this machine");
-    expect(frame?.recordedFixIds).toEqual([FIX.id]);
-  });
-});
-
-describe("Codex #4057 round 3", () => {
-  const unrelated = (n: number) => ({ ...FIX, id: `5555555${n}-5555-4555-8555-555555555555`, symptom: `conveyor belt slip ${n}`, faultCode: null, fix: "tensioned the belt", createdAt: `2026-09-2${n}T00:00:00Z` });
-
-  it("finds an older matching repair behind newer unrelated ones (F1: relevance before the cap)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([unrelated(3), unrelated(4), unrelated(5), FIX]);
-    providerSays("[Recorded fix #1]: raise the accel time to 8 s.");
-    const res = await POST(chatReq({ message: "drive trips oC on accel again", sourceDocIds: [DOC_A] }), params);
-    await res.text();
-    const { user } = sentMessages();
-    expect(user).toContain("Raised P1.01 accel time");
-    expect(user).not.toContain("conveyor belt slip");
+    expect(pastFixesFrame(await res.text())?.fixes).toEqual(card);
   });
 
-  it("credits only the fix the answer names (F2)", async () => {
+  it("a recorded fix never licenses a specific setting — the validator still gates it", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const other = { ...FIX, id: "66666666-6666-4666-8666-666666666666", fix: "replaced the brake resistor" };
-    fixMock.listFixRecords.mockResolvedValueOnce([FIX, other]);
-    providerSays("[Recorded fix #2]: the brake resistor was replaced.");
-    const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    const frame = evidenceFrame(await res.text());
-    expect(frame?.recordedFixIds).toEqual([other.id]);
-  });
-
-  it("credits nothing when the answer says no recorded fix applies (F2)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
-    providerSays("No recorded fix applies to this fault; check the DC bus.");
-    const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    expect(evidenceFrame(await res.text())?.recordedFixIds).toBeUndefined();
-  });
-
-  const PRESSURE_FIX = { ...FIX, fix: "Set the air regulator to 6 bar; trips stopped" };
-
-  it("credits nothing when the answer negates the fix it names (post-cap F3)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([FIX]);
-    providerSays("[Recorded fix #1] did not apply here; no fix is known for this fault.");
-    const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    expect(evidenceFrame(await res.text())?.recordedFixIds).toBeUndefined();
-  });
-
-  it("a history question ranks the older matching repair ahead of newer unrelated ones (post-cap F2)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([unrelated(3), unrelated(4), unrelated(5), FIX]);
-    providerSays("[Recorded fix #1]: raise the accel time.");
-    const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    const frame = evidenceFrame(await res.text());
-    expect(sentMessages().user).toContain("Raised P1.01 accel time");
-    expect(frame?.recordedFixIds).toEqual([FIX.id]);
-  });
-
-  it("a cited fix never licenses a specific setting — the validator still gates it (post-cap F1)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([PRESSURE_FIX]);
-    providerSays("[Recorded fix #1]: set the air regulator to 9 bar.");
-    const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    expect(await res.text()).not.toContain("9 bar");
-  });
-
-  it("blocks the same value when no fix is cited — the validator is live (F4 control)", async () => {
-    ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    fixMock.listFixRecords.mockResolvedValueOnce([PRESSURE_FIX]);
+    fixMock.listFixRecords.mockResolvedValueOnce([{ ...FIX, fix: "Set the air regulator to 6 bar; trips stopped" }]);
     providerSays("Set the air regulator to 6 bar.");
     const res = await POST(chatReq({ message: "what fixed the oC trip last time", sourceDocIds: [DOC_A] }), params);
-    expect(await res.text()).not.toContain("6 bar");
+    const contentText = frames(await res.text()).filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    expect(contentText).not.toContain("6 bar");
   });
 });
 
