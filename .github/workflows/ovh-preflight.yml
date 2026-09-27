@@ -33,8 +33,9 @@ jobs:
       - name: Overlay + minimal targets present
         run: |
           test -f docker-compose.production.yml || { echo "::error::docker-compose.production.yml missing"; exit 1; }
-          grep -q 'TARGETS="${SERVICES:-mira-hub mira-web}"' .github/workflows/deploy-vps.yml \
-            || { echo "::error::deploy-vps.yml TARGETS is not the minimal Hub+web set"; exit 1; }
+          # shellcheck disable=SC2016  # matching the literal `${SERVICES:-…}` text, not expanding it
+          grep -q 'TARGETS="${SERVICES:-mira-hub mira-web mira-ask}"' .github/workflows/deploy-vps.yml \
+            || { echo "::error::deploy-vps.yml TARGETS is not the minimal Hub+web+ask set"; exit 1; }
           grep -q 'docker-compose.production.yml' .github/workflows/deploy-vps.yml \
             || { echo "::error::deploy-vps.yml does not reference the production overlay"; exit 1; }
       - name: Merged compose config validates
@@ -49,6 +50,10 @@ jobs:
         run: |
           docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
           python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; p=str(h.get('ports')); n=list(h.get('networks') or []); assert '127.0.0.1:3101' in p, 'hub not localhost-bound: '+p; assert n==['mira-net'], 'hub networks != [mira-net]: '+str(n); print('hub bind OK', p, '| networks OK', n)"
+      - name: mira-ask publishes no host port (mira-net only)
+        run: |
+          docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
+          python3 -c "import yaml; a=yaml.safe_load(open('merged.yml'))['services']['mira-ask']; p=a.get('ports') or []; assert not p, 'mira-ask publishes '+str(p); assert 'mira-net' in (a.get('networks') or {}), 'mira-ask not on mira-net'; print('mira-ask internal-only OK')"
       - name: Hub mem_limit equals memswap_limit (Docker requires memswap >= mem)
         run: |
           docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml

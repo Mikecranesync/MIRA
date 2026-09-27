@@ -335,7 +335,7 @@ jobs:
           # is intentionally NOT here — staging runs no Slack bot (see the
           # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
           # deliberately omitted), so adding it would fail `compose build`.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram}"
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask}"
           read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
