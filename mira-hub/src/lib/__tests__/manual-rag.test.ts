@@ -1081,8 +1081,10 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     });
     expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
     expect(out[0].retrievalScope).toBe("vendor_fallback");
-    expect(calls).toHaveLength(3);
-    expect(calls[2].sql.includes("model_number ~*")).toBe(false);
+    // Model scope (AND + OR), then one vendor query per alias-group spelling
+    // (Codex #4069 F2) — none of them model-scoped.
+    expect(calls.length).toBeGreaterThan(2);
+    expect(calls.slice(2).every((c) => !c.sql.includes("model_number ~*"))).toBe(true);
   });
 
   it("an unclassified bound model gets NO fallback query at all", async () => {
@@ -1127,6 +1129,30 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out).toHaveLength(1);
     expect(out[0].content).toContain("F005");
     expect(out[0].retrievalScope).toBe("vendor_fallback");
+  });
+
+  it("Codex #4069 F2: an Allen-Bradley notebook reaches rows stored as 'Rockwell Automation' (predicate-aware fixture)", async () => {
+    // This client APPLIES the manufacturer ILIKE and the model clause, so a
+    // query for "%Allen-Bradley%" really cannot see a Rockwell Automation row.
+    const corpus = [compactLogixDh485(), powerflexDrive()];
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("model_number ~*") || sql.includes("model_number ILIKE")) return { rows: [] };
+      const mfrIdx = sql.match(/manufacturer ILIKE \$(\d+)/);
+      if (!mfrIdx) return { rows: [] };
+      const needle = String(params[Number(mfrIdx[1]) - 1]).replace(/%/g, "").toLowerCase();
+      return { rows: corpus.filter((r) => String(r.manufacturer).toLowerCase().includes(needle)) };
+    });
+    const out = await retrieveManualChunks({ query } as unknown as PoolClient, "tenant-1", "the PLC stops communicating after the swap", {
+      manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    expect(out[0].retrievalScope).toBe("vendor_fallback");
+  });
+
+  it("Codex #4069 F3: the window is wide (topK x 20 rows per vendor name)", async () => {
+    expect(FAMILY_FALLBACK_WINDOW).toBeGreaterThanOrEqual(20);
   });
 
   it("classifies the SLC 500 family as PLCs so the fallback can run for it", () => {

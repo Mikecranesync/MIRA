@@ -1722,6 +1722,9 @@ async function handleChatTurn(
     : null;
   const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
+  // the decline below must never say "I couldn't find it" when nothing ran.
+  let oemRetrievalFailed = false;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -1742,6 +1745,7 @@ async function handleChatTurn(
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
           rec.error("retrieval", "oem_query_failed");
+          oemRetrievalFailed = true;
           return [];
         } finally {
           try {
@@ -1908,7 +1912,9 @@ async function handleChatTurn(
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = missingModelManual
+    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+      ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have, or in related manuals from the same maker, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
@@ -1920,7 +1926,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -1932,7 +1938,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -2197,8 +2203,10 @@ async function handleChatTurn(
     oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")
       ? `\n\nRELATED-MANUAL EXCERPTS — no pages of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual were found; ` +
         `these excerpts come from related ${oemManufacturer?.name ?? "same-manufacturer"} manuals named in each excerpt header. ` +
-        `Say that the source is a related manual when you cite it. Use them for shared behaviour, protocols and procedures; ` +
-        `do NOT present a value from them (rating, parameter, address, setting) as the ${oemModel.value}'s own specification.`
+        `Say that the source is a related manual when you cite it. Use them only for behaviour and protocols the models share. ` +
+        `Do NOT present a value from them (rating, parameter, address, setting) as the ${oemModel.value}'s own specification, and do NOT ` +
+        `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
+        `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
   const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with

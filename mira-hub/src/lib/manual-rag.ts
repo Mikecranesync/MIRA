@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { inferEquipmentType } from "@/lib/equipment-type";
-import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
   rerankChunks,
@@ -492,8 +492,15 @@ export async function retrieveManualChunks(
     // topK: otherwise a manufacturer's higher-ranked other-family pages fill
     // the LIMIT and hide a matching-family page ranked just below them.
     const window = topK * FAMILY_FALLBACK_WINDOW;
-    const vendorHits = await runBm25Query(client, tenantId, text, window, mfr, null);
-    return vendorHits
+    // Codex #4069 F2: the corpus stores one vendor under several names
+    // ("Allen-Bradley" / "Rockwell Automation"); search every spelling in the
+    // alias group, then merge by rank.
+    const names = manufacturerSearchNames(mfr);
+    const vendorHits: ManualChunk[] = [];
+    for (const name of names.length ? names : [mfr]) {
+      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null)));
+    }
+    return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
       .filter(
         (c) =>
           inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
@@ -539,7 +546,11 @@ export function isRefusalAnswer(answer: string | null | undefined): boolean {
 }
 
 /** #4068 — the same-family fallback ranks topK × this many vendor rows before filtering by family. */
-export const FAMILY_FALLBACK_WINDOW = 5;
+// Codex #4069 F3: wide enough that another family's higher-ranked pages cannot
+// plausibly exhaust it (120 rows per vendor name at topK 6). A matching page
+// ranked below that depth is not retrieved — accepted: at that depth BM25
+// relevance is noise, and the turn then declines honestly instead of guessing.
+export const FAMILY_FALLBACK_WINDOW = 20;
 
 /** Below this ts_rank_cd an AND hit is noise, not evidence (#4035: 0.0004 vs a real hit's ~1). */
 export const WEAK_AND_RANK = 0.01;

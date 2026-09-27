@@ -40,3 +40,24 @@ export function normalizeManufacturer(
   // impose a canonical of our own (matches the Python "Divergence safety").
   return { canonical: raw.trim().split(/\s+/).join(" "), method: "identity" };
 }
+
+/**
+ * #4068 — every spelling the corpus may store for this manufacturer's vendor
+ * group (the input, its canonical name, and every alias of that canonical),
+ * reduced to the minimal set of ILIKE-substring needles: a name that contains
+ * another listed name is dropped ("rockwell automation" ⊃ "rockwell").
+ * Used only by the same-family retrieval fallback, where "Allen-Bradley" on a
+ * notebook must still reach rows stored as "Rockwell Automation".
+ */
+export function manufacturerSearchNames(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  const { canonical } = normalizeManufacturer(raw);
+  const group = new Set<string>([normKey(raw), normKey(canonical)]);
+  for (const [alias, target] of Object.entries(OCR_VARIANT_ALIASES)) {
+    if (normKey(target) === normKey(canonical)) group.add(normKey(alias));
+  }
+  const names = [...group].filter(Boolean);
+  return names
+    .filter((n) => !names.some((m) => m !== n && n.includes(m)))
+    .sort();
+}

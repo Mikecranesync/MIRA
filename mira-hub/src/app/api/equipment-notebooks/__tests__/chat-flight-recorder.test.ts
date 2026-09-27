@@ -521,6 +521,35 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(fr.find((f) => f.kind === "status")?.status).toBe("insufficient_evidence");
   });
 
+  it("2k. Codex #4069 F4: a FAILED OEM query is never presented as 'couldn't find it' — retryable, honest", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockRejectedValueOnce(new Error("connection terminated") as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("couldn't reach the manual library");
+    expect(String(status?.message)).not.toContain("Upload");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.reason).toBe("identity_bound_retrieval_failed");
+  });
+
+  it("2l. Codex #4069 F1: related-manual excerpts carry the no-procedure-transfer directive", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    const fetchMock = vi.fn(async () => providerStream("A related CompactLogix manual says DH-485 needs a 1761-NET-AIC [1]."));
+    vi.stubGlobal("fetch", fetchMock);
+    await (await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params)).text();
+    expect(fetchMock).toHaveBeenCalled();
+    const sent = JSON.stringify((fetchMock.mock.calls[0] as unknown[])[1]);
+    expect(sent).toContain("RELATED-MANUAL EXCERPTS");
+    expect(sent).toContain("do NOT present a step-by-step procedure");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.oem_scope).toBe("vendor_fallback");
+  });
+
   it("2i. #4068: a hazard turn is never swallowed by the new decline (owner decision: flag, never block)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

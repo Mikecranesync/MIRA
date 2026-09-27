@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeManufacturer } from "../manufacturerNormalize";
+import { manufacturerSearchNames, normalizeManufacturer } from "../manufacturerNormalize";
 
 describe("normalizeManufacturer", () => {
   it("collapses known OCR variants to the canonical name (alias)", () => {
@@ -58,5 +58,27 @@ describe("normalizeManufacturer", () => {
     expect(normalizeManufacturer(undefined)).toEqual({ canonical: "", method: "identity" });
     expect(normalizeManufacturer("")).toEqual({ canonical: "", method: "identity" });
     expect(normalizeManufacturer("   ")).toEqual({ canonical: "", method: "identity" });
+  });
+});
+
+describe("manufacturerSearchNames (#4068 same-family fallback)", () => {
+  it("an Allen-Bradley notebook searches the whole Rockwell alias group", () => {
+    const names = manufacturerSearchNames("Allen-Bradley");
+    expect(names).toContain("allen-bradley");
+    expect(names).toContain("rockwell");
+    // "rockwell automation" is covered by the "rockwell" substring needle.
+    expect(names).not.toContain("rockwell automation");
+  });
+
+  it("a Rockwell Automation notebook also reaches Allen-Bradley rows", () => {
+    expect(manufacturerSearchNames("Rockwell Automation")).toContain("allen-bradley");
+  });
+
+  it("an unknown vendor searches only its own name", () => {
+    expect(manufacturerSearchNames("Baykon")).toEqual(["baykon"]);
+  });
+
+  it("blank input searches nothing", () => {
+    expect(manufacturerSearchNames("  ")).toEqual([]);
   });
 });
