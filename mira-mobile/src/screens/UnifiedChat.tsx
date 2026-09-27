@@ -47,7 +47,7 @@ import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
 import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
-import { liveTurnsSignature, mapLiveAnswersToServerIds, unmappedLiveAnswers } from "../unified/live-turn-ids";
+import { liveTurnsSignature, mapLiveAnswersToServerIds, nextLookupDelayMs, unmappedLiveAnswers } from "../unified/live-turn-ids";
 import {
   citationIndex,
   contextFor,
@@ -170,30 +170,42 @@ export function UnifiedChat({
   // exact live list it was built from; anything unpaired keeps no button.
   const liveSig = liveTurnsSignature(meta.notebookId, attachmentThreadId, liveTurns);
   const [liveIds, setLiveIds] = useState<{ sig: string; ids: ReadonlyMap<string, string> }>({ sig: "", ids: new Map() });
+  // Failed re-reads for THIS live list (Codex #4073 F2): bounded retry, reset
+  // whenever the live list changes.
+  const [lookupFailures, setLookupFailures] = useState<{ sig: string; n: number }>({ sig: "", n: 0 });
+  const failuresNow = lookupFailures.sig === liveSig ? lookupFailures.n : 0;
   const currentLiveIds = liveIds.sig === liveSig ? liveIds.ids : null;
   useEffect(() => {
     const notebookId = meta.notebookId;
     if (busy || !notebookId || unmappedLiveAnswers(liveTurns, currentLiveIds ?? new Map()).length === 0) return;
+    // A retry waits out its backoff; the first attempt runs immediately.
+    const delay = failuresNow === 0 ? 0 : nextLookupDelayMs(failuresNow);
+    if (delay === null) return;
     let cancelled = false;
     const rendered = new Set(turns.map((t) => t.id.toLowerCase()));
-    getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? null })
-      .then((detail) => {
-        if (cancelled) return;
-        const ids = mapLiveAnswersToServerIds(liveTurns, detail.turns, {
-          alreadyRendered: rendered,
-          threadId: attachmentThreadId ?? null,
+    const timer = setTimeout(() => {
+      getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? null })
+        .then((detail) => {
+          if (cancelled) return;
+          const ids = mapLiveAnswersToServerIds(liveTurns, detail.turns, {
+            alreadyRendered: rendered,
+            threadId: attachmentThreadId ?? null,
+          });
+          setLiveIds({ sig: liveSig, ids });
+        })
+        // No id means no Record button — the safe default; the notebook reopen
+        // path still offers it from the persisted row.
+        .catch(() => {
+          if (!cancelled) setLookupFailures({ sig: liveSig, n: failuresNow + 1 });
         });
-        setLiveIds({ sig: liveSig, ids });
-      })
-      // No id means no Record button — the safe default; the notebook reopen
-      // path still offers it from the persisted row.
-      .catch(() => {});
+    }, delay);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
     // `currentLiveIds` is derived from `liveSig`; re-running on it would refetch
     // after every successful mapping.
-  }, [busy, liveSig, meta.notebookId, attachmentThreadId]);
+  }, [busy, liveSig, failuresNow, meta.notebookId, attachmentThreadId]);
   const recordTurnIdFor = useCallback(
     (turnId: string) => serverTurnIdFor(turnId) ?? currentLiveIds?.get(turnId) ?? null,
     [currentLiveIds],
