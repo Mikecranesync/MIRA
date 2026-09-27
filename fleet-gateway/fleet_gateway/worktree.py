@@ -172,6 +172,22 @@ class WorktreeProvisioner:
             )
         return path
 
+    def remove(self, path: Path) -> None:
+        """Remove a worktree THIS provisioner created (a direct child of ``parent``).
+
+        Used only to undo a launch the Gateway rejected; ``--force`` because the fresh
+        checkout may hold the Gateway's own proof file. Refuses anything outside parent.
+        """
+        path = Path(path)
+        if path.parent != self.parent or not path.name.startswith("fleet-e2e-"):
+            raise ContractViolation(f"refusing to remove a worktree outside {self.parent}: {path}")
+        done = self._run(
+            ["git", "-C", str(self.repo), "worktree", "remove", "--force", str(path)], timeout=60
+        )
+        if done.returncode != 0:
+            detail = (done.stderr or done.stdout or "").strip()[:300]
+            raise ContractViolation(f"failed to remove worktree {path}: {detail}")
+
     def maybe_write_proof(
         self,
         worktree: Path,

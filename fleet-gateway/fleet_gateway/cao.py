@@ -24,6 +24,28 @@ LOOPBACK_HOST = "127.0.0.1"
 # bravo → developer, charlie → reviewer
 _ROLE_TO_PROFILE: dict[str, str] = {"bravo": "developer", "charlie": "reviewer"}
 
+# Charlie review lanes must be able to EXECUTE (git/gh/tests), not just read files.
+# CAO's built-in `reviewer` role is fs_read/fs_list only, so every lane launched on it
+# preflighted BLOCKED and idled in tmux (#3817). An explicit allowed_tools list wins over
+# the role on every CAO host. It must name @cao-mcp-server itself: an explicit list skips
+# CAO's automatic MCP-server append, and without it the lane loses send_message.
+# Still no fs_write: Edit/Write stay disallowed for an independent reviewer.
+REVIEWER_ALLOWED_TOOLS: tuple[str, ...] = ("execute_bash", "fs_read", "fs_list", "@cao-mcp-server")
+_ROLE_TO_ALLOWED_TOOLS: dict[str, tuple[str, ...]] = {"charlie": REVIEWER_ALLOWED_TOOLS}
+
+
+def review_capability_gap(allowed_tools: Any) -> str | None:
+    """Why a terminal with these tools cannot run an independent review, or None if it can.
+
+    Unknown (None / not a list) is a gap, never an assumption of access.
+    """
+    if not isinstance(allowed_tools, list):
+        return "allowed_tools unknown (CAO did not report the terminal's tools)"
+    if "*" in allowed_tools or "execute_bash" in allowed_tools:
+        return None
+    return f"no execute_bash (terminal tools: {', '.join(map(str, allowed_tools)) or 'none'})"
+
+
 # CAO provider mapping: claude → claude_code, codex → codex
 _PROVIDER_TO_CAO: dict[str, str] = {"claude": "claude_code", "codex": "codex"}
 
@@ -80,6 +102,10 @@ class FakeCAO:
         self.codex_auth = "ok"
         self.context_used = 0
         self.context_remaining = 100000
+        # What CAO reports as the launched terminal's tools, per role (tests may override).
+        self.allowed_tools_by_role: dict[str, list[str] | None] = {
+            role: list(tools) for role, tools in _ROLE_TO_ALLOWED_TOOLS.items()
+        }
 
     def fleet_snapshot(self) -> dict[str, Any]:
         # Prefer latest running session (scan in reverse insertion order)
@@ -136,13 +162,19 @@ class FakeCAO:
             "blockers": [],
             "handoff": None,
             "chat_claimed_done": False,
+            "allowed_tools": self.allowed_tools_by_role.get(spec["role"]),
         }
         self.sessions[session_id] = session
         # Track latest session per task (overwrite so latest always wins)
         self._latest_by_task[spec["task_id"]] = session_id
         # Also keep tasks dict in sync for backward-compat (tests may write to it)
         self.tasks[spec["task_id"]] = session
-        return {"session_id": session_id, "status": "running", "isolated_worktree": True}
+        return {
+            "session_id": session_id,
+            "status": "running",
+            "isolated_worktree": True,
+            "allowed_tools": session["allowed_tools"],
+        }
 
     def message_worker(self, session_id: str, text: str) -> dict[str, Any]:
         self.calls.append(("message_worker", {"session_id": session_id, "text": text}))
@@ -406,6 +438,9 @@ class LoopbackCAOClient:
         }
         if working_directory:
             query["working_directory"] = working_directory
+        role_tools = _ROLE_TO_ALLOWED_TOOLS.get(role)
+        if role_tools:
+            query["allowed_tools"] = ",".join(role_tools)
 
         body: dict[str, Any] | None = None
         if acceptance_criteria:
@@ -416,6 +451,18 @@ class LoopbackCAOClient:
         # Terminal response: id (8 hex) + session_name
         terminal_id = str(resp.get("id") or resp.get("terminal_id") or "")
         actual_name = str(resp.get("session_name") or session_name)
+        # Read back what the terminal actually got; for gated roles, fall back to one GET if
+        # the create response omitted it. Anything still missing stays None (= unknown, not granted).
+        allowed_tools = resp.get("allowed_tools")
+        if not isinstance(allowed_tools, list) and terminal_id and role_tools:
+            try:
+                allowed_tools = self._request("GET", f"/terminals/{terminal_id}", timeout=5.0).get(
+                    "allowed_tools"
+                )
+            except Exception:  # noqa: BLE001 — unknown is handled fail-closed by the caller
+                allowed_tools = None
+        if not isinstance(allowed_tools, list):
+            allowed_tools = None
 
         self._sessions[actual_name] = {
             "terminal_id": terminal_id,
@@ -427,6 +474,7 @@ class LoopbackCAOClient:
             "worktree": working_directory,
             "claimed": True,
             "chat_claimed_done": False,
+            "allowed_tools": allowed_tools,
         }
         self._session_order.append(actual_name)
 
@@ -435,6 +483,7 @@ class LoopbackCAOClient:
             "terminal_id": terminal_id,
             "status": "running",
             "isolated_worktree": True,
+            "allowed_tools": allowed_tools,
         }
 
     def message_worker(self, session_id: str, text: str) -> dict[str, Any]:
@@ -482,7 +531,10 @@ class LoopbackCAOClient:
             f"Review the EXACT git ref: {git_ref}. "
             f"Run: {', '.join(caps)}. "
             f"Do NOT accept Bravo's summary — verify independently from the code and tests. "
-            f"Report your verdict with evidence."
+            f"Report your verdict with evidence. "
+            f"Re-check the ref immediately before reporting; if it moved, report SUPERSEDED. "
+            f"If you post the verdict to GitHub, read it back and quote the comment URL; "
+            f"without a URL, report POST UNCONFIRMED."
         )
 
     def request_review(self, spec: dict[str, Any]) -> dict[str, Any]:
