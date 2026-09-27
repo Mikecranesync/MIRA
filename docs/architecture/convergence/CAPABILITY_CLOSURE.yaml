@@ -564,8 +564,9 @@ capabilities:
       - "Enable in production for the supervised mike-pilot Pixel run; record device, build, backend SHA, time, outcome."
       - "GS10-20P5 positive and Harrington negative both pass on the phone; disable on any failure."
       - "Then: whole-manual preference when the OEM splits chapters (GS10 still lands on a chapter); free-tier vs OpenAI judge benchmark (later evaluation)."
-    review_by: "2026-09-26"
+    review_by: "2026-10-10"
     notes: >-
+      Review date moved 2026-09-26 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue); re-decide at the next Gate sitting.
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
 
   # =========================================================================
@@ -679,8 +680,9 @@ capabilities:
       - "Deploy and prove the exact Hub /v3 release (#3879), then prove one persisted thread phone -> web -> phone (#3882)."
       - "Make /v3 the authenticated default only with a tested legacy recovery path (#3880); public demo proof remains separate (#3883)."
       - "REVIEW 2026-09-20 -> 2026-09-27 (reason): #3839/#3875 connect and exercise Hub /v3 on main, so the record was re-decided rather than date-bumped. Production, current Pixel release (#3881), cross-surface continuity (#3882), and default cutover (#3880) remain open. Re-decide after exact-release evidence; do not extend again as a date-only fix."
-    review_by: "2026-09-27"
+    review_by: "2026-10-10"
     notes: >-
+      Review date moved 2026-09-27 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue); re-decide at the next Gate sitting.
       Do not create a second capability registry for UI cutover state — this
       record is the ONE capability-closure entry for the unified shell
       (charter §4). `required_checks_observed_on` is a dated live GitHub read;
