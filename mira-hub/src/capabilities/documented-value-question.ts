@@ -102,6 +102,11 @@ const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i
 // Anything after the "what does X mean" clause beyond a location ("on my
 // drive") — another clause or question — makes it a mixed question.
 const SECOND_CLAUSE = /[,;?]\s*\S|\b(?:and|also|but|why|how|when|where|should|can|could|is|are|was|keeps?)\b/i;
+// Pass 14: "what is X" teaches only as a short, whole-question concept
+// definition ("What is a VFD?", "what is DH-485") — never a diagnostic frame
+// ("what is wrong with…", "what's going on with…", "what is the problem…").
+const CONCEPT_DEFINITION =
+  /^\s*what(?:'s|\s+is|\s+are)\s+(?:an?\s+)?(?!(?:wrong|going|happening|causing|making|up|the|this|its|it|my|your|that|these|those)\b)[\w/.+-]+(?:\s+[\w/.+-]+){0,3}\s*\??\s*$/i;
 // A question that marks itself as general knowledge, not this machine.
 const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
 // A condition on the machine's state ("when it overheats", "if the fan is
@@ -165,6 +170,6 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
     (STRONG_DEFINITIONAL.test(q) ||
       GENERAL_MARKER.test(q) ||
       HOW_IT_WORKS.test(q) ||
-      (!bound && WEAK_DEFINITIONAL.test(q)));
+      (!bound && CONCEPT_DEFINITION.test(q)));
   return !teaching;
 }

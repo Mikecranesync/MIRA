@@ -97,6 +97,11 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 13: a symptom declines unless the question is explicitly general.
     ["What is causing the drive to trip every morning?", "PowerFlex 525"],
     ["what is making the conveyor stop randomly", "GS10"],
+    // Codex #4069 pass 14: "what is …" teaches only as a concept definition.
+    ["What is wrong with the drive?", "PowerFlex 525"],
+    ["what's going on with the conveyor", "GS10"],
+    ["what is the problem with the hoist", "Lodestar"],
+    ["what are the settings for the drive", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
