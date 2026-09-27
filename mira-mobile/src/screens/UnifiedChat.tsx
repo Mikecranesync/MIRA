@@ -315,6 +315,10 @@ export function UnifiedChat({
   // no Web Speech, in which case no button renders. Stopped on unmount.
   const readAloud = useMemo(() => createReadAloud(), []);
   useEffect(() => () => readAloud?.stop(), [readAloud]);
+  // Switching notebook or thread stops an answer that is still being read.
+  useEffect(() => {
+    readAloud?.scope(`${meta.notebookId ?? ""}:${meta.threadId ?? ""}`);
+  }, [readAloud, meta.notebookId, meta.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = state.thread.turns.find((t) => t.id === turnId);
     if (turn) readAloud?.toggle(turnId, answerText(turn));

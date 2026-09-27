@@ -57,6 +57,9 @@ export interface ReadAloud {
   /** Speak this turn; a second press on the same turn stops it. */
   toggle(turnId: string, text: string): void;
   stop(): void;
+  /** Name the conversation on screen. A different key stops playback, so an
+   *  answer for machine A never keeps talking over machine B's thread. */
+  scope(key: string): void;
 }
 
 /** A read-aloud controller, or null where the platform cannot speak. Hosts
@@ -67,12 +70,21 @@ export function createReadAloud(
 ): ReadAloud | null {
   if (!synth || !Utterance) return null;
   let current: string | null = null;
+  // The utterance that owns `current`. A cancelled utterance may still fire
+  // onend after a newer one started; only the owner may clear the state.
+  let active: SpeechSynthesisUtterance | null = null;
+  let scopeKey: string | null = null;
   const stop = () => {
     current = null;
+    active = null;
     synth.cancel();
   };
   return {
     stop,
+    scope(key) {
+      if (scopeKey !== null && scopeKey !== key) stop();
+      scopeKey = key;
+    },
     toggle(turnId, text) {
       if (current === turnId && synth.speaking) {
         stop();
@@ -82,13 +94,17 @@ export function createReadAloud(
       synth.cancel();
       if (!spoken) {
         current = null;
+        active = null;
         return;
       }
       const u = new Utterance(spoken);
       u.onend = () => {
-        if (current === turnId) current = null;
+        if (active !== u) return;
+        current = null;
+        active = null;
       };
       current = turnId;
+      active = u;
       synth.speak(u);
     },
   };

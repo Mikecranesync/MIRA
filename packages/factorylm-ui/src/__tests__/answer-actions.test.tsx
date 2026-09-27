@@ -110,6 +110,53 @@ describe("createReadAloud", () => {
   });
 });
 
+describe("read-aloud lifecycle (Codex #4058)", () => {
+  function recordingSynth() {
+    const utterances: Array<{ text: string; onend: (() => void) | null }> = [];
+    const synth = {
+      speaking: false,
+      speak(u: SpeechSynthesisUtterance) {
+        utterances.push(u as unknown as { text: string; onend: (() => void) | null });
+        synth.speaking = true;
+      },
+      cancel() {
+        synth.speaking = false;
+      },
+    };
+    class Utterance {
+      text: string;
+      onend: (() => void) | null = null;
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    return { synth, Utterance: Utterance as unknown as new (t: string) => SpeechSynthesisUtterance, utterances };
+  }
+
+  it("a late onend from a cancelled utterance cannot clear the newer one (F2)", () => {
+    const f = recordingSynth();
+    const ra = createReadAloud(f.synth, f.Utterance)!;
+    ra.toggle("A", "first A");
+    ra.toggle("B", "B");
+    ra.toggle("A", "second A");
+    f.utterances[0]!.onend?.(); // the FIRST A finishes late
+    ra.toggle("A", "second A"); // must stop the second A, not restart it
+    expect(f.synth.speaking).toBe(false);
+    expect(f.utterances).toHaveLength(3);
+  });
+
+  it("stops when the conversation changes, and not when it stays the same (F1)", () => {
+    const f = recordingSynth();
+    const ra = createReadAloud(f.synth, f.Utterance)!;
+    ra.scope("nb1:t1");
+    ra.toggle("A", "answer A");
+    ra.scope("nb1:t1");
+    expect(f.synth.speaking).toBe(true);
+    ra.scope("nb2:t9");
+    expect(f.synth.speaking).toBe(false);
+  });
+});
+
 describe("action row", () => {
   it("renders Read aloud and Record what fixed it only when their hooks exist, and reports the turn id", () => {
     const read: string[] = [];

@@ -570,6 +570,10 @@ export function HubShellHost() {
   // case the hook is omitted and the shell renders no button. Stopped on unmount.
   const readAloud = useMemo(() => createReadAloud(), []);
   useEffect(() => () => readAloud?.stop(), [readAloud]);
+  // Switching notebook or thread stops an answer that is still being read.
+  useEffect(() => {
+    readAloud?.scope(`${selection?.notebookId ?? ""}:${selection?.threadId ?? ""}`);
+  }, [readAloud, selection?.notebookId, selection?.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
     if (turn) readAloud?.toggle(turnId, answerText(turn));
