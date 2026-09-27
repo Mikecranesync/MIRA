@@ -56,6 +56,12 @@ def _short_session(session_id: str) -> str:
     return (compact[-12:] or uuid.uuid4().hex[:12])[:12]
 
 
+# Files machines (not people) write into a fresh Gateway worktree. Kept in step with
+# #3569's DISPOSABLE_ARTIFACTS; the tracked entry is CAO's launch-time memory injection.
+_MACHINE_WRITTEN_UNTRACKED: tuple[str, ...] = (PROOF_FILENAME, ".enum-drift-allowlist.txt")
+_MACHINE_WRITTEN_TRACKED: tuple[str, ...] = (".claude/CLAUDE.md",)
+
+
 class WorktreeProvisioner:
     """``git worktree add --detach`` into a unique sibling directory. Never rm -rf.
 
@@ -175,15 +181,20 @@ class WorktreeProvisioner:
     def remove(self, path: Path) -> None:
         """Remove a worktree THIS provisioner created (a direct child of ``parent``).
 
-        Used only to undo a launch the Gateway rejected. Clears the Gateway's own proof
-        file, then ``git worktree remove`` WITHOUT ``--force``: git refuses a worktree that
-        holds anything else, so real work can never be discarded here. Refuses paths
-        outside ``parent``.
+        Used only to undo a launch the Gateway rejected. First undoes what machines wrote
+        into the fresh checkout — the Gateway's proof/drift files, and the CAO-memory block
+        CAO injects into the tracked ``.claude/CLAUDE.md`` at session launch (restored, not
+        deleted: a deleted tracked file is still dirty). Then ``git worktree remove`` WITHOUT
+        ``--force``, so git refuses a worktree holding anything else — real work is never
+        discarded here. Refuses paths outside ``parent``.
         """
         path = Path(path)
         if path.parent != self.parent or not path.name.startswith("fleet-e2e-"):
             raise ContractViolation(f"refusing to remove a worktree outside {self.parent}: {path}")
-        self._run(["rm", "-f", str(path / PROOF_FILENAME)], timeout=15)
+        for artifact in _MACHINE_WRITTEN_UNTRACKED:
+            self._run(["rm", "-f", str(path / artifact)], timeout=15)
+        for tracked in _MACHINE_WRITTEN_TRACKED:
+            self._run(["git", "-C", str(path), "checkout", "--", tracked], timeout=15)
         done = self._run(["git", "-C", str(self.repo), "worktree", "remove", str(path)], timeout=60)
         if done.returncode != 0:
             detail = (done.stderr or done.stdout or "").strip()[:300]

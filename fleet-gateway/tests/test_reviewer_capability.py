@@ -245,3 +245,25 @@ def test_worktree_remove_clears_only_its_own_proof_file(
     (path / PROOF_FILENAME).write_text("proof")
     prov.remove(path)
     assert not path.exists()
+
+
+def test_worktree_remove_undoes_cao_memory_injection(tmp_path: Path, worktree_parent: Path):
+    """A real CAO lane dirties the tracked .claude/CLAUDE.md at launch; removal must still work."""
+    import subprocess
+
+    repo = tmp_path / "repo-with-claude-md"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude" / "CLAUDE.md").write_text("# rules\n")
+    for cmd in (
+        ["git", "init", "-q"],
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "."],
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+    ):
+        subprocess.run(cmd, cwd=repo, check=True)
+    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    prov = WorktreeProvisioner(repo=repo, parent=worktree_parent)
+    path = prov.create(task_id="t", session_id="s", base_commit=sha)
+    with (path / ".claude" / "CLAUDE.md").open("a") as fh:
+        fh.write("<!-- cao-memory:begin -->\n<cao-memory>ctx</cao-memory>\n")
+    prov.remove(path)
+    assert not path.exists()
