@@ -77,6 +77,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what does F005 mean on my drive and how do I clear it", "PowerFlex 525"],
     ["How do I wire this drive?", "PowerFlex 525"],
     ["What should I check when this drive trips?", "PowerFlex 525"],
+    // Codex #4069 pass 8: an incidental "a power outage" is not a class subject.
+    ["The drive trips after a power outage; what should I check first?", "PowerFlex 525"],
   ])("about this equipment: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(true));
 
   it.each([

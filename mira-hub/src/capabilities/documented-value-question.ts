@@ -76,7 +76,10 @@ const GENERIC_CLASS_WHY =
 // about a CLASS of equipment ("what should I check when a VFD trips?"), not
 // this machine — teaching. Contextual shorthand without an article ("it trips
 // every morning", "the drive trips") is unaffected.
-const GENERIC_CLASS_SUBJECT = /\ban?\s+[a-z][\w/-]*/i;
+// Pass 8: only "a/an" + an EQUIPMENT noun is a class subject — "after a power
+// outage" or "for a minute" says nothing about which equipment is meant.
+const GENERIC_CLASS_SUBJECT =
+  /\ban?\s+(?:[\w-]+\s+)?(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)\b/i;
 
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
