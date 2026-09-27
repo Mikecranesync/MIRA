@@ -93,6 +93,16 @@ describe("GET /api/equipment-notebooks/[id]/fixes", () => {
 });
 
 describe("POST /api/equipment-notebooks/[id]/fixes", () => {
+  it("409s a machine-scoped fix while the machine is only selected, not confirmed", async () => {
+    const asset = { entityId: "e1", selectedVia: "qr", confirmedBy: null, confirmedAt: null };
+    vi.mocked(getNotebook).mockResolvedValue({ id: NB, asset } as never);
+    vi.mocked(insertFixRecord).mockClear();
+    const res = await POST(req({ symptom: "trips oC", fix: "raised accel" }), params);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("asset_not_confirmed");
+    expect(insertFixRecord).not.toHaveBeenCalled();
+  });
+
   it("401s without a session", async () => {
     const { NextResponse } = await import("next/server");
     vi.mocked(sessionOr401).mockResolvedValue(NextResponse.json({ error: "unauthorized" }, { status: 401 }) as never);
@@ -129,7 +139,7 @@ describe("POST /api/equipment-notebooks/[id]/fixes", () => {
   it("201s and inserts using the notebook's bound asset entity id", async () => {
     vi.mocked(getNotebook).mockResolvedValue({
       id: NB,
-      asset: { entityId: "asset-123", name: "Conveyor 1" },
+      asset: { entityId: "asset-123", name: "Conveyor 1", confirmedAt: "2026-09-01T00:00:00Z" },
     } as never);
     vi.mocked(validateFixInput).mockReturnValue({
       ok: true,
