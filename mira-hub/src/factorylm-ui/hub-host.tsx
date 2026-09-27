@@ -29,7 +29,16 @@ import {
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
-import { FactoryLMShell, type HostHooks } from "@factorylm/ui";
+import {
+  FactoryLMShell,
+  createFixRequestIds,
+  createReadAloud,
+  fixRefusalMessage,
+  fixSymptomFor,
+  serverTurnIdFor,
+  spokenAnswerText,
+  type HostHooks,
+} from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
@@ -566,10 +575,70 @@ export function HubShellHost() {
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
   }, [view.thread.turns, citations]);
 
+  // Read-aloud: created once; null where the browser has no Web Speech, in which
+  // case the hook is omitted and the shell renders no button. Stopped on unmount.
+  const readAloud = useMemo(() => createReadAloud(), []);
+  const fixRequestIds = useMemo(() => createFixRequestIds(), []);
+  useEffect(() => () => readAloud?.stop(), [readAloud]);
+  // Switching notebook or thread stops an answer that is still being read.
+  useEffect(() => {
+    readAloud?.scope(`${selection?.notebookId ?? ""}:${selection?.threadId ?? ""}`);
+  }, [readAloud, selection?.notebookId, selection?.threadId]);
+  const onReadAloud = useCallback((turnId: string) => {
+    const turn = view.thread.turns.find((t) => t.id === turnId);
+    if (!turn) return;
+    // The same citation ids renderText turns into chips: only those "[n]" are
+    // citation marks; any other bracketed number is spoken.
+    const ids = new Set<string>();
+    for (const part of turn.parts) {
+      const c = part.type === "source" ? citations.get(part.source.id) : undefined;
+      if (c) ids.add(c.citationId);
+    }
+    readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
+  }, [readAloud, view.thread.turns, citations]);
+
+  // Plant memory (migration 095): record what fixed the machine, filed under
+  // the question this answer replied to. The platform prompt/alert dialogs are
+  // the capture UI (commodity-before-custom); the next answer on this notebook
+  // is grounded on the record.
+  const onRecordFix = useCallback(async (turnId: string) => {
+    const notebookId = selectionRef.current?.notebookId;
+    const symptom = fixSymptomFor(view.thread.turns, turnId);
+    // The server files the fix under the machine THIS answer was served for
+    // (Codex #4058 post-cap F1), so the answer's server turn id travels with it.
+    const sourceTurnId = serverTurnIdFor(turnId);
+    if (!notebookId || !symptom || !sourceTurnId || typeof window === "undefined") return;
+    const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
+    if (!fix) return;
+    const clientRequestId = fixRequestIds.idFor(turnId, fix);
+    try {
+      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/fixes/`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ symptom, fix, clientRequestId, sourceTurnId }),
+      });
+      if (res.ok) {
+        fixRequestIds.settle(turnId, fix);
+        window.alert("Saved. MIRA will use this fix on this machine next time.");
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const refusal = fixRefusalMessage(body?.error);
+      if (refusal) fixRequestIds.settle(turnId, fix);
+      window.alert(refusal ?? "Could not save the fix. Try again.");
+    } catch {
+      window.alert("Could not save the fix. Check the connection and try again.");
+    }
+  }, [fixRequestIds, view.thread.turns]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
     onCopy,
+    ...(readAloud ? { onReadAloud } : {}),
+    ...(selection?.notebookId
+      ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
+      : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,

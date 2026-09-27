@@ -72,6 +72,24 @@ export interface HostHooks {
    */
   readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
   /**
+   * Read the answer aloud (hands-busy technicians). The host owns the speech
+   * engine and passes this only where the platform can speak; a second press on
+   * the same answer stops it. See `answer-actions.ts`.
+   */
+  readonly onReadAloud?: (turnId: string) => void;
+  /**
+   * Record what fixed the machine, filed under the question this answer
+   * replied to. The host collects the fix and persists it; the next answer on
+   * this machine is grounded on it. Rendered only when provided.
+   */
+  readonly onRecordFix?: (turnId: string) => void;
+  /**
+   * Whether this answer can be recorded against. The server files a fix under
+   * the machine the answer was served for, so an answer with no saved server
+   * turn yet offers no button. Absent means every answered turn qualifies.
+   */
+  readonly canRecordFix?: (turnId: string) => boolean;
+  /**
    * Open the host's real machine scanner. This keeps the shell's Scan affordance
    * routed through the existing native scanner instead of a reducer-only mock.
    */
