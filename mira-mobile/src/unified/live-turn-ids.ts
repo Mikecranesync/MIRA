@@ -30,6 +30,9 @@ export interface PersistedTurnLike {
   readonly createdAt?: string;
 }
 
+/** `listTurns(…, 50, …)` in mira-hub/src/app/api/equipment-notebooks/[id]/route.ts. */
+export const NOTEBOOK_TURN_WINDOW = 50;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -41,6 +44,11 @@ export function mapLiveAnswersToServerIds(
   persisted: readonly PersistedTurnLike[],
   opts: { readonly alreadyRendered: ReadonlySet<string>; readonly threadId?: string | null },
 ): Map<string, string> {
+  // The notebook GET returns only the latest NOTEBOOK_TURN_WINDOW rows. A full
+  // window may have dropped one of THIS screen's rows while keeping another
+  // device's same-question row, so the one-to-one count below would pair them
+  // wrongly (Codex #4073 round 2). Only a short (complete) history is proof.
+  if (persisted.length >= NOTEBOOK_TURN_WINDOW) return new Map();
   const candidates = persisted
     .map((t, order) => ({ t, order }))
     .filter(
