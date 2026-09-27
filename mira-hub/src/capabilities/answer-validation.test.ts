@@ -15,14 +15,19 @@ const general = (answerText: string, question = "What does fault code Q-447-Delt
   validateAnswer({ answerText, question, general: true, served: true, refused: false });
 
 describe("hazard-affirmation floor (E12 — #3790 shapes, both lanes)", () => {
-  it("rejects the reproduced #3790 answer: equipment-permits-energized", () => {
-    const v = grounded(
-      "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
-    );
+  it("flags the reproduced #3790 answer and still answers it: equipment-permits-energized", () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+    // The affirmation is still DETECTED (same violation id) but the candidate
+    // answer is served with a hazard banner above it, not replaced with SAFETY_STOP.
+    const answerText =
+      "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("unsafe_answer");
-      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.violation).toBe("unsafe-answer:permits-energized");
+      expect(v.replacement).toContain("Safety flag on a step below");
+      expect(v.replacement).toContain(answerText);
     }
   });
 
@@ -54,10 +59,14 @@ describe("hazard-affirmation floor (E12 — #3790 shapes, both lanes)", () => {
     if (!v.ok) expect(v.violation).toBe("unsafe-answer:bypass-safety-device");
   });
 
-  it("applies in the general lane too (the floor is lane-independent)", () => {
-    const v = general("Yes, you can clear the fault while the machine is running.");
+  it("flags the hazard in the general lane too, and still answers (the floor is lane-independent)", () => {
+    const answerText = "Yes, you can clear the fault while the machine is running.";
+    const v = general(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 });
 
@@ -230,16 +239,24 @@ describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () =
     expect(v.ok).toBe(false);
   });
 
-  it("R2: bold inside an unsafe answer does not disable the hazard floor", () => {
-    const v = grounded("It is **safe to reset** the fault while the machine is **energized**.");
+  it("R2: bold inside an unsafe answer does not disable the hazard floor (flag, don't block)", () => {
+    const answerText = "It is **safe to reset** the fault while the machine is **energized**.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 
-  it("R3: a cross-sentence imperative to stay energized is rejected", () => {
-    const v = grounded("Yes, resetting is permitted [1]. Keep the machine energized during the reset.");
+  it("R3: a cross-sentence imperative to stay energized is flagged, not blocked", () => {
+    const answerText = "Yes, resetting is permitted [1]. Keep the machine energized during the reset.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 
   it("R3: 'leave it powered on while you work' is rejected", () => {
@@ -267,10 +284,14 @@ describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () =
 });
 
 describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () => {
-  it("F1: a bare imperative unsafe instruction is rejected — 'Reset the fault while energized'", () => {
-    const v = grounded("Reset the E-12 fault while the machine is energized. This clears the error.");
+  it("F1: a bare imperative unsafe instruction is flagged, not blocked — 'Reset the fault while energized'", () => {
+    const answerText = "Reset the E-12 fault while the machine is energized. This clears the error.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 
   it("F1: 'Proceed with maintenance while the panel is live' is rejected, including after an affirmation sentence", () => {
@@ -303,10 +324,14 @@ describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () =
 });
 
 describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintenance verbs", () => {
-  it("colon-prefaced imperative is rejected — 'Follow these steps: Reset … while energized'", () => {
-    const v = grounded("Follow these steps: Reset the E-12 fault while the machine is energized.");
+  it("colon-prefaced imperative is flagged, not blocked — 'Follow these steps: Reset … while energized'", () => {
+    const answerText = "Follow these steps: Reset the E-12 fault while the machine is energized.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 
   it("semicolon-prefaced imperative is rejected — '…; then reset the fault while the panel is live'", () => {
@@ -328,10 +353,14 @@ describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintena
 });
 
 describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolation", () => {
-  it("modal instruction is rejected — 'You should reset … while energized'", () => {
-    const v = grounded("You should reset the E-12 fault while the machine is energized.");
+  it("modal instruction is flagged, not blocked — 'You should reset … while energized'", () => {
+    const answerText = "You should reset the E-12 fault while the machine is energized.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.kind).toBe("unsafe_answer");
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+    }
   });
 
   it("'when' works as the energized connector — 'Reset … when the machine is energized'", () => {
@@ -358,12 +387,15 @@ describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolati
 });
 
 describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and ought heads", () => {
-  it("passive recommendation is rejected — 'The E-12 fault should be reset while the machine is energized'", () => {
-    const v = grounded("The E-12 fault should be reset while the machine is energized.");
+  it("passive recommendation is flagged, not blocked — 'The E-12 fault should be reset while the machine is energized'", () => {
+    const answerText = "The E-12 fault should be reset while the machine is energized.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("unsafe_answer");
-      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain("Safety flag on a step below");
+      expect(v.replacement).toContain(answerText);
+      expect(v.replacement).not.toBe(SAFETY_STOP);
     }
   });
 
@@ -400,12 +432,15 @@ describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and
 });
 
 describe("Iteration-5 blocker — the exemption binds to the hazardous clause", () => {
-  it("an unrelated warning clause does not exempt — 'There is risk, but …'", () => {
-    const v = grounded("There is risk, but the E-12 fault should be reset while the machine is energized.");
+  it("an unrelated warning clause does not exempt detection — 'There is risk, but …' (flagged, still answered)", () => {
+    const answerText = "There is risk, but the E-12 fault should be reset while the machine is energized.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("unsafe_answer");
-      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain("Safety flag on a step below");
+      expect(v.replacement).toContain(answerText);
+      expect(v.replacement).not.toBe(SAFETY_STOP);
     }
   });
 
@@ -464,12 +499,15 @@ describe("Iteration-5 blocker — the exemption binds to the hazardous clause", 
 });
 
 describe("Iteration-6 blocker — negation must bind the hazardous instruction", () => {
-  it("a trailing negation of another predicate does not exempt — '… energized and not postponed'", () => {
-    const v = grounded("The E-12 fault should be reset while the machine is energized and not postponed.");
+  it("a trailing negation of another predicate does not exempt detection — '… energized and not postponed' (flagged, still answered)", () => {
+    const answerText = "The E-12 fault should be reset while the machine is energized and not postponed.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("unsafe_answer");
-      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain("Safety flag on a step below");
+      expect(v.replacement).toContain(answerText);
+      expect(v.replacement).not.toBe(SAFETY_STOP);
     }
   });
 
@@ -495,10 +533,15 @@ describe("Iteration-6 blocker — negation must bind the hazardous instruction",
 });
 
 describe("Iteration-7 blocker — prohibition heads are polarity-aware", () => {
-  it("a reversed 'avoid' does not exempt — 'You cannot avoid resetting … while energized'", () => {
-    const v = grounded("You cannot avoid resetting the E-12 fault while the machine is energized.");
+  it("a reversed 'avoid' does not exempt detection — 'You cannot avoid resetting … while energized' (flagged, still answered)", () => {
+    const answerText = "You cannot avoid resetting the E-12 fault while the machine is energized.";
+    const v = grounded(answerText);
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.replacement).toBe(SAFETY_STOP);
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement).toContain(answerText);
+      expect(v.replacement).not.toBe(SAFETY_STOP);
+    }
   });
 
   it("'no way to avoid' does not exempt", () => {

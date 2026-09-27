@@ -182,8 +182,13 @@ describe("energized-electrical hazard directive LIVE STREAM (#3841)", () => {
     expect(safetyFrames).toEqual([]);
   });
 
-  it("control — Tier-1 still terminal: active incident emits safety frame", async () => {
-    // Tier-1 immediate phrase: "just got shocked"
+  it("control — Tier-1 is still detected first (no NFPA 70E directive), but is flagged and answered like any other trigger since 2026-09-27", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety
+    // flags" retired the terminal safety frame entirely — Tier-1 ("just got
+    // shocked") still wins DETECTION precedence over the energized-work
+    // sentinel (so no NFPA 70E directive), but it no longer emits a `safety`
+    // frame or skips the provider. It streams like every other flagged turn:
+    // banner in the content, no standalone safety frame.
     const res = await POST(
       chatReq({
         message: "I just got shocked on the 480V feeder — can I clamp meter it while it's running?",
@@ -193,13 +198,14 @@ describe("energized-electrical hazard directive LIVE STREAM (#3841)", () => {
     );
     const text = await res.text();
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
     const frames = parseSSEFrames(text);
     const safetyFrames = frames.filter((f) => f.kind === "safety");
 
-    // Tier-1 DOES emit a terminal safety frame
-    expect(safetyFrames.length).toBeGreaterThan(0);
-    expect(safetyFrames[0]).toHaveProperty("trigger");
+    // No terminal safety frame any more, for ANY trigger.
+    expect(safetyFrames).toEqual([]);
+    expect(text).toContain("⚠️");
+    expect(text).toContain("De-energize first");
   });
 
   it("control — benign electrical: no directive entry", async () => {

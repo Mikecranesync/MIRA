@@ -28,16 +28,18 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
-import { SAFETY_STOP } from "@/lib/safety-classifier";
 
 export type AnswerValidation =
   | { ok: true }
   | {
       ok: false;
-      /** `energized_warning` (#3984, Mike 2026-09-26) is NOT a withhold: the
-       *  replacement is the candidate itself with a warning above it, and the
-       *  caller serves it as an ordinary answered turn. */
-      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning";
+      /** `energized_warning` (#3984, Mike 2026-09-26) and `hazard_warning`
+       *  (Mike 2026-09-27, "no answer blocking, just safety flags") are NOT
+       *  withholds: the replacement is the candidate itself with a warning
+       *  above it, and the caller serves it as an ordinary answered turn.
+       *  `unsupported_specificity` is an accuracy rule, not a safety one, and
+       *  still replaces. */
+      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning" | "hazard_warning";
       /** Machine-readable id, e.g. `unsafe-answer:permits-energized`. */
       violation: string;
       /** Bounded excerpt of the matched text, for server logs only. */
@@ -857,6 +859,19 @@ If you add this machine's manual as a source and ask again, I'll give you the ex
  *  technician keeps troubleshooting; this is a caution, not a stop. */
 export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
 
+/** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
+ *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
+function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
+  const step = detail.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation,
+    detail,
+    replacement: `⚠️ **Safety flag on a step below:** “${step}”. Do not do that on energized, pressurized or moving equipment — isolate it and verify zero energy first.\n\n${answerText}`,
+  };
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) return { ok: true };
   return {
@@ -932,15 +947,7 @@ export function validateAnswer(opts: {
     .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
     const m = p.re.exec(affirmationScanText);
-    if (m) {
-      return {
-        ok: false,
-        kind: "unsafe_answer",
-        violation: `unsafe-answer:${p.id}`,
-        detail: m[0].slice(0, 160),
-        replacement: SAFETY_STOP,
-      };
-    }
+    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
   }
 
   // A4 (#3973 → #3984): restoring power in order to take a reading.
@@ -973,26 +980,12 @@ export function validateAnswer(opts: {
     restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
   );
   if (hazard) {
-    return {
-      ok: false,
-      kind: "unsafe_answer",
-      violation: `unsafe-answer:clause-hazard-${hazard.relId}`,
-      detail: hazard.sentence.slice(0, 160),
-      replacement: SAFETY_STOP,
-    };
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
-  if (rig) {
-    return {
-      ok: false,
-      kind: "unsafe_answer",
-      violation: "unsafe-answer:rigging-overload",
-      detail: rig,
-      replacement: SAFETY_STOP,
-    };
-  }
+  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.

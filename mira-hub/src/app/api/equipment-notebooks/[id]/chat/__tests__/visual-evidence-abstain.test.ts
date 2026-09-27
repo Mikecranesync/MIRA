@@ -187,8 +187,17 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(persisted.evidence).toEqual([]);
   });
 
-  it("a safety stop verifies and retains the attached photo without weakening the stop", async () => {
+  it("a hazard report with a photo is answered under the banner and still verifies and retains the photo", async () => {
+    // OWNER DECISION 2026-09-27: flag, never block. A flagged turn is no longer
+    // swallowed by Gate G's zero-evidence abstain (found by the test rewrite):
+    // it takes the general lane, so the tech gets the banner and an answer,
+    // and the verified photo is still carried and persisted.
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: CAPTURED_AT });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Cut power at the disconnect from a safe distance." } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
 
     const res = await POST(
       req({
@@ -199,35 +208,23 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
       params,
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("smoke coming");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(filesMock.photoLinkedToTarget).toHaveBeenCalledWith(TENANT, PHOTO, "equipment_notebook", NB);
-    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 
     const out = await frames(res);
-    expect(out.some((f) => f.kind === "safety")).toBe(true);
-    expect(out).toContainEqual({
-      kind: "evidence",
-      visualEvidence: {
-        kind: "visual_observation",
-        fileId: PHOTO,
-        capturedAt: CAPTURED_AT,
-        provenance: "phone_photo",
-      },
-    });
-
-    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as {
+    expect(
+      out.some((f) => f.kind === "evidence" && (f.visualEvidence as { fileId?: string } | undefined)?.fileId === PHOTO),
+    ).toBe(true);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls.at(-1) as unknown[])[2] as {
       answerStatus: string;
+      answerText: string | null;
       evidence: Record<string, unknown>[];
     };
+    expect(persisted.evidence).toContainEqual(expect.objectContaining({ kind: "visual_observation", fileId: PHOTO }));
     expect(persisted.answerStatus).toBe("answered");
-    expect(persisted.evidence).toContainEqual(expect.objectContaining({ kind: "safety_notice" }));
-    expect(persisted.evidence).toContainEqual({
-      kind: "visual_observation",
-      fileId: PHOTO,
-      capturedAt: CAPTURED_AT,
-      provenance: "phone_photo",
-    });
+    expect(persisted.answerText).toMatch(/^⚠️ \*\*Possible active incident/);
+    const content = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+    expect(content).toContain("Possible active incident");
   });
 
   it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {

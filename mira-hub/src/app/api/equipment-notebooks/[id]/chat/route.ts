@@ -79,8 +79,11 @@ import {
 import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
+  hazardBanner,
   matchSafetyStop,
-  SAFETY_STOP,
+  safetyFlagDirective,
+  safetyFlagHeaders,
+  withSafetyFlag,
 } from "@/lib/safety-classifier";
 import {
   buildRequestBody,
@@ -173,7 +176,6 @@ import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
-  SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
@@ -594,55 +596,6 @@ const IDENTITY_DISPUTE_FRAME = {
 
 function visualEvidenceMarker(visualEvidence: VisualObservationEntry): NotebookEvidenceMarkerFrame {
   return { kind: "evidence", visualEvidence };
-}
-
-function safetyStopResponse(
-  trigger: string,
-  docIds: string[],
-  identityDisputed = false,
-  visualEntry: VisualObservationEntry | null = null,
-  traceInfo: { traceId: string | null; turnId: string } | null = null,
-): Response {
-  const enc = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      // Turn Flight Recorder correlation frame — FIRST, additive, only when a
-      // real trace id exists (see file header). Never before `identityDisputed`
-      // ordering matters, but nothing observes trace before that today, so it
-      // is safe to lead with.
-      if (traceInfo?.traceId) {
-        const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: traceInfo.traceId, turnId: traceInfo.turnId };
-        controller.enqueue(enc.encode(sse(traceFrame)));
-      }
-      if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
-      const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
-      controller.enqueue(enc.encode(sse(sources)));
-      // The warning must arrive before any content byte so a Stop, proxy cut,
-      // or network failure can never strand the technician with an unmarked
-      // partial hard-stop.
-      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
-      controller.enqueue(enc.encode(sse(safety)));
-      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
-      for (const word of SAFETY_STOP.split(" ")) {
-        const frame: NotebookContentFrame = { kind: "content", content: word + " " };
-        controller.enqueue(enc.encode(sse(frame)));
-      }
-      const status: NotebookStatusFrame = { kind: "status", status: "answered" };
-      controller.enqueue(enc.encode(sse(status)));
-      controller.enqueue(enc.encode("data: [DONE]\n\n"));
-      controller.close();
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-      // Observability parity with the asset- and node-chat routes.
-      "X-Safety-Stop": trigger,
-      ...(traceInfo?.traceId ? { "x-mira-trace-id": traceInfo.traceId } : {}),
-    },
-  });
 }
 
 const REPLAY_BASES = new Set<EvidenceBasis>([
@@ -1143,7 +1096,7 @@ async function handleChatTurn(
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
-  // trigger keeps the terminal SAFETY_STOP exactly as before.
+  // trigger is a flag too since 2026-09-27 (banner above the answer, see below).
   // Own/replay the idempotency key before consulting mutable source approval
   // or membership. The key is bound to the full original request payload, so
   // a completed turn remains replayable even if a source is later detached;
@@ -1490,6 +1443,13 @@ async function handleChatTurn(
   const hazardEntries: SafetyNoticeEntry[] = electricalHazardDirective
     ? [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]
     : [];
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // Every OTHER trigger (question gate or photo hazard) no longer stops the
+  // turn: its hazard-specific banner is written above the answer text, so it
+  // renders on every client and survives reload. It is not a structured
+  // safety_notice because today's web/mobile chips label every non-terminal
+  // notice "energized electrical work".
+  const flagBanner = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -1500,79 +1460,14 @@ async function handleChatTurn(
       ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
       : { equipmentEntityId: null, assetUnsPath: null };
 
-  // The stop is persisted like any other turn so it survives the technician
-  // switching devices mid-incident — spec §10 requires the warning to be
-  // retained on resume, and a warning that lives only in a stream is not.
-  if (safetyTrigger && !electricalHazardDirective) {
-    lifecycleOutcome = "safety_stop";
-    const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
-    const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
-    const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-    rec.stage("answer_gate", {
-      invoked: true,
-      decision: "answered",
-      reason: `safety_stop:${safetyTrigger}`,
-      answer_chars: SAFETY_STOP.length,
-      refusal_phrase_matched: false,
-      evidence_phrase_matched: false,
-      safety_classification: "safety_stop",
-      evidence_sufficient: false,
-      ungrounded_unit_claim: false,
-    });
-    setSpanAttrs(
-      {
-        "mira.answer_gate.invoked": true,
-        "mira.answer_gate.decision": "answered",
-        "mira.answer_gate.reason": `safety_stop:${safetyTrigger}`,
-        "mira.answer_gate.answer_chars": SAFETY_STOP.length,
-        "mira.safety.classification": "safety_stop",
-      },
-      answerGateSpan,
-    );
-    answerGateSpan.end();
-    const persistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
-    const turnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
-      // 086: the owner is the authenticated technician (session), never the body.
-      ownerUserId: ctx.userId,
-      threadId,
-      clientRequestId,
-      claimToken: requestClaimToken,
-      question: message,
-      answerStatus: "answered",
-      answerText: SAFETY_STOP,
-      enabledSourceDocIds: docIds,
-      evidence: [safetyEntry, safetyStopEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
-      model: null,
-      ...assetSnapshot,
-    }));
-    // No provider call on a hard stop — the "answer" is the fixed SAFETY_STOP
-    // text. TurnUsage built manually (null tokens/cost — nothing was billed),
-    // routeReason 'legacy_cascade' per design §4.
-    const safetyUsage: TurnUsage = {
-      provider: null,
-      model: null,
-      routeReason: "legacy_cascade",
-      inputTokens: null,
-      cachedInputTokens: null,
-      outputTokens: null,
-      costUsdEstimate: null,
-      status: "ok",
-      attempted: [],
-    };
-    await finishAndPersist(turnRowId, safetyUsage, {
-      answerText: SAFETY_STOP,
-      citationsPresent: false,
-      latencyMs: null,
-    });
-    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": turnRowId }, persistSpan);
-    persistSpan.end();
-    endRoot();
-    return safetyStopResponse(safetyTrigger, docIds, identityDisputed, visualEntry, { traceId: rootTraceId, turnId });
-  }
-  // Evaluated AFTER the safety stop, deliberately: a hazard report is never
-  // answered with "re-select the machine". The stop above persisted about no
-  // machine (state !== "resolved" → null snapshot), which is the honest record.
-  if (boundAsset.state === "unresolvable") {
+  // (2026-09-27) The terminal safety-stop branch that lived here is gone: a
+  // flagged turn continues to retrieval and generation like any other, and
+  // its safety_notice (hazardEntries above) is persisted with the answer so
+  // the banner survives reload and device switches (spec §10).
+  // A hazard report is never answered with "re-select the machine": a flagged
+  // turn skips this 422 and is answered (banner + general answer) about no
+  // machine in particular — the null snapshot below is the honest record.
+  if (boundAsset.state === "unresolvable" && !safetyTrigger) {
     // Fail closed. Quietly answering as if unbound is the downgrade
     // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
     // would keep showing the last stored machine name while answering about
@@ -1691,10 +1586,10 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Machine Memory could not be read just now. Try again in a moment.",
+          error: withSafetyFlag("Machine Memory could not be read just now. Try again in a moment.", safetyTrigger),
           code: "machine_history_read_failed",
         },
-        { status: 503 },
+        { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
@@ -1703,23 +1598,23 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Nothing was recorded in this window. Widen the window or check the gateway.",
+          error: withSafetyFlag("Nothing was recorded in this window. Widen the window or check the gateway.", safetyTrigger),
           code: "machine_window_empty",
           coverage: machineCoverage,
         },
-        { status: 422 },
+        { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json(
       {
-        error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
+        error: withSafetyFlag("Machine Memory history is not available for this machine, so there is nothing to replay.", safetyTrigger),
         code: "machine_history_unavailable",
         reason: machineUnavailableReason ?? "unavailable",
         coverage: machineCoverage,
       },
-      { status: 422 },
+      { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -1979,7 +1874,10 @@ async function handleChatTurn(
     !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
       ? `${oemManufacturer!.name} ${oemModel.value}`
       : null;
-  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {
+  // A flagged hazard turn is never swallowed by this abstain (owner decision
+  // 2026-09-27): with no documents it takes the general lane, so the tech gets
+  // the hazard banner and an answer instead of "couldn't find that".
+  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -2126,7 +2024,11 @@ async function handleChatTurn(
       // discriminator.
       await abandonRequestClaim();
       endRoot();
-      return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
+      const flaggedReason = withSafetyFlag(refusal.reason, safetyTrigger);
+      return NextResponse.json(
+        { error: flaggedReason, code: "approved_context", ...refusal, reason: flaggedReason },
+        { status: 412, headers: safetyFlagHeaders(safetyTrigger) },
+      );
     }
   }
   const machineSection = machinePacket
@@ -2265,7 +2167,9 @@ async function handleChatTurn(
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
-    : basePrompt;
+    : safetyTrigger
+      ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
+      : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
@@ -2677,7 +2581,7 @@ async function handleChatTurn(
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
-        const partialText = gate ? null : partial.length ? partial : null;
+        const partialText = gate ? null : partial.length ? (flagBanner ? `${flagBanner}\n\n${partial}` : partial) : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         const stoppedAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
         rec.stage("answer_gate", {
@@ -2803,7 +2707,11 @@ async function handleChatTurn(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "energized_warning") {
+          if (validation.kind === "hazard_warning") {
+            // 2026-09-27: a step the gate flags stays in the answer, quoted in
+            // a warning above it — served as an ordinary answered turn.
+            answerText = validation.replacement;
+          } else if (validation.kind === "energized_warning") {
             // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
             // replacement is the candidate with a warning above it, served as
             // an ordinary answered turn — not a Safety STOP. The existing
@@ -2863,19 +2771,20 @@ async function handleChatTurn(
           selectedClass,
         });
         console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
+        // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
+        // withholds. "unsafe" puts a hazard banner above the answer; a judge
+        // that could not decide (timeout, provider blip) fails OPEN — a broken
+        // judge is not evidence of a dangerous answer.
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
-          console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
+          console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
+          answerText = `${hazardBanner(cls)}\n\n${answerText}`;
         } else if (sv.verdict !== "safe") {
-          console.error(
-            `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
-          );
-          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
         }
       }
+
+      if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // The Jev shadow judgment (started before generation) is collected here,
       // BEFORE the commit point, for the same reason the semantic await is: the

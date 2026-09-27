@@ -19,6 +19,8 @@ import {
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
   detectEnergizedElectricalHazardIntent,
+  safetyFlagHeaders,
+  withSafetyFlag,
   LETHAL_VOLTAGE_CONTEXT,
   ENERGIZED_WORK_INTENT,
 } from "./safety-classifier";
@@ -214,5 +216,14 @@ describe("matchSafetyStop with energized-electrical hazard-intent", () => {
   it("benign electrical questions return null or other phrase, not the sentinel", () => {
     expect(matchSafetyStop("480V supply dropping voltage")).toBeNull();
     expect(matchSafetyStop("my drive won't start")).toBeNull();
+  });
+});
+
+describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn shows the banner)", () => {
+  it("prefixes the hazard banner only when there is a trigger", () => {
+    expect(withSafetyFlag("Try again in a minute.", "smoke coming")).toMatch(/^⚠️ \*\*Possible active incident.*\n\nTry again in a minute\.$/s);
+    expect(withSafetyFlag("Try again in a minute.", null)).toBe("Try again in a minute.");
+    expect(safetyFlagHeaders("smoke coming")).toEqual({ "X-Safety-Flag": "smoke coming" });
+    expect(safetyFlagHeaders(null)).toBeUndefined();
   });
 });

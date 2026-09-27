@@ -207,6 +207,81 @@ export function matchSafetyStop(text: string): string | null {
   return null;
 }
 
+/**
+ * OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+ * A detected hazard FRAMES the answer; it never replaces it. Detection is
+ * unchanged (it picks the banner). SAFETY_STOP below is kept only so turns
+ * persisted before this decision still render on reload.
+ *
+ * The banner names the specific hazard in one or two lines, then the answer
+ * follows. Classes are matched on the trigger the detector returned.
+ */
+const HAZARD_BANNER_CLASSES: Array<{ re: RegExp; banner: string }> = [
+  {
+    re: /smoke|fire|burning|burn mark|melted|exploded|shocked|arcing/,
+    banner:
+      "⚠️ **Possible active incident.** If anything is smoking, arcing or burning, or someone was shocked: get clear, isolate power from a safe distance and call for help first. The steps below are for once the scene is safe.",
+  },
+  {
+    re: /energized-electrical-hazard|live|energized|exposed wire|480|600v|arc flash/,
+    banner:
+      "⚠️ **Energized electrical work.** Qualified person, arc-flash PPE and an energized-work permit (NFPA 70E). De-energize and verify zero energy whenever the task allows.",
+  },
+  {
+    re: /cut (the )?power|disconnect (the )?power|isolate power|pull the cable|which (cable|wire) to pull|lockout|tagout|loto|safe to work/,
+    banner:
+      "⚠️ **Isolation.** Lock and tag every energy source (electrical, pneumatic, hydraulic, gravity) and verify zero energy before hands-on work.",
+  },
+  { re: /confined/, banner: "⚠️ **Confined space.** Entry permit, atmosphere test and an attendant before entry." },
+  {
+    re: /pressure|hydraulic|pneumatic|bleed/,
+    banner: "⚠️ **Stored pressure.** Bleed and block hydraulic/pneumatic energy and verify zero pressure first.",
+  },
+  { re: /chemical|ammonia|chlorine|acid|caustic/, banner: "⚠️ **Chemical hazard.** Check the SDS and wear the PPE it lists." },
+  { re: /fall|height|ladder|lift/, banner: "⚠️ **Working at height.** Fall protection and a stable platform." },
+  {
+    re: /rotating|guard|moving|conveyor|pinch|entangle/,
+    banner: "⚠️ **Moving machinery.** Lock out motion and block gravity-loaded parts before reaching in.",
+  },
+  { re: /hot work|weld|torch|grind/, banner: "⚠️ **Hot work.** Hot-work permit and a fire watch." },
+];
+
+/** One-to-two-line hazard banner shown ABOVE the full answer. */
+export function hazardBanner(trigger: string): string {
+  const t = (trigger || "").toLowerCase();
+  for (const c of HAZARD_BANNER_CLASSES) if (c.re.test(t)) return c.banner;
+  return "⚠️ **Safety flag.** This task involves a hazard. Isolate and verify zero energy before hands-on work.";
+}
+
+/** Prompt directive for a flagged (non-electrical) turn: answer fully, keep
+ *  isolation conditions inline at the step they apply, no lecture. */
+export function safetyFlagDirective(trigger: string): string {
+  return `## SAFETY FLAG: ${trigger}
+
+The question touches a hazard. Answer it fully and specifically — a technician
+who asks this is going to do the work either way, and a refusal sends them in
+less informed. State the isolation / zero-energy / PPE condition inline, at the
+step it applies to. One line of hazard framing at most; never a lecture in
+place of the answer. The UI already shows a safety banner above your answer.`;
+}
+
+/** A flagged turn shows its banner on EVERY outcome, including errors and
+ *  refusals (a 412, a 503, a stopped stream): prefix a user-visible message. */
+export function withSafetyFlag(text: string, trigger: string | null | undefined): string {
+  return trigger ? `${hazardBanner(trigger)}\n\n${text}` : text;
+}
+
+/** Response header naming the flag, for observability on non-answer outcomes. */
+export function safetyFlagHeaders(trigger: string | null | undefined): Record<string, string> | undefined {
+  return trigger ? { "X-Safety-Flag": trigger } : undefined;
+}
+
+/** Prompt directive for a flagged turn: the NFPA 70E directive for the
+ *  energized-work sentinel, the generic flag directive for everything else. */
+export function flagDirectiveFor(trigger: string): string {
+  return trigger === ENERGIZED_ELECTRICAL_HAZARD ? ELECTRICAL_HAZARD_DIRECTIVE : safetyFlagDirective(trigger);
+}
+
 /** Shared hard-stop reply — one copy, both chat routes render it. */
 export const SAFETY_STOP = `⛔ SAFETY STOP
 

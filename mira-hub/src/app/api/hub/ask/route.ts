@@ -11,7 +11,7 @@ import {
 } from "@/lib/manual-rag";
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
-import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
@@ -155,13 +155,10 @@ export async function POST(req: Request) {
   // for still answer; a hazard report never reaches a model that has been told
   // to answer rather than refuse. Same body shape as the other routes' stops:
   // the stop text as the answer, `X-Safety-Stop` naming the trigger.
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard adds a prompt directive and a banner above the answer;
+  // it never replaces the answer.
   const safetyTrigger = matchSafetyStop(question);
-  if (safetyTrigger) {
-    return NextResponse.json(
-      { answer: SAFETY_STOP, citations: [], provider: null, basis: null } as HubAskResponse,
-      { headers: { "X-Safety-Stop": safetyTrigger } },
-    );
-  }
 
   // Cost control BEFORE retrieval or inference. This endpoint is authenticated,
   // but authentication is not an allowance: one trial or compromised account
@@ -175,8 +172,8 @@ export async function POST(req: Request) {
     rateLimited("hub-ask-ip", await clientIpHash(), HUB_ASK_MAX_PER_MIN, 60_000)
   ) {
     return NextResponse.json(
-      { error: "You are asking faster than MIRA can answer. Try again in a minute." },
-      { status: 429 },
+      { error: withSafetyFlag("You are asking faster than MIRA can answer. Try again in a minute.", safetyTrigger) },
+      { status: 429, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -226,7 +223,10 @@ export async function POST(req: Request) {
 
   const context = buildGroundedContext(chunks);
   const messages: CascadeMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+    },
     {
       role: "user",
       content: context
@@ -246,12 +246,12 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
+        answer: withSafetyFlag("Sorry — every model provider is unreachable right now. Try again in a minute.", safetyTrigger),
         citations: [],
         provider: null,
         basis: null,
       } as HubAskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -276,10 +276,13 @@ export async function POST(req: Request) {
 
   // L5 honesty badge: the basis is what the answer actually used, not what
   // was retrieved — chunks the model did not cite are a retrieval miss.
-  return NextResponse.json({
-    answer: result.content,
-    citations,
-    provider: result.provider,
-    basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
-  } as HubAskResponse);
+  return NextResponse.json(
+    {
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${result.content}` : result.content,
+      citations,
+      provider: result.provider,
+      basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
+    } as HubAskResponse,
+    safetyTrigger ? { headers: { "X-Safety-Flag": safetyTrigger } } : undefined,
+  );
 }

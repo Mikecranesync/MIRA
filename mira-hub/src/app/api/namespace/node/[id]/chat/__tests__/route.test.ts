@@ -134,24 +134,40 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     expect(res.status).toBe(400);
   });
 
-  it("hard-stops on a safety keyword WITHOUT calling any provider", async () => {
+  it("flags a safety keyword (banner as the first content frame) but still calls the provider — no more hard stop (owner decision 2026-09-27)", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      } as never),
+    );
+    fetchSpy.mockResolvedValue(
+      new Response(
+        'data: {"choices":[{"delta":{"content":"Get clear and call an electrician."}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { status: 200 },
+      ),
+    );
     const res = await POST(
       makeReq(userMsg("can I reset this fault on a live panel with arc flash risk?")),
       makeParams(VALID_UUID),
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
     const { raw, content } = await drain(res);
-    expect(content).toContain("SAFETY STOP");
+    expect(content).toContain("⚠️");
+    expect(content).toContain("Get clear and call an electrician.");
+    expect(content).not.toContain("SAFETY STOP");
     expect(raw).toContain("[DONE]");
 
-    // The safety gate must short-circuit before ANY LLM provider call or DB read.
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(withTenantContext)).not.toHaveBeenCalled();
+    // The provider and node/kg lookup both run now — no more short-circuit.
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(vi.mocked(withTenantContext)).toHaveBeenCalled();
   });
 
   // T3 / duplicate-systems-audit.md finding #1 regression guard: the physical-
@@ -159,23 +175,39 @@ describe("POST /api/namespace/node/[id]/chat", () => {
   // from this route's hand-copied safety list — a technician reporting it got
   // normal LLM troubleshooting here while Slack/Telegram would hard-stop. The
   // route now imports the shared, guardrails.py-parity-tested SAFETY_PHRASES.
-  it("hard-stops on a physical-hazard phrase not present in the old local list WITHOUT calling any provider", async () => {
+  it("flags a physical-hazard phrase not present in the old local list (banner above the answer), still calls the provider", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      } as never),
+    );
+    fetchSpy.mockResolvedValue(
+      new Response(
+        'data: {"choices":[{"delta":{"content":"Get clear and call an electrician."}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { status: 200 },
+      ),
+    );
     const res = await POST(
       makeReq(userMsg("I see melted insulation on this panel, what should I do?")),
       makeParams(VALID_UUID),
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
     const { raw, content } = await drain(res);
-    expect(content).toContain("SAFETY STOP");
+    expect(content).toContain("⚠️");
+    expect(content).toContain("Get clear and call an electrician.");
+    expect(content).not.toContain("SAFETY STOP");
     expect(raw).toContain("[DONE]");
 
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(withTenantContext)).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(vi.mocked(withTenantContext)).toHaveBeenCalled();
   });
 
   it("returns 404 when the node is not found in the tenant", async () => {

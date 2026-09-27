@@ -12,7 +12,7 @@ import {
   type ManualSource,
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
-import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 
 export const dynamic = "force-dynamic";
 
@@ -144,13 +144,10 @@ export async function POST(req: Request) {
   // parsed. The classifier carries the educational carve-out ("what is LOTO?"
   // is a question, not a hazard report), so the stranger questions this route
   // exists for still answer. Same stop shape as the sibling routes (#3876).
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard adds a prompt directive and a banner above the answer;
+  // it never replaces the answer.
   const safetyTrigger = matchSafetyStop(question);
-  if (safetyTrigger) {
-    return NextResponse.json(
-      { answer: SAFETY_STOP, citations: [], provider: null },
-      { headers: { "X-Safety-Stop": safetyTrigger } },
-    );
-  }
 
   // Pull the top-K chunks.
   let chunks: ManualChunk[] = [];
@@ -180,7 +177,10 @@ export async function POST(req: Request) {
     : `(no manuals indexed for this question yet)\n\nUSER QUESTION:\n${question}`;
 
   const messages: CascadeMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+    },
     { role: "user", content: userMsg },
   ];
 
@@ -193,12 +193,14 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer:
+        answer: withSafetyFlag(
           "Sorry — every model provider is unreachable right now. Try again in a minute.",
+          safetyTrigger,
+        ),
         citations: [],
         provider: null,
       } as AskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -225,9 +227,12 @@ export async function POST(req: Request) {
         verified: c.verified === true,
       })).filter((s) => cited.has(s.index));
 
-  return NextResponse.json({
-    answer: answerText,
-    citations,
-    provider: result.provider,
-  } as AskResponse);
+  return NextResponse.json(
+    {
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
+      citations,
+      provider: result.provider,
+    } as AskResponse,
+    safetyTrigger ? { headers: { "X-Safety-Flag": safetyTrigger } } : undefined,
+  );
 }

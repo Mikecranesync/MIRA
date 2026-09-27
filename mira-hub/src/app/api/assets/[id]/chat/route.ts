@@ -20,7 +20,7 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -287,29 +287,10 @@ export async function POST(
     // Fall through to let the handler proceed with graceful degradation.
   }
 
-  // Safety gate — hard stop before touching LLM
-  const trigger = matchSafetyStop(lastUser.content);
-  if (trigger) {
-    const enc = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const words = SAFETY_STOP.split(" ");
-        for (const word of words) {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
-        }
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "X-Safety-Stop": trigger,
-      },
-    });
-  }
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard frames the answer (prompt directive + banner as the first
+  // content frame); it never replaces it.
+  const safetyFlag = matchSafetyStop(lastUser.content);
 
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
   // without them.
@@ -520,7 +501,8 @@ export async function POST(
         const askEnc = new TextEncoder();
         const askStream = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
+            const framed = safetyFlag ? `${hazardBanner(safetyFlag)}\n\n${replyText}` : replyText;
+            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: framed })}\n\n`));
             controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
             controller.close();
           },
@@ -568,7 +550,10 @@ export async function POST(
     machinePacket?.active_conditions.find((c) => c.next_check)?.next_check ?? null;
   const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
-  const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
+  const systemPrompt = appendManualContext(
+    safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag)}` : withMachineMemory,
+    manualChunks,
+  );
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
   const approvedSummary = {
@@ -580,7 +565,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   // H4 parity (#2542) — soft KB-gap admission in the DEFAULT (non-enforced)
@@ -627,6 +616,11 @@ export async function POST(
       // Emit the trace id up-front (before any [DONE]) so the client can later
       // open "Why MIRA Thinks This". The row itself is written at stream end.
       controller.enqueue(enc.encode(`data: ${JSON.stringify({ traceId })}\n\n`));
+      if (safetyFlag) {
+        const banner = `${hazardBanner(safetyFlag)}\n\n`;
+        responseBuffer.push(banner);
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: banner })}\n\n`));
+      }
 
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.
