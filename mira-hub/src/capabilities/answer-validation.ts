@@ -630,36 +630,88 @@ function magnitudes(text: string): string[] {
   return (text.match(/\d[\d.,]*/g) ?? []).map((n) => n.replace(/,/g, "").replace(/\.+$/, ""));
 }
 
-/** An all-zero magnitude is an energy-isolation VERIFICATION, never a machine
- *  rating: "isolated, locked out and verified at 0 V" matches the declarative
- *  grammar exactly, and MIRA_CORE requires that clause in the same sentence as
- *  any wiring step — so the safer the answer, the more certainly it was
- *  replaced (#3959, staging 2026-09-22: 4 of 6 drafts replaced on the LOTO
- *  clause alone). A range keeps both endpoints, so "0…+50 °C" still blocks. */
-function allZeroMagnitude(match: string): boolean {
+/** Canonical unit spellings, so "420V", "420 V" and "420 volts" compare equal. */
+function canonUnit(u: string): string {
+  const x = u.toLowerCase().replace(/[°\s·.]/g, "");
+  if (/^v(?:olts?|dc|ac)?$/.test(x)) return "v";
+  if (/^a(?:mps?|mperes?)?$/.test(x)) return "a";
+  if (x === "c" || x === "celsius") return "c";
+  if (x === "f" || x === "fahrenheit") return "f";
+  if (/^in(?:ch(?:es)?)?$/.test(x)) return "in";
+  if (/^ohms?$|^ω$/.test(x)) return "ohm";
+  return x;
+}
+
+const NUM_UNIT_RE = new RegExp(`(\\d[\\d.,]*)\\s*(${UNIT})\\b`, "gi");
+
+/** "value|unit" pairs, e.g. "420|v", "40|c". */
+function quantities(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(NUM_UNIT_RE)) {
+    out.push(`${m[1].replace(/,/g, "").replace(/\.+$/, "")}|${canonUnit(m[2])}`);
+  }
+  return out;
+}
+
+const SUBJECT_STOP = new RegExp(`^(?:${QTY}|the|this|that|its|your|a|an|is|are|was|were|of|at|and|for|to|with|while|so|be)$`, "i");
+
+/** Content words a claim is ABOUT: the few words before the match plus the
+ *  match's own non-quantity words ("motor" in "The motor rated current is 12 A"). */
+function subjectWords(sentence: string, matchIndex: number, match: string): string[] {
+  const before = sentence.slice(0, matchIndex).split(/[^A-Za-z]+/).filter(Boolean).slice(-4);
+  const own = match.split(/[^A-Za-z]+/).filter(Boolean);
+  return [...before, ...own]
+    .map((w) => w.toLowerCase())
+    .filter((w) => w.length >= 3 && !SUBJECT_STOP.test(w) && !/^(?:v|a|hz|rpm|psi|bar)$/.test(w));
+}
+
+/** A restatement, not a claim: some ONE sentence of the technician's question
+ *  supplies every value in the match with the same unit AND mentions what the
+ *  claim is about. Fails closed — "The relay contacts are rated 12 A" does not
+ *  excuse "The motor rated current is 12 A" (#4093 Codex F1). */
+function restatesQuestion(questionSentences: string[], sentence: string, matchIndex: number, match: string): boolean {
+  const qs = quantities(match);
+  if (qs.length === 0) return false;
+  const subject = subjectWords(sentence, matchIndex, match);
+  return questionSentences.some((q) => {
+    const have = new Set(quantities(q));
+    if (!qs.every((x) => have.has(x))) return false;
+    const words = new Set(q.toLowerCase().split(/[^a-z]+/).filter(Boolean));
+    return subject.every((w) => words.has(w));
+  });
+}
+
+/** An all-zero magnitude in an explicit VERIFICATION clause is an
+ *  energy-isolation check, never a machine rating: "isolated, locked out and
+ *  verified at 0 V" matches the declarative grammar exactly, and MIRA_CORE
+ *  requires that clause in the same sentence as any wiring step — so the safer
+ *  the answer, the more certainly it was replaced (#3959, staging 2026-09-22:
+ *  4 of 6 drafts replaced on the LOTO clause alone). A bare "the maximum output
+ *  voltage is 0 V" has no verification verb and still blocks (#4093 Codex F2),
+ *  as does a range with a non-zero endpoint ("0…+50 °C"). */
+const VERIFY_VERB = /\b(?:verif(?:y|ied|ies)|confirm(?:ed|s)?|test(?:ed|s)?|prov(?:e|en|ed)|measur(?:e|ed|es)|check(?:ed|s)?)\b/i;
+function zeroVerification(match: string): boolean {
   const nums = magnitudes(match);
-  return nums.length > 0 && nums.every((n) => Number(n) === 0);
+  return nums.length > 0 && nums.every((n) => Number(n) === 0) && VERIFY_VERB.test(match);
 }
 
 /** A sentence-level scan: the rating claim must live in a sentence that is not
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not.
  *
- *  A match whose every number the technician supplied in the question is a
- *  restatement, not a claim ("the drive is rated for 40 °C" when they said so —
- *  2026-09-28 exam Q3/Q6, answer_gate.reason exact-rating on trace 8f88d2c3…).
- *  One unsupplied number in the match keeps it a claim. */
+ *  A match that restates the technician's own question is not a claim ("the
+ *  drive is rated for 40 °C" when they said so — 2026-09-28 exam Q3/Q6,
+ *  answer_gate.reason exact-rating on trace 8f88d2c3…). */
 export function unsupportedExactRating(text: string, question = ""): string | null {
-  const supplied = new Set(magnitudes(question));
+  const questionSentences = question.split(/(?<=[.!?])\s+|\n+/).filter((q) => q.trim());
   const re = new RegExp(EXACT_RATING_RE.source, "gi");
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     re.lastIndex = 0;
     for (let m = re.exec(sentence); m; m = re.exec(sentence)) {
-      if (allZeroMagnitude(m[0])) continue;
-      const nums = magnitudes(m[0]);
-      if (nums.length > 0 && nums.every((n) => supplied.has(n))) continue;
+      if (zeroVerification(m[0])) continue;
+      if (restatesQuestion(questionSentences, sentence, m.index, m[0])) continue;
       return m[0].slice(0, 160);
     }
   }

@@ -62,6 +62,18 @@ describe("exact-rating: the technician's own numbers are not a rating claim", ()
     expect(unsupportedExactRating(a, Q3)).not.toBeNull();
   });
 
+  it("control (#4093 Codex F1): a number the question gave for a DIFFERENT component still fires", () => {
+    const q = "The relay contacts are rated 12 A. What is the motor current?";
+    const a = "The motor rated current is 12 A.";
+    expect(unsupportedExactRating(a, q)).not.toBeNull();
+    expect(general(a, q).ok).toBe(false);
+  });
+
+  it("control: the same number with a different unit is not a restatement", () => {
+    const q = "The supply is 24 V. What current should the coil draw?";
+    expect(unsupportedExactRating("The coil current is 24 A.", q)).not.toBeNull();
+  });
+
   it("control: with no question the rule behaves exactly as before", () => {
     expect(unsupportedExactRating("The output voltage is 420 V.")).not.toBeNull();
   });
@@ -72,6 +84,11 @@ describe("exact-rating: an all-zero isolation check is a verification, not a rat
     const a =
       "With the line isolated, locked out and the supply voltage verified at 0 V, check the contactor coil terminals for loose connections.";
     expect(unsupportedExactRating(a)).toBeNull();
+  });
+
+  it("control (#4093 Codex F2): a bare zero rating with no verification verb still fires", () => {
+    expect(unsupportedExactRating("The maximum output voltage is 0 V.")).not.toBeNull();
+    expect(unsupportedExactRating("The operating temperature range is 0 to 0 °C.")).not.toBeNull();
   });
 
   it("control: a range with a non-zero endpoint still fires", () => {
