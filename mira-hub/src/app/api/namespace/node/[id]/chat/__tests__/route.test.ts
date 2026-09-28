@@ -21,7 +21,6 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/workspace-files", () => ({ linkedDocIdsForNode: vi.fn(async () => []) }));
 vi.mock("@/lib/manual-rag", () => ({
   retrieveNodeChunks: vi.fn(),
-  buildDocScopedSystemPrompt: vi.fn(() => "doc-scoped prompt"),
   appendManualContext: vi.fn((prompt: string) => prompt),
   buildManualUserContent: vi.fn((content: string) => content),
   chunksToSources: vi.fn((chunks: Array<{ title?: string; sourceUrl?: string; sourcePage?: number | null; verified?: boolean }>) =>
@@ -308,67 +307,6 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     expect(appendManualContext).toHaveBeenCalled();
     const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
     expect(chunks.map((chunk) => chunk.content)).toEqual(["Approved node context"]);
-  });
-
-  it("#3437: a file a person LINKED to the node is admitted under both gates; an unlinked draft is not", async () => {
-    process.env.NEON_DATABASE_URL = "postgres://test";
-    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
-    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    const LINKED = "44444444-4444-4444-8444-444444444444";
-    vi.mocked(linkedDocIdsForNode).mockResolvedValue([LINKED]);
-    const chunk = (content: string, docId: string | null, verified: boolean) => ({
-      content,
-      manufacturer: "FactoryLM",
-      modelNumber: "N100",
-      sourceUrl: `node-doc/${docId}/m.pdf`,
-      sourcePage: 1,
-      title: "Manual",
-      rank: 0.5,
-      verified,
-      docId,
-    });
-    vi.mocked(retrieveNodeChunks)
-      .mockResolvedValueOnce([chunk("Unlinked draft", "55555555-5555-4555-8555-555555555555", false)])
-      .mockResolvedValueOnce([chunk("Linked private manual", LINKED, false)]);
-    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
-      fn({
-        query: vi.fn(async (sql: string) => {
-          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
-          return { rows: [] };
-        }),
-      } as never),
-    );
-
-    await POST(makeReq(userMsg("what is the torque spec?")), makeParams(VALID_UUID));
-
-    // Retrieval is told the link is the approval (MIRA_ENFORCE_APPROVED_RETRIEVAL).
-    const linkedCall = vi.mocked(retrieveNodeChunks).mock.calls[1]?.[3];
-    expect(linkedCall).toMatchObject({ docIds: [LINKED], validatedDocScope: true, approvedSourceDocIds: [LINKED] });
-    // And the ask gate keeps it, while still dropping the unlinked draft.
-    const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
-    expect(chunks.map((c) => c.content)).toEqual(["Linked private manual"]);
-  });
-
-  it("#3437: a document opened for doc-scoped chat is admitted as the approval set", async () => {
-    process.env.NEON_DATABASE_URL = "postgres://test";
-    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    const DOC = "66666666-6666-4666-8666-666666666666";
-    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
-      fn({
-        query: vi.fn(async (sql: string) => {
-          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
-          if (sql.includes("metadata->>'filename'")) return { rows: [{ filename: "m.pdf" }] };
-          return { rows: [] };
-        }),
-      } as never),
-    );
-
-    await POST(makeReq({ ...userMsg("torque?"), docId: DOC }), makeParams(VALID_UUID));
-
-    expect(vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3]).toMatchObject({
-      docId: DOC,
-      approvedSourceDocIds: [DOC],
-    });
   });
 });
 

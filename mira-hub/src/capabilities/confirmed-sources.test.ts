@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import type { ManualChunk } from "@/lib/manual-rag";
 import { confirmedSourceDocIds, preferOwnDocuments, CONFIRMED_SOURCE_LIMIT } from "./confirmed-sources";
 
@@ -36,5 +39,31 @@ describe("preferOwnDocuments", () => {
   it("with no own documents, the library answer is unchanged", () => {
     const lib = [chunk("oem 1", "oem/x.pdf")];
     expect(preferOwnDocuments([], lib, 6)).toEqual(lib);
+  });
+});
+
+/**
+ * Source-level wiring check for /api/hub/ask (same technique as that route's
+ * hybrid-corpus test, kept here because src/app/** tests are lifecycle-guarded).
+ * The defect was invisible at the SQL layer: the lane simply did not exist.
+ */
+describe("/api/hub/ask wires the confirmed-document lane (#3437)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const route = readFileSync(resolve(here, "../app/api/hub/ask/route.ts"), "utf8");
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("the comment stripper strips (positive control)", () => {
+    expect(route).toContain("#3437");
+    expect(code).not.toContain("#3437");
+  });
+
+  it("admits the tenant's CONFIRMED documents on the same raw client and tenant", () => {
+    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId\s*\)/);
+    expect(code).toMatch(/retrieveNodeChunks\(\s*client,\s*ctx\.tenantId/);
+    expect(code).toMatch(/validatedDocScope:\s*true/);
+    expect(code).toMatch(/approvedSourceDocIds:\s*docIds/);
+    expect(code).toMatch(/preferOwnDocuments\(\s*own,\s*library/);
+    // Still the raw owner pool: withTenantContext would hide the OEM corpus (#2178).
+    expect(code).not.toContain("withTenantContext");
   });
 });
