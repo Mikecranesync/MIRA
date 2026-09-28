@@ -1059,7 +1059,8 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const like = (pat: string, v: string) =>
     new RegExp(`^${pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*")}$`, "i").test(v);
-  const posix = (re: string) => re.replace(/\[\[:alnum:\]\]/g, "A-Za-z0-9").replace(/\[\[:space:\]\]/g, "\\s");
+  // POSIX classes inside brackets ("[[:alnum:]]", "[^[:alnum:]]") → JS ranges.
+  const posix = (re: string) => re.replace(/\[:alnum:\]/g, "A-Za-z0-9").replace(/\[:space:\]/g, "\\s");
   const query = vi.fn(async (sql: string, params: unknown[]) => {
     calls.push({ sql, params });
     // Rows may opt out of one pass: `and: false` (OR-only match) or `or: false`.
@@ -1075,6 +1076,8 @@ function corpusClient(corpus: Array<Record<string, unknown>>) {
     );
     const m = sql.match(/manufacturer ILIKE \$(\d+)/);
     if (m) rows = rows.filter((r) => like(String(params[Number(m[1]) - 1]), String(r.manufacturer ?? "")));
+    const mw = sql.match(/manufacturer ~\* \$(\d+)/);
+    if (mw) rows = rows.filter((r) => new RegExp(posix(String(params[Number(mw[1]) - 1])), "i").test(String(r.manufacturer ?? "")));
     const re = sql.match(/model_number ~\* \$(\d+)/);
     if (re) rows = rows.filter((r) => new RegExp(posix(String(params[Number(re[1]) - 1])), "i").test(String(r.model_number ?? "")));
     const il = sql.match(/model_number ILIKE \$(\d+) AND model_number NOT ILIKE \$(\d+)/);
@@ -1150,6 +1153,21 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out[0].retrievalScope).toBeUndefined();
   });
 
+  it("Codex #4069 pass 26 F1: a wrong maker's strong AND hit never suppresses the bound maker's OR-only page", async () => {
+    const { client } = corpusClient([
+      row({ manufacturer: "Sewon", model_number: "100", title: "Sewon 100 Manual", source_url: "https://oem.example/sewon.pdf", content: "controller wiring", rank: 0.9 }),
+      row({ manufacturer: "SEW", model_number: "100", title: "SEW 100 Manual", source_url: "https://oem.example/sew-100.pdf", content: "controller", rank: 0.2, and: false }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      manufacturer: "SEW",
+      model: "100",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
   it("Codex #4069 pass 24 F2: a short alias never admits another maker whose name merely contains it", async () => {
     const { client } = corpusClient([
       plc({ manufacturer: "Sewon", source_url: "https://oem.example/sewon.pdf", content: "Sewon controller wiring." }),
@@ -1185,7 +1203,10 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
     // Only the "rockwell" spelling's AND pass returns a (strong) row; an empty
     // AND pass runs OR anyway, so the proof must look at THAT spelling.
-    const rockwellVendor = calls.filter((c) => !MODEL_FILTER.test(c.sql) && c.params.includes("%rockwell%"));
+    // Pass 26: the maker is a whole-word regex parameter, not "%rockwell%".
+    const rockwellVendor = calls.filter(
+      (c) => !MODEL_FILTER.test(c.sql) && c.params.includes("(^|[^[:alnum:]])rockwell($|[^[:alnum:]])"),
+    );
     expect(rockwellVendor.some((c) => c.sql.includes("plainto_tsquery('english', $2)") && !c.sql.includes("replace("))).toBe(true);
     expect(rockwellVendor.some((c) => c.sql.includes("to_tsquery('english', replace("))).toBe(true);
   });
@@ -1234,12 +1255,14 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
       manufacturer: "%", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
     });
+    // Pass 26: identity-bound maker matching is a whole-word regex; the maker
+    // is still quoted as a literal, never a wildcard.
     const mfrParams = calls.flatMap((c) => {
-      const m = c.sql.match(/manufacturer ILIKE \$(\d+)/);
+      const m = c.sql.match(/manufacturer (?:ILIKE|~\*) \$(\d+)/);
       return m ? [String(c.params[Number(m[1]) - 1])] : [];
     });
     expect(mfrParams.length).toBeGreaterThan(0);
-    expect(mfrParams.every((p) => p === "%\\%%")).toBe(true);
+    expect(mfrParams.every((p) => p === "%\\%%" || p === "(^|[^[:alnum:]])%($|[^[:alnum:]])")).toBe(true);
   });
 
   it("Codex #4069 pass 6 F2: an own-model fault-code page replaces sibling pages from the verbose fallback", async () => {

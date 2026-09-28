@@ -478,7 +478,9 @@ export async function retrieveManualChunks(
     // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
     const merged: ManualChunk[] = [];
     for (const name of names) {
-      merged.push(...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model)));
+      merged.push(
+        ...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model, false, null, true)),
+      );
     }
     // Pass 24 F2: a substring needle only narrows the search; admission needs
     // the stored maker to be in the vendor group as a whole word.
@@ -520,7 +522,7 @@ export async function retrieveManualChunks(
     const names = manufacturerSearchNames(mfr);
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
-      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms)));
+      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true)));
     }
     return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
       .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
@@ -615,10 +617,19 @@ async function runBm25Query(
    *  model/title/URL BEFORE the LIMIT, so other-family rows — including ones
    *  that merely MENTION the family — cannot fill the window. */
   familyTerms: Array<{ match: string; unless: string | null }> | null = null,
+  /** Codex #4069 pass 26: match the maker as a WHOLE WORD in SQL ("sew" admits
+   *  "SEW-EURODRIVE GmbH", never "Sewon"), so every AND/OR/weak-result step
+   *  sees only the bound vendor group — a post-filter cannot restore an OR
+   *  pass a wrong maker's strong AND hit suppressed. */
+  makerWholeWord = false,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
-  if (manufacturer) {
+  if (manufacturer && makerWholeWord) {
+    const literal = manufacturer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    params.push(`(^|[^[:alnum:]])${literal}($|[^[:alnum:]])`);
+    mfrClause = `AND manufacturer ~* $${params.length}`;
+  } else if (manufacturer) {
     // Codex #4069: a stored manufacturer is DATA, never a LIKE pattern —
     // escape %, _ and \\ (Postgres LIKE's default escape) so "%" cannot
     // widen the same-manufacturer boundary to every vendor.
