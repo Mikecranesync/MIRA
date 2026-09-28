@@ -12,8 +12,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 vi.mock("@/lib/uploads", () => ({
-  createUpload: vi.fn(async () => ({ id: "up-1", tenantId: "t-1" })),
+  createUpload: vi.fn(async () => ({ id: "up-1", tenantId: "t-1", attemptId: "att-1" })),
   updateUploadStatus: vi.fn(async () => undefined),
+  // Migration 099: the door's status writes are conditional on its attempt.
+  updateUploadStatusForAttempt: vi.fn(async () => undefined),
+  UploadAttemptRevokedError: class UploadAttemptRevokedError extends Error {},
   findDuplicateUpload: vi.fn(async () => null),
 }));
 
@@ -47,7 +50,7 @@ vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
 });
 
 import { handleLocalUpload } from "../local-upload";
-import { updateUploadStatus } from "@/lib/uploads";
+import { updateUploadStatusForAttempt } from "@/lib/uploads";
 import { forwardToIngest } from "@/lib/mira-ingest-client";
 
 function pdfUploadReq(): Request {
@@ -67,9 +70,10 @@ describe("blind door: zero extractable text", () => {
     expect(res.status).toBe(201); // upload accepted; ingest is async
 
     await vi.waitFor(() => {
-      expect(updateUploadStatus).toHaveBeenCalledWith(
+      expect(updateUploadStatusForAttempt).toHaveBeenCalledWith(
         "up-1",
         "t-1",
+        "att-1",
         "failed",
         expect.stringMatching(/no extractable text/i),
       );

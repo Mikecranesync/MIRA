@@ -18,7 +18,13 @@ import {
   forwardToPhotoIngest,
 } from "@/lib/mira-ingest-client";
 import { makeUploadLogger } from "@/lib/upload-log";
-import { setUploadContentSha256, updateUploadStatus, type Upload, type UploadKind } from "@/lib/uploads";
+import {
+  setUploadContentSha256,
+  updateUploadStatusForAttempt,
+  UploadAttemptRevokedError,
+  type Upload,
+  type UploadKind,
+} from "@/lib/uploads";
 import { isMimeCompatible, sniffMime } from "@/lib/sniff-mime";
 import { runWorkflow } from "@/lib/workflow";
 import { createHash } from "node:crypto";
@@ -37,6 +43,10 @@ export interface PipelineInput {
   mimeType: string;
   kind: UploadKind;
   assetTag: string | null;
+  /** The import attempt this pipeline runs for (migration 099). Every status
+   *  and chunk write is conditional on it, so a cancelled, deleted, or
+   *  superseded attempt stops instead of writing. */
+  attemptId: string | null;
 }
 
 /**
@@ -58,12 +68,19 @@ export function pipelineInputFromRow(row: Upload, requestId: string): PipelineIn
     mimeType: row.mimeType ?? "application/pdf",
     kind: row.kind,
     assetTag: row.assetTag,
+    attemptId: row.attemptId,
   };
 }
 
 export async function runIngestPipeline(input: PipelineInput): Promise<void> {
-  const { uploadId, tenantId, requestId, provider, kind, filename, mimeType, assetTag } = input;
+  const { uploadId, tenantId, requestId, provider, kind, filename, mimeType, assetTag, attemptId } = input;
   const log = makeUploadLogger({ requestId, uploadId, tenantId });
+  // Every status write is conditional on THIS attempt (throws when revoked).
+  const setStatus = (
+    status: Parameters<typeof updateUploadStatusForAttempt>[3],
+    detail?: string | null,
+    extras?: Parameters<typeof updateUploadStatusForAttempt>[5],
+  ) => updateUploadStatusForAttempt(uploadId, tenantId, attemptId, status, detail, extras);
 
   // Wrap the existing pipeline in a durable run record (migration 044) without
   // changing any of its hub_uploads transitions or its fire-and-forget contract.
@@ -84,7 +101,7 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
           const fetched = await run.step(
             "fetch",
             async () => {
-              await updateUploadStatus(uploadId, tenantId, "fetching");
+              await setStatus("fetching");
               log.log("fetching", { provider });
               if (provider === "google") {
                 if (!input.externalFileId) throw new Error("google upload missing externalFileId");
@@ -101,7 +118,7 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
           await run.step(
             "parse_store",
             async () => {
-              await updateUploadStatus(uploadId, tenantId, "parsing");
+              await setStatus("parsing");
               const mime = mimeType ?? fetched.contentType;
               log.log("parsing", { mimeType: mime });
 
@@ -110,7 +127,7 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
                   assetTag,
                   requestId,
                 });
-                await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
+                await setStatus("parsed", result.description ?? null, {
                   kbFileId: result.photoId != null ? String(result.photoId) : undefined,
                 });
                 log.log("parsed", { photoId: result.photoId, kind });
@@ -131,18 +148,18 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
                 }
                 const contentSha256 = createHash("sha256").update(buffer).digest("hex");
                 // Persist the hash so a later identical upload is recognised (F4).
-                await setUploadContentSha256(uploadId, tenantId, contentSha256);
+                await setUploadContentSha256(uploadId, tenantId, contentSha256, attemptId);
                 // No legacy fallback (F2): the Open WebUI store is not citable, so
                 // "parsed" there would be a false success that blocks re-pick and
                 // retry. A writer failure fails the upload; the retry endpoint and
                 // a re-pick (#4085) can then run the v2 write again.
-                await writeDocumentToInbox({ tenantId, uploadId, filename, mime, buffer, contentSha256, log });
+                await writeDocumentToInbox({ tenantId, uploadId, attemptId, filename, mime, buffer, contentSha256, log });
                 run.setOutput({ kind, route: "v2" });
                 return { kbFileId: null, kbChunkCount: null };
               }
 
               const result = await forwardToIngest(fetched.stream, filename, mime, { requestId });
-              await updateUploadStatus(uploadId, tenantId, "parsed", null, {
+              await setStatus("parsed", null, {
                 kbFileId: result.fileId ?? undefined,
                 kbChunkCount: result.chunkCount ?? undefined,
               });
@@ -157,10 +174,17 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
             { artifact: (r) => r },
           );
         } catch (err) {
+          // A revoked attempt (cancel / delete / newer requeue) stops silently:
+          // the row belongs to someone else now, so it must not be touched.
+          if (err instanceof UploadAttemptRevokedError) {
+            log.log("attempt_revoked", { attemptId });
+            throw err;
+          }
           // Preserve the original failure handling (hub_uploads → failed), then
-          // re-throw so the run record is marked failed too.
+          // re-throw so the run record is marked failed too. Conditional on the
+          // attempt as well: a superseded pipeline cannot fail the newer one.
           log.error("failed", err);
-          await updateUploadStatus(uploadId, tenantId, "failed", (err as Error).message);
+          await setStatus("failed", (err as Error).message).catch(() => undefined);
           throw err;
         }
       },

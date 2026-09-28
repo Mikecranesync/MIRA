@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   createUpload,
   findDuplicateUpload,
-  updateUploadStatus,
+  updateUploadStatusForAttempt,
+  UploadAttemptRevokedError,
   type Upload,
   type UploadKind,
 } from "@/lib/uploads";
@@ -26,7 +27,6 @@ import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
 import {
   writePdfChunksForNode,
   writeTextChunksForNode,
-  NoExtractableTextError,
 } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
@@ -170,6 +170,7 @@ export async function handleLocalUpload(
     assetTag,
     requestId,
     contentSha256,
+    attemptId: upload.attemptId,
   });
 
   return NextResponse.json(upload, {
@@ -188,6 +189,8 @@ interface LocalIngestParams {
   assetTag: string | null;
   requestId: string;
   contentSha256?: string | null;
+  /** The import attempt (migration 099); every write is conditional on it. */
+  attemptId: string | null;
 }
 
 /**
@@ -204,6 +207,7 @@ interface LocalIngestParams {
 export async function writeDocumentToInbox(p: {
   tenantId: string;
   uploadId: string;
+  attemptId: string | null;
   filename: string;
   mime: string;
   buffer: Uint8Array;
@@ -221,7 +225,7 @@ export async function writeDocumentToInbox(p: {
     try {
       const dup = await findDuplicateUpload(p.tenantId, p.contentSha256, inbox.nodeId);
       if (dup) {
-        await updateUploadStatus(p.uploadId, p.tenantId, "parsed", `duplicate of ${dup.id}`, {
+        await updateUploadStatusForAttempt(p.uploadId, p.tenantId, p.attemptId, "parsed", `duplicate of ${dup.id}`, {
           kbChunkCount: dup.kbChunkCount ?? undefined,
           kgEntityId: inbox.nodeId,
           ingestRoute: "v2",
@@ -241,11 +245,12 @@ export async function writeDocumentToInbox(p: {
     unsPath: inbox.unsPath,
     filename: p.filename,
     buffer: p.buffer,
+    attemptId: p.attemptId,
   };
   const chunkCount = isTextMime(p.mime)
     ? await writeTextChunksForNode(nodeArgs)
     : await writePdfChunksForNode(nodeArgs);
-  await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+  await updateUploadStatusForAttempt(p.uploadId, p.tenantId, p.attemptId, "parsed", null, {
     kbChunkCount: chunkCount,
     kgEntityId: inbox.nodeId,
     ingestRoute: "v2",
@@ -293,6 +298,7 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
       await writeDocumentToInbox({
         tenantId: p.tenantId,
         uploadId: p.uploadId,
+        attemptId: p.attemptId,
         filename: p.filename,
         mime: p.mime,
         buffer: p.buffer,
@@ -302,25 +308,31 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
       await deleteUploadBuffer(p.uploadId);
       return;
     } catch (err) {
+      if (err instanceof UploadAttemptRevokedError) {
+        // Cancelled, deleted, or superseded: the row is not ours any more.
+        log.log("attempt_revoked", { attemptId: p.attemptId });
+        return;
+      }
       // ARPK 1c: zero extractable text is a property of the FILE — no other
       // ingest path can fix it, so fail the upload honestly with the cause
       // instead of falling through (the legacy OW forwarder is sunset anyway,
       // so the fall-through would end in a bogus success or a network error).
-      if (err instanceof NoExtractableTextError) {
-        log.error("failed", err);
-        await updateUploadStatus(
-          p.uploadId,
-          p.tenantId,
-          "failed",
-          err.message,
-        ).catch((statusErr: unknown) =>
-          log.error("status_update_failed", statusErr),
-        );
-        return; // buffer kept for retry-after-OCR-lands; no legacy fallback
-      }
-      // v2 inbox ingest failed — fall back to the legacy OW-KB path below so the
-      // door still works (the v2 core is the same proven node-attach path).
-      log.error("v2_inbox_fallback", err);
+      // Any failure fails the upload, honestly and retryably (buffer kept).
+      // No fallback to the legacy Open WebUI store for a v2 document: it is not
+      // citable, so "parsed" there was a false success that blocked a retry
+      // (same finding as the cloud path, #4088 review). ARPK 1c's no-text case
+      // is one instance of this: a property of the FILE, surfaced as-is.
+      log.error("failed", err);
+      await updateUploadStatusForAttempt(
+        p.uploadId,
+        p.tenantId,
+        p.attemptId,
+        "failed",
+        (err as Error).message,
+      ).catch((statusErr: unknown) =>
+        log.error("status_update_failed", statusErr),
+      );
+      return; // buffer kept for /api/uploads/:id/retry
     }
   }
 
@@ -337,9 +349,10 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
         assetTag: p.assetTag,
         requestId: p.requestId,
       });
-      await updateUploadStatus(
+      await updateUploadStatusForAttempt(
         p.uploadId,
         p.tenantId,
+        p.attemptId,
         "parsed",
         result.description ?? null,
         {
@@ -351,7 +364,7 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
       const result = await forwardToIngest(stream(), p.filename, p.mime, {
         requestId: p.requestId,
       });
-      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+      await updateUploadStatusForAttempt(p.uploadId, p.tenantId, p.attemptId, "parsed", null, {
         kbFileId: result.fileId ?? undefined,
         kbChunkCount: result.chunkCount ?? undefined,
       });
@@ -364,10 +377,15 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
     // Success — reclaim the persisted buffer.
     await deleteUploadBuffer(p.uploadId);
   } catch (err) {
+    if (err instanceof UploadAttemptRevokedError) {
+      log.log("attempt_revoked", { attemptId: p.attemptId });
+      return;
+    }
     log.error("failed", err);
-    await updateUploadStatus(
+    await updateUploadStatusForAttempt(
       p.uploadId,
       p.tenantId,
+      p.attemptId,
       "failed",
       (err as Error).message,
     ).catch((statusErr: unknown) =>
@@ -388,7 +406,9 @@ export async function retryLocalUpload(
 ): Promise<boolean> {
   const buffer = await readUploadBuffer(row.id);
   if (!buffer) return false;
-  await updateUploadStatus(row.id, row.tenantId, "parsing", "retry");
+  // `row` is the CLAIMED row (the retry route's atomic failed → queued claim
+  // minted its attempt), so this write and every later one are that attempt's.
+  await updateUploadStatusForAttempt(row.id, row.tenantId, row.attemptId, "parsing", "retry");
   void runLocalIngest({
     uploadId: row.id,
     tenantId: row.tenantId,
@@ -398,6 +418,7 @@ export async function retryLocalUpload(
     kind: row.kind,
     assetTag: row.assetTag,
     requestId,
+    attemptId: row.attemptId,
   });
   return true;
 }

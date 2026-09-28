@@ -23,6 +23,8 @@ vi.mock("@/lib/fetch-adapters", () => ({
 vi.mock("@/lib/uploads", () => ({
   createUpload: vi.fn(),
   updateUploadStatus: vi.fn(async () => undefined),
+  updateUploadStatusForAttempt: vi.fn(async () => undefined),
+  UploadAttemptRevokedError: class UploadAttemptRevokedError extends Error {},
   setUploadContentSha256: vi.fn(async () => undefined),
   findDuplicateUpload: vi.fn(async () => null),
 }));
@@ -44,7 +46,12 @@ vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
 
 import { runIngestPipeline, readAllCapped, type PipelineInput } from "@/lib/upload-pipeline";
 import { streamFromSignedUrl } from "@/lib/fetch-adapters";
-import { findDuplicateUpload, setUploadContentSha256, updateUploadStatus } from "@/lib/uploads";
+import {
+  findDuplicateUpload,
+  setUploadContentSha256,
+  updateUploadStatusForAttempt,
+  UploadAttemptRevokedError,
+} from "@/lib/uploads";
 import { createHash } from "node:crypto";
 import { NoExtractableTextError, writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
 import { forwardToIngest, forwardToPhotoIngest } from "@/lib/mira-ingest-client";
@@ -68,13 +75,14 @@ const input = (over: Partial<PipelineInput> = {}): PipelineInput => ({
   mimeType: "application/pdf",
   kind: "document",
   assetTag: null,
+  attemptId: "att-1",
   ...over,
 });
 
-const statuses = () => vi.mocked(updateUploadStatus).mock.calls.map((c) => [c[2], c[4]]);
+const statuses = () => vi.mocked(updateUploadStatusForAttempt).mock.calls.map((c) => [c[3], c[5]]);
 
 beforeEach(() => {
-  vi.mocked(updateUploadStatus).mockClear();
+  vi.mocked(updateUploadStatusForAttempt).mockReset().mockResolvedValue(undefined);
   vi.mocked(setUploadContentSha256).mockClear();
   vi.mocked(findDuplicateUpload).mockClear().mockResolvedValue(null);
   vi.mocked(forwardToIngest).mockClear();
@@ -114,15 +122,32 @@ describe("runIngestPipeline — cloud documents land citable (#1806)", () => {
   it("F3: declared text but PDF bytes is rejected before any chunk is written", async () => {
     await runIngestPipeline(input({ mimeType: "text/plain", filename: "notes.txt" }));
     expect(writePdfChunksForNode).not.toHaveBeenCalled();
-    const failed = vi.mocked(updateUploadStatus).mock.calls.find((c) => c[2] === "failed");
-    expect(String(failed?.[3])).toMatch(/does not match its declared type/);
+    const failed = vi.mocked(updateUploadStatusForAttempt).mock.calls.find((c) => c[3] === "failed");
+    expect(String(failed?.[4])).toMatch(/does not match its declared type/);
   });
 
   it("F4: the fetched content hash is saved on the row and used for the duplicate lookup", async () => {
     const sha = createHash("sha256").update("%PDF-1.4 cloud manual").digest("hex");
     await runIngestPipeline(input());
-    expect(setUploadContentSha256).toHaveBeenCalledWith("up-1", input().tenantId, sha);
+    expect(setUploadContentSha256).toHaveBeenCalledWith("up-1", input().tenantId, sha, "att-1");
     expect(findDuplicateUpload).toHaveBeenCalledWith(input().tenantId, sha, "inbox-1");
+  });
+
+  it("099: every status write carries the pipeline's attempt", async () => {
+    await runIngestPipeline(input());
+    const attempts = vi.mocked(updateUploadStatusForAttempt).mock.calls.map((c) => c[2]);
+    expect(attempts.length).toBeGreaterThan(0);
+    expect(new Set(attempts)).toEqual(new Set(["att-1"]));
+  });
+
+  it("099: a revoked attempt (cancel/delete/requeue) stops the pipeline — no forward, no chunks, no 'failed'", async () => {
+    vi.mocked(updateUploadStatusForAttempt).mockImplementation(async (_id, _t, _a, status) => {
+      if (status === "parsing") throw new UploadAttemptRevokedError("up-1");
+    });
+    await runIngestPipeline(input());
+    expect(writePdfChunksForNode).not.toHaveBeenCalled();
+    expect(forwardToIngest).not.toHaveBeenCalled();
+    expect(statuses().some(([s]) => s === "failed")).toBe(false);
   });
 
   it("photos keep the photo door", async () => {

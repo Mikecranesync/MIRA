@@ -529,10 +529,16 @@ export async function attachFileToTargetsTx(
   opts: { createdBy?: string | null } = {},
 ): Promise<{ ok: true; links: AttachOutcome[] } | { ok: false; error: "file_not_found" }> {
   if (!UUID_RE.test(fileId)) return { ok: false, error: "file_not_found" };
+  // FOR SHARE: an upload delete clears this file's upload_id and removes its
+  // notebook sources under FOR UPDATE on the same row (deleteUploadAndKnowledge).
+  // Holding the row for this transaction means the source row written below
+  // uses an upload_id that cannot be deleted underneath it. Covers both callers:
+  // attachFileToTargets and the manual-acquisition worker's Tx call.
   const f = await c.query<{ id: string; upload_id: string | null }>(
     `SELECT id::text AS id, upload_id::text AS upload_id
        FROM namespace_direct_uploads
-      WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      WHERE tenant_id = $1::uuid AND id = $2::uuid
+      FOR SHARE`,
     [tenantId, fileId],
   );
   if (f.rows.length === 0) return { ok: false, error: "file_not_found" };
@@ -602,10 +608,12 @@ export async function relocateFile(
   }
   try {
     return await withTenantContext(tenantId, async (c) => {
+      // FOR SHARE for the same reason as attachFileToTargets (upload delete).
       const f = await c.query<{ id: string; upload_id: string | null }>(
         `SELECT id::text AS id, upload_id::text AS upload_id
            FROM namespace_direct_uploads
-          WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+          FOR SHARE`,
         [tenantId, fileId],
       );
       if (f.rows.length === 0) {

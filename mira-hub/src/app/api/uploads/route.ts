@@ -139,6 +139,7 @@ export async function POST(req: NextRequest) {
         mimeType: claimed.mimeType ?? mime,
         kind: claimed.kind,
         assetTag: claimed.assetTag,
+        attemptId: claimed.attemptId,
       });
       return NextResponse.json(claimed, { status: 202, headers: { "X-Request-Id": requestId } });
     } else if (existing) {
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest) {
     mimeType: mime,
     kind,
     assetTag,
+    attemptId: upload.attemptId,
   });
 
   return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
