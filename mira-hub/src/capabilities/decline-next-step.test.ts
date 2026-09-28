@@ -17,6 +17,7 @@ describe("declineKind", () => {
     "the actuator firmware got corrupted during an update, how do I recover it",
     "how do I reflash the firmware after it bricked",
     "firmware recovery on the AC 01.2",
+    "My actuator firmware is corrupted. How do I recover it?",
   ])("service procedure: %s", (m) => expect(declineKind(m)).toBe("service_procedure"));
 
   it.each([
@@ -28,6 +29,8 @@ describe("declineKind", () => {
     "pin 3 of the encoder cable reads 0 V, what do I check",
     "Which PIN on my M12 connector carries 24 V?",
     "what does PIN 4 on the terminal block do",
+    "What is PIN 4 on my PLC?",
+    "what are PINs 3 and 5 for",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 

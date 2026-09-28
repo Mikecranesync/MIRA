@@ -28,12 +28,22 @@ const PIN_ACRONYM = /\bPINs?\b/;
 const HARDWARE_PIN_CONTEXT =
   /\b(?:connectors?|terminals?|plugs?|sockets?|headers?|pinouts?|harness(?:es)?|cables?|wires?|wiring|carr(?:y|ies)|volts?|vdc|vac|signal|m8|m12|db-?9|db-?25|rj-?45|encoder)\b|\d+\s*v\b/i;
 
+/** "PIN 4", "PINs 3 and 5", "PIN #2" — a numbered pin is hardware, whatever
+ *  else the message says (#4094 Codex round 3 F1). */
+const NUMBERED_PIN = /\bPINs?\s*(?:#|no\.?\s*)?\d/i;
+
+/** Firmware + a recovery verb within one short message span. The window may
+ *  cross ONE sentence boundary ("My firmware is corrupted. How do I recover
+ *  it?" — #4094 Codex round 3 F2) but stays short so an unrelated later
+ *  sentence cannot combine with an earlier firmware mention. */
 const FIRMWARE_SERVICE =
-  /\bfirmware\b[^.?!\n]{0,40}\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b|\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b[^.?!\n]{0,40}\bfirmware\b/i;
+  /\bfirmware\b[^\n]{0,60}?\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b|\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b[^\n]{0,60}?\bfirmware\b/i;
 
 export function declineKind(message: string): DeclineKind | null {
   if (CREDENTIAL.test(message)) return "credential";
-  if (PIN_ACRONYM.test(message) && !HARDWARE_PIN_CONTEXT.test(message)) return "credential";
+  if (PIN_ACRONYM.test(message) && !NUMBERED_PIN.test(message) && !HARDWARE_PIN_CONTEXT.test(message)) {
+    return "credential";
+  }
   if (FIRMWARE_SERVICE.test(message)) return "service_procedure";
   return null;
 }
