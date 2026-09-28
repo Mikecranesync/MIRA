@@ -104,3 +104,48 @@ def test_gpt55_is_priced_not_defaulted():
     """An unlisted model is priced at the $15/$60 ceiling; gpt-5.5 must carry its
     real price ($5/M in, $30/M out — burn study 2026-07-17)."""
     assert arena.estimate_cost_usd("gpt-5.5", 1_000_000, 1_000_000) == 35.0
+
+
+# ── case set: separate suite, PRD family mix, every case accounted for ────────
+
+from technician_arena import cases as ta_cases  # noqa: E402
+
+
+def test_pilot_is_twelve_cases_in_the_prd_family_mix():
+    pilot = ta_cases.load()
+    assert ta_cases.validate(pilot) == []
+    assert len(pilot) == 12
+    counts = {f: sum(1 for c in pilot if c["family"] == f) for f in ta_cases.FAMILIES}
+    assert counts == ta_cases.FAMILIES
+
+
+def test_pilot_never_leaks_into_the_gi1_corpus():
+    """Suite separation both ways: GI-1 still loads exactly its own corpus."""
+    gi1_ids = {c["id"] for c in arena.load_cases()}
+    assert not gi1_ids & {c["id"] for c in ta_cases.load()}
+    assert len(gi1_ids) == 25
+
+
+def test_validator_rejects_an_unknown_family():
+    bad = copy.deepcopy(ta_cases.load()[0])
+    bad["family"] = "vibes"
+    assert any("family" in e for e in ta_cases.validate([bad]))
+
+
+def test_seed_cases_are_marked_as_keyed_after_outputs_were_seen():
+    """PRD §4: keys are written before outputs are seen. The Answer Radar seeds'
+    outputs were seen first, so they must say so and stay diagnostic-only."""
+    seeds = [c for c in ta_cases.load() if c.get("answer_radar_seed")]
+    assert seeds and all(c["key_written_after_outputs_seen"] for c in seeds)
+
+
+def test_missing_fixture_is_reported_not_dropped(tmp_path):
+    case = {"id": "ta-photo", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
+    assert ta_cases.run_status(case, "raw-frontier", fixtures_root=tmp_path) == "not_run:fixture_missing"
+
+
+def test_mira_arm_without_an_image_path_is_reported_not_scored(tmp_path):
+    (tmp_path / "a.jpg").write_bytes(b"x")
+    case = {"id": "ta-photo", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
+    assert ta_cases.run_status(case, "mira", fixtures_root=tmp_path) == "not_run:arm_cannot_see_image"
+    assert ta_cases.run_status(case, "raw-frontier", fixtures_root=tmp_path) == "runnable"
