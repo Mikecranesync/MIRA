@@ -843,19 +843,34 @@ def _manifest() -> dict:
     return json.loads(_MANIFEST.read_text(encoding="utf-8"))
 
 
+def _sha(rel: str) -> str:
+    return hashlib.sha256((_REPO / rel).read_bytes()).hexdigest()
+
+
 def _authorization_violations(m: dict) -> list[str]:
-    """Why this manifest may NOT claim paid execution is authorized (empty = may)."""
+    """Why each authorization this manifest claims is NOT backed by approvals (empty = backed)."""
     bad: list[str] = []
     d = m["doctrine"]
-    live_doc = hashlib.sha256((_REPO / d["path"]).read_bytes()).hexdigest()
-    if d["approval"]["status"] not in ("approved", "approved_with_changes"):
-        bad.append("doctrine not approved")
-    if d["approval"].get("approved_sha256") != live_doc:
-        bad.append("doctrine approval is not for the live file")
-    live = {c["id"]: c for c in ta_cases_mod.load()}
-    for c in m["answer_keys"]["technician_arena"]["cases"]:
-        if keys.key_status(live[c["id"]]) != "signed":
-            bad.append(f"key {c['id']} not signed")
+    doctrine_ok = d["approval"]["status"] in ("approved", "approved_with_changes") and d[
+        "approval"
+    ].get("approved_sha256") == _sha(d["path"])
+    ta = m["answer_keys"]["technician_arena"]
+    gi1 = m["answer_keys"]["gi1_corpus"]
+    lanes = m["paid_execution"]
+    ta_claimed = lanes["technician_arena"].get("authorized") or m.get("paid_benchmark_authorized")
+    if (ta_claimed or lanes["gi1_arena"].get("authorized")) and not doctrine_ok:
+        bad.append("doctrine not approved at the live sha256")
+    if ta_claimed:
+        scope = ta.get("paid_scope_case_ids") or []
+        if not scope:
+            bad.append("technician arena: no paid scope chosen")
+        live = {c["id"]: c for c in ta_cases_mod.load()}
+        for cid in scope:
+            if cid not in live or keys.key_status(live[cid]) != "signed":
+                bad.append(f"key {cid} not signed")
+    if lanes["gi1_arena"].get("authorized"):
+        if gi1["approval"]["status"] != "approved" or gi1["sha256"] != _sha(gi1["path"]):
+            bad.append("gi1 corpus keys not approved at the live sha256")
     return bad
 
 
@@ -889,22 +904,60 @@ def test_manifest_key_hashes_survive_signing():
     assert entry["key_sha256"] == keys.key_sha256(signed)
 
 
+def test_manifest_gi1_hash_and_pointer_line_match_live_files():
+    m = _manifest()
+    gi1 = m["answer_keys"]["gi1_corpus"]
+    assert gi1["sha256"] == _sha(gi1["path"])
+    ptr = m["doctrine"]["pointer"]
+    lines = [
+        ln
+        for ln in (_REPO / ptr["path"]).read_text(encoding="utf-8").splitlines()
+        if ln.startswith(ptr["line_prefix"])
+    ]
+    assert len(lines) == 1
+    assert hashlib.sha256(lines[0].encode()).hexdigest() == ptr["line_sha256"]
+
+
 def test_committed_manifest_never_claims_unapproved_paid_authorization():
     m = _manifest()
-    if _claims_authorized(m):
-        assert _authorization_violations(m) == []
-    else:
+    assert _authorization_violations(m) == []
+    if not _claims_authorized(m):
         assert m["paid_benchmark_authorized"] is False
 
 
-def test_authorization_claim_is_rejected_while_gates_are_pending():
-    # Control for the guard above: flipping only the flag must be caught.
+def test_authorization_claims_are_rejected_while_gates_are_pending():
+    # Controls for the guard above: each forged flag must be caught.
     m = _manifest()
     assert m["doctrine"]["approval"]["status"] == "pending"  # precondition at review
-    forged = copy.deepcopy(m)
-    forged["paid_benchmark_authorized"] = True
-    assert _claims_authorized(forged)
-    assert "doctrine not approved" in _authorization_violations(forged)
-    lane_only = copy.deepcopy(m)
-    lane_only["paid_execution"]["gi1_arena"]["authorized"] = True
-    assert _claims_authorized(lane_only)
+    for lane in (None, "technician_arena", "gi1_arena"):
+        forged = copy.deepcopy(m)
+        if lane:
+            forged["paid_execution"][lane]["authorized"] = True
+        else:
+            forged["paid_benchmark_authorized"] = True
+        assert _claims_authorized(forged)
+        assert "doctrine not approved at the live sha256" in _authorization_violations(forged)
+
+
+def test_lane_gates_hold_even_with_the_doctrine_approved():
+    # With the doctrine approved, each lane still needs its own key approval.
+    m = _manifest()
+    m["doctrine"]["approval"].update(status="approved", approved_sha256=_sha(m["doctrine"]["path"]))
+    gi1 = copy.deepcopy(m)
+    gi1["paid_execution"]["gi1_arena"]["authorized"] = True
+    assert "gi1 corpus keys not approved at the live sha256" in _authorization_violations(gi1)
+    ta = copy.deepcopy(m)
+    ta["paid_execution"]["technician_arena"]["authorized"] = True
+    assert "technician arena: no paid scope chosen" in _authorization_violations(ta)
+    ta["answer_keys"]["technician_arena"]["paid_scope_case_ids"] = ["ta-general-coast-vs-ramp"]
+    assert "key ta-general-coast-vs-ramp not signed" in _authorization_violations(ta)
+    # accept-control: the same claim is backed once that key is really signed
+    signed = keys.sign(
+        next(c for c in ta_cases_mod.load() if c["id"] == "ta-general-coast-vs-ramp"),
+        signer="Test",
+        date="2026-01-01",
+    )
+    import unittest.mock as um
+
+    with um.patch.object(ta_cases_mod, "load", return_value=[signed]):
+        assert _authorization_violations(ta) == []

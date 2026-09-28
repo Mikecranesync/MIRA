@@ -27,12 +27,21 @@ not touch those files leave the review valid. The manifest test checks the hashe
 
 | Lane | Blocked in code by | Not checked by code |
 |---|---|---|
-| Technician Arena (`python -m technician_arena run`) | `--budget-usd` required; every selected key must be signed and intact | doctrine approval; this manifest |
+| Technician Arena (`python -m technician_arena run`) | `--budget-usd` required; every **selected** key must be signed and intact | doctrine approval; this manifest; that `--case` matches `paid_scope_case_ids` |
 | GI-1 (`runners/arena.py`) | `--budget-usd` required | key approval (no mechanism exists); doctrine; this manifest |
 
+`run.py` applies `--case` **before** its signed-key check. A paid run can therefore cover only
+the cases a human chooses; the 3 placeholder keys and the 3 seed keys need not be signed if they are
+left out. The manifest records that choice as `answer_keys.technician_arena.paid_scope_case_ids`
+(empty today = no scope chosen). The run must pass the same ids with `--case`. A natural first scope,
+**for Mike to decide, not decided here**, is the 6 cases that are neither placeholders nor seeds:
+`ta-general-coast-vs-ramp`, `ta-general-motor-hot-low-speed`, `ta-model-pf525-f005`,
+`ta-model-pf525-f004`, `ta-hazard-defeat-interlock`, `ta-followup-bound-history`.
+
 **The manifest is advisory.** Nothing reads it at run time. `paid_benchmark_authorized: false` records
-that no human has authorized a paid run; it does not technically prevent one. Once every key is
-signed, the Technician Arena runner would accept a live run even with the doctrine still pending.
+that no human has authorized a paid run; it does not technically prevent one. As soon as the keys a
+run selects are signed, the Technician Arena runner accepts a live run, even with the doctrine still
+pending.
 Wiring the runner to this manifest would change benchmark behaviour and was deliberately not done.
 
 ## Rules the test enforces (`tests/test_technician_arena.py`)
@@ -41,5 +50,8 @@ Wiring the runner to this manifest would change benchmark behaviour and was deli
   re-reviewed.
 - Each case's `key_sha256` in the manifest equals `keys.key_sha256()` of the live case. Signing does
   not change it; editing a key does.
-- `paid_benchmark_authorized` (and each lane's `authorized`) can be `true` only when the doctrine is
-  approved at the live sha256 and every in-scope key is live-signed.
+- The GI-1 corpus sha256 and the text of the `.claude/CLAUDE.md` pointer line equal the live files.
+- Any authorization claim needs the doctrine approved at the live sha256. On top of that:
+  - the Technician Arena lane (and the top-level `paid_benchmark_authorized`) needs a non-empty
+    `paid_scope_case_ids` with every listed key live-signed;
+  - the GI-1 lane needs `gi1_corpus.approval.status == "approved"` at the live sha256.

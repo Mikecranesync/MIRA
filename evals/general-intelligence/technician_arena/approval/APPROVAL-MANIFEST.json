@@ -1,6 +1,6 @@
 {
   "schema": "technician-arena-approval-manifest/1",
-  "_note": "Advisory record for the two human gates on PR #3487. Nothing in code reads this file; see approval/README.md. Answer-key approval is performed ONLY by `python -m technician_arena sign` (keys.py); this manifest mirrors it. paid_*_authorized may become true only after explicit human approval of BOTH the doctrine and every key in scope.",
+  "_note": "Advisory record for the two human gates on PR #3487. Nothing in code reads this file; see approval/README.md. Answer-key approval is performed ONLY by `python -m technician_arena sign` (keys.py); this manifest mirrors it. paid_*_authorized may become true only after explicit human approval of BOTH the doctrine and every key in that lane's scope.",
   "repository": "Mikecranesync/MIRA",
   "pr": 3487,
   "reviewed_sha": "cdf7ae8567fe7a3940e473007017fafdf17035db",
@@ -10,7 +10,12 @@
   "doctrine": {
     "path": ".claude/rules/general-intelligence-preservation.md",
     "sha256": "689ed97e0dda1054189efbacb20d52751daa3dc6c8ec4f00cf6084b8fb3d9365",
-    "pointer": ".claude/CLAUDE.md:180",
+    "pointer": {
+      "path": ".claude/CLAUDE.md",
+      "line_prefix": "- **General Intelligence Preservation**",
+      "line_sha256": "3e779ac435749859e8f8270689609e841213a3dd4f44545d3f304dd21accb004",
+      "line_at_review": 180
+    },
     "review_packet": "evals/general-intelligence/technician_arena/approval/DOCTRINE-REVIEW.md",
     "approval": {
       "status": "pending",
@@ -124,13 +129,19 @@
           "signable_now": true,
           "diagnostic_only": false
         }
-      ]
+      ],
+      "paid_scope_case_ids": [],
+      "paid_scope_note": "Empty = no scope chosen. The human chooses which cases a paid run covers; each must be signed. The run must pass the same ids with --case (run.py filters by --case BEFORE its signed-key check, so placeholder and seed cases need not be signed if excluded). Code does not check that --case matches this list."
     },
     "gi1_corpus": {
       "path": "evals/general-intelligence/cases/gi1-corpus.json",
       "sha256": "e94f7160ed1718c681ef9a21a69c3ac34dc1f86303b7149d0da8202a66f80628",
-      "approval_status": "not_reviewed",
-      "note": "25 cases; critical_facts/forbidden_phrases decide deterministic pass/fail. No signing mechanism exists. Not covered by this review."
+      "note": "25 cases; critical_facts/forbidden_phrases decide deterministic pass/fail. No signing mechanism exists. Not covered by this review.",
+      "approval": {
+        "status": "not_reviewed",
+        "reviewer": null,
+        "date": null
+      }
     }
   },
   "outstanding_changes": [
@@ -144,11 +155,13 @@
   "paid_execution": {
     "technician_arena": {
       "authorized": false,
-      "code_enforcement": "run.py refuses any non-dry run unless --budget-usd is set and every selected case's key is signed and intact (keys.unscorable). It does NOT check doctrine approval or this manifest."
+      "code_enforcement": "run.py refuses any non-dry run unless --budget-usd is set and every selected case's key is signed and intact (keys.unscorable). It does NOT check doctrine approval or this manifest.",
+      "requires": "doctrine approved at live sha256; paid_scope_case_ids non-empty; every id in it live-signed"
     },
     "gi1_arena": {
       "authorized": false,
-      "code_enforcement": "none beyond --budget-usd and an API key; runners/arena.py does not check key approval or this manifest. Blocked procedurally only."
+      "code_enforcement": "none beyond --budget-usd and an API key; runners/arena.py does not check key approval or this manifest. Blocked procedurally only.",
+      "requires": "doctrine approved at live sha256; gi1_corpus.approval.status == approved at live sha256"
     }
   },
   "paid_benchmark_authorized": false
