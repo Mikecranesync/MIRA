@@ -117,17 +117,21 @@ class OpenAIDirect:
                 f"ambiguous transport failure ({type(e).__name__}); charged the worst case"
             ) from e
         resp.raise_for_status()
-        body = resp.json()
-        usage = body.get("usage")
-        if (
-            not isinstance(usage, dict)
-            or "prompt_tokens" not in usage
-            or "completion_tokens" not in usage
-        ):
-            # Unpriceable spend fails closed: charge the reserved worst case and stop.
+        try:
+            body = resp.json()
+            usage = body["usage"]
+            tokens_in = int(usage["prompt_tokens"])
+            tokens_out = int(usage["completion_tokens"])
+            content = body["choices"][0]["message"]["content"] or ""
+        except (ValueError, KeyError, IndexError, TypeError) as e:
+            # A 200 we cannot parse (malformed JSON, missing or non-numeric
+            # usage, missing choices) may still have been billed: charge the
+            # reserved worst case and stop (#4092 Codex post-cap F3; r1 F3).
             self.tokens_in += input_token_upper_bound(system, user)
             self.tokens_out += max_completion_tokens
-            raise BudgetExceeded("response carried no usage; charged the worst case and stopping")
-        self.tokens_in += int(usage["prompt_tokens"])
-        self.tokens_out += int(usage["completion_tokens"])
-        return body["choices"][0]["message"]["content"] or ""
+            raise BudgetExceeded(
+                f"unparseable or unpriced response ({type(e).__name__}); charged the worst case"
+            ) from e
+        self.tokens_in += tokens_in
+        self.tokens_out += tokens_out
+        return content

@@ -97,7 +97,7 @@ def test_missing_usage_fails_closed():
 
     c = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        with pytest.raises(BudgetExceeded, match="no usage"):
+        with pytest.raises(BudgetExceeded, match="unparseable"):
             c.complete(http, "s", "u", max_completion_tokens=4000)
     assert c.spent_usd >= 0.12  # charged the worst case, not zero
 
@@ -292,4 +292,48 @@ def test_written_grade_is_bound_to_the_answer(tmp_path: Path):
             PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
         )
     rec = json.loads((tmp_path / "grade-B-S1.json").read_text())
-    assert rec["answer_sha256"] == answer_sha256("a1") and rec["condition"] == "machine_selected"
+    assert rec["answer_sha256"] == answer_sha256("a1", None, None)
+    assert rec["condition"] == "machine_selected"
+
+
+def test_same_text_with_different_evidence_is_a_different_answer():
+    from answer_radar.score import answer_sha256
+
+    assert answer_sha256("a", ["p.72"], ["doc"]) != answer_sha256("a", [], [])
+    assert answer_sha256("a", ["p.72"], ["doc"]) != answer_sha256("a", ["p.72"], ["other"])
+
+
+def test_another_conditions_grade_is_never_overwritten(tmp_path: Path):
+    other = tmp_path / "grade-B-S1.json"
+    other.write_text(json.dumps({**GOOD, "condition": "new_chat"}))
+    transport, calls = _transport([])
+    grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
+    with httpx.Client(transport=transport) as http, pytest.raises(SystemExit, match="new_chat"):
+        model_grader.grade_packet(
+            PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    assert calls == [] and json.loads(other.read_text())["condition"] == "new_chat"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"not json",
+        json.dumps(
+            {
+                "choices": [{"message": {"content": "x"}}],
+                "usage": {"prompt_tokens": "n/a", "completion_tokens": 1},
+            }
+        ).encode(),
+        json.dumps({"usage": {"prompt_tokens": 1, "completion_tokens": 1}}).encode(),
+    ],
+)
+def test_malformed_200_is_charged_and_stops(body):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    c = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(BudgetExceeded, match="unparseable"):
+            c.complete(http, "s", "u", max_completion_tokens=4000)
+    assert c.spent_usd >= 0.12

@@ -28,9 +28,16 @@ from answer_radar.schema import (
 )
 
 
-def answer_sha256(answer_text: str) -> str:
-    """The identity a grade is bound to: the exact answer text it judged."""
-    return hashlib.sha256(answer_text.encode("utf-8")).hexdigest()
+def answer_sha256(answer_text: str, citations=(), source_documents=()) -> str:
+    """The identity a grade is bound to: the exact answer AND the evidence shown
+    with it. A later run with the same text but different citations or sources
+    is a different answer (#4092 Codex post-cap F1)."""
+    payload = json.dumps(
+        [answer_text, list(citations or []), list(source_documents or [])],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _bound_to(raw: dict, condition: str | None, answer_hash: str | None) -> bool:
@@ -143,7 +150,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             total_answer_time_ms=e["total_answer_time_ms"],
         )
         condition = (item.get("hub") or {}).get("condition")
-        answer_hash = answer_sha256(e["answer_text"])
+        answer_hash = answer_sha256(e["answer_text"], e.get("citations"), e.get("source_documents"))
         for gid, prefix in (("A", "grade-A-"), ("B", "grade-B-")):
             v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid, condition, answer_hash)
             if v:

@@ -173,12 +173,28 @@ def grade_packet(
     """Grade every packet entry for `condition`; write grade-<slot>-<seed>.json. Returns failures."""
     out_dir.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []
+    targets = [
+        out_dir / f"grade-{slot}-{e['seed_id']}.json"
+        for e in packet.values()
+        if e.get("condition") == condition
+    ]
+    # One grades directory holds ONE condition: a target left by another
+    # condition is someone else's grade, never overwritten (#4092 post-cap F2).
+    for target in targets:
+        if target.exists():
+            try:
+                prior = json.loads(target.read_text(encoding="utf-8")).get("condition")
+            except (OSError, ValueError, AttributeError):
+                prior = None
+            if prior not in (None, condition):
+                raise SystemExit(
+                    f"{target} holds a {prior!r} grade; use a separate --out per condition"
+                )
     # Clear EVERY selected target before the first call, so a budget stop or a
     # failure part-way through can never leave an older grade for a seed this
     # run was asked to grade (#4092 Codex round 2 F1).
-    for entry in packet.values():
-        if entry.get("condition") == condition:
-            (out_dir / f"grade-{slot}-{entry['seed_id']}.json").unlink(missing_ok=True)
+    for target in targets:
+        target.unlink(missing_ok=True)
     for key in sorted(packet):
         entry = packet[key]
         if entry.get("condition") != condition:
@@ -207,7 +223,11 @@ def grade_packet(
             "grader_role": role,
             "grader_model": grader.model,
             "grader_provider": PROVIDER,
-            "answer_sha256": answer_sha256(entry.get("mira_answer") or ""),
+            "answer_sha256": answer_sha256(
+                entry.get("mira_answer") or "",
+                entry.get("citations"),
+                entry.get("source_documents"),
+            ),
             **grade,
         }
         target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
