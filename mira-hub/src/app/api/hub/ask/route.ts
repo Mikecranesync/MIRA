@@ -226,7 +226,7 @@ export async function POST(req: Request) {
       // predicate stays in the SQL, and the node argument is unused in that mode.
       let own: ManualChunk[] = [];
       try {
-        const { docIds, truncated } = await confirmedSourceDocIds(client, ctx.tenantId);
+        const { docIds, truncated } = await confirmedSourceDocIds(client, ctx.tenantId, manufacturer);
         if (truncated) {
           console.warn(`[hub/ask] confirmed documents exceed ${docIds.length}; searching the most recent`);
           ownDocumentsPartial = true;

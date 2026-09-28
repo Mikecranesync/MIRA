@@ -26,6 +26,22 @@ describe("confirmedSourceDocIds (#3437)", () => {
     expect(sql).toMatch(/ORDER BY MAX\(s\.created_at\) DESC/);
   });
 
+  it("round 3 F1: with a maker chosen, drops documents confirmed only under a different maker", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        { doc_id: "siemens-only", manufacturers: ["Siemens"] },
+        { doc_id: "yaskawa", manufacturers: ["Yaskawa"] },
+        { doc_id: "unbound", manufacturers: [null] },
+        { doc_id: "both", manufacturers: ["Siemens", "Yaskawa"] },
+      ],
+    }));
+    const r = await confirmedSourceDocIds({ query } as never, TENANT, "Yaskawa");
+    expect(r.docIds).toEqual(["yaskawa", "unbound", "both"]);
+    // No maker chosen: nothing is dropped.
+    const all = await confirmedSourceDocIds({ query } as never, TENANT, null);
+    expect(all.docIds).toHaveLength(4);
+  });
+
   it("reports (never hides) hitting the parameter bound", async () => {
     const rows = Array.from({ length: CONFIRMED_SOURCE_LIMIT + 1 }, (_, i) => ({ doc_id: `d-${i}` }));
     const query = vi.fn(async () => ({ rows }));
@@ -49,6 +65,11 @@ describe("askUserContent (F4: an unavailable lane is never a 'no match')", () =>
   it("says when only part of the confirmed manuals were searched", () => {
     const c = askUserContent("ctx", "Q?", { library: false, ownDocuments: false, ownDocumentsPartial: true });
     expect(c).toMatch(/only the most recently confirmed/);
+  });
+  it("round 3 F2: a partial search with nothing found never claims a complete no-match", () => {
+    const c = askUserContent("", "Q?", { library: false, ownDocuments: false, ownDocumentsPartial: true });
+    expect(c).toMatch(/only the most recently confirmed/);
+    expect(c).not.toMatch(/no manual excerpt matched this question/);
   });
   it("keeps the honest no-match wording when both searches ran", () => {
     expect(askUserContent("", "Q?", { library: false, ownDocuments: false })).toMatch(/no manual excerpt matched/);
@@ -92,7 +113,7 @@ describe("/api/hub/ask wires the confirmed-document lane (#3437)", () => {
   });
 
   it("admits the tenant's CONFIRMED documents on the same raw client and tenant", () => {
-    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId\s*\)/);
+    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId,\s*manufacturer\s*\)/);
     expect(code).toMatch(/ownDocumentsPartial = true/);
     expect(code).toMatch(/ownDocumentsFailed = true/);
     expect(code).toMatch(/retrieveNodeChunks\(\s*client,\s*ctx\.tenantId/);
