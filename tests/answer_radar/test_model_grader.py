@@ -325,6 +325,8 @@ def _row(**over):
         {"question.model": "X2"},  # Codex post-cap r3 F1
         {"hub.condition": "new_chat"},
         {"hub.retrieval": {"candidate_count": 0}},
+        {"hub.turn_status": "declined"},  # Codex post-cap r4 F1
+        {"hub.basis": "general_knowledge"},  # Codex post-cap r4 F1
     ],
 )
 def test_any_graded_field_changes_the_identity(change):
@@ -411,3 +413,63 @@ def test_unbound_packet_is_refused(tmp_path: Path):
             packet, "machine_selected", tmp_path, "B", "adversary", grader, http
         )
     assert calls == []
+
+
+def test_reference_notes_are_bound():
+    """Codex post-cap r4 F1: notes the grader sees are part of the identity."""
+    from answer_radar.score import answer_identity
+
+    assert answer_identity(_row(), "ref v1") != answer_identity(_row())
+    assert answer_identity(_row(), "ref v1") != answer_identity(_row(), "ref v2")
+
+
+def test_every_field_shown_to_the_grader_is_bound(tmp_path: Path):
+    """Structural guard: mutate each field build_user_message shows; the hash must move.
+
+    Catches the next field added to the grader view without being added to the identity.
+    """
+    import copy
+
+    from answer_radar.grader_packet import build_packet
+
+    row = _row(**{"hub.turn_status": "answered", "hub.basis": "oem_documentation"})
+    batch = tmp_path / "b.json"
+    batch.write_text(json.dumps([row]))
+    entry = build_packet([batch], {"S1": "notes"})["S1__machine_selected"]
+    shown = json.loads(model_grader.build_user_message(entry))
+    # packet key -> where it lives in the batch row (None = the references file)
+    source = {
+        "question": ("question", "normalized_question"),
+        "manufacturer": ("question", "manufacturer"),
+        "model": ("question", "model"),
+        "condition_meaning": ("hub", "condition"),
+        "mira_answer": ("evaluation", "answer_text"),
+        "server_turn_status": ("hub", "turn_status"),
+        "answer_basis": ("hub", "basis"),
+        "manual_search": ("hub", "retrieval"),
+        "citations": ("evaluation", "citations"),
+        "source_documents": ("evaluation", "source_documents"),
+        "reference_notes": None,
+    }
+    assert set(shown) == set(source), "a grader-visible field has no identity mapping"
+    for key, where in source.items():
+        refs = {"S1": "notes"}
+        mutated = copy.deepcopy(row)
+        if where is None:
+            refs = {"S1": "other notes"}
+        else:
+            part, field = where
+            mutated[part][field] = (
+                "new_chat"
+                if field == "condition"
+                else ["changed"]
+                if field in ("citations", "source_documents")
+                else {"changed": 1}
+                if field == "retrieval"
+                else "changed"
+            )
+        batch.write_text(json.dumps([mutated]))
+        moved = build_packet([batch], refs)
+        assert all(e["answer_sha256"] != entry["answer_sha256"] for e in moved.values()), (
+            f"{key} is shown to the grader but not bound"
+        )

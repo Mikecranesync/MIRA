@@ -117,9 +117,9 @@ def build_user_message(entry: dict) -> str:
             "source_documents",
         )
     }
-    shown["reference_notes"] = entry.get(
-        "reference_notes", entry.get("reference_reconstructed_from_09_05_grades")
-    )
+    # Only the bound key: notes under any other key would be shown to the grader
+    # without being part of answer_sha256 (post-cap r4 F1).
+    shown["reference_notes"] = entry.get("reference_notes")
     return json.dumps(shown, indent=1, ensure_ascii=False)
 
 

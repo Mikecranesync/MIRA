@@ -43,7 +43,7 @@ def build_packet(batch_paths: list[Path], references: dict | None = None) -> dic
                 "manual_search": hub.get("retrieval") or {},
                 "citations": list(e.get("citations") or []),
                 "source_documents": list(e.get("source_documents") or []),
-                "answer_sha256": answer_identity(item),
+                "answer_sha256": answer_identity(item, (references or {}).get(sid)),
             }
             if references and sid in references:
                 entry["reference_notes"] = references[sid]

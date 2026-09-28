@@ -28,7 +28,7 @@ from answer_radar.schema import (
 )
 
 
-def answer_identity(item: dict) -> str:
+def answer_identity(item: dict, reference_notes: object = None) -> str:
     """The identity a grade is bound to, computed from one batch row.
 
     Covers everything a grader is shown about the case: the question, the asset
@@ -36,7 +36,10 @@ def answer_identity(item: dict) -> str:
     answer, and the evidence shown with it. Change any of them and an old grade
     no longer applies (#4092 Codex post-cap F1, r2 F1, r3 F1). The grader
     packet builder stamps this on every entry, so every grader — Claude or
-    gpt-5.5 — records the same value (r3 F2).
+    gpt-5.5 — records the same value (r3 F2). The server turn status, answer
+    basis and reference notes are shown to the grader too, so they are bound
+    as well (post-cap r4 F1); `reference_notes` is whatever the packet shows
+    for this seed (None when no references were supplied).
     """
     q, e, hub = item["question"], item["evaluation"], item.get("hub") or {}
     fields = {
@@ -48,6 +51,9 @@ def answer_identity(item: dict) -> str:
         "answer_text": e.get("answer_text") or "",
         "citations": list(e.get("citations") or []),
         "source_documents": list(e.get("source_documents") or []),
+        "server_turn_status": hub.get("turn_status"),
+        "answer_basis": hub.get("basis"),
+        "reference_notes": reference_notes,
     }
     payload = json.dumps(fields, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -130,8 +136,14 @@ def _independence(grades_dir: Path, sid: str, answer_hash: str | None = None) ->
     return IndependenceClass.DIFFERENT_MODEL_SAME_PROVIDER
 
 
-def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
-    """Join grades to the batch, apply the rubric, render the report."""
+def score(
+    batch_path: Path, grades_dir: Path, references: dict | None = None
+) -> tuple[str, list[dict]]:
+    """Join grades to the batch, apply the rubric, render the report.
+
+    `references` must be the same {seed_id: notes} the grader packet was built
+    with; a grade shown different notes does not bind to this row.
+    """
     batch = json.loads(batch_path.read_text(encoding="utf-8"))
     # Codex #4063 F2: a scorecard measures ONE deployment. A rerun from another
     # build is scored in its own batch, never spliced into this one.
@@ -163,7 +175,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             total_answer_time_ms=e["total_answer_time_ms"],
         )
         condition = (item.get("hub") or {}).get("condition")
-        answer_hash = answer_identity(item)
+        answer_hash = answer_identity(item, (references or {}).get(sid))
         for gid, prefix in (("A", "grade-A-"), ("B", "grade-B-")):
             v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid, condition, answer_hash)
             if v:
@@ -219,10 +231,18 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--batch", required=True, help="batch-*.json produced by answer_radar.batch")
     ap.add_argument("--grades", required=True, help="directory holding grade-A-*/grade-B-* JSON")
+    ap.add_argument(
+        "--references",
+        default=None,
+        help="the same references JSON the grader packet was built with (if any)",
+    )
     ap.add_argument("--out", default=None, help="write the scorecard here as well as stdout")
     args = ap.parse_args(argv)
 
-    rendered, rows = score(Path(args.batch), Path(args.grades))
+    refs = (
+        json.loads(Path(args.references).read_text(encoding="utf-8")) if args.references else None
+    )
+    rendered, rows = score(Path(args.batch), Path(args.grades), refs)
     print(rendered)
     print("\nPER-QUESTION\n")
     for r in rows:
