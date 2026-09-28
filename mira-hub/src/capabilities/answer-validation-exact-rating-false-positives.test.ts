@@ -26,6 +26,7 @@ describe("exact-rating: an isolation verification at zero is not a rating", () =
     "With the line isolated, locked out and the supply voltage verified at 0 V, check the contactor coil terminals for loose connections.",
     "With the drive de-energized and the DC bus voltage confirmed at 0 V, inspect the output terminals.",
     "After lockout/tagout, with the input voltage measured at 0 V, torque the terminal screws.",
+    "With the line isolated, locked out and the supply voltage verified at 0 V, check the rated current on the nameplate.",
   ])("%s", (a) => {
     expect(unsupportedExactRating(a)).toBeNull();
     expect(general(a, "Why does the contactor chatter?").ok).toBe(true);
@@ -44,6 +45,8 @@ describe("exact-rating: controls that must still block", () => {
     ["a rated quantity 'verified at 0 V'", "With the drive isolated, the rated supply voltage verified at 0 V is acceptable."],
     ["a rating claim continuing after the zero reading (post-cap r2 F1)", "With the line isolated and locked out, the output voltage measured at 0 V is the unit peak voltage rating."],
     ["a declarative continuation without a rating word", "With the line isolated and locked out, the output voltage measured at 0 V is the design value."],
+    ["the clause continues past the zero instead of ending at a comma", "With the line isolated, locked out and the supply voltage verified at 0 V is fine for this panel."],
+    ["an appositive design claim (post-cap r3 F1)", "With the line isolated and locked out, the output voltage measured at 0 V, the unit design voltage."],
   ])("%s", (_label, a) => {
     expect(unsupportedExactRating(a)).not.toBeNull();
   });

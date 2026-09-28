@@ -630,36 +630,46 @@ function magnitudes(text: string): string[] {
   return (text.match(/\d[\d.,]*/g) ?? []).map((n) => n.replace(/,/g, "").replace(/\.+$/, ""));
 }
 
-/** An all-zero reading inside an explicit ENERGY-ISOLATION clause is a
- *  verification, never a machine rating: "with the line isolated, locked out
- *  and the supply voltage verified at 0 V" matches the declarative grammar
- *  exactly, and MIRA_CORE requires that clause in the same sentence as any
- *  wiring step — so the safer the answer, the more certainly it was replaced
- *  (#3959, staging 2026-09-22: 4 of 6 drafts replaced on the LOTO clause alone;
- *  2026-09-28 exam Q3, trace 8f88d2c3…). All three must hold: every value in
- *  the match is zero, the match carries a verification verb, and the sentence
- *  names isolation. "The maximum output voltage, verified by our test, is 0 V"
- *  names no isolation and still blocks (#4093 Codex round 2 F5). */
-const ISOLATION_CONTEXT = /\b(?:isolat(?:e|ed|ion|ing)|lock(?:ed)?[- ]?out|lockout|tag(?:ged)?[- ]?out|loto|de-?energi[sz](?:e|ed|ing)|zero[- ]energy)\b/i;
-/** The zero must BE the verification: "verified at 0 V", "confirmed to be 0 V",
- *  "measured 0 V" — verb directly bound to the zero reading. A declarative
- *  "…, verified by our test, is 0 V" is a rating even with isolation words
- *  elsewhere in the sentence (#4093 Codex round 3 F1). */
+/** An all-zero reading inside MIRA_CORE's required INTRODUCTORY isolation
+ *  clause is a verification, never a machine rating. MIRA_CORE requires, in
+ *  the same sentence as any wiring step: "With the line isolated, locked out
+ *  and the supply voltage verified at 0 V, <instruction>". The rating grammar
+ *  matches "supply voltage verified at 0 V", so the safer the answer, the more
+ *  certainly it was replaced (#3959: 4 of 6 staging drafts; exam Q3, trace
+ *  8f88d2c3…).
+ *
+ *  Structural, not lexical (five Codex passes on #4093 broke every looser
+ *  version): the exemption holds only when ALL of these are true —
+ *    1. the sentence opens with "With/After/Once/When" and that introductory
+ *       clause names isolation;
+ *    2. the zero phrase is joined into the clause by "and"/"with" (not a comma
+ *       restarting a new subject — "…locked out, the output voltage…");
+ *    3. the verification verb is bound to the zero ("verified at 0 V") with no
+ *       is/are inside it, and no rating word appears in the clause;
+ *    4. the clause ENDS right after the zero reading, at a comma — so nothing
+ *       ("is the peak rating", ", the unit design voltage") can continue it.
+ *  Every other rating match in the sentence is still scanned on its own. */
 const ZERO_VERIFICATION =
   /\b(?:verif(?:y|ied|ies)|confirm(?:ed|s)?|test(?:ed|s)?|prov(?:e|en|ed)|measur(?:e|ed|es)|check(?:ed|s)?)\s+(?:at\s+|to\s+be\s+|as\s+)?0(?:\.0+)?\s*(?:v(?:olts?|dc|ac)?)\b/i;
+const ISOLATION_CONTEXT = /\b(?:isolat(?:e|ed|ion|ing)|lock(?:ed)?[- ]?out|lockout|tag(?:ged)?[- ]?out|loto|de-?energi[sz](?:e|ed|ing)|zero[- ]energy)\b/i;
 const RATING_QUALIFIER =
-  /\b(?:max(?:imum)?|min(?:imum)?|rated|rating|nominal|operating|limit|capacity|range|spec(?:ification)?|tolerance|peak|continuous)\b/i;
-function zeroIsolationVerification(sentence: string, match: string): boolean {
+  /\b(?:max(?:imum)?|min(?:imum)?|rated|rating|nominal|operating|design|limit|capacity|range|spec(?:ification)?|tolerance|peak|continuous)\b/i;
+const INTRO_OPENER = /^\s*(?:with|after|once|when)\b/i;
+const JOINED_INTO_CLAUSE = /\b(?:and|with)\s+(?:the\s+)?(?:[a-z0-9/-]+\s+){0,3}$/i;
+function isolationClauseZero(sentence: string, index: number, match: string): boolean {
+  const clause = sentence.slice(0, index + match.length);
+  const after = sentence.slice(index + match.length);
   const nums = magnitudes(match);
   return (
     nums.length > 0 &&
     nums.every((n) => Number(n) === 0) &&
+    INTRO_OPENER.test(clause) &&
+    ISOLATION_CONTEXT.test(clause) &&
+    JOINED_INTO_CLAUSE.test(sentence.slice(0, index)) &&
     ZERO_VERIFICATION.test(match) &&
     !/\b(?:is|are|was|were)\b/i.test(match) &&
-    // An isolation-state reading, not a rating: "maximum output voltage,
-    // measured at 0 V" names a rating quantity (#4093 post-cap F1).
-    !RATING_QUALIFIER.test(sentence) &&
-    ISOLATION_CONTEXT.test(sentence)
+    !RATING_QUALIFIER.test(clause) &&
+    /^\s*,/.test(after)
   );
 }
 
@@ -678,10 +688,7 @@ export function unsupportedExactRating(text: string): string | null {
     if (HEDGE.test(sentence)) continue;
     re.lastIndex = 0;
     for (let m = re.exec(sentence); m; m = re.exec(sentence)) {
-      // The exempt phrase must end the claim: "…measured at 0 V is the unit's
-      // peak rating" continues into an assertion (#4093 post-cap round 2 F1).
-      const rest = sentence.slice(m.index + m[0].length);
-      if (zeroIsolationVerification(sentence, m[0]) && !/^\s*,?\s*(?:is|are|was|were|equals|=)\b/i.test(rest)) continue;
+      if (isolationClauseZero(sentence, m.index, m[0])) continue;
       return m[0].slice(0, 160);
     }
   }
