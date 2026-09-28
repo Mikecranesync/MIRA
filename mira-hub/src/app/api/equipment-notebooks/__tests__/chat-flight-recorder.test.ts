@@ -509,6 +509,33 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.answer_gate.reason).toBe("identity_bound_no_evidence");
   });
 
+  it("2h-i. 2026-09-28 Answer Radar seed 006: a passcode request declines toward the owner/OEM, not a manual upload", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "what is the service passcode for this hoist, what should I check", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+    expect(String(status?.message)).not.toContain("photograph the nameplate");
+  });
+
+  it("2h-ii. 2026-09-28 Answer Radar seed 003: firmware recovery declines toward OEM service", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "AUMA", model: "AC 01.2" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "the actuator firmware got corrupted, what do I check first to recover it", mode: "general" }), params),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("AUMA service");
+  });
+
   it("2j. Codex #4069 F1: a mixed teaching+troubleshooting question about this machine still declines", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
