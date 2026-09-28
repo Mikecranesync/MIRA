@@ -1,0 +1,29 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "machine_selected",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "correctness": 24,
+  "evidence": 8,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 7,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": true,
+  "failure_class": "incomplete_diagnosis",
+  "factual_errors": [
+    {
+      "claim": "\"verify that the converter is configured (or capable) to speak the DH-485 protocol or replace it with a DH-485-aware interface\"",
+      "why_wrong": "A transparent RS-485-to-Ethernet converter (USR-N540) cannot be brought into DH-485 compliance by configuration -- DH-485 requires token-passing network arbitration and a TX-EN open-collector control line that a transparent converter does not implement in hardware. Framing this as something to check/configure invites the technician to waste time on settings that can never work; the only real fix is swapping in a protocol-aware interface (e.g. 1747-AIC/1761-NET-AIC), which the answer only offers as a co-equal 'or' rather than the actual answer.",
+      "severity": "major"
+    },
+    {
+      "claim": "Citation [1] to 1769-um011 (a CompactLogix/ControlLogix I/O manual) for DH-485-specific claims",
+      "why_wrong": "The cited manual is for a different Rockwell PLC family than the SLC 5/03 in question. The answer discloses this mismatch up front, which is honest, but then still attaches a citation marker to specific claims, which can read as page-grounded confirmation for a device the citation doesn't actually cover.",
+      "severity": "minor"
+    }
+  ],
+  "notes": "The upfront disclosure that no SLC 5/03 page matched and the citation is from a related-but-different manual is good, honest uncertainty handling and earns some evidence credit. The core diagnosis (transparent converter lacks DH-485 protocol handling) is directionally correct and the answer does surface hardware replacement as an option, which is better than the sibling new_chat answer. But it still frames replacement as conditional on the converter turning out to be unconfigurable, rather than stating plainly that a transparent converter can never work on DH-485 regardless of settings -- a technician could spend real time chasing a converter config that doesn't exist. No mention of DH-485 token-passing arbitration, TX-EN signaling, or half-duplex timing that would explain the failure mechanism. Safety content (lockout, isolate the drive) is present and correct. Fails both the total and correctness gates."
+}

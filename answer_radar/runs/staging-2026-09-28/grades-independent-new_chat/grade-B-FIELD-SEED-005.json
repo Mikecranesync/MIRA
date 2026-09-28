@@ -1,0 +1,44 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "condition": "new_chat",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "correctness": 9,
+  "evidence": 1,
+  "safety": 20,
+  "actionability": 3,
+  "uncertainty": 2,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_diagnosis",
+  "factual_errors": [
+    {
+      "claim": "The most likely cause is a mismatch in communication settings or a timing/handshake issue.",
+      "why_wrong": "The described symptom, especially ModScan still polling the same registers successfully during the event, points away from basic Modbus settings mismatch. The expected primary diagnosis is PLX32/Modbus TCP connection handling issues such as connection table exhaustion, persistent socket/idle timeout behavior, or intermediate network device timeout/NAT/firewall behavior.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Verify baud rate, parity, data bits, stop bits, and slave ID on the PLX32 match the CENTUM DCS.",
+      "why_wrong": "This is generic serial Modbus troubleshooting and does not address the likely Modbus TCP/IP failure mode for a PLX32-to-CENTUM scenario. If ModScan can still poll the same registers when the DCS path fails, static serial parameters are unlikely to be the cause.",
+      "severity": "major"
+    },
+    {
+      "claim": "Check RS-485 line termination with 120 ohm termination at each end.",
+      "why_wrong": "The likely issue in this scenario is not RS-485 physical-layer termination; the key failure mode is associated with TCP connections/connection pooling/idle timeouts. This step can misdirect the technician toward the wrong layer.",
+      "severity": "major"
+    },
+    {
+      "claim": "The technician should test by replacing the PLX32 temporarily with another Modbus master or use the DCS to poll the PLX32.",
+      "why_wrong": "This does not target the suspected mechanism and may change the topology enough to mask the problem. The needed diagnostics are connection-count/socket-state checks, TCP resets/timeouts, PLX32 diagnostics, packet captures, and network device idle-timeout/keepalive review.",
+      "severity": "major"
+    },
+    {
+      "claim": "Timeout/retry values that are too short are the likely reason ModScan works while the DCS path fails.",
+      "why_wrong": "Timeout tuning may be relevant in some Modbus problems, but it does not explain the distinctive ModScan-success/DCS-failure pattern as well as connection table exhaustion or intermediate TCP session timeout behavior.",
+      "severity": "major"
+    }
+  ],
+  "notes": "The answer is generic Modbus troubleshooting and misses the central diagnostic insight: ModScan success during the failure indicates the registers/device are reachable and points toward PLX32 Modbus TCP connection/session handling, connection table exhaustion, TCP keepalive/idle timeout, or firewall/NAT/network device behavior. It provides no citations or ProSoft-specific support. Safety is acceptable because it includes de-energizing/LOTO boundaries, but the technical path would likely delay diagnosis."
+}

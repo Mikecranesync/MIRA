@@ -1,0 +1,44 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "new_chat",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "correctness": 27,
+  "evidence": 2,
+  "safety": 20,
+  "actionability": 5,
+  "uncertainty": 5,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "The transparent converter fails because it is not presenting the DH-485 link-layer framing the SLC 5/03 requires.",
+      "why_wrong": "This is directionally correct but incomplete. The incompatibility is not just missing framing; DH-485 requires protocol-aware token passing/arbitration, correct half-duplex turnaround behavior, and DH-485-specific control/signaling such as TX-EN support that a transparent RS-485-to-Ethernet converter does not provide.",
+      "severity": "major"
+    },
+    {
+      "claim": "The first checks should be power/link LEDs, A/B polarity, termination/bias, and converter mode.",
+      "why_wrong": "These generic RS-485 checks may delay the technician. The first check should be whether the replacement device is actually DH-485 protocol-aware/equivalent to the original interface. A transparent USR-N540 cannot be made equivalent by normal wiring or termination checks.",
+      "severity": "major"
+    },
+    {
+      "claim": "If the converter can be switched to 'DH-485' or 'Modbus-RTU' mode, configure it accordingly.",
+      "why_wrong": "This is unsupported and potentially misleading for the named USR-N540. Modbus RTU mode would not solve DH-485 communication, and the answer provides no evidence that this converter can emulate DH-485.",
+      "severity": "major"
+    },
+    {
+      "claim": "Ensure the RS-485 bus still has proper 120 ohm termination at each end and any required bias resistors.",
+      "why_wrong": "This is an asset/network-specific electrical recommendation given without citation to the Allen-Bradley DH-485 documentation or the USR-N540 manual. Even if generally plausible for RS-485, it is not the root cause here and is unsupported.",
+      "severity": "minor"
+    },
+    {
+      "claim": "The answer omits any warning about DH-485 port electrical levels and RJ45 confusion.",
+      "why_wrong": "For SLC/DH-485 systems, a critical first check is that Ethernet equipment has not been connected directly to a DH-485 RJ45-style port; DH-485 uses RS-485-style signaling, not Ethernet signaling, and wrong connections can damage hardware.",
+      "severity": "major"
+    }
+  ],
+  "notes": "The answer identifies the broad incompatibility between a transparent converter and DH-485, but it does not fully explain the architectural reason and does not put the correct next step first: use/reinstall a DH-485 protocol-aware interface such as the proper Allen-Bradley interface rather than troubleshooting generic RS-485 settings. It also has no citations despite making asset-specific claims about SLC 5/03 DH-485 behavior, wiring, termination, and possible converter modes."
+}
