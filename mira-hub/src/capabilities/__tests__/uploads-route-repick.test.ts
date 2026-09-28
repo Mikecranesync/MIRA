@@ -12,7 +12,7 @@ vi.mock("@/lib/uploads", () => ({
   listUploads: vi.fn(),
 }));
 
-import { POST } from "../route";
+import { POST } from "@/app/api/uploads/route";
 import { createUpload, deleteUpload, findUploadByExternalFileId } from "@/lib/uploads";
 import { runIngestPipeline } from "@/lib/upload-pipeline";
 
