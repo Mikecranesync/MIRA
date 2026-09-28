@@ -38,10 +38,10 @@ KEY_FIELDS = (
 )
 _ID = re.compile(r"^ta-[a-z0-9-]+$")
 
-# Arms that cannot receive an image through the product path today. MIRA's
-# notebook chat reads a stored LOOK observation, not pixels; until the arena
-# drives the LOOK upload path, a photo case on this arm is not scored.
-_IMAGE_BLIND_ARMS = {"mira"}
+# The MIRA product path takes a photo through LOOK and carries ONE observation
+# per chat turn (`visualEvidence` is a single object in chat/route.ts), so a turn
+# with several images is reported for that arm rather than silently reduced.
+_ONE_IMAGE_PER_TURN_ARMS = {"mira"}
 
 
 def load(path: Path = CASES_FILE) -> list[dict[str, Any]]:
@@ -102,6 +102,8 @@ def run_status(case: dict[str, Any], arm: str, *, fixtures_root: Path = FIXTURES
     missing = [i for i in imgs if not (fixtures_root / i.removeprefix("fixtures/")).exists()]
     if missing:
         return "not_run:fixture_missing"
-    if imgs and arm in _IMAGE_BLIND_ARMS:
-        return "not_run:arm_cannot_see_image"
+    if arm in _ONE_IMAGE_PER_TURN_ARMS and any(
+        len(t.get("images") or []) > 1 for t in case.get("turns") or []
+    ):
+        return "not_run:one_image_per_turn"
     return "runnable"

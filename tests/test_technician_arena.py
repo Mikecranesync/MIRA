@@ -140,12 +140,149 @@ def test_seed_cases_are_marked_as_keyed_after_outputs_were_seen():
 
 
 def test_missing_fixture_is_reported_not_dropped(tmp_path):
-    case = {"id": "ta-photo", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
-    assert ta_cases.run_status(case, "raw-frontier", fixtures_root=tmp_path) == "not_run:fixture_missing"
+    case = {
+        "id": "ta-photo",
+        "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}],
+    }
+    assert (
+        ta_cases.run_status(case, "raw-frontier", fixtures_root=tmp_path)
+        == "not_run:fixture_missing"
+    )
 
 
-def test_mira_arm_without_an_image_path_is_reported_not_scored(tmp_path):
+def test_mira_sees_one_photo_per_turn_through_look(tmp_path):
+    """The product carries one LOOK observation per chat turn (`visualEvidence`
+    is a single object). One photo is runnable on the MIRA arm; two in one turn
+    are reported, not silently reduced to one."""
     (tmp_path / "a.jpg").write_bytes(b"x")
-    case = {"id": "ta-photo", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
-    assert ta_cases.run_status(case, "mira", fixtures_root=tmp_path) == "not_run:arm_cannot_see_image"
-    assert ta_cases.run_status(case, "raw-frontier", fixtures_root=tmp_path) == "runnable"
+    (tmp_path / "b.png").write_bytes(b"x")
+    one = {"id": "ta-1", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
+    two = {
+        "id": "ta-2",
+        "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg", "fixtures/b.png"]}],
+    }
+    assert ta_cases.run_status(one, "mira", fixtures_root=tmp_path) == "runnable"
+    assert ta_cases.run_status(two, "mira", fixtures_root=tmp_path) == "not_run:one_image_per_turn"
+    assert ta_cases.run_status(two, "raw-frontier", fixtures_root=tmp_path) == "runnable"
+
+
+# ── MIRA staging arm: the product's own request shapes ────────────────────────
+
+import json as _json  # noqa: E402
+
+from technician_arena import mira_staging  # noqa: E402
+
+
+class _FakeHub:
+    """Records what the arm sends; answers like the staging Hub would."""
+
+    def __init__(self, shas=("aaaaaaaaaaaa",)):
+        self.sent: list[dict] = []
+        self.notebooks: list[dict] = []
+        self.looks: list[str] = []
+        self.attached: list[str] = []
+        self._shas = list(shas)
+
+    def json(self, method, path, obj=None):
+        sha = self._shas.pop(0) if len(self._shas) > 1 else self._shas[0]
+        return 200, {}, {"gitSha": sha}
+
+    def create_notebook(self, name, **identity):
+        nb = {"id": f"nb{len(self.notebooks)}", "nodeId": "node1", **identity}
+        self.notebooks.append(nb)
+        return nb
+
+    def look(self, notebook_id, photo):
+        self.looks.append(photo.name)
+        return "tr-look", {
+            "fileId": "file-1",
+            "observation": {"capturedAt": "2026-09-28T00:00:00Z"},
+        }
+
+    def attach_manual(self, notebook, pdf):
+        self.attached.append(pdf.name)
+        return "doc-1"
+
+    def _req(self, method, path, body=None, headers=None):
+        self.sent.append(_json.loads(body))
+        frames = [
+            {"kind": "content", "content": "answer"},
+            {"kind": "sources", "citations": [{"sourceTitle": "520-UM001", "page": 3}]},
+            {"kind": "evidence", "basis": "oem_documentation"},
+            {"kind": "usage", "model": "openai/gpt-oss-120b", "inputTokens": 10, "outputTokens": 5},
+            {"kind": "status", "status": "answered"},
+        ]
+        raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames) + "data: [DONE]\n\n"
+        return 200, {"x-mira-trace-id": "tr-1"}, raw.encode()
+
+    def diagnostics(self, notebook_id, trace_id):
+        return {
+            "packet": {"retrieval": {"strategy": "notebook_sources_bm25", "candidate_count": 3}}
+        }
+
+
+def _pf525_case():
+    return copy.deepcopy(next(c for c in ta_cases.load() if c["id"] == "ta-model-pf525-f005"))
+
+
+def test_native_workflow_binds_the_notebook_and_sends_general_mode(tmp_path):
+    hub = _FakeHub()
+    arm = mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path)
+    recs = arm.run_case(_pf525_case())
+    nb = hub.notebooks[0]
+    assert nb["manufacturer"] == "Allen-Bradley" and nb["identityStatus"] == "user_confirmed"
+    assert hub.sent[0]["mode"] == "general" and hub.sent[0]["sourceDocIds"] == []
+    assert recs[0]["model"] == "openai/gpt-oss-120b" and recs[0]["citations"] == ["520-UM001 p.3"]
+    assert recs[0]["turn_status"] == "answered" and recs[0]["deployed_sha"] == "aaaaaaaaaaaa"
+
+
+def test_equal_context_uploads_the_same_pages_as_real_sources(tmp_path):
+    (tmp_path / "520-um001.pdf").write_bytes(b"%PDF")
+    case = _pf525_case()
+    case["equal_context"]["excerpts"][0]["local_pdf"] = "fixtures/520-um001.pdf"
+    hub = _FakeHub()
+    mira_staging.MiraStaging(hub, workflow="equal_context", fixtures_root=tmp_path).run_case(case)
+    assert hub.attached == ["520-um001.pdf"]
+    assert hub.sent[0]["sourceDocIds"] == ["doc-1"] and "mode" not in hub.sent[0]
+
+
+def test_equal_context_without_the_source_file_is_not_run(tmp_path):
+    hub = _FakeHub()
+    recs = mira_staging.MiraStaging(hub, workflow="equal_context", fixtures_root=tmp_path).run_case(
+        _pf525_case()
+    )
+    assert recs == [
+        {
+            "case_id": "ta-model-pf525-f005",
+            "arm": "mira",
+            "status": "not_run:equal_context_source_missing",
+        }
+    ]
+    assert hub.sent == []
+
+
+def test_photo_turn_goes_through_look_as_visual_evidence(tmp_path):
+    (tmp_path / "a.jpg").write_bytes(b"x")
+    case = {
+        "id": "ta-p",
+        "native_workflow": {"binding": None},
+        "equal_context": {"excerpts": []},
+        "turns": [{"role": "user", "text": "what is this", "images": ["fixtures/a.jpg"]}],
+    }
+    hub = _FakeHub()
+    mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path).run_case(case)
+    assert hub.looks == ["a.jpg"]
+    assert hub.sent[0]["visualEvidence"] == {
+        "fileId": "file-1",
+        "capturedAt": "2026-09-28T00:00:00Z",
+    }
+    assert hub.sent[0]["threadId"].startswith("thrd_")
+
+
+def test_a_deploy_mid_case_stops_the_run(tmp_path):
+    """Same rule as Answer Radar: one build per graded turn, or no result."""
+    hub = _FakeHub(shas=("aaaaaaaaaaaa", "bbbbbbbbbbbb"))
+    with pytest.raises(SystemExit):
+        mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path).run_case(
+            _pf525_case()
+        )
