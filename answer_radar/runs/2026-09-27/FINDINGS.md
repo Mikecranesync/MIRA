@@ -9,12 +9,7 @@ not answers that retrieved (the earlier 33.3%). Answers: `batch-2026-09-27T2017.
 Grades: `grades/`. The median answer time is now the mean of the two middle values (6,138 ms;
 the earlier scorecard showed the upper-middle 7,732 ms, Codex #4062 round 3 F2).
 
-**Prompt version (Codex #4062 round 3 F1).** Every evaluation recorded `active.yaml@unreadable`,
-because the runner hashed a path that does not exist; it now hashes
-`mira-bots/prompts/diagnose/active.yaml` and fails the run if it cannot. The batch files keep the
-value as it was recorded. All six ran at `772dc2927`, where the prompt is v1.4, `active.yaml@a7912a176b97`,
-unchanged since `c271a8205` (2026-08-04). That is recovered from git, not recorded by the run, so a
-local uncommitted prompt edit at run time cannot be ruled out.
+**Prompt version (Codex #4062 rounds 3–4).** Every evaluation recorded `active.yaml@unreadable`, because the runner hashed a path that does not exist. It now records the system prompt the engine actually selects for the turn, labelled by mode (`direct-answer`, `active.yaml` or `gsd-builtin`) and hashed from its text, and fails the run if it cannot. The batch files keep the value as it was recorded. All six ran at `772dc2927`, where `mira-bots/prompts/diagnose/active.yaml` (v1.4) is byte-identical to today's. With direct-answer mode off, the identity is `active.yaml@251340f8fd23` (computed with today's engine). `MIRA_DIRECT_ANSWER_MODE` is absent from Doppler dev and stg, but the run's shell environment was not recorded. So this is recovered, not recorded, and a local override at run time cannot be ruled out.
 
 ## Read this first — what this benchmark measures
 Answer Radar drives the **Python engine** (`tests/eval/local_pipeline.py::LocalPipeline` →

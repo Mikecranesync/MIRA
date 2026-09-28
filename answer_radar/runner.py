@@ -183,14 +183,25 @@ def prompt_version() -> str:
     `EvaluationRecord` false: two runs months apart would carry the same "version" while the
     prompt underneath had been rewritten. The hash changes when the prompt does.
     """
-    # Codex #4062 round 3 F1: the engine's prompt lives under mira-bots/, and an
-    # unrecordable version fails the run instead of stamping "@unreadable".
-    path = REPO_ROOT / "mira-bots" / "prompts" / "diagnose" / "active.yaml"
+    # Codex #4062 rounds 3–4: identify the system prompt the engine actually SELECTS
+    # for the turn (direct-answer mode, active.yaml, or the built-in fallback), hashed
+    # from its text. If that cannot be determined the run fails rather than stamping
+    # a version that may describe a different prompt.
     try:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
-    except OSError as exc:
-        raise RuntimeError(f"cannot record the prompt version: {path} is unreadable") from exc
-    return f"active.yaml@{digest}"
+        _import_local_pipeline()  # puts mira-bots/ on sys.path, as the run itself does
+        from shared.workers import rag_worker  # noqa: PLC0415
+
+        text = rag_worker._active_system_prompt()
+        if rag_worker._direct_answer_mode():
+            mode = "direct-answer"
+        elif rag_worker._yaml_system_prompt():
+            mode = "active.yaml"
+        else:
+            mode = "gsd-builtin"
+    except Exception as exc:  # noqa: BLE001 - any failure means the version is unknowable
+        raise RuntimeError(f"cannot record the prompt version: {exc}") from exc
+    digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    return f"{mode}@{digest}"
 
 
 async def run_question(
