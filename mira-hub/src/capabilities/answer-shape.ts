@@ -10,7 +10,8 @@ export const ISOLATION_STEP_RULE =
   "SAFETY IN THE STEPS: whenever a step opens an enclosure, touches conductors, reaches into " +
   "machinery or releases stored energy (pressure, springs, gravity, capacitors), state the " +
   "isolation and verification condition inline in THAT step — e.g. 'with the drive locked out and " +
-  "the DC bus verified at 0 V, check…'. One clause per step; no separate safety lecture.";
+  "the DC bus confirmed dead with a meter, check…'. Write the verification without a voltage " +
+  "number: a number there reads as a machine rating. One clause per step; no separate safety lecture.";
 
 export function withStepSafety(systemPrompt: string): string {
   return `${systemPrompt}\n\n${ISOLATION_STEP_RULE}`;
