@@ -20,7 +20,7 @@ Correct-answer rate:       0.0%
 VCAD:                         0
 
 Citation coverage:         0.0%
-Median answer time:        7732 ms
+Median answer time:        6138 ms
 
 TOP FAILURES
    1x  incomplete_diagnosis_unsupported_intermediate_step

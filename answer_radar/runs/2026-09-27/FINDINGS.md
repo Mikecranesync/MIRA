@@ -6,7 +6,15 @@ The graders were two Claude Sonnet sessions, which `score.py` (#4063) now labels
 Scorecard: `SCORECARD-2026-09-27.txt`, regenerated with #4063's `score.py` from
 `batch-scored-001-rerun.json`. Citation coverage now counts answers that cite (0 of 3 scored),
 not answers that retrieved (the earlier 33.3%). Answers: `batch-2026-09-27T2017.json`.
-Grades: `grades/`.
+Grades: `grades/`. The median answer time is now the mean of the two middle values (6,138 ms;
+the earlier scorecard showed the upper-middle 7,732 ms, Codex #4062 round 3 F2).
+
+**Prompt version (Codex #4062 round 3 F1).** Every evaluation recorded `active.yaml@unreadable`,
+because the runner hashed a path that does not exist; it now hashes
+`mira-bots/prompts/diagnose/active.yaml` and fails the run if it cannot. The batch files keep the
+value as it was recorded. All six ran at `772dc2927`, where the prompt is v1.4, `active.yaml@a7912a176b97`,
+unchanged since `c271a8205` (2026-08-04). That is recovered from git, not recorded by the run, so a
+local uncommitted prompt edit at run time cannot be ruled out.
 
 ## Read this first — what this benchmark measures
 Answer Radar drives the **Python engine** (`tests/eval/local_pipeline.py::LocalPipeline` →

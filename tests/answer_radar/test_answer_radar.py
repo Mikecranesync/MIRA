@@ -908,3 +908,36 @@ def test_hub_citation_label_uses_the_typed_source_title_and_page() -> None:
         hub_runner._citation_label(c)
         == "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011 p.212"
     )
+
+
+# ── Codex #4062 round 3 ────────────────────────────────────────────────────────
+
+
+def test_prompt_version_hashes_the_engine_prompt_actually_used() -> None:
+    """F1: the runtime prompt lives under mira-bots/; a wrong path recorded
+    'active.yaml@unreadable' on every evaluation."""
+    import hashlib
+
+    from answer_radar import runner
+
+    prompt = runner.REPO_ROOT / "mira-bots" / "prompts" / "diagnose" / "active.yaml"
+    expected = hashlib.sha256(prompt.read_bytes()).hexdigest()[:12]
+    assert runner.prompt_version() == f"active.yaml@{expected}"
+
+
+def test_prompt_version_fails_closed_when_the_prompt_is_missing(monkeypatch, tmp_path) -> None:
+    from answer_radar import runner
+
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    with pytest.raises(RuntimeError):
+        runner.prompt_version()
+
+
+def test_median_answer_time_averages_the_two_middle_values() -> None:
+    """F2: an even count's median is the mean of the two middle values."""
+    graded = [
+        (_record(total_answer_time_ms=t), evaluate(_record(total_answer_time_ms=t)))
+        for t in (315, 1951, 4544, 7732, 13406, 19229)
+    ]
+    rep = build_report(graded, discovered=6, unique_after_dedupe=6, qualified=6)
+    assert rep.median_answer_time_ms == 6138

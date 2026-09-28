@@ -183,11 +183,13 @@ def prompt_version() -> str:
     `EvaluationRecord` false: two runs months apart would carry the same "version" while the
     prompt underneath had been rewritten. The hash changes when the prompt does.
     """
-    path = REPO_ROOT / "prompts" / "diagnose" / "active.yaml"
+    # Codex #4062 round 3 F1: the engine's prompt lives under mira-bots/, and an
+    # unrecordable version fails the run instead of stamping "@unreadable".
+    path = REPO_ROOT / "mira-bots" / "prompts" / "diagnose" / "active.yaml"
     try:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
-    except OSError:
-        return "active.yaml@unreadable"
+    except OSError as exc:
+        raise RuntimeError(f"cannot record the prompt version: {path} is unreadable") from exc
     return f"active.yaml@{digest}"
 
 
