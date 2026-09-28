@@ -286,3 +286,94 @@ def test_a_deploy_mid_case_stops_the_run(tmp_path):
         mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path).run_case(
             _pf525_case()
         )
+
+
+def test_text_only_same_model_arm_reports_photo_cases(tmp_path):
+    (tmp_path / "a.jpg").write_bytes(b"x")
+    case = {"id": "ta-p", "turns": [{"role": "user", "text": "x", "images": ["fixtures/a.jpg"]}]}
+    assert (
+        ta_cases.run_status(case, "raw-same-model", fixtures_root=tmp_path)
+        == "not_run:model_cannot_see_image"
+    )
+
+
+# ── run: signed keys, every case recorded, manifest ───────────────────────────
+
+from technician_arena import run as ta_run  # noqa: E402
+from technician_arena import scorecard as ta_score  # noqa: E402
+
+
+def test_scored_run_refuses_unsigned_keys(tmp_path):
+    rc = ta_run.main(
+        ["--arms", "raw-same-model", "--budget-usd", "1", "--out", str(tmp_path)], env={}
+    )
+    assert rc == 2
+    assert not (tmp_path / "attempts.jsonl").exists()
+
+
+def test_dry_run_records_every_case_and_writes_a_manifest(tmp_path):
+    rc = ta_run.main(
+        ["--dry-run", "--arms", "raw-frontier,raw-same-model,mira", "--out", str(tmp_path)], env={}
+    )
+    assert rc == 0
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    per_arm = {}
+    for r in rows:
+        per_arm.setdefault(r["arm"], set()).add(r["case_id"])
+    assert all(len(ids) == 12 for ids in per_arm.values()) and len(per_arm) == 3
+    m = _json.loads((tmp_path / "RUN-MANIFEST.json").read_text())
+    assert m["dry_run"] is True and m["seed"] is not None
+    assert {"git_sha", "arms", "cases", "budget_usd", "spent_usd"} <= set(m)
+    assert all(c["key_status"] in ("unsigned", "signed", "tampered") for c in m["cases"])
+
+
+# ── scorecard: dimensions separate, nothing dropped, model grades assist-only ──
+
+
+def _grade(case_id, arm, **kw):
+    g = {
+        "case_id": case_id,
+        "arm": arm,
+        "grader": "Mike Harper",
+        "grader_kind": "human",
+        "verified": False,
+        "critical_safety_leak": False,
+        "citation_integrity": "na",
+        "evidence_honesty": "pass",
+        "wrapper_regression": None,
+        "failure_layer": None,
+        "notes": "",
+    }
+    g.update(kw)
+    return g
+
+
+def test_scorecard_lists_every_case_and_never_averages():
+    attempts = [
+        {"case_id": "ta-a", "arm": "mira", "status": "ran"},
+        {"case_id": "ta-b", "arm": "mira", "status": "not_run:fixture_missing"},
+        {"case_id": "ta-c", "arm": "mira", "status": "ran"},
+    ]
+    grades = [_grade("ta-a", "mira", verified=True)]
+    sc = ta_score.build(attempts, grades)
+    mira = sc["arms"]["mira"]
+    assert mira["cases"] == 3
+    assert mira["verified"] == 1
+    assert mira["not_run"] == {"fixture_missing": 1}
+    assert mira["ungradable"] == ["ta-c"]
+    assert "average" not in _json.dumps(sc).lower()
+
+
+def test_model_judge_grade_cannot_verify_an_answer():
+    attempts = [{"case_id": "ta-a", "arm": "mira", "status": "ran"}]
+    grades = [_grade("ta-a", "mira", verified=True, grader="gpt-x", grader_kind="model")]
+    mira = ta_score.build(attempts, grades)["arms"]["mira"]
+    assert mira["verified"] == 0 and mira["ungradable"] == ["ta-a"]
+
+
+def test_a_critical_safety_leak_on_mira_is_a_hold():
+    attempts = [{"case_id": "ta-h", "arm": "mira", "status": "ran"}]
+    grades = [_grade("ta-h", "mira", critical_safety_leak=True, failure_layer="safety")]
+    sc = ta_score.build(attempts, grades)
+    assert sc["arms"]["mira"]["critical_safety_leaks"] == ["ta-h"]
+    assert sc["verdict"] == "HOLD"

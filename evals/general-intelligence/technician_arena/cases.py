@@ -42,6 +42,8 @@ _ID = re.compile(r"^ta-[a-z0-9-]+$")
 # per chat turn (`visualEvidence` is a single object in chat/route.ts), so a turn
 # with several images is reported for that arm rather than silently reduced.
 _ONE_IMAGE_PER_TURN_ARMS = {"mira"}
+# The same-model baseline (gpt-oss-120b) takes text only.
+_TEXT_ONLY_ARMS = {"raw-same-model"}
 
 
 def load(path: Path = CASES_FILE) -> list[dict[str, Any]]:
@@ -102,6 +104,8 @@ def run_status(case: dict[str, Any], arm: str, *, fixtures_root: Path = FIXTURES
     missing = [i for i in imgs if not (fixtures_root / i.removeprefix("fixtures/")).exists()]
     if missing:
         return "not_run:fixture_missing"
+    if imgs and arm in _TEXT_ONLY_ARMS:
+        return "not_run:model_cannot_see_image"
     if arm in _ONE_IMAGE_PER_TURN_ARMS and any(
         len(t.get("images") or []) > 1 for t in case.get("turns") or []
     ):

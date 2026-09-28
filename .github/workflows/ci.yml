@@ -568,6 +568,18 @@ jobs:
         # and these exercise the rubric and schema only.
         run: pytest tests/answer_radar/ -v
 
+      - name: General Intelligence + Technician Arena harnesses (keys, arms, scorecard)
+        # evals/general-intelligence/: the GI-1 arena and the Technician Arena (PRD
+        # 2026-09-28). Named explicitly for the same reason as Answer Radar above:
+        # root tests/ is not collected wholesale here. These lock the properties that
+        # make an arena number trustworthy: expert keys must be signed and unaltered
+        # before a scored run; every case x arm is recorded (not-run with a reason,
+        # never dropped); gpt-5.x requests and the cost ledger never under-count; the
+        # MIRA arm uses the product's own request shapes; the scorecard never averages
+        # and a model-judge grade can never verify an answer.
+        # Hermetic: dry-run and fakes only — no network, no tokens.
+        run: pytest tests/test_general_intelligence_arena.py tests/test_technician_arena.py -v
+
       - name: Codex adversarial-review scripts (behavior locks)
         # scripts/adversarial-review{,-loop}.sh + adversarial-review-ledger.mjs:
         # durable cross-restart 3-round budget, validated-record iteration (never

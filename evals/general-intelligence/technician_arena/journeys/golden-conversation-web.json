@@ -1,0 +1,68 @@
+{
+  "surface": "web",
+  "contract": "evals/golden-conversations/golden-conversation.md",
+  "backend_sha": null,
+  "client_build": null,
+  "device": null,
+  "thread_id": null,
+  "verdict": "UNKNOWN",
+  "note": "Android stays UNKNOWN until a connected real phone runs it; emulator evidence is recorded separately.",
+  "steps": [
+    {
+      "n": 1,
+      "step": "open the app",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 2,
+      "step": "start a new chat",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 3,
+      "step": "ask without forced machine setup",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 4,
+      "step": "MIRA discovers evidence",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 5,
+      "step": "answer",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 6,
+      "step": "inspect a citation (opens the cited page)",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 7,
+      "step": "reopen the same thread",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    },
+    {
+      "n": 8,
+      "step": "find it in its Project",
+      "result": "not_run",
+      "evidence": [],
+      "timestamp": null
+    }
+  ]
+}
