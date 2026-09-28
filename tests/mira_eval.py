@@ -63,6 +63,13 @@ DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
+# $ per million tokens (input, output); reasoning tokens bill as output.
+# Burn study 2026-07-17. An unpriced model refuses to run so spend is never hidden.
+OPENAI_PRICE_PER_MTOK = {"gpt-5.5": (5.0, 30.0)}
+SPEND = {"usd": 0.0, "in": 0, "out": 0}
+
 CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
 DEFAULT_CEREBRAS_MODEL = "gpt-oss-120b"
 
@@ -247,6 +254,38 @@ def _call_openai_compat(
     return resp.json()["choices"][0]["message"]["content"]
 
 
+def _call_openai_direct(
+    client: httpx.Client,
+    api_key: str,
+    model: str,
+    system_content: str,
+    user_content: str,
+) -> str:
+    """Call api.openai.com directly (gpt-5.x: max_completion_tokens, no temperature)."""
+    resp = client.post(
+        OPENAI_API_URL,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": model,
+            "max_completion_tokens": 4000,
+            "reasoning_effort": "low",
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    usage = body.get("usage") or {}
+    price_in, price_out = OPENAI_PRICE_PER_MTOK[model]
+    SPEND["in"] += usage.get("prompt_tokens", 0)
+    SPEND["out"] += usage.get("completion_tokens", 0)
+    SPEND["usd"] = SPEND["in"] / 1e6 * price_in + SPEND["out"] / 1e6 * price_out
+    return body["choices"][0]["message"]["content"] or ""
+
+
 def _call_openwebui(
     client: httpx.Client,
     url: str,
@@ -316,6 +355,8 @@ def evaluate_question(
             response_text = _call_claude(
                 client, api_key, model, system_content, user_content, max_tokens=tokens,
             )
+        elif provider == "openai":
+            response_text = _call_openai_direct(client, api_key, model, system_content, user_content)
         elif provider in ("groq", "cerebras"):
             tokens = 800 if is_calc else 300
             response_text = _call_openai_compat(
@@ -477,6 +518,8 @@ def main():
     parser.add_argument("--rag", action="store_true", help="Enable NeonDB RAG retrieval per question")
     parser.add_argument("--claude", action="store_true", help="Use Claude API instead of Open WebUI")
     parser.add_argument("--groq", action="store_true", help="Use Groq API (Llama 3.3 70B)")
+    parser.add_argument("--openai", action="store_true", help="Use api.openai.com directly (paid)")
+    parser.add_argument("--budget-usd", type=float, default=0.0, help="Hard spend cap for --openai (required)")
     parser.add_argument("--cerebras", action="store_true", help="Use Cerebras API (Llama 3.1 8B)")
     parser.add_argument("--ollama-url", type=str, default=None, help="Ollama URL for RAG embeddings")
     args = parser.parse_args()
@@ -491,6 +534,19 @@ def main():
             logger.error("GROQ_API_KEY not set.")
             sys.exit(1)
         model = args.model or os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    elif args.openai:
+        provider = "openai"
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            logger.error("OPENAI_API_KEY not set.")
+            sys.exit(1)
+        model = args.model or os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+        if model not in OPENAI_PRICE_PER_MTOK:
+            logger.error("No price for %s; add it to OPENAI_PRICE_PER_MTOK first.", model)
+            sys.exit(1)
+        if args.budget_usd <= 0:
+            logger.error("--openai is paid: pass --budget-usd.")
+            sys.exit(1)
     elif args.cerebras:
         provider = "cerebras"
         provider_url = CEREBRAS_API_URL
@@ -562,6 +618,11 @@ def main():
             if result["is_correct"]:
                 correct_count += 1
 
+            if provider == "openai" and SPEND["usd"] >= args.budget_usd:
+                logger.error("Budget reached ($%.4f >= $%.2f) after %d questions; stopping.",
+                             SPEND["usd"], args.budget_usd, i)
+                break
+
             # Delay between requests
             if i < len(questions):
                 time.sleep(DELAY_BETWEEN)
@@ -574,6 +635,8 @@ def main():
     # Print summary to stdout
     report = build_report(results, model, timestamp)
     print(report)
+    if provider == "openai":
+        print(f"OpenAI spend: ${SPEND['usd']:.4f} ({SPEND['in']} in / {SPEND['out']} out tokens)")
 
 
 if __name__ == "__main__":
