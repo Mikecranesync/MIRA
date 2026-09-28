@@ -466,7 +466,12 @@ def build_report(
     verdicts: list[dict[str, Any]] = []
     tally: dict[str, dict[str, int]] = {}
     degraded: list[str] = []
-    not_run = {r.case_id for r in results if (r.error or "").startswith("not_run:")}
+    # Codex #3487 F1 (r1, r2): a case is compared only when BOTH systems attempted
+    # it and neither was a not_run — a budget stop or missing image is "Not run".
+    attempted = {(r.case_id, r.system) for r in results}
+    not_run = {r.case_id for r in results if (r.error or "").startswith("not_run:")} | {
+        c["id"] for c in cases if not all((c["id"], s) in attempted for s in ("raw", "mira"))
+    }
     for case in cases:
         cat = case["category"]
         tally.setdefault(cat, {"MIRA wins": 0, "Tie": 0, "Baseline wins": 0})

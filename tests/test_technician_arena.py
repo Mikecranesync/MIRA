@@ -537,3 +537,110 @@ def test_f7_gi_budget_stop_keeps_completed_attempts(tmp_path):
     with pytest.raises(arena.BudgetExceeded) as exc:
         arena.run_system(raw, cases, dry_run=False, budget=arena.Budget(45), fixtures_root=tmp_path)
     assert len(exc.value.partial) == raw.calls == 2
+
+
+# ── Codex #3487 round 2 ───────────────────────────────────────────────────────
+
+
+def test_r2f1_gi_cases_missing_either_arm_get_no_verdict():
+    cases = [c for c in arena.load_cases() if not any(t.get("images") for t in c["turns"])][:2]
+    rows = [
+        arena.TurnResult(
+            cases[0]["id"], "raw", 0, "an answer " * 30, 1, "m", 1, 1, 0.0, [], None, None
+        ),
+        arena.TurnResult(
+            cases[0]["id"], "mira", 0, "an answer " * 30, 1, "m", 1, 1, 0.0, [], None, None
+        ),
+        arena.TurnResult(
+            cases[1]["id"], "raw", 0, "an answer " * 30, 1, "m", 1, 1, 0.0, [], None, None
+        ),
+    ]
+    report = arena.build_report(cases, rows, None)
+    v = {x["case_id"]: x["verdict"] for x in report["verdicts"]}
+    assert v[cases[1]["id"]] == "Not run" and v[cases[0]["id"]] != "Not run"
+
+
+class _FailingRaw(_FakeRaw):
+    def ask(self, case, history, turn, images):
+        self.calls += 1
+        raise RuntimeError("HTTP 401 from provider")
+
+
+def test_r2f2_a_failed_raw_call_is_an_error_not_an_answer(monkeypatch, tmp_path):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    fake = _FailingRaw()
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: fake)
+    ta_run.main(
+        [
+            "--arms",
+            "raw-frontier",
+            "--budget-usd",
+            "5",
+            "--out",
+            str(tmp_path),
+            "--case",
+            "ta-followup-bound-history",
+        ],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert [r["status"] for r in rows] == ["error:provider"]  # second turn never sent
+    arm = ta_score.build(
+        rows, [_grade("ta-followup-bound-history", "raw-frontier", verified=True)]
+    )["arms"]["raw-frontier"]
+    assert arm["verified"] == 0 and arm["errors"] == {"provider": 1}
+
+
+@pytest.mark.parametrize("first_leaks", [True, False])
+def test_r2f3_any_human_safety_leak_holds_until_adjudicated(first_leaks):
+    attempts = [{"case_id": "ta-h", "arm": "mira", "status": "ran"}]
+    a = _grade("ta-h", "mira", critical_safety_leak=first_leaks)
+    b = _grade("ta-h", "mira", grader="Second Reviewer", critical_safety_leak=not first_leaks)
+    sc = ta_score.build(attempts, [a, b])
+    assert sc["verdict"] == "HOLD"
+    assert sc["arms"]["mira"]["dispositions"]["ta-h"] == "needs_adjudication"
+
+
+def test_r2f4_editing_the_question_voids_the_signature():
+    c = keys.sign(
+        _case(turns=[{"role": "user", "text": "F005 on stop?"}]),
+        signer="Mike Harper",
+        date="2026-09-28",
+    )
+    assert keys.key_status(c) == "signed"
+    c["turns"][0]["text"] = "F004 on stop?"
+    assert keys.key_status(c) == "tampered"
+
+
+def test_r2f5_a_budget_stop_mid_conversation_leaves_the_case_ungradable(monkeypatch, tmp_path):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    fake = _FakeRaw()
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: fake)
+    ta_run.main(
+        [
+            "--arms",
+            "raw-frontier",
+            "--budget-usd",
+            "5",
+            "--out",
+            str(tmp_path),
+            "--case",
+            "ta-followup-bound-history",
+        ],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert [r["status"] for r in rows] == ["error:incomplete"] and fake.calls == 1
+    arm = ta_score.build(
+        rows, [_grade("ta-followup-bound-history", "raw-frontier", verified=True)]
+    )["arms"]["raw-frontier"]
+    assert arm["verified"] == 0
+
+
+def test_r2f6_manifest_records_the_request_shape_actually_sent(tmp_path):
+    env = {"ARENA_FRONTIER_MODEL": "gpt-5.5-pro", "ARENA_FRONTIER_EFFORT": "high"}
+    ta_run.main(["--dry-run", "--arms", "raw-frontier", "--out", str(tmp_path)], env=env)
+    shape = _json.loads((tmp_path / "RUN-MANIFEST.json").read_text())["raw_request_shape"][
+        "raw-frontier"
+    ]
+    assert shape["model"] == "gpt-5.5-pro" and shape["reasoning_effort"] == "high"

@@ -112,7 +112,23 @@ def _run_raw(arm_obj, arm, case, workflow, root, budget, dry) -> list[dict[str, 
             try:
                 answer, meta = arm_obj.ask(case, history, t, images)
             except Exception as exc:  # noqa: BLE001 — recorded, never crashes the run
-                answer, err = "", f"{type(exc).__name__}: {str(exc)[:200]}"
+                # Codex #3487 r2 F2: a failed call is an error attempt, and the rest
+                # of the conversation is not sent on a broken history.
+                out.append(
+                    {
+                        "case_id": case["id"],
+                        "arm": arm,
+                        "workflow": workflow,
+                        "turn_index": i,
+                        "status": "error:provider",
+                        "answer": "",
+                        "model": model,
+                        "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                        "cost_usd": 0.0,
+                        "latency_ms": int((time.monotonic() - t0) * 1000),
+                    }
+                )
+                return out
             cost = arena.estimate_cost_usd(
                 model, int(meta.get("input_tokens") or 0), int(meta.get("output_tokens") or 0)
             )
@@ -202,6 +218,9 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
             env.get("ARENA_HUB_COOKIE", ""),
         )
         mira = mira_staging.MiraStaging(hub, workflow=args.workflow, fixtures_root=root)
+    # Codex #3487 r2 F6: build each raw arm once; the manifest records the shape
+    # these exact objects send.
+    raw_arms = {a: _raw_arm(a, env) for a in arms if a != "mira"}
     pairs = []
     for case in order:
         case_arms = list(arms)
@@ -231,7 +250,7 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
                 recs = mira.run_case(case)
             else:
                 recs = _run_raw(
-                    None if args.dry_run else _raw_arm(arm, env),
+                    None if args.dry_run else raw_arms[arm],
                     arm,
                     case,
                     args.workflow,
@@ -247,9 +266,14 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     except arena.BudgetExceeded as exc:
         case, arm = pairs[done]
         partial = getattr(exc, "partial", [])
+        user_turns = sum(1 for t in case["turns"] if t.get("role") == "user")
         for r in partial:
             if case.get("key_written_after_outputs_seen"):
                 r["diagnostic"] = True
+            if len(partial) < user_turns:
+                # Codex #3487 r2 F5: a conversation cut short is not gradable; the
+                # paid attempt stays recorded with its cost.
+                r["status"] = "error:incomplete"
         records.extend(partial)
         for case, arm in pairs[done + 1 :]:
             records.append(
@@ -272,11 +296,8 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         "workflow": args.workflow,
         "seed": seed,
         "case_order": [c["id"] for c in order],
-        "arms": [
-            {"name": a, "model": (None if args.dry_run or a == "mira" else _raw_arm(a, env).model)}
-            for a in arms
-        ],
-        "raw_request_shape": {a: _raw_arm(a, {}).request_body([]) for a in arms if a != "mira"},
+        "arms": [{"name": a, "model": (None if a == "mira" else raw_arms[a].model)} for a in arms],
+        "raw_request_shape": {a: arm_obj.request_body([]) for a, arm_obj in raw_arms.items()},
         "staging": {
             "base": env.get("ARENA_HUB_BASE", "https://app-staging.factorylm.com"),
             "deployed_sha": deployed,
