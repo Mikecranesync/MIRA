@@ -472,9 +472,14 @@ export async function retrieveManualChunks(
   // are unchanged; other scopes keep their single-name query.
   const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
     const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
-    if (names.length <= 1) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    if (names.length === 0) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    // Pass 25 F1: every identity-bound hit — one needle or several — must come
+    // from the bound vendor group ("%sew%" also matches "Sewon"). Fetch a wider
+    // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
     const merged: ManualChunk[] = [];
-    for (const name of names) merged.push(...(await runBm25Query(client, tenantId, text, topK, name, s.model)));
+    for (const name of names) {
+      merged.push(...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model)));
+    }
     // Pass 24 F2: a substring needle only narrows the search; admission needs
     // the stored maker to be in the vendor group as a whole word.
     return dedupeChunks(merged.sort((a, b) => b.rank - a.rank))

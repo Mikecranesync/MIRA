@@ -1132,6 +1132,24 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out[0].retrievalScope).toBe("vendor_fallback");
   });
 
+  it("Codex #4069 pass 25 F1: the bound model's own-page search rejects a same-model row from another maker", async () => {
+    const other = (i: number) =>
+      row({ manufacturer: "Sewon", model_number: "100", title: "Sewon 100 Manual", source_url: `https://oem.example/sewon-${i}.pdf`, content: "controller wiring", rank: 0.9 });
+    const { client } = corpusClient([
+      ...Array.from({ length: 8 }, (_, i) => other(i)),
+      row({ manufacturer: "SEW-Eurodrive", model_number: "100", title: "SEW 100 Manual", source_url: "https://oem.example/sew-100.pdf", content: "controller wiring", rank: 0.3 }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      // The notebook stores the short form — the needle is then "%SEW%".
+      manufacturer: "SEW",
+      model: "100",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW-Eurodrive"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
   it("Codex #4069 pass 24 F2: a short alias never admits another maker whose name merely contains it", async () => {
     const { client } = corpusClient([
       plc({ manufacturer: "Sewon", source_url: "https://oem.example/sewon.pdf", content: "Sewon controller wiring." }),
