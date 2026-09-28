@@ -2658,6 +2658,11 @@ async function handleChatTurn(
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
+        // Codex #4069 pass 18 F2: gate off, the related-manual warning already
+        // streamed ahead of this text — the saved turn carries what the tech saw.
+        if (relatedWarningStreamed && relatedManualWarning && partial.length) {
+          partial = `${relatedManualWarning}\n\n${partial}`;
+        }
         const partialText = gate ? null : partial.length ? (flagBanner ? `${flagBanner}\n\n${partial}` : partial) : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         const stoppedAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);

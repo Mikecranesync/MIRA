@@ -577,6 +577,33 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
   });
 
+  it("2l3. Codex #4069 pass 18 F2: a stopped gate-off related-manual turn saves the warning the tech saw", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    const enc2 = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc2.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "A related manual says " } }] })}\n\n`));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+    const res = await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let received = "";
+    while (!received.includes("A related manual says")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += dec.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string | null };
+    expect(received).toContain("The closest match is a related manual");
+    expect(rec.answerText?.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
+    expect(rec.answerText).toContain("A related manual says");
+  });
+
   it("2m. #4068 related-manual warning with the answer gate ON (the production default)", async () => {
     delete process.env.NOTEBOOK_ANSWER_GATE;
     try {

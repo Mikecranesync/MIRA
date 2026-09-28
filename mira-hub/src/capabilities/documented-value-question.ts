@@ -124,6 +124,9 @@ function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
 // itself, not a feature or procedure of it.
 const WHOLE_MACHINE_HOW_IT_WORKS =
   /^\s*how\s+(?:does|do)\s+(?:this|my|our|the|that)\s+(?:[\w-]+\s+){0,2}work(?:s)?\s*\??\s*$/i;
+const EXPLICIT_GENERAL = /\b(?:in\s+general|generally)\b/i;
+// "the drive", "the conveyor's" — a definite equipment noun is this plant's unit.
+const DEFINITE_EQUIPMENT = new RegExp(`\\bthe\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}(?:'s)?\\b`, "i");
 // A question that marks itself as general knowledge, not this machine.
 const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
 // A condition on the machine's state ("when it overheats", "if the fan is
@@ -188,7 +191,9 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // morning?") is a problem to work, bound or not — unless the question marks
   // itself as general ("in general", "generally", "difference between", …).
   // Lean to declining (owner decision): the class, not one phrasing.
-  if (SYMPTOM.test(q) && !GENERAL_MARKER.test(q)) return true;
+  // Pass 18: only an EXPLICIT generality ("in general", "generally") outranks a
+  // described symptom — "Explain why the drive trips" is still the drive's problem.
+  if (SYMPTOM.test(q) && !EXPLICIT_GENERAL.test(q)) return true;
   // Pass 12: "how does my drive work WHEN IT OVERHEATS" is a condition on this
   // machine, not a concept question. Bound + a condition clause is never teaching.
   const conditional = bound && CONDITION_CLAUSE.test(q);
@@ -196,7 +201,8 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // name) outranks the general markers — "Explain the wiring diagram for my
   // TP700" is a documentation request about this machine, not a lesson. Only a
   // pure "how does this drive work?" stays teaching when explicitly tied.
-  const explicitlyThisMachine = STRONG_BINDING.test(q) || namesModel(q, boundModel);
+  const explicitlyThisMachine =
+    STRONG_BINDING.test(q) || namesModel(q, boundModel) || DEFINITE_EQUIPMENT.test(q);
   const teaching =
     !conditional &&
     ((explicitlyThisMachine ? WHOLE_MACHINE_HOW_IT_WORKS.test(q) : HOW_IT_WORKS.test(q)) ||

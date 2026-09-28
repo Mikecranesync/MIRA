@@ -114,6 +114,10 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is this drive's DIP switch used for", "PowerFlex 525"],
     ["how does the reset procedure on my TP700 work", "TP700 Comfort"],
     ["how does the backup battery in this drive work", "PowerFlex 525"],
+    // Codex #4069 pass 18 F1: "explain" does not outrank a described symptom.
+    ["Explain why the drive trips", "PowerFlex 525"],
+    ["explain the wiring for the drive", "PowerFlex 525"],
+    ["Explain the drive's wiring", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -148,6 +152,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What is a VFD?", "PowerFlex 525"],
     ["what does IGBT stand for", "PowerFlex 525"],
     ["Explain how an HMI works", "TP700 Comfort"],
+    ["Explain how a VFD works", "PowerFlex 525"],
+    ["in general, why do drives trip on overcurrent", "PowerFlex 525"],
     ["generally, why do drives fault on overvoltage", "PowerFlex 525"],
     ["explain how PNP sensors are wired in general", "GS10"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
