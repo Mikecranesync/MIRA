@@ -277,7 +277,9 @@ describe("E10 — general-lane invented specificity is replaced with the control
       vi.fn(async () => completingProvider("Fault code ZX-9987 means the encoder has lost synchronization.")),
     );
     const res = await POST(
-      chatReq({ message: "What does fault code ZX-9987 mean on my S7-1500?", sourceDocIds: [], mode: "general" }),
+      // Codex #4069 pass 21: asked about the BOUND machine — a code question naming
+      // a different machine now takes the no-evidence decline (lean to declining).
+      chatReq({ message: "What does fault code ZX-9987 mean on my TS-440?", sourceDocIds: [], mode: "general" }),
       params,
     );
     const frames = parseFrames(await res.text());

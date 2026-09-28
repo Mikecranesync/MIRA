@@ -101,9 +101,6 @@ const TROUBLESHOOTING = new RegExp(`${SYMPTOM.source}|${PROCEDURE_VERBS.source}`
 
 // "what does fault code X mean", "what does F005 mean on my drive".
 const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i;
-// Anything after the "what does X mean" clause beyond a location ("on my
-// drive") — another clause or question — makes it a mixed question.
-const SECOND_CLAUSE = /[,;?]\s*\S|\b(?:and|also|but|why|how|when|where|should|can|could|is|are|was|keeps?)\b/i;
 // Pass 14: "what is X" teaches only as a short, whole-question concept
 // definition ("What is a VFD?", "what is DH-485") — never a diagnostic frame
 // ("what is wrong with…", "what's going on with…", "what is the problem…").
@@ -120,12 +117,19 @@ function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
   return faultCodeTokens(clause).some((t) => !(model && model.includes(norm(t))));
 }
 
-// "fault"/"error"/"alarm" (+ "code") immediately naming a fault-code token —
-// the lookahead is answer-validation.ts's FAULT_CODE_TOKEN shape.
-const CODE_NAMING_WORD =
-  /\b(?:fault|error|alarm)(?:\s+code)?\s+(?=[A-Za-z]{1,4}[-_]?\d{2,8}\b)|(?<=\b[A-Za-z]{1,4}[-_]?\d{2,8}\s+)(?:fault|error|alarm)(?:\s+code)?\b/gi;
-// A condition or another clause folded into the "what does … mean" clause.
-const MEANING_CLAUSE_CONDITION = /\b(?:when|whenever|while|if|after|once|since|and|but|why|how)\b/i;
+// The words a pure "what does <code> mean [on my <machine>]" question may hold.
+const CODE_MEANING_ALLOWED = new RegExp(
+  `\\b(?:what|does|do|is|means?|meaning|the|a|an|my|this|our|your|that|on|in|for|of|from|fault|error|alarm|code|number|${EQUIPMENT_NOUN})\\b`,
+  "gi",
+);
+function onlyCodeMeaningWords(q: string, boundModel?: string | null): boolean {
+  let t = q.toLowerCase();
+  for (const code of faultCodeTokens(t)) t = t.split(code).join(" ");
+  for (const w of (boundModel ?? "").toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w) t = t.replace(new RegExp(`\\b${w}\\b`, "g"), " ");
+  }
+  return t.replace(CODE_MEANING_ALLOWED, " ").replace(/[^a-z0-9]+/g, "") === "";
+}
 
 // The whole question is "how does this/my <machine> work?" — the machine
 // itself, not a feature or procedure of it.
@@ -186,17 +190,12 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
     return true;
   }
   if (CODE_MEANING.test(q) && askedCode && !PROCEDURE_ASK.test(q)) {
-    // Pass 19: a symptom or condition INSIDE the meaning clause ("what does
-    // F005 on my drive when it trips mean?") is not a pure code question either.
-    // The clause's own code vocabulary is removed first — but only the word that
-    // NAMES the code ("fault code F005", "alarm A012"); "with repeated faults"
-    // is a symptom and stays (pass 20).
-    const inner = (q.match(CODE_MEANING)?.[0] ?? "").replace(CODE_NAMING_WORD, " ");
-    if (SYMPTOM.test(inner) || MEANING_CLAUSE_CONDITION.test(inner)) return true;
-    const rest = q.replace(CODE_MEANING, " ");
-    // Mixed: the "mean" in the first clause must not read as the teaching
-    // list's "what does X mean" — lean to declining (owner decision).
-    return SYMPTOM.test(rest) || SECOND_CLAUSE.test(rest);
+    // Passes 19–21: a pure code-meaning question is an ALLOWLIST, not a symptom
+    // blacklist — every symptom phrasing Codex found ("when it trips", "with
+    // repeated faults", "with no output") was a new word. Only the code, the
+    // word naming it, a location on this machine, and "mean" may appear;
+    // anything else declines (owner decision: lean to declining).
+    return !onlyCodeMeaningWords(q, boundModel);
   }
   // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
   // ("how does my drive work when it trips on F005?") is troubleshooting.

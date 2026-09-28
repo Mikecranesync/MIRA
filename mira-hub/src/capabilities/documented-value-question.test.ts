@@ -128,6 +128,14 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What does F005 on my drive with repeated faults mean?", "PowerFlex 525"],
     ["what does F005 on my drive with an active alarm mean", "PowerFlex 525"],
     ["what does F005 on the drive showing errors mean", "PowerFlex 525"],
+    // Codex #4069 pass 21: the pure code-meaning exception is an allowlist —
+    // any word beyond the code, its name, a location and "mean" declines.
+    ["What does F005 on my drive with no output mean?", "PowerFlex 525"],
+    ["What does F005 mean on my drive with no output?", "PowerFlex 525"],
+    ["what does F005 mean on the conveyor that is running slow", "GS10"],
+    ["what does F005 mean on my drive right now", "PowerFlex 525"],
+    // …and a code question naming a machine other than the bound one declines too.
+    ["What does fault code ZX-9987 mean on my S7-1500?", "ThermoSeal TS-440"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -164,6 +172,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what does the F005 error code mean on my drive", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
+    ["What does fault code ZX-9987 mean on my TS-440?", "ThermoSeal TS-440"],
     ["what is the difference between a contactor and a relay", "GS10"],
     ["What is a VFD?", "PowerFlex 525"],
     ["what does IGBT stand for", "PowerFlex 525"],
