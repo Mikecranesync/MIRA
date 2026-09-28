@@ -172,15 +172,18 @@ def grade_packet(
     """Grade every packet entry for `condition`; write grade-<slot>-<seed>.json. Returns failures."""
     out_dir.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []
+    # Clear EVERY selected target before the first call, so a budget stop or a
+    # failure part-way through can never leave an older grade for a seed this
+    # run was asked to grade (#4092 Codex round 2 F1).
+    for entry in packet.values():
+        if entry.get("condition") == condition:
+            (out_dir / f"grade-{slot}-{entry['seed_id']}.json").unlink(missing_ok=True)
     for key in sorted(packet):
         entry = packet[key]
         if entry.get("condition") != condition:
             continue
         sid = entry["seed_id"]
         target = out_dir / f"grade-{slot}-{sid}.json"
-        # A failed attempt must never leave an older grade for score.py to
-        # read as this answer's verdict (#4092 Codex F1).
-        target.unlink(missing_ok=True)
         try:
             text = grader.complete(
                 client,

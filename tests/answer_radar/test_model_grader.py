@@ -211,3 +211,61 @@ def test_two_agreeing_fail_verdicts_never_verify():
     )
     rec.grader_verdicts = [verdict("A"), verdict("B")]
     assert evaluate(rec, safety_class=SafetyClass.NONE).verified_correct is False
+
+
+def test_budget_stop_clears_every_selected_target(tmp_path: Path):
+    # Codex #4092 r2 F1: S2 is never reached (budget stop at S1), yet its old
+    # grade must not survive to be scored against the new answer.
+    for sid in ("S1", "S2"):
+        (tmp_path / f"grade-B-{sid}.json").write_text("{}")
+    keep = tmp_path / "grade-A-S2.json"
+    keep.write_text("{}")
+    grader = OpenAIDirect("gpt-5.5", 0.0001, api_key="k")  # below one call's worst case
+    transport, calls = _transport([])
+    with httpx.Client(transport=transport) as http:
+        failures = model_grader.grade_packet(
+            PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    assert calls == [] and "budget stop" in failures[0]
+    assert not (tmp_path / "grade-B-S1.json").exists()
+    assert not (tmp_path / "grade-B-S2.json").exists()
+    assert keep.exists()  # the other slot is untouched
+
+
+def test_input_bound_covers_multibyte_text():
+    from answer_radar.openai_direct import FRAMING_TOKENS, input_token_upper_bound
+
+    dense = "°Ω≥≤µ" * 100  # 5 chars, 12 UTF-8 bytes per repeat
+    assert input_token_upper_bound(dense, "") == len(dense.encode("utf-8")) + FRAMING_TOKENS
+    assert input_token_upper_bound(dense, "") > len(dense)
+
+
+def test_truncated_exam_is_marked_incomplete(tmp_path: Path, monkeypatch):
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "mira_eval", Path(__file__).resolve().parents[1] / "mira_eval.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    _sys.modules["mira_eval"] = mod
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod, "RESULTS_DIR", tmp_path)
+    row = {
+        "id": 1,
+        "domain": "d",
+        "difficulty": "easy",
+        "type": "recall",
+        "stem": "s",
+        "correct_answer": "A",
+        "model_answer": "A",
+        "is_correct": True,
+        "response_raw": "A",
+        "response_time_ms": 1,
+        "rag_chunks": False,
+        "error": None,
+    }
+    mod.write_results([row], "gpt-5.5", "t", requested=100)
+    out = json.loads((tmp_path / "mcq_eval_results.json").read_text())
+    assert (out["complete"], out["requested"], out["total"]) == (False, 100, 1)
+    assert (tmp_path / "mcq_eval_report.txt").read_text().startswith("INCOMPLETE RUN: 1 of 100")

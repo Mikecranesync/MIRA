@@ -25,6 +25,16 @@ PROVIDER = "openai"
 PRICE_PER_MTOK: dict[str, tuple[float, float]] = {"gpt-5.5": (5.0, 30.0)}
 
 
+#: Per-request framing allowance: role/turn markers for two messages plus the
+#: reply primer. Generous by design; it only has to be an upper bound.
+FRAMING_TOKENS = 64
+
+
+def input_token_upper_bound(system: str, user: str) -> int:
+    """An upper bound on prompt tokens: UTF-8 bytes of both messages + framing."""
+    return len(system.encode("utf-8")) + len(user.encode("utf-8")) + FRAMING_TOKENS
+
+
 class BudgetExceeded(RuntimeError):
     """The budget was already spent before this call."""
 
@@ -62,13 +72,16 @@ class OpenAIDirect:
         timeout: float = 120.0,
     ) -> str:
         """One chat completion. gpt-5.x: max_completion_tokens, no temperature."""
-        # Reserve the worst case BEFORE sending, so the cap is hard: input is
-        # over-estimated at one token per 2 characters, output at the full
-        # completion allowance (reasoning tokens bill as output).
+        # Reserve the worst case BEFORE sending, so the cap is hard. Input: every
+        # BPE token covers at least one UTF-8 byte, so the byte count is an upper
+        # bound on text tokens; FRAMING_TOKENS covers per-message and reply
+        # framing. Output: the full completion allowance (reasoning bills as
+        # output). #4092 Codex round 2 F2: a chars/2 estimate was not a bound.
         price_in, price_out = PRICE_PER_MTOK[self.model]
         worst = (
-            len(system) + len(user)
-        ) / 2 / 1e6 * price_in + max_completion_tokens / 1e6 * price_out
+            input_token_upper_bound(system, user) / 1e6 * price_in
+            + max_completion_tokens / 1e6 * price_out
+        )
         if self.spent_usd + worst > self.budget_usd:
             raise BudgetExceeded(
                 f"${self.spent_usd:.4f} spent; next call may cost up to ${worst:.4f}; budget ${self.budget_usd:.2f}"
@@ -99,7 +112,7 @@ class OpenAIDirect:
             or "completion_tokens" not in usage
         ):
             # Unpriceable spend fails closed: charge the reserved worst case and stop.
-            self.tokens_in += int((len(system) + len(user)) / 2)
+            self.tokens_in += input_token_upper_bound(system, user)
             self.tokens_out += max_completion_tokens
             raise BudgetExceeded("response carried no usage; charged the worst case and stopping")
         self.tokens_in += int(usage["prompt_tokens"])

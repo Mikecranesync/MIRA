@@ -350,7 +350,7 @@ def evaluate_question(
     return result
 
 
-def write_results(results: list[dict], model: str, timestamp: str) -> None:
+def write_results(results: list[dict], model: str, timestamp: str, requested: int | None = None) -> None:
     """Write the three output files."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -360,6 +360,8 @@ def write_results(results: list[dict], model: str, timestamp: str) -> None:
         "model": model,
         "timestamp": timestamp,
         "total": len(results),
+        "requested": requested if requested is not None else len(results),
+        "complete": requested is None or len(results) == requested,
         "correct": sum(1 for r in results if r["is_correct"]),
         "results": results,
     }
@@ -383,6 +385,8 @@ def write_results(results: list[dict], model: str, timestamp: str) -> None:
     # 3. Human-readable report
     report_path = RESULTS_DIR / "mcq_eval_report.txt"
     report = build_report(results, model, timestamp)
+    if requested is not None and len(results) < requested:
+        report = f"INCOMPLETE RUN: {len(results)} of {requested} questions answered (budget stop)\n" + report
     with open(report_path, "w") as f:
         f.write(report)
     logger.info("Written: %s", report_path)
@@ -600,7 +604,7 @@ def main():
     print()  # newline after progress
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    write_results(results, model, timestamp)
+    write_results(results, model, timestamp, requested=len(questions))
 
     # Print summary to stdout
     report = build_report(results, model, timestamp)
@@ -608,6 +612,11 @@ def main():
     if openai_client:
         print(f"OpenAI spend: ${openai_client.spent_usd:.4f} "
               f"({openai_client.tokens_in} in / {openai_client.tokens_out} out tokens)")
+    if len(results) < len(questions):
+        # A budget-truncated run is not a benchmark result (#4092 Codex round 2 F3).
+        print(f"INCOMPLETE: {len(results)} of {len(questions)} questions answered; "
+              "the report above covers only the answered subset.")
+        sys.exit(3)
 
 
 if __name__ == "__main__":
