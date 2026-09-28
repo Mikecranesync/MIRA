@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from answer_radar.hub_runner import (  # noqa: E402
+    TERMINAL_STATUSES,
     _citation_label,
     _frames,
     assert_staging,
@@ -52,6 +53,8 @@ class MiraStaging:
         self.hub = hub
         self.workflow = workflow
         self.fixtures_root = fixtures_root
+        # Codex #3487 F4: one build for the whole run, not just within a case.
+        self.pinned_sha: str | None = None
 
     def _fixture(self, ref: str) -> Path:
         return self.fixtures_root / ref.removeprefix("fixtures/")
@@ -86,6 +89,12 @@ class MiraStaging:
                 ]
 
         sha = deployed_sha(self.hub)
+        if self.pinned_sha is None:
+            self.pinned_sha = sha
+        elif sha != self.pinned_sha:
+            raise SystemExit(
+                f"staging moved {self.pinned_sha} -> {sha} between cases; no mixed-build run"
+            )
         stamp = time.strftime("%Y%m%dT%H%M%S")
         nb = self._notebook(case, stamp)
         doc_ids = [self.hub.attach_manual(nb, p) for p in pdfs]
@@ -127,6 +136,18 @@ class MiraStaging:
             sources = next((f for f in frames if f.get("kind") == "sources"), {})
             evidence = next((f for f in frames if f.get("kind") == "evidence"), {})
             usage = next((f for f in frames if f.get("kind") == "usage"), {})
+            # Codex #3487 F3: only a 200 stream ending in exactly one recognised,
+            # non-error terminal status is an answer; anything else is an error
+            # attempt that can never be graded (same rule as Answer Radar).
+            terminal = [f.get("status") for f in frames if f.get("kind") == "status"]
+            if st != 200:
+                outcome = f"error:http_{st}"
+            elif len(terminal) != 1 or terminal[0] not in TERMINAL_STATUSES:
+                outcome = "error:no_terminal_status"
+            elif terminal[0] == "error":
+                outcome = "error:status_error"
+            else:
+                outcome = "ran"
             trace = hd.get("x-mira-trace-id")
             try:
                 retrieval = (self.hub.diagnostics(nb["id"], trace).get("packet") or {}).get(
@@ -143,7 +164,7 @@ class MiraStaging:
                     "arm": self.name,
                     "workflow": self.workflow,
                     "turn_index": i,
-                    "status": "ran",
+                    "status": outcome,
                     "answer": content,
                     "http": st,
                     "turn_status": status.get("status"),

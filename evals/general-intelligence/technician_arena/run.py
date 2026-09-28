@@ -116,7 +116,6 @@ def _run_raw(arm_obj, arm, case, workflow, root, budget, dry) -> list[dict[str, 
             cost = arena.estimate_cost_usd(
                 model, int(meta.get("input_tokens") or 0), int(meta.get("output_tokens") or 0)
             )
-            budget.charge(cost)
         out.append(
             {
                 "case_id": case["id"],
@@ -133,6 +132,13 @@ def _run_raw(arm_obj, arm, case, workflow, root, budget, dry) -> list[dict[str, 
                 "error": err,
             }
         )
+        # Codex #3487 F7: the paid attempt is recorded BEFORE it is charged, so a
+        # budget stop keeps every call that was made, and its cost.
+        try:
+            budget.charge(cost)
+        except arena.BudgetExceeded as exc:
+            exc.partial = out
+            raise
         history += [
             {"role": "user", "content": t["text"]},
             {"role": "assistant", "content": answer},
@@ -151,6 +157,11 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     ap.add_argument("--budget-usd", type=float, default=None)
     ap.add_argument("--case", action="append", default=[])
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument(
+        "--include-diagnostic",
+        action="store_true",
+        help="also run cases keyed after outputs were seen; tagged diagnostic, never scored",
+    )
     ap.add_argument("--apk", default=None, help="Android APK under test (hashed into the manifest)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
@@ -182,7 +193,6 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     budget = arena.Budget(args.budget_usd)
     root = ta_cases.FIXTURES_ROOT
     records: list[dict[str, Any]] = []
-    deployed = None
     mira = None
     if "mira" in arms and not args.dry_run:
         from technician_arena import mira_staging
@@ -192,44 +202,61 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
             env.get("ARENA_HUB_COOKIE", ""),
         )
         mira = mira_staging.MiraStaging(hub, workflow=args.workflow, fixtures_root=root)
+    pairs = []
+    for case in order:
+        case_arms = list(arms)
+        rng.shuffle(case_arms)
+        pairs += [(case, arm) for arm in case_arms]
+    done = 0
     try:
-        for case in order:
-            case_arms = list(arms)
-            rng.shuffle(case_arms)
-            for arm in case_arms:
-                st = ta_cases.run_status(case, arm, fixtures_root=root)
-                if st != "runnable":
-                    records.append({"case_id": case["id"], "arm": arm, "status": st})
-                elif arm == "mira" and args.dry_run:
-                    records.append(
-                        {
-                            "case_id": case["id"],
-                            "arm": arm,
-                            "status": "ran",
-                            "answer": arena._canned(case, "mira", 0),
-                            "model": "dry-run:mira",
-                        }
-                    )
-                elif arm == "mira":
-                    recs = mira.run_case(case)
-                    deployed = deployed or next(
-                        (r.get("deployed_sha") for r in recs if r.get("deployed_sha")), None
-                    )
-                    records.extend(recs)
-                else:
-                    records.extend(
-                        _run_raw(
-                            None if args.dry_run else _raw_arm(arm, env),
-                            arm,
-                            case,
-                            args.workflow,
-                            root,
-                            budget,
-                            args.dry_run,
-                        )
-                    )
+        for case, arm in pairs:
+            diagnostic = bool(case.get("key_written_after_outputs_seen"))
+            st = ta_cases.run_status(case, arm, fixtures_root=root)
+            if diagnostic and not args.dry_run and not args.include_diagnostic:
+                # Codex #3487 F5: keyed after outputs were seen — not in a scored run.
+                st = "not_run:diagnostic_only"
+            if st != "runnable":
+                recs = [{"case_id": case["id"], "arm": arm, "status": st}]
+            elif arm == "mira" and args.dry_run:
+                recs = [
+                    {
+                        "case_id": case["id"],
+                        "arm": arm,
+                        "status": "ran",
+                        "answer": arena._canned(case, "mira", 0),
+                        "model": "dry-run:mira",
+                    }
+                ]
+            elif arm == "mira":
+                recs = mira.run_case(case)
+            else:
+                recs = _run_raw(
+                    None if args.dry_run else _raw_arm(arm, env),
+                    arm,
+                    case,
+                    args.workflow,
+                    root,
+                    budget,
+                    args.dry_run,
+                )
+            for r in recs:
+                if diagnostic:
+                    r["diagnostic"] = True
+            records.extend(recs)
+            done += 1
     except arena.BudgetExceeded as exc:
+        case, arm = pairs[done]
+        partial = getattr(exc, "partial", [])
+        for r in partial:
+            if case.get("key_written_after_outputs_seen"):
+                r["diagnostic"] = True
+        records.extend(partial)
+        for case, arm in pairs[done + 1 :]:
+            records.append(
+                {"case_id": case["id"], "arm": arm, "status": "not_run:budget_exhausted"}
+            )
         print(f"STOPPED: {exc}", file=sys.stderr)
+    deployed = mira.pinned_sha if mira is not None else None
 
     with (out / "attempts.jsonl").open("w", encoding="utf-8") as fh:
         for r in records:

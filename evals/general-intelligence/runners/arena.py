@@ -184,6 +184,34 @@ def _canned(case: dict[str, Any], system: str, turn_index: int) -> str:
     )
 
 
+def chat_body(
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int,
+    temperature: float,
+    reasoning_effort: str = "medium",
+) -> dict[str, Any]:
+    """Model-compatible chat-completions body, for answers and the judge alike.
+
+    gpt-5.x rejects `max_tokens`/`temperature` and spends hidden reasoning from
+    the completion budget, so it gets `max_completion_tokens` and an explicit
+    effort. Open-weight models keep the classic parameters."""
+    if model.startswith("gpt-5"):
+        return {
+            "model": model,
+            "messages": messages,
+            "max_completion_tokens": max(max_tokens, 8000),
+            "reasoning_effort": reasoning_effort,
+        }
+    return {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+
 class RawFrontier:
     name = "raw"
 
@@ -202,17 +230,13 @@ class RawFrontier:
         self.reasoning_effort = reasoning_effort
 
     def request_body(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        """gpt-5.x rejects `max_tokens`/`temperature` and spends hidden reasoning
-        from the completion budget, so it gets `max_completion_tokens` and an
-        explicit effort. Open-weight models keep the classic parameters."""
-        if self.model.startswith("gpt-5"):
-            return {
-                "model": self.model,
-                "messages": messages,
-                "max_completion_tokens": 8000,
-                "reasoning_effort": self.reasoning_effort,
-            }
-        return {"model": self.model, "messages": messages, "temperature": 0.3, "max_tokens": 900}
+        return chat_body(
+            self.model,
+            messages,
+            max_tokens=900,
+            temperature=0.3,
+            reasoning_effort=self.reasoning_effort,
+        )
 
     def ask(
         self,
@@ -342,7 +366,7 @@ class Budget:
 
 
 class BudgetExceeded(RuntimeError):
-    pass
+    partial: list[Any]
 
 
 def run_system(
@@ -354,11 +378,32 @@ def run_system(
         for i, turn in enumerate(case["turns"]):
             if turn["role"] != "user":
                 continue
-            images = [fixtures_root.parent / p for p in turn.get("images", [])]
-            missing = [p.relative_to(ROOT).as_posix() for p in images if not p.exists()]
+            refs = list(turn.get("images", []) or [])
+            images = [fixtures_root.parent / p for p in refs]
+            missing = [r for r, p in zip(refs, images) if not p.exists()]
             t0 = time.monotonic()
             err: str | None = None
             meta: dict[str, Any] = {}
+            if missing and not dry_run:
+                # Codex #3487 F1: a live case without its image is not run and not
+                # scored; the dry run keeps its canned demonstration.
+                results.append(
+                    TurnResult(
+                        case_id=case["id"],
+                        system=system.name,
+                        turn_index=i,
+                        answer="",
+                        latency_ms=0,
+                        model=str(getattr(system, "model", None) or "mira"),
+                        input_tokens=None,
+                        output_tokens=None,
+                        cost_usd=0.0,
+                        tool_calls=[],
+                        error="not_run:fixture_missing",
+                        fixture_missing=missing,
+                    )
+                )
+                break
             if dry_run:
                 answer = _canned(case, system.name, i)
                 model = f"dry-run:{system.name}"
@@ -376,7 +421,6 @@ def run_system(
                     int(meta.get("input_tokens") or 0),
                     int(meta.get("output_tokens") or 0),
                 )
-                budget.charge(cost)
             results.append(
                 TurnResult(
                     case_id=case["id"],
@@ -393,6 +437,13 @@ def run_system(
                     fixture_missing=missing or None,
                 )
             )
+            # Codex #3487 F7: record the paid attempt BEFORE charging it, so a
+            # budget stop keeps every call that was made (and its cost).
+            try:
+                budget.charge(cost)
+            except BudgetExceeded as exc:
+                exc.partial = results
+                raise
             history.append({"role": "user", "content": turn["text"]})
             history.append({"role": "assistant", "content": answer})
     return results
@@ -415,9 +466,14 @@ def build_report(
     verdicts: list[dict[str, Any]] = []
     tally: dict[str, dict[str, int]] = {}
     degraded: list[str] = []
+    not_run = {r.case_id for r in results if (r.error or "").startswith("not_run:")}
     for case in cases:
         cat = case["category"]
         tally.setdefault(cat, {"MIRA wins": 0, "Tie": 0, "Baseline wins": 0})
+        if case["id"] in not_run:
+            # Codex #3487 F1: never scored, never in W/T/L, degradation or parity.
+            verdicts.append({"case_id": case["id"], "category": cat, "verdict": "Not run"})
+            continue
         det = {
             s: judge_deterministic(case, s, answers.get((case["id"], s), ""))
             for s in ("raw", "mira")
@@ -554,6 +610,7 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
                 )
             )
     except BudgetExceeded as exc:
+        results.extend(exc.partial)
         print(f"STOPPED: {exc}", file=sys.stderr)
     with (out / "results.jsonl").open("w", encoding="utf-8") as fh:
         for r in results:
@@ -578,18 +635,17 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
                 },
                 seed=7,
             )
-            r = client.post(
-                f"{jb}/chat/completions",
-                json={
-                    "model": jm,
-                    "messages": judge_prompt(case, pair),
-                    "temperature": 0,
-                    "max_tokens": 600,
-                },
-                headers={"Authorization": f"Bearer {jk}"},
-            )
-            r.raise_for_status()
-            data = r.json()
+            try:
+                r = client.post(
+                    f"{jb}/chat/completions",
+                    json=chat_body(jm, judge_prompt(case, pair), max_tokens=600, temperature=0),
+                    headers={"Authorization": f"Bearer {jk}"},
+                )
+                r.raise_for_status()
+                data = r.json()
+            except httpx.HTTPError as exc:  # Codex #3487 F2: a judge failure never loses the run
+                print(f"judge failed for {case['id']}: {exc}", file=sys.stderr)
+                continue
             u = data.get("usage") or {}
             try:
                 budget.charge(

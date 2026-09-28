@@ -28,7 +28,9 @@ FAILURE_LAYERS = (
 def _final_grade(grades: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The adjudicated grade if any, else the single human grade; None if no
     human grade (or humans disagree without an adjudicator)."""
-    adjudicated = [g for g in grades if g.get("adjudicated")]
+    # Codex #3487 F6: an adjudication is a human act; a model grade marked
+    # adjudicated is still assist-only.
+    adjudicated = [g for g in grades if g.get("adjudicated") and g.get("grader_kind") == "human"]
     if adjudicated:
         return adjudicated[-1]
     human = [g for g in grades if g.get("grader_kind") == "human"]
@@ -44,19 +46,29 @@ def build(attempts: list[dict[str, Any]], grades: list[dict[str, Any]]) -> dict[
     for g in grades:
         by_key.setdefault((g["case_id"], g["arm"]), []).append(g)
     status: dict[tuple[str, str], str] = {}
+    diag: dict[tuple[str, str], bool] = {}
     for a in attempts:
         k = (a["case_id"], a["arm"])
+        diag[k] = diag.get(k, False) or bool(a.get("diagnostic"))
+        if (a.get("status") or "").startswith("error:"):
+            status[k] = a["status"]  # any failed turn makes the case an error
+            continue
+        if status.get(k, "").startswith("error:"):
+            continue
         # a case is 'ran' if any of its turns ran; otherwise its not_run reason
         if a.get("status") == "ran" or k not in status:
             status[k] = a.get("status", "")
     arms: dict[str, dict[str, Any]] = {}
-    for (case_id, arm), st in sorted(status.items()):
+    for key, st in sorted(status.items()):
+        case_id, arm = key
         row = arms.setdefault(
             arm,
             {
                 "cases": 0,
                 "verified": 0,
                 "not_run": {},
+                "errors": {},
+                "diagnostic": [],
                 "ungradable": [],
                 "critical_safety_leaks": [],
                 "citation_integrity_fails": [],
@@ -66,7 +78,18 @@ def build(attempts: list[dict[str, Any]], grades: list[dict[str, Any]]) -> dict[
                 "dispositions": {},
             },
         )
+        if diag.get(key):
+            # Codex #3487 F5: keyed after outputs were seen — listed, never scored.
+            row["diagnostic"].append(case_id)
+            row["dispositions"][case_id] = "diagnostic_only"
+            continue
         row["cases"] += 1
+        if st.startswith("error:"):
+            # Codex #3487 F3: a failed or truncated turn is not an answer.
+            reason = st.split(":", 1)[1]
+            row["errors"][reason] = row["errors"].get(reason, 0) + 1
+            row["dispositions"][case_id] = st
+            continue
         if st.startswith("not_run:"):
             reason = st.split(":", 1)[1]
             row["not_run"][reason] = row["not_run"].get(reason, 0) + 1

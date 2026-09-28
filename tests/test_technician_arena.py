@@ -377,3 +377,163 @@ def test_a_critical_safety_leak_on_mira_is_a_hold():
     sc = ta_score.build(attempts, grades)
     assert sc["arms"]["mira"]["critical_safety_leaks"] == ["ta-h"]
     assert sc["verdict"] == "HOLD"
+
+
+# ── Codex #3487 round 1 ───────────────────────────────────────────────────────
+
+
+class _FakeRaw:
+    """A paid arm that reports 1M output tokens per call (30 USD at gpt-5.5)."""
+
+    name = "raw"
+    model = "gpt-5.5"
+
+    def __init__(self):
+        self.calls = 0
+
+    def request_body(self, messages):
+        return {"model": self.model, "messages": messages}
+
+    def ask(self, case, history, turn, images):
+        self.calls += 1
+        return f"answer {self.calls}", {"input_tokens": 0, "output_tokens": 1_000_000}
+
+
+def test_f1_live_gi_run_never_scores_a_case_whose_image_is_missing(tmp_path):
+    case = next(c for c in arena.load_cases() if c["id"] == "gi-world-beetle")
+    raw = _FakeRaw()
+    rows = arena.run_system(
+        raw, [case], dry_run=False, budget=arena.Budget(1000), fixtures_root=tmp_path / "fixtures"
+    )
+    assert raw.calls == 0
+    assert rows[0].error == "not_run:fixture_missing"
+    report = arena.build_report([case], rows, None)
+    assert report["verdicts"][0]["verdict"] == "Not run"
+    assert all(sum(t.values()) == 0 for t in report["tally"].values())
+
+
+def test_f2_gi_judge_request_uses_the_judge_models_parameters():
+    body = arena.chat_body(
+        "gpt-5.5", [{"role": "user", "content": "x"}], max_tokens=600, temperature=0
+    )
+    assert (
+        "max_completion_tokens" in body and "temperature" not in body and "max_tokens" not in body
+    )
+    body = arena.chat_body("openai/gpt-oss-120b", [], max_tokens=600, temperature=0)
+    assert body["max_tokens"] == 600 and body["temperature"] == 0
+
+
+def _hub_stream(status_code=200, frames=None):
+    class H(_FakeHub):
+        def _req(self, method, path, body=None, headers=None):
+            self.sent.append(_json.loads(body))
+            raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in (frames or []))
+            return status_code, {"x-mira-trace-id": "tr"}, raw.encode()
+
+    return H()
+
+
+@pytest.mark.parametrize(
+    "code,frames,want",
+    [
+        (500, [], "error:http_500"),
+        (
+            200,
+            [{"kind": "content", "content": "x"}, {"kind": "status", "status": "error"}],
+            "error:status_error",
+        ),
+        (200, [{"kind": "content", "content": "half an ans"}], "error:no_terminal_status"),
+    ],
+)
+def test_f3_failed_or_truncated_staging_turns_are_errors_not_answers(tmp_path, code, frames, want):
+    hub = _hub_stream(code, frames)
+    recs = mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path).run_case(
+        _pf525_case()
+    )
+    assert recs[0]["status"] == want
+
+
+def test_f3_an_error_attempt_can_never_be_verified():
+    attempts = [{"case_id": "ta-a", "arm": "mira", "status": "error:http_500"}]
+    mira = ta_score.build(attempts, [_grade("ta-a", "mira", verified=True)])["arms"]["mira"]
+    assert mira["verified"] == 0 and mira["errors"] == {"http_500": 1}
+
+
+def test_f4_a_deploy_between_cases_stops_the_run(tmp_path):
+    hub = _FakeHub(shas=("aaaaaaaaaaaa", "aaaaaaaaaaaa", "bbbbbbbbbbbb"))
+    arm = mira_staging.MiraStaging(hub, workflow="native", fixtures_root=tmp_path)
+    arm.run_case(_pf525_case())
+    with pytest.raises(SystemExit):
+        arm.run_case(_pf525_case())
+
+
+def _scored(monkeypatch, tmp_path, *extra):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    fake = _FakeRaw()
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: fake)
+    rc = ta_run.main(
+        [
+            "--arms",
+            "raw-frontier",
+            "--budget-usd",
+            "1000",
+            "--out",
+            str(tmp_path),
+            "--seed",
+            "1",
+            *extra,
+        ],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    return rc, rows, fake
+
+
+def test_f5_seed_cases_are_excluded_from_a_scored_run_by_default(monkeypatch, tmp_path):
+    rc, rows, _ = _scored(monkeypatch, tmp_path)
+    seeds = {r["case_id"]: r for r in rows if r["case_id"].startswith("ta-seed-")}
+    assert rc == 0 and len(seeds) == 3
+    assert all(r["status"] == "not_run:diagnostic_only" for r in seeds.values())
+
+
+def test_f5_included_seed_cases_stay_out_of_the_scored_totals(monkeypatch, tmp_path):
+    rc, rows, _ = _scored(monkeypatch, tmp_path, "--include-diagnostic")
+    seed_rows = [r for r in rows if r["case_id"].startswith("ta-seed-")]
+    assert seed_rows and all(r.get("diagnostic") for r in seed_rows)
+    grades = [_grade(r["case_id"], "raw-frontier", verified=True) for r in seed_rows]
+    arm = ta_score.build(rows, grades)["arms"]["raw-frontier"]
+    assert arm["verified"] == 0 and sorted(arm["diagnostic"]) == sorted(
+        {r["case_id"] for r in seed_rows}
+    )
+
+
+def test_f6_an_adjudicated_model_grade_cannot_verify():
+    attempts = [{"case_id": "ta-a", "arm": "mira", "status": "ran"}]
+    g = _grade("ta-a", "mira", verified=True, grader_kind="model", adjudicated=True)
+    mira = ta_score.build(attempts, [g])["arms"]["mira"]
+    assert mira["verified"] == 0 and mira["ungradable"] == ["ta-a"]
+
+
+def test_f7_a_budget_stop_keeps_the_paid_attempts_and_marks_the_rest(monkeypatch, tmp_path):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    fake = _FakeRaw()
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: fake)
+    ta_run.main(
+        ["--arms", "raw-frontier", "--budget-usd", "45", "--out", str(tmp_path), "--seed", "1"],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    ran = [r for r in rows if r["status"] == "ran"]
+    assert len(ran) == fake.calls == 2  # the over-budget call is kept, not lost
+    m = _json.loads((tmp_path / "RUN-MANIFEST.json").read_text())
+    assert m["spent_usd"] == 60.0
+    assert any(r["status"] == "not_run:budget_exhausted" for r in rows)
+    assert len({r["case_id"] for r in rows}) == 12
+
+
+def test_f7_gi_budget_stop_keeps_completed_attempts(tmp_path):
+    cases = [c for c in arena.load_cases() if not any(t.get("images") for t in c["turns"])][:3]
+    raw = _FakeRaw()
+    with pytest.raises(arena.BudgetExceeded) as exc:
+        arena.run_system(raw, cases, dry_run=False, budget=arena.Budget(45), fixtures_root=tmp_path)
+    assert len(exc.value.partial) == raw.calls == 2
