@@ -105,6 +105,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 15: the code-meaning exception needs an actual fault code.
     ["What does the flashing red light mean on my drive?", "PowerFlex 525"],
     ["what does it mean when the drive beeps twice", "PowerFlex 525"],
+    // Codex #4069 pass 16: a code-shaped MODEL name is not a fault code.
+    ["What does the flashing red light mean on my TP700?", "TP700 Comfort"],
+    ["what does the ERR light mean on the PLX32", "PLX32"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -132,6 +135,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is an actuator used for", "AC 01.2"],
     ["What does F005 mean?", "PowerFlex 525"],
     ["What does F005 mean on my PowerFlex 525?", "PowerFlex 525"],
+    ["What does fault E-12 mean on my TP700?", "TP700 Comfort"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
     ["what is the difference between a contactor and a relay", "GS10"],

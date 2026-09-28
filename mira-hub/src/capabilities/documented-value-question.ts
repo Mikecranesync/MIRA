@@ -14,7 +14,7 @@
  * it never makes an answer less guarded than it was.
  */
 
-import { hasFaultCodeToken } from "./answer-validation";
+import { faultCodeTokens } from "./answer-validation";
 
 // A documentation-only quantity or artifact of THIS equipment.
 const DOCUMENTED_VALUE =
@@ -111,6 +111,15 @@ const CONCEPT_DEFINITION =
   /^\s*what(?:'s|\s+is|\s+are)\s+(?:an?\s+)?(?!(?:wrong|going|happening|causing|making|up|the|this|its|it|my|your|that|these|those)\b)[\w/.+-]+(?:\s+[\w/.+-]+){0,3}\s*\??\s*$/i;
 // "what does the/this/that/it …" — the thing meant is on a machine, not a term.
 const MACHINE_STATE_MEANING = /\bwhat\s+(?:does|do)\s+(?:the|this|that|it|my|our)\b/i;
+// Pass 16: the fault code must be what the "what does … mean" clause asks
+// about, and a code-shaped MODEL name (TP700, GS10, PLX32) is not a fault code.
+function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
+  const clause = q.match(CODE_MEANING)?.[0] ?? "";
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const model = norm(boundModel ?? "");
+  return faultCodeTokens(clause).some((t) => !(model && model.includes(norm(t))));
+}
+
 // A question that marks itself as general knowledge, not this machine.
 const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
 // A condition on the machine's state ("when it overheats", "if the fan is
@@ -158,10 +167,11 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // A meaning question about a STATE of this machine ("what does the flashing
   // light mean on my drive", "what does it mean when the drive beeps") is a
   // problem to work; "what does PNP mean" (a term) still teaches.
-  if (CODE_MEANING.test(q) && !hasFaultCodeToken(q) && (bound || MACHINE_STATE_MEANING.test(q))) {
+  const askedCode = codeInMeaningClause(q, boundModel);
+  if (CODE_MEANING.test(q) && !askedCode && (bound || MACHINE_STATE_MEANING.test(q))) {
     return true;
   }
-  if (CODE_MEANING.test(q) && hasFaultCodeToken(q) && !PROCEDURE_ASK.test(q)) {
+  if (CODE_MEANING.test(q) && askedCode && !PROCEDURE_ASK.test(q)) {
     const rest = q.replace(CODE_MEANING, " ");
     // Mixed: the "mean" in the first clause must not read as the teaching
     // list's "what does X mean" — lean to declining (owner decision).
