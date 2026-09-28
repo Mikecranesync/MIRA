@@ -865,3 +865,17 @@ def test_a_stream_without_a_terminal_status_is_not_an_answer() -> None:
         _question(), _TruncatedHub(), condition="new_chat", mira_version="a", stamp="s"
     )
     assert rec.answer_status is AnswerStatus.ERROR
+
+
+def test_engine_errors_do_not_dilute_citation_coverage() -> None:
+    """#4063 post-cap F1: coverage is over completed turns (no gate turns, no errors)."""
+    cited = _record(citations=["manual p.3"], grader_verdicts=_two_passing())
+    failed = _record(answer_status=AnswerStatus.ERROR)
+    rep = build_report(
+        [(cited, evaluate(cited)), (failed, evaluate(failed))],
+        discovered=2,
+        unique_after_dedupe=2,
+        qualified=2,
+    )
+    assert rep.citation_coverage_pct == 100.0
+    assert rep.scored_denominator == 1

@@ -128,7 +128,11 @@ def build_report(
     times = sorted(rec.total_answer_time_ms for rec, _ in graded)
     median = times[len(times) // 2] if times else 0
 
-    scorable = [rec for rec, res in graded if res.counts_as_attempt]
+    # Citation coverage is over COMPLETED turns: gate turns and engine errors
+    # (failed or truncated streams) produce no answer to cite, so they leave the
+    # denominator, as they leave the scored one (#4063 post-cap F1). Ungraded
+    # completed answers stay in: this measures citing, not correctness.
+    scorable = [rec for rec, res in graded if res.outcome not in {"uns_gate", "error"}]
     # Codex #4063 R2 F3: coverage counts answers that CITE, not answers that retrieved.
     with_citations = sum(1 for rec in scorable if rec.citations)
     coverage = round(100.0 * with_citations / len(scorable), 1) if scorable else 0.0
