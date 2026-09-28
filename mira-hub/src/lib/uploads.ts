@@ -218,6 +218,10 @@ export async function findDuplicateUpload(
        AND status = 'parsed'
        AND ingest_route = 'v2'
        AND kind = 'document'
+       -- Only an upload that owns its chunks can be the original: a row marked
+       -- "duplicate of" has none, and chaining to it breaks when its source
+       -- goes away (review of #4091, F1).
+       AND (status_detail IS NULL OR status_detail NOT LIKE 'duplicate of %')
      ORDER BY created_at DESC
      LIMIT 1
   `,
@@ -501,9 +505,44 @@ export async function deleteUploadAndKnowledge(
       await client.query("ROLLBACK");
       return "retained";
     }
+    // Review of #4091 (F1): identical bytes uploaded again were marked parsed
+    // "duplicate of <this id>" WITHOUT chunks of their own. Deleting this
+    // original must not strand them: its chunks pass to the newest duplicate
+    // (doc_id and the node-doc/<id>/ source prefix move with them, embeddings
+    // intact), which becomes the original; any others now point at the heir.
+    const dependents = await client.query(
+      `SELECT id FROM hub_uploads
+        WHERE tenant_id = $2 AND status = 'parsed' AND status_detail = 'duplicate of ' || $1
+        ORDER BY created_at DESC
+        FOR UPDATE`,
+      [id, tenantId],
+    );
+    const heir = dependents.rows.length > 0 ? String(dependents.rows[0].id) : null;
+    if (heir) {
+      await client.query(
+        `
+        UPDATE knowledge_entries
+           SET doc_id = $3::uuid,
+               source_url = 'node-doc/' || $3 || substr(source_url, length('node-doc/' || $1) + 1)
+         WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true
+           AND source_url LIKE 'node-doc/' || $1 || '/%'`,
+        [id, tenantId, heir],
+      );
+      await client.query(
+        `UPDATE hub_uploads SET status_detail = NULL, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2`,
+        [heir, tenantId],
+      );
+      await client.query(
+        `UPDATE hub_uploads SET status_detail = 'duplicate of ' || $3, updated_at = NOW()
+          WHERE tenant_id = $2 AND status = 'parsed' AND status_detail = 'duplicate of ' || $1`,
+        [id, tenantId, heir],
+      );
+    }
     await client.query(
-      `DELETE FROM knowledge_entries
-        WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      `
+      DELETE FROM knowledge_entries
+       WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
       [id, tenantId],
     );
     await client.query(

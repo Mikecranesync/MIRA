@@ -19,7 +19,7 @@
 
 import { randomUUID } from "crypto";
 import pool from "@/lib/db";
-import { withTenantContext } from "@/lib/tenant-context";
+import { withTenantContext, withUploadRowTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus, UploadAttemptRevokedError } from "@/lib/uploads";
 import type { PoolClient } from "pg";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
@@ -351,45 +351,6 @@ interface NodeChunkOpts {
 }
 
 /**
- * withTenantContext, but first lock the upload row FOR SHARE as the owner role
- * and require that it still carries `attemptId` and is not cancelled. hub_uploads
- * has no grant for factorylm_app, so the lock is taken BEFORE the role switch;
- * it is held until this transaction ends. The chunk inserts still run under the
- * tenant's RLS role, exactly as before.
- */
-async function withUploadAttemptTenantContext<T>(
-  tenantId: string,
-  uploadId: string,
-  attemptId: string | null,
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const held = await client.query(
-      `SELECT 1 FROM hub_uploads
-        WHERE id = $1 AND tenant_id = $2
-          AND attempt_id IS NOT DISTINCT FROM $3::uuid
-          AND status <> 'cancelled'
-        FOR SHARE`,
-      [uploadId, tenantId, attemptId],
-    );
-    if ((held.rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(uploadId);
-    await client.query("SET LOCAL ROLE factorylm_app");
-    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
-    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [tenantId]);
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-/**
  * Shared v2 chunk-writer core (#2277). Takes already-extracted page text and
  * writes per-chunk knowledge_entries rows (source_type='node_attachment',
  * ingest_route='v2', is_private=true) bound to an existing upload + node, then
@@ -413,10 +374,12 @@ async function writeChunkRowsForNode(
   let idx = 0;
   let batch: ChunkRow[] = [];
 
-  const inTx = <T,>(fn: (c: PoolClient) => Promise<T>) =>
-    attemptId === undefined
-      ? withTenantContext(tenantId, fn)
-      : withUploadAttemptTenantContext(tenantId, uploadId, attemptId, fn);
+  const inTx = async <T,>(fn: (c: PoolClient) => Promise<T>): Promise<T> => {
+    if (attemptId === undefined) return withTenantContext(tenantId, fn);
+    const r = await withUploadRowTenantContext(tenantId, uploadId, attemptId, fn);
+    if (!r.held) throw new UploadAttemptRevokedError(uploadId);
+    return r.result;
+  };
 
   await inTx(async (c) => {
     // Flush the buffered chunks as ONE multi-row INSERT, then drop them.

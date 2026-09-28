@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
-import { withTenantContext } from "@/lib/tenant-context";
+import { withTenantContext, withUploadRowTenantContext } from "@/lib/tenant-context";
 import { upsertNotebookSourceTx, type MatchState } from "@/lib/equipment-notebooks";
 
 export function sha256Hex(buffer: Buffer): string {
@@ -279,7 +279,11 @@ export async function linkFileToUpload(
   uploadId: string,
   claimToken?: string,
 ): Promise<boolean> {
-  return withTenantContext(tenantId, async (c) => {
+  // Review of #4091 (F2): hold the upload row while linking. If the upload was
+  // deleted after ingest but before this link, the link is refused — it never
+  // writes a dangling upload_id that later re-uploads would reuse as "indexed".
+  // Same lock order as upload delete (hub_uploads first, then this file row).
+  const linked = await withUploadRowTenantContext(tenantId, uploadId, undefined, async (c) => {
     const res = await c.query(
       `UPDATE namespace_direct_uploads
           SET upload_id = $1::uuid, ingest_claim_token = NULL, ingest_claimed_at = NULL
@@ -290,6 +294,7 @@ export async function linkFileToUpload(
     );
     return (res.rowCount ?? 0) > 0;
   });
+  return linked.held && linked.result;
 }
 
 // ── Atomic ingestion claim (Codex P1, 2026-08-16 — migration 077) ────────────
@@ -761,7 +766,9 @@ export async function syncNotebookSourcesForFile(
   uploadId: string,
   addedBy: string | null = null,
 ): Promise<number> {
-  return withTenantContext(tenantId, async (c) => {
+  // Same row hold as linkFileToUpload: a deleted upload never regains
+  // notebook membership (review of #4091, F2).
+  const synced = await withUploadRowTenantContext(tenantId, uploadId, undefined, async (c) => {
     const links = await c.query<{ target_id: string; role: string | null }>(
       `SELECT target_id::text AS target_id, role FROM workspace_file_links
         WHERE tenant_id = $1::uuid AND file_id = $2::uuid
@@ -780,6 +787,7 @@ export async function syncNotebookSourcesForFile(
     }
     return links.rows.length;
   });
+  return synced.held ? synced.result : 0;
 }
 
 /** Files attached to one target — the notebook/asset/node/WO Files section. */
