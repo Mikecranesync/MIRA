@@ -13,6 +13,10 @@ describe("declineKind", () => {
     "what's the service pin for the drive keypad",
     "What is the PIN for my PLC login? The M12 connector is working.",
     "what is the pin number for the operator keypad",
+    // #4094 post-cap r3 F2: a lowercase login pin is still a credential
+    "What is the pin for my PLC login, and what should I check first?",
+    // #4094 post-cap r3 F3: a numbered cable pin must not hide the login PIN
+    "What is the login PIN to unlock my PLC, and what does PIN 4 on its cable do?",
   ])("credential: %s", (m) => expect(declineKind(m)).toBe("credential"));
 
   it.each([
@@ -35,6 +39,9 @@ describe("declineKind", () => {
     "what are PINs 3 and 5 for",
     "What does PIN number 4 on my PLC do?",
     "What does PIN 4 on the cable to the login keypad do?",
+    // #4094 post-cap r3 F1: plural hardware "pin numbers" is a pinout question
+    "Which pin numbers on my PLC connector carry 24 V, and what should I check first?",
+    "the pin on the hoist pendant is bent, what do I check",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 

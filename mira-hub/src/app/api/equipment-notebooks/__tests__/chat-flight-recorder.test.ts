@@ -535,6 +535,23 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(String(status?.message)).not.toContain("photograph the nameplate");
   });
 
+  it("2h-i-c. Codex #4094 post-cap r3 F3: a numbered cable pin in the same sentence does not hide a login PIN", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(
+        chatReq({ message: "What is the login PIN to unlock my PLC, and what does PIN 4 on its cable do?", mode: "general" }),
+        params,
+      ),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+  });
+
   it("2h-ii. 2026-09-28 Answer Radar seed 003: firmware recovery declines toward OEM service", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "AUMA", model: "AC 01.2" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

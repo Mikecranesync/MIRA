@@ -18,36 +18,51 @@
 export type DeclineKind = "credential" | "service_procedure";
 
 const CREDENTIAL =
-  /\b(?:pass\s?codes?|passwords?|pins?\s+(?:codes?|numbers?)(?!\s*#?\d)|unlock\s+codes?|access\s+codes?|master\s+codes?|admin(?:istrator)?\s+codes?|(?:service|security|operator|admin|unlock|access)\s+pins?)\b/i;
+  /\b(?:pass\s?codes?|passwords?|unlock\s+codes?|access\s+codes?|master\s+codes?|admin(?:istrator)?\s+codes?)\b/i;
 
-/** A standalone "PIN" is a credential only when written as the acronym AND the
- *  message has no hardware-pin context; "Which PIN on my M12 connector carries
- *  24 V?" is a pinout question a manual answers (#4094 Codex round 2 F1). A
- *  qualified "service PIN" is always a credential (CREDENTIAL above). */
-const PIN_ACRONYM = /\bPINs?\b/;
+/** Every "pin" mention, with an optional pin NUMBER after it ("PIN 4", "PINs 3
+ *  and 5", "PIN #2", "pin number 4"). A numbered pin is hardware, whatever else
+ *  the message says (#4094 Codex round 3 F1). */
+const PIN_MENTION = /\bpins?\b(\s*(?:#|no\.?\s*|numbers?\s*)?\d)?/gi;
+
+/** A qualifier that always makes a PIN a credential: "service PIN", "PIN code". */
+const QUALIFIER_BEFORE = /\b(?:service|security|operator|admin(?:istrator)?|unlock|access|login|user)\s+$/i;
+const CODE_AFTER = /^\s*codes?\b/i;
+const NUMBER_AFTER = /^\s*numbers?\b/i;
+
 const HARDWARE_PIN_CONTEXT =
   /\b(?:connectors?|terminals?|plugs?|sockets?|headers?|pinouts?|harness(?:es)?|cables?|wires?|wiring|carr(?:y|ies)|volts?|vdc|vac|signal|m8|m12|db-?9|db-?25|rj-?45|encoder)\b|\d+\s*v\b/i;
 
-/** "PIN 4", "PINs 3 and 5", "PIN #2" — a numbered pin is hardware, whatever
- *  else the message says (#4094 Codex round 3 F1). */
-const NUMBERED_PIN = /\bPINs?\s*(?:#|no\.?\s*|numbers?\s*)?\d/i;
-
-/** Login / lock words make a PIN a credential whatever else the sentence says. */
+/** Login / lock words make a PIN a credential anywhere in its sentence. */
 const CREDENTIAL_PIN_CONTEXT =
   /\b(?:log\s?-?in|logon|sign\s?-?in|unlock|locked|access|security|password|passcode|user|account|admin(?:istrator)?)\b/i;
 
-/** Decide each "PIN" by ITS OWN sentence, so an unrelated clause elsewhere in
- *  the message can't decide it (#4094 Codex post-cap F2: "What is the PIN for
- *  my PLC login? The M12 connector is working."). */
+const SENTENCES = /(?<=[.!?])\s+|\n+/;
+const CLAUSES = /[,;]|\s+(?:and|but|or)\s+/i;
+
+/** Decide EACH pin mention on its own (#4094 post-cap r3 F3: "What is the login
+ *  PIN to unlock my PLC, and what does PIN 4 on its cable do?" — the numbered
+ *  cable pin must not hide the login PIN). Login words count across the
+ *  mention's sentence (post-cap F2: "What is the PIN for my PLC login? The M12
+ *  connector is working." keeps the unrelated next sentence out); hardware words
+ *  count only within its clause. Case-insensitive, so a lowercase login "pin"
+ *  is a credential (post-cap r3 F2). Hardware words override a bare "pin
+ *  number(s)" (post-cap r3 F1: "Which pin numbers on my PLC connector carry
+ *  24 V?"). A bare lowercase "pin" with no context stays generic. */
 function credentialPin(message: string): boolean {
-  for (const sentence of message.split(/(?<=[.!?])\s+|\n+/)) {
-    if (!PIN_ACRONYM.test(sentence)) continue;
-    // A numbered pin is hardware even beside login words: "PIN 4 on the cable
-    // to the login keypad" is a pinout question (#4094 post-cap r2 F1).
-    if (NUMBERED_PIN.test(sentence)) continue;
-    if (CREDENTIAL_PIN_CONTEXT.test(sentence)) return true;
-    if (HARDWARE_PIN_CONTEXT.test(sentence)) continue;
-    return true;
+  for (const sentence of message.split(SENTENCES)) {
+    const credentialSentence = CREDENTIAL_PIN_CONTEXT.test(sentence);
+    for (const clause of sentence.split(CLAUSES)) {
+      for (const m of clause.matchAll(PIN_MENTION)) {
+        if (m[1]) continue; // numbered pin: hardware
+        const before = clause.slice(0, m.index);
+        const after = clause.slice((m.index ?? 0) + m[0].length);
+        if (QUALIFIER_BEFORE.test(before) || CODE_AFTER.test(after)) return true;
+        if (credentialSentence) return true;
+        if (HARDWARE_PIN_CONTEXT.test(clause)) continue;
+        if (NUMBER_AFTER.test(after) || /^PINs?$/.test(m[0])) return true;
+      }
+    }
   }
   return false;
 }
