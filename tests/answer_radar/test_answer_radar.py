@@ -879,3 +879,32 @@ def test_engine_errors_do_not_dilute_citation_coverage() -> None:
     )
     assert rep.citation_coverage_pct == 100.0
     assert rep.scored_denominator == 1
+
+
+def test_a_skipped_search_is_not_a_knowledge_gap(tmp_path: Path) -> None:
+    """#4063 post-cap pass 5 F1: no search ran, so nothing is 'missing'."""
+    from answer_radar import score as score_mod
+
+    row = _batch_row("S1", "aaa", 0)
+    row["hub"] = {"retrieval": {"strategy": "skipped_general_mode", "executed": False}}
+    b = tmp_path / "batch.json"
+    b.write_text(_json.dumps([row]))
+    rendered, rows = score_mod.score(b, tmp_path)
+    assert "KNOWLEDGE TO ACQUIRE" not in rendered
+    assert "SEARCH SKIPPED" in rendered and "SLC 5/03" in rendered
+    assert rows[0]["retrieval"] == "skipped"
+
+
+def test_hub_citation_label_uses_the_typed_source_title_and_page() -> None:
+    """#4063 post-cap pass 5 F2: the real EvidenceCitation shape."""
+    c = {
+        "citationId": "1",
+        "docId": "3f2c1a9e-8b7d-4c6e-9a1f-2b3c4d5e6f70",
+        "sourceTitle": "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011",
+        "page": 212,
+        "fileId": None,
+    }
+    assert (
+        hub_runner._citation_label(c)
+        == "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011 p.212"
+    )

@@ -124,7 +124,9 @@ def _frames(raw: bytes) -> list[dict[str, Any]]:
 
 def _citation_label(c: Any) -> str:
     if isinstance(c, dict):
-        for k in ("label", "title", "source", "docTitle", "fileName"):
+        # EvidenceCitation.sourceTitle is the Hub's typed field
+        # (mira-hub/src/lib/notebook-chat-types.ts); the rest are legacy shapes.
+        for k in ("sourceTitle", "label", "title", "source", "docTitle", "fileName"):
             if c.get(k):
                 page = c.get("page")
                 return f"{c[k]}" + (f" p.{page}" if page else "")

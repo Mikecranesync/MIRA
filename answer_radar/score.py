@@ -93,6 +93,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
     graded: list[tuple[EvaluationRecord, object]] = []
     rows: list[dict] = []
     gaps: list[str] = []
+    skipped: list[str] = []
 
     for item in batch:
         q, e = item["question"], item["evaluation"]
@@ -138,7 +139,13 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
                 "reasons": result.reasons,
             }
         )
-        if rec.retrieved_chunk_count == 0:  # None (unknown) is not a gap
+        # Pass 5 F1: a knowledge gap needs a search that RAN and came back empty.
+        # A skipped search (new chat: skipped_general_mode) is its own finding.
+        executed = ((item.get("hub") or {}).get("retrieval") or {}).get("executed")
+        if executed is False:
+            skipped.append(f"{q['manufacturer']} {q['model']}")
+            rows[-1]["retrieval"] = "skipped"
+        elif rec.retrieved_chunk_count == 0:  # None (unknown) is not a gap
             gaps.append(f"{q['manufacturer']} {q['model']} — 0 retrieved chunks")
 
     report = build_report(
@@ -148,7 +155,12 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
         qualified=len(batch),
         knowledge_gaps=sorted(set(gaps)),
     )
-    return report.render(), rows
+    rendered = report.render()
+    if skipped:
+        rendered += "\n\nSEARCH SKIPPED (no manual search ran — not a knowledge gap)\n" + "\n".join(
+            f"  - {m}" for m in sorted(set(skipped))
+        )
+    return rendered, rows
 
 
 def main(argv: list[str] | None = None) -> int:
