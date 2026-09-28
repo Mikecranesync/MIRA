@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import {
   createUpload,
+  deleteUpload,
   findUploadByExternalFileId,
   listUploads,
   type Upload,
@@ -104,7 +105,17 @@ export async function POST(req: NextRequest) {
       body.provider,
       body.externalFileId,
     );
-    if (existing) {
+    if (existing && TERMINAL_RETRYABLE.includes(existing.status)) {
+      // #4081 — a re-pick IS the retry. The old answer was 409 "DELETE first",
+      // but listUploads hides cancelled rows, so there was no card to delete
+      // and the picker closed on nothing, forever. Clear the dead row (a failed
+      // or cancelled import has no citable result to preserve) and import anew.
+      await deleteUpload(existing.id, ctx.tenantId);
+      makeUploadLogger({ requestId, uploadId: existing.id, tenantId: ctx.tenantId }).log(
+        "replaced_terminal",
+        { previousStatus: existing.status },
+      );
+    } else if (existing) {
       return idempotentResponse(existing, requestId);
     }
   }
@@ -165,6 +176,7 @@ export async function POST(req: NextRequest) {
 }
 
 const IN_FLIGHT_STATUSES: ReadonlyArray<string> = ["queued", "fetching", "parsing"];
+const TERMINAL_RETRYABLE: ReadonlyArray<string> = ["failed", "cancelled"];
 
 function isUniqueViolation(err: unknown): boolean {
   // pg's UniqueViolation has SQLSTATE 23505
