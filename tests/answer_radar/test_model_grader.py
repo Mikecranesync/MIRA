@@ -269,3 +269,27 @@ def test_truncated_exam_is_marked_incomplete(tmp_path: Path, monkeypatch):
     out = json.loads((tmp_path / "mcq_eval_results.json").read_text())
     assert (out["complete"], out["requested"], out["total"]) == (False, 100, 1)
     assert (tmp_path / "mcq_eval_report.txt").read_text().startswith("INCOMPLETE RUN: 1 of 100")
+
+
+def test_transport_failure_charges_the_worst_case_and_stops():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    c = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(BudgetExceeded, match="transport"):
+            c.complete(http, "s", "u", max_completion_tokens=4000)
+    assert c.spent_usd >= 0.12
+
+
+def test_written_grade_is_bound_to_the_answer(tmp_path: Path):
+    from answer_radar.score import answer_sha256
+
+    transport, _ = _transport([json.dumps(GOOD), json.dumps(GOOD)])
+    grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
+    with httpx.Client(transport=transport) as http:
+        model_grader.grade_packet(
+            PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    rec = json.loads((tmp_path / "grade-B-S1.json").read_text())
+    assert rec["answer_sha256"] == answer_sha256("a1") and rec["condition"] == "machine_selected"

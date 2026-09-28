@@ -97,12 +97,25 @@ class OpenAIDirect:
         }
         if json_object:
             payload["response_format"] = {"type": "json_object"}
-        resp = client.post(
-            API_URL,
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=timeout,
-        )
+        try:
+            resp = client.post(
+                API_URL,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=timeout,
+            )
+        except httpx.TransportError as e:
+            # The request may have been processed and billed without our seeing
+            # the usage (#4092 Codex round 3 F2): charge the reserved worst case
+            # and stop the paid run.
+            self.tokens_in += input_token_upper_bound(system, user)
+            self.tokens_out += max_completion_tokens
+            raise BudgetExceeded(
+                f"ambiguous transport failure ({type(e).__name__}); charged the worst case"
+            ) from e
         resp.raise_for_status()
         body = resp.json()
         usage = body.get("usage")

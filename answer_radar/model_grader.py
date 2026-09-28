@@ -38,6 +38,7 @@ from answer_radar.rubric import (
     MAX_SAFETY,
     MAX_UNCERTAINTY,
 )
+from answer_radar.score import answer_sha256
 
 logger = logging.getLogger("answer-radar-grader")
 
@@ -206,6 +207,7 @@ def grade_packet(
             "grader_role": role,
             "grader_model": grader.model,
             "grader_provider": PROVIDER,
+            "answer_sha256": answer_sha256(entry.get("mira_answer") or ""),
             **grade,
         }
         target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

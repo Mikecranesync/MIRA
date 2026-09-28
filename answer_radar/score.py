@@ -12,6 +12,7 @@ grading itself.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -27,7 +28,30 @@ from answer_radar.schema import (
 )
 
 
-def _verdict_from(path: Path, grader_id: str) -> GraderVerdict | None:
+def answer_sha256(answer_text: str) -> str:
+    """The identity a grade is bound to: the exact answer text it judged."""
+    return hashlib.sha256(answer_text.encode("utf-8")).hexdigest()
+
+
+def _bound_to(raw: dict, condition: str | None, answer_hash: str | None) -> bool:
+    """A grade that names a different condition or answer is not this answer's grade.
+
+    #4092 Codex round 3 F1: grades from another condition, or for an earlier
+    answer to the same seed, must never be scored against this row.
+    """
+    if condition is not None and raw.get("condition") not in (None, condition):
+        return False
+    if answer_hash is not None and raw.get("answer_sha256") not in (None, answer_hash):
+        return False
+    return True
+
+
+def _verdict_from(
+    path: Path,
+    grader_id: str,
+    condition: str | None = None,
+    answer_hash: str | None = None,
+) -> GraderVerdict | None:
     """Load one grader's JSON. Returns None for a malformed file rather than guessing.
 
     A grader that returned the wrong shape is *missing*, not passing. Coercing a partial
@@ -39,6 +63,8 @@ def _verdict_from(path: Path, grader_id: str) -> GraderVerdict | None:
         return None
     required = ("correctness", "evidence", "safety", "actionability", "uncertainty", "verdict")
     if not all(k in raw for k in required):
+        return None
+    if not _bound_to(raw, condition, answer_hash):
         return None
     return GraderVerdict(
         grader_id=grader_id,
@@ -58,7 +84,7 @@ def _verdict_from(path: Path, grader_id: str) -> GraderVerdict | None:
     )
 
 
-def _independence(grades_dir: Path, sid: str) -> IndependenceClass:
+def _independence(grades_dir: Path, sid: str, answer_hash: str | None = None) -> IndependenceClass:
     """The strongest class the recorded grader identities actually prove.
 
     Missing or identical `grader_model` values prove only a different run of the
@@ -72,6 +98,10 @@ def _independence(grades_dir: Path, sid: str) -> IndependenceClass:
         except (OSError, json.JSONDecodeError):
             return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
         ids.append((raw.get("grader_provider"), raw.get("grader_model")))
+        # A promoting class needs BOTH grades bound to this exact answer; a grade
+        # without an answer hash could have judged a different answer (#4092 r3 F1).
+        if answer_hash is not None and raw.get("answer_sha256") != answer_hash:
+            return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
     (pa, ma), (pb, mb) = ids
     if not ma or not mb or ma == mb:
         return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
@@ -112,12 +142,14 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             best_evidence_tier=EvidenceTier(e["best_evidence_tier"]),
             total_answer_time_ms=e["total_answer_time_ms"],
         )
+        condition = (item.get("hub") or {}).get("condition")
+        answer_hash = answer_sha256(e["answer_text"])
         for gid, prefix in (("A", "grade-A-"), ("B", "grade-B-")):
-            v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid)
+            v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid, condition, answer_hash)
             if v:
                 rec.grader_verdicts.append(v)
 
-        independence = _independence(grades_dir, sid)
+        independence = _independence(grades_dir, sid, answer_hash)
         for v in rec.grader_verdicts:
             v.independence_class = independence
         if rec.grader_verdicts:

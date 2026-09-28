@@ -745,12 +745,47 @@ def test_grader_independence_is_derived_from_recorded_models(
 
     batch = tmp_path / "batch.json"
     batch.write_text(_json.dumps([_batch_row("S1", "aaa", 3)]))
-    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(_grade(*a)))
-    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(_grade(*b)))
+    bound = score_mod.answer_sha256("x")  # the fixture row's answer_text
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps({**_grade(*a), "answer_sha256": bound}))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps({**_grade(*b), "answer_sha256": bound}))
     _, rows = score_mod.score(batch, tmp_path)
     assert rows[0]["independence"] == expected
     if expected == "SAME_MODEL_DIFFERENT_RUN":
         assert rows[0]["verified_correct"] is False
+
+
+def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
+    """#4092 Codex r3 F1: a grade not bound to THIS answer cannot count."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["hub"] = {"condition": "machine_selected"}
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_sha256("x")
+    a = {**_grade("claude-sonnet-5", "anthropic"), "answer_sha256": bound}
+    # (1) B carries no answer hash -> independence cannot be proven.
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(a))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(_grade("gpt-5.5", "openai")))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "SAME_MODEL_DIFFERENT_RUN"
+    # (2) B graded a different answer -> it is not this row's grade at all.
+    stale = {
+        **_grade("gpt-5.5", "openai"),
+        "answer_sha256": score_mod.answer_sha256("older answer"),
+    }
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(stale))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["graders"] == 1
+    # (3) B graded another condition -> also not this row's grade.
+    other = {
+        **_grade("gpt-5.5", "openai"),
+        "answer_sha256": bound,
+        "condition": "some_other_condition",
+    }
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(other))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["graders"] == 1
 
 
 # --- Codex #4063 round 2 -------------------------------------------------------
