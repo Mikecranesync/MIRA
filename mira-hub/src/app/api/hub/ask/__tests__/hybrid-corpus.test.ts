@@ -60,6 +60,16 @@ describe("/api/hub/ask — the hybrid corpus must stay visible (#2178)", () => {
     expect(code).toContain("client.release()");
   });
 
+  it("#3437: admits the tenant's CONFIRMED documents, on the same raw client and tenant", () => {
+    // Under MIRA_ENFORCE_APPROVED_RETRIEVAL the library read keeps verified rows
+    // only; without this lane a customer's own manuals never reached the answer.
+    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId\s*\)/);
+    expect(code).toMatch(/retrieveNodeChunks\(\s*client,\s*ctx\.tenantId/);
+    expect(code).toMatch(/validatedDocScope:\s*true/);
+    expect(code).toMatch(/approvedSourceDocIds:\s*docIds/);
+    expect(code).toMatch(/preferOwnDocuments\(\s*own,\s*library/);
+  });
+
   it("does not swallow the tenant into a hardcoded corpus owner", () => {
     // The inverse failure: scoping to the system tenant would show every
     // customer the library but hide their own uploads.

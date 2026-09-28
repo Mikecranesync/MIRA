@@ -4,6 +4,7 @@ import pool from "@/lib/db";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
+  retrieveNodeChunks,
   buildGroundedContext,
   chunksToSources,
   type ManualChunk,
@@ -16,6 +17,7 @@ import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-la
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
+import { confirmedSourceDocIds, preferOwnDocuments } from "@/capabilities/confirmed-sources";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
  *  Deliberately generous for a technician typing questions, and far below what
@@ -208,10 +210,36 @@ export async function POST(req: Request) {
     // matching comment in `api/assets/[id]/chat/route.ts`.
     const client = await pool.connect();
     try {
-      chunks = await retrieveManualChunks(client, ctx.tenantId, searchQuery, {
+      const library = await retrieveManualChunks(client, ctx.tenantId, searchQuery, {
         manufacturer,
         topK: 6,
       });
+      // #3437 — the technician's OWN manuals. Under
+      // MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) the library read above keeps
+      // only `verified = true` rows, and a private upload is never verified, so
+      // this route answered from the OEM library alone while claiming to search
+      // "your manuals". A document the tenant CONFIRMED as a notebook source is
+      // admitted here, exactly as notebook chat admits it; unconfirmed uploads
+      // stay out. The doc set is the boundary (validatedDocScope), the tenant
+      // predicate stays in the SQL, and the node argument is unused in that mode.
+      let own: ManualChunk[] = [];
+      try {
+        const docIds = await confirmedSourceDocIds(client, ctx.tenantId);
+        if (docIds.length > 0) {
+          own = await retrieveNodeChunks(client, ctx.tenantId, searchQuery, {
+            nodeId: ctx.tenantId,
+            unsPath: null,
+            topK: 6,
+            docIds,
+            validatedDocScope: true,
+            approvedSourceDocIds: docIds,
+          });
+        }
+      } catch (err) {
+        // The library answer still stands; say so in the log, not to the user.
+        console.warn("[hub/ask] confirmed-document retrieval skipped:", err);
+      }
+      chunks = preferOwnDocuments(own, library, 6);
     } catch (err) {
       console.error("[hub/ask] retrieval failed:", err);
       // Continue and answer from general knowledge, but SAY the search was
