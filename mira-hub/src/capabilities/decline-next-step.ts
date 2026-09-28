@@ -18,7 +18,7 @@
 export type DeclineKind = "credential" | "service_procedure";
 
 const CREDENTIAL =
-  /\b(?:pass\s?codes?|passwords?|pins?\s+(?:codes?|numbers?)|unlock\s+codes?|access\s+codes?|master\s+codes?|admin(?:istrator)?\s+codes?|(?:service|security|operator|admin|unlock|access)\s+pins?)\b/i;
+  /\b(?:pass\s?codes?|passwords?|pins?\s+(?:codes?|numbers?)(?!\s*#?\d)|unlock\s+codes?|access\s+codes?|master\s+codes?|admin(?:istrator)?\s+codes?|(?:service|security|operator|admin|unlock|access)\s+pins?)\b/i;
 
 /** A standalone "PIN" is a credential only when written as the acronym AND the
  *  message has no hardware-pin context; "Which PIN on my M12 connector carries
@@ -30,7 +30,24 @@ const HARDWARE_PIN_CONTEXT =
 
 /** "PIN 4", "PINs 3 and 5", "PIN #2" — a numbered pin is hardware, whatever
  *  else the message says (#4094 Codex round 3 F1). */
-const NUMBERED_PIN = /\bPINs?\s*(?:#|no\.?\s*)?\d/i;
+const NUMBERED_PIN = /\bPINs?\s*(?:#|no\.?\s*|numbers?\s*)?\d/i;
+
+/** Login / lock words make a PIN a credential whatever else the sentence says. */
+const CREDENTIAL_PIN_CONTEXT =
+  /\b(?:log\s?-?in|logon|sign\s?-?in|unlock|locked|access|security|password|passcode|user|account|admin(?:istrator)?)\b/i;
+
+/** Decide each "PIN" by ITS OWN sentence, so an unrelated clause elsewhere in
+ *  the message can't decide it (#4094 Codex post-cap F2: "What is the PIN for
+ *  my PLC login? The M12 connector is working."). */
+function credentialPin(message: string): boolean {
+  for (const sentence of message.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!PIN_ACRONYM.test(sentence)) continue;
+    if (CREDENTIAL_PIN_CONTEXT.test(sentence)) return true;
+    if (NUMBERED_PIN.test(sentence) || HARDWARE_PIN_CONTEXT.test(sentence)) continue;
+    return true;
+  }
+  return false;
+}
 
 /** Firmware + a recovery verb within one short message span. The window may
  *  cross ONE sentence boundary ("My firmware is corrupted. How do I recover
@@ -41,9 +58,7 @@ const FIRMWARE_SERVICE =
 
 export function declineKind(message: string): DeclineKind | null {
   if (CREDENTIAL.test(message)) return "credential";
-  if (PIN_ACRONYM.test(message) && !NUMBERED_PIN.test(message) && !HARDWARE_PIN_CONTEXT.test(message)) {
-    return "credential";
-  }
+  if (credentialPin(message)) return "credential";
   if (FIRMWARE_SERVICE.test(message)) return "service_procedure";
   return null;
 }

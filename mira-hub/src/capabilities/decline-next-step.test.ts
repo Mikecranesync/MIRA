@@ -11,6 +11,8 @@ describe("declineKind", () => {
     "What is the PIN for this panel?",
     "What is the service PIN on my Demag hoist?",
     "what's the service pin for the drive keypad",
+    "What is the PIN for my PLC login? The M12 connector is working.",
+    "what is the pin number for the operator keypad",
   ])("credential: %s", (m) => expect(declineKind(m)).toBe("credential"));
 
   it.each([
@@ -31,6 +33,7 @@ describe("declineKind", () => {
     "what does PIN 4 on the terminal block do",
     "What is PIN 4 on my PLC?",
     "what are PINs 3 and 5 for",
+    "What does PIN number 4 on my PLC do?",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 
