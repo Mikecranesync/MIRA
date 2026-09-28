@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const calls: Array<{ sql: string; params: unknown[] }> = [];
 let uploadStatus: string | null = "parsed";
 let fileRows: Array<{ verified: boolean }> = [];
+let dependents: Array<{ id: string }> = [];
 let failOn: RegExp | null = null;
 
 const fakeClient = {
@@ -13,6 +14,7 @@ const fakeClient = {
       return uploadStatus == null ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ status: uploadStatus }] };
     }
     if (/SELECT verified FROM namespace_direct_uploads/.test(sql)) return { rowCount: fileRows.length, rows: fileRows };
+    if (/SELECT id FROM hub_uploads/.test(sql)) return { rowCount: dependents.length, rows: dependents };
     return { rowCount: 1, rows: [] };
   }),
   release: vi.fn(),
@@ -38,6 +40,7 @@ describe("deleteUploadAndKnowledge (#4080 + review of #4084)", () => {
     calls.length = 0;
     uploadStatus = "parsed";
     fileRows = [];
+    dependents = [];
     failOn = null;
     fakeClient.release.mockClear();
   });
@@ -84,5 +87,26 @@ describe("deleteUploadAndKnowledge (#4080 + review of #4084)", () => {
     expect(sqls()).toContain("ROLLBACK");
     expect(sqls()).not.toContain("COMMIT");
     expect(fakeClient.release).toHaveBeenCalledOnce();
+  });
+
+  it("#4091 F1: a parsed duplicate inherits the original's chunks instead of being stranded", async () => {
+    const HEIR = "33333333-3333-4333-8333-333333333333";
+    dependents = [{ id: HEIR }, { id: "44444444-4444-4444-8444-444444444444" }];
+    await expect(deleteUploadAndKnowledge(ID, TENANT)).resolves.toBe("deleted");
+    const s = sqls();
+    const move = calls.find((c) => /^UPDATE knowledge_entries/.test(c.sql.replace(/\s+/g, " ").trim()));
+    expect(move).toBeDefined();
+    expect(move!.sql).toMatch(/SET doc_id = \$3::uuid/);
+    expect(move!.sql).toMatch(/is_private = true/);
+    expect(move!.params).toEqual([ID, TENANT, HEIR]);
+    const moveIdx = s.findIndex((x) => x.startsWith("UPDATE knowledge_entries"));
+    expect(moveIdx).toBeLessThan(idx(`DELETE FROM ${KE_TABLE}`)); // moved before the delete runs
+    expect(s.some((x) => /UPDATE hub_uploads SET status_detail = NULL/.test(x))).toBe(true);
+    expect(s.some((x) => /SET status_detail = 'duplicate of ' \|\| \$3/.test(x))).toBe(true);
+  });
+
+  it("with no duplicates, nothing is reassigned", async () => {
+    await deleteUploadAndKnowledge(ID, TENANT);
+    expect(sqls().some((x) => x.startsWith("UPDATE knowledge_entries"))).toBe(false);
   });
 });
