@@ -908,3 +908,55 @@ def test_hub_citation_label_uses_the_typed_source_title_and_page() -> None:
         hub_runner._citation_label(c)
         == "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011 p.212"
     )
+
+
+# ── Codex #4062 round 3 ────────────────────────────────────────────────────────
+
+
+def test_prompt_version_hashes_the_engine_prompt_actually_used(monkeypatch) -> None:
+    """Round 3 F1 / round 4 F1: the version identifies the system prompt the engine
+    selects for the turn, not a file that may not be the one in use."""
+    import hashlib
+
+    from answer_radar import runner
+
+    monkeypatch.delenv("MIRA_DIRECT_ANSWER_MODE", raising=False)
+    runner._import_local_pipeline()
+    from shared.workers import rag_worker
+
+    expected = hashlib.sha256(rag_worker._active_system_prompt().encode()).hexdigest()[:12]
+    assert runner.prompt_version() == f"active.yaml@{expected}"
+
+
+def test_prompt_version_distinguishes_direct_answer_mode(monkeypatch) -> None:
+    """Round 4 F1: direct-answer mode sends a different prompt, so it must record a
+    different version."""
+    from answer_radar import runner
+
+    monkeypatch.delenv("MIRA_DIRECT_ANSWER_MODE", raising=False)
+    default = runner.prompt_version()
+    monkeypatch.setenv("MIRA_DIRECT_ANSWER_MODE", "1")
+    direct = runner.prompt_version()
+    assert direct.startswith("direct-answer@")
+    assert direct != default
+
+
+def test_prompt_version_fails_closed_when_the_prompt_is_unknowable(monkeypatch) -> None:
+    from answer_radar import runner
+
+    def boom():
+        raise ImportError("engine unavailable")
+
+    monkeypatch.setattr(runner, "_import_local_pipeline", boom)
+    with pytest.raises(RuntimeError):
+        runner.prompt_version()
+
+
+def test_median_answer_time_averages_the_two_middle_values() -> None:
+    """F2: an even count's median is the mean of the two middle values."""
+    graded = [
+        (_record(total_answer_time_ms=t), evaluate(_record(total_answer_time_ms=t)))
+        for t in (315, 1951, 4544, 7732, 13406, 19229)
+    ]
+    rep = build_report(graded, discovered=6, unique_after_dedupe=6, qualified=6)
+    assert rep.median_answer_time_ms == 6138

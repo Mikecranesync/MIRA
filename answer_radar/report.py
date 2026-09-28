@@ -126,7 +126,14 @@ def build_report(
             failure_classes[cls or "unclassified"] += 1
 
     times = sorted(rec.total_answer_time_ms for rec, _ in graded)
-    median = times[len(times) // 2] if times else 0
+    # Codex #4062 round 3 F2: an even count's median is the mean of the middle two.
+    mid = len(times) // 2
+    if not times:
+        median = 0
+    elif len(times) % 2:
+        median = times[mid]
+    else:
+        median = round((times[mid - 1] + times[mid]) / 2)
 
     # Citation coverage is over COMPLETED turns: gate turns and engine errors
     # (failed or truncated streams) produce no answer to cite, so they leave the

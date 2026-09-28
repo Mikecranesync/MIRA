@@ -1,0 +1,26 @@
+{
+  "seed_id": "FIELD-SEED-002",
+  "grader_role": "adversary",
+  "correctness": 6,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 1,
+  "uncertainty": 8,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "unnecessary_clarification",
+  "factual_errors": [
+    {
+      "claim": "What's the brand or manufacturer?",
+      "why_wrong": "The question explicitly names the manufacturer ('Festo SPC-100-P-F'). Asking for information the technician already supplied is not a correct clarifying question — the rubric explicitly flags 'asking for the brand when the question already names it' as not a valid abstention. This is a template/flow leak, not genuine uncertainty.",
+      "severity": "major"
+    },
+    {
+      "claim": "(by omission) no mention that WinPISA is not compatible with the SPC-100",
+      "why_wrong": "This is the single most important, checkable fact for this question: WinPISA is Festo's SPC200-family commissioning software; the SPC-100 predates it and was commissioned with legacy PISA software. This distinction does not require the specific missing manual — it is general Festo product-line knowledge — and its complete omission leaves the technician's core misunderstanding (that WinPISA might work here) uncorrected.",
+      "severity": "critical"
+    }
+  ],
+  "notes": "No hallucinated claims this round (unlike the referenced 09-05 grade, which caught a false 'I have Festo documentation indexed' opening — that specific defect is not present here), so nothing is actively fabricated. But the answer is nearly content-free: it re-asks for the manufacturer that was already given, then falls back to a generic 'consult the nameplate or vendor manual' KB-gap template. It fails to supply the one piece of decisive, inference-available guidance (WinPISA ≠ SPC-100 compatible; original software was PISA) and offers no alternative paths (front-panel commissioning, Festo Legacy Support, FTP archive). A safe class='advisory' question deserves substantive guidance, not a circular redirect plus a redundant question. FAILS: total 40 << 85, correctness 6 < 34."
+}
