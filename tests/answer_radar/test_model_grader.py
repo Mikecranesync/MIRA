@@ -593,3 +593,28 @@ def test_http_error_propagates_out_of_the_exam_runner():
     with httpx.Client(transport=transport) as http, pytest.raises(BudgetExceeded):
         mod.evaluate_question(q, http, "", "gpt-5.5", "", provider="openai", openai_client=oc)
     assert len(calls) == 1
+
+
+def test_duplicate_seed_and_condition_across_batches_is_refused(tmp_path: Path):
+    """#4092 post-cap r7 F1: a second answer must not silently replace the first."""
+    from answer_radar.grader_packet import build_packet
+
+    b1, b2 = tmp_path / "b1.json", tmp_path / "b2.json"
+    b1.write_text(json.dumps([_row()]))
+    b2.write_text(json.dumps([_row(**{"evaluation.answer_text": "rerun"})]))
+    with pytest.raises(SystemExit, match="S1__machine_selected"):
+        build_packet([b1, b2])
+
+
+def test_a_condition_with_no_entries_fails_loudly(tmp_path: Path):
+    """#4092 post-cap r7 F2: a mistyped condition is an error, not an empty success."""
+    transport, calls = _transport([])
+    grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
+    with (
+        httpx.Client(transport=transport) as http,
+        pytest.raises(SystemExit, match="machine_slected"),
+    ):
+        model_grader.grade_packet(
+            PACKET, "machine_slected", tmp_path, "B", "adversary", grader, http
+        )
+    assert calls == []

@@ -146,6 +146,11 @@ def grade_packet(
     out_dir.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []
     selected = [e for e in packet.values() if e.get("condition") == condition]
+    if not selected:
+        # A mistyped --condition must not report a successful, empty run
+        # (#4092 post-cap r7 F2).
+        known = sorted({str(e.get("condition")) for e in packet.values()})
+        raise SystemExit(f"no packet entries for condition {condition!r}; packet has {known}")
     unbound = [e.get("seed_id") for e in selected if not e.get("answer_sha256")]
     if unbound:
         # A grade that cannot name the answer it judged can never be scored

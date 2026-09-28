@@ -47,7 +47,15 @@ def build_packet(batch_paths: list[Path], references: dict | None = None) -> dic
             }
             if references and sid in references:
                 entry["reference_notes"] = references[sid]
-            packet[f"{sid}__{condition}"] = entry
+            key = f"{sid}__{condition}"
+            if key in packet:
+                # Two answers for one seed+condition would share one grade file;
+                # silently keeping the last would leave the other ungraded
+                # (#4092 post-cap r7 F1). Grade each run from its own packet.
+                raise SystemExit(
+                    f"{key} appears in more than one batch; build a separate packet per run"
+                )
+            packet[key] = entry
     return packet
 
 
