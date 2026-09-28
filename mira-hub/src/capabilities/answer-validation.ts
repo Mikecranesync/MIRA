@@ -625,15 +625,43 @@ const EXACT_RATING_RE = new RegExp(
   "i",
 );
 
+/** The numeric magnitudes in a string, normalised ("1,750" → "1750", "420V" → "420"). */
+function magnitudes(text: string): string[] {
+  return (text.match(/\d[\d.,]*/g) ?? []).map((n) => n.replace(/,/g, "").replace(/\.+$/, ""));
+}
+
+/** An all-zero magnitude is an energy-isolation VERIFICATION, never a machine
+ *  rating: "isolated, locked out and verified at 0 V" matches the declarative
+ *  grammar exactly, and MIRA_CORE requires that clause in the same sentence as
+ *  any wiring step — so the safer the answer, the more certainly it was
+ *  replaced (#3959, staging 2026-09-22: 4 of 6 drafts replaced on the LOTO
+ *  clause alone). A range keeps both endpoints, so "0…+50 °C" still blocks. */
+function allZeroMagnitude(match: string): boolean {
+  const nums = magnitudes(match);
+  return nums.length > 0 && nums.every((n) => Number(n) === 0);
+}
+
 /** A sentence-level scan: the rating claim must live in a sentence that is not
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
- *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
-export function unsupportedExactRating(text: string): string | null {
+ *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not.
+ *
+ *  A match whose every number the technician supplied in the question is a
+ *  restatement, not a claim ("the drive is rated for 40 °C" when they said so —
+ *  2026-09-28 exam Q3/Q6, answer_gate.reason exact-rating on trace 8f88d2c3…).
+ *  One unsupplied number in the match keeps it a claim. */
+export function unsupportedExactRating(text: string, question = ""): string | null {
+  const supplied = new Set(magnitudes(question));
+  const re = new RegExp(EXACT_RATING_RE.source, "gi");
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
-    const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    re.lastIndex = 0;
+    for (let m = re.exec(sentence); m; m = re.exec(sentence)) {
+      if (allZeroMagnitude(m[0])) continue;
+      const nums = magnitudes(m[0]);
+      if (nums.length > 0 && nums.every((n) => supplied.has(n))) continue;
+      return m[0].slice(0, 160);
+    }
   }
   return null;
 }
@@ -1022,7 +1050,7 @@ export function validateAnswer(opts: {
   }
 
   if (!evidenceSufficient) {
-    const er = unsupportedExactRating(scanText);
+    const er = unsupportedExactRating(scanText, scanQuestion);
     if (er) {
       return {
         ok: false,
