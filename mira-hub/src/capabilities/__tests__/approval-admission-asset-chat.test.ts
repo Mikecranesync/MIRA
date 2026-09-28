@@ -58,6 +58,7 @@ import { linkedDocIdsForTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
+  buildApprovedContextRefusal,
 } from "@/lib/approved-context";
 import { KB_GAP_ADMISSION } from "@/lib/kb-gap";
 
@@ -215,5 +216,43 @@ describe("asset chat — approval-gate admission (#3437)", () => {
     const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
     expect(chunks.length).toBe(1);
     expect(chunks[0].sourceUrl).toBe("node-doc/doc-1/DGII.pdf");
+  });
+
+  it.each([
+    ["an attached private chunk counts as approved context (no 412)", "doc-1", 1],
+    ["an unattached unverified chunk does not", "doc-9", 0],
+  ])("#3437 F1: %s", async (_label, chunkDoc, expected) => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockImplementation((s) => s.approvedSourceCount > 0);
+    vi.mocked(buildApprovedContextRefusal).mockReturnValue({ gate: "approved_context", reason: "r" } as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    vi.mocked(linkedDocIdsForTarget).mockResolvedValue(["doc-1"]);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      {
+        content: "Rated current 1.27 A per phase",
+        manufacturer: "",
+        modelNumber: "",
+        sourceUrl: `node-doc/${chunkDoc}/DGII.pdf`,
+        sourcePage: 43,
+        title: "DGII Series Manual",
+        rank: 0.9,
+        verified: false,
+        docId: chunkDoc,
+      },
+    ] as never);
+    const client = mockClient([
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+
+    const res = await POST(makeReq(userMsg("what is the rated current?")), makeParams(VALID_UUID));
+
+    const summary = vi.mocked(approvedContextReady).mock.calls[0]?.[0];
+    expect(summary?.approvedSourceCount).toBe(expected);
+    expect(res.status === 412).toBe(expected === 0);
   });
 });

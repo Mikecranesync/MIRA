@@ -88,6 +88,13 @@ compliant:
 
 # Approved non-production reads (scripts, tests, tools)
 approved:
+  "mira-hub/src/capabilities/confirmed-sources.ts:39":
+    approved_classification: TENANT-ONLY
+    query_sha256: "c240682802abc7cbfef98b1143df48aa3cbb87634d20cafa2c2760168c861138"
+    reason: "#3437 home Ask: an EXISTS probe choosing which of the tenant's OWN confirmed notebook documents match the question. Tenant-only by design: it selects private doc ids for admission; the shared OEM corpus is searched separately by retrieveManualChunks with the hybrid filter."
+    query_snippet: |
+      SELECT 1 FROM knowledge_entries k
+       WHERE k.tenant_id = $1::uuid AND k.doc_id = s.doc_id
   # Offline defect lab (#3165) - corpus-wide EXISTENCE COUNT for a parameter
   # token, deliberately unfiltered. It is the aggregate shared-corpus class the
   # hybrid law keeps universal (.claude/rules/knowledge-entries-tenant-scoping.md

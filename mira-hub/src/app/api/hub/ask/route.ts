@@ -17,7 +17,7 @@ import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-la
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
-import { confirmedSourceDocIds, preferOwnDocuments } from "@/capabilities/confirmed-sources";
+import { askUserContent, confirmedSourceDocIds, preferOwnDocuments } from "@/capabilities/confirmed-sources";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
  *  Deliberately generous for a technician typing questions, and far below what
@@ -186,6 +186,7 @@ export async function POST(req: Request) {
   const searchQuery = await englishSearchQuery(question, translateForSearch);
   let chunks: ManualChunk[] = [];
   let retrievalFailed = false;
+  let ownDocumentsFailed = false;
   {
     // #2178 — the RAW owner pool (BYPASSRLS), NOT withTenantContext.
     //
@@ -224,7 +225,7 @@ export async function POST(req: Request) {
       // predicate stays in the SQL, and the node argument is unused in that mode.
       let own: ManualChunk[] = [];
       try {
-        const docIds = await confirmedSourceDocIds(client, ctx.tenantId);
+        const docIds = await confirmedSourceDocIds(client, ctx.tenantId, searchQuery);
         if (docIds.length > 0) {
           own = await retrieveNodeChunks(client, ctx.tenantId, searchQuery, {
             nodeId: ctx.tenantId,
@@ -236,8 +237,10 @@ export async function POST(req: Request) {
           });
         }
       } catch (err) {
-        // The library answer still stands; say so in the log, not to the user.
-        console.warn("[hub/ask] confirmed-document retrieval skipped:", err);
+        // The library answer still stands, but the model must know the
+        // technician's own manuals were not searched (askUserContent).
+        console.warn("[hub/ask] confirmed-document retrieval failed:", err);
+        ownDocumentsFailed = true;
       }
       chunks = preferOwnDocuments(own, library, 6);
     } catch (err) {
@@ -264,11 +267,10 @@ export async function POST(req: Request) {
     },
     {
       role: "user",
-      content: context
-        ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
-        : retrievalFailed
-          ? `CONTEXT: (plant-document search was UNAVAILABLE for this question — the manuals were NOT searched; answer from general knowledge and say the document search was unavailable, not that the documents did not match)\n\n---\n\nUSER QUESTION:\n${question}`
-          : `CONTEXT: (no manual excerpt matched this question — answer from general knowledge)\n\n---\n\nUSER QUESTION:\n${question}`,
+      content: askUserContent(context, question, {
+        library: retrievalFailed,
+        ownDocuments: ownDocumentsFailed,
+      }),
     },
   ];
 

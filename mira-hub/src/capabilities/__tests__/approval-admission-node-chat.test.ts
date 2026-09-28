@@ -112,7 +112,9 @@ describe("node chat — approval-gate admission (#3437)", () => {
       } as never),
     );
 
-    await POST(makeReq(userMsg("what is the torque spec?")), makeParams(VALID_UUID));
+    const res = await POST(makeReq(userMsg("what is the torque spec?")), makeParams(VALID_UUID));
+    // F2: the final approved-context gate counts the admitted document too.
+    expect(res.status).not.toBe(412);
 
     // Retrieval is told the link is the approval (MIRA_ENFORCE_APPROVED_RETRIEVAL).
     const linkedCall = vi.mocked(retrieveNodeChunks).mock.calls[1]?.[3];
@@ -136,11 +138,36 @@ describe("node chat — approval-gate admission (#3437)", () => {
       } as never),
     );
 
-    await POST(makeReq({ ...userMsg("torque?"), docId: DOC }), makeParams(VALID_UUID));
+    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      { content: "Torque 4.7 Nm", manufacturer: "", modelNumber: "", sourceUrl: `node-doc/${DOC}/m.pdf`, sourcePage: 2, title: "m", rank: 0.5, verified: false, docId: DOC },
+    ] as never);
+    const res = await POST(makeReq({ ...userMsg("torque?"), docId: DOC }), makeParams(VALID_UUID));
+    expect(res.status).not.toBe(412);
 
     expect(vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3]).toMatchObject({
       docId: DOC,
       approvedSourceDocIds: [DOC],
     });
+  });
+
+  it("#3437 F2: an unlinked, unverified draft alone still fails the approved-context gate", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://test";
+    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(linkedDocIdsForNode).mockResolvedValue([]);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      { content: "Draft", manufacturer: "", modelNumber: "", sourceUrl: "node-doc/d/m.pdf", sourcePage: 1, title: "m", rank: 0.5, verified: false, docId: "77777777-7777-4777-8777-777777777777" },
+    ] as never);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      } as never),
+    );
+    const res = await POST(makeReq(userMsg("torque?")), makeParams(VALID_UUID));
+    expect(res.status).toBe(412);
   });
 });

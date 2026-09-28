@@ -562,7 +562,13 @@ export async function POST(
     ),
   ));
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
-  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
+  // #3437 — a chunk of a document a person attached to this asset is approved
+  // context by that act, exactly as retrieval admitted it; counting only the
+  // shared-corpus `verified` flag turned an admitted manual into a 412.
+  const attachedSet = new Set(attachedDocIds);
+  const approvedSourceCount = chunksToSources(
+    manualChunks.filter((c) => c.verified === true || (c.docId != null && attachedSet.has(c.docId))),
+  ).length;
   const approvedSummary = {
     approvedSourceCount,
     verifiedRelationshipCount,
