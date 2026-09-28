@@ -640,14 +640,20 @@ function magnitudes(text: string): string[] {
  *  the match is zero, the match carries a verification verb, and the sentence
  *  names isolation. "The maximum output voltage, verified by our test, is 0 V"
  *  names no isolation and still blocks (#4093 Codex round 2 F5). */
-const VERIFY_VERB = /\b(?:verif(?:y|ied|ies)|confirm(?:ed|s)?|test(?:ed|s)?|prov(?:e|en|ed)|measur(?:e|ed|es)|check(?:ed|s)?)\b/i;
 const ISOLATION_CONTEXT = /\b(?:isolat(?:e|ed|ion|ing)|lock(?:ed)?[- ]?out|lockout|tag(?:ged)?[- ]?out|loto|de-?energi[sz](?:e|ed|ing)|zero[- ]energy)\b/i;
+/** The zero must BE the verification: "verified at 0 V", "confirmed to be 0 V",
+ *  "measured 0 V" — verb directly bound to the zero reading. A declarative
+ *  "…, verified by our test, is 0 V" is a rating even with isolation words
+ *  elsewhere in the sentence (#4093 Codex round 3 F1). */
+const ZERO_VERIFICATION =
+  /\b(?:verif(?:y|ied|ies)|confirm(?:ed|s)?|test(?:ed|s)?|prov(?:e|en|ed)|measur(?:e|ed|es)|check(?:ed|s)?)\s+(?:at\s+|to\s+be\s+|as\s+)?0(?:\.0+)?\s*(?:v(?:olts?|dc|ac)?)\b/i;
 function zeroIsolationVerification(sentence: string, match: string): boolean {
   const nums = magnitudes(match);
   return (
     nums.length > 0 &&
     nums.every((n) => Number(n) === 0) &&
-    VERIFY_VERB.test(match) &&
+    ZERO_VERIFICATION.test(match) &&
+    !/\b(?:is|are|was|were)\b/i.test(match) &&
     ISOLATION_CONTEXT.test(sentence)
   );
 }
