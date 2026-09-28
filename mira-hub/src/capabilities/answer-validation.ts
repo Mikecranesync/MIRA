@@ -647,6 +647,8 @@ const ISOLATION_CONTEXT = /\b(?:isolat(?:e|ed|ion|ing)|lock(?:ed)?[- ]?out|locko
  *  elsewhere in the sentence (#4093 Codex round 3 F1). */
 const ZERO_VERIFICATION =
   /\b(?:verif(?:y|ied|ies)|confirm(?:ed|s)?|test(?:ed|s)?|prov(?:e|en|ed)|measur(?:e|ed|es)|check(?:ed|s)?)\s+(?:at\s+|to\s+be\s+|as\s+)?0(?:\.0+)?\s*(?:v(?:olts?|dc|ac)?)\b/i;
+const RATING_QUALIFIER =
+  /\b(?:max(?:imum)?|min(?:imum)?|rated|rating|nominal|operating|limit|capacity|range|spec(?:ification)?|tolerance|peak|continuous)\b/i;
 function zeroIsolationVerification(sentence: string, match: string): boolean {
   const nums = magnitudes(match);
   return (
@@ -654,6 +656,9 @@ function zeroIsolationVerification(sentence: string, match: string): boolean {
     nums.every((n) => Number(n) === 0) &&
     ZERO_VERIFICATION.test(match) &&
     !/\b(?:is|are|was|were)\b/i.test(match) &&
+    // An isolation-state reading, not a rating: "maximum output voltage,
+    // measured at 0 V" names a rating quantity (#4093 post-cap F1).
+    !RATING_QUALIFIER.test(match) &&
     ISOLATION_CONTEXT.test(sentence)
   );
 }

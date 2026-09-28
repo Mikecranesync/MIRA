@@ -40,6 +40,8 @@ describe("exact-rating: controls that must still block", () => {
     ["a non-zero endpoint", "The operating range is 0 to 50 °C."],
     ["an isolation sentence carrying a non-zero rating", "With the drive isolated and locked out, the rated output voltage is 460 V."],
     ["isolation words beside a separate zero rating (Codex r3 F1)", "With the line isolated and locked out, the maximum output voltage, verified by our test, is 0 V."],
+    ["a rating quantity 'measured at 0 V' (Codex post-cap F1)", "With the line isolated and locked out, the maximum output voltage, measured at 0 V, needs no further testing."],
+    ["a rated quantity 'verified at 0 V'", "With the drive isolated, the rated supply voltage verified at 0 V is acceptable."],
   ])("%s", (_label, a) => {
     expect(unsupportedExactRating(a)).not.toBeNull();
   });
