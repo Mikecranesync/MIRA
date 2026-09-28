@@ -20,6 +20,10 @@ import {
 import { makeUploadLogger } from "@/lib/upload-log";
 import { updateUploadStatus, type Upload, type UploadKind } from "@/lib/uploads";
 import { runWorkflow } from "@/lib/workflow";
+import { createHash } from "node:crypto";
+import { isV2Document, writeDocumentToInbox } from "@/lib/local-upload";
+import { NoExtractableTextError } from "@/lib/node-knowledge-ingest";
+import { MAX_UPLOAD_BYTES } from "@/lib/config";
 import { WORKFLOW_VERSIONS } from "@/lib/workflow-versions";
 
 export interface PipelineInput {
@@ -114,7 +118,35 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
                 return { kbFileId: result.photoId != null ? String(result.photoId) : null };
               }
 
-              const result = await forwardToIngest(fetched.stream, filename, mime, { requestId });
+              // #1806 — a Drive/Dropbox document becomes CITABLE the same way a
+              // local one does: the v2 Inbox writer (knowledge_entries,
+              // is_private=true). This path used to forward to the Open WebUI KB
+              // only, which chat never reads and prod no longer runs.
+              let stream = fetched.stream;
+              if (isV2Document(kind, mime)) {
+                const buffer = await readAllCapped(fetched.stream, MAX_UPLOAD_BYTES);
+                try {
+                  await writeDocumentToInbox({
+                    tenantId,
+                    uploadId,
+                    filename,
+                    mime,
+                    buffer,
+                    contentSha256: createHash("sha256").update(buffer).digest("hex"),
+                    log,
+                  });
+                  run.setOutput({ kind, route: "v2" });
+                  return { kbFileId: null, kbChunkCount: null };
+                } catch (err) {
+                  // No text is a property of the file; another path can't fix it.
+                  if (err instanceof NoExtractableTextError) throw err;
+                  // Same fallback as the local door: keep the legacy forward.
+                  log.error("v2_inbox_fallback", err);
+                  stream = bufferStream(buffer);
+                }
+              }
+
+              const result = await forwardToIngest(stream, filename, mime, { requestId });
               await updateUploadStatus(uploadId, tenantId, "parsed", null, {
                 kbFileId: result.fileId ?? undefined,
                 kbChunkCount: result.chunkCount ?? undefined,
@@ -142,4 +174,31 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
     // The failure was already surfaced (hub_uploads + workflow_runs + logs)
     // inside the body. Swallow here so the fire-and-forget Promise never rejects.
   }
+}
+
+/** Read a fetched body fully, refusing one larger than the upload cap. */
+export async function readAllCapped(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<Buffer> {
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error(`file exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB upload limit`);
+    }
+    parts.push(value);
+  }
+  return Buffer.concat(parts);
+}
+
+function bufferStream(buffer: Buffer): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(buffer);
+      controller.close();
+    },
+  });
 }
