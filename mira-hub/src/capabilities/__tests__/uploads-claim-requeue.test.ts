@@ -12,6 +12,7 @@ describe("claimUploadForRequeue — check and transition in ONE statement", () =
     expect(sql.replace(/\s+/g, " ")).toMatch(
       /UPDATE hub_uploads SET status = 'queued'.*WHERE id = \$1 AND tenant_id = \$2 AND status = ANY\(\$3::text\[\]\) RETURNING \*/,
     );
-    expect(params).toEqual(["id-1", "t-1", ["failed", "cancelled"], "re-picked"]);
+    expect(params).toEqual(["id-1", "t-1", ["failed", "cancelled"], "re-picked", null]);
+    expect(sql).toMatch(/external_download_url = COALESCE\(\$5, external_download_url\)/);
   });
 });

@@ -305,13 +305,18 @@ export async function claimUploadForRequeue(
   tenantId: string,
   from: ReadonlyArray<UploadStatus>,
   detail: string,
+  /** A re-pick's fresh provider link (Dropbox links expire). Written only by
+   *  the winning claim, so a later Retry fetches from it (#4085 review F2). */
+  freshDownloadUrl?: string | null,
 ): Promise<Upload | null> {
   const { rows } = await pool.query(
     `UPDATE hub_uploads
-        SET status = 'queued', status_detail = $4, updated_at = NOW()
+        SET status = 'queued', status_detail = $4,
+            external_download_url = COALESCE($5, external_download_url),
+            updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2 AND status = ANY($3::text[])
       RETURNING *`,
-    [id, tenantId, [...from], detail],
+    [id, tenantId, [...from], detail, freshDownloadUrl ?? null],
   );
   return rows.length > 0 ? rowToUpload(rows[0]) : null;
 }
