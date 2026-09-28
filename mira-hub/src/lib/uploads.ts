@@ -288,6 +288,34 @@ export async function updateUploadStatus(
   );
 }
 
+/**
+ * Atomically move an upload from one of `from` back to `queued`, returning the
+ * updated row, or null when the row is gone or already in another state.
+ *
+ * This is the single claim for re-running an import (#4081, retry #704): the
+ * status check and the transition are one statement, so a concurrent re-pick
+ * and retry cannot both start a pipeline for the same terminal row, and
+ * neither can act on a row another request has already requeued. Reusing the
+ * row (not deleting and recreating it) keeps doc_id stable, so a still-running
+ * pipeline from before a cancel writes to the same upload, where chunk writes
+ * are idempotent (ON CONFLICT on tenant + source_url + chunk_index).
+ */
+export async function claimUploadForRequeue(
+  id: string,
+  tenantId: string,
+  from: ReadonlyArray<UploadStatus>,
+  detail: string,
+): Promise<Upload | null> {
+  const { rows } = await pool.query(
+    `UPDATE hub_uploads
+        SET status = 'queued', status_detail = $4, updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2 AND status = ANY($3::text[])
+      RETURNING *`,
+    [id, tenantId, [...from], detail],
+  );
+  return rows.length > 0 ? rowToUpload(rows[0]) : null;
+}
+
 export async function deleteUpload(id: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   const { rowCount } = await pool.query(
     `DELETE FROM hub_uploads WHERE id = $1 AND tenant_id = $2`,
