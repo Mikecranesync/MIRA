@@ -28,11 +28,11 @@ vi.mock("@/lib/inbox-node", () => ({
   resolveOrCreateInboxNode: vi.fn(async () => ({ nodeId: "inbox-1", unsPath: "inbox" })),
 }));
 vi.mock("@/lib/node-knowledge-ingest", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("../node-knowledge-ingest")>();
+  const orig = await importOriginal<typeof import("@/lib/node-knowledge-ingest")>();
   return { ...orig, writePdfChunksForNode: vi.fn(async () => 7), writeTextChunksForNode: vi.fn(async () => 3) };
 });
 vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("../mira-ingest-client")>();
+  const orig = await importOriginal<typeof import("@/lib/mira-ingest-client")>();
   return {
     ...orig,
     forwardToIngest: vi.fn(async () => ({ fileId: "ow-1", chunkCount: 0 })),
@@ -40,7 +40,7 @@ vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
   };
 });
 
-import { runIngestPipeline, readAllCapped, type PipelineInput } from "../upload-pipeline";
+import { runIngestPipeline, readAllCapped, type PipelineInput } from "@/lib/upload-pipeline";
 import { streamFromSignedUrl } from "@/lib/fetch-adapters";
 import { updateUploadStatus } from "@/lib/uploads";
 import { NoExtractableTextError, writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
