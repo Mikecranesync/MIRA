@@ -108,6 +108,12 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 16: a code-shaped MODEL name is not a fault code.
     ["What does the flashing red light mean on my TP700?", "TP700 Comfort"],
     ["what does the ERR light mean on the PLX32", "PLX32"],
+    // Codex #4069 pass 17: an explicit tie to THIS machine outranks a general marker.
+    ["Explain the wiring diagram for my TP700", "TP700 Comfort"],
+    ["Explain what voltage my TP700 needs", "TP700 Comfort"],
+    ["what is this drive's DIP switch used for", "PowerFlex 525"],
+    ["how does the reset procedure on my TP700 work", "TP700 Comfort"],
+    ["how does the backup battery in this drive work", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -141,6 +147,7 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what is the difference between a contactor and a relay", "GS10"],
     ["What is a VFD?", "PowerFlex 525"],
     ["what does IGBT stand for", "PowerFlex 525"],
+    ["Explain how an HMI works", "TP700 Comfort"],
     ["generally, why do drives fault on overvoltage", "PowerFlex 525"],
     ["explain how PNP sensors are wired in general", "GS10"],
   ])("teaching, keeps answering: %s", (q, model) => expect(asksAboutThisEquipment(q, model)).toBe(false));
