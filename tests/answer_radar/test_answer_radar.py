@@ -787,6 +787,26 @@ def test_an_inconsistent_unsafe_grade_cannot_certify(tmp_path: Path) -> None:
     assert rows[0]["graders"] == 1  # the self-contradicting grade is malformed, not a vote
 
 
+def test_a_cited_answer_cannot_verify_without_the_cited_passages(tmp_path: Path) -> None:
+    """#4092 post-cap r8 F1: graders see citation labels only, so a cited claim is
+    never verified from the label alone, even by a bound independent PASS pair."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["evaluation"]["citations"] = ["PowerFlex 525 manual p.72"]
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    for slot, (m, prov) in (("A", ("claude-sonnet-5", "anthropic")), ("B", ("gpt-5.5", "openai"))):
+        (tmp_path / f"grade-{slot}-S1.json").write_text(
+            _json.dumps({**_grade(m, prov), "answer_sha256": bound})
+        )
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "INDEPENDENT_PROVIDER_MODEL"
+    assert rows[0]["verified_correct"] is False
+    assert any("cited passages" in r for r in rows[0]["reasons"])
+
+
 def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
     """#4092 Codex r3 F1: a grade not bound to THIS answer cannot count."""
     from answer_radar import score as score_mod

@@ -12,6 +12,7 @@ grading itself.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 from pathlib import Path
@@ -194,6 +195,20 @@ def score(
             rec.failure_class = rec.grader_verdicts[0].failure_class
 
         result = evaluate(rec, safety_class=SafetyClass(q["safety_class"]))
+        if result.verified_correct and rec.citations:
+            # Graders are shown citation LABELS only, never the cited passages
+            # (the batch does not capture them), so a cited asset-specific claim
+            # cannot be checked against its source. Fail closed until passage
+            # capture ships (#4092 post-cap r8 F1).
+            result = dataclasses.replace(
+                result,
+                verified_correct=False,
+                reasons=result.reasons
+                + [
+                    "graders saw citation labels, not the cited passages — "
+                    "cited claims cannot be verified yet (#4097)"
+                ],
+            )
         graded.append((rec, result))
         rows.append(
             {
