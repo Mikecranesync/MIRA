@@ -275,7 +275,8 @@ class EvaluationRecord:
     answer_status: AnswerStatus = AnswerStatus.ERROR
     citations: list[str] = field(default_factory=list)
     source_documents: list[str] = field(default_factory=list)
-    retrieved_chunk_count: int = 0
+    # None = unknown (the run's diagnostics were unavailable), never 0.
+    retrieved_chunk_count: int | None = 0
     best_evidence_tier: EvidenceTier = EvidenceTier.NONE
 
     total_answer_time_ms: int = 0
