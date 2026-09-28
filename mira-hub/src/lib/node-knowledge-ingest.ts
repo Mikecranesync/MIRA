@@ -20,7 +20,8 @@
 import { randomUUID } from "crypto";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
-import { createUpload, updateUploadStatus } from "@/lib/uploads";
+import { createUpload, updateUploadStatus, UploadAttemptRevokedError } from "@/lib/uploads";
+import type { PoolClient } from "pg";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -341,6 +342,51 @@ interface NodeChunkOpts {
   nodeId: string;
   unsPath: string | null;
   filename: string;
+  /** The upload's import attempt (migration 099). When present (the
+   *  background doors), chunks are inserted only while the upload row still
+   *  carries this attempt and is not cancelled — with the row held FOR SHARE,
+   *  so a cancel or delete waits for this transaction and then removes what
+   *  it wrote. Omitted by the synchronous node-attach door. */
+  attemptId?: string | null;
+}
+
+/**
+ * withTenantContext, but first lock the upload row FOR SHARE as the owner role
+ * and require that it still carries `attemptId` and is not cancelled. hub_uploads
+ * has no grant for factorylm_app, so the lock is taken BEFORE the role switch;
+ * it is held until this transaction ends. The chunk inserts still run under the
+ * tenant's RLS role, exactly as before.
+ */
+async function withUploadAttemptTenantContext<T>(
+  tenantId: string,
+  uploadId: string,
+  attemptId: string | null,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const held = await client.query(
+      `SELECT 1 FROM hub_uploads
+        WHERE id = $1 AND tenant_id = $2
+          AND attempt_id IS NOT DISTINCT FROM $3::uuid
+          AND status <> 'cancelled'
+        FOR SHARE`,
+      [uploadId, tenantId, attemptId],
+    );
+    if ((held.rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(uploadId);
+    await client.query("SET LOCAL ROLE factorylm_app");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [tenantId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -357,7 +403,7 @@ async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
+  const { tenantId, uploadId, nodeId, unsPath, filename, attemptId } = opts;
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
@@ -367,7 +413,12 @@ async function writeChunkRowsForNode(
   let idx = 0;
   let batch: ChunkRow[] = [];
 
-  await withTenantContext(tenantId, async (c) => {
+  const inTx = <T,>(fn: (c: PoolClient) => Promise<T>) =>
+    attemptId === undefined
+      ? withTenantContext(tenantId, fn)
+      : withUploadAttemptTenantContext(tenantId, uploadId, attemptId, fn);
+
+  await inTx(async (c) => {
     // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
     // tenant_id / source_url / doc_id are constant across the whole file, so
     // they are fixed leading params ($1..$3) and only id/content/page/metadata
@@ -454,6 +505,7 @@ export async function writePdfChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
 
@@ -484,6 +536,7 @@ export async function writeTextChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
   const text = new TextDecoder("utf-8", { fatal: false }).decode(

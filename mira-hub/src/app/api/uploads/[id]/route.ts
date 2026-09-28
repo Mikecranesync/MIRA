@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getUpload, getUploadCounts, updateUploadStatus, deleteUploadAndKnowledge } from "@/lib/uploads";
+import { cancelUpload, getUpload, getUploadCounts, deleteUploadAndKnowledge } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { composeTimeout, isAbortError } from "@/lib/abort-helpers";
@@ -70,7 +70,17 @@ export async function DELETE(
   const log = makeUploadLogger({ requestId, uploadId: id, tenantId: ctx.tenantId });
 
   if (!TERMINAL.includes(row.status)) {
-    await updateUploadStatus(id, ctx.tenantId, "cancelled", "user cancelled");
+    // Cancel REVOKES the running attempt and removes what it already wrote, in
+    // one transaction that waits for a chunk insert in progress (migration 099).
+    const cancelled = await cancelUpload(id, ctx.tenantId, "user cancelled");
+    if (!cancelled) {
+      // It finished (or was requeued) between our read and the cancel.
+      const current = await getUpload(id, ctx.tenantId);
+      return NextResponse.json(
+        { error: "upload_state_changed", currentStatus: current?.status ?? "deleted" },
+        { status: 409, headers: { "X-Request-Id": requestId } },
+      );
+    }
     log.log("cancelled", { previousStatus: row.status });
     return NextResponse.json({ ok: true, action: "cancelled" }, { headers: { "X-Request-Id": requestId } });
   }

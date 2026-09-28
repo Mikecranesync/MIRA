@@ -8,8 +8,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 vi.mock("@/lib/uploads", () => ({
-  createUpload: vi.fn(async () => ({ id: "up-new", tenantId: "t-1" })),
+  createUpload: vi.fn(async () => ({ id: "up-new", tenantId: "t-1", attemptId: "att-1" })),
   updateUploadStatus: vi.fn(async () => undefined),
+  // Migration 099: the door's status writes are conditional on its attempt.
+  updateUploadStatusForAttempt: vi.fn(async () => undefined),
+  UploadAttemptRevokedError: class UploadAttemptRevokedError extends Error {},
   findDuplicateUpload: vi.fn(async () => ({
     id: "up-original",
     kbChunkCount: 42,
@@ -46,7 +49,7 @@ vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
 });
 
 import { handleLocalUpload } from "../local-upload";
-import { createUpload, updateUploadStatus, findDuplicateUpload } from "@/lib/uploads";
+import { createUpload, updateUploadStatusForAttempt, findDuplicateUpload } from "@/lib/uploads";
 import { writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
 
 function pdfUploadReq(): Request {
@@ -69,9 +72,10 @@ describe("blind door: content dedup", () => {
     expect(String(createArg.contentSha256)).toMatch(/^[0-9a-f]{64}$/);
 
     await vi.waitFor(() => {
-      expect(updateUploadStatus).toHaveBeenCalledWith(
+      expect(updateUploadStatusForAttempt).toHaveBeenCalledWith(
         "up-new",
         "t-1",
+        "att-1",
         "parsed",
         expect.stringMatching(/duplicate of up-original/i),
         expect.objectContaining({ kbChunkCount: 42, ingestRoute: "v2" }),

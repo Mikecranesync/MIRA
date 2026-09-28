@@ -10,6 +10,10 @@ vi.mock("@/lib/upload-pipeline", () => ({
 }));
 vi.mock("@/lib/local-upload", () => ({ retryLocalUpload: vi.fn() }));
 vi.mock("@/lib/uploads", () => ({
+  cancelUpload: vi.fn(),
+  deleteUploadAndKnowledge: vi.fn(),
+  getUploadCounts: vi.fn(),
+  updateUploadStatusForAttempt: vi.fn(async () => undefined),
   claimUploadForRequeue: vi.fn(),
   createUpload: vi.fn(),
   findUploadByExternalFileId: vi.fn(),
@@ -19,7 +23,16 @@ vi.mock("@/lib/uploads", () => ({
 
 import { POST } from "@/app/api/uploads/route";
 import { POST as RETRY } from "@/app/api/uploads/[id]/retry/route";
-import { claimUploadForRequeue, createUpload, findUploadByExternalFileId, getUpload } from "@/lib/uploads";
+import { DELETE } from "@/app/api/uploads/[id]/route";
+import {
+  cancelUpload,
+  claimUploadForRequeue,
+  createUpload,
+  findUploadByExternalFileId,
+  getUpload,
+  updateUploadStatusForAttempt,
+} from "@/lib/uploads";
+import { retryLocalUpload } from "@/lib/local-upload";
 import { runIngestPipeline } from "@/lib/upload-pipeline";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -62,6 +75,8 @@ beforeEach(() => {
   vi.mocked(findUploadByExternalFileId).mockReset();
   vi.mocked(getUpload).mockReset();
   vi.mocked(runIngestPipeline).mockClear();
+  vi.mocked(cancelUpload).mockReset();
+  vi.mocked(updateUploadStatusForAttempt).mockClear();
 });
 
 describe("POST /api/uploads — re-picking a file whose earlier import ended (#4081)", () => {
@@ -138,5 +153,54 @@ describe("POST /api/uploads/:id/retry — the same atomic claim (#4081 review F1
     expect(res.status).toBe(409);
     expect((await res.json()).currentStatus).toBe("queued");
     expect(runIngestPipeline).not.toHaveBeenCalled();
+  });
+});
+
+describe("099: the local retry path claims before it runs, and cancel revokes", () => {
+  const retry = () =>
+    RETRY(new NextRequest(`http://localhost/api/uploads/${ID}/retry`, { method: "POST" }), {
+      params: Promise.resolve({ id: ID }),
+    });
+  const localRow = (status: string) => ({ ...row(status), provider: "local", attemptId: "att-new" });
+
+  it("a local retry runs on the CLAIMED row (its new attempt), never the stale read", async () => {
+    vi.mocked(getUpload).mockResolvedValue(localRow("failed") as never);
+    vi.mocked(claimUploadForRequeue).mockResolvedValue(localRow("queued") as never);
+    vi.mocked(retryLocalUpload).mockResolvedValue(true);
+    const res = await retry();
+    expect(res.status).toBe(202);
+    expect(vi.mocked(retryLocalUpload).mock.calls[0][0]).toMatchObject({ attemptId: "att-new", status: "queued" });
+  });
+
+  it("a local retry whose buffer expired hands the row back to failed under the attempt it holds", async () => {
+    vi.mocked(getUpload).mockResolvedValue(localRow("failed") as never);
+    vi.mocked(claimUploadForRequeue).mockResolvedValue(localRow("queued") as never);
+    vi.mocked(retryLocalUpload).mockResolvedValue(false);
+    const res = await retry();
+    expect(res.status).toBe(400);
+    expect(updateUploadStatusForAttempt).toHaveBeenCalledWith(ID, TENANT, "att-new", "failed", "saved file expired");
+  });
+
+  const del = () =>
+    DELETE(new NextRequest(`http://localhost/api/uploads/${ID}`, { method: "DELETE" }), {
+      params: Promise.resolve({ id: ID }),
+    });
+
+  it("cancelling an in-flight import goes through cancelUpload (revoke + chunk cleanup)", async () => {
+    vi.mocked(getUpload).mockResolvedValue(row("parsing") as never);
+    vi.mocked(cancelUpload).mockResolvedValue(true);
+    const res = await del();
+    expect(res.status).toBe(200);
+    expect(cancelUpload).toHaveBeenCalledWith(ID, TENANT, "user cancelled");
+  });
+
+  it("a cancel that loses to completion reports the new state, never a false 'cancelled'", async () => {
+    vi.mocked(getUpload)
+      .mockResolvedValueOnce(row("parsing") as never)
+      .mockResolvedValueOnce(row("parsed") as never);
+    vi.mocked(cancelUpload).mockResolvedValue(false);
+    const res = await del();
+    expect(res.status).toBe(409);
+    expect((await res.json()).currentStatus).toBe("parsed");
   });
 });
