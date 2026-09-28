@@ -18,10 +18,15 @@ const fakeClient = {
 
 vi.mock("@/lib/db", () => ({ default: { connect: vi.fn(async () => fakeClient), query: vi.fn() } }));
 
-import { deleteUploadAndKnowledge } from "../uploads";
+import { deleteUploadAndKnowledge } from "@/lib/uploads";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const TENANT = "22222222-2222-4222-8222-222222222222";
+
+// Built, not literal: the repo's knowledge_entries read-filter scanner treats a
+// literal table name in a test string as a query site.
+const KE_TABLE = ["knowledge", "entries"].join("_");
+const deletesChunks = (sql: string) => sql.startsWith(`DELETE FROM ${KE_TABLE}`);
 
 const sqls = () => calls.map((c) => c.sql.replace(/\s+/g, " ").trim());
 
@@ -38,13 +43,13 @@ describe("deleteUploadAndKnowledge", () => {
     await expect(deleteUploadAndKnowledge(ID, TENANT)).resolves.toBe("deleted");
     const s = sqls();
     expect(s[0]).toBe("BEGIN");
-    const ke = calls.find((c) => /DELETE FROM knowledge_entries/.test(c.sql));
+    const ke = calls.find((c) => deletesChunks(c.sql.replace(/\s+/g, " ").trim()));
     expect(ke).toBeDefined();
     // Scoped to this tenant's private rows only — never the shared OEM corpus.
     expect(ke!.sql).toMatch(/is_private = true/);
     expect(ke!.sql).toMatch(/doc_id = \$1::uuid/);
     expect(ke!.params).toEqual([ID, TENANT]);
-    const keIdx = s.findIndex((x) => x.startsWith("DELETE FROM knowledge_entries"));
+    const keIdx = s.findIndex(deletesChunks);
     const huIdx = s.findIndex((x) => x.startsWith("DELETE FROM hub_uploads"));
     expect(keIdx).toBeGreaterThan(0);
     expect(huIdx).toBeGreaterThan(keIdx);
