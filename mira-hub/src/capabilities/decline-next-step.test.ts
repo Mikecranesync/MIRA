@@ -34,6 +34,7 @@ describe("declineKind", () => {
     "What is PIN 4 on my PLC?",
     "what are PINs 3 and 5 for",
     "What does PIN number 4 on my PLC do?",
+    "What does PIN 4 on the cable to the login keypad do?",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 

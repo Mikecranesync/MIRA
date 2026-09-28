@@ -42,8 +42,11 @@ const CREDENTIAL_PIN_CONTEXT =
 function credentialPin(message: string): boolean {
   for (const sentence of message.split(/(?<=[.!?])\s+|\n+/)) {
     if (!PIN_ACRONYM.test(sentence)) continue;
+    // A numbered pin is hardware even beside login words: "PIN 4 on the cable
+    // to the login keypad" is a pinout question (#4094 post-cap r2 F1).
+    if (NUMBERED_PIN.test(sentence)) continue;
     if (CREDENTIAL_PIN_CONTEXT.test(sentence)) return true;
-    if (NUMBERED_PIN.test(sentence) || HARDWARE_PIN_CONTEXT.test(sentence)) continue;
+    if (HARDWARE_PIN_CONTEXT.test(sentence)) continue;
     return true;
   }
   return false;
