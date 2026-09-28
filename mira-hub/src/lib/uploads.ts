@@ -296,6 +296,55 @@ export async function deleteUpload(id: string, tenantId = DEFAULT_TENANT_ID): Pr
   return (rowCount ?? 0) > 0;
 }
 
+export type DeleteUploadOutcome = "deleted" | "not_found" | "retained";
+
+/**
+ * Delete an upload AND the chunks it wrote. `deleteUpload` alone removes only
+ * the hub_uploads row: knowledge_entries has no FK to it (doc_id = upload id),
+ * so the manual kept showing in My Documents and kept being cited after the
+ * technician deleted it.
+ *
+ * Only the tenant's own private chunks go (`is_private = true`) — the shared
+ * OEM corpus is never touched from a tenant route. A document the filing
+ * cabinet holds as verified is retained forever (migration 059); its chunks are
+ * not removed behind that rule's back, so the delete is refused as a whole.
+ */
+export async function deleteUploadAndKnowledge(
+  id: string,
+  tenantId: string,
+): Promise<DeleteUploadOutcome> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const retained = await client.query(
+      `SELECT 1 FROM namespace_direct_uploads
+        WHERE upload_id = $1::uuid AND tenant_id::text = $2 AND verified = true
+        LIMIT 1`,
+      [id, tenantId],
+    );
+    if ((retained.rowCount ?? 0) > 0) {
+      await client.query("ROLLBACK");
+      return "retained";
+    }
+    await client.query(
+      `DELETE FROM knowledge_entries
+        WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      [id, tenantId],
+    );
+    const { rowCount } = await client.query(
+      `DELETE FROM hub_uploads WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    await client.query("COMMIT");
+    return (rowCount ?? 0) > 0 ? "deleted" : "not_found";
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export interface UploadCounts {
   pm_tasks_count: number;
   fault_codes_count: number;
