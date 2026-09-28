@@ -116,8 +116,11 @@ def judge_deterministic(case: dict[str, Any], system: str, answer: str) -> Deter
 def weighted_score(scores: dict[str, float], weights: dict[str, float]) -> float:
     """0–100 weighted score; a missing dimension scores 0 for that weight."""
     total_w = sum(weights.get(d, 0) for d in RUBRIC_DIMENSIONS) or 1.0
+    # Judge scores are 0–10 per dimension; ×10 puts the result on the documented
+    # 0–100 scale the tie margin and hard-fail cap assume (Codex #3487 r4 F4).
     return round(
-        sum(float(scores.get(d, 0)) * weights.get(d, 0) for d in RUBRIC_DIMENSIONS) / total_w, 2
+        10 * sum(float(scores.get(d, 0)) * weights.get(d, 0) for d in RUBRIC_DIMENSIONS) / total_w,
+        2,
     )
 
 

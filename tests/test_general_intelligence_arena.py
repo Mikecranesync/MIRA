@@ -139,7 +139,7 @@ def test_blind_pair_hides_mapping_and_is_deterministic():
 
 def test_weighted_score_and_verdict():
     w = {d: 100 / 7 for d in rubric.RUBRIC_DIMENSIONS}
-    assert rubric.weighted_score({d: 10 for d in rubric.RUBRIC_DIMENSIONS}, w) == 10.0
+    assert rubric.weighted_score({d: 10 for d in rubric.RUBRIC_DIMENSIONS}, w) == 100.0
     assert rubric.verdict_for(80, 70) == "MIRA wins"
     assert rubric.verdict_for(70, 80) == "Baseline wins"
     assert rubric.verdict_for(75, 74) == "Tie"

@@ -8,6 +8,8 @@ Built on the GI-1 arena (`../runners/arena.py`) and Answer Radar's staging plumb
 (`answer_radar/hub_runner.py`, `tools/qa/retrieval_acceptance.py`). The case set lives here, apart
 from the GI-1 corpus.
 
+All commands run from the repository root with `PYTHONPATH=evals/general-intelligence python -m technician_arena <command>`.
+
 ## Arms
 
 | Arm | What | Automated? |
@@ -33,8 +35,8 @@ lane and never substitutes for the `mira` arm.
 
 1. **Expert keys (Mike).** Review each case in `cases/tech-arena-pilot.json`. Correct or confirm
    every fact marked `unverified — Mike to confirm`, fill page numbers, then sign:
-   `python -m technician_arena sign <case-id> --signer "Mike Harper"`.
-   `python -m technician_arena status` shows signed / unsigned / tampered. Editing a signed key
+   `PYTHONPATH=evals/general-intelligence python -m technician_arena sign <case-id> --signer "Mike Harper"`.
+   `PYTHONPATH=evals/general-intelligence python -m technician_arena status` shows signed / unsigned / tampered. Editing a signed key
    voids it. Scored runs refuse any unsigned or tampered case.
    Seed cases (`answer_radar_seed`) carry `key_written_after_outputs_seen: true`: their outputs were
    seen before a key existed, so they are cross-runtime diagnostics, not headline results.
@@ -46,7 +48,7 @@ lane and never substitutes for the `mira` arm.
    `tools/qa/answer_radar_staging.sh`), then:
    ```bash
    ARENA_HUB_COOKIE=... doppler run -p factorylm -c dev -- \
-     python -m technician_arena run --workflow native --budget-usd 10
+     env PYTHONPATH=evals/general-intelligence python -m technician_arena run --workflow native --budget-usd 10
    ```
    `OPENAI_API_KEY` / `GROQ_API_KEY` come from Doppler. The budget hard-stops paid spend.
 5. **ChatGPT captures (manual).** For each case, run the exact turns in ChatGPT; save
@@ -63,7 +65,7 @@ lane and never substitutes for the `mira` arm.
    Model-judge grades (`grader_kind: "model"`) are assist-only and never verify an answer. Humans
    who disagree need an adjudicator (`adjudicated: true`). Failure layers: intake, identity,
    retrieval, context, provider, synthesis, safety, citation, transport, ui, persistence.
-7. **Scorecard.** `python -m technician_arena score <run-dir> --grades <dir>` writes `SCORECARD.md`:
+7. **Scorecard.** `PYTHONPATH=evals/general-intelligence python -m technician_arena score <run-dir> --grades <dir>` writes `SCORECARD.md`:
    each dimension separately, every case listed (not-run and ungradable included), no averages.
    Any MIRA critical safety leak makes the verdict **HOLD**.
 8. **Product journey.** Fill `journeys/golden-conversation-web.json` and `-android.json` (8 steps

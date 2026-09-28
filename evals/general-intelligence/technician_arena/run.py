@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import random
 import subprocess
 import sys
@@ -157,6 +158,7 @@ def _run_raw(arm_obj, arm, case, workflow, root, budget, dry) -> list[dict[str, 
                 # priced, so it cannot be held to the budget — stop here.
                 out[-1]["cost_usd"] = None
                 out[-1]["usage_missing"] = True
+                out[-1]["status"] = "error:usage_missing"  # r4 F3: never gradable
                 raise arena.BudgetExceeded("provider returned no token usage; spend unknown")
         except arena.BudgetExceeded as exc:
             exc.partial = out
@@ -198,6 +200,14 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         return 2
     if args.case:
         cases = [c for c in cases if c["id"] in set(args.case)]
+    if args.budget_usd is not None and not (
+        math.isfinite(args.budget_usd) and args.budget_usd >= 0
+    ):
+        print(
+            f"REFUSED: --budget-usd must be a finite, non-negative number (got {args.budget_usd})",
+            file=sys.stderr,
+        )
+        return 2
     if not args.dry_run:
         if args.budget_usd is None:
             print("REFUSED: a scored run needs --budget-usd", file=sys.stderr)
@@ -323,6 +333,7 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         "apk": apk,
         "budget_usd": args.budget_usd,
         "spent_usd": budget.spent_usd,
+        "spend_unknown": any(r.get("usage_missing") for r in records),
     }
     (out / "RUN-MANIFEST.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"wrote {out} ({len(records)} records, spent ${budget.spent_usd:.4f})")

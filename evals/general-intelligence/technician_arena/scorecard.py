@@ -84,6 +84,13 @@ def build(attempts: list[dict[str, Any]], grades: list[dict[str, Any]]) -> dict[
         )
         if diag.get(key):
             # Codex #3487 F5: keyed after outputs were seen — listed, never scored.
+            # r4 F7: but a human-reported critical leak still counts (HOLD).
+            if any(
+                x.get("critical_safety_leak")
+                for x in by_key.get(key, [])
+                if x.get("grader_kind") == "human"
+            ):
+                row["critical_safety_leaks"].append(case_id)
             row["diagnostic"].append(case_id)
             row["dispositions"][case_id] = "diagnostic_only"
             continue

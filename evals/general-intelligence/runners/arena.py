@@ -39,6 +39,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import sys
@@ -149,7 +150,7 @@ class TurnResult:
     model: str
     input_tokens: int | None
     output_tokens: int | None
-    cost_usd: float
+    cost_usd: float | None
     tool_calls: list[str]
     error: str | None = None
     fixture_missing: list[str] | None = None
@@ -319,17 +320,15 @@ class MiraNotebookGeneral:
             headers={"Cookie": self.cookie},
         )
         if r.status_code != 200:
+            # Codex #3487 r4 F2: a failed Hub call is an error, never an answer.
             try:
                 err = r.json()
             except ValueError:
                 err = {"error": r.text[:200]}
-            return f"{err.get('error', '')} [{err.get('code', r.status_code)}]", {
-                "input_tokens": None,
-                "output_tokens": None,
-                "http": r.status_code,
-            }
+            raise RuntimeError(f"hub HTTP {r.status_code}: {str(err.get('error', ''))[:200]}")
         parts: list[str] = []
         usage: dict[str, Any] = {}
+        statuses: list[dict[str, Any]] = []
         for line in r.text.splitlines():
             if not line.startswith("data:"):
                 continue
@@ -340,6 +339,8 @@ class MiraNotebookGeneral:
                 obj = json.loads(payload)
             except ValueError:
                 continue
+            if obj.get("kind") == "status":
+                statuses.append(obj)
             if obj.get("kind") == "content":
                 parts.append(obj.get("content", ""))
             elif obj.get("kind") == "usage":
@@ -348,7 +349,17 @@ class MiraNotebookGeneral:
                     "output_tokens": obj.get("outputTokens"),
                     "model": obj.get("model"),
                 }
-        return "".join(parts), usage
+        # A complete turn ends in exactly one terminal status that is not an
+        # error (the same rule as answer_radar/hub_runner.py).
+        if len(statuses) != 1 or statuses[0].get("status") not in (
+            "answered",
+            "insufficient_evidence",
+        ):
+            raise RuntimeError(
+                f"hub stream incomplete or errored: {[x.get('status') for x in statuses]}"
+            )
+        text = "".join(parts) or str(statuses[0].get("message") or "")
+        return text, usage
 
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -441,6 +452,17 @@ def run_system(
             # budget stop keeps every call that was made (and its cost).
             try:
                 budget.charge(cost)
+                if (
+                    not dry_run
+                    and not err
+                    and system.name != "mira"
+                    and (meta.get("input_tokens") is None or meta.get("output_tokens") is None)
+                ):
+                    # r4 F1: a paid answer with no usage cannot be priced or held
+                    # to the budget — it is an error with unknown cost, and we stop.
+                    results[-1].error = "usage_missing"
+                    results[-1].cost_usd = None
+                    raise BudgetExceeded("provider returned no token usage; spend unknown")
             except BudgetExceeded as exc:
                 exc.partial = results
                 raise
@@ -519,7 +541,7 @@ def build_report(
             row["verdict"] = "Tie" if hf_m == hf_r else ("Baseline wins" if hf_m else "MIRA wins")
         tally[cat][row["verdict"]] += 1
         verdicts.append(row)
-    spent = round(sum(r.cost_usd for r in results), 6)
+    spent = round(sum(r.cost_usd or 0.0 for r in results), 6)
     scored = [v for v in verdicts if "scores" in v]
     parity = None
     if scored:
@@ -582,6 +604,15 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         return 0
     if args.case:
         cases = [c for c in cases if c["id"] in set(args.case)]
+    if args.budget_usd is not None and not (
+        math.isfinite(args.budget_usd) and args.budget_usd >= 0
+    ):
+        # Codex #3487 r4 F5: nan/inf/negative would disable the hard stop.
+        print(
+            f"REFUSED: --budget-usd must be a finite, non-negative number (got {args.budget_usd})",
+            file=sys.stderr,
+        )
+        return 2
     if not args.dry_run and args.budget_usd is None:
         print(
             "REFUSED: a live arena run needs --budget-usd (paid inference is a declared validation instrument)",
@@ -666,6 +697,12 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
                 print(f"judge failed for {case['id']}: {exc}", file=sys.stderr)
                 continue
             u = data.get("usage") or {}
+            if not u.get("prompt_tokens") and not u.get("completion_tokens"):
+                print(
+                    "judge returned no token usage; spend unknown — judging stopped",
+                    file=sys.stderr,
+                )
+                break
             try:
                 budget.charge(
                     estimate_cost_usd(

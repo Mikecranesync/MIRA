@@ -711,3 +711,115 @@ def test_r3f4_equal_context_runs_mira_on_a_case_with_no_sources(tmp_path):
         case
     )
     assert recs[0]["status"] == "ran" and hub.sent[0]["sourceDocIds"] == []
+
+
+# ── Codex #3487 round 4 (post-cap) ────────────────────────────────────────────
+
+from judges import rubric  # noqa: E402
+
+
+def test_r4f1_gi_paid_answer_without_usage_stops_and_is_not_zero_cost(tmp_path):
+    cases = [c for c in arena.load_cases() if not any(t.get("images") for t in c["turns"])][:3]
+    raw = _NoUsageRaw()
+    raw.name = "raw"
+    with pytest.raises(arena.BudgetExceeded) as exc:
+        arena.run_system(
+            raw, cases, dry_run=False, budget=arena.Budget(100), fixtures_root=tmp_path
+        )
+    assert raw.calls == 1
+    assert exc.value.partial[0].error == "usage_missing" and exc.value.partial[0].cost_usd is None
+
+
+def _gi_mira_http(status, frames):
+    class R:
+        status_code = status
+        text = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames)
+
+        def json(self):
+            return {"error": "boom"}
+
+    class C:
+        def post(self, *a, **k):
+            return R()
+
+    return arena.MiraNotebookGeneral("https://hub", "c", "nb", http=C())
+
+
+@pytest.mark.parametrize(
+    "status,frames",
+    [
+        (500, []),
+        (200, [{"kind": "content", "content": "half"}]),
+        (200, [{"kind": "content", "content": "x"}, {"kind": "status", "status": "error"}]),
+    ],
+)
+def test_r4f2_gi_mira_failed_or_truncated_response_raises(status, frames):
+    with pytest.raises(RuntimeError):
+        _gi_mira_http(status, frames).ask({}, [], {"text": "q"}, [])
+
+
+def test_r4f2_gi_mira_complete_response_is_an_answer():
+    m = _gi_mira_http(
+        200, [{"kind": "content", "content": "ok"}, {"kind": "status", "status": "answered"}]
+    )
+    assert m.ask({}, [], {"text": "q"}, [])[0] == "ok"
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-1"])
+def test_r4f5_non_finite_or_negative_budget_is_refused(bad, tmp_path):
+    assert arena.main(["--budget-usd", bad, "--out", str(tmp_path / "gi")], env={}) == 2
+    assert ta_run.main(["--budget-usd", bad, "--out", str(tmp_path / "ta")], env={}) == 2
+
+
+def test_r4f3_an_unpriced_single_turn_answer_is_ungradable_and_spend_unknown(monkeypatch, tmp_path):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: _NoUsageRaw())
+    ta_run.main(
+        [
+            "--arms",
+            "raw-frontier",
+            "--budget-usd",
+            "5",
+            "--out",
+            str(tmp_path),
+            "--case",
+            "ta-hazard-defeat-interlock",
+        ],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert rows[0]["status"] == "error:usage_missing"
+    m = _json.loads((tmp_path / "RUN-MANIFEST.json").read_text())
+    assert m["spend_unknown"] is True
+
+
+def test_r4f4_a_one_point_per_dimension_lead_is_a_win_not_a_tie():
+    w = {d: 100 / len(rubric.RUBRIC_DIMENSIONS) for d in rubric.RUBRIC_DIMENSIONS}
+    m = rubric.weighted_score({d: 9 for d in rubric.RUBRIC_DIMENSIONS}, w)
+    b = rubric.weighted_score({d: 6 for d in rubric.RUBRIC_DIMENSIONS}, w)
+    assert rubric.verdict_for(m, b) == "MIRA wins"
+
+
+def test_r4f6_documented_cli_runs_from_the_repo_root():
+    import os
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, PYTHONPATH="evals/general-intelligence")
+    out = subprocess.run(
+        [sys.executable, "-m", "technician_arena", "status"],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert out.returncode == 0 and "ta-hazard-defeat-interlock" in out.stdout
+    readme = (root / "evals/general-intelligence/technician_arena/README.md").read_text()
+    assert "PYTHONPATH=evals/general-intelligence python -m technician_arena" in readme
+
+
+def test_r4f7_a_leak_in_an_included_diagnostic_case_still_holds():
+    attempts = [{"case_id": "ta-seed-x", "arm": "mira", "status": "ran", "diagnostic": True}]
+    sc = ta_score.build(attempts, [_grade("ta-seed-x", "mira", critical_safety_leak=True)])
+    assert sc["verdict"] == "HOLD" and sc["arms"]["mira"]["verified"] == 0
+    assert sc["arms"]["mira"]["diagnostic"] == ["ta-seed-x"]
