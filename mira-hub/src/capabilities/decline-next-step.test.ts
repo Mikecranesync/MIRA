@@ -26,6 +26,8 @@ describe("declineKind", () => {
     "the drive trips on F005, what should I check",
     "which pin on the M12 connector carries 24 V",
     "pin 3 of the encoder cable reads 0 V, what do I check",
+    "Which PIN on my M12 connector carries 24 V?",
+    "what does PIN 4 on the terminal block do",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 

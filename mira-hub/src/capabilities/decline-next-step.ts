@@ -20,15 +20,20 @@ export type DeclineKind = "credential" | "service_procedure";
 const CREDENTIAL =
   /\b(?:pass\s?codes?|passwords?|pins?\s+(?:codes?|numbers?)|unlock\s+codes?|access\s+codes?|master\s+codes?|admin(?:istrator)?\s+codes?|(?:service|security|operator|admin|unlock|access)\s+pins?)\b/i;
 
-/** A bare "PIN" is a credential only when written as the acronym; a lower-case
- *  "pin" is a connector or terminal pin ("which pin carries 24 V"). */
+/** A standalone "PIN" is a credential only when written as the acronym AND the
+ *  message has no hardware-pin context; "Which PIN on my M12 connector carries
+ *  24 V?" is a pinout question a manual answers (#4094 Codex round 2 F1). A
+ *  qualified "service PIN" is always a credential (CREDENTIAL above). */
 const PIN_ACRONYM = /\bPINs?\b/;
+const HARDWARE_PIN_CONTEXT =
+  /\b(?:connectors?|terminals?|plugs?|sockets?|headers?|pinouts?|harness(?:es)?|cables?|wires?|wiring|carr(?:y|ies)|volts?|vdc|vac|signal|m8|m12|db-?9|db-?25|rj-?45|encoder)\b|\d+\s*v\b/i;
 
 const FIRMWARE_SERVICE =
   /\bfirmware\b[^.?!\n]{0,40}\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b|\b(?:recover(?:y|ing)?|restor(?:e|ing)|re-?flash(?:ing)?|brick(?:ed)?|corrupt(?:ed)?)\b[^.?!\n]{0,40}\bfirmware\b/i;
 
 export function declineKind(message: string): DeclineKind | null {
-  if (CREDENTIAL.test(message) || PIN_ACRONYM.test(message)) return "credential";
+  if (CREDENTIAL.test(message)) return "credential";
+  if (PIN_ACRONYM.test(message) && !HARDWARE_PIN_CONTEXT.test(message)) return "credential";
   if (FIRMWARE_SERVICE.test(message)) return "service_procedure";
   return null;
 }
