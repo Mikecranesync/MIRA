@@ -412,3 +412,499 @@ def test_report_renders_the_headline_numbers() -> None:
     assert "VCAD:" in out
     assert "MIRA FIELD BENCHMARK" in out
     assert "excluded from the denominator" in out
+
+
+# --- 2026-09-27 classifier corrections --------------------------------------------------
+
+
+def test_the_citation_removal_note_is_not_a_uns_gate() -> None:
+    """Three real replies were filed as gate turns on 2026-09-27 because of this footnote."""
+    reply = (
+        "I don't have AUMA AC 01.2 documentation in my records. Please upload the manual.\n\n"
+        "_(Note: I removed a citation because I haven't established which machine you're "
+        "working on, so I can't attribute a manufacturer's manual to it.)_"
+    )
+    assert classify_answer(reply, 200) is not AnswerStatus.UNS_GATE
+
+
+def test_a_real_gate_question_outside_a_note_still_counts() -> None:
+    reply = "Which machine are you looking at? _(Note: citations follow once confirmed.)_"
+    assert classify_answer(reply, 200) is AnswerStatus.UNS_GATE
+
+
+def test_the_slow_turn_placeholder_is_an_engine_error_not_an_answer() -> None:
+    reply = (
+        "This is taking longer than usual — I'm still working on it. You'll get a response "
+        "within 2 minutes."
+    )
+    assert classify_answer(reply, 200) is AnswerStatus.ERROR
+
+
+# --- hub runner (the deployed Hub/mobile chat route) ------------------------------------
+
+import json as _json  # noqa: E402
+
+from answer_radar import hub_runner  # noqa: E402
+
+
+class _FakeHub:
+    """Records requests; answers like the Hub chat route (SSE) + diagnostics."""
+
+    def __init__(
+        self, content: str = "Replace the interface. [1]", status: str = "answered", message=None
+    ):
+        self.created: list[dict] = []
+        self.bodies: list[dict] = []
+        self.content, self.status, self.message = content, status, message
+
+    def create_notebook(self, name: str, **identity: str) -> dict:
+        self.created.append({"name": name, **identity})
+        return {"id": f"nb-{len(self.created)}", "nodeId": "n"}
+
+    def _req(self, method, path, body=None, headers=None):
+        self.bodies.append(_json.loads(body))
+        frames = [
+            *([{"kind": "content", "content": self.content}] if self.content else []),
+            {"kind": "sources", "citations": [{"label": "1747-AIC manual", "page": 3}]},
+            {"kind": "status", "status": self.status, "message": self.message},
+            {"kind": "evidence", "basis": "oem_documentation"},
+        ]
+        raw = "".join(f"data: {_json.dumps(f)}\n\n" for f in frames).encode()
+        return 200, {"x-mira-trace-id": "t-1"}, raw
+
+    def diagnostics(self, notebook_id, trace_id):
+        return {
+            "packet": {
+                "retrieval": {
+                    "strategy": "oem_corpus_bm25",
+                    "executed": True,
+                    "candidate_count": 4,
+                    "returned_doc_ids": ["a#1", "b#2"],
+                }
+            }
+        }
+
+
+def test_hub_runner_sends_exactly_the_clients_body_and_no_ground_truth() -> None:
+    hub = _FakeHub()
+    q = _question()
+    rec, summary = hub_runner.run_question_hub(
+        q, hub, condition="new_chat", mira_version="abc", stamp="s"
+    )
+    body = hub.bodies[0]
+    assert set(body) == {"message", "sourceDocIds", "mode", "clientRequestId"}
+    assert body["message"] == q.normalized_question and body["mode"] == "general"
+    assert hub.created[0].keys() == {"name"}  # new chat: no machine identity
+    assert rec.retrieved_chunk_count == 4 and rec.citations == ["1747-AIC manual p.3"]
+    assert rec.retrieval_version == "oem_corpus_bm25" and summary["trace_id"] == "t-1"
+
+
+def test_machine_selected_binds_only_the_named_identity() -> None:
+    hub = _FakeHub()
+    q = _question()
+    hub_runner.run_question_hub(q, hub, condition="machine_selected", mira_version="a", stamp="s")
+    nb = hub.created[0]
+    assert nb["manufacturer"] == q.manufacturer and nb["model"] == q.model
+    assert nb["identityStatus"] == "user_confirmed"
+
+
+def test_an_insufficient_evidence_turn_is_an_abstention() -> None:
+    hub = _FakeHub(
+        content="The attached documents don't cover this.", status="insufficient_evidence"
+    )
+    rec, _ = hub_runner.run_question_hub(
+        _question(), hub, condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.answer_status is AnswerStatus.ABSTAINED
+
+
+def test_hub_runner_refuses_production() -> None:
+    with pytest.raises(SystemExit):
+        hub_runner.assert_staging("https://app.factorylm.com")
+    hub_runner.assert_staging("https://app-staging.factorylm.com")
+
+
+def test_hub_runner_reuses_the_acceptance_client() -> None:
+    assert hub_runner.load_hub_client().__mro__[1].__name__ == "Hub"
+
+
+def test_a_declined_turn_is_graded_on_the_message_the_client_shows() -> None:
+    """The abstain text rides the status frame; the app renders it as the reply."""
+    hub = _FakeHub(
+        content="",
+        status="insufficient_evidence",
+        message="I couldn't find that in the Baykon BX11-EN manual pages I have.",
+    )
+    rec, _ = hub_runner.run_question_hub(
+        _question(), hub, condition="machine_selected", mira_version="a", stamp="s"
+    )
+    assert rec.answer_text.startswith("I couldn't find that")
+    assert rec.answer_status is AnswerStatus.ABSTAINED
+
+
+# --- Codex #4063 round 1 -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "http://app-staging.factorylm.com",
+        "https://app-staging.factorylm.com:8443",
+        "https://user@app-staging.factorylm.com",
+        "https://app-staging.factorylm.com.evil.example",
+        "app-staging.factorylm.com",
+    ],
+)
+def test_staging_guard_requires_exactly_https_staging(base: str) -> None:
+    """F3: a plaintext or look-alike base never receives the session cookie."""
+    with pytest.raises(SystemExit):
+        hub_runner.assert_staging(base)
+
+
+def test_staging_guard_accepts_the_canonical_base_with_a_trailing_slash() -> None:
+    hub_runner.assert_staging("https://app-staging.factorylm.com/")
+
+
+def test_an_sse_provider_error_is_an_engine_error_not_an_answer() -> None:
+    """F4: HTTP 200 with status=error is not graded as MIRA's answer."""
+    hub = _FakeHub(content="", status="error", message="No answer provider available.")
+    rec, _ = hub_runner.run_question_hub(
+        _question(), hub, condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.answer_status is AnswerStatus.ERROR
+
+
+class _NoDiagnosticsHub(_FakeHub):
+    def diagnostics(self, notebook_id, trace_id):
+        raise RuntimeError("no diagnostics row")
+
+
+def test_missing_diagnostics_record_retrieval_as_unknown_not_zero() -> None:
+    """F5: an unavailable packet is not evidence of zero candidates."""
+    rec, summary = hub_runner.run_question_hub(
+        _question(), _NoDiagnosticsHub(), condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.retrieved_chunk_count is None
+    assert summary["retrieval"].get("error")
+
+
+def _batch_row(sid: str, version: str, chunks) -> dict:
+    return {
+        "question": {
+            "question_id": sid,
+            "manufacturer": "Allen-Bradley",
+            "model": "SLC 5/03",
+            "safety_class": "none",
+        },
+        "evaluation": {
+            "mira_run_id": "r",
+            "mira_version": version,
+            "prompt_version": "hub-chat:new_chat",
+            "retrieval_version": "oem_corpus_bm25",
+            "answer_text": "x",
+            "answer_status": "answered",
+            "retrieved_chunk_count": chunks,
+            "best_evidence_tier": "none",
+            "total_answer_time_ms": 1,
+        },
+    }
+
+
+def test_scoring_refuses_a_batch_that_mixes_deployments(tmp_path: Path) -> None:
+    """F2: one scorecard measures one build."""
+    from answer_radar import score as score_mod
+
+    b = tmp_path / "batch.json"
+    b.write_text(_json.dumps([_batch_row("S1", "aaa", 3), _batch_row("S2", "bbb", 3)]))
+    with pytest.raises(SystemExit):
+        score_mod.score(b, tmp_path)
+
+
+def test_unknown_retrieval_is_not_reported_as_a_knowledge_gap(tmp_path: Path) -> None:
+    from answer_radar import score as score_mod
+
+    b = tmp_path / "batch.json"
+    b.write_text(_json.dumps([_batch_row("S1", "aaa", None)]))
+    rendered, rows = score_mod.score(b, tmp_path)
+    assert rows[0]["chunks"] is None
+    assert "0 retrieved chunks" not in rendered
+
+
+def test_same_minute_hub_batches_do_not_overwrite(tmp_path: Path, monkeypatch) -> None:
+    """F7: two runs of one condition in one minute keep both artefacts."""
+    from answer_radar import batch as batch_mod
+
+    monkeypatch.setattr(hub_runner, "deployed_sha", lambda hub: "abc")
+    p1 = batch_mod.run_hub_batch([_question()], tmp_path, _FakeHub(), "new_chat")
+    p2 = batch_mod.run_hub_batch([_question()], tmp_path, _FakeHub(), "new_chat")
+    assert p1 != p2 and p1.exists() and p2.exists()
+
+
+_WRAPPER = _ROOT / "tools/qa/answer_radar_staging.sh"
+
+
+def _stub_bin(
+    tmp_path: Path, calls: Path, provision_ok: bool = True, cleanup_ok: bool = True
+) -> Path:
+    b = tmp_path / "bin"
+    b.mkdir()
+    for name in ("curl", "doppler", "bun"):
+        (b / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "{calls}"\n')
+    # doppler runs the provisioner; emulate its output / cleanup result
+    (b / "doppler").write_text(
+        "#!/bin/sh\n"
+        f'echo "doppler $*" >> "{calls}"\n'
+        'case "$*" in *--cleanup*) '
+        + ("exit 0" if cleanup_ok else "exit 1")
+        + " ;; esac\n"
+        + (
+            'echo "ENV:BETA_GATE_TENANT=t-123"; echo "ENV:BETA_GATE_COOKIE=c"\n'
+            if provision_ok
+            else "exit 1\n"
+        )
+    )
+    (b / "python3").write_text("#!/bin/sh\nexit 0\n")
+    for f in b.iterdir():
+        f.chmod(0o755)
+    return b
+
+
+def _run_wrapper(tmp_path: Path, base: str, **kw):
+    import os
+    import subprocess
+
+    calls = tmp_path / "calls.log"
+    calls.touch()
+    b = _stub_bin(tmp_path, calls, **kw)
+    env = {
+        **os.environ,
+        "PATH": f"{b}:/usr/bin:/bin",
+        "ANSWER_RADAR_BASE": base,
+        "PYTHON": str(b / "python3"),
+    }
+    p = subprocess.run(
+        ["bash", str(_WRAPPER), str(tmp_path / "out")], env=env, capture_output=True, text=True
+    )
+    return p, calls.read_text()
+
+
+def test_wrapper_refuses_a_non_staging_base_before_any_network_or_provisioning(
+    tmp_path: Path,
+) -> None:
+    """F1 (blocker): production is rejected before curl, doppler or bun run."""
+    p, calls = _run_wrapper(tmp_path, "https://app.factorylm.com")
+    assert p.returncode != 0
+    assert calls == ""
+
+
+def test_wrapper_fails_when_the_stranger_sweep_fails(tmp_path: Path) -> None:
+    """F6: a failed cleanup is a failed run, and names the tenant to sweep."""
+    p, _ = _run_wrapper(tmp_path, "https://app-staging.factorylm.com", cleanup_ok=False)
+    assert p.returncode != 0
+    assert "t-123" in p.stderr
+
+
+def _grade(model=None, provider=None, verdict="PASS") -> dict:
+    g = {
+        "correctness": 40,
+        "evidence": 20,
+        "safety": 20,
+        "actionability": 10,
+        "uncertainty": 5,
+        "verdict": verdict,
+    }
+    if model:
+        g["grader_model"] = model
+    if provider:
+        g["grader_provider"] = provider
+    return g
+
+
+@pytest.mark.parametrize(
+    "a,b,expected",
+    [
+        ((None, None), (None, None), "SAME_MODEL_DIFFERENT_RUN"),
+        (
+            ("claude-sonnet-5", "anthropic"),
+            ("claude-sonnet-5", "anthropic"),
+            "SAME_MODEL_DIFFERENT_RUN",
+        ),
+        (
+            ("claude-sonnet-5", "anthropic"),
+            ("claude-opus-5-5", "anthropic"),
+            "DIFFERENT_MODEL_SAME_PROVIDER",
+        ),
+        (("claude-sonnet-5", "anthropic"), ("gpt-6", "openai"), "INDEPENDENT_PROVIDER_MODEL"),
+    ],
+)
+def test_grader_independence_is_derived_from_recorded_models(
+    tmp_path: Path, a, b, expected
+) -> None:
+    """#4062 F2 / #4063: two sessions of one model are never 'different models'."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    batch.write_text(_json.dumps([_batch_row("S1", "aaa", 3)]))
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(_grade(*a)))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(_grade(*b)))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == expected
+    if expected == "SAME_MODEL_DIFFERENT_RUN":
+        assert rows[0]["verified_correct"] is False
+
+
+# --- Codex #4063 round 2 -------------------------------------------------------
+
+
+def test_a_deploy_during_the_sweep_fails_the_batch(tmp_path: Path, monkeypatch) -> None:
+    """R2 F2: every answer is bound to the build that served it."""
+    from answer_radar import batch as batch_mod
+
+    shas = iter(["aaa", "aaa", "bbb", "bbb"])
+    monkeypatch.setattr(hub_runner, "deployed_sha", lambda hub: next(shas))
+    with pytest.raises(SystemExit):
+        batch_mod.run_hub_batch([_question(), _question()], tmp_path, _FakeHub(), "new_chat")
+
+
+def test_citation_coverage_counts_citations_not_retrieved_chunks(tmp_path: Path) -> None:
+    """R2 F3: four retrieved chunks and no citation is 0% citation coverage."""
+    from answer_radar import score as score_mod
+
+    b = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 4)
+    row["evaluation"]["citations"] = []
+    b.write_text(_json.dumps([row]))
+    rendered, _ = score_mod.score(b, tmp_path)
+    assert "100.0%" not in rendered
+
+
+class _EmptyPacketHub(_FakeHub):
+    def diagnostics(self, notebook_id, trace_id):
+        return {"packet": {}}
+
+
+def test_a_packet_without_retrieval_is_unknown_not_zero() -> None:
+    """R2 F4: only an explicit candidate_count is a measurement."""
+    rec, _ = hub_runner.run_question_hub(
+        _question(), _EmptyPacketHub(), condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.retrieved_chunk_count is None
+
+
+# --- Codex #4063 round 3 -------------------------------------------------------
+
+
+def test_a_cross_origin_redirect_never_receives_the_session_cookie() -> None:
+    """R3 F1: the staging cookie stays on the staging origin."""
+    import http.server
+    import threading
+
+    seen: list[str | None] = []
+
+    class Other(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.headers.get("Cookie"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    other = http.server.HTTPServer(("127.0.0.1", 0), Other)
+    other_url = f"http://127.0.0.1:{other.server_port}/login"
+
+    class Staging(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", other_url)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    staging = http.server.HTTPServer(("127.0.0.1", 0), Staging)
+    for s in (other, staging):
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        hub = hub_runner.load_hub_client()(
+            f"http://127.0.0.1:{staging.server_port}", "session=secret"
+        )
+        st, _, _ = hub._req("GET", "/api/version/")
+        assert seen == []  # the redirect was refused, never followed
+        assert st == 302
+    finally:
+        other.shutdown()
+        staging.shutdown()
+
+
+class _VersionlessHub(_FakeHub):
+    def json(self, method, path, body=None):
+        return 500, {}, None
+
+
+def test_an_unknown_deployed_version_fails_the_batch() -> None:
+    """R3 F2: a build identity is a real SHA or the run does not count."""
+    with pytest.raises(SystemExit):
+        hub_runner.deployed_sha(_VersionlessHub())
+
+
+class _TruncatedHub(_FakeHub):
+    def _req(self, method, path, body=None, headers=None):
+        self.bodies.append(_json.loads(body))
+        return (
+            200,
+            {"x-mira-trace-id": "t-1"},
+            b'data: {"kind": "content", "content": "Replace the"}\n\n',
+        )
+
+
+def test_a_stream_without_a_terminal_status_is_not_an_answer() -> None:
+    """R3 F3: the Hub never completed the turn."""
+    rec, _ = hub_runner.run_question_hub(
+        _question(), _TruncatedHub(), condition="new_chat", mira_version="a", stamp="s"
+    )
+    assert rec.answer_status is AnswerStatus.ERROR
+
+
+def test_engine_errors_do_not_dilute_citation_coverage() -> None:
+    """#4063 post-cap F1: coverage is over completed turns (no gate turns, no errors)."""
+    cited = _record(citations=["manual p.3"], grader_verdicts=_two_passing())
+    failed = _record(answer_status=AnswerStatus.ERROR)
+    rep = build_report(
+        [(cited, evaluate(cited)), (failed, evaluate(failed))],
+        discovered=2,
+        unique_after_dedupe=2,
+        qualified=2,
+    )
+    assert rep.citation_coverage_pct == 100.0
+    assert rep.scored_denominator == 1
+
+
+def test_a_skipped_search_is_not_a_knowledge_gap(tmp_path: Path) -> None:
+    """#4063 post-cap pass 5 F1: no search ran, so nothing is 'missing'."""
+    from answer_radar import score as score_mod
+
+    row = _batch_row("S1", "aaa", 0)
+    row["hub"] = {"retrieval": {"strategy": "skipped_general_mode", "executed": False}}
+    b = tmp_path / "batch.json"
+    b.write_text(_json.dumps([row]))
+    rendered, rows = score_mod.score(b, tmp_path)
+    assert "KNOWLEDGE TO ACQUIRE" not in rendered
+    assert "SEARCH SKIPPED" in rendered and "SLC 5/03" in rendered
+    assert rows[0]["retrieval"] == "skipped"
+
+
+def test_hub_citation_label_uses_the_typed_source_title_and_page() -> None:
+    """#4063 post-cap pass 5 F2: the real EvidenceCitation shape."""
+    c = {
+        "citationId": "1",
+        "docId": "3f2c1a9e-8b7d-4c6e-9a1f-2b3c4d5e6f70",
+        "sourceTitle": "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011",
+        "page": 212,
+        "fileId": None,
+    }
+    assert (
+        hub_runner._citation_label(c)
+        == "Rockwell Automation CompactLogix Controllers User Manual 1769-UM011 p.212"
+    )

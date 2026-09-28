@@ -1,0 +1,32 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "condition": "new_chat",
+  "grader_role": "adversary",
+  "correctness": 20,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 4,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_answer",
+  "factual_errors": [
+    {
+      "claim": "'The most likely cause is a mismatch in the communication settings or a timing-related error that only affects the PLC-side driver while the generic ModScan client still works.'",
+      "why_wrong": "Same core miss as the machine_selected condition: never identifies PLX32 connection-table exhaustion (documented 4-8 simultaneous connection hard limit) as the primary cause, and never explains ModScan's actual advantage — a single persistent connection that avoids both gateway connection-pool exhaustion and mid-network Layer-3 idle-timeout drops.",
+      "severity": "major"
+    },
+    {
+      "claim": "'adjust the timeout to a larger value (e.g., 5s) and disable any \"auto-reconnect\" option that might be dropping the session.'",
+      "why_wrong": "A specific numeric timeout value and a named 'auto-reconnect' feature are asserted as if verified against this gateway's actual configuration options, with zero citation support — an unverifiable, invented level of product-specific detail.",
+      "severity": "minor"
+    },
+    {
+      "claim": "'temporarily place both devices on a simple unmanaged switch to test' (for VLAN/firewall interference).",
+      "why_wrong": "This does gesture toward the real secondary cause (intermediate network devices silently dropping idle TCP sessions after ~300-350s), which is a genuine partial credit — but it is never connected to the documented timeout window or framed as anything more than one hypothesis among several, so the technician still isn't pointed at the actual leading cause (connection exhaustion on the PLX32 itself).",
+      "severity": "minor"
+    }
+  ],
+  "notes": "Slightly better than the machine_selected version in that the VLAN/idle-timeout-drop hypothesis brushes up against the real secondary cause in the ground truth, but the answer still never surfaces the primary, documented root cause (PLX32 connection-table exhaustion) or explains the actual mechanism behind the ModScan-succeeds-but-gateway-fails signature that the question is built around. Diagnostic steps offered are safe and individually reasonable but not prioritized by likelihood, and rest on zero citations. This is a completeness/correctness gap rather than a fabricated fact, so no critical unsupported claim, but correctness still fails the 34 floor."
+}

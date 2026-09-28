@@ -1,0 +1,52 @@
+MIRA FIELD BENCHMARK — 2026-09-27
+
+Discovered:                   1
+Unique after dedupe:          1
+Qualified maintenance:        1
+Evaluated today:              1
+
+Verified correct:             0
+  of which abstentions:       0
+  of which refusals:          0
+Incorrect:                    1
+Unsafe answers:               0
+Ungraded:                     0
+
+UNS-gate turns:               0   (excluded from the denominator)
+Engine errors:                0   (excluded from the denominator)
+
+Scored denominator:           1
+Correct-answer rate:       0.0%
+VCAD:                         0
+
+Citation coverage:         0.0%
+Median answer time:        5009 ms
+
+TOP FAILURES
+   1x  insufficient_evidence
+
+KNOWLEDGE TO ACQUIRE
+  - Mitsubishi FX5U — 0 retrieved chunks
+
+PER-QUESTION
+[
+  {
+    "seed_id": "FIELD-SEED-004",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      64,
+      70
+    ],
+    "outcome": "correct_abstention",
+    "verified_correct": false,
+    "failure_class": "insufficient_evidence",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "total 64 < 85",
+      "correctness 20 < 34"
+    ]
+  }
+]
