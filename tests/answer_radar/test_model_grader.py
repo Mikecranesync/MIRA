@@ -33,18 +33,21 @@ PACKET = {
         "condition": "machine_selected",
         "question": "q1",
         "mira_answer": "a1",
+        "answer_sha256": "h-s1-ms",
     },
     "S2__machine_selected": {
         "seed_id": "S2",
         "condition": "machine_selected",
         "question": "q2",
         "mira_answer": "a2",
+        "answer_sha256": "h-s2-ms",
     },
     "S1__new_chat": {
         "seed_id": "S1",
         "condition": "new_chat",
         "question": "q1",
         "mira_answer": "a3",
+        "answer_sha256": "h-s1-nc",
     },
 }
 
@@ -283,8 +286,6 @@ def test_transport_failure_charges_the_worst_case_and_stops():
 
 
 def test_written_grade_is_bound_to_the_answer(tmp_path: Path):
-    from answer_radar.score import answer_sha256
-
     transport, _ = _transport([json.dumps(GOOD), json.dumps(GOOD)])
     grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
     with httpx.Client(transport=transport) as http:
@@ -292,15 +293,44 @@ def test_written_grade_is_bound_to_the_answer(tmp_path: Path):
             PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
         )
     rec = json.loads((tmp_path / "grade-B-S1.json").read_text())
-    assert rec["answer_sha256"] == answer_sha256("a1", None, None, "q1", None)
+    assert rec["answer_sha256"] == "h-s1-ms"  # copied from the packet, not recomputed
     assert rec["condition"] == "machine_selected"
 
 
-def test_same_text_with_different_evidence_is_a_different_answer():
-    from answer_radar.score import answer_sha256
+def _row(**over):
+    row = {
+        "question": {
+            "question_id": "S1",
+            "normalized_question": "q1",
+            "manufacturer": "Acme",
+            "model": "X1",
+        },
+        "evaluation": {"answer_text": "a", "citations": ["p.72"], "source_documents": ["doc"]},
+        "hub": {"condition": "machine_selected", "retrieval": {"candidate_count": 6}},
+    }
+    for path, value in over.items():
+        part, key = path.split(".")
+        row[part] = {**row[part], key: value}
+    return row
 
-    assert answer_sha256("a", ["p.72"], ["doc"]) != answer_sha256("a", [], [])
-    assert answer_sha256("a", ["p.72"], ["doc"]) != answer_sha256("a", ["p.72"], ["other"])
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"evaluation.answer_text": "b"},
+        {"evaluation.citations": []},
+        {"evaluation.source_documents": ["other"]},
+        {"question.normalized_question": "q2"},
+        {"question.manufacturer": "Other"},  # Codex post-cap r3 F1
+        {"question.model": "X2"},  # Codex post-cap r3 F1
+        {"hub.condition": "new_chat"},
+        {"hub.retrieval": {"candidate_count": 0}},
+    ],
+)
+def test_any_graded_field_changes_the_identity(change):
+    from answer_radar.score import answer_identity
+
+    assert answer_identity(_row(**change)) != answer_identity(_row())
 
 
 def test_another_conditions_grade_is_never_overwritten(tmp_path: Path):
@@ -351,9 +381,33 @@ def test_malformed_200_is_charged_and_stops(body):
     assert c.spent_usd >= 0.12
 
 
-def test_same_answer_to_a_different_question_or_search_is_a_different_answer():
-    from answer_radar.score import answer_sha256
+def test_packet_builder_stamps_the_scorers_identity(tmp_path: Path):
+    from answer_radar.grader_packet import build_packet
+    from answer_radar.score import answer_identity
 
-    base = answer_sha256("a", ["c"], ["d"], "q1", {"candidate_count": 6})
-    assert base != answer_sha256("a", ["c"], ["d"], "q2", {"candidate_count": 6})
-    assert base != answer_sha256("a", ["c"], ["d"], "q1", {"candidate_count": 0})
+    row = _row()
+    batch = tmp_path / "b.json"
+    batch.write_text(json.dumps([row]))
+    entry = build_packet([batch])["S1__machine_selected"]
+    assert entry["answer_sha256"] == answer_identity(row)
+    assert (entry["question"], entry["model"], entry["mira_answer"]) == ("q1", "X1", "a")
+
+
+def test_unbound_packet_is_refused(tmp_path: Path):
+    packet = {
+        "S1__machine_selected": {
+            "seed_id": "S1",
+            "condition": "machine_selected",
+            "mira_answer": "a1",
+        }
+    }
+    transport, calls = _transport([])
+    grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
+    with (
+        httpx.Client(transport=transport) as http,
+        pytest.raises(SystemExit, match="answer_sha256"),
+    ):
+        model_grader.grade_packet(
+            packet, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    assert calls == []

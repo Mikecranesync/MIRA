@@ -744,8 +744,9 @@ def test_grader_independence_is_derived_from_recorded_models(
     from answer_radar import score as score_mod
 
     batch = tmp_path / "batch.json"
-    batch.write_text(_json.dumps([_batch_row("S1", "aaa", 3)]))
-    bound = score_mod.answer_sha256("x")  # the fixture row's answer_text
+    row = _batch_row("S1", "aaa", 3)
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
     (tmp_path / "grade-A-S1.json").write_text(_json.dumps({**_grade(*a), "answer_sha256": bound}))
     (tmp_path / "grade-B-S1.json").write_text(_json.dumps({**_grade(*b), "answer_sha256": bound}))
     _, rows = score_mod.score(batch, tmp_path)
@@ -762,7 +763,7 @@ def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
     row = _batch_row("S1", "aaa", 3)
     row["hub"] = {"condition": "machine_selected"}
     batch.write_text(_json.dumps([row]))
-    bound = score_mod.answer_sha256("x")
+    bound = score_mod.answer_identity(row)
     a = {**_grade("claude-sonnet-5", "anthropic"), "answer_sha256": bound}
     # (1) B carries no answer hash -> independence cannot be proven.
     (tmp_path / "grade-A-S1.json").write_text(_json.dumps(a))
@@ -772,7 +773,9 @@ def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
     # (2) B graded a different answer -> it is not this row's grade at all.
     stale = {
         **_grade("gpt-5.5", "openai"),
-        "answer_sha256": score_mod.answer_sha256("older answer"),
+        "answer_sha256": score_mod.answer_identity(
+            {**row, "evaluation": {**row["evaluation"], "answer_text": "older answer"}}
+        ),
     }
     (tmp_path / "grade-B-S1.json").write_text(_json.dumps(stale))
     _, rows = score_mod.score(batch, tmp_path)

@@ -38,7 +38,6 @@ from answer_radar.rubric import (
     MAX_SAFETY,
     MAX_UNCERTAINTY,
 )
-from answer_radar.score import answer_sha256
 
 logger = logging.getLogger("answer-radar-grader")
 
@@ -118,7 +117,9 @@ def build_user_message(entry: dict) -> str:
             "source_documents",
         )
     }
-    shown["reference_notes"] = entry.get("reference_reconstructed_from_09_05_grades")
+    shown["reference_notes"] = entry.get(
+        "reference_notes", entry.get("reference_reconstructed_from_09_05_grades")
+    )
     return json.dumps(shown, indent=1, ensure_ascii=False)
 
 
@@ -173,6 +174,14 @@ def grade_packet(
     """Grade every packet entry for `condition`; write grade-<slot>-<seed>.json. Returns failures."""
     out_dir.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []
+    selected = [e for e in packet.values() if e.get("condition") == condition]
+    unbound = [e.get("seed_id") for e in selected if not e.get("answer_sha256")]
+    if unbound:
+        # A grade that cannot name the answer it judged can never be scored
+        # (score.py). Rebuild the packet with answer_radar.grader_packet.
+        raise SystemExit(
+            f"packet entries without answer_sha256: {unbound}; rebuild with answer_radar.grader_packet"
+        )
     targets = [
         out_dir / f"grade-{slot}-{e['seed_id']}.json"
         for e in packet.values()
@@ -223,13 +232,9 @@ def grade_packet(
             "grader_role": role,
             "grader_model": grader.model,
             "grader_provider": PROVIDER,
-            "answer_sha256": answer_sha256(
-                entry.get("mira_answer") or "",
-                entry.get("citations"),
-                entry.get("source_documents"),
-                entry.get("question") or "",
-                entry.get("manual_search"),  # the packet's copy of hub.retrieval
-            ),
+            # Copied from the packet (built by answer_radar.grader_packet from the
+            # batch row), never recomputed here: one identity, one source.
+            "answer_sha256": entry["answer_sha256"],
             **grade,
         }
         target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

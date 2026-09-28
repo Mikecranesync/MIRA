@@ -28,28 +28,28 @@ from answer_radar.schema import (
 )
 
 
-def answer_sha256(
-    answer_text: str,
-    citations=(),
-    source_documents=(),
-    question: str = "",
-    retrieval=None,
-) -> str:
-    """The identity a grade is bound to: the question, the retrieval context,
-    the exact answer, and the evidence shown with it. Change any of them and an
-    old grade no longer applies (#4092 Codex post-cap F1 and r2 F1)."""
-    payload = json.dumps(
-        [
-            question or "",
-            retrieval if retrieval is not None else {},
-            answer_text,
-            list(citations or []),
-            list(source_documents or []),
-        ],
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+def answer_identity(item: dict) -> str:
+    """The identity a grade is bound to, computed from one batch row.
+
+    Covers everything a grader is shown about the case: the question, the asset
+    (manufacturer + model), the condition, the retrieval context, the exact
+    answer, and the evidence shown with it. Change any of them and an old grade
+    no longer applies (#4092 Codex post-cap F1, r2 F1, r3 F1). The grader
+    packet builder stamps this on every entry, so every grader — Claude or
+    gpt-5.5 — records the same value (r3 F2).
+    """
+    q, e, hub = item["question"], item["evaluation"], item.get("hub") or {}
+    fields = {
+        "question": q.get("normalized_question") or "",
+        "manufacturer": q.get("manufacturer") or "",
+        "model": q.get("model") or "",
+        "condition": hub.get("condition") or "",
+        "retrieval": hub.get("retrieval") or {},
+        "answer_text": e.get("answer_text") or "",
+        "citations": list(e.get("citations") or []),
+        "source_documents": list(e.get("source_documents") or []),
+    }
+    payload = json.dumps(fields, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -163,13 +163,7 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             total_answer_time_ms=e["total_answer_time_ms"],
         )
         condition = (item.get("hub") or {}).get("condition")
-        answer_hash = answer_sha256(
-            e["answer_text"],
-            e.get("citations"),
-            e.get("source_documents"),
-            q.get("normalized_question") or "",
-            (item.get("hub") or {}).get("retrieval"),
-        )
+        answer_hash = answer_identity(item)
         for gid, prefix in (("A", "grade-A-"), ("B", "grade-B-")):
             v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid, condition, answer_hash)
             if v:
