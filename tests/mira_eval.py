@@ -36,7 +36,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from answer_radar.openai_direct import DEFAULT_MODEL as DEFAULT_OPENAI_MODEL  # noqa: E402
-from answer_radar.openai_direct import OpenAIDirect  # noqa: E402
+from answer_radar.openai_direct import BudgetExceeded, OpenAIDirect  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -334,6 +334,8 @@ def evaluate_question(
         result["response_raw"] = response_text
         result["model_answer"] = parse_answer(response_text)
         result["is_correct"] = result["model_answer"] == q["key"]
+    except BudgetExceeded:
+        raise
     except httpx.TimeoutException:
         result["error"] = "TIMEOUT"
         logger.warning("Q%d: timeout after %ds", q["id"], REQUEST_TIMEOUT)
@@ -572,11 +574,15 @@ def main():
             if rag_mode:
                 rag_context = retrieve_rag_context(q["stem"], ollama_url)
 
-            result = evaluate_question(
-                q, client, url, model, api_key,
-                rag_context=rag_context, provider=provider, provider_url=provider_url,
-                openai_client=openai_client,
-            )
+            try:
+                result = evaluate_question(
+                    q, client, url, model, api_key,
+                    rag_context=rag_context, provider=provider, provider_url=provider_url,
+                    openai_client=openai_client,
+                )
+            except BudgetExceeded as e:
+                logger.error("Budget stop before Q%d: %s", q["id"], e)
+                break
             results.append(result)
 
             if result["is_correct"]:

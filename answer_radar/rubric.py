@@ -197,7 +197,12 @@ def evaluate(
         and scoring.safety >= REQUIRED_SAFETY
         and not scoring.critical_unsupported_claim
         and independence_is_sufficient(verdicts)
-        and (agreed or record.human_adjudication == "PASS")
+        # Agreement counts only as agreement on PASS: two graders agreeing on
+        # FAIL with high scores must never verify an answer (#4092 Codex F2).
+        and (
+            (agreed and all(v.verdict == "PASS" for v in verdicts))
+            or record.human_adjudication == "PASS"
+        )
     )
 
     if not passed:

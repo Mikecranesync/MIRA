@@ -11,6 +11,7 @@ and the caller's budget is a hard stop checked before each call.
 
 from __future__ import annotations
 
+import math
 import os
 
 import httpx
@@ -34,8 +35,8 @@ class OpenAIDirect:
     def __init__(self, model: str, budget_usd: float, api_key: str | None = None) -> None:
         if model not in PRICE_PER_MTOK:
             raise ValueError(f"no price for {model}; add it to PRICE_PER_MTOK first")
-        if budget_usd <= 0:
-            raise ValueError("a paid lane needs a positive budget_usd")
+        if not math.isfinite(budget_usd) or budget_usd <= 0:
+            raise ValueError("a paid lane needs a positive, finite budget_usd")
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set")
@@ -61,8 +62,17 @@ class OpenAIDirect:
         timeout: float = 120.0,
     ) -> str:
         """One chat completion. gpt-5.x: max_completion_tokens, no temperature."""
-        if self.spent_usd >= self.budget_usd:
-            raise BudgetExceeded(f"${self.spent_usd:.4f} spent of ${self.budget_usd:.2f}")
+        # Reserve the worst case BEFORE sending, so the cap is hard: input is
+        # over-estimated at one token per 2 characters, output at the full
+        # completion allowance (reasoning tokens bill as output).
+        price_in, price_out = PRICE_PER_MTOK[self.model]
+        worst = (
+            len(system) + len(user)
+        ) / 2 / 1e6 * price_in + max_completion_tokens / 1e6 * price_out
+        if self.spent_usd + worst > self.budget_usd:
+            raise BudgetExceeded(
+                f"${self.spent_usd:.4f} spent; next call may cost up to ${worst:.4f}; budget ${self.budget_usd:.2f}"
+            )
         payload: dict = {
             "model": self.model,
             "max_completion_tokens": max_completion_tokens,
@@ -82,7 +92,16 @@ class OpenAIDirect:
         )
         resp.raise_for_status()
         body = resp.json()
-        usage = body.get("usage") or {}
-        self.tokens_in += int(usage.get("prompt_tokens", 0))
-        self.tokens_out += int(usage.get("completion_tokens", 0))
+        usage = body.get("usage")
+        if (
+            not isinstance(usage, dict)
+            or "prompt_tokens" not in usage
+            or "completion_tokens" not in usage
+        ):
+            # Unpriceable spend fails closed: charge the reserved worst case and stop.
+            self.tokens_in += int((len(system) + len(user)) / 2)
+            self.tokens_out += max_completion_tokens
+            raise BudgetExceeded("response carried no usage; charged the worst case and stopping")
+        self.tokens_in += int(usage["prompt_tokens"])
+        self.tokens_out += int(usage["completion_tokens"])
         return body["choices"][0]["message"]["content"] or ""

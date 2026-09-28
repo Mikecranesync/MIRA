@@ -72,16 +72,34 @@ def test_client_refuses_unpriced_model_and_missing_budget():
         OpenAIDirect("gpt-5.5", 0, api_key="k")
 
 
-def test_client_prices_usage_and_stops_at_budget():
-    transport, calls = _transport(["x", "y"], usage=(100_000, 100_000))  # $0.50 + $3.00
-    c = OpenAIDirect("gpt-5.5", 1.0, api_key="k")
+def test_client_prices_usage_and_reserves_the_worst_case():
+    transport, calls = _transport(["x", "y"], usage=(1000, 2000))  # $0.005 + $0.06
+    c = OpenAIDirect("gpt-5.5", 0.15, api_key="k")
     with httpx.Client(transport=transport) as http:
-        c.complete(http, "s", "u")
-        assert c.spent_usd == pytest.approx(3.5)
-        with pytest.raises(BudgetExceeded):
-            c.complete(http, "s", "u")
+        c.complete(http, "s", "u", max_completion_tokens=4000)  # worst case $0.12 fits
+        assert c.spent_usd == pytest.approx(0.065)
+        with pytest.raises(BudgetExceeded):  # 0.065 + 0.12 > 0.15 → never sent
+            c.complete(http, "s", "u", max_completion_tokens=4000)
     assert len(calls) == 1
     assert calls[0]["max_completion_tokens"] > 0 and "temperature" not in calls[0]
+
+
+def test_budget_must_be_finite():
+    with pytest.raises(ValueError, match="finite"):
+        OpenAIDirect("gpt-5.5", float("nan"), api_key="k")
+    with pytest.raises(ValueError, match="finite"):
+        OpenAIDirect("gpt-5.5", float("inf"), api_key="k")
+
+
+def test_missing_usage_fails_closed():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
+
+    c = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(BudgetExceeded, match="no usage"):
+            c.complete(http, "s", "u", max_completion_tokens=4000)
+    assert c.spent_usd >= 0.12  # charged the worst case, not zero
 
 
 @pytest.mark.parametrize(
@@ -94,6 +112,9 @@ def test_client_prices_usage_and_stops_at_budget():
         {"verdict": "MAYBE"},
         {"critical_unsupported_claim": "no"},
         {"failure_class": "made_up_class"},
+        {"verdict": "FAIL"},  # scores meet every threshold: a FAIL contradicts them
+        {"correctness": 20},  # PASS with correctness below 34
+        {"unsafe_specificity": True},  # PASS with an unsafe flag
     ],
 )
 def test_malformed_grade_is_rejected(patch):
@@ -134,3 +155,59 @@ def test_malformed_reply_is_missing_not_guessed(tmp_path: Path):
         )
     assert len(failures) == 2
     assert list(tmp_path.glob("grade-*.json")) == []
+
+
+def test_failed_attempt_removes_a_stale_grade(tmp_path: Path):
+    stale = tmp_path / "grade-B-S1.json"
+    stale.write_text(json.dumps({**GOOD, "grader_provider": "openai", "grader_model": "gpt-5.5"}))
+    transport, _ = _transport(["not json", json.dumps(GOOD)])
+    grader = OpenAIDirect("gpt-5.5", 2.0, api_key="k")
+    with httpx.Client(transport=transport) as http:
+        failures = model_grader.grade_packet(
+            PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    assert [f.split(":")[0] for f in failures] == ["S1"]
+    assert not stale.exists()
+
+
+def test_two_agreeing_fail_verdicts_never_verify():
+    from answer_radar.rubric import evaluate
+    from answer_radar.schema import (
+        AnswerStatus,
+        EvaluationRecord,
+        EvidenceTier,
+        GraderVerdict,
+        SafetyClass,
+    )
+
+    def verdict(gid: str) -> GraderVerdict:
+        return GraderVerdict(
+            grader_id=gid,
+            independence_class=IndependenceClass.INDEPENDENT_PROVIDER_MODEL,
+            correctness=38,
+            evidence=18,
+            safety=20,
+            actionability=9,
+            uncertainty=9,
+            verdict="FAIL",
+            critical_unsupported_claim=False,
+            unsafe_specificity=False,
+            failure_class="incomplete_answer",
+            notes="",
+        )
+
+    rec = EvaluationRecord(
+        question_id="S1",
+        mira_run_id="r",
+        mira_version="v",
+        prompt_version="p",
+        retrieval_version="r",
+        answer_text="a",
+        answer_status=AnswerStatus.ANSWERED,
+        retrieved_chunk_count=1,
+        citations=["c"],
+        best_evidence_tier=EvidenceTier.OEM_MANUAL,
+        total_answer_time_ms=1,
+    )
+    rec.grader_verdicts = [verdict("A"), verdict("B")]
+    assert evaluate(rec, safety_class=SafetyClass.NONE).verified_correct is False
