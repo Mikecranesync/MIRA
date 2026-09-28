@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getUpload, getUploadCounts, updateUploadStatus, deleteUpload } from "@/lib/uploads";
+import { getUpload, getUploadCounts, updateUploadStatus, deleteUploadAndKnowledge } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { composeTimeout, isAbortError } from "@/lib/abort-helpers";
@@ -75,6 +75,16 @@ export async function DELETE(
     return NextResponse.json({ ok: true, action: "cancelled" }, { headers: { "X-Request-Id": requestId } });
   }
 
+  // Chunks first, in one transaction with the row: a delete that left the
+  // chunks behind kept the manual citable after the technician removed it.
+  const outcome = await deleteUploadAndKnowledge(id, ctx.tenantId);
+  if (outcome === "retained") {
+    return NextResponse.json(
+      { error: "verified_document_retained", hint: "Un-verify the document before deleting it." },
+      { status: 409, headers: { "X-Request-Id": requestId } },
+    );
+  }
+
   if (row.status === "parsed" && row.kbFileId) {
     try {
       await deleteFromOpenWebUi(row.kbFileId);
@@ -83,7 +93,6 @@ export async function DELETE(
     }
   }
 
-  await deleteUpload(id, ctx.tenantId);
   log.log("deleted", { previousStatus: row.status });
   return NextResponse.json({ ok: true, action: "deleted" }, { headers: { "X-Request-Id": requestId } });
 }
