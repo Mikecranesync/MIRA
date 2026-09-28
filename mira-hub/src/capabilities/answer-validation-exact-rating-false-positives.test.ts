@@ -42,6 +42,8 @@ describe("exact-rating: controls that must still block", () => {
     ["isolation words beside a separate zero rating (Codex r3 F1)", "With the line isolated and locked out, the maximum output voltage, verified by our test, is 0 V."],
     ["a rating quantity 'measured at 0 V' (Codex post-cap F1)", "With the line isolated and locked out, the maximum output voltage, measured at 0 V, needs no further testing."],
     ["a rated quantity 'verified at 0 V'", "With the drive isolated, the rated supply voltage verified at 0 V is acceptable."],
+    ["a rating claim continuing after the zero reading (post-cap r2 F1)", "With the line isolated and locked out, the output voltage measured at 0 V is the unit peak voltage rating."],
+    ["a declarative continuation without a rating word", "With the line isolated and locked out, the output voltage measured at 0 V is the design value."],
   ])("%s", (_label, a) => {
     expect(unsupportedExactRating(a)).not.toBeNull();
   });

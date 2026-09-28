@@ -658,7 +658,7 @@ function zeroIsolationVerification(sentence: string, match: string): boolean {
     !/\b(?:is|are|was|were)\b/i.test(match) &&
     // An isolation-state reading, not a rating: "maximum output voltage,
     // measured at 0 V" names a rating quantity (#4093 post-cap F1).
-    !RATING_QUALIFIER.test(match) &&
+    !RATING_QUALIFIER.test(sentence) &&
     ISOLATION_CONTEXT.test(sentence)
   );
 }
@@ -678,7 +678,10 @@ export function unsupportedExactRating(text: string): string | null {
     if (HEDGE.test(sentence)) continue;
     re.lastIndex = 0;
     for (let m = re.exec(sentence); m; m = re.exec(sentence)) {
-      if (zeroIsolationVerification(sentence, m[0])) continue;
+      // The exempt phrase must end the claim: "…measured at 0 V is the unit's
+      // peak rating" continues into an assertion (#4093 post-cap round 2 F1).
+      const rest = sentence.slice(m.index + m[0].length);
+      if (zeroIsolationVerification(sentence, m[0]) && !/^\s*,?\s*(?:is|are|was|were|equals|=)\b/i.test(rest)) continue;
       return m[0].slice(0, 160);
     }
   }
