@@ -329,6 +329,86 @@ export async function deleteUpload(id: string, tenantId = DEFAULT_TENANT_ID): Pr
   return (rowCount ?? 0) > 0;
 }
 
+export type DeleteUploadOutcome = "deleted" | "not_found" | "retained" | "in_progress";
+
+const DELETABLE_STATUSES = ["parsed", "failed", "cancelled"];
+
+/**
+ * Delete an upload AND everything that makes it citable, in one transaction.
+ * `deleteUpload` alone removed only the hub_uploads row: knowledge_entries has
+ * no FK to it (doc_id = upload id), so a deleted manual kept appearing in My
+ * Documents and kept being cited (#4080).
+ *
+ * Serialization (review of #4084):
+ *  - the upload row is locked FOR UPDATE and must still be finished — a retry
+ *    or re-pick that requeued it first wins, and this returns `in_progress`;
+ *    a requeue that arrives after the lock waits, then finds no row;
+ *  - linked filing-cabinet rows are locked before the verified check, so a
+ *    concurrent verify cannot slip between the check and the chunk delete. A
+ *    document the cabinet holds as verified is retained forever (migration
+ *    059), so the delete is refused as a whole.
+ *
+ * What goes: the tenant's private chunks (never the shared OEM corpus), the
+ * notebook source rows that pointed at this document, and the row itself. A
+ * canonical file that referenced the upload keeps its bytes but loses the
+ * pointer, so the same bytes uploaded again are indexed again instead of being
+ * reported as an already-indexed duplicate.
+ */
+export async function deleteUploadAndKnowledge(
+  id: string,
+  tenantId: string,
+): Promise<DeleteUploadOutcome> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const upload = await client.query(
+      `SELECT status FROM hub_uploads WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+      [id, tenantId],
+    );
+    if ((upload.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return "not_found";
+    }
+    if (!DELETABLE_STATUSES.includes(String(upload.rows[0].status))) {
+      await client.query("ROLLBACK");
+      return "in_progress";
+    }
+    const files = await client.query(
+      `SELECT verified FROM namespace_direct_uploads
+        WHERE upload_id = $1::uuid AND tenant_id::text = $2
+        FOR UPDATE`,
+      [id, tenantId],
+    );
+    if (files.rows.some((r: Record<string, unknown>) => r.verified === true)) {
+      await client.query("ROLLBACK");
+      return "retained";
+    }
+    await client.query(
+      `DELETE FROM knowledge_entries
+        WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      [id, tenantId],
+    );
+    await client.query(
+      `DELETE FROM equipment_notebook_sources
+        WHERE doc_id = $1::uuid AND tenant_id::text = $2`,
+      [id, tenantId],
+    );
+    await client.query(
+      `UPDATE namespace_direct_uploads SET upload_id = NULL
+        WHERE upload_id = $1::uuid AND tenant_id::text = $2`,
+      [id, tenantId],
+    );
+    await client.query(`DELETE FROM hub_uploads WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    await client.query("COMMIT");
+    return "deleted";
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export interface UploadCounts {
   pm_tasks_count: number;
   fault_codes_count: number;
