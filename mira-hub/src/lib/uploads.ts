@@ -177,6 +177,20 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
  * never match (status/ingest_route predicates), so a failed first attempt
  * doesn't block a retry.
  */
+/** Record an upload's content hash once its bytes are known (cloud fetch).
+ *  Local uploads set it at createUpload; a cloud row only learns it after the
+ *  fetch, and findDuplicateUpload matches on it (#4088 review F4). */
+export async function setUploadContentSha256(
+  id: string,
+  tenantId: string,
+  contentSha256: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE hub_uploads SET content_sha256 = $3 WHERE id = $1 AND tenant_id = $2`,
+    [id, tenantId, contentSha256],
+  );
+}
+
 export async function findDuplicateUpload(
   tenantId: string,
   contentSha256: string,

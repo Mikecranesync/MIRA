@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * #1806 — a Drive/Dropbox document must become CITABLE: it goes through the
  * same v2 Inbox writer as a local upload (knowledge_entries, is_private=true),
  * not only to the Open WebUI KB that chat never reads and prod no longer runs.
+ * Review round 1 (#4088): no uncitable fallback, MIME check, hash persisted.
  */
 
 vi.mock("@/lib/workflow", () => ({
@@ -22,6 +23,7 @@ vi.mock("@/lib/fetch-adapters", () => ({
 vi.mock("@/lib/uploads", () => ({
   createUpload: vi.fn(),
   updateUploadStatus: vi.fn(async () => undefined),
+  setUploadContentSha256: vi.fn(async () => undefined),
   findDuplicateUpload: vi.fn(async () => null),
 }));
 vi.mock("@/lib/inbox-node", () => ({
@@ -42,7 +44,8 @@ vi.mock("@/lib/mira-ingest-client", async (importOriginal) => {
 
 import { runIngestPipeline, readAllCapped, type PipelineInput } from "@/lib/upload-pipeline";
 import { streamFromSignedUrl } from "@/lib/fetch-adapters";
-import { updateUploadStatus } from "@/lib/uploads";
+import { findDuplicateUpload, setUploadContentSha256, updateUploadStatus } from "@/lib/uploads";
+import { createHash } from "node:crypto";
 import { NoExtractableTextError, writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
 import { forwardToIngest, forwardToPhotoIngest } from "@/lib/mira-ingest-client";
 
@@ -72,6 +75,8 @@ const statuses = () => vi.mocked(updateUploadStatus).mock.calls.map((c) => [c[2]
 
 beforeEach(() => {
   vi.mocked(updateUploadStatus).mockClear();
+  vi.mocked(setUploadContentSha256).mockClear();
+  vi.mocked(findDuplicateUpload).mockClear().mockResolvedValue(null);
   vi.mocked(forwardToIngest).mockClear();
   vi.mocked(forwardToPhotoIngest).mockClear();
   vi.mocked(writePdfChunksForNode).mockReset().mockResolvedValue(7);
@@ -98,12 +103,26 @@ describe("runIngestPipeline — cloud documents land citable (#1806)", () => {
     expect(statuses().some(([s]) => s === "failed")).toBe(true);
   });
 
-  it("any other writer failure keeps the legacy forward, with the same bytes", async () => {
+  it("F2: any other writer failure FAILS the upload — no uncitable 'parsed' via the legacy store", async () => {
     vi.mocked(writePdfChunksForNode).mockRejectedValue(new Error("db down"));
     await runIngestPipeline(input());
-    expect(forwardToIngest).toHaveBeenCalledOnce();
-    const sent = await readAllCapped(vi.mocked(forwardToIngest).mock.calls[0][0], 1_000_000);
-    expect(sent.toString()).toBe("%PDF-1.4 cloud manual");
+    expect(forwardToIngest).not.toHaveBeenCalled();
+    expect(statuses().some(([s]) => s === "failed")).toBe(true);
+    expect(statuses().some(([s]) => s === "parsed")).toBe(false);
+  });
+
+  it("F3: declared text but PDF bytes is rejected before any chunk is written", async () => {
+    await runIngestPipeline(input({ mimeType: "text/plain", filename: "notes.txt" }));
+    expect(writePdfChunksForNode).not.toHaveBeenCalled();
+    const failed = vi.mocked(updateUploadStatus).mock.calls.find((c) => c[2] === "failed");
+    expect(String(failed?.[3])).toMatch(/does not match its declared type/);
+  });
+
+  it("F4: the fetched content hash is saved on the row and used for the duplicate lookup", async () => {
+    const sha = createHash("sha256").update("%PDF-1.4 cloud manual").digest("hex");
+    await runIngestPipeline(input());
+    expect(setUploadContentSha256).toHaveBeenCalledWith("up-1", input().tenantId, sha);
+    expect(findDuplicateUpload).toHaveBeenCalledWith(input().tenantId, sha, "inbox-1");
   });
 
   it("photos keep the photo door", async () => {
