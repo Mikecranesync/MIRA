@@ -120,6 +120,10 @@ function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
   return faultCodeTokens(clause).some((t) => !(model && model.includes(norm(t))));
 }
 
+// "fault"/"error"/"alarm" (+ "code") immediately naming a fault-code token —
+// the lookahead is answer-validation.ts's FAULT_CODE_TOKEN shape.
+const CODE_NAMING_WORD =
+  /\b(?:fault|error|alarm)(?:\s+code)?\s+(?=[A-Za-z]{1,4}[-_]?\d{2,8}\b)|(?<=\b[A-Za-z]{1,4}[-_]?\d{2,8}\s+)(?:fault|error|alarm)(?:\s+code)?\b/gi;
 // A condition or another clause folded into the "what does … mean" clause.
 const MEANING_CLAUSE_CONDITION = /\b(?:when|whenever|while|if|after|once|since|and|but|why|how)\b/i;
 
@@ -184,8 +188,10 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   if (CODE_MEANING.test(q) && askedCode && !PROCEDURE_ASK.test(q)) {
     // Pass 19: a symptom or condition INSIDE the meaning clause ("what does
     // F005 on my drive when it trips mean?") is not a pure code question either.
-    // The clause's own code vocabulary ("fault code", "error") is removed first.
-    const inner = (q.match(CODE_MEANING)?.[0] ?? "").replace(/\b(?:fault|error|alarm)s?\b/gi, " ");
+    // The clause's own code vocabulary is removed first — but only the word that
+    // NAMES the code ("fault code F005", "alarm A012"); "with repeated faults"
+    // is a symptom and stays (pass 20).
+    const inner = (q.match(CODE_MEANING)?.[0] ?? "").replace(CODE_NAMING_WORD, " ");
     if (SYMPTOM.test(inner) || MEANING_CLAUSE_CONDITION.test(inner)) return true;
     const rest = q.replace(CODE_MEANING, " ");
     // Mixed: the "mean" in the first clause must not read as the teaching
