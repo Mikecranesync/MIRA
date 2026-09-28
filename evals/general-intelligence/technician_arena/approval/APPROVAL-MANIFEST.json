@@ -1,0 +1,155 @@
+{
+  "schema": "technician-arena-approval-manifest/1",
+  "_note": "Advisory record for the two human gates on PR #3487. Nothing in code reads this file; see approval/README.md. Answer-key approval is performed ONLY by `python -m technician_arena sign` (keys.py); this manifest mirrors it. paid_*_authorized may become true only after explicit human approval of BOTH the doctrine and every key in scope.",
+  "repository": "Mikecranesync/MIRA",
+  "pr": 3487,
+  "reviewed_sha": "cdf7ae8567fe7a3940e473007017fafdf17035db",
+  "generated_at_utc": "2026-09-28T08:04:46Z",
+  "reviewer": null,
+  "expected_reviewer": "Mike Harper",
+  "doctrine": {
+    "path": ".claude/rules/general-intelligence-preservation.md",
+    "sha256": "689ed97e0dda1054189efbacb20d52751daa3dc6c8ec4f00cf6084b8fb3d9365",
+    "pointer": ".claude/CLAUDE.md:180",
+    "review_packet": "evals/general-intelligence/technician_arena/approval/DOCTRINE-REVIEW.md",
+    "approval": {
+      "status": "pending",
+      "decision": null,
+      "approved_sha256": null,
+      "reviewer": null,
+      "date": null,
+      "notes": null
+    },
+    "open_conflicts": [
+      "C1",
+      "C1b",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "C6",
+      "C7"
+    ]
+  },
+  "answer_keys": {
+    "technician_arena": {
+      "path": "evals/general-intelligence/technician_arena/cases/tech-arena-pilot.json",
+      "file_sha256_at_review": "9791e8c7559b005cb21cea836d426747768a785e256669a41750e35b0bf96247",
+      "file_sha256_note": "changes whenever a key is signed; approval binds to per-case key_sha256, which excludes signature fields",
+      "approval_mechanism": "PYTHONPATH=evals/general-intelligence python -m technician_arena sign <case-id> --signer \"<name>\"",
+      "review_packet": "evals/general-intelligence/technician_arena/approval/ANSWER-KEY-REVIEW.md",
+      "approval_status": "pending",
+      "cases": [
+        {
+          "id": "ta-general-coast-vs-ramp",
+          "key_sha256": "ea6f3d776288fd080d2b653ba9429e60c679a15bd86da2f718647c941e7b6509",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-general-motor-hot-low-speed",
+          "key_sha256": "2ac7058311871c656b5b185dbcf7addecdea83c3c0c4d3ad866835e6a7e84c5b",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-model-pf525-f005",
+          "key_sha256": "62b93c439a3b91fc03c5a445691c4dc8de14fdbe5b16041ae81d06b301366383",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-model-pf525-f004",
+          "key_sha256": "c090ab117d33e0ca69b8c496fefbe57a2ea48f323c036ec738ba6bc913f0681f",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-photo-nameplate-identify",
+          "key_sha256": "3ae8643d66edfa7fd5f2e946da622045af9ce37e15905351bb5547845f7d9dca",
+          "status_at_review": "unsigned",
+          "signable_now": false,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-photo-fault-screen",
+          "key_sha256": "470982c19739c6c9ccee5b23e4c8663d98ec8631ac6a933b801f0485880b0d18",
+          "status_at_review": "unsigned",
+          "signable_now": false,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-drawing-cabinet-contactor",
+          "key_sha256": "fb8f8b9d552e0ce293e73b2d0659a2a8b80dd7239d98d996cdc5990905df8193",
+          "status_at_review": "unsigned",
+          "signable_now": false,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-seed-001-slc-dh485",
+          "key_sha256": "aaa34301fd78b34e79150a95503130359cdd8afb6f60fad2a4a8c5f5cb1d25ec",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": true
+        },
+        {
+          "id": "ta-seed-004-fx5u-baykon",
+          "key_sha256": "5da15446d715a2207dee3198e468cc99debd2e46e64e1668ab52123ea828db4a",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": true
+        },
+        {
+          "id": "ta-seed-005-plx32-intermittent",
+          "key_sha256": "0e285a453cd6f9779b70704229f0ebf135a91ed28f3feb419090bae7b36ff581",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": true
+        },
+        {
+          "id": "ta-hazard-defeat-interlock",
+          "key_sha256": "50bd58f340088b9eae25f7804b96f24ff8aa88bf5b8d9e8df8e038a2062290ce",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        },
+        {
+          "id": "ta-followup-bound-history",
+          "key_sha256": "5029620706d53fae52c96f055b4d149b7e16e5c5935b6ffd8aeb00307e3ed5d4",
+          "status_at_review": "unsigned",
+          "signable_now": true,
+          "diagnostic_only": false
+        }
+      ]
+    },
+    "gi1_corpus": {
+      "path": "evals/general-intelligence/cases/gi1-corpus.json",
+      "sha256": "e94f7160ed1718c681ef9a21a69c3ac34dc1f86303b7149d0da8202a66f80628",
+      "approval_status": "not_reviewed",
+      "note": "25 cases; critical_facts/forbidden_phrases decide deterministic pass/fail. No signing mechanism exists. Not covered by this review."
+    }
+  },
+  "outstanding_changes": [
+    "Doctrine: human decision on conflicts C1-C7 (DOCTRINE-REVIEW.md section 2).",
+    "Keys: every known fact is marked unverified; page numbers TBD throughout.",
+    "Keys: ta-photo-nameplate-identify, ta-photo-fault-screen, ta-drawing-cabinet-contactor are placeholders pending fixture capture (#3503).",
+    "Keys: seed cases (ta-seed-001/004/005) were keyed after outputs were seen; diagnostic only even when signed.",
+    "GI-1 corpus keys not reviewed; no signing mechanism.",
+    "PR #3487 Codex round 5 findings (GI-1 runner spend accounting) open at the reviewed commit."
+  ],
+  "paid_execution": {
+    "technician_arena": {
+      "authorized": false,
+      "code_enforcement": "run.py refuses any non-dry run unless --budget-usd is set and every selected case's key is signed and intact (keys.unscorable). It does NOT check doctrine approval or this manifest."
+    },
+    "gi1_arena": {
+      "authorized": false,
+      "code_enforcement": "none beyond --budget-usd and an API key; runners/arena.py does not check key approval or this manifest. Blocked procedurally only."
+    }
+  },
+  "paid_benchmark_authorized": false
+}

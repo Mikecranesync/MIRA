@@ -823,3 +823,88 @@ def test_r4f7_a_leak_in_an_included_diagnostic_case_still_holds():
     sc = ta_score.build(attempts, [_grade("ta-seed-x", "mira", critical_safety_leak=True)])
     assert sc["verdict"] == "HOLD" and sc["arms"]["mira"]["verified"] == 0
     assert sc["arms"]["mira"]["diagnostic"] == ["ta-seed-x"]
+
+
+# ── #3487 human-approval manifest (approval/APPROVAL-MANIFEST.json) ──────────
+# Advisory record of the doctrine + answer-key gates. These tests keep it honest:
+# its hashes must describe the live files, and it can never claim paid execution
+# is authorized unless both gates are really approved.
+
+import hashlib  # noqa: E402
+import json  # noqa: E402
+
+from technician_arena import cases as ta_cases_mod  # noqa: E402
+
+_REPO = ARENA.parents[1]
+_MANIFEST = ARENA / "technician_arena" / "approval" / "APPROVAL-MANIFEST.json"
+
+
+def _manifest() -> dict:
+    return json.loads(_MANIFEST.read_text(encoding="utf-8"))
+
+
+def _authorization_violations(m: dict) -> list[str]:
+    """Why this manifest may NOT claim paid execution is authorized (empty = may)."""
+    bad: list[str] = []
+    d = m["doctrine"]
+    live_doc = hashlib.sha256((_REPO / d["path"]).read_bytes()).hexdigest()
+    if d["approval"]["status"] not in ("approved", "approved_with_changes"):
+        bad.append("doctrine not approved")
+    if d["approval"].get("approved_sha256") != live_doc:
+        bad.append("doctrine approval is not for the live file")
+    live = {c["id"]: c for c in ta_cases_mod.load()}
+    for c in m["answer_keys"]["technician_arena"]["cases"]:
+        if keys.key_status(live[c["id"]]) != "signed":
+            bad.append(f"key {c['id']} not signed")
+    return bad
+
+
+def _claims_authorized(m: dict) -> bool:
+    return bool(m.get("paid_benchmark_authorized")) or any(
+        lane.get("authorized") for lane in m["paid_execution"].values()
+    )
+
+
+def test_manifest_doctrine_hash_matches_live_file():
+    m = _manifest()
+    live = hashlib.sha256((_REPO / m["doctrine"]["path"]).read_bytes()).hexdigest()
+    assert m["doctrine"]["sha256"] == live
+
+
+def test_manifest_key_hashes_match_live_cases_and_cover_every_case():
+    m = _manifest()
+    live = {c["id"]: c for c in ta_cases_mod.load()}
+    listed = m["answer_keys"]["technician_arena"]["cases"]
+    assert live and {c["id"] for c in listed} == set(live)
+    for c in listed:
+        assert c["key_sha256"] == keys.key_sha256(live[c["id"]]), c["id"]
+
+
+def test_manifest_key_hashes_survive_signing():
+    # Signing is the approval act; it must not make the manifest stale.
+    m = _manifest()
+    case = next(c for c in ta_cases_mod.load() if c["id"] == "ta-general-coast-vs-ramp")
+    signed = keys.sign(case, signer="Test", date="2026-01-01")
+    entry = next(c for c in m["answer_keys"]["technician_arena"]["cases"] if c["id"] == case["id"])
+    assert entry["key_sha256"] == keys.key_sha256(signed)
+
+
+def test_committed_manifest_never_claims_unapproved_paid_authorization():
+    m = _manifest()
+    if _claims_authorized(m):
+        assert _authorization_violations(m) == []
+    else:
+        assert m["paid_benchmark_authorized"] is False
+
+
+def test_authorization_claim_is_rejected_while_gates_are_pending():
+    # Control for the guard above: flipping only the flag must be caught.
+    m = _manifest()
+    assert m["doctrine"]["approval"]["status"] == "pending"  # precondition at review
+    forged = copy.deepcopy(m)
+    forged["paid_benchmark_authorized"] = True
+    assert _claims_authorized(forged)
+    assert "doctrine not approved" in _authorization_violations(forged)
+    lane_only = copy.deepcopy(m)
+    lane_only["paid_execution"]["gi1_arena"]["authorized"] = True
+    assert _claims_authorized(lane_only)
