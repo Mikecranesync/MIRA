@@ -1,0 +1,113 @@
+{
+  "surface": "android",
+  "device": "Pixel 9a (55081JEBF07026)",
+  "build": "com.factorylm.mira 1.1.0 (10), debug cert 1A:E5:E1:79, sha256 a1bf60ae\u20266483",
+  "partial": true,
+  "workflows": [
+    {
+      "id": "wf-01",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/00-launch.png",
+      "notes": "Clean conversation-first shell, greeting-first, single composer, zero prior turns"
+    },
+    {
+      "id": "wf-02",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/03-answer-30s.png",
+      "notes": "General question answered without machine selection; honest 'not grounded' evidence label + follow-up chip + copy"
+    },
+    {
+      "id": "wf-03",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/01-composer-filled.png",
+      "notes": "Composer autogrows to multi-line as text is entered (Slice C field-sizing) \u2014 first on-device proof"
+    },
+    {
+      "id": "wf-04",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/04b-drawer.png",
+      "notes": "Threads findable by first-question title in the drawer's Projects tree"
+    },
+    {
+      "id": "wf-05",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/04b-drawer.png",
+      "notes": "Projects listed in drawer; canonical Projects>Threads>Conversation IA"
+    },
+    {
+      "id": "wf-09",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/05-attach-menu.png",
+      "notes": "Attach sheet: Photo/File/Camera/Scan machine"
+    },
+    {
+      "id": "wf-15",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/08-attachment-returned.png",
+      "notes": "Native Google Camera launches from composer +, capture round-trips back into the conversation as a turn (#3746) \u2014 device-only"
+    },
+    {
+      "id": "wf-08",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/12-thread-selected.png",
+      "notes": "Selecting a thread shows that thread's own turns (feeder-jam conversation); combined with New-chat-blank = isolation both directions"
+    },
+    {
+      "id": "wf-13",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/11-after-relaunch.png",
+      "notes": "force-stop + relaunch reopens to clean sane state, notebook context preserved, threads intact in drawer"
+    },
+    {
+      "id": "wf-06",
+      "surface": "android",
+      "verdict": "DEGRADED",
+      "evidence": "product-parity/13-drawer-for-create.png",
+      "notes": "Chat drawer has 'New chat' but NO 'New project' affordance \u2014 creating a Project (notebook) requires a separate surface, unlike ChatGPT's sidebar. Works but different mental model (\u00a75.2 DEGRADED)."
+    },
+    {
+      "id": "wf-07",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/15-back-from-drawer.png",
+      "notes": "New chat creates a blank greeting-first thread inside the active project (BASELINE EVAL); eval runs created 40 distinct threads in-project, each with first-question titles. Minor: New chat does not auto-close the drawer."
+    },
+    {
+      "id": "wf-10",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/08-attachment-returned.png",
+      "notes": "Camera capture round-tripped into a turn asking about the photo ('What am I looking at, and what should I check?') with MIRA analyzing it \u2014 asking about attached evidence."
+    },
+    {
+      "id": "wf-14",
+      "surface": "android",
+      "verdict": "PASS",
+      "evidence": "product-parity/15-back-from-drawer.png",
+      "notes": "BACK from drawer closes to the conversation without exiting the app (ladder rung verified); no dead end."
+    }
+  ],
+  "not_run": [
+    "wf-11",
+    "wf-12"
+  ],
+  "summary": {
+    "total": 15,
+    "recorded": 13,
+    "pass": 12,
+    "degraded": 1,
+    "fail": 0,
+    "skip": 0,
+    "not_run": 2
+  },
+  "note": "12/15 PASS, 1 DEGRADED (wf-06 no New-project in chat drawer), 0 FAIL, 2 NOT RUN: wf-11 citation-sheet (needs a grounded on-device answer with a visible citation chip; grounding thin this run), wf-12 stop-generation (BLOCKED: Android CapacitorHttp buffers SSE #3453 \u2014 Stop window is client-side/short, not reliably capturable). Pixel 9a, build 1.1.0/10."
+}

@@ -1,32 +1,19 @@
-name: Install amux on VPS
+name: Install amux on VPS (retired)
 
+# This historical root installer is intentionally inert. amux is already
+# installed; any future provisioning must use a pinned package and a scoped,
+# non-root operator identity through a separately reviewed workflow.
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
-  install:
+  retired:
     runs-on: ubuntu-latest
+    timeout-minutes: 1
     steps:
-      - name: Set up SSH
+      - name: Refuse retired production installer
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Install tmux + amux
-        run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "bash -s" << 'ENDSSH'
-          set -uo pipefail
-
-          apt-get update && apt-get install -y tmux
-          which amux || pip install amux --break-system-packages
-
-          tmux -V
-          amux --version || echo "amux installed but no --version flag"
-
-          echo "=== Resources ==="
-          df -h /
-          free -h
-          ENDSSH
+          echo "::error::This production installer is retired; use a reviewed non-root provisioner."
+          exit 1

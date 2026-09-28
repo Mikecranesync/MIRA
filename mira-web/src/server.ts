@@ -32,6 +32,8 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
+import { deployIdentity } from "./capabilities/deploy-identity.js";
+import { hubUrl } from "./capabilities/hub-origin.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -95,7 +97,9 @@ import {
   createDriveCommanderCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
+  verifyDCProSession,
 } from "./lib/stripe.js";
+import { ensureDCProTenant } from "./lib/dc-pro-activation.js";
 import {
   activateHubUserByEmail,
   expireHubUserByEmail,
@@ -381,9 +385,10 @@ app.get("/", (c) => {
 });
 
 // Health probe
-app.get("/api/health", (c) =>
-  c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
-);
+// Deploy identity (#3910): reports the build-time MIRA_GIT_SHA so the deploy
+// workflows can assert gitSha == approved_rc_sha at runtime. See
+// src/capabilities/deploy-identity.ts.
+app.get("/api/health", (c) => c.json(deployIdentity()));
 
 // Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe
 app.route("/api/probe-state", probeStateRoute);
@@ -577,12 +582,57 @@ app.get("/feature/:slug", (c) => {
 // Content is served from a vendored, committed pack (src/data/drive-packs/*.json);
 // every answer is cited from the pack — no generic AI. No auth; free tier only.
 // ---------------------------------------------------------------------------
-app.get("/drive-commander/:model", (c) => {
+app.get("/drive-commander/:model", async (c) => {
   const pack = getPack(c.req.param("model"));
   if (!pack) return c.notFound();
-  // Stripe checkout returns here with ?checkout=success|cancelled.
+
+  const checkout = c.req.query("checkout");
+  const sessionId = c.req.query("session_id") ?? "";
+  let isPro = false;
+
+  // 1. Verify a fresh Stripe checkout session to grant a Pro entitlement cookie.
+  // The webhook may arrive after this redirect, so we upsert the tenant here
+  // (ensureDCProTenant is idempotent — the webhook becomes a no-op backup).
+  if (checkout === "success" && sessionId) {
+    const verified = await verifyDCProSession(sessionId).catch(() => null);
+    if (verified) {
+      const dcTenant = await ensureDCProTenant(verified).catch(() => null);
+      // Grant isPro from the verified session regardless of the tenant DB state —
+      // the upsert above guarantees tier is set, but we never block on it.
+      isPro = true;
+      const tok = await signToken({
+        tenantId: dcTenant?.id ?? verified.customerId,
+        email: dcTenant?.email ?? verified.email,
+        tier: "drive_commander_pro",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+        atlasRole: "USER",
+      });
+      c.header("Set-Cookie", buildSessionCookie(tok));
+    }
+  }
+
+  // 2. Accept existing session JWT (cookie) for returning Pro subscribers.
+  if (!isPro) {
+    const raw = c.req.header("cookie") ?? "";
+    const cookies = Object.fromEntries(
+      raw.split(";").map((s) => {
+        const [k, ...v] = s.trim().split("=");
+        return [k ?? "", v.join("=")];
+      }),
+    );
+    const sessionCookie = cookies["mira_session"] ?? "";
+    if (sessionCookie) {
+      const { verifyToken } = await import("./lib/auth.js");
+      const payload = await verifyToken(sessionCookie).catch(() => null);
+      if (payload?.tier === "drive_commander_pro") {
+        isPro = true;
+      }
+    }
+  }
+
   return c.html(
-    renderDriveLandingPage(pack, { checkout: c.req.query("checkout") }),
+    renderDriveLandingPage(pack, { checkout, isPro }),
   );
 });
 
@@ -1164,7 +1214,7 @@ app.post("/api/stripe/webhook", async (c) => {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      // Drive Commander Pro (individual $29/mo) — record the purchase and STOP.
+      // Drive Commander Pro (individual $197/yr annual, lead SKU locked 2026-09-05) — record the purchase and STOP.
       // This is NOT a CMMS team tenant: no tier activation, no Atlas, no Hub
       // provisioning. Entitlement delivery is tracked separately.
       if (session.metadata?.product === "drive-commander-pro") {
@@ -1179,34 +1229,10 @@ app.post("/api/stripe/webhook", async (c) => {
           "[stripe-webhook] Drive Commander Pro purchase:",
           dcEmail, dcCustomer, dcSubscription
         );
-        let dcTenant = dcEmail ? await findTenantByEmail(dcEmail) : null;
-        if (!dcTenant && dcEmail) {
-          const newId = crypto.randomUUID();
-          await createTenant({
-            id: newId,
-            email: dcEmail,
-            company: dcEmail.split("@")[1] || "unknown",
-            firstName: "",
-            tier: "drive_commander_pro",
-            atlasPassword: "",
-            atlasCompanyId: 0,
-            atlasUserId: 0,
-          });
-          dcTenant = await findTenantById(newId);
-        }
+        const dcTenant = dcEmail
+          ? await ensureDCProTenant({ email: dcEmail, customerId: dcCustomer, subscriptionId: dcSubscription })
+          : null;
         if (dcTenant) {
-          await updateTenantStripe(dcTenant.id, dcCustomer, dcSubscription);
-          if (dcTenant.tier !== "active") {
-            await updateTenantTier(dcTenant.id, "drive_commander_pro");
-          }
-          void recordAuditEvent({
-            tenantId: dcTenant.id,
-            actorType: "system",
-            actorId: "stripe.webhook",
-            action: "drive_commander_pro.purchased",
-            resource: dcSubscription,
-            metadata: { customer_id: dcCustomer, subscription_id: dcSubscription },
-          });
           captureServerEvent({
             event: "drive_commander_purchase",
             distinctId: dcTenant.id,
@@ -1962,8 +1988,9 @@ app.get("/api/connect/status", requireActive, async (c) => {
 // closes #1132, #1133
 // ---------------------------------------------------------------------------
 
-app.get("/login", (c) => c.redirect("https://app.factorylm.com/login", 301));
-app.get("/signup", (c) => c.redirect("https://app.factorylm.com/signup", 301));
+// PLG_HUB_URL keeps a staging web on the staging hub (#3930); prod default unchanged.
+app.get("/login", (c) => c.redirect(hubUrl("/login"), 301));
+app.get("/signup", (c) => c.redirect(hubUrl("/signup"), 301));
 
 // ---------------------------------------------------------------------------
 // 404 — custom page with home link (CRA-109)

@@ -1,0 +1,32 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "machine_selected",
+  "grader_role": "verifier",
+  "correctness": 25,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 5,
+  "uncertainty": 4,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "Framing the problem as the converter simply lacking 'protocol interpretation'/framing, addressable by checking baud/parity/stop-bits/wiring/termination",
+      "why_wrong": "A transparent RS-485-to-Ethernet converter cannot ever run DH-485 regardless of configuration: DH-485 requires token-passing network arbitration and a TX-EN (transmit-enable) open-collector control line for half-duplex turnaround that a transparent converter has no way to provide. This is an architectural incompatibility, not a settings mismatch, so the suggested config checks will not resolve it.",
+      "severity": "major"
+    },
+    {
+      "claim": "No mention that the DH-485 RJ45/port uses 0-5V RS-485 signal levels, distinct from Ethernet voltage levels",
+      "why_wrong": "Connecting standard Ethernet-side equipment to a DH-485 port that expects 0-5V RS-485 levels carries a real equipment-damage risk (network card / PLC processor). Omitting this warning is a safety-adjacent gap for a customer performing this swap without knowing the risk.",
+      "severity": "major"
+    },
+    {
+      "claim": "The definitive fix (reinstall the original protocol-aware interface, or replace with an equivalent like a 1747-AIC/1761-NET-AIC) is only offered as a conditional troubleshooting step, not stated as the answer",
+      "why_wrong": "Given the converter can never work on DH-485, the technician needs to be told directly that a protocol-aware interface is required, not led through a multi-step diagnostic first.",
+      "severity": "major"
+    }
+  ],
+  "notes": "Zero citations (OEM corpus searched, 0 candidates) for a series of specific asset troubleshooting claims (termination value, diagnostic screen behavior, wiring polarity) on industrial comms equipment -- an unsupported asset-specific claim per the grading rubric. The high-level diagnosis (transparent converter can't speak DH-485) is directionally right, but the answer never states the actual fix (replace with a protocol-aware interface) and omits the equipment-damage voltage-mismatch risk, so a technician following it could spend real time on config checks that cannot possibly work. Safety scored 20 because nothing actively unsafe is instructed (LOTO/verify-zero steps are present); the gap is an omitted protective warning, not a hazardous instruction. FAILS: total 39 short of 85, correctness 25 < 34, and a critical unsupported claim (confident specific troubleshooting guidance on industrial equipment, zero grounding)."
+}

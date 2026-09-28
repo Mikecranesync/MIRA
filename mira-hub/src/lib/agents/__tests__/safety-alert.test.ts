@@ -149,4 +149,21 @@ describe("safetyAlertSseChunk", () => {
     const chunk = safetyAlertSseChunk(alert);
     expect(chunk).toContain("ARC FLASH");
   });
+
+  // FLEET-005 (#2542): the discriminator that lets AssetChat/NodeChat render
+  // this frame distinctly from ordinary content, without a schema change.
+  test("carries a safetyAlert discriminator alongside the existing content field", () => {
+    const alert = scanForSafetyKeywords("loto", "EQ-1")!;
+    const chunk = safetyAlertSseChunk(alert);
+    const payload = JSON.parse(chunk.slice("data: ".length).trim());
+    expect(payload.safetyAlert).toBe(true);
+    expect(typeof payload.content).toBe("string");
+    expect(payload.content.length).toBeGreaterThan(0);
+  });
+
+  test("no longer wraps the block in markdown bold markers", () => {
+    const alert = scanForSafetyKeywords("loto", "EQ-1")!;
+    const chunk = safetyAlertSseChunk(alert);
+    expect(chunk).not.toContain("**");
+  });
 });

@@ -44,7 +44,8 @@ def _deploy_body() -> list[str]:
     for job in doc.get("jobs", {}).values():
         for step in job.get("steps", []):
             run = step.get("run", "") or ""
-            if "--force-recreate" in run and "saas.yml build" in run:
+            # Match both "build $TARGETS" and "build --no-cache --pull $TARGETS"
+            if "--force-recreate" in run and re.search(r"\bbuild(\s+--[a-z-]+)*\s+\$TARGETS", run):
                 m = re.search(r"<<'?ENDSSH'?\n(.*?)\n\s*ENDSSH", run, re.S)
                 body = m.group(1) if m else run
                 return [ln for ln in body.splitlines() if not ln.lstrip().startswith("#")]
@@ -53,6 +54,11 @@ def _deploy_body() -> list[str]:
 
 def _lines_matching(needle: str) -> list[int]:
     return [i for i, ln in enumerate(_deploy_body()) if needle in ln]
+
+
+def _lines_matching_regex(pattern: str) -> list[int]:
+    # Re-targeted: support regex patterns for build flags matching
+    return [i for i, ln in enumerate(_deploy_body()) if re.search(pattern, ln)]
 
 
 def test_teardown_is_never_invoked_before_the_build():
@@ -68,7 +74,8 @@ def test_teardown_is_never_invoked_before_the_build():
     container until its replacement image has been built.
     """
     body = _deploy_body()
-    build = [i for i, ln in enumerate(body) if "saas.yml build" in ln]
+    # Re-targeted: match both "build $TARGETS" and "build --no-cache --pull $TARGETS"
+    build = [i for i, ln in enumerate(body) if re.search(r"\bbuild(\s+--[a-z-]+)*\s+\$TARGETS", ln)]
     assert build, "no `docker compose build` found in the deploy step"
 
     # Bare `stale_cleanup` invocations (not the `stale_cleanup()` definition line).
@@ -98,7 +105,8 @@ def test_teardown_is_never_invoked_before_the_build():
 
 
 def test_build_happens_before_container_swap():
-    build = _lines_matching("saas.yml build")
+    # Re-targeted: use regex to match build with optional flags
+    build = _lines_matching_regex(r"\bbuild(\s+--[a-z-]+)*\s+\$TARGETS")
     swap = _lines_matching("up -d --no-deps --force-recreate")
     assert build, "no `docker compose build` found in the deploy step"
     assert swap, "no `up -d --no-deps --force-recreate` found in the deploy step"
@@ -106,6 +114,28 @@ def test_build_happens_before_container_swap():
         "The container swap runs before the build. Old containers must keep serving "
         "for the whole build; otherwise the site is down for build+boot, not boot."
     )
+
+
+def test_deploy_layers_the_production_overlay():
+    """The minimal-production deploy (#3800) must build AND swap with BOTH the base
+    SaaS compose and the production overlay — never the bare base, which would drop
+    the localhost-only Hub bind, re-add the absent cmms-ext network, and re-enable
+    integrations that are not deployed. This pins the overlay so a future edit that
+    silently drops it (reintroducing the outage class) fails here."""
+    body = _deploy_body()
+    # Re-targeted: match build with optional flags
+    cmds = [
+        ln
+        for ln in body
+        if re.search(r"\bbuild(\s+--[a-z-]+)*\s+\$TARGETS", ln)
+        or ("up -d --no-deps --force-recreate" in ln)
+    ]
+    assert cmds, "no build/swap compose commands found in the deploy step"
+    for ln in cmds:
+        assert "docker-compose.saas.yml" in ln and "docker-compose.production.yml" in ln, (
+            f"deploy compose command must layer the production overlay on the base "
+            f"SaaS compose (-f docker-compose.saas.yml -f docker-compose.production.yml): {ln.strip()!r}"
+        )
 
 
 def test_target_teardown_is_a_failure_path_not_a_precondition():

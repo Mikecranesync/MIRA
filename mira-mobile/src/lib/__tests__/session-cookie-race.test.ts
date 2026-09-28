@@ -1,0 +1,306 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({
+  data: new Map<string, string>(),
+  httpRequest: vi.fn(),
+  beforePreferenceSet: null as null | ((key: string, value: string) => Promise<void>),
+}));
+
+vi.mock("@capacitor/core", () => ({
+  // Production flavor's BuildConfig bridge (these suites predate the flavor split).
+  registerPlugin: (name: string) =>
+    name === "BuildConfig"
+      ? {
+          getApiBase: async () => ({ apiBase: "https://app.factorylm.com" }),
+          getDeepLinkConfig: async () => ({ host: "app.factorylm.com", scheme: "factorylm" }),
+        }
+      : {},
+  Capacitor: { isNativePlatform: () => true },
+  CapacitorHttp: { request: state.httpRequest },
+}));
+
+vi.mock("@capacitor/preferences", () => ({
+  Preferences: {
+    get: vi.fn(async ({ key }: { key: string }) => ({ value: state.data.get(key) ?? null })),
+    set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
+      await state.beforePreferenceSet?.(key, value);
+      state.data.set(key, value);
+    }),
+  },
+}));
+
+import {
+  clearAllLocalState,
+  onAuthExpired,
+  request,
+  requestBinary,
+  requestStream,
+} from "../../api/client";
+import { signIn } from "../../api/resources";
+
+const JAR_KEY = "flm.cookiejar.v1";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+beforeEach(async () => {
+  state.data.clear();
+  state.httpRequest.mockReset();
+  state.beforePreferenceSet = null;
+  vi.restoreAllMocks();
+  await clearAllLocalState();
+});
+
+describe("native session-cookie purge barrier", () => {
+  it("does not let a delayed native request restore a cookie after sign-out", async () => {
+    const response = deferred<{
+      status: number;
+      data: string;
+      headers: Record<string, string>;
+    }>();
+    state.httpRequest.mockReturnValueOnce(response.promise);
+
+    const pending = request("/api/delayed/");
+    await vi.waitFor(() => expect(state.httpRequest).toHaveBeenCalledTimes(1));
+    await clearAllLocalState();
+    response.resolve({
+      status: 200,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=late; Path=/" },
+    });
+
+    await pending;
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
+  });
+
+  it("does not let delayed native streamed headers restore a cookie after sign-out", async () => {
+    const response = deferred<Response>();
+    vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response.promise);
+
+    const pending = requestStream("/api/delayed-stream/", {
+      json: {},
+      onChunk: () => {},
+    });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await clearAllLocalState();
+    response.resolve(new Response("done", {
+      status: 200,
+      headers: { "Set-Cookie": "session-token=late; Path=/" },
+    }));
+
+    await pending;
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
+  });
+
+  it("does not let a delayed native binary response restore a cookie after sign-out", async () => {
+    const response = deferred<{
+      status: number;
+      data: string;
+      headers: Record<string, string>;
+    }>();
+    state.httpRequest.mockReturnValueOnce(response.promise);
+
+    const pending = requestBinary("/api/delayed-file/");
+    await vi.waitFor(() => expect(state.httpRequest).toHaveBeenCalledTimes(1));
+    await clearAllLocalState();
+    response.resolve({
+      status: 200,
+      data: "AQI=",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Set-Cookie": "session-token=late; Path=/",
+      },
+    });
+
+    await pending;
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
+  });
+
+  // #3799: the boot-time getMe() can still be in flight when the technician
+  // signs in after the boot deadline. signIn() retires it at entry, so its late
+  // answer — a stale 401 carrying a session-cookie deletion, landing between the
+  // credentials callback and signIn's validating /api/me — cannot erase the
+  // cookie the callback just stored. Real signIn flow, ordering controlled here.
+  it("a stale pre-sign-in 401 cannot delete the cookie the credentials callback stored", async () => {
+    const boot = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        return meCalls === 1 ? boot.promise : validating.promise;
+      }
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/credentials/")) {
+        return {
+          status: 200,
+          data: "{}",
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const bootMe = request("/api/me/"); // App's boot-time check, still pending
+    await vi.waitFor(() => expect(meCalls).toBe(1));
+
+    const attempt = signIn("tech@example.com", "pw");
+    // CSRF + callback have run once signIn's validating /api/me is requested.
+    await vi.waitFor(() => expect(meCalls).toBe(2));
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    boot.resolve({
+      status: 401,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=; Max-Age=0; Path=/" },
+    });
+    await bootMe.catch(() => {});
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+    expect(await attempt).toEqual({ ok: true });
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+  });
+
+  // Codex r3: the boot GET retries once on a transport failure. If the first
+  // attempt fails AFTER sign-in retired it, the retry must keep the retired
+  // epoch — not rejoin the new one — so its stale 401 still cannot delete the
+  // fresh cookie.
+  it("a boot getMe retry started after sign-in began keeps the retired epoch", async () => {
+    let failFirst!: (reason: Error) => void;
+    const first = new Promise<never>((_, reject) => {
+      failFirst = reject;
+    });
+    const retry = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        if (meCalls === 1) return first; // boot attempt 1 (will fail at transport)
+        if (meCalls === 2) return validating.promise; // signIn's validating call
+        return retry.promise; // boot attempt 2 (the automatic retry, started last)
+      }
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/credentials/")) {
+        return {
+          status: 200,
+          data: "{}",
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const bootMe = request("/api/me/");
+    await vi.waitFor(() => expect(meCalls).toBe(1));
+
+    const attempt = signIn("tech@example.com", "pw");
+    await vi.waitFor(() => expect(meCalls).toBe(2)); // CSRF + callback done; validating pending
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    failFirst(new Error("socket reset")); // transport failure → automatic retry
+    await vi.waitFor(() => expect(meCalls).toBe(3));
+    retry.resolve({
+      status: 401,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=; Max-Age=0; Path=/" },
+    });
+    await bootMe.catch(() => {});
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+
+    validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+    expect(await attempt).toEqual({ ok: true });
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+  });
+
+  // #3799 F1 (Codex r5): the retired boot getMe() can return a 401 AFTER a new
+  // sign-in succeeds. Its cookies are already ignored by epoch, but the
+  // auth-expired EVENT is a third channel — if it fires, App's listener does
+  // setMe(null) and the freshly-authenticated technician is bounced to Login.
+  // A stale-epoch 401 must NOT fire auth-expiry; a current-epoch 401 still must.
+  it("a stale (retired) 401 does not fire auth-expiry against the fresh session", async () => {
+    const authExpired = vi.fn();
+    const off = onAuthExpired(authExpired);
+    try {
+      const boot = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+      const validating = deferred<{ status: number; data: string; headers: Record<string, string> }>();
+      let meCalls = 0;
+      state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+        if (url.endsWith("/api/me/")) {
+          meCalls += 1;
+          return meCalls === 1 ? boot.promise : validating.promise;
+        }
+        if (url.endsWith("/api/auth/csrf/")) {
+          return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+        }
+        if (url.endsWith("/api/auth/callback/credentials/")) {
+          return { status: 200, data: "{}", headers: { "Set-Cookie": "session-token=fresh; Path=/" } };
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+
+      const bootMe = request("/api/me/"); // boot check, still pending
+      await vi.waitFor(() => expect(meCalls).toBe(1));
+
+      const attempt = signIn("tech@example.com", "pw"); // retires the boot request
+      await vi.waitFor(() => expect(meCalls).toBe(2));
+      validating.resolve({ status: 200, data: JSON.stringify({ id: "u1" }), headers: {} });
+      expect(await attempt).toEqual({ ok: true });
+
+      // The retired boot request now returns 401. It must be a no-op for auth events.
+      boot.resolve({ status: 401, data: "{}", headers: {} });
+      await bootMe.catch(() => {});
+      expect(authExpired).not.toHaveBeenCalled();
+      expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({ "session-token": "fresh" });
+    } finally {
+      off();
+    }
+  });
+
+  it("a current-epoch 401 still fires auth-expiry (the guard did not disable expiry)", async () => {
+    const authExpired = vi.fn();
+    const off = onAuthExpired(authExpired);
+    try {
+      state.httpRequest.mockResolvedValueOnce({ status: 401, data: "{}", headers: {} });
+      await request("/api/me/").catch(() => {});
+      expect(authExpired).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
+  it("serializes a purge behind a cookie save that was already writing", async () => {
+    const writeStarted = deferred<void>();
+    const releaseWrite = deferred<void>();
+    state.beforePreferenceSet = async (key, value) => {
+      if (key === JAR_KEY && value.includes("late")) {
+        writeStarted.resolve();
+        await releaseWrite.promise;
+      }
+    };
+    state.httpRequest.mockResolvedValueOnce({
+      status: 200,
+      data: "{}",
+      headers: { "Set-Cookie": "session-token=late; Path=/" },
+    });
+
+    const requestFinishing = request("/api/late-save/");
+    await writeStarted.promise;
+    const purge = clearAllLocalState();
+    releaseWrite.resolve();
+
+    await requestFinishing;
+    await purge;
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
+  });
+});

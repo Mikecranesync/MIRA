@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "Flexible couplings are designed to accommodate minor misalignment; 0.5 inch is significant and suggests either parallel misalignment or axial offset",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.002-0.005 inch for modern systems)",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer identifies misalignment and gives steps, but omits explicit mention of coupling design tolerance and specific manufacturer spec ranges."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Diagnostic dimension not applicable."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, concrete actions with methods, locations, expected signs, and next steps."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Shows high confidence with no hedging, appropriate for the context."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 80.0
+}

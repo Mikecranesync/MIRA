@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-06",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-06",
+    "category": "troubleshooting",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "PowerFlex 525 is displaying fault code F007. What does this indicate and what should the technician check?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "F007 is Motor Overload fault, indicating internal electronic overload trip has occurred",
+        "The drive's output current has exceeded the hardware current limit",
+        "Technician should verify connections between motor and load and verify level and time requirements",
+        "Check that the motor load is not excessively high or jammed; reduce load so output current does not exceed the motor overload current parameter"
+      ],
+      "wrong_if": [
+        "Confuses F007 with F006 (Motor Stalled), which is inability to accelerate motor",
+        "Claims F007 is a temperature fault on the heatsink or control module",
+        "States F007 can be cleared by cycling power without addressing the overload condition",
+        "Cites a PowerFlex 40 fault code table instead of PowerFlex 525"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "PowerFlex 525 is displaying fault code F007. What does this indicate and what should the technician check?",
+      "answer": "F007 indicates a Motor Overload fault \u2013 the drive\u2019s internal overload protection has tripped.\u202fCheck that the motor load is not excessive (ensure output current stays below the limit set by P033\u202f[Motor\u202fOL\u202fCurrent]) and verify the Boost Select setting (A530) is correct; also confirm the motor isn\u2019t drawing current above the configured limits\u202f[2].",
+      "citations": [
+        {
+          "citationId": "2",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 161,
+          "quote": "\u2026motor load exists.\nReduce load so drive output current\ndoes not exceed the current set by\nparameter P033 [Motor OL Current].\n\u2022 Verify A530 [Boost Select] setting.\nF008 Heatsink OvrTmp 1 Heatsink/Power Module\ntemperature exceeds a\npredefined",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 2.3543660640716553,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:35.689317+00:00"
+}

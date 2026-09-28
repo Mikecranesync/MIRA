@@ -8,6 +8,7 @@ import { describe, test, expect } from "bun:test";
 import {
   getPack,
   getFault,
+  getFaultEntry,
   getParameter,
   listFaults,
   listParameters,
@@ -263,6 +264,83 @@ describe("siemens g120 pack — manual-verified truth pins", () => {
     expect(getParameter(pack, "p0605")!.related_faults).toContain("F07011");
     // rated-motor-data params are cited but not fault-linked (manual doesn't link them)
     expect(getParameter(pack, "p0304")!.related_faults).toEqual([]);
+  });
+});
+
+// ── G120 fault entries — Fix 1 (LIVE-PRODUCT-GTM-FIXES-001 slice 1) ──────
+// F30001, F30003, F30011, F30012 previously showed only a "not in free pack"
+// callout. They now show cited meaning + remedy steps from the SHA-pinned
+// SINAMICS G120C List Manual (82aad5dd…). These pins prevent regression.
+describe("siemens g120 fault entries — meaning + first checks", () => {
+  const pack = getPack("siemens-g120")!;
+
+  test("pack exposes faultEntries for the no-param faults", () => {
+    expect(pack.faultEntries.length).toBeGreaterThanOrEqual(4);
+    const codes = pack.faultEntries.map((e) => e.fault_code);
+    expect(codes).toContain("30001");
+    expect(codes).toContain("30003");
+    expect(codes).toContain("30011");
+    expect(codes).toContain("30012");
+  });
+
+  test("F30001 entry has cited meaning and at least 5 remedy steps from manual", () => {
+    const e = getFaultEntry(pack, "30001")!;
+    expect(e).not.toBeNull();
+    expect(e.meaning).toContain("overcurrent");
+    expect(e.remedy_steps.length).toBeGreaterThanOrEqual(5);
+    expect(e.source_citation.page).toBe("522");
+    expect(e.source_citation.doc).toContain("List Manual");
+  });
+
+  test("F30011 entry has cited meaning and remedy steps from manual", () => {
+    const e = getFaultEntry(pack, "30011")!;
+    expect(e).not.toBeNull();
+    expect(e.meaning).toContain("DC link voltage ripple");
+    expect(e.remedy_steps.length).toBeGreaterThanOrEqual(3);
+    expect(e.source_citation.page).toBe("525");
+  });
+
+  test("F30001 fault page shows cited meaning and first-checks, not the empty callout", () => {
+    const fault = getFault(pack, "F30001")!;
+    const html = renderFaultPage(pack, fault);
+    expect(html).toContain("What this fault means");
+    expect(html).toContain("First checks (from manual)");
+    expect(html).toContain("check the motor data");
+    expect(html).not.toContain("isn't in the free pack yet");
+  });
+
+  test("F30011 fault page shows cited meaning and first-checks, not the empty callout", () => {
+    const fault = getFault(pack, "F30011")!;
+    const html = renderFaultPage(pack, fault);
+    expect(html).toContain("What this fault means");
+    expect(html).toContain("First checks (from manual)");
+    expect(html).toContain("check the main circuit fuses");
+    expect(html).not.toContain("isn't in the free pack yet");
+  });
+
+  test("fault pages with meaning carry a manual citation", () => {
+    for (const code of ["F30001", "F30003", "F30011", "F30012"]) {
+      const fault = getFault(pack, code)!;
+      const html = renderFaultPage(pack, fault);
+      expect(html).toContain("List Manual");
+    }
+  });
+});
+
+// ── Fault search form — Fix 2 (LIVE-PRODUCT-GTM-FIXES-001 slice 2) ────────
+describe("fault search form on landing page", () => {
+  test("G120 landing page has a fault-code search form", () => {
+    const pack = getPack("siemens-g120")!;
+    const html = renderDriveLandingPage(pack);
+    expect(html).toContain("dc-fault-input");
+    expect(html).toContain("Look up fault");
+    expect(html).toContain("/drive-commander/siemens-g120/faults/");
+  });
+
+  test("search form targets the correct model slug", () => {
+    const pf = getPack("powerflex-525")!;
+    const html = renderDriveLandingPage(pf);
+    expect(html).toContain("/drive-commander/powerflex-525/faults/");
   });
 });
 

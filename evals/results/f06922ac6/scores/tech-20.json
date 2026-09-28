@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 75,
+      "missing_points": [
+        "If motor is cold and load is normal, increase overload trip point to ~12A or verify that 3RU2 time-delay curve is appropriate for the motor"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers inrush magnitude and overload proximity but omits specific trip\u2011point adjustment guidance."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable for this grading task."
+    },
+    "diagnostic": {
+      "score": 90,
+      "note": "Provides a clear discriminating question about starter type, avoiding generic cause lists."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Offers concrete steps (verify setting, check starter, measure current, inspect wiring) and next diagnostic question."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence with limited hedging, appropriate for the context."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not required."
+    }
+  },
+  "case_score": 81.5
+}

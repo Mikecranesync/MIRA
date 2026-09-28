@@ -1,0 +1,93 @@
+# 15 critical ChatGPT-parity workflows (Baseline Standard §4.1 subset, §19 minimum).
+# Every run records PASS | DEGRADED | FAIL per workflow per surface, with evidence
+# (screenshot path + notes). DEGRADED = works but with more taps/thought/waiting than
+# the ChatGPT-class reference. Recording rule: a flow that works but violates the
+# §5.2 interaction grammar is DEGRADED, not PASS.
+#
+# Surfaces: android (unified shell on device, via tools/mobile-e2e/device.py),
+#           web (dev build :5199 against prod, or lab shell for layout-only items).
+# reference: the equivalent ChatGPT task the workflow is compared against.
+
+- id: wf-01
+  name: Start a new conversation
+  reference: "ChatGPT: tap New chat -> empty conversation, focused composer"
+  android: ["open drawer (tap-text ☰ / content-desc Menu)", "tap-text 'New chat'", "shot wf01-newchat"]
+  pass: "Blank conversation (greeting, zero prior turns), composer ready in <=2 taps"
+  fail_signals: ["prior turns visible (P0 regression)", "requires machine/notebook selection first"]
+
+- id: wf-02
+  name: Ask without selecting a machine
+  reference: "ChatGPT: type into composer on home, get an answer"
+  android: ["from fresh New chat", "type question via device.py type", "tap send", "await answer"]
+  pass: "Valid general question answered without forced equipment selection; evidence label states ungrounded"
+  fail_signals: ["blocked on machine selection", "error demanding notebook setup"]
+
+- id: wf-03
+  name: Continue an existing conversation
+  android: ["drawer -> tap existing thread", "type follow-up", "send", "shot wf03-continued"]
+  pass: "Prior turns visible, follow-up lands in SAME thread, context retained"
+
+- id: wf-04
+  name: Find a previous conversation
+  android: ["drawer", "locate thread by first-question title in Recent/Project tree", "shot wf04-found"]
+  pass: "Thread findable by its title within the drawer without explanation"
+  degraded_signals: ["titles are ids/uuids not first-question words", "requires >2 levels of navigation"]
+
+- id: wf-05
+  name: Open a Project
+  android: ["drawer", "tap project (notebook) name", "shot wf05-project"]
+  pass: "Project opens to its conversation surface; active project context visible"
+
+- id: wf-06
+  name: Create a Project
+  android: ["drawer / projects surface", "create new project", "shot wf06-created"]
+  pass: "Creatable from the primary navigation without leaving the conversation mental model"
+
+- id: wf-07
+  name: Start a new thread inside a Project
+  android: ["open project", "drawer -> New chat within project", "send first question", "shot wf07-thread"]
+  pass: "New thread created with its own identity; appears in thread list with first-question title (Gap 1)"
+
+- id: wf-08
+  name: Switch threads
+  android: ["drawer", "tap thread A", "drawer", "tap thread B", "shot wf08-switched"]
+  pass: "Each thread shows only its own turns; selection state (aria-current) singular"
+  fail_signals: ["turns bleed between threads (isolation regression)"]
+
+- id: wf-09
+  name: Attach a photo
+  android: ["composer + button", "Photo", "pick from gallery (fixture pushed to /sdcard/Pictures)", "shot wf09-attached"]
+  pass: "Pending attachment chip visible in composer, scoped to this thread"
+
+- id: wf-10
+  name: Ask about attached evidence
+  android: ["with wf-09 attachment", "type question about the photo", "send", "await answer"]
+  pass: "Answer engages the attachment; evidence label reflects the visual evidence"
+
+- id: wf-11
+  name: Open a citation
+  android: ["ask a manual-grounded question in a sourced notebook", "tap citation chip", "shot wf11-citation"]
+  pass: "Citation opens source/passage (page + quote); BACK/✕ closes the sheet, not the conversation"
+
+- id: wf-12
+  name: Stop generation
+  android: ["send long question", "tap Stop while streaming", "shot wf12-stopped"]
+  pass: "Stop replaces Send during generation and halts output; composer returns to ready"
+  notes: "Android CapacitorHttp delivers buffered SSE (#3453): Stop is client-side; the streaming window may be short. Record honestly."
+
+- id: wf-13
+  name: Force-close and reopen
+  android: ["device.py forcestop", "relaunch", "shot wf13-reopened"]
+  pass: "App reopens to a sane state; the thread and its turns persist; no forced re-setup"
+
+- id: wf-14
+  name: Navigate without dead ends (BACK ladder)
+  android: ["from citation sheet / drawer / thread, press hardware BACK repeatedly"]
+  pass: "One rung per BACK per the Sensor BACK ladder contract; never an app exit mid-ladder, never a dead end"
+
+- id: wf-15
+  name: Camera capture into the conversation
+  device_only: true
+  android: ["composer +", "Camera", "capture", "confirm attachment chip", "shot wf15-camera"]
+  pass: "Native camera opens, capture returns as pending attachment (PR #3746)"
+  notes: "Emulator = SKIP by rule (no camera to miss). Physical device only."

@@ -36,6 +36,71 @@
    "30012": "Power unit: Temperature sensor heat sink wire breakage"
   }
  },
+ "fault_entries": [
+  {
+   "fault_code": "30001",
+   "meaning": "The power unit has detected an overcurrent condition.",
+   "remedy_steps": [
+    "check the motor data - if required, carry out commissioning",
+    "check the motor circuit configuration (star/delta)",
+    "U/f operation: Increase up ramp",
+    "U/f operation: Check assignment of rated currents of motor and power unit",
+    "check the line supply quality",
+    "Reduce motor load",
+    "Correct connection of line reactor",
+    "check the power cable connections",
+    "check the power cables for short-circuit or ground fault",
+    "check the length of the power cables",
+    "replace power unit",
+    "check the line supply phases"
+   ],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "522",
+    "excerpt": "F30001 Power unit: Overcurrent — Cause: The power unit has detected an overcurrent condition."
+   }
+  },
+  {
+   "fault_code": "30003",
+   "meaning": "The power unit has detected an undervoltage condition in the DC link.",
+   "remedy_steps": [
+    "check the line supply voltage",
+    "check the line supply phases"
+   ],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "523",
+    "excerpt": "F30003 Power unit: DC link voltage undervoltage — Cause: The power unit has detected an undervoltage condition in the DC link."
+   }
+  },
+  {
+   "fault_code": "30011",
+   "meaning": "At the power unit, the DC link voltage ripple has exceeded the permissible limit value.",
+   "remedy_steps": [
+    "check the main circuit fuses",
+    "Check whether a single-phase load is distorting the line voltages",
+    "Detune the resonant frequency with the line inductance by using an upstream line reactor",
+    "check the motor feeder cables"
+   ],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "525",
+    "excerpt": "F30011 Power unit: Line phase failure in main circuit — Cause: At the power unit, the DC link voltage ripple has exceeded the permissible limit value."
+   }
+  },
+  {
+   "fault_code": "30012",
+   "meaning": "The connection to a heat sink temperature sensor in the power unit is interrupted.",
+   "remedy_steps": [
+    "Contact the manufacturer"
+   ],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "525",
+    "excerpt": "F30012 Power unit: Temperature sensor heat sink wire breakage — Cause: The connection to a heat sink temperature sensor in the power unit is interrupted."
+   }
+  }
+ ],
  "envelope": {},
  "knowledge": {},
  "parameters": [

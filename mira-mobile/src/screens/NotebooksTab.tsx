@@ -3,7 +3,7 @@
 // equipment-notebook APIs: home card list → "+ Create new" pill / camera
 // (nameplate → EDITABLE candidate → confirm) → workspace (NotebookScreen).
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { canPickNatively, pickNameplatePhoto } from "../lib/native-pick";
+import { canPickNatively, captureNameplatePhoto } from "../lib/native-pick";
 import {
   listNotebooks,
   createNotebook,
@@ -12,9 +12,11 @@ import {
   type NameplateCandidate,
 } from "../api/resources";
 import { nameplateErrorCopy, reasonFromRecognizeError } from "../lib/nameplate-flow";
+import { notebookDisplayName } from "../lib/resource-copy";
 import { openNotebookTransition } from "../lib/scan-landing";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { NotebookScreen } from "./NotebookScreen";
+import { can } from "../nav";
 
 export type NotebookRoute =
   | { name: "home" }
@@ -45,6 +47,7 @@ export function NotebooksTab({
   backRef,
   route,
   setRoute,
+  capabilities,
 }: {
   backRef: MutableRefObject<(() => boolean) | null>;
   /** Lifted to the shell so a scan can land INSIDE a notebook: switching the
@@ -52,6 +55,7 @@ export function NotebooksTab({
    *  the notebook LIST instead of the machine they just scanned. */
   route: Route;
   setRoute: (r: Route) => void;
+  capabilities: string[];
 }) {
   const notebookBack = useRef<(() => boolean) | null>(null);
 
@@ -76,6 +80,7 @@ export function NotebooksTab({
     return (
       <NotebookScreen
         id={route.id}
+        chatV2Available={can(capabilities, "chat_v2")}
         openAddSources={route.openAddSources}
         backRef={notebookBack}
         onExit={() => setRoute({ name: "home" })}
@@ -122,13 +127,12 @@ function Home({
       : [];
 
   /**
-   * The nameplate shortcut. On device this is the phone's own image picker
-   * (#3353: the WebView turned capture="environment" into a chooser); on web
-   * the hidden input below still does the job.
+   * The nameplate shortcut. On device this is the phone's CAMERA (#3353: open
+   * viewfinder, not gallery); on web the hidden input below still does the job.
    */
   const openNameplatePicker = async () => {
     if (!canPickNatively()) return cameraRef.current?.click();
-    await onCameraPick(await pickNameplatePhoto());
+    await onCameraPick(await captureNameplatePhoto());
   };
 
   const onCameraPick = async (file: File | null) => {
@@ -174,7 +178,7 @@ function Home({
           <div key={nb.id} className="card nb-card" onClick={() => onOpen(nb.id)}>
             <div className={`nb-cover ${coverClass(nb)}`}>{coverGlyph(nb.equipmentType)}</div>
             <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0 }}>{nb.displayName}</h3>
+              <h3 style={{ margin: 0 }}>{notebookDisplayName(nb.displayName)}</h3>
               <div className="meta">
                 {nb.sourceCount} source{nb.sourceCount === 1 ? "" : "s"}
                 {nb.createdAt ? ` · ${new Date(nb.createdAt).toLocaleDateString()}` : ""}

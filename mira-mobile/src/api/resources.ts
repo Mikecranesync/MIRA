@@ -2,12 +2,14 @@
 // no screen builds its own requests. All paths trailing-slash (Hub canonical).
 
 import {
+  ApiError,
   errorFromStatus,
   request,
   uploadMultipart,
   withAuthEventsSuppressed,
   clearAllLocalState,
   requestStream,
+  invalidateLocalSessionRequests,
 } from "./client";
 import { createChatSseParser, type ChatTurn } from "../lib/sse";
 import type { AssetHistory, HistoryResult, MachineEvidenceWindow } from "../lib/replay";
@@ -15,27 +17,61 @@ import type { VisualEvidence } from "../lib/sensor";
 
 // --- auth -------------------------------------------------------------------
 
+export type SignInFailureReason =
+  | "could_not_start"
+  | "invalid_credentials"
+  | "network"
+  | "server";
+
+function signInFailureReason(
+  error: unknown,
+  fallback: Extract<SignInFailureReason, "could_not_start" | "invalid_credentials">,
+): SignInFailureReason {
+  if (error instanceof ApiError && error.kind === "network") return "network";
+  if (error instanceof ApiError && error.kind === "server") return "server";
+  return fallback;
+}
+
 export async function signIn(
   email: string,
   password: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: true } | { ok: false; reason: SignInFailureReason }> {
+  // Retire every request already in flight (the boot-time getMe() that may
+  // still be pending after the boot deadline, #3799) BEFORE the CSRF/callback
+  // requests establish a new session in the jar: a stale 401 answering later
+  // carries a cookie deletion, and it must not be able to erase what this
+  // sign-in just stored.
+  invalidateLocalSessionRequests();
   return withAuthEventsSuppressed(async () => {
     try {
       const csrfRes = await request("/api/auth/csrf/");
       const csrfToken = (csrfRes.data as { csrfToken?: string } | null)?.csrfToken;
-      if (!csrfToken) return { ok: false, error: "could not start sign-in" };
+      if (!csrfToken) return { ok: false, reason: "could_not_start" };
+      let callbackError: unknown = null;
       try {
         await request("/api/auth/callback/credentials/", {
           method: "POST",
           form: { csrfToken, email, password, json: "true" },
         });
-      } catch {
+      } catch (error) {
+        callbackError = error;
         /* NextAuth's callback status varies; /api/me below is the truth. */
       }
-      await request("/api/me/");
-      return { ok: true };
-    } catch {
-      return { ok: false, error: "invalid email or password" };
+      try {
+        await request("/api/me/");
+        return { ok: true };
+      } catch (error) {
+        const callbackReason = signInFailureReason(callbackError, "invalid_credentials");
+        return {
+          ok: false,
+          reason:
+            callbackReason === "invalid_credentials"
+              ? signInFailureReason(error, "invalid_credentials")
+              : callbackReason,
+        };
+      }
+    } catch (error) {
+      return { ok: false, reason: signInFailureReason(error, "could_not_start") };
     }
   });
 }
@@ -163,7 +199,7 @@ export async function listPmSchedules(): Promise<PmSchedule[]> {
   const d = r.data as { schedules?: Record<string, unknown>[] } | null;
   return (d?.schedules ?? []).map((s) => ({
     id: String(s.id ?? ""),
-    task: String(s.task ?? s.task_description ?? s.title ?? "PM task"),
+    task: String(s.task ?? s.task_description ?? s.title ?? ""),
     manufacturer: (s.manufacturer as string) ?? null,
     model_number: (s.model_number as string) ?? null,
     equipment_id: s.equipment_id ? String(s.equipment_id) : null,
@@ -276,6 +312,13 @@ export async function openAssetNotebook(
 export interface NotebookAssetBinding {
   /** kg_entities.entity_id — the asset UUID as text. */
   entityId: string;
+  /** The bound asset's CURRENT identity, resolved live server-side (Slice 0):
+   *  `name` = the machine's display name ("Discharge Conveyor"), `assetTag` =
+   *  its sticker/search handle ("CV-101"). Null when the server has no bound
+   *  asset row to resolve — callers fall back to the notebook's own fields.
+   *  These override the notebook's frozen display_name in the machine label. */
+  name: string | null;
+  assetTag: string | null;
   selectedVia: AssetSelectionMethod | null;
   confirmedBy: string | null;
   confirmedAt: string | null;
@@ -293,13 +336,37 @@ export interface Notebook {
   createdAt: string | null;
   /** L2 machine binding, or null for a general (L0/L1) notebook. */
   asset: NotebookAssetBinding | null;
+  /** 087 / THRD-0: conversations inside this notebook-as-Project. */
+  threads?: NotebookThreadSummary[];
+}
+
+export interface NotebookThreadSummary {
+  id: string;
+  notebookId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  sharedLegacy: boolean;
+}
+
+function toNotebookThread(d: Record<string, unknown>, fallbackNotebookId = ""): NotebookThreadSummary {
+  return {
+    id: String(d.id ?? "legacy"),
+    notebookId: String(d.notebookId ?? d.notebook_id ?? fallbackNotebookId),
+    title: String(d.title ?? "New chat"),
+    createdAt: String(d.createdAt ?? d.created_at ?? ""),
+    updatedAt: String(d.updatedAt ?? d.updated_at ?? ""),
+    turnCount: Number(d.turnCount ?? d.turn_count ?? 0),
+    sharedLegacy: Boolean(d.sharedLegacy ?? d.shared_legacy),
+  };
 }
 
 export function toNotebook(d: Record<string, unknown>): Notebook {
   const a = d.asset as Record<string, unknown> | null | undefined;
   return {
     id: String(d.id ?? ""),
-    displayName: String(d.displayName ?? d.display_name ?? "Untitled"),
+    displayName: String(d.displayName ?? d.display_name ?? ""),
     manufacturer: (d.manufacturer as string) ?? null,
     model: (d.model as string) ?? null,
     equipmentType: (d.equipmentType as string) ?? null,
@@ -313,11 +380,16 @@ export function toNotebook(d: Record<string, unknown>): Notebook {
       a && a.entityId
         ? {
             entityId: String(a.entityId),
+            name: a.name != null ? String(a.name) : null,
+            assetTag: a.assetTag != null ? String(a.assetTag) : null,
             selectedVia: a.selectedVia != null ? (String(a.selectedVia) as AssetSelectionMethod) : null,
             confirmedBy: a.confirmedBy != null ? String(a.confirmedBy) : null,
             confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,
           }
         : null,
+    threads: Array.isArray(d.threads)
+      ? (d.threads as Record<string, unknown>[]).map((thread) => toNotebookThread(thread, String(d.id ?? "")))
+      : [],
   };
 }
 
@@ -430,6 +502,14 @@ export function canBeChatSource(
 }
 
 export interface NotebookServerTurn {
+  /** 086: hub_users.id of the technician who asked; null = legacy shared row.
+   *  The server already scopes `turns` to the caller + legacy, so this is
+   *  informational (additive; older Hubs omit it). */
+  ownerUserId?: string | null;
+  /** 086: true for a pre-ownership row every tenant user can read. */
+  sharedLegacy?: boolean;
+  /** 087 / THRD-0: server conversation id. "legacy" means pre-thread rows. */
+  threadId?: string;
   id: string;
   question: string;
   answerStatus: string;
@@ -475,23 +555,27 @@ export interface NotebookDetail {
   notebook: Notebook;
   sources: NotebookSource[];
   turns: NotebookServerTurn[];
+  threads: NotebookThreadSummary[];
   /** Linked LOOK photographs. Absent on an older server → `[]`, never a
    *  fabricated row; the Photos group simply doesn't render. */
   photos: NotebookPhoto[];
 }
 
-export async function getNotebookDetail(id: string): Promise<NotebookDetail> {
-  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(id)}/`);
+export async function getNotebookDetail(id: string, opts: { threadId?: string | null } = {}): Promise<NotebookDetail> {
+  const query = opts.threadId ? `?threadId=${encodeURIComponent(opts.threadId)}` : "";
+  const r = await request(`/api/equipment-notebooks/${encodeURIComponent(id)}/${query}`);
   const d = r.data as {
     notebook: Record<string, unknown>;
     sources?: Record<string, unknown>[];
     turns?: NotebookServerTurn[];
+    threads?: Record<string, unknown>[];
     photos?: Record<string, unknown>[];
   };
   return {
     notebook: toNotebook(d.notebook),
     sources: (d.sources ?? []).map(toNotebookSource),
     turns: d.turns ?? [],
+    threads: (d.threads ?? []).map((thread) => toNotebookThread(thread, String(d.notebook?.id ?? id))),
     // A photo row with no file id cannot be shown or opened, so it is dropped
     // rather than rendered as an untappable placeholder.
     photos: (d.photos ?? []).map(toNotebookPhoto).filter((p) => p.fileId !== ""),
@@ -594,7 +678,7 @@ export async function uploadSourceToNotebook(
     return {
       attached: false,
       duplicate: Boolean(d?.duplicate),
-      warning: d?.warning ?? "Saved, but this file couldn't be indexed for chat.",
+      warning: d?.warning ?? null,
     };
   }
   await attachSource(notebook.id, d.uploadId, { sourceRole: opts.sourceRole });
@@ -628,24 +712,11 @@ export interface FileLink {
   createdAt: string | null;
 }
 
-/** Technician-facing truth about what a file can do. Never promises search on
- *  a file the pipeline cannot read. */
-export function fileCapabilityLabel(capability: string): string {
-  switch (capability) {
-    case "indexable":
-      return "Searchable source";
-    case "viewable":
-      return "Viewable attachment";
-    default:
-      return "Stored file—not searchable in chat";
-  }
-}
-
 function toWorkspaceFile(d: Record<string, unknown>): WorkspaceFile {
   const cap = String(d.capability ?? "stored");
   return {
     id: String(d.id ?? ""),
-    filename: String(d.filename ?? "untitled"),
+    filename: String(d.filename ?? ""),
     mimeType: String(d.mimeType ?? "application/octet-stream"),
     sizeBytes: Number(d.sizeBytes ?? 0),
     capability: (cap === "indexable" || cap === "viewable" ? cap : "stored") as FileCapability,
@@ -839,7 +910,7 @@ export async function listAssetDocuments(
       return {
         fileId: String(a.fileId ?? ""),
         linkId: String(a.linkId ?? ""),
-        filename: String(a.filename ?? "untitled"),
+        filename: String(a.filename ?? ""),
         mimeType: String(a.mimeType ?? "application/octet-stream"),
         sizeBytes: Number(a.sizeBytes ?? 0),
         capability: (cap === "indexable" || cap === "viewable" ? cap : "stored") as FileCapability,
@@ -854,7 +925,7 @@ export async function listAssetDocuments(
     }),
     suggested: (d?.suggested ?? []).map((s) => ({
       sourceUrl: s.sourceUrl != null ? String(s.sourceUrl) : null,
-      title: String(s.title ?? "Untitled document"),
+      title: String(s.title ?? ""),
       modelNumber: s.modelNumber != null ? String(s.modelNumber) : null,
       equipmentType: s.equipmentType != null ? String(s.equipmentType) : null,
       chunkCount: Number(s.chunkCount ?? 0),
@@ -897,6 +968,16 @@ export const EMPTY_COMPONENT_IDENTITY: ComponentIdentity = {
   rpm: "",
 };
 
+/** One persisted VisualSession observation for THIS capture (Slice 2). The
+ *  `field`/`value` let the client confirm ONLY the exact readings it is still
+ *  affirming — a field the technician edited no longer matches `value`, so its
+ *  id is dropped and the pre-edit reading is never stamped confirmed. */
+export interface PersistedVisualObservation {
+  observationId: string;
+  field: string;
+  value: string;
+}
+
 export interface RecognizeComponentResult {
   fileId: string;
   candidate: Partial<ComponentIdentity>;
@@ -905,6 +986,11 @@ export interface RecognizeComponentResult {
   rawObservation: unknown;
   confidence: number | null;
   attachment: { linkId: string; notebookId: string } | null;
+  /** The persisted observation ids for this capture (empty when the notebook is
+   *  unbound or nothing was recorded). Carried to confirm to promote the exact
+   *  approved subset. */
+  visualObservations: PersistedVisualObservation[];
+  visualSessionId: string | null;
 }
 
 /** Nameplate photo of a COMPONENT inside this notebook's machine. The photo is
@@ -930,6 +1016,16 @@ export async function recognizeComponentNameplate(
     attachment: att
       ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }
       : null,
+    visualObservations: Array.isArray(d.visualObservations)
+      ? (d.visualObservations as Record<string, unknown>[])
+          .filter((o) => o && typeof o.observationId === "string")
+          .map((o) => ({
+            observationId: String(o.observationId),
+            field: String(o.field ?? ""),
+            value: String(o.value ?? ""),
+          }))
+      : [],
+    visualSessionId: d.visualSessionId != null ? String(d.visualSessionId) : null,
   };
 }
 
@@ -971,10 +1067,12 @@ export async function lookAtPhoto(
   image: File,
   clientKey: string,
   question?: string | null,
+  threadId?: string | null,
 ): Promise<LookResult> {
   const fd = new FormData();
   fd.append("image", image);
   fd.append("clientKey", clientKey);
+  if (threadId) fd.append("threadId", threadId);
   if (question?.trim()) fd.append("question", question.trim());
   // §4.1: the server parks + links the photo BEFORE vision, and a provider
   // failure (502) or an unconfigured recognizer (503) still returns that
@@ -1055,6 +1153,20 @@ export interface ConfirmComponentResult {
   discoveryReason?: string | null;
   /** The manufacturer's own manual-request page (validated by the server). */
   oemRequestUrl?: string | null;
+  /** Slice 2: how many persisted visual observations this confirm promoted to
+   *  technician-confirmed (0 unless the client sent unchanged observation ids
+   *  for a bound-asset capture). */
+  visualPromotedCount?: number;
+  /** Slice 3: how many vision readings this confirm superseded with a
+   *  technician-provided replacement. */
+  visualCorrectedCount?: number;
+  /** Slice 3 (Codex F1): corrections the server REFUSED because their value
+   *  contradicted the identity confirmed in the same request. */
+  visualCorrectionMismatches?: { observationId: string; field: string }[];
+  /** Slice 3 (Codex round 2 F1): true when corrections were submitted and the
+   *  server could not apply them (transient DB error, supersede race). The
+   *  confirm itself still succeeded; the technician's edits did not land. */
+  visualCorrectionFailed?: boolean;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1075,6 +1187,20 @@ export interface ConfirmComponentBody {
   confidence?: number | null;
   /** Ask the server to go find the official manual for this component. */
   discover?: boolean;
+  /** Slice 2: the EXACT persisted visual observation ids the technician is
+   *  confirming (only the readings whose value is unchanged). The server
+   *  promotes only these, scoped to the bound asset + this photo. */
+  observationIds?: string[];
+  /** Slice 3: the readings the technician EDITED — exact observation id plus
+   *  the value they read instead. The server supersedes the vision reading
+   *  and records a technician-provided replacement on the same photo. */
+  corrections?: VisualCorrection[];
+}
+
+/** One correction: replace THIS observation's value with what the technician read. */
+export interface VisualCorrection {
+  observationId: string;
+  value: string;
 }
 
 /** Confirm the COMPONENT identity read from the nameplate. This never touches
@@ -1119,6 +1245,17 @@ export async function confirmComponentNameplate(
     applicability: d.applicability ?? null,
     message: d.message != null ? String(d.message) : null,
     warning: d.warning != null ? String(d.warning) : null,
+    visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
+    visualCorrectedCount: typeof d.visualCorrectedCount === "number" ? d.visualCorrectedCount : 0,
+    visualCorrectionMismatches: Array.isArray(d.visualCorrectionMismatches)
+      ? (d.visualCorrectionMismatches as unknown[]).flatMap((m) => {
+          const o = m as { observationId?: unknown; field?: unknown } | null;
+          return o && typeof o.observationId === "string" && typeof o.field === "string"
+            ? [{ observationId: o.observationId, field: o.field }]
+            : [];
+        })
+      : [],
+    visualCorrectionFailed: d.visualCorrectionFailed === true,
   };
 }
 
@@ -1248,6 +1385,8 @@ export async function askNotebook(
   message: string,
   sourceDocIds: string[],
   opts: {
+    /** 087 / THRD-0: conversation identity inside the notebook-as-Project. */
+    threadId?: string | null;
     /**
      * "general" asks for an explicitly ungrounded answer (spec 1.1). It is
      * sent ONLY when the technician chose it — never as an automatic
@@ -1257,6 +1396,8 @@ export async function askNotebook(
     mode?: "general";
     /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
     history?: ChatHistoryTurn[];
+    /** Stable across Retry; scopes server-side turn-write idempotency. */
+    clientRequestId?: string;
     /** STRM-1: called with the turn-so-far after every completed frame, so
      *  the transcript can paint tokens as they arrive. The resolved value is
      *  the SAME object the last update produced (one parser, one truth). */
@@ -1281,15 +1422,33 @@ export async function askNotebook(
       json: {
         message,
         sourceDocIds,
+        ...(opts.threadId ? { threadId: opts.threadId } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
+        ...(opts.clientRequestId ? { clientRequestId: opts.clientRequestId } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
       },
+      onResponseHeaders: (headers) => {
+        const safetyTrigger = headers.get("X-Safety-Stop");
+        if (safetyTrigger === null) return;
+        parser.push(`data: ${JSON.stringify({ kind: "safety", trigger: safetyTrigger })}\n\n`);
+        opts.onUpdate?.(parser.turn());
+      },
       onChunk: (chunk) => {
-        const before = parser.turn().answer;
+        const before = parser.turn();
         const partial = parser.push(chunk);
-        if (partial.answer !== before) opts.onUpdate?.(partial);
+        // Text growth, or an authoritative marker landing before content. Both
+        // identity dispute and Safety STOP must reach screen state immediately;
+        // otherwise a transport failure before the first content byte can erase
+        // a warning the server has already committed.
+        if (
+          partial.answer !== before.answer ||
+          partial.identityDisputed !== before.identityDisputed ||
+          partial.safetyTrigger !== before.safetyTrigger
+        ) {
+          opts.onUpdate?.(partial);
+        }
       },
       signal: opts.signal,
       timeoutMs: 120_000,
@@ -1388,6 +1547,9 @@ export async function getAssetHistory(
     summary: (d.summary ?? {}) as AssetHistory["summary"],
     provenance: "machine_memory",
     reason: d.reason === "unavailable" ? "unavailable" : null,
+    // Workstream C: the server's own coverage facts (null on an older Hub —
+    // the lib derives them from rows + reason, never from freshness).
+    coverage: coverageFrom(d.coverage),
     // The window the SERVER fetched, which is nested (`historyResponseBody`
     // emits `window:{from,to,pre,post}`), NOT the one we asked for. The server
     // clamps to the §4.3 120 s cap, so echoing the request would misname the
@@ -1401,6 +1563,28 @@ export async function getAssetHistory(
     to: w.to != null ? String(w.to) : null,
   };
   return { ok: true, history };
+}
+
+/** The Hub's HistoryCoverage, taken verbatim when present and well-formed. */
+function coverageFrom(raw: unknown): AssetHistory["coverage"] {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.recorded !== "number" || typeof c.admissible !== "boolean") return null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    recorded: c.recorded,
+    events: num(c.events) ?? undefined,
+    diffs: num(c.diffs) ?? undefined,
+    historyAvailable: c.historyAvailable !== false,
+    diffsAvailable: typeof c.diffsAvailable === "boolean" ? c.diffsAvailable : undefined,
+    admissible: c.admissible,
+    from: str(c.from),
+    to: str(c.to),
+    earliest: str(c.earliest),
+    latest: str(c.latest),
+    ingestLagMaxMs: num(c.ingestLagMaxMs),
+  };
 }
 
 /** One bound of the fetched window, in seconds: the server's own `pre`/`post`

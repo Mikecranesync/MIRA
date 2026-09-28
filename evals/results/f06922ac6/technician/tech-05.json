@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-05",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-05",
+    "category": "troubleshooting",
+    "mode": "general",
+    "equipment": null,
+    "question": "Motor will not run after power is applied and the drive shows no fault code. What is the first check?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Verify control power (24 VDC or equivalent) is present and within specification",
+        "Confirm a valid run/start command is being sent to the drive input terminals",
+        "Check that safety interlocks and e-stop circuits are in the run permissive state",
+        "Verify that input wiring to the drive is connected per the manual diagram"
+      ],
+      "wrong_if": [
+        "Immediately recommends measuring DC bus voltage without checking control signal first",
+        "Assumes the motor winding is faulty without verifying the control path is active",
+        "Suggests resetting parameters before checking basic control wiring"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor will not run after power is applied and the drive shows no fault code. What is the first check?",
+      "answer": "The most common reason a VFD\u2011driven motor won\u2019t start with no fault displayed is that the drive is in **STOP/Run\u2011disable** or the start command isn\u2019t being sent.\n\n**Quick safety\u2011first checklist**\n\n1. **Verify the drive\u2019s control mode** \u2013 ensure the keypad or HMI shows \u201cRun\u201d (or \u201cStart\u201d) and not \u201cStop/Disabled\u201d.  \n2. **Check the start/stop digital inputs** \u2013 with power off, confirm the start button contacts are closed (continuity) and the stop button is open; reconnect power and watch the input LEDs.  \n3. **Confirm the motor\u2011run command voltage** \u2013 measure the drive\u2019s command output (usually 0\u201310\u202fV or 4\u201320\u202fmA) at the start\u2011signal terminals; it should be at the \u201crun\u201d level.  \n4. **Inspect the enable/disable jumper or DIP settings** \u2013 some drives have a physical jumper or software setting that disables the motor output; make sure it\u2019s set for normal operation.  \n5. **Look for an external safety interlock** \u2013 e.g., a safety\u2011door switch or emergency\u2011stop circuit that may be open and preventing run.\n\n**Diagnostic question:** Is the drive\u2019s status display showing \u201cRun\u201d (or a green run light) after you press the start command?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.7483279705047607,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:33.437974+00:00"
+}

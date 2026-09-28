@@ -1,0 +1,32 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "condition": "machine_selected",
+  "grader_role": "adversary",
+  "correctness": 18,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 4,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_answer",
+  "factual_errors": [
+    {
+      "claim": "'The most likely cause is a mismatch in the communication settings or a timing-related error that only affects the PLC's native Modbus client, not a generic scanner like ModScan.'",
+      "why_wrong": "The question's whole hook — ModScan succeeding when the gateway fails — points at a specific, documented mechanism: PLX32 connection-table exhaustion (a hard 4-8 simultaneous connection limit) combined with ModScan's use of a single persistent connection that bypasses the gateway's connection pooling and any intermediate Layer-3 idle-timeout drops (~300-350s). MIRA's 'mismatch or timing error' framing never identifies this mechanism and is generic enough to fit almost any intermittent-Modbus scenario, which is not the same as being correct about this one.",
+      "severity": "major"
+    },
+    {
+      "claim": "'Review the PLX32's firmware version and release notes; if a known bug exists for Modbus timing, plan a firmware update.'",
+      "why_wrong": "Firmware bugs are not identified as a cause in the documented root-cause set for this failure pattern (connection pool exhaustion, network idle timeout, TCP keep-alive mismatch, firewall/NAT). Elevating a speculative firmware bug to a peer diagnostic step alongside real candidate causes risks misdirecting technician effort.",
+      "severity": "minor"
+    },
+    {
+      "claim": "(Omission) Never asks or states how many simultaneous Modbus/TCP connections are configured against the PLX32, and never mentions its documented connection-count limit — the single most diagnostic question for this exact symptom.",
+      "why_wrong": "Without checking active connection count against the gateway's limit, the technician has no way to test the actual leading hypothesis for this failure signature.",
+      "severity": "major"
+    }
+  ],
+  "notes": "MIRA's generic Modbus/TCP troubleshooting playbook (cable/port check, IP/subnet verification, timeout/retry tuning, packet capture, side-by-side ModScan test) is safe and not technically false on its own terms, but it never identifies or even hints at the actual mechanism the question is built around — why ModScan succeeds when the PLX32's own client fails — which the ground truth attributes to connection-table exhaustion and ModScan's persistent-connection behavior bypassing both gateway pooling and Layer-3 idle timeouts. The answer treats all five of its hypotheses as roughly equal likelihood rather than ranking the actual leading cause, and cites nothing (0 chunks, 0 citations). This is a real diagnostic gap rather than a fabricated fact, so I'm not flagging a critical unsupported claim, but correctness still fails the 34 floor because the answer misses the crux of the question."
+}

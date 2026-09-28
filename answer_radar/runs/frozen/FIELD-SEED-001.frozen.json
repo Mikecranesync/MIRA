@@ -1,0 +1,50 @@
+{
+  "frozen_at": "2026-09-05T04:31:47+00:00",
+  "license_class": "public-eval-only",
+  "lineage_key": "allen-bradley/slc-5-03/public-forum",
+  "question": {
+    "answerability_score": 78,
+    "dedupe_hash": "2193d41efe2981798214f4dcafa05f35c2e5a137a61733a196e7cde0f19a79e4",
+    "discovered_at": null,
+    "equipment_type": "PLC",
+    "error_code": "",
+    "external_post_id": null,
+    "firmware_or_revision": "",
+    "intent_tags": [
+      "lost communication",
+      "replacement",
+      "protocol"
+    ],
+    "lead_score": 72,
+    "license_class": "public-eval-only",
+    "lineage_key": "allen-bradley/slc-5-03/public-forum",
+    "manufacturer": "Allen-Bradley",
+    "model": "SLC 5/03",
+    "normalized_question": "An Allen-Bradley SLC 5/03 is on a DH-485 network. A technician wants to replace the existing protocol-aware interface with a USR-N540 transparent RS-485-to-Ethernet converter. After the swap the PLC stops communicating. Why does this happen and what should be checked first?",
+    "posted_at": null,
+    "product_family": "SLC 500",
+    "protocol": "DH-485",
+    "public_author_handle": null,
+    "question_id": "FIELD-SEED-001",
+    "raw_text": null,
+    "rights": {
+      "cross_tenant_reuse_allowed": false,
+      "derivatives_retained": false,
+      "evaluation_allowed": true,
+      "public_export_allowed": false,
+      "rights_resolved": true,
+      "training_allowed": false
+    },
+    "safety_class": "none",
+    "source_platform": "public-forum",
+    "source_url": null,
+    "split_assignment": "fresh",
+    "symptom": "loses communication after interface replacement"
+  },
+  "question_id": "FIELD-SEED-001",
+  "safety_class": "none",
+  "snapshot_hash": "07364aa5c70b8ac8c8a85ec83ca33cb4cc4a87816b00fbc0ecfaccb5d1f6891e",
+  "split_assignment": "fresh",
+  "stage": "answer_radar.question_freeze",
+  "version": "v1"
+}

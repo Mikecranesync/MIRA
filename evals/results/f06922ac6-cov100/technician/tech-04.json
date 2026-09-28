@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-04",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Constant-torque loads require the same torque output across all speeds (conveyors, punch presses, hoists)",
+        "Variable-torque loads require less torque at lower speeds (centrifugal fans, centrifugal pumps)",
+        "AC drives can be sized more conservatively for variable-torque because power demand scales with speed",
+        "Constant-torque applications may require larger drives due to full torque requirement at low speeds"
+      ],
+      "wrong_if": [
+        "Confuses constant-torque with constant-speed operation",
+        "Claims all HVAC and pump applications are constant-torque",
+        "States that variable-torque drives cannot be used for hoists or lifting"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+      "answer": "A **constant\u2011torque load** requires the motor to deliver essentially the same torque at all speeds (e.g., conveyors, mixers, fans with fixed pitch). Because power\u202f=\u202ftorque\u202f\u00d7\u202fspeed, the motor\u2019s power demand rises linearly with speed; the drive is typically sized for the full rated torque at the motor\u2019s base speed.\n\nA **variable\u2011torque load** needs full torque only at low speed, and the torque requirement drops as speed increases (e.g., pumps, centrifugal fans, compressors). Here the power demand varies with the square of speed (P\u202f\u221d\u202f\u03c9\u00b2), so the motor sees high torque at start\u2011up but much less torque at higher speeds; the drive can be sized for the peak torque rather than continuous full\u2011load power.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.4660627841949463,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:16.142011+00:00"
+}

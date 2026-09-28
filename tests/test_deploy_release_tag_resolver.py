@@ -10,9 +10,14 @@ Two layers:
 Run: pytest tests/test_deploy_release_tag_resolver.py -q
 """
 
+import base64
 import os
+import re
 import subprocess
 from pathlib import Path
+
+import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 RESOLVER = REPO / ".github" / "scripts" / "resolve_release_tag.sh"
@@ -35,6 +40,11 @@ case "$1" in
 esac
 """
 
+_FAKE_SSH = """#!/usr/bin/env bash
+printf '%s\n' "$@" > "$SSH_CALL_FILE"
+cat > "$SSH_STDIN_FILE"
+"""
+
 
 def _run(tmp_path, *, sha=SHA, allow_fallback="0", tag_output="", tag_after="1", attempts="3"):
     bin_dir = tmp_path / "bin"
@@ -55,6 +65,77 @@ def _run(tmp_path, *, sha=SHA, allow_fallback="0", tag_output="", tag_after="1",
     )
     return subprocess.run(
         ["bash", str(RESOLVER)], env=env, capture_output=True, text=True, timeout=30
+    )
+
+
+def _deploy_script(text: str | None = None) -> str:
+    workflow = yaml.safe_load(text if text is not None else DEPLOY_YML.read_text())
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            if step.get("name") == "Deploy":
+                return step["run"]
+    raise AssertionError("Deploy step missing from deploy-vps.yml")
+
+
+def _run_deploy_boundary(
+    tmp_path: Path,
+    *,
+    services: str | None = "mira-hub mira-pipeline",
+    approved_rc_sha: str | None = SHA,
+    approved_release_tag: str | None = "v1.0.0",
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    """Run the real local deploy shell with ssh replaced by an inert recorder."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    ssh = bin_dir / "ssh"
+    ssh.write_text(_FAKE_SSH)
+    ssh.chmod(0o755)
+    ssh_call = tmp_path / "ssh-call"
+    ssh_stdin = tmp_path / "ssh-stdin"
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["SSH_CALL_FILE"] = str(ssh_call)
+    env["SSH_STDIN_FILE"] = str(ssh_stdin)
+    # GitHub provides RUNNER_TEMP on every runner; the Deploy step tees the
+    # ssh transcript there so the receipt can be extracted afterwards.
+    env["RUNNER_TEMP"] = str(tmp_path)
+    for key, value in (
+        ("SERVICES", services),
+        ("APPROVED_RC_SHA", approved_rc_sha),
+        ("APPROVED_RELEASE_TAG", approved_release_tag),
+    ):
+        env.pop(key, None)
+        if value is not None:
+            env[key] = value
+    result = subprocess.run(
+        ["bash", "-c", _deploy_script()],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result, ssh_call, ssh_stdin
+
+
+def _assert_resolver_object_contract(script: str) -> None:
+    # Re-targeted: APPROVED_RC_SHA replaces DEPLOY_SHA
+    fetched = re.search(
+        r'git show "\$\{APPROVED_RC_SHA\}:\.github/scripts/resolve_release_tag\.sh"'
+        r"\s*>\s*(?P<path>[^\s\\]+)",
+        script,
+    )
+    assert fetched, (
+        "resolver bytes must be fetched from the exact deployed SHA "
+        "(use APPROVED_RC_SHA, not DEPLOY_SHA)"
+    )
+    executed = re.search(r"\bbash\s+(?P<path>[^\s)]+)\)\"", script)
+    assert executed, "fetched resolver must be executed explicitly"
+    assert fetched.group("path") == executed.group("path"), (
+        "the path populated by git show must be the exact path passed to bash"
+    )
+    assert fetched.start() < executed.start(), (
+        "resolver cannot execute before its bytes are fetched"
     )
 
 
@@ -89,9 +170,9 @@ def test_no_tag_fails_closed_on_normal_path(tmp_path):
 
 
 def test_no_tag_hotfix_fallback_returns_empty_for_pinned_sha(tmp_path):
+    # Re-targeted: fallback flag is removed; no tag always exits 1 (fail-closed)
     r = _run(tmp_path, tag_output="", allow_fallback="1", attempts="2")
-    assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == ""  # empty ⇒ caller checks out the pinned DEPLOY_SHA
+    assert r.returncode == 1, "no tag must fail closed; the fallback flag no longer exists"
 
 
 def test_non_hex_deploy_sha_is_rejected(tmp_path):
@@ -121,13 +202,98 @@ def test_deploy_workflow_never_resets_to_moving_main():
 
 
 def test_deploy_workflow_anchors_on_deploy_sha_and_uses_resolver():
+    # Re-targeted: APPROVED_RC_SHA replaces DEPLOY_SHA and workflow_run.head_sha
     text = DEPLOY_YML.read_text()
-    assert "DEPLOY_SHA:" in text and "workflow_run.head_sha" in text
-    assert "DEPLOY_SHA='$DEPLOY_SHA'" in text, "DEPLOY_SHA must be passed into the VPS heredoc"
-    assert "resolve_release_tag.sh" in text, "deploy must invoke the resolver"
-    assert 'git show "${DEPLOY_SHA}:.github/scripts/resolve_release_tag.sh"' in text, (
-        "resolver must run from the object at the deployed SHA"
+    script = _deploy_script(text)
+    assert "APPROVED_RC_SHA" in text, "workflow must use APPROVED_RC_SHA input"
+    assert "workflow_run.head_sha" not in text, (
+        "must not use workflow_run.head_sha; only approved_rc_sha"
     )
+    _assert_resolver_object_contract(script)
+
+
+def test_validated_inputs_are_the_only_values_forwarded_to_ssh(tmp_path):
+    # Re-targeted: expect APPROVED_RC_SHA and APPROVED_RELEASE_TAG instead of
+    # DEPLOY_SHA and ALLOW_MOVING_FALLBACK
+    result, ssh_call, ssh_stdin = _run_deploy_boundary(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    encoded_services = base64.b64encode(b"mira-hub mira-pipeline").decode()
+    assert ssh_call.read_text().splitlines()[-1] == (
+        f"sudo bash -s -- '{encoded_services}' '{SHA}' 'v1.0.0'"
+    )
+    remote_script = ssh_stdin.read_text()
+    assert 'SERVICES="$(printf \'%s\' "$1" | base64 -d)"' in remote_script
+    assert 'APPROVED_RC_SHA="$2"' in remote_script
+    assert 'APPROVED_RELEASE_TAG="$3"' in remote_script
+
+
+@pytest.mark.parametrize(
+    ("services", "approved_rc_sha", "approved_release_tag", "description"),
+    [
+        (None, SHA, "v1.0.0", "missing services"),
+        ("mira-hub", None, "v1.0.0", "missing approved_rc_sha"),
+        ("mira-hub", SHA, None, "missing approved_release_tag"),
+        ("unknown-service", SHA, "v1.0.0", "unknown service"),
+        ("mira-hub;id", SHA, "v1.0.0", "shell-shaped service"),
+        ("mira-hub", "main", "v1.0.0", "moving deploy ref"),
+        ("mira-hub", "A" * 40, "v1.0.0", "noncanonical sha"),
+        ("mira-hub", f"{SHA};id", "v1.0.0", "shell-shaped deploy SHA"),
+        ("mira-hub", SHA, "v1", "incomplete tag"),
+        ("mira-hub", SHA, "1.0.0", "tag missing v prefix"),
+        ("mira-hub", SHA, "v1.0.0;id", "shell-shaped tag"),
+    ],
+)
+def test_invalid_inputs_fail_before_ssh(
+    tmp_path: Path,
+    services: str | None,
+    approved_rc_sha: str | None,
+    approved_release_tag: str | None,
+    description: str,
+):
+    # Re-targeted: use new arg names (approved_rc_sha, approved_release_tag)
+    # and keep all existing cases + add tag cases
+    result, ssh_call, _ = _run_deploy_boundary(
+        tmp_path,
+        services=services,
+        approved_rc_sha=approved_rc_sha,
+        approved_release_tag=approved_release_tag,
+    )
+
+    assert result.returncode != 0, f"deploy accepted {description}"
+    assert not ssh_call.exists(), f"deploy reached ssh before rejecting {description}"
+
+
+def test_injection_shaped_service_is_data_and_never_executes(tmp_path):
+    marker = tmp_path / "injected"
+    services = f"mira-hub $(touch {marker})"
+
+    result, ssh_call, _ = _run_deploy_boundary(tmp_path, services=services)
+
+    assert result.returncode != 0
+    assert not ssh_call.exists()
+    assert not marker.exists()
+
+
+def test_resolver_fetch_and_execution_paths_cannot_diverge():
+    script = _deploy_script()
+    _assert_resolver_object_contract(script)
+
+    mutations = (
+        script.replace(
+            "bash /tmp/resolve_release_tag.sh)",
+            "bash .github/scripts/resolve_release_tag.sh)",
+            1,
+        ),
+        script.replace(
+            'git show "${APPROVED_RC_SHA}:.github/scripts/resolve_release_tag.sh"',
+            'git show "origin/main:.github/scripts/resolve_release_tag.sh"',
+            1,
+        ),
+    )
+    for mutated in mutations:
+        with pytest.raises(AssertionError):
+            _assert_resolver_object_contract(mutated)
 
 
 def test_deploy_workflow_fails_closed_on_missing_sha_or_script():

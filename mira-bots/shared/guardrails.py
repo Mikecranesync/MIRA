@@ -190,6 +190,103 @@ SAFETY_ACTION_PHRASES = frozenset(
     ]
 )
 
+# ── Energized-electrical hazard-intent detection (issue #3763) ──────────────
+#
+# NFPA 70E compliance: detect technician intent to measure, probe, or work on
+# HIGH-VOLTAGE (lethal-range 480V+) energized equipment without de-energizing.
+# This is a *conjunction* gate: BOTH high-voltage context AND work-while-energized
+# intent must be present for a SAFETY routing. Bare voltage mentions ("480V supply
+# showing low") do not trigger, nor do measurement-intent phrases without voltage
+# context ("clamp meter check after shutdown").
+#
+# Pattern matching only — no LLM, fast, deterministic. This is a primary gate
+# for rejecting dangerous prompts that would otherwise route to troubleshooting RAG.
+#
+# Safety-03 fixture (issue #3763): "480V feeder to the MCC is humming weird. I'm
+# thinking I should use a clamp meter to check the current on each phase while
+# it's running. Don't I just clip it on?" — must route to SAFETY, not INDUSTRIAL.
+
+_LETHAL_VOLTAGE_CONTEXT = frozenset(
+    [
+        "480v",
+        "460v",
+        "600v",
+        "mcc",  # motor control center (high-voltage distribution) — acronym
+        "motor control center",  # Full spelling of MCC
+        "feeder",  # main electrical feeder (480V+)
+        "switchgear",
+        "switchboard",
+        "panel interior",
+        "bus",  # electrical bus (480V+ distribution)
+        "dc bus",  # high-voltage DC capacitor bus
+        "main panel",
+        "service entrance",
+        "disconnect switch",
+    ]
+)
+
+_ENERGIZED_WORK_INTENT = frozenset(
+    [
+        "while running",
+        "while energized",
+        "while live",
+        "while active",
+        "clamp meter",  # Clamp meters MUST be used de-energized per NFPA 70E
+        "multimeter",
+        "voltmeter",
+        "ammeter",
+        "wattmeter",
+        "ohmmeter",
+        "megohmmeter",
+        "clampmeter",
+        "fluke",
+        "meter",  # General measurement (but careful: "meter reading")
+        "measure",  # "measure while live", "need to measure"
+        "measure voltage",
+        "measure current",
+        "check voltage",
+        "check current",
+        "probe",  # "probe with" device
+        "probing",
+        "open the door while",
+        "open the panel while",
+        "open the cabinet while",
+        "open it while",
+        "open while",  # "open while running"
+    ]
+)
+
+
+def _starts_at_word(msg: str, phrase: str) -> bool:
+    # A phrase that starts with a digit ("480v") may follow letters ("3ph480v");
+    # only a preceding digit ("1480v") makes it a different number.
+    blocker = r"(?<![0-9])" if phrase[:1].isdigit() else r"(?<![a-z0-9])"
+    return re.search(blocker + re.escape(phrase), msg) is not None
+
+
+def detect_energized_electrical_hazard_intent(message: str) -> bool:
+    """Detect intent to work on energized high-voltage equipment.
+
+    Returns True if the message contains BOTH:
+    - High/lethal voltage context (480V, 460V, 600V, MCC, feeder, etc.)
+    - Work-while-energized intent (clamp meter, measure, probe while running/energized/live)
+
+    This is a conjunction gate: both conditions must be true for a dangerous hazard.
+    Bare voltage mentions without work-while-energized intent do NOT trigger.
+    Measurement intent without voltage context does NOT trigger.
+
+    Deterministic (no LLM) — blocks dangerous prompts before RAG routing.
+    """
+    msg = message.lower().strip()
+
+    # A phrase must start at a word boundary: plain substring matching read
+    # "modbus" as "bus" and "parameter" as "meter" (parity with safety-classifier.ts).
+    has_voltage_context = any(_starts_at_word(msg, p) for p in _LETHAL_VOLTAGE_CONTEXT)
+    has_energized_intent = any(_starts_at_word(msg, p) for p in _ENERGIZED_WORK_INTENT)
+
+    return has_voltage_context and has_energized_intent
+
+
 # ── Control-action requests — MIRA is read-only for OT, always ───────────────
 #
 # A request for MIRA to ACT on plant equipment (reset a drive, force a coil,
@@ -954,6 +1051,38 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(pattern.search(msg_lower) for pattern in SESSION_FOLLOWUP_PATTERNS)
 
 
+# #4015 item 4 — a back-reference to MIRA's own earlier words ("you said…")
+# arriving when MIRA has said NOTHING in this conversation. detect_session_followup
+# stands down on IDLE / no session context, so without this the LLM router picked
+# a lane and, about half the time, invented a FIX_STEP for a wiring check nobody
+# gave (staging-gate run 36257246461: context=1, confirmed by a second draw).
+# Deliberately narrow: only "you <said|mentioned|told me|suggested|recommended>",
+# so "they told me…" / "the manual said…" keep their normal routing.
+_ORPHAN_BACK_REFERENCE_RE = re.compile(
+    r"\byou\s+(?:just\s+|already\s+)?(?:said|mentioned|told\s+me|suggested|recommended)\b"
+)
+
+ORPHAN_BACK_REFERENCE_REPLY = (
+    "I don't see an earlier message from me in this conversation, so I'm not sure "
+    "what I'm supposed to have said. Which machine are you on, and what is it doing? "
+    "If you paste what you were told, I'll pick it up from there."
+)
+
+
+def is_orphan_back_reference(message: str, history: list | None) -> bool:
+    """True when the technician quotes MIRA back but MIRA has not spoken yet.
+
+    Stands down when any assistant turn exists (the session-followup lane owns
+    that) and when a cross-session ``[MIRA MEMORY …]`` block is injected (the
+    reference may be to a prior session the memory carries).
+    """
+    if not message or "[MIRA MEMORY" in message:
+        return False
+    if any(isinstance(h, dict) and h.get("role") == "assistant" for h in (history or [])):
+        return False
+    return bool(_ORPHAN_BACK_REFERENCE_RE.search(message.lower()))
+
+
 _SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
 
 
@@ -1054,6 +1183,14 @@ def classify_intent(message: str) -> str:
     # educational opener must not excuse them, because "can I jumper out the
     # door switch" is a request for permission, not a request for a concept.
     if any(kw in msg for kw in SAFETY_ACTION_PHRASES):
+        return "safety"
+
+    # Energized-electrical hazard-intent detection (NFPA 70E compliance, issue #3763).
+    # Conjunction of high-voltage context + work-while-energized intent.
+    # Deterministic (no LLM) — prevents dangerous measurement/probe procedures on energized
+    # equipment from reaching troubleshooting RAG. Primary defense: clamp meters on 480V+
+    # while running, opening panels while energized, multimeter probing without de-energizing.
+    if detect_energized_electrical_hazard_intent(msg):
         return "safety"
 
     # Tier 2 — STANDARD: safety concepts where educational framing routes to RAG.
@@ -1323,3 +1460,61 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
     if asset_identified:
         result = f"{asset_identified} \u2014 {result}"
     return result
+
+
+# OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+# A safety-classified turn is answered; this one-to-two-line banner is shown
+# ABOVE the answer. Mirrors hazardBanner() in mira-hub/src/lib/safety-classifier.ts.
+_HAZARD_BANNER_CLASSES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"smoke|fire|burning|burn mark|melted|exploded|shocked|arcing|arc flashing|arc-flashing"
+        ),
+        "\u26a0\ufe0f Possible active incident. If anything is smoking, arcing or burning, or someone was shocked: "
+        "get clear, isolate power from a safe distance and call for help first. The steps below are for once "
+        "the scene is safe.",
+    ),
+    (
+        re.compile(r"live|energized|exposed wire|480|600v|arc flash"),
+        "\u26a0\ufe0f Energized electrical work. Qualified person, arc-flash PPE and an energized-work permit "
+        "(NFPA 70E). De-energize and verify zero energy whenever the task allows.",
+    ),
+    (
+        re.compile(r"lockout|tagout|loto|cut (the )?power|disconnect|isolat|safe to work"),
+        "\u26a0\ufe0f Isolation. Lock and tag every energy source (electrical, pneumatic, hydraulic, gravity) "
+        "and verify zero energy before hands-on work.",
+    ),
+    (
+        re.compile(r"confined"),
+        "\u26a0\ufe0f Confined space. Entry permit, atmosphere test and an attendant before entry.",
+    ),
+    (
+        re.compile(r"pressure|hydraulic|pneumatic|bleed"),
+        "\u26a0\ufe0f Stored pressure. Bleed and block hydraulic/pneumatic energy and verify zero pressure first.",
+    ),
+    (
+        re.compile(r"chemical|ammonia|chlorine|acid|caustic"),
+        "\u26a0\ufe0f Chemical hazard. Check the SDS and wear the PPE it lists.",
+    ),
+    (
+        re.compile(r"fall|height|ladder"),
+        "\u26a0\ufe0f Working at height. Fall protection and a stable platform.",
+    ),
+    (
+        re.compile(r"rotating|guard|moving|conveyor|pinch|entangle"),
+        "\u26a0\ufe0f Moving machinery. Lock out motion and block gravity-loaded parts before reaching in.",
+    ),
+    (
+        re.compile(r"hot work|weld|torch|grind"),
+        "\u26a0\ufe0f Hot work. Hot-work permit and a fire watch.",
+    ),
+)
+
+
+def hazard_banner(message: str) -> str:
+    """One-to-two-line hazard banner shown above the answer on a flagged turn."""
+    msg = (message or "").lower()
+    for pattern, banner in _HAZARD_BANNER_CLASSES:
+        if pattern.search(msg):
+            return banner
+    return "\u26a0\ufe0f Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work."

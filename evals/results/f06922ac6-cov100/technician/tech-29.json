@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-29",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-29",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "Automation Direct GS10 VFD, AC motor load",
+    "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+    "turns": [
+      "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "Checked the manual: oH is overtemp. VFD enclosure temperature is 85\u00b0C. Ambient is 40\u00b0C. Fan is running. What should you look for?",
+      "Checked heat sink fins\u2014caked with dust and debris. Cleaned fins with compressed air. Temps dropped to 60\u00b0C. oH cleared and motor starts. What was the problem?",
+      "Motor ran for 30 min then oH came back. Temp at 80\u00b0C again. What's the long-term fix?"
+    ],
+    "expected": {
+      "key_points": [
+        "oH (overheat/over-temperature) = overtemp fault on GS10, narrowed to inadequate heat dissipation (blocked heat sink) rather than hardware failure",
+        "Immediate fix: clean heat sink; long-term fix: improved ventilation, environmental controls, or duty cycle adjustment",
+        "Recurrence after cleaning suggests ongoing thermal load; need to verify load is within VFD rating or improve airflow permanently"
+      ],
+      "wrong_if": [
+        "Assumes heat sink cleaning permanently solves the problem without addressing root cause (ambient, load, ventilation)",
+        "Recommends VFD replacement after one cleaning cycle",
+        "Ignores the 40\u00b0C ambient temperature as a factor in thermal design"
+      ],
+      "final_turn_must_narrow_to": "VFD overtemp (oH code) due to blocked heat sink; long-term solution requires permanent ventilation/cooling improvement"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "answer": "The oH fault most often means the VFD has detected an overload/over\u2011heat condition, so start by confirming the motor isn\u2019t being over\u2011loaded or overheated.  \n\n1. **Verify motor temperature** \u2013 feel the motor housing; if it\u2019s hot, allow it to cool and check any temperature sensor wiring (isolate power before probing).  \n2. **Check motor overload settings** \u2013 compare the VFD\u2019s overload current limit (typical 115\u202f% of motor full\u2011load current) with the motor\u2019s name\u2011plate rating; adjust only after confirming the correct rating in the manual.  \n3. **Inspect motor wiring** \u2013 look for loose, corroded, or reversed phase connections at the VFD output terminals; tighten or reseat as needed with power off and locked\u2011out.  \n4. **Examine VFD input voltage and phase balance** \u2013 a low or unbalanced supply can trigger the fault; measure with a multimeter while the VFD is energized, then correct any supply issues.  \n5. **Reset the VFD** \u2013 after the above checks, clear the fault and attempt a start; if the fault returns, note any error codes displayed.  \n\n**Diagnostic question:** Is the motor\u2019s thermal overload relay (or built\u2011in temperature sensor) currently wired and functional, or was it bypassed/removed?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.649075984954834,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:06.089541+00:00"
+}

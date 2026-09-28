@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 65,
+      "missing_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "check the speed reference source selection (P3xx parameter, depending on control mode)",
+        "verify three-phase output voltage at motor terminals and confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers scaling and command source but omits register\u2011mapping check and several verification steps required by the rubric."
+    },
+    "grounding": {
+      "score": null,
+      "note": "General guidance; not grounded in specific machine documentation."
+    },
+    "diagnostic": {
+      "score": 70,
+      "note": "Provides a useful discriminating check (read actual output frequency) early, but mixes multiple checks without a single highest\u2011value focus."
+    },
+    "actionability": {
+      "score": 60,
+      "note": "Offers actionable steps, yet lacks explicit expected values, implications, and clear next\u2011step hierarchy."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows reasonable confidence without over\u2011assertion; calibrated but could acknowledge remaining unknowns."
+    },
+    "context": {
+      "score": null,
+      "note": "Contextual grounding not required for this grading."
+    }
+  },
+  "case_score": 67.3
+}

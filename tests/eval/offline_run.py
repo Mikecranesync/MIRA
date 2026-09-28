@@ -301,6 +301,11 @@ async def run_suite(
             user_turn_count=user_turn_count,
             retrieved_chunks=last_chunks if last_chunks else None,
         )
+        # Per-fixture timing for #3085: MIRA_PROCESS_TIMEOUT is a *per-message*
+        # budget, so the decisive statistic is the slowest single turn, not the
+        # sum the grader already carries. Attached here rather than added to
+        # ScenarioGrade so this stays harness-only and touches no grader code.
+        grade.latency_ms_max = max(latencies_ms, default=0)  # type: ignore[attr-defined]
         grades.append(grade)
 
         # Photo-specific grading (vendor/model extraction)
@@ -390,8 +395,8 @@ def write_offline_scorecard(
     if has_judge:
         header += " | " + judge_header
         sep += "|" + "|".join([":----:"] * 4)
-    header += " | Score |"
-    sep += "|-------|"
+    header += " | Score | Slowest | Total |"
+    sep += "|-------|--------:|------:|"
     lines += ["## Results", "", header, sep]
 
     jr_iter = iter(judge_results)
@@ -403,7 +408,12 @@ def write_offline_scorecard(
         if has_judge and jr and jr.succeeded:
             judge_cells = " | " + " | ".join(str(jr.scores.get(d, "—")) for d in DIMENSIONS)
         mark = "✓" if g.passed else "✗"
-        row = f"| `{g.scenario_id}` {mark} | {cp_cells}{judge_cells} | {g.score} |"
+        slowest_s = getattr(g, "latency_ms_max", 0) / 1000.0
+        total_s = g.latency_ms_total / 1000.0
+        row = (
+            f"| `{g.scenario_id}` {mark} | {cp_cells}{judge_cells} | {g.score} "
+            f"| {slowest_s:.1f}s | {total_s:.1f}s |"
+        )
         lines.append(row)
 
     lines.append("")

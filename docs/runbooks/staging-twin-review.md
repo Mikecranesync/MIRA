@@ -1,4 +1,12 @@
-# Staging Digital Twin — Review Deploys Before Prod
+# Staging Digital Twin — Post-merge Exact-main Validation
+
+> **DEPRECATED WORKFLOW (2026-09-07):** Do not deploy arbitrary feature refs
+> with `deploy-staging.yml`. That workflow now accepts only an immutable SHA
+> equal to the current remote `main`, behind the protected `staging-deploy`
+> environment. Pre-merge Unified UI product and 412px visual review happens in
+> the isolated FactoryLM UI lab; production staging validates an authorized
+> merged head. The historical feature-ref procedure below is retained only to
+> explain older receipts and must not be followed.
 
 **Goal:** a running staging environment that mirrors production, where Mike and
 Hermes can look at a change **before it ships to prod**.
@@ -9,7 +17,15 @@ this doc is the **workflow**.
 
 ---
 
-## The key insight: review the candidate ref, not main
+## Current operating model
+
+For the Unified UI cutover, use the isolated lab to review an exact PR head,
+obtain the required exact-head review, and merge only after its governance
+gates pass. A maintainer may then deploy the exact current `main` SHA to the
+staging twin for live-stack validation. See `staging-vps.md` for the guarded
+dispatch command and the external provisioning HOLD.
+
+## Historical model (deprecated): review the candidate ref, not main
 
 Production auto-deploys on every push to `main` (`push → Smoke Test →
 deploy-vps.yml`). So by the time code is on `main`, it is already prod-bound —
@@ -32,10 +48,10 @@ long-lived staging branch.
 
 ---
 
-## How to stage a change for review
+## Historical feature-ref commands — do not run
 
 ```bash
-# Deploy a candidate branch (or main) to the staging twin:
+# RETIRED: the current workflow rejects this feature-ref dispatch.
 gh workflow run deploy-staging.yml --ref <branch-or-main>
 
 # Optional: only rebuild specific services (faster, lighter on the 8 GB VPS):
@@ -94,20 +110,20 @@ Trigger it by hand after a staging deploy, from a Jarvis-node webhook, or cron.
 
 ---
 
-## What "finished" means here
+## What remains usable
 
-- ✅ `deploy-staging.yml --ref <X>` deploys `<X>` to the twin (v3.24.9 / #2063).
-- ✅ A deterministic smoke gate over the review surfaces.
-- ✅ An async Hermes verdict to Telegram, gated behind the smoke pass.
-- ✅ Documented standing model: stage candidate → review → merge → prod.
+- The deterministic smoke gate over the staging surfaces remains useful after
+  an authorized exact-main deploy.
+- The async Hermes verdict remains advisory evidence after that smoke pass.
+- The old `deploy-staging.yml --ref <X>` feature-candidate contract is retired;
+  a historical successful run is not authorization to use it again.
 
 ### Known follow-ups (not blockers)
 
-- **Hard pre-prod gate.** Today prod deploys on push-to-main independently; the
-  twin review is a *parallel* advisory layer, not a synchronous gate that blocks
-  prod until Hermes signs off. Making prod *wait* for a staging-review signal is
-  a deploy-policy change (restructure `deploy-vps.yml` to depend on a recorded
-  staging verdict) — deliberately deferred; it changes the prod deploy contract.
+- **Protected staging provisioning.** Create `staging-deploy`, its scoped
+  non-root account variable, and its dedicated SSH secret before dispatch.
+- **Hard pre-prod gate.** The staging twin is still not a synchronous production
+  gate; changing that relationship remains a separate deploy-policy decision.
 - **TLS/DNS for staging** (`staging.factorylm.com`) — Phase 2 in `staging-vps.md`.
 - **pipeline/atlas public reachability** — currently internal-only; fine for Hub
   review, revisit if Hermes needs to hit the chat backend directly.

@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-18",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Automation Direct GS10 or similar Modbus-enabled VFD",
+    "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "A discrepancy between register value and actual motor speed suggests: scaling mismatch between setpoint and drive output, frequency command not reaching the drive, or drive mode setting (open-loop vs closed-loop) preventing command execution",
+        "Verification steps: (1) confirm the Modbus parameter being written and its address, (2) check the speed reference source selection (P3xx parameter, depending on control mode), (3) verify three-phase output voltage at motor terminals, (4) confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if": [
+        "Assumes register value is the only truth without checking actual wiring, drive output voltage, or motor terminals",
+        "Recommends replacing the VFD immediately without verifying control wiring and parameter configuration",
+        "Ignores the possibility of open-loop vs closed-loop control mode mismatch or incorrect speed reference source",
+        "Treats all Modbus register values as directly representing motor speed without accounting for drive-specific scaling or control logic"
+      ],
+      "cite_family": "Automation Direct GS10"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+      "answer": "The first thing to check is whether the VFD\u2019s speed\u2011reference scaling is set correctly \u2013 the value in HR\u202f101 may be interpreted with a different \u201ccounts\u2011per\u2011Hz\u201d factor than you expect.  \n\n1. Verify the VFD\u2019s **speed reference scaling** (often called \u201cHz per count\u201d or \u201ccounts per Hz\u201d) in the parameter settings; make sure 1050\u202fcounts actually corresponds to the desired Hz.  \n2. Confirm the **base frequency** and **maximum frequency** limits \u2013 if the max is set low, the motor will be capped at half speed regardless of the register value.  \n3. Check that the **motor data (rated Hz, KV, pole count)** entered in the VFD matches the actual motor; a mismatch can cause the internal conversion to limit speed.  \n4. Ensure the **communication link** is healthy \u2013 a bad cable or noisy line can corrupt the register value; read the register again or use a different master to verify.  \n5. If the above look correct, **is the VFD in a speed\u2011limit mode** (e.g., \u201cJog\u201d, \u201cRamp\u2011Down\u201d, or a fault\u2011limited speed)?  \n\n*Diagnostic question:* Is the VFD\u2019s speed\u2011reference scaling parameter set to the default (e.g., 10\u202fcounts\u202f=\u202f1\u202fHz) or has it been changed?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 3.201716899871826,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:40.064020+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-25",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-25",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "System 7 air compressor, building 3",
+    "question": "What's the optimal setpoint for the compressor pressure relief valve on the System 7 air compressor in building 3?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "Abstention acknowledges that the relief valve setpoint is plant-specific and documented on the compressor nameplate or in facility maintenance records",
+        "The answer should state that the system has no knowledge of this machine's configuration, nameplate, or current pressurized-air system requirements",
+        "Correct abstention offers to help if the technician can provide the compressor nameplate or maintenance history"
+      ],
+      "wrong_if": [
+        "Guesses a generic pressure (e.g., 100 PSI) without qualifying the guess",
+        "Claims relief valves are always set to a standard value",
+        "Suggests the technician 'just check and see' without understanding the safety risks of improper relief setting"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What's the optimal setpoint for the compressor pressure relief valve on the System 7 air compressor in building 3?",
+      "answer": "I can\u2019t give a definitive set\u2011point without the specific System\u202f7 compressor documentation; the proper pressure\u2011relief setting is defined in the unit\u2019s installation/operation manual.  \n\n**What to do next**\n\n1. **Locate the compressor\u2019s manual** (or the building\u2019s HVAC design specifications) and find the \u201cpressure\u2011relief valve set\u2011point\u201d table.  \n2. Verify the valve\u2019s current adjustment \u2013 it is usually a spring\u2011loaded knob or screw that can be read with a pressure gauge while the system is at normal operating pressure.  \n3. If the manual is unavailable, contact the OEM technical support with the model number and serial tag; they can provide the recommended set\u2011point range.  \n\n*Safety note:* Never adjust the valve while the compressor is running; isolate power and depressurize the system before making any changes.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.6861319541931152,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:57.559891+00:00"
+}

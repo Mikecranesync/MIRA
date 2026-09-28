@@ -6,6 +6,18 @@
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/notebook-composer
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// The unified shell (used by the #3896 test) observes its layout; jsdom has no
+// ResizeObserver, so stub it the way tests/unified-root.test.tsx does.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 
 vi.mock("@capacitor/core", () => ({
@@ -15,7 +27,14 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
-    get: vi.fn(async () => ({ value: null })),
+    // These suites pin the CLASSIC chat surface, which still ships behind
+    // More → "Chat style". ChatV2 is the default, so the preference is
+    // returned explicitly here rather than relied upon — the ChatV2 contracts
+    // are pinned separately in src/screens/__tests__/chat-v2.test.tsx and
+    // src/chat-adapter/__tests__/.
+    get: vi.fn(async ({ key }: { key: string }) =>
+      key === "flm.chatui.v1" ? { value: "legacy" } : { value: null },
+    ),
     set: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
   },
@@ -190,5 +209,234 @@ describe("NotebookScreen composer", () => {
     mount();
     await screen.findByText("Something went wrong answering that — try again.");
     expect(screen.queryByText("Stopped")).toBeNull();
+  });
+
+  it("#3862: no asset + a confirmed source → GROUNDED (scope:[docIds], no mode) — the manual an unbound project uploaded is never ignored", async () => {
+    // #3745 forced every unbound notebook into general mode with an empty scope,
+    // so a project created from the New-project form could never cite the manual
+    // it had just been given (reproduced on prod 2026-09-19, #3862).
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "RA-CELL-001", manufacturer: null, model: null, asset: null },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({
+      answer: "AT-10: the arm reports a fault or loses Ready; the PLC stops the sequence [1].",
+      citations: [{ citationId: "1", sourceTitle: "Manual.pdf", docId: "d1" }],
+      status: "answered",
+    });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is the pass criterion for the brownout test?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/the PLC stops the sequence/);
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    expect(askNotebook.mock.calls[0][2]).toEqual(["d1"]);
+    expect((askNotebook.mock.calls[0][3] as AskOpts).mode).toBeUndefined();
+  });
+
+  it("#3862/#3742: no asset + a confirmed source + a GENERAL question → grounded first, then ONE general re-ask on insufficient_evidence under a fresh clientRequestId — the general answer is what renders", async () => {
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "RA-CELL-001", manufacturer: null, model: null, asset: null },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook
+      .mockResolvedValueOnce({ answer: "", citations: [], status: "insufficient_evidence" })
+      .mockResolvedValueOnce({ answer: "A VFD is a Variable Frequency Drive", citations: [], status: "answered", basis: "general_reasoning" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("A VFD is a Variable Frequency Drive");
+    expect(askNotebook).toHaveBeenCalledTimes(2);
+    const [first, second] = askNotebook.mock.calls as [unknown[], unknown[]];
+    expect(first[2]).toEqual(["d1"]);
+    expect((first[3] as AskOpts).mode).toBeUndefined();
+    expect(second[2]).toEqual([]);
+    expect((second[3] as AskOpts).mode).toBe("general");
+    const id1 = (first[3] as { clientRequestId?: string }).clientRequestId;
+    const id2 = (second[3] as { clientRequestId?: string }).clientRequestId;
+    expect(id1).toBeTruthy();
+    expect(id2).toBeTruthy();
+    expect(id2).not.toBe(id1);
+    // The sources-miss copy is not what the technician sees for a general question.
+    expect(screen.queryByText(/couldn't find anything about that in your sources/)).toBeNull();
+  });
+
+  it("#3862 opposite direction: asset + source + insufficient_evidence → exactly ONE call, the abstention renders (a bound machine never gets a General answer)", async () => {
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "CV-101", manufacturer: "Acme", model: "Conveyor", asset: { entityId: "e1" } },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "", citations: [], status: "insufficient_evidence" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/couldn't find anything about that in your sources/);
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    expect(askNotebook.mock.calls[0][2]).toEqual(["d1"]);
+    expect((askNotebook.mock.calls[0][3] as AskOpts).mode).toBeUndefined();
+  });
+
+  it("#3862: a Retry replays the identical grounded body — it never triggers the general re-ask", async () => {
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "RA-CELL-001", manufacturer: null, model: null, asset: null },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    // First send: the grounded ask fails at transport (retryable). Retry: the
+    // replayed grounded body comes back insufficient_evidence — and must NOT
+    // fan out into a general re-ask, because Retry re-sends the identical body.
+    askNotebook
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ answer: "", citations: [], status: "insufficient_evidence" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is a VFD?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    fireEvent.click(retry);
+    await screen.findByText(/couldn't find anything about that in your sources/);
+    expect(askNotebook).toHaveBeenCalledTimes(2);
+    const [first, second] = askNotebook.mock.calls as [unknown[], unknown[]];
+    expect((second[3] as { clientRequestId?: string }).clientRequestId).toBe((first[3] as { clientRequestId?: string }).clientRequestId);
+    expect((second[3] as AskOpts).mode).toBeUndefined();
+  });
+
+  it("#3742: asset + sources enabled → mode:undefined, scope:[docIds] (grounded)", async () => {
+    // When a machine IS selected (notebook.asset exists) AND sources are enabled,
+    // mode should be omitted (undefined) and scope should contain the enabled docIds.
+    getNotebookDetail.mockResolvedValue({
+      notebook: {
+        id: "nb1",
+        displayName: "CV-101",
+        manufacturer: "Acme",
+        model: "Conveyor",
+        asset: { entityId: "e1" },
+      },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: true, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({
+      answer: "Check the belt tension",
+      citations: [{ citationId: "1", sourceTitle: "Manual.pdf", docId: "d1" }],
+      status: "answered",
+    });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "How do I maintain the belt?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("Check the belt tension");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBeUndefined();
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual(["d1"]);
+  });
+
+  it("#3742: no asset + no sources → mode:general, scope:[] (general)", async () => {
+    // When NO machine and NO sources, mode should be "general" and scope empty.
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: "nb1", displayName: "Empty", manufacturer: null, model: null, asset: null },
+      sources: [],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "General answer", citations: [], status: "answered" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "Help me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("General answer");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBe("general");
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual([]);
+  });
+
+  it("#3742: asset exists + no sources → mode:general, scope:[] (general)", async () => {
+    // When a machine IS selected but NO sources are enabled, mode should be "general".
+    getNotebookDetail.mockResolvedValue({
+      notebook: {
+        id: "nb1",
+        displayName: "CV-101",
+        manufacturer: "Acme",
+        model: "Conveyor",
+        asset: { entityId: "e1" },
+      },
+      sources: [
+        { docId: "d1", filename: "Manual.pdf", enabledByDefault: false, status: "ok", matchState: "user_confirmed" },
+      ],
+      turns: [],
+    });
+    askNotebook.mockResolvedValue({ answer: "General answer", citations: [], status: "answered" });
+    mount();
+    const ta = await composer();
+    fireEvent.change(ta, { target: { value: "What is torque?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("General answer");
+    expect(askNotebook).toHaveBeenCalledTimes(1);
+    const opts = askNotebook.mock.calls[0][3] as AskOpts;
+    expect(opts.mode).toBe("general");
+    const scopeArg = askNotebook.mock.calls[0][2] as string[];
+    expect(scopeArg).toEqual([]);
+  });
+
+  // Unified-only cutover: the detail-load error boundary is reachable in the
+  // unified shell (e.g. offline), where "Notebooks" is a retired tab — onExit
+  // lands on the composer home. It must not surface classic vocabulary.
+  it("detail-error boundary says '← Back' in the unified (chromeless) shell, not '← Notebooks'", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockRejectedValue(new Error("offline"));
+    const backRef = { current: null as (() => boolean) | null };
+    render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} chromeless />);
+    expect(await screen.findByRole("button", { name: "← Back" })).toBeTruthy();
+    expect(screen.queryByText("← Notebooks")).toBeNull();
+  });
+
+  // #3896: inside a conversation the shell's drawer showed "New project" as
+  // disabled ("Not available in this workspace yet.") because this screen never
+  // forwarded the root's hook. Only HOME could create a project.
+  it("unified shell: drawer New project calls the root's onCreateProject (#3896)", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockResolvedValue(detail());
+    const onCreateProject = vi.fn();
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={backRef}
+        onExit={() => {}}
+        chromeless
+        unifiedShell={{ projects: [], machines: [], onOpenItem: () => {} }}
+        onCreateProject={onCreateProject}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open navigation" }));
+    const newProject = screen.getAllByRole("button", { name: "New project" })[0] as HTMLButtonElement;
+    expect(newProject.disabled).toBe(false);
+    fireEvent.click(newProject);
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("detail-error boundary keeps '← Notebooks' in the classic host", async () => {
+    getNotebookDetail.mockReset();
+    getNotebookDetail.mockRejectedValue(new Error("offline"));
+    const backRef = { current: null as (() => boolean) | null };
+    render(<NotebookScreen id="nb1" backRef={backRef} onExit={() => {}} />);
+    expect(await screen.findByRole("button", { name: "← Notebooks" })).toBeTruthy();
   });
 });

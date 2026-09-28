@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 100,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "All required key points are present and no prohibited statements are made."
+    },
+    "grounding": {
+      "score": null,
+      "note": "General guidance without specific source citations."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    },
+    "actionability": {
+      "score": 95,
+      "note": "Provides clear actionable steps for VFD programming, motor sizing, and energy considerations."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Answer is presented definitively with high confidence."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not required for this evaluation."
+    }
+  },
+  "case_score": 96.5
+}

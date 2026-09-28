@@ -259,15 +259,22 @@ export function formatAlertSlackBlocks(alert: SafetyAlert): object[] {
 
 // ── SSE injection block (for asset chat route) ───────────────────────────────
 
+// H4 gap-admission safety alert (#2542): appended AFTER a real answer, so the
+// discriminator lets the client render it distinctly from ordinary content
+// without recoloring the whole bubble the way the hard-stop (`isSafetyStop`,
+// `X-Safety-Stop`) does. `content` is unchanged so anything already reading it
+// keeps working. Markdown `**bold**` is dropped here — neither AssetChat nor
+// NodeChat renders markdown, so the asterisks showed up literally; the
+// `safetyAlert` flag alone now carries the visual distinction client-side.
 export function safetyAlertSseChunk(alert: SafetyAlert): string {
   const block = [
     "",
     `---`,
-    `⛔ **SAFETY ALERT** — ${alert.keyword.toUpperCase()}`,
-    `**${alert.recommendation}**`,
+    `⛔ SAFETY ALERT — ${alert.keyword.toUpperCase()}`,
+    alert.recommendation,
     `Contact your safety officer before proceeding.`,
   ].join("\n");
-  return `data: ${JSON.stringify({ content: block })}\n\n`;
+  return `data: ${JSON.stringify({ content: block, safetyAlert: true })}\n\n`;
 }
 
 // ── DB persistence (agent_events) ────────────────────────────────────────────

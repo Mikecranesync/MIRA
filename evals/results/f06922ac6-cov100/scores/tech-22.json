@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 95,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "Answer covers key points about significance of 0.5\u202fin offset and required alignment tolerances"
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations required"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear step\u2011by\u2011step actions and next checks"
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Shows high confidence with no hedging"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 92.5
+}

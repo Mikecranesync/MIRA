@@ -1,0 +1,10 @@
+# Install layout for the FactoryLM UI workspace (packages/factorylm-*, apps/factorylm-ui-lab).
+#
+# Pinned so every machine and CI runner materialises the same tree. Bun 1.4 already
+# defaults a workspace to the isolated linker, but a default is a fact about the
+# runtime, not about this repository — and #3692 was two checkouts of one commit
+# disagreeing about which React a test file would load. With one store under
+# node_modules/.bun and symlinks into it, `@factorylm/ui`'s peer React and the lab's
+# React are the same directory by construction.
+[install]
+linker = "isolated"

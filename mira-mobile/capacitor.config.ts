@@ -13,6 +13,16 @@ const config: CapacitorConfig = {
   appId: "com.factorylm.mira",
   appName: "FactoryLM",
   webDir: "dist",
+  // #3732: Capacitor's bridge logging prints EVERY plugin call's methodData and
+  // every native result to logcat — including `Preferences.set` of the session
+  // cookie jar (`flm.cookiejar.v1`) and the `Cookie` header on
+  // `CapacitorHttp.request`. The unset default is "debug" (log on debuggable
+  // builds), i.e. on exactly the sideloaded builds that are signed into real
+  // accounts. "none" is the only value that keeps the jar out of logcat on
+  // every build type; "production" would leak it on release. Pinned by
+  // tests/android-secret-hygiene.test.ts. Debug bridge traffic is observable
+  // over CDP instead (webview_devtools_remote_<pid>).
+  loggingBehavior: "none",
   server: {
     androidScheme: "https",
   },

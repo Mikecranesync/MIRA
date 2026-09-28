@@ -4,9 +4,10 @@
  * Run: npx vitest run src/components/equipment/NotebookChat.test.tsx
  */
 import { renderToStaticMarkup } from "react-dom/server";
+import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { describe, expect, it } from "vitest";
-import { Bubble, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
-import { persistedTurns } from "./notebook-chat-utils";
+import { Bubble, chatBodyFor, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
+import { buildChatBody, persistedTurns, stoppedTurn } from "./notebook-chat-utils";
 
 const citation = {
   citationId: "1",
@@ -167,6 +168,52 @@ describe("Bubble — rehydrated stopped turn (STRM-2 on reload)", () => {
   });
 });
 
+describe("Bubble — truncated turn (ADR-0038 rule 6)", () => {
+  // The rule's UI half: a stream that ended without a `status` frame is not an
+  // answer, so the leaf renderer must not dress it as one. `stoppedTurn(…,
+  // "truncated")` is what the send handler produces for that case.
+  const truncated = stoppedTurn(
+    { id: "a1", role: "assistant" as const, content: "", citations: [citation], basis: "oem_documentation" },
+    "F004 is an undervoltage fault on the DC bus. [1]",
+    "truncated",
+  ) as unknown as ChatTurn;
+
+  it("renders the partial text with NO citation chips, basis, or follow-ups", () => {
+    const html = renderToStaticMarkup(<Bubble turn={truncated} onFollowup={() => {}} />);
+    expect(html).toContain("F004 is an undervoltage fault on the DC bus.");
+    expect(html).not.toContain("Open citation");
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Ask follow-up");
+    expect(html).not.toContain("General guidance");
+  });
+
+  it("says the connection ended — it does NOT blame the technician with \"Stopped\"", () => {
+    const html = renderToStaticMarkup(<Bubble turn={truncated} />);
+    expect(html).toContain('data-testid="truncated-caption"');
+    expect(html).not.toContain('data-testid="stopped-caption"');
+  });
+
+  it("a technician Stop still reads as Stopped, not as a truncation", () => {
+    const stopped = stoppedTurn(
+      { id: "a2", role: "assistant" as const, content: "" },
+      "partial",
+    ) as unknown as ChatTurn;
+    const html = renderToStaticMarkup(<Bubble turn={stopped} />);
+    expect(html).toContain('data-testid="stopped-caption"');
+    expect(html).not.toContain('data-testid="truncated-caption"');
+  });
+
+  it("a safety hard-stop that arrived before the truncation is still shown", () => {
+    // Safety is sticky: suppressing a LOTO warning because the tail was lost is
+    // the unsafe direction. Matches the ChatV2 adapter's rule (FLEET-003).
+    const withSafety = { ...truncated, safetyNotice: { kind: "safety_notice", trigger: "loto" } } as ChatTurn;
+    const html = renderToStaticMarkup(<Bubble turn={withSafety} />);
+    expect(html).toContain("Safety stop");
+    expect(html).toContain('data-testid="truncated-caption"');
+    expect(html).not.toContain("Ask again to retry");
+  });
+});
+
 // ── Sensor S4 (contract §4.5): basis caption for EVERY basis + Machine Replay card ──
 describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () => {
   const base: ChatTurn = { id: "b", role: "assistant", content: "Check the DC bus.", status: "answered" };
@@ -207,7 +254,7 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     expect(html).toContain('data-testid="machine-replay-card"');
     expect(html).toContain('data-freshness="stale"');
-    expect(html).toMatch(/Machine Replay · 7 recorded observations around \d{2}:\d{2}:\d{2} · Stale</);
+    expect(html).toMatch(/Machine Replay · 7 recorded observations around \d{2}:\d{2}:\d{2} · connection at capture: Stale</);
     expect(html).not.toContain("observed change");
     expect(html).toContain("Grounded in recorded machine history — not live.</p>");
     // Not a citation: no supporting-passage chip, no [n] button.
@@ -225,9 +272,9 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
         />,
       );
     expect(mk("live")).toContain("1 recorded observation around");
-    expect(mk("live")).toContain("· Live</span>");
-    expect(mk("simulated")).toContain("· Simulated</span>");
-    expect(mk("simulated")).not.toContain("· Live</span>");
+    expect(mk("live")).toContain("connection at capture: Live</span>");
+    expect(mk("simulated")).toContain("connection at capture: Simulated</span>");
+    expect(mk("simulated")).not.toContain("connection at capture: Live</span>");
   });
 
   // §2.8: an empty card must say WHICH empty it is. A "0 recorded observations"
@@ -253,6 +300,135 @@ describe("Bubble — evidence basis captions (spec §1.3, contract §4.5)", () =
     expect(empty).not.toContain("recorded observation");
     // Neither claims a machine basis — the turn keeps the basis it earned.
     expect(unavailable).toContain("Grounded in this notebook's sources".replace(/'/g, "&#x27;"));
+  });
+});
+
+// ── #3841: the energized-electrical DIRECTIVE is a warning, not a stop ───────
+describe("Bubble — energized-electrical directive (#3841)", () => {
+  const directiveTurn: ChatTurn = {
+    id: "d1",
+    role: "assistant",
+    content: "De-energize and verify absence of voltage, then check the contactor coil. [1]",
+    status: "answered",
+    hazardNotice: { kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD },
+    citations: [{ citationId: "1", docId: "d", sourceTitle: "Manual", page: 3, fileId: null, quote: null }],
+    followups: ["What next?"],
+    basis: "oem_documentation",
+  };
+
+  it("renders the answer, its citations, the basis caption AND a non-terminal warning — never the Safety stop alert", () => {
+    const html = renderToStaticMarkup(<Bubble turn={directiveTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="hazard-directive-banner"');
+    expect(html).toContain("De-energize");
+    expect(html).not.toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain('aria-label="Safety stop"');
+    // Ordinary-answer affordances survive: the passage list and the basis caption.
+    expect(html).toContain("supporting passage");
+    expect(html).toContain("Grounded in this notebook".replace(/'/g, "&#x27;"));
+  });
+
+  it("control — a Tier-1 hard stop still renders the terminal alert and hides citations", () => {
+    const stopTurn: ChatTurn = { ...directiveTurn, hazardNotice: undefined, safetyNotice: { kind: "safety_notice", trigger: "smoke coming" } };
+    const html = renderToStaticMarkup(<Bubble turn={stopTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain('data-testid="hazard-directive-banner"');
+    expect(html).not.toContain("supporting passage");
+  });
+});
+
+// ── FLEET-002: safety hard-stop rendering ───────────────────────────────────
+describe("Bubble — safety hard-stop (FLEET-002)", () => {
+  const safetyTurn: ChatTurn = {
+    id: "s1",
+    role: "assistant",
+    content: "SAFETY STOP: isolate the machine immediately and call your supervisor.",
+    status: "answered",
+    safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
+    citations: [],
+    followups: ["What next?"],
+    basis: null,
+  };
+
+  it("renders the safety notice banner with role=alert and AlertTriangle", () => {
+    const html = renderToStaticMarkup(<Bubble turn={safetyTurn} onFollowup={() => {}} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Safety stop");
+    // Red background (same swatch as AssetChat isSafetyStop)
+    expect(html).toContain("#FEF2F2");
+    expect(html).toContain("#991B1B");
+  });
+
+  it("suppresses follow-up chips on a safety turn", () => {
+    const html = renderToStaticMarkup(<Bubble turn={safetyTurn} onFollowup={() => {}} />);
+    expect(html).not.toContain("What next?");
+    expect(html).not.toContain("Ask follow-up");
+  });
+
+  it("suppresses basis caption on a safety turn", () => {
+    const withBasis: ChatTurn = { ...safetyTurn, basis: "general_reasoning" };
+    const html = renderToStaticMarkup(<Bubble turn={withBasis} />);
+    expect(html).not.toContain('data-testid="basis-caption"');
+    expect(html).not.toContain("General guidance");
+  });
+
+  it("suppresses citation chips on a safety turn even if citations were somehow set", () => {
+    const withCite: ChatTurn = {
+      ...safetyTurn,
+      citations: [{ citationId: "1", docId: "d1", sourceTitle: "Manual", page: 1, fileId: null, quote: null }],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={withCite} />);
+    // passages chip must NOT appear; the safety banner MUST appear
+    expect(html).not.toContain("supporting passage");
+    expect(html).toContain('data-testid="safety-notice-banner"');
+  });
+
+  it("a reloaded safety turn (from persistedTurns) renders the banner", () => {
+    const [, a] = persistedTurns([
+      {
+        id: "t1",
+        question: "smoke is coming from the drive",
+        answerStatus: "answered",
+        answerText: "SAFETY STOP: isolate immediately.",
+        evidence: [{ kind: "safety_notice", trigger: "smoke coming" }],
+        basis: null,
+      },
+    ]);
+    const html = renderToStaticMarkup(<Bubble turn={a as ChatTurn} />);
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    expect(html).not.toContain("supporting passage");
+    expect(html).not.toContain("Ask follow-up");
+  });
+
+  it("a normal answered turn has NO safety banner", () => {
+    const normal: ChatTurn = {
+      id: "n1",
+      role: "assistant",
+      content: "P042 sets the deceleration ramp.",
+      status: "answered",
+    };
+    const html = renderToStaticMarkup(<Bubble turn={normal} />);
+    expect(html).not.toContain("safety-notice-banner");
+    expect(html).not.toContain("Safety stop");
+  });
+
+  it("suppresses machine-replay and visual-observation cards on a safety turn even if the arrays are non-empty", () => {
+    // Hypothetically non-empty arrays: the gate must fire regardless of content.
+    const withEvidence: ChatTurn = {
+      ...safetyTurn,
+      machineEvidence: [
+        { kind: "machine_evidence", assetId: "a1", anchorAt: "2026-08-27T23:16:31.000Z", pre: 5, post: 2, rowCount: 7, freshness: "live" },
+      ],
+      visualEvidence: [
+        { kind: "visual_observation", fileId: "f0000000-0000-4000-8000-000000000002", capturedAt: "2026-08-27T23:14:21.000Z", provenance: "phone_photo" },
+      ],
+    };
+    const html = renderToStaticMarkup(<Bubble turn={withEvidence} />);
+    // Safety banner must appear
+    expect(html).toContain('data-testid="safety-notice-banner"');
+    // Neither evidence card may appear
+    expect(html).not.toContain('data-testid="machine-replay-card"');
+    expect(html).not.toContain('data-testid="visual-observation-card"');
   });
 });
 
@@ -292,5 +468,27 @@ describe("Bubble — Visual observation card", () => {
     const html = renderToStaticMarkup(<Bubble turn={{ ...base, basis: "oem_documentation" }} />);
     expect(html).not.toContain("visual-observation");
     expect(html).not.toContain("<img");
+  });
+});
+
+describe("chatBodyFor — zero sources converge on Mobile's `mode: \"general\"` (086)", () => {
+  const turns: ChatTurn[] = [
+    { id: "u1", role: "user", content: "earlier question" },
+    { id: "a1", role: "assistant", content: "earlier answer", status: "answered" },
+  ];
+
+  it("with no enabled sources it asks the SAME endpoint for general guidance instead of refusing locally", () => {
+    const body = chatBodyFor("What is a VFD?", [], turns);
+    expect(body.mode).toBe("general");
+    expect(body.sourceDocIds).toEqual([]);
+    expect(body.message).toBe("What is a VFD?");
+    expect(body.history).toHaveLength(2);
+  });
+
+  it("with sources it is the grounded body, byte-identical to buildChatBody (no mode key)", () => {
+    const clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const body = chatBodyFor("Which coil?", ["d1"], turns, clientRequestId);
+    expect(body).toEqual(buildChatBody("Which coil?", ["d1"], turns, clientRequestId));
+    expect("mode" in body).toBe(false);
   });
 });

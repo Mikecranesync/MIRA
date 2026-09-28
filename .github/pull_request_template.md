@@ -24,6 +24,39 @@ If this PR doesn't fit any existing spec:
 Anything else: write a spec first, then come back.
 -->
 
+## Lifecycle guard rationale
+
+<!--
+OPTIONAL. Fill this in ONLY if this PR adds, modifies, deletes, or renames a
+guarded legacy FactoryLM presentation path or a lifecycle-guard control-plane
+file (docs/architecture/convergence/REGISTRY.yaml, the charter, the guard and
+its tests, the Claude rule, the three UI workflow files, every GitHub Actions
+workflow, `requirements/ui-lifecycle-guard.txt`, or this template) — see
+docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 and
+.claude/rules/factorylm-unified-ui-cutover.md. If none of the above apply,
+leave this whole section out of the PR body (don't fill placeholder text into
+it — the guard rejects blank/N/A/angle-bracket/HTML-comment values and fails
+closed without a substantive value on all three lines below).
+
+The sole authorization route is this substantive rationale plus the newest
+well-formed owner-account User `[CODEX-ADVERSARIAL-REVIEW]` ledger record whose
+`reviewed_sha` matches the current head, whose `reviewed_body_sha256` matches
+SHA-256 of the current PR body, and whose `status: GREEN`. Load
+`scripts/adversarial-review-trusted.sh` directly from the immutable captured
+`origin/<base>` object; never execute review producers from the PR worktree.
+Any push or body edit
+invalidates the reviewed snapshot and requires a fresh review.
+
+A change that introduces or expands frozen legacy presentation is a BLOCKER
+and can never be GREEN. A guard/control-plane change is reviewable rather than
+automatically blocking; it may be GREEN only when the fail-closed trusted-base
+guarantees and tests remain sound. There is no label or manual bypass.
+-->
+
+Reason:
+Canonical replacement impact:
+Rollback:
+
 ## Acceptance criteria verified
 
 - [ ] Yes — listed below

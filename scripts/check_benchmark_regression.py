@@ -40,17 +40,36 @@ def _load(p: Path) -> dict:
         return json.load(f)
 
 
-def _totals(raw: dict) -> tuple[int, int, dict[str, dict[str, int]]]:
+# A run is only judged when at least this share of questions had BOTH answers
+# graded. Below it the grader, not MIRA, is what the run measured.
+MIN_GRADED_SHARE = 0.8
+
+
+def _totals(raw: dict) -> tuple[int, int, dict[str, dict[str, int]], int, int]:
+    """Paired totals, scaled back to the full question count.
+
+    A side whose judge reply could not be read has `total: None` (see
+    tests/mira_bench_scorer.py). That question is dropped from BOTH sides —
+    counting it as 0 is how 2026-09-27 run 36310765032 turned grader
+    truncation into an apparent MIRA regression.
+    """
+    results = raw.get("results", [])
     mira = 0
     baseline = 0
     per_q: dict[str, dict[str, int]] = {}
-    for r in raw.get("results", []):
-        m = int(r.get("grounded_score", {}).get("total", 0))
-        b = int(r.get("baseline_score", {}).get("total", 0))
-        mira += m
-        baseline += b
-        per_q[r.get("id", "?")] = {"mira": m, "baseline": b}
-    return mira, baseline, per_q
+    for r in results:
+        m = r.get("grounded_score", {}).get("total")
+        b = r.get("baseline_score", {}).get("total")
+        if m is None or b is None:
+            continue
+        mira += int(m)
+        baseline += int(b)
+        per_q[r.get("id", "?")] = {"mira": int(m), "baseline": int(b)}
+    n, k = len(results), len(per_q)
+    if k:
+        mira = round(mira * n / k)
+        baseline = round(baseline * n / k)
+    return mira, baseline, per_q, n, k
 
 
 def _delta_row(qid: str, current: dict[str, int], pinned: dict[str, int]) -> str:
@@ -95,7 +114,24 @@ def main() -> int:
         print(f"::error::bad json: {exc}", file=sys.stderr)
         return 2
 
-    mira, baseline, per_q = _totals(raw)
+    run_lane = raw.get("meta", {}).get("mira_source", "harness")
+    base_lane = base.get("mira_source", "harness")
+    if run_lane != base_lane:
+        print(
+            f"::error::lane mismatch — run graded '{run_lane}' but the baseline was "
+            f"pinned from '{base_lane}'; the numbers are not comparable",
+            file=sys.stderr,
+        )
+        return 2
+
+    mira, baseline, per_q, n_questions, n_graded = _totals(raw)
+    if n_questions and n_graded < MIN_GRADED_SHARE * n_questions:
+        print(
+            f"::error::INCONCLUSIVE — only {n_graded}/{n_questions} questions had both "
+            f"answers graded (need {MIN_GRADED_SHARE:.0%}); the judge failed, not MIRA",
+            file=sys.stderr,
+        )
+        return 2
     if mira == 0 and baseline == 0:
         print(
             "::error::raw json had zero totals — bench likely never produced "
@@ -109,9 +145,7 @@ def main() -> int:
     advantage_floor = int(thresholds.get("mira_advantage_min", 15))
     pinned_mira = int(base.get("baseline_run", {}).get("mira_total", 282))
     pinned_baseline = int(base.get("baseline_run", {}).get("baseline_total", 255))
-    pinned_per_q: dict[str, dict[str, int]] = (
-        base.get("baseline_run", {}).get("per_question", {})
-    )
+    pinned_per_q: dict[str, dict[str, int]] = base.get("baseline_run", {}).get("per_question", {})
 
     advantage = mira - baseline
     failures: list[str] = []
@@ -128,6 +162,7 @@ def main() -> int:
         )
 
     summary = (
+        f"[{run_lane}, {n_graded}/{n_questions} graded] "
         f"MIRA={mira}/{base.get('max_total', 350)}  "
         f"baseline={baseline}/{base.get('max_total', 350)}  "
         f"advantage={advantage:+d}  "
@@ -149,9 +184,7 @@ def main() -> int:
     body_lines.append("")
     body_lines.append(f"- **Run:** {args.run_url or '(local)'}")
     body_lines.append(f"- **Run id:** {raw.get('meta', {}).get('run_id', '?')}")
-    body_lines.append(
-        f"- **Cascade:** {raw.get('meta', {}).get('cascade', '?')}"
-    )
+    body_lines.append(f"- **Cascade:** {raw.get('meta', {}).get('cascade', '?')}")
     body_lines.append("")
     body_lines.append("### Headline")
     body_lines.append("")
@@ -171,9 +204,7 @@ def main() -> int:
     body_lines.append("")
     body_lines.append("### Per-question deltas (vs pinned baseline)")
     body_lines.append("")
-    body_lines.append(
-        "| Q | MIRA now | MIRA pinned | Δ | Baseline now | Baseline pinned | Δ |"
-    )
+    body_lines.append("| Q | MIRA now | MIRA pinned | Δ | Baseline now | Baseline pinned | Δ |")
     body_lines.append("|---|---|---|---|---|---|---|")
     for qid in sorted(per_q.keys()):
         pinned = pinned_per_q.get(qid, {"mira": 0, "baseline": 0})
@@ -200,9 +231,7 @@ def main() -> int:
         "`recall_knowledge` early-return (see `project_recall_embedding_gate`)."
     )
     body_lines.append("")
-    body_lines.append(
-        "### How to update the baseline (only after a confirmed improvement)"
-    )
+    body_lines.append("### How to update the baseline (only after a confirmed improvement)")
     body_lines.append("")
     body_lines.append(
         "Edit `.github/baselines/mira-bench.json` in the PR that lands the "

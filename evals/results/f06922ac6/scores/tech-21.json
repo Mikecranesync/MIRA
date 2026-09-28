@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 85,
+      "missing_points": [
+        "Bearing is degrading and will fail soon; continue running is not safe"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers most key points but lacks explicit safety warning about continued operation"
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, step\u2011by\u2011step actions and a follow\u2011up question"
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence in the recommendation"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 87.5
+}

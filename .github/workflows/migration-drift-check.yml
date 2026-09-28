@@ -58,12 +58,16 @@ jobs:
     # (failure mode #2 above).
     environment: staging
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Install psycopg2
-        run: pip install psycopg2-binary
+      - name: Install migration drift dependencies
+        run: |
+          python3 -I -m pip install \
+            --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r tools/migration-drift-requirements.txt
       - name: Check migration drift (staging — hard gate)
         id: drift_staging
         env:
@@ -71,7 +75,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$DATABASE_URL" ]; then echo "::error::NEON_STG_DATABASE_URL is empty"; exit 1; fi
-          python tools/migration_drift.py --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
+          URL="$DATABASE_URL"
+          unset DATABASE_URL
+          env -i PATH="$PATH" NEON_DATABASE_URL="$URL" \
+            python3 -I tools/migration_drift.py | tee /tmp/drift.out || RC=$?
+          unset URL
           {
             echo "## Migration drift — staging"
             echo '```'
@@ -98,13 +106,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Install psycopg2 + Doppler
-        run: pip install psycopg2-binary
-      - uses: dopplerhq/cli-action@v4
+      - name: Install migration drift dependencies
+        run: |
+          python3 -I -m pip install \
+            --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r tools/migration-drift-requirements.txt
+      - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
       - name: Resolve prod DATABASE_URL
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
@@ -113,15 +125,25 @@ jobs:
           URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
           if [ -z "$URL" ]; then echo "::error::empty DATABASE_URL for factorylm/prd"; exit 1; fi
           echo "::add-mask::$URL"
-          echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
+          URL_FILE="$RUNNER_TEMP/migration-drift-prod-db-url"
+          umask 077
+          printf '%s' "$URL" > "$URL_FILE"
+          unset URL
       - name: Check migration drift (prod — hard gate)
         id: drift_prod
         run: |
           set -euo pipefail
+          URL_FILE="$RUNNER_TEMP/migration-drift-prod-db-url"
+          test -f "$URL_FILE" && [ ! -L "$URL_FILE" ] || { echo "::error::production database URL handoff is missing"; exit 1; }
+          URL="$(<"$URL_FILE")"
+          trap 'rm -f "$URL_FILE"' EXIT
+          if [ -z "$URL" ]; then echo "::error::empty DATABASE_URL handoff"; exit 1; fi
           # HARD gate since 2026-07-14: prod ledger baselined to zero drift
           # (hub 001-064 + ingest 003-013 all recorded). Any drift now means a
           # merged migration was never promoted — exactly the 061-064 failure.
-          python tools/migration_drift.py --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
+          env -i PATH="$PATH" NEON_DATABASE_URL="$URL" \
+            python3 -I tools/migration_drift.py | tee /tmp/drift.out || RC=$?
+          unset URL
           {
             echo "## Migration drift — prod"
             echo '```'

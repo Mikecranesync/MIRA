@@ -29,15 +29,34 @@ matches the intended target, before executing.
    posture as `.claude/rules/train-before-deploy.md`). But the unambiguous
    *catastrophic* subset IS mechanically enforceable, and now is:
    **`tools/hooks/rm-guard.sh`** (a `PreToolUse(Bash)` hook) hard-blocks a
-   recursive+force `rm` whose target *resolves* to the root filesystem, your
-   home directory, the repo root (or an ancestor), or any `.git` admin dir —
-   after expanding variables (`rm -rf "$REPO"`), normalizing relative paths
-   (`..`), and following symlinks, which a static `permissions.deny` glob
-   cannot do. Scope is deliberately narrow so legitimate scoped cleanup
+   recursive+force `rm` whose target *resolves* to the root filesystem (or a
+   Windows drive root), your home directory, the repo root (or an ancestor), or
+   any `.git` admin dir — after expanding variables (`rm -rf "$REPO"`),
+   normalizing relative paths (`..`), following symlinks, and decoding the
+   Git Bash/MSYS drive spelling (`/c/...`, `/cygdrive/c/...`) that `pwd` returns
+   on Windows. A static `permissions.deny` glob can do none of that. Scope is
+   deliberately narrow so legitimate scoped cleanup
    (`rm -rf .audit-worktrees/x`, `graphify-out/`, `node_modules`, `/tmp/...`)
-   still passes. Override (human, per-shell): `MIRA_ALLOW_RM=1`. The hook is the
-   floor; this rule is the ceiling — the hook can't catch every judgment case,
-   so the print-the-resolved-path-first discipline still applies above it.
+   still passes. Override (human, per-shell): `MIRA_ALLOW_RM=1`.
+
+   **The guard compares resolved targets, not spellings — and that is exactly
+   where it has failed before.** Two spellings of one path that do not normalise
+   together are a silent fail-open, on the one guard whose job is to fail
+   closed: on Windows the containment test compared with a hardcoded `/` while
+   `realpath` returned backslashes, and `os.path.realpath` read `/c/Users/...`
+   as a literal `c` directory rather than the `C:` drive. Both allowed
+   `rm -rf <repo root>` through. Linux CI was green throughout, because the
+   implementation is correct there (#3827). Any future change to path handling
+   needs a regression row per spelling **and** a safe control that must still
+   pass — a normalization fix that starts denying legitimate cleanup has only
+   traded one failure mode for another.
+
+   **A guard approval is not proof that a destructive command is safe.** The
+   hook is a floor, this rule is the ceiling: it cannot catch every judgment
+   case, it can only deny what it recognises, and "it passed the hook" must
+   never be read as "the target is correct". The
+   print-the-resolved-path-first discipline above applies regardless of what
+   the hook says.
 
 ## Relationship to existing guards
 

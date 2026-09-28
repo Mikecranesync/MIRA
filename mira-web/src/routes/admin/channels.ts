@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { Client, neon } from "@neondatabase/serverless";
 import { requireAdmin } from "../../lib/auth.js";
 import type { MiraTokenPayload } from "../../lib/auth.js";
+import { hubOrigin } from "../../capabilities/hub-origin.js";
 
 export const adminChannelPages = new Hono();
 export const adminChannelApi = new Hono();
@@ -38,7 +39,7 @@ adminChannelPages.get("/channels", requireAdmin, async (c) => {
   const cfg = rows[0] ?? {
     enabled_channels: ["openwebui", "guest"],
     telegram_bot_username: null,
-    openwebui_url: "https://app.factorylm.com",
+    openwebui_url: hubOrigin(),
     allow_guest_reports: true,
   };
 
@@ -154,13 +155,13 @@ adminChannelApi.post("/api/admin/channels", requireAdmin, async (c) => {
     await pg.query(
       `INSERT INTO tenant_channel_config
          (tenant_id, enabled_channels, telegram_bot_username, openwebui_url, updated_at)
-       VALUES ($1, $2, $3, COALESCE($4, 'https://app.factorylm.com'), NOW())
+       VALUES ($1, $2, $3, COALESCE($4, $5), NOW())
        ON CONFLICT (tenant_id) DO UPDATE SET
          enabled_channels      = EXCLUDED.enabled_channels,
          telegram_bot_username = EXCLUDED.telegram_bot_username,
-         openwebui_url         = COALESCE(EXCLUDED.openwebui_url, 'https://app.factorylm.com'),
+         openwebui_url         = COALESCE(EXCLUDED.openwebui_url, $5),
          updated_at            = NOW()`,
-      [user.sub, enabled, telegramBotUsername, openwebuiUrl],
+      [user.sub, enabled, telegramBotUsername, openwebuiUrl, hubOrigin()],
     );
     await pg.query("COMMIT");
   } catch (err) {

@@ -9,16 +9,7 @@
 // It never applies an update silently. A staged bundle is announced with an
 // explicit Restart action, because swapping the app out from under someone
 // mid-diagnosis is a worse defect than whatever the update fixed.
-import { useEffect, useState } from "react";
-import { App as CapApp } from "@capacitor/app";
-import { Capacitor } from "@capacitor/core";
-import {
-  NATIVE_FINGERPRINT,
-  checkAndStage,
-  currentBundleId,
-  recoverToPackaged,
-  type OtaChannel,
-} from "../lib/live-update";
+import { useOtaUpdates } from "../api/use-ota-updates";
 
 type Row = { label: string; value: string };
 
@@ -29,46 +20,23 @@ export function AboutUpdates({
   pendingOfflineWork: () => Promise<boolean>;
   onBack: () => void;
 }) {
-  const [native, setNative] = useState<Row[]>([]);
-  const [bundle, setBundle] = useState("…");
-  const [channel] = useState<OtaChannel>("canary");
-  const [status, setStatus] = useState<string | null>(null);
-  const [staged, setStaged] = useState<string | null>(null);
-  const [lastCheck, setLastCheck] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void (async () => {
-      const rows: Row[] = [];
-      try {
-        const info = await CapApp.getInfo();
-        rows.push({ label: "App version", value: `${info.version} (${info.build})` });
-        rows.push({ label: "Package", value: info.id });
-      } catch {
-        rows.push({ label: "App version", value: "web preview" });
-      }
-      rows.push({ label: "Platform", value: Capacitor.getPlatform() });
-      // The fingerprint is shown because it is the thing that decides whether an
-      // OTA bundle is even offered. When an update "is not arriving", this is
-      // usually the answer.
-      rows.push({ label: "Native fingerprint", value: NATIVE_FINGERPRINT });
-      setNative(rows);
-      setBundle(await currentBundleId());
-    })();
-  }, []);
-
-  const check = async () => {
-    setBusy(true);
-    setStatus(null);
-    try {
-      const r = await checkAndStage({ channel, isBusy: pendingOfflineWork });
-      setStaged(r.staged);
-      setStatus(explain(r.reason));
-      setLastCheck(new Date().toLocaleString());
-    } finally {
-      setBusy(false);
-    }
-  };
+  const updates = useOtaUpdates(pendingOfflineWork);
+  const native: Row[] = updates.appInfo === undefined
+    ? []
+    : [
+        {
+          label: "App version",
+          value: updates.appInfo
+            ? `${updates.appInfo.version} (${updates.appInfo.build})`
+            : updates.platform === "web"
+              ? "web preview"
+              : "unavailable",
+        },
+        ...(updates.appInfo ? [{ label: "Package", value: updates.appInfo.id }] : []),
+        { label: "Platform", value: updates.platform },
+        // This decides whether an OTA bundle is compatible with the installed shell.
+        { label: "Native fingerprint", value: updates.nativeFingerprint },
+      ];
 
   return (
     <div className="content bottompad">
@@ -89,28 +57,50 @@ export function AboutUpdates({
       <div className="card">
         <h3>Update bundle</h3>
         <div className="meta">
-          Active bundle: <strong>{bundle}</strong>
-          {bundle === "packaged" && " (shipped with the app)"}
+          Active bundle:{" "}
+          <strong>
+            {updates.bundleId === undefined ? "loading…" : updates.bundleId ?? "unavailable"}
+          </strong>
+          {updates.bundleId === "packaged" && " (shipped with the app)"}
         </div>
         <div className="meta">
-          Channel: <strong>{channel}</strong>
+          Channel:{" "}
+          <strong>
+            {updates.channel === undefined ? "loading…" : updates.channel ?? "unavailable"}
+          </strong>
         </div>
-        <div className="meta">Last checked: {lastCheck ?? "not yet"}</div>
-        {status && <div className="meta">Result: {status}</div>}
+        <div className="meta">
+          Last checked: {updates.lastCheckedAt?.toLocaleString() ?? "not yet"}
+        </div>
+        {updates.statusCode && <div className="meta">Result: {explain(updates.statusCode)}</div>}
 
-        {staged && (
+        {updates.stagedBundleId && (
           <>
             <div className="warnbox" style={{ marginTop: 10 }}>
               Update ready. It will be applied the next time the app starts.
             </div>
-            <button className="btn-primary" onClick={() => void CapApp.exitApp()}>
+            <button
+              className="btn-primary"
+              disabled={updates.busy}
+              onClick={() => void updates.restartToApply()}
+            >
               Restart to finish updating
             </button>
           </>
         )}
 
-        <button style={{ marginTop: 8 }} disabled={busy} onClick={() => void check()}>
-          {busy ? "Checking…" : "Check now"}
+        <button
+          style={{ marginTop: 8 }}
+          disabled={
+            updates.busy ||
+            !updates.channel ||
+            !updates.pendingBundleKnown ||
+            !updates.replayStateKnown ||
+            Boolean(updates.stagedBundleId)
+          }
+          onClick={() => void updates.checkNow()}
+        >
+          {updates.busy ? "Checking…" : "Check now"}
         </button>
       </div>
 
@@ -122,11 +112,8 @@ export function AboutUpdates({
         </div>
         <button
           style={{ marginTop: 8 }}
-          onClick={async () => {
-            await recoverToPackaged();
-            setStatus("Recovered to the packaged version. Restart to apply.");
-            setStaged(null);
-          }}
+          disabled={updates.busy}
+          onClick={() => void updates.recoverPackagedBundle()}
         >
           Recover to packaged version
         </button>
@@ -150,6 +137,8 @@ function explain(reason: string): string {
       return "Up to date.";
     case "busy":
       return "Skipped — you have work that has not finished syncing.";
+    case "restart_failed":
+      return "Could not restart the app. The staged update is still waiting.";
     case "incompatible_native":
       return "An update exists but needs a newer app version. Install the new app to get it.";
     case "unsigned":
@@ -158,6 +147,39 @@ function explain(reason: string): string {
       return "Refused — insecure download location.";
     case "verify_failed":
       return "Refused — the update failed its integrity check. Nothing changed.";
+    case "invalid_manifest_origin":
+      return "Refused — update source is not FactoryLM.";
+    case "channel_mismatch":
+      return "Refused — update channel does not match this device.";
+    case "invalid_pointer_timestamp":
+    case "invalid_pointer_signature":
+      return "Refused — update authorization could not be verified.";
+    case "invalid_packaged_minimum":
+      return "This app cannot verify update age. Install a newer app.";
+    case "stale_pointer":
+      return "Refused — update is older than this app.";
+    case "replayed_pointer":
+      return "Refused — update is older than this device's trusted history.";
+    case "pointer_state_unavailable":
+      return "Could not safely save update history. Restart the app before checking again.";
+    case "pointer_state_invalid":
+      return "Update history is invalid. Install a fresh app before updating.";
+    case "pending_bundle_state_unavailable":
+      return "Could not verify the pending update state. Restart the app before changing channels.";
+    case "channel_state_unavailable":
+      return "Could not verify this device's update channel. Restart the app before checking for updates.";
+    case "check_failed":
+      return "Could not check for updates. The app is unaffected.";
+    case "recovery_failed":
+      return "Could not recover the packaged version. Nothing changed.";
+    case "bundle_state_unavailable":
+      return "Could not safely inspect downloaded updates. Nothing changed.";
+    case "bundle_cleanup_failed":
+      return "Could not safely prepare the update. Restart the app and try again.";
+    case "recovered_to_packaged":
+      return "Recovered to the packaged version. Restart to apply.";
+    case "already_packaged":
+      return "This app is already using the packaged version.";
     case "unreachable":
       return "Could not reach the update server. The app is unaffected.";
     case "not_native":

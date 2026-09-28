@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { signIn } from "../api/resources";
+import { signInFailureCopy } from "../lib/resource-copy";
 
-export function Login({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
+export function Login({
+  onSignedIn,
+  onSignInStarted,
+}: {
+  onSignedIn: () => Promise<void>;
+  // Fired the instant the technician commits to a sign-in, BEFORE any network
+  // work. App uses it to retire a boot-time getMe() still in flight (#3799): a
+  // late success body for the previously-persisted session must not render its
+  // account while a different sign-in is pending or after it fails.
+  onSignInStarted?: () => void;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,10 +43,11 @@ export function Login({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
               onClick={async () => {
                 setBusy(true);
                 setError("");
+                onSignInStarted?.();
                 const r = await signIn(email, password);
                 setBusy(false);
                 if (r.ok) await onSignedIn();
-                else setError(r.error ?? "sign-in failed");
+                else setError(signInFailureCopy(r.reason));
               }}
             >
               {busy ? "Signing in…" : "Sign in"}

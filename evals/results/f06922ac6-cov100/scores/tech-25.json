@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-25",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 80,
+      "missing_points": [
+        "does not mention nameplate or facility maintenance records",
+        "does not explicitly offer help if technician provides nameplate or maintenance history"
+      ],
+      "wrong_if_present": [],
+      "note": "Abstains appropriately and gives next steps, but omits some key points."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Provides clear, safe, and specific next steps."
+    },
+    "uncertainty": {
+      "score": 100,
+      "note": "Correctly abstains due to lack of specific information."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    }
+  },
+  "case_score": 85.5
+}

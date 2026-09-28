@@ -1124,7 +1124,7 @@ services:
     - "diagnosis/telegram_bot/llm-router are frozen 2026-03 predecessors of mira-bots; plc-modbus dormant. Per-component statuses now live in services-diagnosis / services-telegram-bot / services-llm-router / services-plc-modbus (CU-04)"
     - "CU-04 FINDING — the wholesale LEGACY status on this directory is WRONG: services/ contains two LIVE CHARLIE services. `com.factorylm.brain-ingest` runs `uvicorn services.brain.ingest:app --host 0.0.0.0 --port 8500` (PID 1497, up since 2026-07-28) and `com.factorylm.brain-mcp` runs `python3 -m services.mcp.brain_server`. Recorded, not silently repaired — needs its own unit."
 
-docs:
+factorylm-docs:
   repo: factorylm
   path: docs/
   tags: ["type:docs", "domain:platform"]
@@ -1245,7 +1245,7 @@ kb:
     - analytics
   known_drift: []   # filled by Gate 0 discovery
 
-scripts:
+factorylm-scripts:
   repo: factorylm
   path: scripts/
   tags: ["type:infra", "domain:platform"]
@@ -1265,7 +1265,7 @@ scripts:
     - plc
   known_drift: []   # filled by Gate 0 discovery
 
-tools:
+factorylm-tools:
   repo: factorylm
   path: tools/
   tags: ["type:infra", "domain:platform"]
@@ -1285,7 +1285,7 @@ tools:
     - brain
   known_drift: []   # filled by Gate 0 discovery
 
-tests:
+factorylm-tests:
   repo: factorylm
   path: tests/
   tags: ["type:test", "domain:platform"]
@@ -1582,7 +1582,7 @@ data:
     - "learner/knowledge.json"
   known_drift: []   # filled by Gate 0 discovery
 
-infra:
+factorylm-infra:
   repo: factorylm
   path: infra/
   tags: ["type:infra", "domain:platform"]
@@ -1621,3 +1621,218 @@ antfarm:
     - apps
     - agents
   known_drift: []   # filled by Gate 0 discovery
+
+# ── FACTORYLM-UNIFIED-UI-CUTOVER-001: canonical shared shell + guarded legacy
+# presentation trees. Charter: docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
+# Capability-closure record: unified_ui_shell (CAPABILITY_CLOSURE.yaml). The
+# legacy entries below guard specific presentation subtrees, NOT the whole
+# parent module — mira-web/mira-hub/mira-mobile stay CANONICAL/deployed for
+# their capability seams (auth, persistence, evidence, safety, native APIs).
+
+factorylm-theme:
+  repo: MIRA
+  path: packages/factorylm-theme/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared FactoryLM tokens and semantic workspace theme for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Canonical shared theme consumed by the opt-in mobile unified-shell canary; foundation, Tasks 5-8, connected mobile adapters, and Slice A are merged (#3625/#3628/#3632/#3633/#3639/#3642/#3643). See CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/tokens.css"
+    - "src/workspace.css"
+    - "src/__tests__/theme-contract.test.ts"
+  dependencies: []
+  known_drift: []
+
+factorylm-interaction:
+  repo: MIRA
+  path: packages/factorylm-interaction/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared interaction types, fixtures, reducer, and platform-adapter contract for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Canonical interaction contract consumed by the opt-in mobile unified-shell canary; foundation, Tasks 5-8, connected mobile adapters, and Slice A are merged (#3625/#3628/#3632/#3633/#3639/#3642/#3643). See CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/reducer.ts"
+    - "src/fixtures.ts"
+    - "src/adapters.ts"
+  dependencies: []
+  known_drift: []
+
+factorylm-ui:
+  repo: MIRA
+  path: packages/factorylm-ui/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Shared shell, conversation parts, composer, navigation, inspector, and source viewer for the unified UI."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Canonical shell is connected to the opt-in mobile canary through UnifiedRoot/UnifiedChat (#3633/#3639); shared interaction work and Slice A are merged (#3628/#3632/#3643). See CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "src/FactoryLMShell.tsx"
+    - "src/Sidebar.tsx"
+    - "src/Inspector.tsx"
+    - "src/Conversation.tsx"
+    - "src/Composer.tsx"
+    - "src/parts.tsx"
+    - "src/AttachmentMenu.tsx"
+    - "src/SourceViewer.tsx"
+    - "src/Overlay.tsx"
+    - "src/ThreadHeader.tsx"
+    - "src/ProjectTree.tsx"
+  dependencies:
+    - factorylm-theme
+    - factorylm-interaction
+  known_drift: []
+
+factorylm-ui-lab:
+  repo: MIRA
+  path: apps/factorylm-ui-lab/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Disconnected fixture lab and cross-surface verification harness for the unified UI shell."
+  language: typescript
+  status: CANONICAL
+  declared_state: "Isolated shared-shell lab is enforced by .github/workflows/factorylm-ui-lab.yml; Tasks 5-8, connected mobile adapters, and Slice A are merged (#3628/#3632/#3633/#3639/#3642/#3643). See CAPABILITY_CLOSURE.yaml unified_ui_shell."
+  key_components:
+    - "scripts/bootstrap-ui.ts"
+    - "scripts/check-dependency-licenses.ts"
+    - "src/test-setup.ts"
+  dependencies:
+    - factorylm-ui
+  known_drift: []
+
+mira-web-legacy-ui:
+  repo: MIRA
+  path: mira-web/src/views/
+  tags: ["type:presentation", "domain:platform"]
+  purpose: "Legacy public-web page tree, product-demo shell, and standalone chat renderer — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - .claude/settings.json
+    - .claude/settings.local.json
+    - .github/scripts/resolve_release_tag.sh
+    - agent-dashboard.html
+    - docs/preview/**
+    - deployment/nginx-factorylm-marketing.conf
+    - compose.yaml
+    - compose.yml
+    - compose.override.yaml
+    - compose.override.yml
+    - docker-compose.saas.yml
+    - docker-compose.staging-vps.yml
+    - docker-compose.yaml
+    - docker-compose.yml
+    - docker-compose.override.yaml
+    - docker-compose.override.yml
+    - mira-web/.dockerignore
+    - mira-web/Dockerfile
+    - mira-web/bun.lock
+    - mira-web/docker-compose.yml
+    - mira-web/package-lock.json
+    - mira-web/package.json
+    - mira-web/server.js
+    - mira-web/tsconfig.json
+    - mira-web/emails/**
+    - nginx-oracle.conf
+    - nginx-oracle-v2.conf
+    - nginx-phase2-live.conf
+    - oracle-bootstrap.sh
+    - oracle-deploy.sh
+    - scripts/apply-apex-login-redirects.sh
+    - scripts/host_perm_setup.sh
+    - scripts/install_crons.sh
+    - preview/**
+    - tools/agent-dashboard.html
+    - tools/hooks/prod-guard.sh
+    - tools/migration_drift.py
+    - tools/migration-drift-requirements.txt
+    - tools/predeploy_log_capture.sh
+    - well-known/**
+    - mira-web/src/views/**
+    - mira-web/src/routes/**
+    - mira-web/src/server.ts
+    - mira-web/src/lib/blog-renderer.ts
+    - mira-web/src/lib/components.ts
+    - mira-web/src/lib/drive-commander-renderer.ts
+    - mira-web/src/lib/feature-renderer.ts
+    - mira-web/src/lib/head.ts
+    - mira-web/src/lib/mailer.ts
+    - mira-web/public/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md). Parent module mira-web stays CANONICAL/deployed; code-owned classification in tools/ui_surface_lifecycle_guard.py preserves three named JSON/API routes, an exact audited backend library allowlist, TypeScript/JSON capability or seed files, and non-runtime docs/tests/tooling while guarding the mixed m.ts customer-routing journey, every other route, renderers, content data, server.ts, module-root and every root compose or docker-compose YAML build/mount control regardless of suffix, deployable root nginx/redirect controls, production-credential deploy helpers, the mixed outbound mailer, unknown production siblings, non-TypeScript/JSON capability files, and every file under mira-web/public/**. Static images, fonts, PDFs, manifests, and scripts all change the shipped legacy experience and are therefore guarded. Evaluated by .github/workflows/ui-lifecycle-guard.yml, which posts an advisory Legacy UI Lifecycle Guard status on every PR; non-spoofable protected-main binding remains tracked in #3657 — see charter §3.1."
+  known_drift:
+    - "PR #3592 (open at charter approval) edits mira-web/src/views/home.ts inside this guarded tree — must merge, close, or use legacy-ui-exception at/around the freeze landing; this entry does not decide that PR."
+
+mira-hub-legacy-ui:
+  repo: MIRA
+  path: "mira-hub/src/app/(hub)/"
+  tags: ["type:presentation", "domain:assets"]
+  purpose: "Legacy dashboard-first Hub route tree, navigation, and duplicate Equipment Notebook presentation — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - deployment/nginx-app-factorylm.conf
+    - deployment/nginx-stg-factorylm.conf
+    - docker-compose.hub.yml
+    - mira-hub/Dockerfile
+    - mira-hub/bun.lock
+    - mira-hub/next.config.ts
+    - mira-hub/package-lock.json
+    - mira-hub/package.json
+    - mira-hub/postcss.config.mjs
+    - mira-hub/tsconfig.json
+    - mira-hub/src/auth.ts
+    - mira-hub/src/middleware.ts
+    - mira-hub/src/app/api/me/route.ts
+    - mira-hub/src/app/api/mobile/live-update/manifest/route.ts
+    - mira-hub/src/lib/capabilities.ts
+    - mira-hub/src/app/**
+    - mira-hub/src/components/**
+    - mira-hub/src/providers/**
+    - mira-hub/src/messages/**
+    - mira-hub/public/**
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-hub stays CANONICAL/deployed. The code-owned classifier guards app presentation, every production component/provider, rendered locale catalogs, public assets, module-root build/mount controls, root auth/middleware landing selectors, non-allowlisted historical libraries, and unknown production source roots. It preserves ordinary Next route-handler files under explicit api segments, an exact audited src/lib capability allowlist, TypeScript/JSON files under src/capabilities/**, the canonical src/factorylm-ui/** adapter root, and non-runtime docs/tests/tooling. Session, tenant, authorization, Notebook persistence, and typed SSE seams remain reusable per charter §2.3; the /api/me capability wrapper, live-update manifest selector, mixed capabilities.ts legacy chat rollout selector, and mixed display/readiness/health/follow-up copy modules remain guarded. Authorization-only work in a mixed file must first move under src/capabilities/**. Evaluated by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml; its status remains advisory until #3657 closes the protected-main source binding."
+  known_drift: []
+
+mira-mobile-legacy-ui:
+  repo: MIRA
+  path: mira-mobile/src/
+  tags: ["type:presentation", "domain:mobile"]
+  purpose: "Legacy mobile shell, screen tree, navigation, and duplicate chat presentation — feature-frozen under the unified UI cutover."
+  language: typescript
+  status: LEGACY
+  change_policy: exception_only
+  deletion_safe: false
+  canonical_replacement: packages/factorylm-ui/
+  guarded_paths:
+    - deployment/nginx-updates-factorylm.conf
+    - deployment/ota-download/**
+    - deployment/well-known/apple-app-site-association
+    - deployment/well-known/assetlinks.json
+    - mira-mobile/android/**
+    - mira-mobile/bun.lock
+    - mira-mobile/capacitor.config.ts
+    - mira-mobile/index.html
+    - mira-mobile/ios/**
+    - mira-mobile/package-lock.json
+    - mira-mobile/package.json
+    - mira-mobile/public/**
+    - mira-mobile/scripts/ota-deploy.mjs
+    - mira-mobile/scripts/ota-guard.mjs
+    - mira-mobile/scripts/native-fingerprint.mjs
+    - mira-mobile/scripts/ota-package.mjs
+    - mira-mobile/scripts/ota-provenance.mjs
+    - mira-mobile/scripts/ota-publish.mjs
+    - mira-mobile/scripts/ota-rollback.mjs
+    - tools/ota_handset_evidence.py
+    - mira-mobile/src/api/resources.ts
+    - mira-mobile/src/**
+    - mira-mobile/tsconfig.json
+    - mira-mobile/vite.config.ts
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2. Parent module mira-mobile stays CANONICAL/deployed. The code-owned classifier guards index.html, navigation, legacy production presentation files, unknown source siblings, module-root build/package controls, public assets, native runtime roots, app/universal-link associations, every production OTA workflow script and manifest selector, and mixed src/lib or chat-adapter helpers that own visible copy, render transforms, safety/citation parts, view models, or legacy interaction transitions. It preserves the canonical src/factorylm-ui/** adapter, the already-connected new-UI src/unified/** adapter and exact UnifiedChat.tsx/UnifiedRoot.tsx hosts, ordinary structured TypeScript/JSON API transport/data files, the pure chat-adapter contract, an exact native-call/transport allowlist (native picker, offline queue, OS handoff, resume guard, tag/deep-link grammar), and non-runtime docs/tests/evidence. The mixed SSE interpreter and transport-dependent Stop affordance are guarded because they own visible safety, completion, citation, fallback, and interaction semantics. Human error and resource fallback copy lives in guarded presentation modules; api/resources.ts remains guarded until identity/capability decoding is split from general transport. Mobile tests run on a separate secret-free runner from native signing and distribution. Evaluated by tools/ui_surface_lifecycle_guard.py from .github/workflows/ui-lifecycle-guard.yml; its status remains advisory until #3657 closes the protected-main source binding."
+  known_drift: []

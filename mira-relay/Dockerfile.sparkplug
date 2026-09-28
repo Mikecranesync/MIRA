@@ -7,7 +7,7 @@ FROM python:3.12.13-slim
 WORKDIR /app
 COPY pyproject.toml .
 # aiomqtt is the repo-standard async MQTT client (mira-fault-detective, live-plc-bridge).
-RUN pip install --no-cache-dir aiomqtt sqlalchemy psycopg2-binary
+RUN pip install --no-cache-dir aiomqtt "sqlalchemy<2.1" psycopg2-binary
 
 # COPY *.py brings ingest_contract.py + tag_ingest.py (imported as top-level
 # modules by mqtt_ingest), mirroring the relay image. Enumerating individual

@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-07",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-07",
+    "category": "troubleshooting",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "GS10 drive is running at full nameplate speed but will not respond to speed command changes. What are the top two causes to verify?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Verify parameter P00.20 (Master Frequency Command Source) is set to the correct input source (0=Digital keypad, 1=RS-485 communication, 2=External analog input)",
+        "Check that the speed reference input (analog or digital terminal) is actually changing and is wired correctly per the manual's wiring diagram",
+        "If using terminal inputs, verify the terminal block connector is fully seated and the input signal is present with a voltmeter",
+        "Review the Speed Reference Control chart to ensure the correct parameter settings for the input source in use"
+      ],
+      "wrong_if": [
+        "Assumes the motor speed feedback is not working without checking command source first",
+        "States that speed commands are only via analog 0-10V input on GS10",
+        "Recommends resetting all drive parameters before checking the control wiring",
+        "Claims the drive display showing 'RUN' means the speed control input is working"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "GS10 drive is running at full nameplate speed but will not respond to speed command changes. What are the top two causes to verify?",
+      "answer": "1. Verify that the active\u202fSpeed Reference\u202fparameter (e.g.,\u202fSpeed Reference\u202f1\u202fP047,\u202fSpeed Reference\u202f2\u202fP048,\u202fSpeed Reference\u202f3\u202fP049) is set to the source you intend to use, because if the drive is using a different speed reference than the one you\u2019re commanding, speed changes will be ignored\u202f[7].\n\n2. Verify the\u202fStart Source\u202fparameter (P046) is configured for keypad or external command as required; an incorrect start source will prevent the drive from accepting new speed commands\u202f[7].",
+      "citations": [
+        {
+          "citationId": "7",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 49,
+          "quote": "\u2026Source 2]\nselect(1)\n[Speed Reference2]\nselect(1)\nDrive stopped\n(NOT running)\nDrive will start and\nrun at Purge Speed.\nDirection is always\nFORWARD.\nDrive will start and run at\nJog Speed.\nDirection is from Terminal\nBlock REV terminal (03),\nCo",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 2.456728935241699,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:38.546526+00:00"
+}

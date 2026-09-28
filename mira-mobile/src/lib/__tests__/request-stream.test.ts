@@ -6,8 +6,18 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { nativePlatform } = vi.hoisted(() => ({ nativePlatform: { value: false } }));
+
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false },
+  // Production flavor's BuildConfig bridge (these suites predate the flavor split).
+  registerPlugin: (name: string) =>
+    name === "BuildConfig"
+      ? {
+          getApiBase: async () => ({ apiBase: "https://app.factorylm.com" }),
+          getDeepLinkConfig: async () => ({ host: "app.factorylm.com", scheme: "factorylm" }),
+        }
+      : {},
+  Capacitor: { isNativePlatform: () => nativePlatform.value },
   CapacitorHttp: { request: vi.fn() },
 }));
 vi.mock("@capacitor/preferences", () => ({
@@ -15,6 +25,7 @@ vi.mock("@capacitor/preferences", () => ({
 }));
 
 import { requestStream, ApiError } from "../../api/client";
+import { canCancelChatTransport } from "../chat-transport-presentation";
 
 function streamOf(chunks: string[], opts: { status?: number; gate?: () => Promise<void> } = {}) {
   const enc = new TextEncoder();
@@ -31,12 +42,30 @@ function streamOf(chunks: string[], opts: { status?: number; gate?: () => Promis
 }
 
 describe("requestStream", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    nativePlatform.value = false;
+  });
+
+  it("only advertises real cancellation on the browser streaming transport", () => {
+    expect(canCancelChatTransport()).toBe(true);
+    nativePlatform.value = true;
+    expect(canCancelChatTransport()).toBe(false);
+  });
 
   it("calls onChunk per body chunk, in order, and returns the whole text", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(streamOf(["a\n\n", "b\n\n", "c"]));
+    const response = streamOf(["a\n\n", "b\n\n", "c"]);
+    response.headers.set("X-Safety-Stop", "smoke");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
     const seen: string[] = [];
-    const r = await requestStream("/api/x", { json: { q: 1 }, onChunk: (c) => seen.push(c) });
+    const onResponseHeaders = vi.fn();
+    const r = await requestStream("/api/x", {
+      json: { q: 1 },
+      onResponseHeaders,
+      onChunk: (c) => seen.push(c),
+    });
+    expect(onResponseHeaders).toHaveBeenCalledOnce();
+    expect(onResponseHeaders.mock.calls[0][0].get("X-Safety-Stop")).toBe("smoke");
     expect(seen).toEqual(["a\n\n", "b\n\n", "c"]);
     expect(r.text).toBe("a\n\nb\n\nc");
     expect(r.status).toBe(200);

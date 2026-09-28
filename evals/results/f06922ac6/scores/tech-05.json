@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-05",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 50,
+      "missing_points": [
+        "Verify control power (24 VDC or equivalent) is present and within specification",
+        "Verify that input wiring to the drive is connected per the manual diagram"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers run command and safety interlock but omits control\u2011power check and explicit wiring\u2011to\u2011manual verification."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Answer is general guidance, not tied to specific machine documentation."
+    },
+    "diagnostic": {
+      "score": 80,
+      "note": "Provides a clear first discriminating check (verify control mode) and a prioritized checklist without vague cause lists."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Specifies what to check, where to check, expected results, implications, and next diagnostic question."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Shows high confidence in the recommended checks."
+    },
+    "context": {
+      "score": null,
+      "note": "No specific contextual information required."
+    }
+  },
+  "case_score": 72.3
+}

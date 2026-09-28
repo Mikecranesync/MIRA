@@ -36,6 +36,7 @@ export type Capability =
   | "review_queue.decide"
   | "platform.users.read"
   | "dev_tools.access"
+  | "chat_v2"
   // Tenant-role governance + write caps (issues #2360, #578). These are
   // intra-tenant actions gated on the caller's hub_users.role — NOT the
   // platform email allowlist above. Promotion proposed→verified is an admin
@@ -117,6 +118,10 @@ const WORKSPACE_CAPS: Capability[] = [
 
 export function getCapabilities(ctx: SessionContext): Capability[] {
   const caps: Capability[] = [...WORKSPACE_CAPS];
+  // ChatV2 rollout is server-authoritative and fail-closed. Removing this
+  // flag from the Hub immediately removes the capability from /api/me, so a
+  // bad mobile surface can be rolled back without an APK/store release.
+  if (process.env.MIRA_CHAT_V2_ENABLED === "1") caps.push("chat_v2");
   // Platform review surface — same email allowlist the review APIs already use.
   if (isReviewAdmin(ctx.email)) {
     caps.push("review_queue.read", "review_queue.decide");

@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-28",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-28",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "480V three-phase motor with magnetic contactor",
+    "question": "Motor M-7 won't start. Breaker is in. What do you check next?",
+    "turns": [
+      "Motor M-7 won't start. Breaker is in. What do you check next?",
+      "Contactor is pulling in, humming. Motor shaft is locked. 480 three-phase at the breaker input. What's happening at the contactor output?",
+      "Contactor output has 480V between phases but 0V at the motor terminals. Wiring lugs look dark/oxidized. What's the most likely fault?",
+      "Verified the lug connection is corroded and loose. After cleaning and tightening, motor starts. What was the root cause and how do you prevent recurrence?"
+    ],
+    "expected": {
+      "key_points": [
+        "Multi-turn diagnosis narrowed from supply to contactor to wiring connection",
+        "Root cause identified as corroded lug connection causing voltage drop to zero at motor",
+        "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
+      ],
+      "wrong_if": [
+        "Restarts the diagnosis from scratch in turn 4 instead of building on evidence from turns 1\u20133",
+        "Asks for information that was already provided (e.g., 'is the contactor pulling in' in turn 4)",
+        "Jumps to motor replacement without testing the connection"
+      ],
+      "final_turn_must_narrow_to": "Corroded or loose wiring lug connection causing voltage drop between contactor output and motor input"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor M-7 won't start. Breaker is in. What do you check next?",
+      "answer": "The most common reason a motor won\u2019t start when the breaker is closed is a fault or interlock in the VFD control chain.  \n\n1. **Look at the VFD display** \u2013 is any fault code or alarm lit? Note the code (if any).  \n2. **Verify the start/stop command** \u2013 ensure the push\u2011button or PLC start signal is present at the VFD\u2019s control terminals (use a multimeter or indicator lights, with power off if you must probe the wiring).  \n3. **Check the motor\u2011run output** \u2013 with the VFD in \u201crun\u201d mode, measure voltage at the VFD output terminals; you should see the rated AC voltage (typically 3\u2011phase, 460\u202fV or whatever the machine uses). If there\u2019s no voltage, the VFD may be in fault or the output contactor is open.  \n4. **Inspect safety interlocks** \u2013 emergency stop, safety door switches, or overload relay contacts must be closed; a tripped safety switch will prevent the VFD from energizing the motor.  \n5. **Confirm motor overload settings** \u2013 an overload that has tripped will open the motor contactor; reset it according to the overload\u2019s procedure (power off first).  \n\n**Diagnostic question:** Is the VFD currently showing any fault or alarm code on its screen?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.802001953125,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:17.820300+00:00"
+}

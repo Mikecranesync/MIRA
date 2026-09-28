@@ -20,3 +20,4 @@ ios/App/App.xcodeproj/xcuserdata/
 
 # OTA staging output (artifacts are uploaded to the VPS, never committed)
 ota-out/
+ota-unsigned/

@@ -60,12 +60,13 @@ describe("lookAtPhoto request shape", () => {
       },
     });
     const file = new File([new Uint8Array([1, 2, 3])], "look.jpg", { type: "image/jpeg" });
-    const r = await lookAtPhoto("nb-1", file, "key-1", "  read these LEDs ");
+    const r = await lookAtPhoto("nb-1", file, "key-1", "  read these LEDs ", "thread-photo-a");
     expect(uploadMultipart).toHaveBeenCalledTimes(1);
     const [path, fd] = uploadMultipart.mock.calls[0] as [string, FormData];
     expect(path).toBe("/api/equipment-notebooks/nb-1/look/");
     expect(fd.get("image")).toBe(file);
     expect(fd.get("clientKey")).toBe("key-1");
+    expect(fd.get("threadId")).toBe("thread-photo-a");
     expect(fd.get("question")).toBe("read these LEDs");
     expect(uploadMultipart.mock.calls[0][2]).toEqual({ acceptStatuses: [502, 503] });
     expect(r).toEqual({

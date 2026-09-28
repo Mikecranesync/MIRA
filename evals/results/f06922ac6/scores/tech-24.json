@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-24",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 15,
+      "missing_points": [
+        "4\u202fmA = 0\u00b0F (start), 20\u202fmA = 100\u00b0F (end), linear; 8\u202fmA should correspond to ~25\u00b0F, not 75\u00b0F",
+        "Discrepancy suggests transmitter calibration error, sensor failure, or PLC input card not reading correctly",
+        "Verify transmitter output with a calibrated loop meter (milliamp clamp meter), then compare to PLC reading to isolate the fault"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer focuses on loop voltage issue and omits expected scaling and calibration diagnostics."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Diagnostic dimension not required."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Provides clear, practical steps to check supply voltage, wiring, resistance, and power rating."
+    },
+    "uncertainty": {
+      "score": 70,
+      "note": "Shows confidence in loop\u2011voltage cause without acknowledging alternative possibilities."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 45.5
+}

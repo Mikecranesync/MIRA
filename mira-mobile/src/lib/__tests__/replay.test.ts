@@ -293,8 +293,8 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
 
   it("card title: Machine Replay · N recorded observations around <time> · <freshness>", () => {
     const e = machineEvidenceEntries([entry])[0];
-    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · Stale`);
-    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 recorded observation around ${hhmmss(ANCHOR)} · Live`);
+    expect(replayCardTitle(e)).toBe(`Machine Replay · 7 recorded observations around ${hhmmss(ANCHOR)} · connection at capture: Stale`);
+    expect(replayCardTitle({ rowCount: 1, anchorAt: ANCHOR, freshness: "live" })).toBe(`Machine Replay · 1 recorded observation around ${hhmmss(ANCHOR)} · connection at capture: Live`);
     // Unknown freshness is omitted, never guessed.
     expect(replayCardTitle({ rowCount: 3, anchorAt: ANCHOR, freshness: null })).toBe(`Machine Replay · 3 recorded observations around ${hhmmss(ANCHOR)}`);
     // Never "observed changes": /history rows include periodic tag_events
@@ -374,5 +374,71 @@ describe("persisted turns (D5): the machine_evidence entry", () => {
 
   it("replayQuestion names the fault time", () => {
     expect(replayQuestion(ANCHOR)).toContain(`fault at ${hhmmss(ANCHOR)}`);
+  });
+});
+
+// ── Workstream C (PRD §9.2) — coverage vs current connection ────────────────
+import {
+  CURRENT_CONNECTION_LABEL,
+  EMPTY_WINDOW_MESSAGE,
+  HISTORY_UNAVAILABLE_MESSAGE,
+  canAskWhatHappened,
+  coverageHeader,
+  currentConnectionLabel,
+  ingestLagNote,
+} from "../replay";
+
+describe("Workstream C — two clocks, two questions (§9.2)", () => {
+  const base = {
+    anchor: { at: "2026-08-28T23:16:31.000Z", source: "state_window" as const },
+    rows: [],
+    freshness: { overall: "live" as const, live: 3, stale: 0, simulated: 0, unknown: 0 },
+    summary: {},
+    provenance: "machine_memory" as const,
+    reason: null,
+    pre: 60,
+    post: 10,
+  };
+
+  it("the CTA is allowed ONLY on the server's admissible coverage", () => {
+    expect(canAskWhatHappened({ ...base, coverage: { recorded: 3, admissible: true, historyAvailable: true } })).toBe(true);
+    expect(canAskWhatHappened({ ...base, coverage: { recorded: 0, admissible: false, historyAvailable: true } })).toBe(false);
+    expect(canAskWhatHappened({ ...base, reason: "unavailable", coverage: { recorded: 0, admissible: false, historyAvailable: false } })).toBe(false);
+    // a server that names rows but not `admissible` (older Hub) → derived from rows + reason, never from freshness
+    expect(canAskWhatHappened({ ...base, rows: [{} as never], coverage: null })).toBe(true);
+    expect(canAskWhatHappened({ ...base, rows: [], coverage: null })).toBe(false);
+    expect(canAskWhatHappened({ ...base, rows: [{} as never], reason: "unavailable", coverage: null })).toBe(false);
+  });
+
+  it("current-connection freshness is its own labelled fact and never reads as window coverage", () => {
+    expect(currentConnectionLabel({ overall: "live" })).toBe(`${CURRENT_CONNECTION_LABEL}: Live`);
+    expect(currentConnectionLabel({ overall: "stale" })).toBe(`${CURRENT_CONNECTION_LABEL}: Stale`);
+    expect(currentConnectionLabel({ overall: "simulated" })).toBe(`${CURRENT_CONNECTION_LABEL}: Simulated`);
+    expect(currentConnectionLabel({ overall: "unknown" })).toBe(`${CURRENT_CONNECTION_LABEL}: No tags`);
+  });
+
+  it("coverage header is written from the WINDOW: count, bounds, availability", () => {
+    expect(coverageHeader({ ...base, coverage: { recorded: 7, admissible: true, historyAvailable: true } })).toBe(
+      "7 recorded observations in −60 s … +10 s",
+    );
+    expect(coverageHeader({ ...base, coverage: { recorded: 0, admissible: false, historyAvailable: true } })).toBe(
+      "0 recorded observations in −60 s … +10 s",
+    );
+    expect(coverageHeader({ ...base, reason: "unavailable", coverage: { recorded: 0, admissible: false, historyAvailable: false } })).toBe(
+      "History source unavailable · −60 s … +10 s",
+    );
+  });
+
+  it("the empty-window sentence is the PRD's, and unavailable is a different sentence", () => {
+    expect(EMPTY_WINDOW_MESSAGE).toBe("Nothing was recorded in this window. Widen the window or check the gateway.");
+    expect(HISTORY_UNAVAILABLE_MESSAGE).not.toBe(EMPTY_WINDOW_MESSAGE);
+    expect(HISTORY_UNAVAILABLE_MESSAGE).toMatch(/isn.t available/i);
+  });
+
+  it("both clocks: a material ingest lag is named; a negligible one is not", () => {
+    expect(ingestLagNote({ ingestLagMaxMs: 2040 })).toBe("Recorded up to 2.0 s after it happened");
+    expect(ingestLagNote({ ingestLagMaxMs: 400 })).toBeNull();
+    expect(ingestLagNote({ ingestLagMaxMs: null })).toBeNull();
+    expect(ingestLagNote(null)).toBeNull();
   });
 });

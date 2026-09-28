@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-22",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "Flexible coupling, motor-pump shaft pair",
+    "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Flexible couplings are designed to accommodate minor misalignment; 0.5 inch is significant and suggests either parallel misalignment or axial offset",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.002-0.005 inch for modern systems)",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
+      ],
+      "wrong_if": [
+        "Claims any flexible coupling can handle 0.5 inch without consequence",
+        "Assumes smooth running means proper alignment",
+        "Recommends replacement without re-alignment attempt"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+      "answer": "The 0.5\u202fin offset is a sign of mis\u2011alignment and should be corrected before it causes bearing wear or seal leakage.  \n\n1. **Visually inspect** the coupling while the machine is OFF and locked out \u2013 the shafts should be concentric within a few thousandths of an inch; any visible offset is abnormal.  \n2. **Measure shaft run\u2011out** with a dial indicator on each shaft; typical acceptable run\u2011out is <0.001\u202fin (verify against the pump/motor manuals).  \n3. **Check coupling preload** \u2013 ensure the coupling bolts are torqued to the specified value (consult the coupling manual) and that the springs or shims are seated evenly.  \n4. **Power the unit and monitor vibration** with a handheld analyzer; excessive vibration at the motor or pump bearings indicates mis\u2011alignment is affecting operation.  \n5. **Re\u2011align** the shafts using a laser or dial\u2011indicator method, then re\u2011torque the coupling bolts to the proper spec.  \n\nIs the machine currently exhibiting any abnormal vibration or noise while running?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.9840161800384521,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:50.486991+00:00"
+}

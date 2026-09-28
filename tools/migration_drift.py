@@ -20,12 +20,13 @@ prefix collisions.
     NEON_DATABASE_URL=… python tools/migration_drift.py --warn-only
 
 Pure core (`repo_migrations`, `find_drift`) is unit-tested; `main()` is the thin
-psycopg2 read. Read-only — it never writes the ledger or applies anything.
+asyncpg read. Read-only — it never writes the ledger or applies anything.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -82,6 +83,20 @@ _LEDGER_EXISTS_SQL = (
 )
 
 
+async def _read_applied_migrations(db_url: str) -> set[str]:
+    """Read the ledger through the repository's Apache-2.0 asyncpg pattern."""
+    import asyncpg  # type: ignore[import-not-found]  # local: production gate only
+
+    conn = await asyncpg.connect(db_url)
+    try:
+        if await conn.fetchval(_LEDGER_EXISTS_SQL) is None:
+            # No ledger at all = maximal drift (nothing has been recorded).
+            return set()
+        return {str(row["migration_name"]) for row in await conn.fetch(_LEDGER_SQL)}
+    finally:
+        await conn.close()
+
+
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - DB glue
     parser = argparse.ArgumentParser(description="Detect migration drift vs a DB's ledger.")
     parser.add_argument(
@@ -97,20 +112,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - DB glue
         )
         return 2
 
-    import psycopg2  # local import: only main() needs the driver
-
-    conn = psycopg2.connect(db_url)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(_LEDGER_EXISTS_SQL)
-            if cur.fetchone() is None:
-                # No ledger at all = maximal drift (nothing has been recorded).
-                applied: set[str] = set()
-            else:
-                cur.execute(_LEDGER_SQL)
-                applied = {r[0] for r in cur.fetchall()}
-    finally:
-        conn.close()
+    applied = asyncio.run(_read_applied_migrations(db_url))
 
     repo = repo_migrations()
     drift = find_drift(repo, applied)

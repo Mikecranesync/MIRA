@@ -44,6 +44,8 @@ export interface LatestDiff {
   delta_percent: number | null;
   event_timestamp: string | null;
   next_check: string | null;
+  /** Persisted canonical anomaly title (metadata.title), null on older rows. */
+  title?: string | null;
 }
 
 export interface EvidenceWindow {

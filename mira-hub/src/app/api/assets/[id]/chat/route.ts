@@ -20,7 +20,9 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
+import { withStepSafety } from "@/capabilities/answer-shape";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -71,6 +73,69 @@ function getProviders(): CascadeProvider[] {
   ];
 }
 
+/**
+ * Drains one provider's SSE body, forwarding content deltas to the client.
+ *
+ * Returns whether this provider actually SERVED an answer — not whether its
+ * body closed cleanly. A provider that terminates correctly (`[DONE]`, or
+ * `finish_reason: "stop"`) having emitted no delta produced nothing, and
+ * reporting that as success stops the cascade and hands the client an empty
+ * 200 that reads as a successful blank answer. (Round 3, F2.)
+ *
+ * A provider that emits deltas and then dies mid-stream still returns true:
+ * that text is already on the wire, so re-running the cascade would duplicate
+ * it. Partial beats double.
+ *
+ * Exported for test — the defect lives in the loop's terminal condition, so
+ * a test of the frame parser alone could not express it.
+ */
+export async function drainProviderStream(
+  body: ReadableStream<Uint8Array>,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  enc: TextEncoder,
+  responseBuffer: string[],
+): Promise<boolean> {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  let served = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === "[DONE]") {
+        return served;
+      }
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: { delta?: { content?: string }; finish_reason?: string }[];
+        };
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) {
+          served = true;
+          responseBuffer.push(delta);
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+        }
+        if (parsed.choices?.[0]?.finish_reason === "stop") {
+          return served;
+        }
+      } catch {
+        // malformed SSE chunk — skip
+      }
+    }
+  }
+  return served;
+}
+
 // Streams content deltas only — the caller owns the terminal `data: [DONE]`
 // so it can run the H4 gap-admission safety net (#2542) BEFORE closing.
 async function streamFromProvider(
@@ -108,43 +173,7 @@ async function streamFromProvider(
 
   if (!res.ok || !res.body) return false;
 
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += dec.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === "[DONE]") {
-        return true;
-      }
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: { delta?: { content?: string }; finish_reason?: string }[];
-        };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          responseBuffer.push(delta);
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
-        }
-        if (parsed.choices?.[0]?.finish_reason === "stop") {
-          return true;
-        }
-      } catch {
-        // malformed SSE chunk — skip
-      }
-    }
-  }
-  return true;
+  return drainProviderStream(res.body, controller, enc, responseBuffer);
 }
 
 // ── Asset context ──────────────────────────────────────────────────────────
@@ -260,29 +289,10 @@ export async function POST(
     // Fall through to let the handler proceed with graceful degradation.
   }
 
-  // Safety gate — hard stop before touching LLM
-  const trigger = matchSafetyStop(lastUser.content);
-  if (trigger) {
-    const enc = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const words = SAFETY_STOP.split(" ");
-        for (const word of words) {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
-        }
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "X-Safety-Stop": trigger,
-      },
-    });
-  }
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard frames the answer (prompt directive + banner as the first
+  // content frame); it never replaces it.
+  const safetyFlag = matchSafetyStop(lastUser.content);
 
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
   // without them.
@@ -493,7 +503,8 @@ export async function POST(
         const askEnc = new TextEncoder();
         const askStream = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
+            const framed = safetyFlag ? `${hazardBanner(safetyFlag)}\n\n${replyText}` : replyText;
+            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: framed })}\n\n`));
             controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
             controller.close();
           },
@@ -541,7 +552,12 @@ export async function POST(
     machinePacket?.active_conditions.find((c) => c.next_check)?.next_check ?? null;
   const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
-  const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
+  const systemPrompt = withStepSafety(withAnswerLanguage(
+    appendManualContext(
+      safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag)}` : withMachineMemory,
+      manualChunks,
+    ),
+  ));
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
   const approvedSummary = {
@@ -553,7 +569,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   // H4 parity (#2542) — soft KB-gap admission in the DEFAULT (non-enforced)
@@ -600,6 +620,11 @@ export async function POST(
       // Emit the trace id up-front (before any [DONE]) so the client can later
       // open "Why MIRA Thinks This". The row itself is written at stream end.
       controller.enqueue(enc.encode(`data: ${JSON.stringify({ traceId })}\n\n`));
+      if (safetyFlag) {
+        const banner = `${hazardBanner(safetyFlag)}\n\n`;
+        responseBuffer.push(banner);
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: banner })}\n\n`));
+      }
 
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.
@@ -635,8 +660,28 @@ export async function POST(
       }
 
       if (!served) {
+        // Provider exhaustion is a FAILURE, and the frame has to say so.
+        //
+        // Sent as bare `content` this was indistinguishable from an answer: the
+        // response is HTTP 200, the text streams like any other, and a client
+        // that only inspects status renders an outage notice as MIRA's reply —
+        // V3 even badged it "General guidance — no source cited". A technician
+        // cannot act on that distinction if the payload does not carry it.
+        //
+        // The value matches `api/mira/ask/route.ts`, which already emitted
+        // `all_providers_unavailable` for this same condition. One condition,
+        // one spelling: a second name for it would read as a second failure
+        // mode to anyone matching the literal.
+        //
+        // `error` is ADDITIVE: existing consumers keep reading `content`
+        // exactly as before, and clients that understand the field can render
+        // their retryable failure state instead of an answer. Note the H4
+        // gap-admission net below is gated on `served`, so it does not fire
+        // here — nothing else marks this frame as a failure.
         const msg = "MIRA is temporarily unavailable. All inference providers are down. Please try again in a moment.";
-        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: msg })}\n\n`));
+        controller.enqueue(
+          enc.encode(`data: ${JSON.stringify({ content: msg, error: "all_providers_unavailable" })}\n\n`),
+        );
       }
 
       // H4 gap-admission safety net (#2542) — if the answer streamed with NO

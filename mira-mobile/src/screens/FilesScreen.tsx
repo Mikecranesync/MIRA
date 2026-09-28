@@ -11,7 +11,6 @@ import { useEffect, useState } from "react";
 import {
   deleteFile,
   detachFileLink,
-  fileCapabilityLabel,
   getFile,
   listFiles,
   type FileCapability,
@@ -19,6 +18,8 @@ import {
   type WorkspaceFile,
 } from "../api/resources";
 import { ApiError } from "../api/client";
+import { apiErrorCopy } from "../lib/api-error-copy";
+import { fileCapabilityLabel, workspaceFileName } from "../lib/resource-copy";
 import { AttachFileSheet } from "./AttachFileSheet";
 import { FilePreview } from "./FilePreview";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
@@ -140,7 +141,7 @@ export function PickWorkspaceFileSheet({
             style={{ flexDirection: "column", alignItems: "flex-start", padding: "10px 16px" }}
           >
             <span>
-              {fileTypeIcon(f.mimeType)} {f.filename}
+              {fileTypeIcon(f.mimeType)} {workspaceFileName(f.filename)}
             </span>
             <span className="meta">
               {fileCapabilityLabel(f.capability)} · {formatSize(f.sizeBytes)}
@@ -245,7 +246,7 @@ function FilesList({ onOpen, onBack }: { onOpen: (id: string) => void; onBack: (
           <h3 style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span>{fileTypeIcon(f.mimeType)}</span>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-              {f.filename}
+              {workspaceFileName(f.filename)}
             </span>
           </h3>
           <div className="meta">
@@ -323,7 +324,7 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
 
       <div className="card">
         <h3>
-          {fileTypeIcon(file.mimeType)} {file.filename}
+          {fileTypeIcon(file.mimeType)} {workspaceFileName(file.filename)}
         </h3>
         <div className="meta">
           {file.mimeType} · {formatSize(file.sizeBytes)}
@@ -333,7 +334,11 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
         {file.verified && <div className="meta">Verified document — retained by policy.</div>}
         {showPreview ? (
           <div style={{ marginTop: 10 }}>
-            <FilePreview fileId={file.id} filename={file.filename} mimeType={file.mimeType} />
+            <FilePreview
+              fileId={file.id}
+              filename={workspaceFileName(file.filename)}
+              mimeType={file.mimeType}
+            />
           </div>
         ) : (
           <button style={{ marginTop: 10 }} onClick={() => setShowPreview(true)}>
@@ -377,7 +382,9 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
                   setNote("Detached. The file is still in your workspace.");
                   refresh();
                 } catch (e) {
-                  setNote(e instanceof ApiError ? e.userMessage : "Couldn't detach — try again.");
+                  setNote(
+                    e instanceof ApiError ? apiErrorCopy(e) : "Couldn't detach — try again.",
+                  );
                 }
               }}
             >
@@ -406,7 +413,7 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
           onClick={async () => {
             if (
               !window.confirm(
-                `Permanently delete “${file.filename}”? This cannot be undone.`,
+                `Permanently delete “${workspaceFileName(file.filename)}”? This cannot be undone.`,
               )
             )
               return;
@@ -417,7 +424,7 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
             } catch (e) {
               setDeleteError(
                 deleteRefusalCopy(e, file.linkCount || links.length) ??
-                  (e instanceof ApiError ? e.userMessage : "Couldn't delete this file."),
+                  (e instanceof ApiError ? apiErrorCopy(e) : "Couldn't delete this file."),
               );
             }
           }}
@@ -429,7 +436,7 @@ function FileDetail({ fileId, onBack }: { fileId: string; onBack: () => void }) 
       {attachOpen && (
         <AttachFileSheet
           fileId={file.id}
-          filename={file.filename}
+          filename={workspaceFileName(file.filename)}
           existingLinks={links}
           onClose={() => setAttachOpen(false)}
           onAttached={(added) => {

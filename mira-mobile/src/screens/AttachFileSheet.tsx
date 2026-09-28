@@ -23,6 +23,7 @@ import {
   type AttachTargetType,
   type ExistingAttachment,
 } from "../lib/attach-selection";
+import { notebookDisplayName } from "../lib/resource-copy";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { Sheet } from "./Sheet";
 
@@ -45,7 +46,7 @@ async function loadTargets(kind: AttachTargetType): Promise<AttachTarget[]> {
     return (await listNotebooks()).map((n) => ({
       targetType: "equipment_notebook" as const,
       targetId: n.id,
-      label: n.displayName,
+      label: notebookDisplayName(n.displayName),
       sublabel:
         [n.manufacturer, n.model].filter(Boolean).join(" ") ||
         `${n.sourceCount} source${n.sourceCount === 1 ? "" : "s"}`,

@@ -19,6 +19,7 @@ import {
   getNotebookDetail,
   recognizeComponentNameplate,
   type ComponentIdentity,
+  type PersistedVisualObservation,
 } from "../api/resources";
 import {
   INITIAL_NAMEPLATE_STATE,
@@ -28,6 +29,7 @@ import {
   candidateAction,
   nameplateReducer,
   nameplateStatusCopy,
+  partitionVisualObservations,
   reasonFromRecognizeError,
   type NameplateManual,
 } from "../lib/nameplate-flow";
@@ -56,6 +58,11 @@ export function ComponentNameplateFlow({
   const [confirmKey] = useState(() => crypto.randomUUID());
   // Opaque provider lineage from recognize, echoed back to confirm untouched.
   const [rawObservation, setRawObservation] = useState<unknown>(null);
+  // Slice 2: the persisted visual observations for this capture. At confirm we
+  // send back ONLY the ids whose value the technician left unchanged — an edited
+  // field no longer matches its recorded value, so its pre-edit reading is never
+  // promoted to "confirmed". Empty for an unbound notebook.
+  const [visualObservations, setVisualObservations] = useState<PersistedVisualObservation[]>([]);
   const started = useRef(false);
 
   // Photo → file + candidate reading. The server retains the photo as a
@@ -72,6 +79,7 @@ export function ComponentNameplateFlow({
         onDone();
         if (!r.fileId) return dispatch({ type: "recognize_failed" });
         setRawObservation(r.rawObservation);
+        setVisualObservations(r.visualObservations);
         dispatch({
           type: "recognized",
           fileId: r.fileId,
@@ -94,12 +102,20 @@ export function ComponentNameplateFlow({
     dispatch({ type: "confirm_submitted" });
     setTransportError(null);
     try {
+      // Unchanged readings → confirm that exact observation (Slice 2). Edited
+      // readings → supersede that exact observation with the technician's value
+      // (Slice 3). The pre-edit reading is never stamped confirmed, and the two
+      // sets are disjoint by construction. See partitionVisualObservations.
+      const { observationIds, corrections } = partitionVisualObservations(identity, visualObservations);
       const result = await confirmComponentNameplate(
         notebookId,
-        { fileId, identity, rawObservation, discover: true },
+        { fileId, identity, rawObservation, discover: true, observationIds, corrections },
         confirmKey,
       );
-      dispatch({ type: "confirm_result", result });
+      // The reducer refuses `complete` unless the server applied every requested
+      // correction — the misread would otherwise stay active while the screen
+      // said done (Codex round 2 F1).
+      dispatch({ type: "confirm_result", result, correctionsRequested: corrections.length });
       // The notebook's sources changed on ANY outcome that retained a file.
       if (result.manual?.fileId) onDone();
     } catch (e) {

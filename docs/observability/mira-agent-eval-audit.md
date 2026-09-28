@@ -1,5 +1,7 @@
 # MIRA Agent Evaluation, Tracing & Observability Audit
 
+**See also:** `docs/observability/README.md` — this audit covers aggregate eval quality; per-turn diagnosis of one bad answer is the separate Turn Flight Recorder (`docs/architecture/observability/2026-09-22-turn-flight-recorder.md`).
+
 **Date:** 2026-06-11
 **Question:** Should MIRA adopt Arize Phoenix, or improve its existing eval/observability system?
 **Verdict:** **EXTEND** the existing system. Phoenix stays **optional, off by default.** No LangGraph migration (ADR-0011 is current).

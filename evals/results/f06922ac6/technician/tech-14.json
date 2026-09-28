@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-14",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-14",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "Explain the difference between Type 1 and Type 2 faults on a PowerFlex 525 and provide an example of each.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Type 1 (Auto-Reset/Run) faults can be automatically reset if the fault condition clears; example: F002 Auxiliary Input",
+        "Type 2 (Non-Resettable) faults require drive or motor repair or wiring correction before the fault can be cleared; example: F006 Motor Stalled, F070 Power Unit failure",
+        "Type 1 faults show in the fault log but may not halt operation if auto-reset is enabled",
+        "Type 2 faults always halt the drive and require manual intervention to clear"
+      ],
+      "wrong_if": [
+        "States all PowerFlex 525 faults are Type 1 and can auto-reset within 30 seconds",
+        "Claims Type 2 faults only occur after the 100th power cycle",
+        "Confuses fault type with fault severity; a Type 1 fault may still indicate serious damage",
+        "Recommends ignoring any Type 1 fault as merely informational"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Explain the difference between Type 1 and Type 2 faults on a PowerFlex 525 and provide an example of each.",
+      "answer": "The provided excerpts do not contain information describing the distinction between Type\u202f1 and Type\u202f2 faults on a PowerFlex\u202f525, nor do they give examples of each.",
+      "citations": [],
+      "status": "insufficient_evidence",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 1.558311939239502,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:56.381841+00:00"
+}

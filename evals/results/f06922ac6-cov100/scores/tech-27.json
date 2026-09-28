@@ -1,0 +1,49 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 10,
+      "missing_points": [
+        "Suction lift limit is a design parameter on the pump nameplate and depends on the pump type, speed, and fluid",
+        "Generic pump knowledge does not apply to an unidentified machine 'PMP-12'",
+        "Correct abstention explains that the system needs the pump model/nameplate and fluid specifications to answer"
+      ],
+      "wrong_if_present": [
+        "Guesses a generic suction lift (e.g., 10 feet) as universal"
+      ],
+      "note": "Answer provides a generic lift guess and does not abstain or cite specific pump data."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable for this grading task."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Diagnostic dimension not required."
+    },
+    "actionability": {
+      "score": 40,
+      "note": "Offers generic steps but lacks pump\u2011specific guidance and relies on assumed limits."
+    },
+    "uncertainty": {
+      "score": 0,
+      "note": "Confidently guesses a lift limit instead of flagging missing information."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 17.0
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-27",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "Pump PMP-12 (identity unknown)",
+    "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "Suction lift limit is a design parameter on the pump nameplate and depends on the pump type, speed, and fluid",
+        "Generic pump knowledge does not apply to an unidentified machine 'PMP-12'",
+        "Correct abstention explains that the system needs the pump model/nameplate and fluid specifications to answer"
+      ],
+      "wrong_if": [
+        "Guesses a generic suction lift (e.g., 10 feet) as universal",
+        "Recommends priming the pump without verifying the actual limit or cavitation source",
+        "Confuses suction lift with discharge head"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+      "answer": "The first thing to verify is that the pump\u2019s suction line is truly below the maximum allowable lift for that pump type.  \n\n1. **Isolate power** to the pump and VFD before any disassembly.  \n2. Measure the **vertical distance** from the liquid surface to the pump inlet (suction lift).  \n3. Compare that measurement to the **typical lift limit for a centrifugal pump of similar size** \u2013 usually around 2\u202f\u2013\u202f3\u202fm (6\u201110\u202fft) for a standard 12\u202fkW (\u2248\u202f16\u202fHP) unit, but it can be lower if the fluid is viscous or the pump is a low\u2011NPSH design.  \n4. Check the **suction pipe for restrictions, leaks, or air entrainment** (clogged strainer, loose fittings, vented pipe).  \n5. Verify the **pump speed** on the VFD; excessive speed can reduce NPSH available and provoke cavitation.  \n\n*Diagnostic question:* Is the pump operating at its rated speed, or has the VFD been set to a higher than nominal rpm?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.521097183227539,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:02.173499+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-19",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "480V three-phase system with contactor and AC motor",
+    "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Contactor coil energized and contacts pulled in, input voltage present, but output zero \u2192 contactor main contacts are open/pitted or connection failed post-contactor",
+        "Failure is in the contactor itself (welded open, burned contacts) or wiring/lugs from contactor to motor",
+        "Motor coil is likely OK; issue is between contactor and motor"
+      ],
+      "wrong_if": [
+        "Blames the motor as shorted without checking contactor status",
+        "Suggests the PLC control circuit is at fault when the contactor is already pulled in",
+        "Recommends checking upstream breaker without first verifying contactor contacts"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+      "answer": "The motor is most likely not receiving any power because the VFD output stage or its safety interlock has opened.\n\n**Check list (safest/cheapest first)**  \n1. **Verify VFD run command and fault status** \u2013 look at the VFD display or HMI; any fault or \u201cstopped\u201d indication will stop the output.  \n2. **Confirm VFD output enable** \u2013 ensure the \u201cRun\u201d/\u201cEnable\u201d key or remote start signal is active; some VFDs require a separate enable contact.  \n3. **Inspect the VFD output terminals** \u2013 with the VFD powered but the motor disconnected, measure voltage at the VFD output terminals (phase\u2011to\u2011phase). If there is voltage, the VFD is delivering power; if not, the VFD output stage or its internal safety relay is open.  \n4. **Check the VFD overload/under\u2011voltage protection** \u2013 a motor overload or under\u2011voltage lockout can shut the output off; reset or clear the protection if it has tripped.  \n5. **Examine the motor wiring and disconnect** \u2013 ensure the motor leads are correctly connected to the VFD output and that any motor disconnect or fuse is closed and not blown.  \n\n**Diagnostic question:** Does the VFD display any fault code or indicate that the output is disabled?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.5635290145874023,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:35:58.075497+00:00"
+}

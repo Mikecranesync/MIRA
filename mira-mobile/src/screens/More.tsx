@@ -1,23 +1,42 @@
 // More tab — identity, Files (the workspace file manager), capability-filtered
 // sections (team, usage), sign out. The "sheet of remaining sections" grows in
 // later phases; account deletion lands here in Phase 5 (store requirement).
-import { useState, type MutableRefObject } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { listTeam, getUsage, type Me, type TeamMember } from "../api/resources";
+import { hasActiveApiMutations } from "../api/client";
 import { Loading, ErrorState, load, type Loadable } from "./common";
 import { FilesScreen, type FilesRoute } from "./FilesScreen";
 import { AboutUpdates } from "./AboutUpdates";
-import { pendingCount, preferencesStore } from "../lib/offline-queue";
+import {
+  hasActiveWorkOrderQueueProducers,
+  pendingCount,
+  preferencesStore,
+} from "../lib/offline-queue";
+import {
+  readChatUiChoice,
+  writeChatUiChoice,
+  type ChatUiChoice,
+} from "../lib/chat-ui-pref";
 
 export function MoreTab({
   me,
+  chatV2Available,
+  onChatUiChange,
   onSignOut,
   backRef,
 }: {
   me: Me;
+  chatV2Available: boolean;
+  /** Unified root (FLM-UI-4000): the app re-roots when the choice changes. */
+  onChatUiChange?: (choice: ChatUiChoice) => void;
   onSignOut: () => Promise<void>;
   backRef: MutableRefObject<(() => boolean) | null>;
 }) {
   const [team, setTeam] = useState<Loadable<TeamMember[]> | null>(null);
+  const [chatUi, setChatUi] = useState<ChatUiChoice>("v2");
+  useEffect(() => {
+    void readChatUiChoice().then(setChatUi);
+  }, []);
   const [usage, setUsage] = useState<Loadable<Record<string, unknown> | null> | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [files, setFiles] = useState<FilesRoute | null>(null);
@@ -49,7 +68,11 @@ export function MoreTab({
     return (
       <AboutUpdates
         // Never swap the bundle while work is still only on this phone.
-        pendingOfflineWork={async () => (await pendingCount(preferencesStore, me.tenantId)) > 0}
+        pendingOfflineWork={async () =>
+          hasActiveApiMutations() ||
+          hasActiveWorkOrderQueueProducers() ||
+          (await pendingCount(preferencesStore, me.tenantId)) > 0
+        }
         onBack={() => setShowAbout(false)}
       />
     );
@@ -108,6 +131,56 @@ export function MoreTab({
           </div>
         )}
       </div>
+
+      {/* Chat style (PRD §12.4 device-local flag). The new conversation
+          surface is the default; this is the one-tap way back to the classic
+          screen if anything misbehaves on the floor — the rollback lever that
+          does not need a release. */}
+      {chatV2Available ? (
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="title">Chat style</div>
+          <div className="meta" style={{ marginBottom: 8 }}>
+            {chatUi === "v2"
+              ? "New conversation (streaming, attachments, cited answers)."
+              : chatUi === "unified"
+                ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+                : "Classic chat screen."}
+          </div>
+          <button
+            data-testid="chat-style-toggle"
+            onClick={() => {
+              const next: ChatUiChoice = chatUi === "v2" ? "unified" : chatUi === "unified" ? "legacy" : "v2";
+              setChatUi(next);
+              void writeChatUiChoice(next);
+              onChatUiChange?.(next);
+            }}
+          >
+            {chatUi === "v2" ? "Try the unified interface (beta)" : chatUi === "unified" ? "Use classic chat" : "Use new conversation"}
+          </button>
+        </div>
+      ) : (
+        /* Without the chat_v2 capability only the classic screen and the
+           device-local unified BETA are offered; nothing here grants v2. */
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="title">Chat style</div>
+          <div className="meta" style={{ marginBottom: 8 }}>
+            {chatUi === "unified"
+              ? "Unified FactoryLM interface (beta): the shared shell with Ask/Work, machine context, and the same cited answers."
+              : "Classic chat screen."}
+          </div>
+          <button
+            data-testid="chat-style-toggle"
+            onClick={() => {
+              const next: ChatUiChoice = chatUi === "unified" ? "legacy" : "unified";
+              setChatUi(next);
+              void writeChatUiChoice(next);
+              onChatUiChange?.(next);
+            }}
+          >
+            {chatUi === "unified" ? "Use classic chat" : "Try the unified interface (beta)"}
+          </button>
+        </div>
+      )}
 
       <button style={{ marginTop: 10 }} onClick={() => setShowAbout(true)}>
         About &amp; updates

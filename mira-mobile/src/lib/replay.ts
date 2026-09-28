@@ -47,8 +47,27 @@ export interface HistoryAnchor {
   runId?: string | null;
 }
 
+/** Mirrors mira-hub/src/lib/machine-history.ts HistoryCoverage (Workstream C,
+ *  PRD §9.2): what was recorded in THIS window, as a fact separate from the
+ *  current-cache freshness. `admissible` is the one boolean the CTA is gated
+ *  on. Optional so an older Hub still renders; see canAskWhatHappened. */
+export interface HistoryCoverage {
+  recorded: number;
+  events?: number;
+  diffs?: number;
+  historyAvailable: boolean;
+  diffsAvailable?: boolean;
+  admissible: boolean;
+  from?: string | null;
+  to?: string | null;
+  earliest?: string | null;
+  latest?: string | null;
+  ingestLagMaxMs?: number | null;
+}
+
 export interface AssetHistory {
   anchor: HistoryAnchor;
+  coverage?: HistoryCoverage | null;
   rows: HistoryRow[];
   freshness: FreshnessSummary;
   /** MachineMemoryResponse-shaped header; only `summary` is read here. */
@@ -198,6 +217,71 @@ export function replayWindowHeader(rowCount: number, w: ReplayWindow): string {
   return `${recordedObservations(rowCount)} in −${w.pre} s … +${w.post} s`;
 }
 
+// --- Workstream C: two clocks, two questions (PRD §6.8 / §9.2) --------------
+//
+// `live now?` (current connection) and `what was recorded in this window?`
+// (historical coverage) are different facts. Each gets its own label; the
+// current-connection word never stands next to the window unqualified, and
+// an empty window is never called Live.
+
+export const CURRENT_CONNECTION_LABEL = "Current connection";
+export const EMPTY_WINDOW_MESSAGE =
+  "Nothing was recorded in this window. Widen the window or check the gateway.";
+export const HISTORY_UNAVAILABLE_MESSAGE =
+  "Machine Memory isn't available for this workspace yet, so there is no recorded history to show.";
+export const HISTORY_UNAVAILABLE_HEADER = "History source unavailable";
+
+type CoverageView = Pick<AssetHistory, "rows" | "reason" | "pre" | "post"> & {
+  coverage?: Partial<HistoryCoverage> | null;
+};
+
+/** The server's coverage when it names one; otherwise derived from the rows
+ *  it returned and its `reason` — never from freshness. */
+export function effectiveCoverage(h: CoverageView): Pick<HistoryCoverage, "recorded" | "admissible" | "historyAvailable"> {
+  const c = h.coverage;
+  const historyAvailable = c?.historyAvailable ?? h.reason !== "unavailable";
+  const recorded = typeof c?.recorded === "number" ? c.recorded : h.rows.length;
+  const admissible = typeof c?.admissible === "boolean" ? c.admissible : recorded > 0 && historyAvailable;
+  return { recorded, admissible, historyAvailable };
+}
+
+/** "Ask MIRA what happened" renders ONLY when the served window holds at least
+ *  one admissible recorded observation and the history source answered. */
+export function canAskWhatHappened(h: CoverageView): boolean {
+  return effectiveCoverage(h).admissible;
+}
+
+/** "Current connection: Live" — the current-cache freshness, labelled as such. */
+export function currentConnectionLabel(f: Pick<FreshnessSummary, "overall"> | null | undefined): string {
+  const overall = f?.overall && f.overall in FRESHNESS_LABEL ? f.overall : "unknown";
+  return `${CURRENT_CONNECTION_LABEL}: ${FRESHNESS_LABEL[overall]}`;
+}
+
+/** The header is written from the WINDOW: count + bounds, or the honest
+ *  "no source" line when the history tables are absent. */
+export function coverageHeader(h: CoverageView): string {
+  const c = effectiveCoverage(h);
+  const w = { pre: h.pre, post: h.post };
+  if (!c.historyAvailable) return `${HISTORY_UNAVAILABLE_HEADER} · −${w.pre} s … +${w.post} s`;
+  return replayWindowHeader(c.recorded, w);
+}
+
+/** Both clocks (§9.2): name a MATERIAL ingest-vs-event divergence (> 1 s, the
+ *  same threshold clocksDiverge uses); say nothing for a negligible one. */
+export function ingestLagNote(c: Pick<HistoryCoverage, "ingestLagMaxMs"> | null | undefined): string | null {
+  const ms = c?.ingestLagMaxMs;
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 1000) return null;
+  return `Recorded up to ${(ms / 1000).toFixed(1)} s after it happened`;
+}
+
+/** "first 23:16:02 · last 23:16:41" — the window's recorded bounds (§9.2:
+ *  coverage is labelled from the window). Null when nothing was recorded or
+ *  the server named no bounds. */
+export function recordedBoundsLine(c: Pick<HistoryCoverage, "earliest" | "latest" | "recorded"> | null | undefined): string | null {
+  if (!c || !c.recorded || !c.earliest || !c.latest) return null;
+  return `first ${hhmmss(c.earliest)} · last ${hhmmss(c.latest)}`;
+}
+
 // --- the Ask-MIRA hand-off (§4.4) -------------------------------------------
 
 /** The selected window, sent as `body.machineEvidence`. The server re-fetches
@@ -289,7 +373,10 @@ export function replayCardTitle(
     "Machine Replay",
     `${recordedObservations(e.rowCount)} around ${hhmmss(e.anchorAt)}`,
   ];
-  if (overall) parts.push(FRESHNESS_LABEL[overall]);
+  // §6.8: the freshness on a HISTORICAL card is the connection as it was
+  // when the turn was captured — labelled as such, never a bare "Live"
+  // beside a recorded count.
+  if (overall) parts.push(`connection at capture: ${FRESHNESS_LABEL[overall]}`);
   return parts.join(" · ");
 }
 

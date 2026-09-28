@@ -34,6 +34,7 @@
 # STATES
 #   implemented_unconnected  code exists, nothing consumes it
 #   connected_ci_missing     a consumer exists, no named CI job runs its tests
+#   canary_enabled           opt-in tester delivery; not staging/production default
 #   deployed_disabled        shipped, off in every environment
 #   staging_enabled          on in staging only
 #   production_enabled       on in production
@@ -41,6 +42,12 @@
 # ---------------------------------------------------------------------------
 
 meta:
+  # Evidence recorded ON OR AFTER this date must carry a `provenance:` block
+  # when it backs an enabled capability (tools/evidence_provenance.py).
+  # Deliberately NOT retroactive: failing every historical record would either
+  # turn main red or invite a blanket acknowledgement, and a rule everyone
+  # silences is not a rule. Move this date forward deliberately, never quietly.
+  provenance_enforced_from: "2026-09-24"
   observed_on: "2026-08-19"
   observed_by: "capability-closure inventory (Doppler read, dev/stg/prd)"
   doppler_project: factorylm
@@ -50,6 +57,70 @@ meta:
     repository-side invariants only.
 
 capabilities:
+
+  # =========================================================================
+  - id: evidence_provenance_gate
+    purpose: >-
+      Bind every closure claim to a reproducible observation: a real commit, a
+      named environment, a stated falsifier, and an observation path that has
+      itself demonstrated a positive and a negative control.
+    customer_outcome: >-
+      A release is not declared on evidence nobody can reproduce, and an
+      observation the harness could not make is never reported as the product
+      failing.
+    state: connected_ci_missing
+    owner: "@Mikecranesync"
+    feature_flag: null
+    code_paths:
+      - tools/evidence_provenance.py
+      - tools/capability_closure.py
+    environments:
+      dev: n/a
+      staging: n/a
+      production: n/a
+    ci_jobs:
+      - capability-closure
+    evidence:
+      - path: tests/test_evidence_provenance.py
+        observed_at: "2026-09-26"
+        note: >-
+          37 provenance rule tests (re-observed 2026-09-26 at #4007's squash
+          commit on main, so no deletable tag is load-bearing; the tags
+          evidence/evidence_provenance_gate/2026-09-26{,b} remain as history). Mutation-tested three
+          ways rather than assumed: gutting the observation-control check,
+          letting INCONCLUSIVE count as proof, and removing the commit-existence
+          check each turn the suite red, and restoring each turns it green
+          again. A linter shown only passing input cannot be told apart from one
+          that returns an empty list.
+        provenance:
+          commit_sha: "ea20c8376aca36ecd991ee19c8968459b3d3ad3f"
+          environment: local
+          observed_at: "2026-09-26"
+          outcome: pass
+          observation:
+            mechanism: >-
+              pytest over pure functions with a synthetic registry; commit
+              identity resolved through `git cat-file -e <sha>^{commit}`.
+            positive_control: tests/test_evidence_provenance.py::test_complete_record_is_clean
+            negative_control: tests/test_evidence_provenance.py::test_fabricated_sha_is_caught
+          falsified_by: >-
+            Remove any single rule from tools/evidence_provenance.py and the
+            suite must go red. If it stays green, the rule was never enforced
+            and this evidence is void.
+    reason: >-
+      Not a runtime feature and has no flag: it is a repository-side validator
+      that runs in CI, so `environments` is n/a rather than off. State stays
+      connected_ci_missing until the capability-closure job carrying its rule
+      tests has actually run green on main — a job declared in a PR is not a job
+      that has executed.
+    review_by: "2026-12-31"
+    rollback: >-
+      Delete `meta.provenance_enforced_from`. Every provenance rule then
+      reports nothing, which is the pre-change behaviour.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "A capability whose evidence was REJECTED by these rules and then re-observed."
+      - "The staging acceptance run records provenance rather than prose."
   # =========================================================================
   - id: run_diff_engine
     purpose: >-
@@ -75,11 +146,13 @@ capabilities:
     owner: null
     owner_missing: >-
       No owner recorded. It is enabled in production and nobody is named for it —
-      the single most actionable gap in this registry.
+      the single most actionable gap in this registry. Current closure is tracked
+      in issue #3886.
     ci_jobs: []
     required_checks: []
     evidence:
       - path: docs/architecture/convergence/units/evidence/capability-closure/run-diff-pilot-2026-08-19.md
+        recorded_at: "2026-08-19"  # Registry history, not a new observation.
         note: >-
           First reviewed run-diff artifact. The real engine driven offline via
           InMemoryRunStore — no production, staging, PLC or DB access. Segments 7
@@ -97,19 +170,76 @@ capabilities:
       (mira-crawler/tests/test_run_baseline.py, test_machine_memory.py,
       test_historize_runs_integration.py) run in no CI job — mira-crawler/tests/
       is enumerated per-file at ci.yml:906 and none is named (#3089 class) — and
-      no run-diff artifact has been reviewed. "Enabled" is not "proven".
+      no real NeonRunStore production artifact has been reviewed. "Enabled" is
+      not "proven". Issue #3886 owns the current decision/evidence gap.
     acknowledged_rules: []
     promotion_criteria:
       - "DONE 2026-08-19 - produce and review a run-diff artifact (see evidence)."
       - "Enumerate the three run-engine suites (test_run_baseline, test_machine_memory, test_historize_runs_integration) in a named CI job - they still run nowhere."
       - "Answer the two artifact questions: why anomalous_runs=0 while critical diffs are written, and whether a window-average baseline should be labelled as such in any UI."
       - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
-    review_by: "2026-09-19"
+      - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - CI enumeration, artifact questions, and production NeonRunStore proof. Re-decide by the new date."
+    review_by: "2026-10-19"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
       enabled. Commented there 2026-08-18; the issue text remains stale.
 
   # =========================================================================
+  - id: private_notebook_turns
+    purpose: >-
+      Shared Equipment Notebooks with PRIVATE per-technician conversations: the
+      notebook (manuals, evidence, asset identity, machine history) is shared by
+      the tenant; every new chat turn is owned by the authenticated technician,
+      derived from the server session, and history returns the viewer's own
+      turns plus labeled ownerless legacy rows - never a colleague's turns.
+    customer_outcome: >-
+      Two technicians can work the same machine notebook from Mobile and Web
+      without reading each other's conversations, and pre-existing shared history
+      stays readable to both.
+    # No feature flag: the ownership column is nullable and the code path is
+    # unconditional (legacy rows stay NULL = shared). Rollback is a redeploy.
+    entrypoints:
+      - mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts
+      - mira-hub/src/lib/equipment-notebooks.ts
+    consumers:
+      - "mira-hub"
+      - "mira-mobile"
+    environments:
+      dev: "true"
+      staging: "true"                       # migration 086 auto-applied by migration-verify (PR #3597)
+      production: "true"                    # 086 applied 2026-09-06 00:29Z; Hub v3.320.1 live 00:43Z
+    state: production_enabled
+    owner: Mike
+    ci_jobs:
+      - mira-hub-unit
+      - mobile-unit-tests
+    required_checks: []
+    evidence:
+      - path: docs/proofs/2026-09-05-notebook-private-turns-production-proof.md
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
+        note: >-
+          Production proof 2026-09-06: migration 086 applied via apply-migrations.yml
+          (prod) and verified read-only via db-inspect.yml (column, index, 211 legacy
+          rows ownerless, 0 backfilled); Hub deployed at main fb60a0102 (v3.320.1);
+          grounded turn on an existing notebook cited its manual; a zero-source
+          general turn persisted with the session user as owner; a turn created by
+          the SIGNED RELEASE APK on an emulator was visible to its author on a real
+          browser reload and invisible to a same-tenant teammate; legacy history
+          (7 turns) readable to both.
+      - path: tools/notebook-e2e/notebook_proof.mjs
+        recorded_at: "2026-09-05"  # Registry history, not a new observation.
+        note: >-
+          Outside-in two-user harness (--expect-private-history) - PASS on local
+          production builds of every reviewed head of #3597 and on the shipped head.
+    rollback: >-
+      Redeploy the previous Hub image (rollback/2026-09-06-v3.320.0 checkpoint);
+      migration 086 is additive and nullable, so the old code runs unchanged
+      against the new schema. Never drop the column (legacy rows must stay NULL).
+    acknowledged_rules: []
+    promotion_criteria:
+      - "DONE 2026-09-06 - production smoke + cross-device proof passed (see evidence)."
+    review_by: "2026-12-05"
+
   - id: approved_context_retrieval
     purpose: >-
       Restrict retrieval to rows marked verified, so unapproved crawler or
@@ -136,6 +266,7 @@ capabilities:
     required_checks: []
     evidence:
       - path: tests/test_approved_retrieval_plumbing.py
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Every consumer's compose environment forwards the flag; with the
           container-shaped value 'true' recall_knowledge emits 'AND verified = true'
@@ -144,6 +275,7 @@ capabilities:
           backfilled), 255 verified private, 711 UNverified private — gate-on
           hides only unapproved uploads, the designed direction.
       - path: docs/architecture/convergence/units/evidence/approved_context_retrieval/2026-08-27-prod-runtime-proof.md
+        recorded_at: "2026-08-27"  # Registry history, not a new observation.
         note: >-
           Production runtime proof 2026-08-27 after #3416 deployed (dd65c57eb):
           MIRA_ENFORCE_APPROVED_RETRIEVAL=true inside all five consumer
@@ -161,7 +293,8 @@ capabilities:
     promotion_criteria:
       - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
       - "Record an owner."
-    review_by: "2026-09-05"
+      - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
+    review_by: "2026-10-05"
 
   # =========================================================================
   - id: technician_context_contract
@@ -187,6 +320,7 @@ capabilities:
     owner_missing: >-
       ADR-0033, which governs this contract, is itself status Proposed and
       awaiting Mike — so ownership is pending that decision, not merely unassigned.
+      Current closure is tracked in issue #3887.
     ci_jobs:
       - test-eval-offline          # runs tests/test_context_contract.py
     required_checks: []
@@ -194,12 +328,14 @@ capabilities:
     rollback: "Unset MIRA_CONTEXT_CONTRACT in Doppler factorylm/stg."
     blocker: >-
       ADR-0033 is Proposed, not accepted. Production enablement should not
-      precede that decision.
+      precede that decision. Issue #3887 owns the decision and staging-evidence
+      gap.
     acknowledged_rules: []
     promotion_criteria:
       - "ADR-0033 accepted or explicitly re-scoped."
       - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
-    review_by: "2026-09-19"
+      - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - ADR-0033 decision and staging evidence. Re-decide by the new date."
+    review_by: "2026-10-19"
 
   # =========================================================================
   - id: live_machine_state
@@ -308,6 +444,60 @@ capabilities:
       - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
     review_by: "2026-10-26"
 
+  # =========================================================================
+  - id: machine_memory_observer_cv101
+    purpose: >-
+      Daily READ-ONLY observation of CV-101 Machine Memory through the Hub's
+      public tenant-scoped APIs (version, machine-memory, history) on the
+      existing synthetic-dogfood beat; writes one JSON record per scheduled day
+      plus a series.json that computes the PRD §9.4 seven-day gate from the
+      daily files. Never a fault generator, never an equipment write, never SQL.
+    customer_outcome: >-
+      "Machine Memory is operational" becomes a measured claim: seven distinct
+      consecutive scheduled days with no misleading-live / unavailable-as-empty
+      defect and at least one real (non-simulated) CV-101 fault window with
+      recorded rows - instead of a demo assertion.
+    feature_flag: MACHINE_MEMORY_OBSERVER_ENABLED
+    entrypoints:
+      - "mira-crawler/tasks/machine_memory_observer.py       # celery task (synthetic queue)"
+      - "mira-crawler/agents/machine_memory_observer.py      # observe_once / evaluate_series (pure)"
+      - "mira-crawler/celeryconfig.py                        # beat entry registered only when ENABLED=1"
+    consumers:
+      - "mira-synthetic-dogfood-worker + -beat   # docker-compose.saas.yml MACHINE_MEMORY_OBSERVER_* env"
+      - "docs/runbooks/machine-memory-preflight-and-observer.md"
+    schema: []
+    environments:
+      dev: unset
+      staging: unset
+      production: unset                       # compose default 0 - ships DARK until Mike enables (Doppler prd)
+    state: deployed_disabled
+    reason: >-
+      Workstream C (PRD §9.4, PR #3486): code-ready and unit-proven with a fake
+      Hub; the seven-day series can only accrue with wall-clock time after Mike
+      sets the observer credentials/asset id in Doppler prd and redeploys the
+      dogfood worker + beat.
+    owner: "Mike Harper"
+    ci_jobs:
+      - test-unit            # mira-crawler/tests/test_machine_memory_observer.py (registration, beat gating, provenance, series)
+    evidence:
+      - "docs/runbooks/machine-memory-preflight-and-observer.md"
+      - "HANDOFF.md"
+    rollback: >-
+      Set MACHINE_MEMORY_OBSERVER_ENABLED=0 (or leave unset - compose default 0)
+      and redeploy mira-synthetic-dogfood-worker/-beat; the beat entry disappears
+      and the task returns {enabled:false}. No schema.
+    blocker: >-
+      Ships dark. Operational only after the seven-day series.json in
+      /opt/mira/data/synthetic-dogfood/machine-memory-observer/ reports
+      operational:true with a real fault window (Mike attaches it at the §9.5 exit gate).
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
+      - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
+    review_by: "2026-09-30"
+    notes: >-
+      Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
+
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
 # reason: `--discover` fails when a gate flag is in neither list, so a new flag
@@ -374,9 +564,132 @@ capabilities:
       - "Enable in production for the supervised mike-pilot Pixel run; record device, build, backend SHA, time, outcome."
       - "GS10-20P5 positive and Harrington negative both pass on the phone; disable on any failure."
       - "Then: whole-manual preference when the OEM splits chapters (GS10 still lands on a chapter); free-tier vs OpenAI judge benchmark (later evaluation)."
-    review_by: "2026-09-26"
+    review_by: "2026-10-10"
     notes: >-
+      Review date moved 2026-09-26 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue); re-decide at the next Gate sitting.
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
+
+  # =========================================================================
+  - id: unified_ui_shell
+    purpose: >-
+      Shared FactoryLM presentation shell (design tokens, interaction
+      contract/reducer/fixtures, conversation parts, composer, navigation,
+      inspector, source viewer, and cross-surface lab) that replaces the
+      separate public/Hub/mobile presentation trees over time. Main now
+      includes the foundation (#3625), interaction and composer (#3628),
+      mobile behavior and fixture matrix (#3632), connected mobile chat and
+      whole-app adapters (#3633/#3639), subsequent mobile hardening (#3642),
+      shared-shell Slice A (#3643), and the Hub `/v3` host/home path
+      (#3839/#3875).
+      FACTORYLM-UNIFIED-UI-CUTOVER-001 charter:
+      docs/architecture/convergence/UNIFIED_UI_CUTOVER.md.
+    customer_outcome: >-
+      An authorized mobile canary tester can opt into the completely new
+      FactoryLM shell and use the real notebook send, attachment, evidence,
+      citation, retry, navigation, and persistence seams. It is not the
+      production-default surface and Hub/public adapters remain unconnected.
+    feature_flag: null
+    entrypoints:
+      - "packages/factorylm-theme/src/                    # tokens, workspace theme"
+      - "packages/factorylm-interaction/src/               # types, reducer, fixtures, adapter contract"
+      - "packages/factorylm-ui/src/FactoryLMShell.tsx      # shared shell, Sidebar, Inspector, ThreadHeader, ProjectTree"
+      - "packages/factorylm-ui/src/Conversation.tsx        # typed Ask/Work part renderer"
+      - "packages/factorylm-ui/src/Composer.tsx            # shared universal composer"
+      - "apps/factorylm-ui-lab/                             # isolated fixture lab + cross-surface harness"
+      - "mira-mobile/src/App.tsx                            # reads the device choice and mounts UnifiedRoot"
+      - "mira-mobile/src/lib/chat-ui-pref.ts                # owns flm.chatui.v1 selection and rollback"
+      - "mira-mobile/src/screens/UnifiedRoot.tsx            # whole-app mobile host"
+      - "mira-mobile/src/screens/NotebookScreen.tsx         # mounts UnifiedChat on real notebook seams"
+      - "mira-mobile/src/screens/UnifiedChat.tsx            # real notebook shell adapter"
+      - "mira-mobile/src/unified/                           # platform adapter and notebook transforms"
+    consumers:
+      - "mira-mobile canary                     # device-local flm.chatui.v1=unified opt-in"
+      - "mira-hub /v3                           # merged on main; not yet deployed/default"
+    schema: []
+    environments:
+      dev: unset
+      canary: "1"                             # signed OTA canary 1.1.7 at main f5f994a78
+      staging: unset
+      production: unset
+    state: canary_enabled
+    owner: null
+    owner_missing: >-
+      Multi-CPU program coordinated through the mission issue, not a single
+      named owner yet. See docs/architecture/convergence/UNIFIED_UI_CUTOVER.md
+      §5 (ownership lanes) and the [WORK-CLAIM] record on
+      https://github.com/Mikecranesync/MIRA/issues/3626.
+    ci_jobs:
+      - "factorylm-ui-lab.yml:shared-ui"
+      - "mobile-unit-tests"
+    required_checks:
+      - "Shared UI contract (bun 1.4.0)"
+    required_checks_observed_on: "2026-09-06"
+    evidence:
+      - path: packages/factorylm-theme/src/__tests__/theme-contract.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Theme token contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-interaction/src/__tests__/reducer.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Shared interaction reducer contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-interaction/src/__tests__/fixtures.test.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Shared fixture contract, run by the standalone Shared UI workflow."
+      - path: packages/factorylm-ui/src/__tests__/shell.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Shared shell component coverage."
+      - path: packages/factorylm-ui/src/__tests__/conversation.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Conversation-part rendering coverage from merged Task 5."
+      - path: packages/factorylm-ui/src/__tests__/composer.test.tsx
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Universal-composer behavior coverage from merged Task 5."
+      - path: apps/factorylm-ui-lab/e2e/fixture-matrix.spec.ts
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Cross-surface browser fixture matrix; local release proof, not part of the required unit check."
+      - path: mira-mobile/tests/unified-chat.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
+        note: "Real mobile notebook adapter behavior, run by the mobile-unit-tests CI job when mobile paths change."
+      - path: mira-mobile/tests/unified-root.test.tsx
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
+        note: "Whole-app mobile shell host behavior."
+      - path: mira-hub/src/factorylm-ui/hub-host-logic.test.ts
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
+        note: "Hub HOME, General-project selection, loading gate, and New-project host behavior from #3875."
+      - path: docs/promo-screenshots/2026-09-19_hub-v3-shell-thread-persists-after-reload_desktop.png
+        recorded_at: "2026-09-19"  # Registry history, not a new observation.
+        note: "Exact #3875 proof screenshot: the Hub /v3 thread persists after reload; not production proof."
+      - path: https://updates.factorylm.com/manifest.canary.json
+        recorded_at: "2026-09-08"  # Registry history, not a new observation.
+        note: "Point-in-time live evidence read on 2026-09-06: canary 1.1.7, releaseSha f5f994a78d6d2f2e9393381662804f375dc59209. Re-read before treating as current."
+    rollback: >-
+      On a canary device, choose Use classic app or set the device-local
+      `flm.chatui.v1` preference to `v2`/`legacy`; this switches presentation
+      without changing the notebook API, stored turns, evidence, or safety
+      seams. If the canary bundle itself is bad, use the signed OTA rollback
+      procedure in docs/release/android/ota.md. Production remains unset.
+    reason: >-
+      The shared shell is connected and CI-covered on the opt-in mobile canary
+      and is hosted at Hub `/v3` on main, but production still reports recovery
+      SHA 0178b1b0776f30cccde42c8d255031254b882a38. A current physical-handset
+      Golden Conversation and one-thread phone/web proof have not been recorded,
+      and the authenticated root still selects `/feed`. No production-default
+      or public-web cutover is claimed.
+    promotion_criteria:
+      - "Record the Golden Conversation on a physical canary phone at the exact OTA release SHA: sign in, open/create thread, ask, attach evidence, cited answer, save/reload, and reopen the same thread."
+      - "Keep the device-local classic/v2 rollback available until the physical canary proof and accessibility/performance gates pass."
+      - "Deploy and prove the exact Hub /v3 release (#3879), then prove one persisted thread phone -> web -> phone (#3882)."
+      - "Make /v3 the authenticated default only with a tested legacy recovery path (#3880); public demo proof remains separate (#3883)."
+      - "REVIEW 2026-09-20 -> 2026-09-27 (reason): #3839/#3875 connect and exercise Hub /v3 on main, so the record was re-decided rather than date-bumped. Production, current Pixel release (#3881), cross-surface continuity (#3882), and default cutover (#3880) remain open. Re-decide after exact-release evidence; do not extend again as a date-only fix."
+    review_by: "2026-10-10"
+    notes: >-
+      Review date moved 2026-09-27 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue); re-decide at the next Gate sitting.
+      Do not create a second capability registry for UI cutover state — this
+      record is the ONE capability-closure entry for the unified shell
+      (charter §4). `required_checks_observed_on` is a dated live GitHub read;
+      the offline validator proves the named workflow producer exists but does
+      not claim branch-protection settings cannot drift. Legacy presentation freeze/enforcement state lives in
+      docs/architecture/convergence/REGISTRY.yaml (mira-web-legacy-ui,
+      mira-hub-legacy-ui, mira-mobile-legacy-ui), not here.
 
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability

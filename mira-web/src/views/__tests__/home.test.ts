@@ -21,12 +21,12 @@ describe("renderHome — assessment-led homepage", () => {
     expect(html).toContain("Maintenance Intelligence Namespace");
   });
 
-  test("hero CTAs: primary = Book $500 Assessment (/buy); secondary = sample MIRA answer (/quickstart)", () => {
+  test("hero CTAs: primary = Book $500 Assessment (/buy); secondary = in-page sample answer (#fl-compare-h)", () => {
     expect(html).toMatch(
       /<a href="\/buy"[^>]*class="fl-btn fl-btn-primary"[^>]*data-cta="hero-assessment"[^>]*>Book \$500 Assessment<\/a>/
     );
     expect(html).toMatch(
-      /<a href="https:\/\/app\.factorylm\.com\/quickstart"[^>]*class="fl-btn fl-btn-ghost"[^>]*data-cta="hero-demo"[^>]*>Try a sample MIRA answer<\/a>/
+      /<a href="#fl-compare-h"[^>]*class="fl-btn fl-btn-ghost"[^>]*data-cta="hero-demo"[^>]*>See a sample answer ↓<\/a>/
     );
     // Sign-in is for existing customers only, demoted to the foot line.
     expect(html).toContain('data-cta="hero-signin"');

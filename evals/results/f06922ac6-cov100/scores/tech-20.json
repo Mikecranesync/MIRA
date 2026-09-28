@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 60,
+      "missing_points": [
+        "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer covers overload setting and increase to 12\u202fA but omits quantitative inrush factor and time\u2011delay curve discussion."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Based on general guidance, not tied to specific machine documents."
+    },
+    "diagnostic": {
+      "score": 80,
+      "note": "Provides a clear discriminating question about direct\u2011on\u2011line start vs VFD/soft\u2011starter."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Lists concrete steps: verify setting, confirm start method, measure current, adjust setting, check ambient."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Shows confidence with practical checks, no hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 73.5
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-09",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-09",
+    "category": "troubleshooting",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "Motor accelerates to 50% speed and then stops under load. Drive displays fault F006. What does this mean and what is the most likely cause?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "F006 = Motor Stalled fault: drive attempted to accelerate motor but could not reach commanded speed",
+        "F006 indicates stall condition (inability to move despite command and acceleration attempt)",
+        "Check that Acceleration Time parameter is sufficient for the motor load (increase if needed)",
+        "Verify load is not exceeding motor torque capability; mechanical binding or excessive friction on startup"
+      ],
+      "wrong_if": [
+        "Confuses F006 (stalled) with F007 (overload); F006 means unable to move, F007 means current exceeded",
+        "Claims F006 requires immediate motor winding test without checking acceleration ramp settings",
+        "States increasing motor nameplate FLA is the primary fix for F006",
+        "Suggests the problem is always a failed contactor, not a mechanical load issue"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor accelerates to 50% speed and then stops under load. Drive displays fault F006. What does this mean and what is the most likely cause?",
+      "answer": "Fault\u202fF006 means \u201cMotor Stalled\u201d \u2013 the drive cannot accelerate or decelerate the motor\u202f[1].  \nThe most likely cause is an excessive load or a load that overhauls the motor, preventing the drive from staying within its current limit\u202f[1].",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 161,
+          "quote": "\u2026Extend the decel\ntime or install dynamic brake option.\nF006 Motor Stalled 1 Drive is unable to accelerate or\ndecelerate motor.\n\u2022 Increase P041, A442, A444, A446\n[Accel Time x] or reduce load so\ndrive output current does not exceed\nthe curre",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 1.8127009868621826,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:28.939508+00:00"
+}

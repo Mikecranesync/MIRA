@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-25",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 80,
+      "missing_points": [
+        "Correct abstention offers to help if the technician can provide the compressor nameplate or maintenance history"
+      ],
+      "wrong_if_present": [],
+      "note": "Acknowledges lack of specific data and gives safe steps, but does not explicitly invite further info from the user."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Grounding not applicable for this grading task."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Diagnostic assessment not required."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Provides clear, safe, step\u2011by\u2011step actions and next steps for verification."
+    },
+    "uncertainty": {
+      "score": 100,
+      "note": "Properly abstains from guessing and flags missing information."
+    },
+    "context": {
+      "score": null,
+      "note": "Context dimension not applicable."
+    }
+  },
+  "case_score": 85.5
+}

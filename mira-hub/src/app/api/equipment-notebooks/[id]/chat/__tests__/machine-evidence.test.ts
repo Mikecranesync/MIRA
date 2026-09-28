@@ -34,7 +34,7 @@ vi.mock("@/lib/session", () => ({
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
-  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  resolveBoundAsset: vi.fn(async (): Promise<Record<string, unknown>> => ({ state: "unbound" })),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -167,6 +167,10 @@ const FRESH = signals(2_000);
 const ME = { assetId: ASSET, anchorAt: FAULT_AT, pre: 5, post: 2 };
 
 beforeEach(() => {
+  // This suite pins its own seam (not the semantic judge, which is owned by
+  // chat-answer-gate.test.ts). Iteration-9 judges EVERY served answer, so
+  // disable the layer here rather than stub a judge in every test.
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   vi.clearAllMocks();
   dbMock.handlers = [];
   dbMock.calls = [];
@@ -175,7 +179,12 @@ beforeEach(() => {
   delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
   delete process.env.MIRA_ENFORCE_APPROVED_ASK;
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Conveyor 1", manufacturer: "Automation Direct", model: "GS10" });
-  nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
+  // 086 / private conversations §3: machine history is served only for the
+  // notebook's server-resolved, technician-CONFIRMED binding that matches the
+  // request. These replay tests exercise the machine path, so their notebook
+  // is bound and confirmed to ASSET; an unbound/unconfirmed notebook is now
+  // covered by turn-ownership.test.ts (no fetch, no machine evidence).
+  nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: ASSET, name: "Conveyor 1", unsPath: UNS, selectedVia: "qr_scan", confirmedAt: "2026-08-27T23:00:00.000Z" });
   nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
   ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
   vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("The photo eye went ON, then the drive faulted [1]."), { status: 200 })));
@@ -303,43 +312,40 @@ describe("honest degradation", () => {
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("asset has no uns_path → the turn proceeds on documents alone; no machine section, no entry, basis oem_documentation", async () => {
+  it("asset has no uns_path → 422 machine_history_unavailable (reason no_uns_path); no provider, nothing persisted (Workstream C §9.2)", async () => {
     dbMock.handlers = [[/FROM kg_entities/, { rows: [] }]];
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
-    const evidence = fr.find((f) => f.kind === "evidence")!;
-    expect(evidence.basis).toBe("oem_documentation");
-    expect(evidence).not.toHaveProperty("machineEvidence");
-    expect(sentSystemPrompt()).not.toContain("## Machine Evidence");
+    const res = await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ code: "machine_history_unavailable", reason: "no_uns_path" });
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("tag_events missing (033 not applied) → entry carries reason 'unavailable', NO machine section, basis stays oem_documentation", async () => {
+  it("tag_events missing (033 not applied) → 422 machine_history_unavailable (reason unavailable) — never a document answer wearing an empty card (Workstream C §9.2)", async () => {
     dbMock.handlers = [
       KG_HIT,
       [/FROM tag_events/, () => { const e = new Error("no relation") as Error & { code?: string }; e.code = "42P01"; throw e; }],
       STALE,
     ];
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
-    const evidence = fr.find((f) => f.kind === "evidence")!;
-    const entry = evidence.machineEvidence as { rowCount: number; reason?: string };
-    // The entry IS persisted — the client must be able to say WHICH empty this is …
-    expect(entry.rowCount).toBe(0);
-    expect(entry.reason).toBe("unavailable");
-    expect(persistedTurn<{ evidence: { reason?: string }[] }>().evidence.at(-1)!.reason).toBe("unavailable");
-    // … but nothing was observed, so nothing grounds the answer: no machine
-    // basis and no MACHINE section in the prompt (§2.8, D2).
-    expect(evidence.basis).toBe("oem_documentation");
-    expect(sentSystemPrompt()).not.toContain("## Machine Evidence");
+    const res = await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.code).toBe("machine_history_unavailable");
+    expect(body.reason).toBe("unavailable");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("a real but EMPTY window (tables present, nothing recorded) → rowCount 0 with NO reason; no machine section, basis unchanged", async () => {
+  it("a real but EMPTY window (tables present, nothing recorded) → 422 machine_window_empty with coverage; distinct from unavailable (Workstream C §9.2)", async () => {
     dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
-    const evidence = fr.find((f) => f.kind === "evidence")!;
-    const entry = evidence.machineEvidence as { rowCount: number; reason?: string };
-    expect(entry.rowCount).toBe(0);
-    expect(entry).not.toHaveProperty("reason");
-    expect(evidence.basis).toBe("oem_documentation");
-    expect(sentSystemPrompt()).not.toContain("## Machine Evidence");
+    const res = await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.code).toBe("machine_window_empty");
+    expect(body.error).toBe("Nothing was recorded in this window. Widen the window or check the gateway.");
+    expect(body.coverage).toMatchObject({ recorded: 0, historyAvailable: true, admissible: false });
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
   it("a NON-empty window is unchanged: machine_history basis + the MACHINE section (the regression guard for the two branches above)", async () => {
@@ -380,27 +386,28 @@ describe("Gate G -- a non-empty machine window is grounding (BLOCKER-1)", () => 
     expect(persistedTurn<{ basis: string }>().basis).toBe("machine_history");
   });
 
-  it("sourced notebook + zero chunks + EMPTY window: the abstain is byte-identical (no provider call, no evidence frame)", async () => {
+  it("sourced notebook + zero chunks + EMPTY window: refused at the seam (422 machine_window_empty), no provider call, no turn persisted (Workstream C §9.2)", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
-    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
-    expect(fr.find((f) => f.kind === "status")!.message).toBe("I couldn't find that in the selected sources.");
+    const res = await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("machine_window_empty");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-    expect(fr.find((f) => f.kind === "evidence")).toBeUndefined();
-    expect(persistedTurn<{ answerStatus: string }>().answerStatus).toBe("insufficient_evidence");
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("sourced notebook + zero chunks + UNAVAILABLE window (033 missing): the abstain is unchanged", async () => {
+  it("sourced notebook + zero chunks + UNAVAILABLE window (033 missing): refused as unavailable, not as empty (Workstream C §9.2)", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [
       KG_HIT,
       [/FROM tag_events/, () => { const e = new Error("no relation") as Error & { code?: string }; e.code = "42P01"; throw e; }],
       STALE,
     ];
-    const fr = await frames(await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params));
-    expect(fr.find((f) => f.kind === "status")!.status).toBe("insufficient_evidence");
+    const res = await POST(req({ message: "x", sourceDocIds: [DOC_A], machineEvidence: ME }), params);
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("machine_history_unavailable");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
   it("NO machineEvidence at all + zero chunks: the abstain is untouched (the document lane never changed)", async () => {
@@ -442,7 +449,7 @@ describe("approved-context gate — machine evidence only (D3)", () => {
     expect((await frames(res)).find((f) => f.kind === "evidence")!.basis).toBe("machine_history");
   });
 
-  it("the gate keeps its teeth: UNAVAILABLE window + no approved context: 412 approved_context (a sentence in `error`)", async () => {
+  it("UNAVAILABLE window + no approved context: refused BEFORE the approved-context gate as machine_history_unavailable — the technician is told the true cause, not 'approved context' (Workstream C §9.2)", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [
@@ -451,24 +458,24 @@ describe("approved-context gate — machine evidence only (D3)", () => {
       STALE,
     ];
     const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
-    expect(res.status).toBe(412);
+    expect(res.status).toBe(422);
     const body = await res.json();
-    expect(body.code).toBe("approved_context");
-    expect(body.gate).toBe("approved_context");
-    expect(body.approved_machine_evidence_count).toBe(0);
+    expect(body.code).toBe("machine_history_unavailable");
     expect(typeof body.error).toBe("string");
     expect(body.error.length).toBeGreaterThan(10);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
-  it("an EMPTY window + no approved context: 412 too (nothing observed is not approved context)", async () => {
+  it("an EMPTY window + no approved context: 422 machine_window_empty (nothing observed is not evidence; the gate never has to say so) (Workstream C §9.2)", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
     dbMock.handlers = [KG_HIT, [/FROM tag_events/, { rows: [] }], [/FROM tag_event_diffs/, { rows: [] }], STALE];
     const res = await POST(req({ message: "what happened?", mode: "general", machineEvidence: ME }), params);
-    expect(res.status).toBe(412);
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("machine_window_empty");
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
   });
 
   it("stale machine evidence + a validated notebook source → passes (the source is approved context)", async () => {
@@ -489,7 +496,10 @@ describe("approved-context gate — machine evidence only (D3)", () => {
   it("document-only turns never reach the gate: enforcement on, no machineEvidence, general mode still answers", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const res = await POST(req({ message: "drive trips", mode: "general" }), params);
+    // A conceptual question: #4068 declines a machine-specific one ("drive
+    // trips") on a model-bound notebook with nothing citable; this test is
+    // about the approved-context gate, not that decision.
+    const res = await POST(req({ message: "how does a VFD work", mode: "general" }), params);
     expect(res.status).toBe(200);
     expect((await frames(res)).find((f) => f.kind === "evidence")!.basis).toBe("general_reasoning");
   });

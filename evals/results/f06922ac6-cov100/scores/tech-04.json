@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 60,
+      "missing_points": [
+        "Variable-torque loads require less torque at lower speeds (centrifugal fans, centrifugal pumps)"
+      ],
+      "wrong_if_present": [],
+      "note": "Mostly correct but reverses variable\u2011torque behavior"
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations required"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 20,
+      "note": "Provides explanation only, no actionable guidance"
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Moderate confidence in assessment"
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 52.0
+}

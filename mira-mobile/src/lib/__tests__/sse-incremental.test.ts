@@ -36,6 +36,10 @@ function legacyParse(body: string, httpStatus = 200): ChatTurn {
   let evidenceBasis: string | undefined;
   let followups: string[] | undefined;
   let evidenceLabel: string | undefined;
+  // Truncation honesty (added with the `sawStatus` contract): the reference
+  // tracks the authoritative terminal frame too, so this parity test keeps
+  // asserting chunking-independence rather than freezing the field set.
+  let sawStatus = false;
   for (const block of body.split("\n\n")) {
     const line = block.trim();
     if (!line.startsWith("data:")) continue;
@@ -54,7 +58,10 @@ function legacyParse(body: string, httpStatus = 200): ChatTurn {
           fileId: c.fileId != null ? String(c.fileId) : null,
           originFileId: c.originFileId != null ? String(c.originFileId) : null,
         }));
-      else if (f.kind === "status") status = String(f.status ?? "");
+      else if (f.kind === "status") {
+        status = String(f.status ?? "");
+        sawStatus = true;
+      }
       else if (f.kind === "followups")
         followups = Array.isArray(f.suggestions) ? (f.suggestions as unknown[]).map(String) : undefined;
       else if (f.kind === "evidence") {
@@ -65,7 +72,15 @@ function legacyParse(body: string, httpStatus = 200): ChatTurn {
       /* skip */
     }
   }
-  return { answer, citations, status, evidenceBasis, evidenceLabel, followups };
+  return {
+    answer,
+    citations,
+    status,
+    evidenceBasis,
+    evidenceLabel,
+    followups,
+    ...(sawStatus ? {} : { sawStatus: false as const }),
+  };
 }
 
 describe("createChatSseParser", () => {

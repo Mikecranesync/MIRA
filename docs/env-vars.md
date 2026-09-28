@@ -19,6 +19,20 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 
 Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN` in Doppler `factorylm/prd` authenticate to the `FactoryLM` workspace (`T0AK2CU16T1`) as bot user `U0AM3EZBSNQ` / bot id `B0ALXRE4CDU`. `SLACK_EXPECTED_BOT_USER_ID=U0AM3EZBSNQ` is set in prod for drift detection. `SLACK_ALLOWED_CHANNELS` is currently unset; do not set it to only `C0AKBEL8C4T` while DM testing is required, because the Slack adapter currently applies the allowlist before distinguishing DMs from shared channels.
 
+FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **separate Slack bot identity**. Do not reuse product `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN`.
+
+| Var | Used By |
+|-----|---------|
+| `FOREMAN_BOT_SLACK_TOKEN` | factorylm-foreman — Slack bot token (`xoxb-…`). Doppler name; code also accepts `FOREMAN_SLACK_BOT_TOKEN`. |
+| `FOREMAN_SLACK_APP_TOKEN` | factorylm-foreman — Slack app-level token (`xapp-…`) for Socket Mode. |
+| `CURSOR_API_KEY` | factorylm-foreman — Cursor SDK key (`crsr_…`) for `Agent.create`. Code also accepts `CURSOR_API`. |
+| `FLEET_GATEWAY_MCP_URL` | factorylm-foreman — HTTPS Fleet Gateway MCP endpoint passed to `HttpMcpServerConfig`. |
+| `FLEET_GATEWAY_TOKEN` | factorylm-foreman — Bearer token for Fleet Gateway MCP. Code also accepts `FLEET_GATEWAY_BEARER`. |
+| `FOREMAN_GROK_MODEL` | factorylm-foreman — Cursor model id. Default `grok-4.6` (live-proven; not `cursor-grok-4.6-medium`). |
+| `FOREMAN_ALLOWED_CHANNEL` | factorylm-foreman — Slack channel ID allowlist. Default `C0BTXHXBKML` (`#factorylm-foreman`). |
+| `FOREMAN_REPO_URL` | factorylm-foreman — repo URL stamped on `CloudRepository`. Default `https://github.com/Mikecranesync/MIRA`. |
+| `FOREMAN_REPO_BRANCH` | factorylm-foreman — `CloudRepository.starting_ref`. Default `main`. |
+
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: openai/gpt-oss-120b |
@@ -128,6 +142,10 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` | mira-hub — comma-separated exact hosts allowed as Command Center display targets (e.g. `127.0.0.1,192.168.1.20,100.72.2.99`). The tree route server-side-probes each registered display host; **set this in prod** to bound the SSRF surface of `POST /api/command-center/display` to known proxy/HMI origins. Unset = no restriction beyond the validator's link-local/metadata block (dev/bench). Interim control until #578 enables a true admin-role gate. |
 | `CSP_FRAME_SRC_DISPLAY_HOSTS` | mira-hub `src/middleware.ts` — comma-separated hosts added to the site-wide CSP `frame-src` allowlist (for any framed display surface). Distinct from the allowlist above: this governs what the browser may frame, not what may be registered. |
 | `MIRA_MACHINE_MEMORY_UNS_PATHS` | `mira-crawler/tasks/historize_runs.py` — extra `uns_path`s (comma-separated) to derive state windows + A0-A12 anomaly diffs for, even without a `MIRA_RUN_TRIGGERS` entry (migration 040). |
+| `MACHINE_MEMORY_OBSERVER_ENABLED` | `mira-crawler/tasks/machine_memory_observer.py` — `1` enables the daily READ-ONLY CV-101 Machine Memory observer on the synthetic-dogfood beat (PRD §9.4). Default `0` (inert). Forwarded by `docker-compose.saas.yml` (mira-synthetic-dogfood-worker). |
+| `MACHINE_MEMORY_OBSERVER_ASSET_ID` | The CV-101 `kg_entities` id the observer reads through `/api/assets/{id}/history/` + `/machine-memory/`. |
+| `MACHINE_MEMORY_OBSERVER_EMAIL` | Login (an EXISTING user in the tenant that owns CV-101) the observer signs in with; it never registers. Doppler-managed; never in the image. |
+| `MACHINE_MEMORY_OBSERVER_PASSWORD` | Password for `MACHINE_MEMORY_OBSERVER_EMAIL`. Doppler-managed; never printed or written to the observer's report files. |
 | `MQTT_INGEST_BROKER_HOST` | `mira-relay/mqtt_ingest/config.py` — Sparkplug B subscriber broker hostname. Default `mosquitto`. |
 | `MQTT_INGEST_BROKER_PORT` | `mira-relay/mqtt_ingest/config.py` — broker port. Default `1883` (`8883` for TLS). |
 | `MQTT_INGEST_TLS` | `mira-relay/mqtt_ingest/config.py` — `"1"`/`"true"` enables TLS to the broker. |
@@ -147,8 +165,35 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | Var | Default | Meaning |
 |---|---|---|
 | `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
+| `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |
 
 Rollback: unset `MIRA_CANONICAL_SEAM` and restart. No migration, no data change.
 See `docs/architecture/mira-1000/P0004G_HUB_CANONICAL_SEAM.md`.
+
+## Telemetry (staging-first)
+
+Turn Flight Recorder — per-turn OpenTelemetry tracing for `mira-hub`. Env scope: **staging only** for now (`docker-compose.staging-vps.yml`); production compose is not touched by this work. No `OTEL_EXPORTER_OTLP_ENDPOINT` (or `_TRACES_ENDPOINT`) set ⇒ the SDK never starts — `@opentelemetry/api` hands every call site a no-op tracer, zero overhead. See `docs/architecture/observability/2026-09-22-turn-flight-recorder.md`.
+
+| Var | Default | Meaning |
+|---|---|---|
+| `OTEL_SERVICE_NAME` | `mira-hub` | Resource `service.name`. Standard OTel var. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (**disabled**) | OTLP/HTTP collector base URL (e.g. Langfuse's `https://us.cloud.langfuse.com/api/public/otel`). Presence of this OR `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is what turns tracing on. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | unset | Standard OTel var, e.g. `http/protobuf`. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset | Standard OTel var, e.g. `Authorization=Basic <base64(pk:sk)>`. Doppler-managed; never logged, never surfaced by `/api/health`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | unset | Standard OTel var, comma-separated `k=v` pairs. `deployment.environment.name=staging` is how `environmentName()` (`src/capabilities/observability/config.ts`) knows which environment it's running in — parsed, not duplicated by app code; the SDK merges it into the resource automatically. |
+| `OTEL_TRACES_SAMPLER` | unset | Standard OTel sampler, e.g. `parentbased_always_on` (staging: 100%). |
+| `OTEL_TRACES_SAMPLER_ARG` | unset | Standard OTel sampler argument (ratio for `parentbased_traceidratio`). Unused with `parentbased_always_on`. |
+| `MIRA_APP_VERSION` | `unknown` | App version stamped at build (`deploy-staging.yml`); was a build arg only, now also a runtime env var so `instrumentation.node.ts` can set `service.version` and `/api/health` can report it. |
+| `MIRA_OTEL_CAPTURE_CONTENT` | `0` | `"1"` captures `gen_ai.input.messages`/`gen_ai.output.messages` on generation spans (sanitized, truncated to 4KB). Off in staging by default; never enabled in production by this work. |
+| `MIRA_TURN_ANOMALY_CHECKS` | `1` | `"0"` disables the deterministic per-turn anomaly checks (`PHOTO_WITH_NO_OBSERVATIONS`, `VISUAL_EVIDENCE_DROPPED`, etc. — lane I3). Diagnostics never fail the technician's request either way. |
+| `MIRA_JEV_SHADOW` | `0` | `"1"` enables the shadow-mode Jev (TypeSafe AI System One) evidence-sufficiency judgment: after retrieval, one fail-open call over the technician's question plus scrubbed chunk excerpts, recorded on the Turn Evidence Packet (`answer_gate.jev_sufficient`, `jev_skipped_reason`, `jev_latency_ms`) and span. Never consulted by the answer gate. Staging only; production unset. |
+| `MIRA_JEV_DECISION` | `0` | `"1"` enables the shadow-mode Jev **decision fabric**: after the stream is closed, ONE call asking twelve typed questions about the finished turn (evidence-following, family match, wrong-family grounding, unsupported numerics, over-specificity, contradiction of photo observations, a typed failure class, and triage), recorded on the Turn Evidence Packet as `jev_decision` and on the span. Read by nothing — not the answer gate, safety gate, lifecycle ledger or any release gate. Deliberately SEPARATE from `MIRA_JEV_SHADOW`: this payload also carries the delivered answer and the photo observations, so enabling the smaller export must not turn on the larger one. Staging only; production unset pending the vendor-retention item in `docs/proofs/2026-09-23-jev-decision-privacy.md`. |
+| `MIRA_TURN_RECONCILER` | `0` | `"1"` starts the in-process stale-turn reconciler (093). It is the ONLY writer of the `abandoned` lifecycle outcome: `endRoot` closes every exit path a request reaches, but a container SIGKILLed or redeployed mid-turn reaches none of them, so those start records can be closed from nowhere else. Off by default so it is enabled per environment rather than by merge. Staging first. |
+| `MIRA_TURN_RECONCILER_STALE_MIN` | `15` | How long a start record may stay open before the reconciler calls it abandoned. Values below 5 are ignored and the default applies — sweeping a turn still in flight would BOTH invent an `abandoned` and lose the real outcome to the `(attempt_id, lifecycle)` conflict. |
+| `MIRA_TURN_RECONCILER_INTERVAL_MIN` | `5` | Sweep cadence. Overlapping sweeps are suppressed in-process; concurrent replicas are safe because the append is idempotent. |
+| `JEV_API_KEY` | — | Bearer token for `api.typesafe.ai`, read at call time by `mira-hub/src/capabilities/observability/jev-shadow.ts`. Absent → `jev_skipped_reason=no_key`. Doppler-managed; never logged. |
+| `MIRA_TRACE_VIEWER_URL_TEMPLATE` | unset | Optional trace-viewer URL template with a `{traceId}` placeholder (e.g. a Langfuse trace URL), surfaced by the turn diagnostics endpoint. `null` when unset. |
+
+`/api/health` reports the effective (non-secret) state as `telemetry: { tracing: "enabled"|"disabled", exporter: "otlp-http"|null, environment, contentCapture }` — never the endpoint or headers.

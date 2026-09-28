@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-23",
+    "category": "sensors_instrumentation",
+    "mode": "general",
+    "equipment": "PNP proximity sensor, Allen-Bradley Micro820 PLC, 24 VDC I/O",
+    "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "PNP sensor switches to +24V (supply/high) when triggered; NPN switches to ground (common)",
+        "PNP output can drive an input if sensor common and input common are the same reference; if isolated, wiring will fail",
+        "Verify: sensor supply voltage, sensor common connected to input common, input voltage reading with object present"
+      ],
+      "wrong_if": [
+        "Blames the sensor without checking wiring or power supply",
+        "Confuses PNP (switches to +V/supply) with NPN (switches to ground/common)",
+        "Assumes the input is broken without testing voltage at the input terminal"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+      "answer": "The most common reason a PNP proximity sensor won\u2019t register on a Micro820 is that the sensor\u2019s supply or wiring isn\u2019t correct.  \n\n1. **Verify sensor power** \u2013 confirm 24\u202fV\u202fDC is present at the sensor\u2019s brown (positive) and blue (negative) leads and that the voltage is within the sensor\u2019s rated range (typically 10\u201130\u202fV\u202fDC).  \n2. **Check wiring polarity** \u2013 PNP sensors must have the positive lead to the 24\u202fV supply and the output (usually black) to the Micro820 input; the negative lead goes to the common/ground. Swap wires if needed.  \n3. **Measure the sensor\u2019s output voltage** \u2013 with the target present, the output should be near 24\u202fV; without the target it should be near 0\u202fV. Use a multimeter on the input terminal and the sensor\u2019s output lead.  \n4. **Confirm Micro820 input configuration** \u2013 ensure the input channel is set for a 24\u202fV DC source (not 120\u202fV AC) and that any software scaling or filtering isn\u2019t disabling the signal.  \n5. **Inspect for wiring faults** \u2013 look for loose terminals, broken conductors, or corrosion that could drop voltage.  \n\n*Diagnostic question:* When you measure the sensor\u2019s output with the target present, does the voltage rise to the supply level, or does it stay low?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 2.1357979774475098,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:06.819986+00:00"
+}

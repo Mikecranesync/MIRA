@@ -219,13 +219,16 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             result = engine.analyze_text(file_name, text)
             # Fallback: a text file that isn't a PLC/CCW export is still run through document
             # contextualization (fault codes, params, catalog #s, tag refs) so "accept anything" works.
-            if not result["rows"] and result["kind"] in ("unknown", "plc_unhandled"):
+            # "plc" is included because the parser classifies a generic .xml as a handled PLC format
+            # that yields 0 tags (#2334/#3424); CCW settings/solution stay out — their empty result
+            # carries deliberate guidance the fallback would mask.
+            if not result["rows"] and result["kind"] in ("unknown", "plc_unhandled", "plc"):
                 rows = contextualize.contextualize_blocks(
                     [{"text": text, "kind": "text", "page": None}],
                     file_name,
                     store.plc_tag_names(pid),
                 )
-                if rows or result["kind"] == "unknown":
+                if rows or result["kind"] in ("unknown", "plc"):
                     result = {
                         "kind": "document_text",
                         "rows": rows,

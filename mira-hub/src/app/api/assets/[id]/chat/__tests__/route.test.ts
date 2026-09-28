@@ -47,7 +47,7 @@ vi.mock("@/lib/machine-context-packet", () => ({
   renderMachineEvidenceSection: vi.fn(() => ""),
 }));
 
-import { POST } from "../route";
+import { POST, drainProviderStream } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
@@ -206,18 +206,29 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).toBe(400);
   });
 
-  it("hard-stops on a physical-hazard phrase (safety stop)", async () => {
+  it("flags a physical-hazard phrase (banner as the first content frame) but still calls the provider — no more hard stop (owner decision 2026-09-27)", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"Get clear and call an electrician."}}]}\n\ndata: [DONE]\n\n',
+    );
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
     const res = await POST(
       makeReq(userMsg("I see melted insulation on this panel, what should I do?")),
       makeParams(VALID_UUID)
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
-    // Safety stop should emit SSE-formatted response
     let raw = "";
     const reader = res.body?.getReader();
     const dec = new TextDecoder();
@@ -229,12 +240,14 @@ describe("POST /api/assets/[id]/chat", () => {
       }
     }
 
-    // The safety stop is streamed word-by-word, so look for the component words
-    expect(raw).toContain("SAFETY");
-    expect(raw).toContain("STOP");
+    // The banner rides the FIRST content frame; the model's real answer
+    // still streams afterward — no terminal SAFETY_STOP text any more.
+    expect(raw).toContain("⚠️");
+    expect(raw).toContain("Get clear and call an electrician.");
+    expect(raw).not.toContain("SAFETY STOP");
     expect(raw).toContain("[DONE]");
-    // Safety stop should NOT call fetch (provider)
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The provider IS called now (drive-pack pre-check, then the LLM).
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   // ── Explicitly-attached documents (workspace_file_links) ──────────────────
@@ -826,8 +839,103 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(body.gate).toBe("approved_context");
   });
 
+  it("a flagged hazard question that hits the 412 still shows its safety banner (review of #4040)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(makeReq(userMsg("there is smoke coming from the drive")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(412);
+    expect(res.headers.get("X-Safety-Flag")).toBeTruthy();
+    const body = await res.json();
+    expect(body.gate).toBe("approved_context");
+    expect(String(body.reason)).toMatch(/^⚠️ \*\*Possible active incident/);
+  });
+
   it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {
     expect(KB_GAP_ADMISSION).toContain("knowledge base");
     expect(KB_GAP_ADMISSION).toContain(GAP_MARKER);
+  });
+});
+
+// Round 3, F2. `streamFromProvider` reported success whenever a provider's
+// body closed, so a provider that terminated cleanly having emitted nothing
+// stopped the cascade and handed the client an empty 200 — which the surface
+// renders as a successful blank answer rather than an outage.
+describe("drainProviderStream — a provider that served nothing is not a success", () => {
+  function sse(...frames: string[]): ReadableStream<Uint8Array> {
+    const enc = new TextEncoder();
+    return new ReadableStream({
+      start(c) {
+        for (const f of frames) c.enqueue(enc.encode(`data: ${f}\n\n`));
+        c.close();
+      },
+    });
+  }
+
+  function sink() {
+    const written: string[] = [];
+    const dec = new TextDecoder();
+    return {
+      written,
+      controller: {
+        enqueue: (chunk: Uint8Array) => written.push(dec.decode(chunk)),
+      } as unknown as ReadableStreamDefaultController<Uint8Array>,
+    };
+  }
+
+  const delta = (text: string) => JSON.stringify({ choices: [{ delta: { content: text } }] });
+  const stop = JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] });
+
+  it("returns true when deltas were served and the stream said [DONE]", async () => {
+    const { controller, written } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(delta("hi"), "[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(true);
+    expect(buf).toEqual(["hi"]);
+    expect(written.join("")).toContain('"content":"hi"');
+  });
+
+  it("returns FALSE when [DONE] arrives with no delta — the cascade must advance", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse("[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns FALSE when finish_reason 'stop' arrives with no delta", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(stop), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns FALSE when the body simply closes having emitted nothing", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
+  });
+
+  it("returns true for a partial answer — that text is already on the wire", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse(delta("half")), controller, new TextEncoder(), buf)).resolves.toBe(true);
+    expect(buf).toEqual(["half"]);
+  });
+
+  it("ignores malformed frames without counting them as served", async () => {
+    const { controller } = sink();
+    const buf: string[] = [];
+    await expect(drainProviderStream(sse("{not json", "[DONE]"), controller, new TextEncoder(), buf)).resolves.toBe(false);
+    expect(buf).toEqual([]);
   });
 });

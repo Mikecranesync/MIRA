@@ -25,6 +25,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { FilePicker } from "@capawesome/capacitor-file-picker";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 export const PDF_MIME = "application/pdf";
 
@@ -136,10 +137,101 @@ export function pickNameplatePhoto(): Promise<File | null> {
 }
 
 /**
+ * Capture a photo from the phone's CAMERA (#3353). "Photograph a component
+ * nameplate" or "Camera" in Unified Ask must open a viewfinder: a technician at
+ * the machine cannot browse to a photo they haven't taken. Capture goes through
+ * the same pickOne/toFile seam as the gallery path — one conversion, one MIME
+ * rule — so the captured file enters the recognizer + evidence/OCR pipeline
+ * exactly like a picked one. Not saved to the gallery (no storage permission
+ * needed; the workspace parks the original). Cancel → null, like every pick.
+ */
+export function capturePhoto(fallbackName = "photo.jpg"): Promise<File | null> {
+  return pickOne(
+    async () => {
+      const shot = await Camera.getPhoto({
+        source: CameraSource.Camera,
+        resultType: CameraResultType.Uri,
+        quality: 90,
+        correctOrientation: true,
+        saveToGallery: false,
+      });
+      const fmt = (shot.format || "jpeg").toLowerCase();
+      const ext = fmt === "jpg" ? "jpeg" : fmt;
+      // `path` is a file:// URI (convertFileSrc'd by toFile); `webPath` is
+      // already WebView-readable and is what web/PWA hosts return.
+      const file: PickedFile = { name: `${fallbackName.replace(/\.\w+$/, "")}.${fmt}`, mimeType: `image/${ext}` };
+      if (shot.path) file.path = shot.path;
+      else if (shot.webPath) file.blob = await (await fetch(shot.webPath)).blob();
+      return { files: [file] };
+    },
+    fallbackName,
+    imageMimeOf,
+  );
+}
+
+/** The nameplate photo, from the phone's CAMERA — routes to capturePhoto. */
+export function captureNameplatePhoto(): Promise<File | null> {
+  return capturePhoto("nameplate.jpg");
+}
+
+/**
  * A PDF, from the phone's own document picker. The mime is forced: Android
  * hands back `application/octet-stream` often enough that trusting it would
  * route a real manual down the "stored, not indexed" path.
  */
 export function pickPdf(): Promise<File | null> {
   return pickOne(() => FilePicker.pickFiles({ types: [PDF_MIME], limit: 1 }), "document.pdf", PDF_MIME);
+}
+
+const DOCUMENT_EXT_MIME: Record<string, string> = {
+  pdf: PDF_MIME,
+  txt: "text/plain",
+  csv: "text/csv",
+  md: "text/markdown",
+  rtf: "application/rtf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+/**
+ * The same octet-stream lie `pickPdf` forces around, generalized. Android hands
+ * back a missing or `application/octet-stream` mime for documents often enough
+ * that trusting it would file a real manual as an opaque blob. So: derive from
+ * the extension first (the filename is what the user actually chose), trust a
+ * declared non-octet-stream mime second, and only then admit octet-stream.
+ *
+ * Deriving BEFORE trusting the declared type is deliberate and is the opposite
+ * of `imageMimeOf`'s order: there, a declared `image/*` is already specific
+ * enough to beat a guess. Here the declared value is usually the generic one,
+ * and a `.pdf` that arrives as octet-stream must still reach the indexer.
+ */
+function documentMimeOf(picked: PickedFile): string {
+  const name = (picked.name ?? "").trim().toLowerCase();
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1) : "";
+  const byExtension = DOCUMENT_EXT_MIME[ext];
+  if (byExtension) return byExtension;
+  const declared = (picked.mimeType ?? "").toLowerCase().split(";")[0].trim();
+  if (declared && declared !== "application/octet-stream") return declared;
+  return "application/octet-stream";
+}
+
+/**
+ * ANY document, from the phone's own document picker (no type filter), for the
+ * composer's "File" action.
+ *
+ * `pickPdf` stays as it is and keeps its own door: a PDF picked there becomes a
+ * CITABLE SOURCE, which is a grounding decision. This one is a message
+ * attachment, and the server decides what it can do with it — the upload
+ * endpoint already answers with `indexed` plus a `warning`, and
+ * `FileCapability` already distinguishes indexable / viewable / stored. So a
+ * .docx attaches honestly as "stored, not searchable" instead of being refused
+ * by the picker or, worse, implied to be readable.
+ */
+export function pickDocument(): Promise<File | null> {
+  return pickOne(() => FilePicker.pickFiles({ limit: 1 }), "document", documentMimeOf);
 }

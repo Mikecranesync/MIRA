@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-08",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 60,
+      "missing_points": [
+        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture",
+        "Check wiring between drive output terminals (T1, T2, T3) and motor leads for damaged insulation or loose connections"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers fault definition and safety lockout, but omits detailed inspection of insulation and specific wiring checks."
+    },
+    "grounding": {
+      "score": 90,
+      "note": "Citation directly supports the fault description and safety risk."
+    },
+    "diagnostic": {
+      "score": 85,
+      "note": "Provides a clear, discriminating check (inspect motor and external wiring) without vague cause lists."
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Specifies lockout, isolation, and inspection location; next steps beyond inspection are not detailed."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Answer is confident and definitive, appropriate for the context."
+    },
+    "context": {
+      "score": null,
+      "note": "No contextual scoring required."
+    }
+  },
+  "case_score": 78.5
+}

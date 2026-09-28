@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 70,
+      "missing_points": [
+        "PNP sensor switches to +24V (supply/high) when triggered; NPN switches to ground (common)",
+        "PNP output can drive an input if sensor common and input common are the same reference; if isolated, wiring will fail"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers power, polarity, and voltage checks but omits explicit PNP switching behavior and common reference requirement."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Provides clear, step\u2011by\u2011step actions with expected outcomes and next diagnostic question."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "Answer is presented definitively with high confidence."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable for this grading."
+    }
+  },
+  "case_score": 80.0
+}

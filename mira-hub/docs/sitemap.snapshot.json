@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 69,
-    "apiRoutes": 179
+    "pages": 70,
+    "apiRoutes": 185
   },
   "pages": [
     "/admin",
@@ -68,6 +68,7 @@
     "/team",
     "/upgrade",
     "/usage",
+    "/v3",
     "/visual",
     "/visual/[id]",
     "/workflows",
@@ -160,12 +161,15 @@
     "/api/equipment-notebooks/[id]",
     "/api/equipment-notebooks/[id]/asset",
     "/api/equipment-notebooks/[id]/chat",
+    "/api/equipment-notebooks/[id]/fixes",
     "/api/equipment-notebooks/[id]/look",
     "/api/equipment-notebooks/[id]/nameplate/confirm",
     "/api/equipment-notebooks/[id]/nameplate/recognize",
     "/api/equipment-notebooks/[id]/sources",
     "/api/equipment-notebooks/[id]/sources/[docId]",
     "/api/equipment-notebooks/[id]/sources/[docId]/passage",
+    "/api/equipment-notebooks/[id]/turns/[turnId]/diagnostics",
+    "/api/equipment-notebooks/[id]/turns/diagnostics",
     "/api/equipment-notebooks/recognize-nameplate",
     "/api/events",
     "/api/events/[id]",
@@ -176,6 +180,7 @@
     "/api/files/[fileId]/links/[linkId]",
     "/api/files/[fileId]/relocate",
     "/api/health",
+    "/api/hub/ask",
     "/api/hub/status",
     "/api/i3x/v1/info",
     "/api/i3x/v1/namespaces",
@@ -213,6 +218,7 @@
     "/api/namespace/node/[id]/files",
     "/api/namespace/path",
     "/api/namespace/tree",
+    "/api/observability/coverage",
     "/api/picker/dropbox/key",
     "/api/picker/google/token",
     "/api/pm-schedules",

@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-15",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-15",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "What are the three main methods to clear a fault on the GS10 drive, and which method is the safest in a production environment?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Method 1: Press the Stop button on the keypad or set control mode to Manual, then address the fault condition and restart",
+        "Method 2: Cycle the drive power completely OFF then back ON after confirming the fault condition has been corrected and load is secured",
+        "Method 3: Use a digital input terminal (e.g., terminal block inputs used for fault clear command via drive configuration) to signal fault clear after root cause is addressed",
+        "The safest method in production is Method 2 (power cycle) after confirming the fault condition has been corrected and the motor load is secured"
+      ],
+      "wrong_if": [
+        "States that only the keypad method is safe; all three are valid when used correctly in appropriate contexts",
+        "Recommends power-cycling the drive immediately during active motor operation to clear a fault",
+        "Claims that digital input fault clear commands bypass the need to address root causes before clearing",
+        "Suggests any single button press will clear a fault within seconds without addressing the underlying problem"
+      ],
+      "must_cite": true,
+      "cite_family": "Automation Direct GS10"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What are the three main methods to clear a fault on the GS10 drive, and which method is the safest in a production environment?",
+      "answer": "The three main fault\u2011clear methods for the GS10 drive are not specified in the provided excerpts.\u202f\u3010\u3011",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 1.5982062816619873,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:42.500304+00:00"
+}

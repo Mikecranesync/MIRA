@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-23",
+    "category": "sensors_instrumentation",
+    "mode": "general",
+    "equipment": "PNP proximity sensor, Allen-Bradley Micro820 PLC, 24 VDC I/O",
+    "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "PNP sensor switches to +24V (supply/high) when triggered; NPN switches to ground (common)",
+        "PNP output can drive an input if sensor common and input common are the same reference; if isolated, wiring will fail",
+        "Verify: sensor supply voltage, sensor common connected to input common, input voltage reading with object present"
+      ],
+      "wrong_if": [
+        "Blames the sensor without checking wiring or power supply",
+        "Confuses PNP (switches to +V/supply) with NPN (switches to ground/common)",
+        "Assumes the input is broken without testing voltage at the input terminal"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+      "answer": "The first thing to check is that the sensor actually has 24\u202fV\u202fDC present at its supply leads.  \n\n1. Verify the 24\u202fVDC supply is on and correctly connected to the sensor\u2019s power pins (measure voltage with a multimeter).  \n2. Confirm the sensor\u2019s output wiring: PNP devices source the input when active, so the Micro820 input should be tied to the sensor\u2019s positive output and the input\u2019s negative side to common/ground.  \n3. Check that the Micro820 input module is configured for a sourcing (PNP) signal and that the input is enabled in the PLC program.  \n4. Inspect the sensor\u2019s LED (if any) for status; a steady or blinking LED often indicates proper power but no detection.  \n5. Measure the sensor\u2019s output voltage while the target is in range \u2013 you should see the voltage rise to near 24\u202fV when the object is present.  \n6. Ensure the sensor\u2019s sensing distance and alignment are correct for the object; clean the sensing face of any dirt or coating.  \n\n*Is the 24\u202fVDC actually present at the sensor terminals when the system is powered?*",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.588792085647583,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:00:52.973984+00:00"
+}

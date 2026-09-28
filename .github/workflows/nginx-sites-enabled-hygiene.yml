@@ -68,6 +68,11 @@ on:
         type: string
         default: ""
         required: false
+      disable:
+        description: "For mode=fix ONLY: space-separated vhost SYMLINK names to move aside (e.g. mira-preview). Symlinks are never moved unless named here."
+        type: string
+        default: ""
+        required: false
   schedule:
     # Weekly read-only check (Mondays 07:00 UTC) so a reintroduced backup is
     # noticed even if no one deploys.
@@ -79,15 +84,32 @@ concurrency:
 
 jobs:
   hygiene:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production nginx hygiene: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
 
       - name: Guard — fix mode requires the confirmation token
         if: inputs.mode == 'fix'
+        env:
+          DISABLE: ${{ inputs.disable }}
         run: |
           if [ "${{ inputs.confirm }}" != "MOVE-BAK-FILES" ]; then
             echo "::error::mode=fix requires confirm=MOVE-BAK-FILES (got '${{ inputs.confirm }}')."
@@ -95,25 +117,39 @@ jobs:
             exit 1
           fi
           echo "Confirmation token accepted."
+          # `disable` reaches a root shell on the prod box: file names only.
+          # bash regex, not `printf | grep`: grep matches no line on EMPTY input
+          # (so check mode failed) and tests each line separately (so an
+          # embedded newline passed). [[ =~ ]] tests the whole string once.
+          NAME_RE='^[A-Za-z0-9._ -]*$'
+          if ! [[ "$DISABLE" =~ $NAME_RE ]]; then
+            echo "::error::disable may contain only vhost file names ([A-Za-z0-9._-], space-separated)."
+            exit 1
+          fi
 
       - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
           chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
 
       - name: Run hygiene ${{ inputs.mode || 'check' }}
         env:
           MODE: ${{ inputs.mode || 'check' }}
+          DISABLE: ${{ inputs.disable }}
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "MODE='${MODE}' bash -s" << 'ENDSSH'
+          NAME_RE='^[A-Za-z0-9._ -]*$'
+          [[ "$DISABLE" =~ $NAME_RE ]] || { echo "::error::invalid disable list"; exit 1; }
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
+            ubuntu@40.160.141.61 "sudo env MODE='${MODE}' DISABLE='${DISABLE}' bash -s" << 'ENDSSH'
           set -uo pipefail
 
           SE=/etc/nginx/sites-enabled
           # Expected vhosts. Anything else in the directory is an offender.
-          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm"
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview recovery-ovh remoteme staging-factorylm stg-factorylm updates.factorylm.com"
 
           # chat.factorylm.com is deliberately NOT probed: it has NO DNS record
           # at all (verified 2026-08-10, `dig +short` empty), so it cannot serve
@@ -185,17 +221,22 @@ jobs:
           moved=""
           for b in $offenders; do
             if [ -L "$SE/$b" ]; then
-              # Never touch a symlink: every symlink here points into
-              # sites-available and is a real vhost, not a backup.
-              echo "::warning::skipping symlink $b — not a backup; add it to ALLOW if it is a real vhost."
-              continue
+              # A symlink points into sites-available and is a real vhost, not a
+              # backup. Move it only when a human named it in `disable`; the
+              # target in sites-available is left untouched, so re-enabling it
+              # is a single `ln -s`.
+              case " $DISABLE " in
+                *" $b "*) echo "disabling vhost symlink $b (named in disable)" ;;
+                *) echo "::warning::skipping symlink $b — not a backup; add it to ALLOW if it is a real vhost, or name it in disable to retire it."
+                   continue ;;
+              esac
             fi
             mv "$SE/$b" "$DEST/$b" && moved="$moved $b"
           done
           moved=$(echo "$moved" | xargs || true)
 
           if [ -z "$moved" ]; then
-            echo "::error::Nothing was moved (all offenders were symlinks). Not reloading."
+            echo "::error::Nothing was moved (every offender was a symlink not named in disable). Not reloading."
             exit 1
           fi
           echo "Moved to $DEST:"; for b in $moved; do echo "  - $b"; done

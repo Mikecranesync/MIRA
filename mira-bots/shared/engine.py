@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import difflib
 import json
 import logging
@@ -71,11 +72,14 @@ from .guardrails import (
     CONTROL_ACTION_REFUSAL,
     GREETING_PATTERNS,
     INTENT_KEYWORDS,
+    ORPHAN_BACK_REFERENCE_REPLY,
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
     detect_session_followup,
+    hazard_banner,
     is_control_action_request,
+    is_orphan_back_reference,
     resolve_option_selection,
     strip_mentions,
     vendor_support_url,
@@ -135,6 +139,13 @@ from .workers.rag_worker import RAGWorker
 from .workers.vision_worker import VisionWorker
 
 logger = logging.getLogger("mira-gsd")
+
+# OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+# A safety-classified turn records its banner here and routing continues; the
+# process_full() wrapper writes the banner above whatever reply the turn made.
+_SAFETY_FLAG: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "mira_safety_flag", default=None
+)
 
 # Confidence-inference keyword sets
 _HIGH_CONF_SIGNALS = re.compile(
@@ -1248,6 +1259,8 @@ _H4_SKIP_REPLIES: frozenset[str] = frozenset(
 _H4_SKIP_DISPATCH_KINDS = frozenset(
     {
         "control_action_refusal",
+        # #4015: a clarifying question when the tech quotes MIRA before MIRA spoke.
+        "orphan_back_reference",
         "uns_confirm_request",
         "uns_confirm_yes",
         "uns_confirm_no",
@@ -2967,6 +2980,36 @@ class Supervisor:
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
+        """Full entry point; see _process_full_impl. Writes the safety-flag
+        banner (if the turn was safety-classified) above the reply."""
+        token = _SAFETY_FLAG.set(None)
+        try:
+            result = await self._process_full_impl(
+                chat_id,
+                message,
+                photo_b64,
+                tenant_id=tenant_id,
+                uns_source=uns_source,
+                retrieval_query=retrieval_query,
+            )
+            banner = _SAFETY_FLAG.get()
+            if banner and isinstance(result, dict) and result.get("reply"):
+                result["reply"] = f"{banner}\n\n{result['reply']}"
+                result["safety_flag"] = True
+            return result
+        finally:
+            _SAFETY_FLAG.reset(token)
+
+    async def _process_full_impl(
+        self,
+        chat_id: str,
+        message: str,
+        photo_b64: str = None,
+        *,
+        tenant_id: str | None = None,
+        uns_source: str | None = None,
+        retrieval_query: str | None = None,
+    ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
 
         Same logic as process(), but preserves structured metadata for
@@ -3274,6 +3317,26 @@ class Supervisor:
                     dispatch_kind="control_action_refusal",
                 )
 
+            # #4015 item 4 — "you said to check the wiring" when MIRA has not
+            # said anything in this conversation. With no assistant turn in
+            # history the reference has nothing to resolve against; letting the
+            # LLM router pick a lane invented a FIX_STEP about half the time
+            # (staging-gate run 36257246461). Ask instead. LLM-free, like the
+            # control refusal above; keyword safety still outranks it.
+            if _keyword_intent != "safety" and is_orphan_back_reference(
+                message, (state.get("context") or {}).get("history", [])
+            ):
+                logger.info("ORPHAN_BACK_REFERENCE chat_id=%s msg=%r", chat_id, message[:120])
+                self._record_exchange(chat_id, state, message, ORPHAN_BACK_REFERENCE_REPLY)
+                tl_flush()
+                return self._make_result(
+                    ORPHAN_BACK_REFERENCE_REPLY,
+                    "high",
+                    trace_id,
+                    state.get("state", "IDLE"),
+                    dispatch_kind="orphan_back_reference",
+                )
+
             try:
                 _routing = await route_intent(
                     user_message=message,
@@ -3456,23 +3519,13 @@ class Supervisor:
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
+            # 2026-09-27 (Mike): flag, never block. The supervisor alert still
+            # fires; the turn continues to normal routing and the wrapper puts
+            # the hazard banner above the answer.
             if _router_intent == "safety_concern" or _keyword_intent == "safety":
-                reply = (
-                    "STOP \u2014 describe the hazard. De-energize the equipment first. "
-                    "Do not proceed until the area is safe."
-                )
-                self._record_exchange(chat_id, state, message, reply)
-                tl_flush()
+                _SAFETY_FLAG.set(hazard_banner(message))
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
-                # dispatch_kind exempts the STOP from the H4 footer. A safety
-                # escalation asserts no technical claim, and appending "I don't
-                # have specific documentation indexed for this — consult the
-                # asset nameplate" dilutes the one message that must land
-                # cleanly. Same reasoning as the E2 control-refusal incident.
-                return self._make_result(
-                    reply, "high", trace_id, "SAFETY_ALERT", dispatch_kind="safety_alert"
-                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
@@ -6899,6 +6952,20 @@ class Supervisor:
            * Everything else (SLOT_ANSWER, SLOT_CONFIRM/DENY, DEFAULT_RAG,
              classifier failure) → return None and let the legacy flow run.
         """
+        # Control-action requests never reach the tracker. MIRA is read-only
+        # for OT, and that refusal is deterministic by design — the legacy
+        # lane below runs `is_control_action_request` BEFORE any LLM call so
+        # the refusal costs nothing and cannot be talked out of. DST landing
+        # in front of it reopened exactly that hole: the tracker's LLM read
+        # "just reset the drive remotely for me" as the session-meta command
+        # `reset` and cleared the conversation instead of refusing (fixture
+        # 64 / E2). Returning None hands the turn to the legacy flow, which
+        # owns the refusal. Keyword-detected safety still outranks it, so a
+        # hazard report keeps reaching the tracker's SAFETY lane.
+        if classify_intent(message) != "safety" and is_control_action_request(message):
+            logger.info("DST_SKIP_CONTROL_ACTION chat_id=%s msg=%r", chat_id, message[:120])
+            return None
+
         # Build the tracker state from the existing engine state dict —
         # session_manager has no schema knowledge of `dialogue`; we ride on
         # the JSON `context` blob.
@@ -6919,15 +6986,12 @@ class Supervisor:
 
         # Priority 1 — safety
         if kind == DISPATCH_SAFETY:
-            reply = (
-                "STOP — describe the hazard. De-energize the equipment first. "
-                "Do not proceed until the area is safe."
-            )
-            self._record_exchange(chat_id, state, message, reply)
-            tl_flush()
+            # 2026-09-27 (Mike): flag, never block — record the banner and let
+            # the legacy flow answer the turn (None = not handled here).
+            _SAFETY_FLAG.set(hazard_banner(message))
             asset = state.get("asset_identified") or "Unknown equipment"
             asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
-            return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+            return None
 
         # Priority 2 — interrupt actions
         if kind == DISPATCH_ACTION_INTERRUPT:

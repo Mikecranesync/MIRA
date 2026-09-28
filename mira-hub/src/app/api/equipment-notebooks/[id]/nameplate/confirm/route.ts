@@ -24,6 +24,7 @@
  * Business outcomes are HTTP 200 with a `status` the mobile client maps
  * directly; only auth and request-shape failures use 4xx.
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -40,6 +41,7 @@ import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractabl
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +89,60 @@ const IDENTITY_LABELS: Record<IdentityField, string> = {
   frequency: "Frequency",
   rpm: "RPM",
 };
+
+/** Upper bound on visual observation ids / corrections per confirm. A plate has
+ *  about ten readings plus a few compliance marks; anything past this is not a
+ *  technician confirming a nameplate. Rejected explicitly, never truncated. */
+const MAX_VISUAL_ENTRIES = 50;
+
+/** Distinct string entries, first occurrence wins, non-strings dropped. */
+function uniqueStrings(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string" || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+/** Distinct `{observationId, value}` corrections (by observation id, first wins), malformed entries dropped. */
+function uniqueCorrections(raw: unknown): { observationId: string; value: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: { observationId: string; value: string }[] = [];
+  for (const c of raw as unknown[]) {
+    const o = c as { observationId?: unknown; value?: unknown } | null;
+    if (!o || typeof o.observationId !== "string" || typeof o.value !== "string" || seen.has(o.observationId)) continue;
+    seen.add(o.observationId);
+    out.push({ observationId: o.observationId, value: o.value });
+  }
+  return out;
+}
+
+/** Canonical digest of WHAT a confirmation asserts: the photo, the sanitized
+ *  identity (sorted keys), the promoted ids (sorted) and the corrections (sorted
+ *  by id). Two requests with the same client key and the same digest are one
+ *  logical confirmation; a different digest is an edited retry. */
+function confirmPayloadSha256(p: {
+  fileId: string;
+  identity: Identity;
+  observationIds: readonly string[];
+  corrections: readonly { observationId: string; value: string }[];
+}): string {
+  const identity = Object.fromEntries(
+    (Object.keys(p.identity) as IdentityField[]).sort().map((k) => [k, p.identity[k]]),
+  );
+  const canonical = JSON.stringify({
+    fileId: p.fileId,
+    identity,
+    observationIds: [...p.observationIds].sort(),
+    corrections: [...p.corrections].sort((a, b) => a.observationId.localeCompare(b.observationId)),
+  });
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
 
 function readIdentity(raw: unknown): Identity {
   const o = (raw ?? {}) as Record<string, unknown>;
@@ -221,6 +277,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? body.clientKey
       : null;
 
+  // ── Slice 2/3 inputs are validated HERE, before any side effect (Codex F4/F5).
+  // The client's partition helper keeps promote/correct disjoint, but a client
+  // helper is not a server invariant: the same id in both arrays would promote
+  // the pre-edit reading and then skip its correction, leaving the misread
+  // verified beside the corrected nameplate. Reject overlap outright. Bound and
+  // de-duplicate both lists at the boundary: a plate has ~10 readings, and each
+  // correction is a locked query inside one transaction.
+  const submittedObservationIds = uniqueStrings(body.observationIds);
+  const submittedCorrections = uniqueCorrections(body.corrections);
+  if (submittedObservationIds.length > MAX_VISUAL_ENTRIES || submittedCorrections.length > MAX_VISUAL_ENTRIES) {
+    return NextResponse.json({ error: "too_many_visual_entries", max: MAX_VISUAL_ENTRIES }, { status: 400 });
+  }
+  const correctionTargets = new Set(submittedCorrections.map((c) => c.observationId));
+  const overlap = submittedObservationIds.filter((id) => correctionTargets.has(id));
+  if (overlap.length > 0) {
+    return NextResponse.json({ error: "observation_in_both_sets", observationIds: overlap }, { status: 400 });
+  }
+  // The logical confirmation is (client key, WHAT was confirmed). Same key with
+  // a different identity or a different correction set is an EDITED retry, not
+  // a replay: it must mint a new derived document (the prior one is superseded
+  // below) rather than reuse the stale text beside the new corrections (Codex F2).
+  const confirmPayloadHash = confirmPayloadSha256({ fileId, identity, observationIds: submittedObservationIds, corrections: submittedCorrections });
+
   // ── (b) Materialize the confirmed nameplate as a citable source ────────────
   const text = buildNameplateText({
     notebookName: notebook.displayName,
@@ -240,17 +319,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let nameplateDocId: string | null = null;
   let nameplateChunks = 0;
   let nameplateIngestFailed = false;
-  // Same clientKey + an existing visible derived doc for this photo = a replay
-  // of the SAME logical confirmation. Reuse the existing doc verbatim — no
-  // re-park, no re-ingest, no new reading.
+  // Same clientKey + the SAME confirmed payload + an existing visible derived
+  // doc for this photo = a replay of the SAME logical confirmation. Reuse the
+  // existing doc verbatim — no re-park, no re-ingest, no new reading. A matching
+  // key with a different payload is an edited retry and falls through to
+  // materialize (Codex F2); a legacy row without a stored payload hash never
+  // counts as a replay (byte-level dedup still reuses identical text).
   const existingOrigin = await findVisibleOriginSource(ctx.tenantId, notebookId, fileId).catch(
     () => null,
   );
+  const priorConfirm = (existingOrigin?.matchEvidence ?? null) as
+    | { confirm_client_key?: unknown; confirm_payload_sha256?: unknown }
+    | null;
   const replayOfSameConfirm = Boolean(
     clientKey &&
       existingOrigin &&
-      (existingOrigin.matchEvidence as { confirm_client_key?: unknown } | null)
-        ?.confirm_client_key === clientKey,
+      priorConfirm?.confirm_client_key === clientKey &&
+      priorConfirm?.confirm_payload_sha256 === confirmPayloadHash,
   );
   if (replayOfSameConfirm) {
     nameplateDocId = existingOrigin!.docId;
@@ -319,8 +404,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // becomes "source details". Re-confirming (idempotent replay) heals
         // pre-084 rows via the upsert's set-if-provided semantics.
         originFileId: fileId,
-        // 085: audit trail — which logical confirmation produced this reading.
-        matchEvidence: clientKey ? { confirm_client_key: clientKey } : undefined,
+        // 085: audit trail — which logical confirmation produced this reading,
+        // and WHAT it confirmed (Codex F2: the key alone cannot tell a replay
+        // from an edited retry).
+        matchEvidence: clientKey ? { confirm_client_key: clientKey, confirm_payload_sha256: confirmPayloadHash } : undefined,
       });
       // attachSource reports failure by RETURN VALUE, not throw. Without the
       // source row the doc is not citable in this notebook — fail closed.
@@ -379,6 +466,91 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   nameplateIngestFailed = nameplateDocId === null;
 
+  // ── Slice 2: promote ONLY the exact visual observations the technician approved.
+  // Orthogonal to the nameplate-text ingest above — this flips the persisted
+  // VisualSession candidate readings (migration 063) whose ids the client
+  // EXPLICITLY sends to review_state='confirmed', scoped by canonical identity to
+  // the notebook's SERVER-bound asset and THIS photo. It never promotes a sibling
+  // the client did not send, an older/newer capture, or another asset — the guards
+  // live in promoteVisualObservations. The backend trusts the submitted id SET and
+  // derives nothing from `identity`: a field the technician EDITED is confirmed
+  // only if the client chose to send its id (a corrected reading's pre-edit value
+  // must never be auto-stamped). Confirm has no dispute channel (it resolves the
+  // binding via getNotebook, not resolveBoundAsset), so the reachable asset failure
+  // is unbound/foreign — caught by isUuidKey(boundEntityId) + the asset_id subquery.
+  // Fail-safe: any error promotes nothing (never broadens); the count is surfaced
+  // so a lost promotion is observable, not silent.
+  // (`submittedObservationIds` was validated, de-duplicated, bounded and checked
+  // for overlap with the corrections BEFORE the nameplate was materialized.)
+  let visualPromotedIds: string[] = [];
+  if (submittedObservationIds.length > 0) {
+    try {
+      const promoted = await promoteVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        observationIds: submittedObservationIds,
+      });
+      visualPromotedIds = promoted.promotedIds;
+    } catch (err) {
+      console.warn(
+        `[nameplate-confirm] visual promotion failed notebook=${notebookId} photo=${fileId} ` +
+          `code=${(err as { code?: string }).code ?? "?"}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // ── Slice 3: apply the technician's CORRECTIONS to exact visual observations.
+  // The client partitions this capture's readings into unchanged (→ observationIds,
+  // promoted above) and edited-with-a-value (→ corrections). Each correction
+  // inserts a technician-provided replacement on the same photo and supersedes
+  // the vision reading (evidence_state='SUPERSEDED', superseded_by=<new>), so the
+  // stale value stops participating in chat context while the trail is kept —
+  // correction never destroys evidence, it changes which observation is active.
+  // Same scoping as promotion (exact id ∧ tenant ∧ bound asset ∧ this photo ∧ live
+  // candidate); the server derives NO correction from `identity`. It does use the
+  // confirmed identity as a CONSTRAINT (Codex F1): a correction whose stored field
+  // is an identity field must agree with the value confirmed in this very request,
+  // or the one confirm would mint two contradictory technician-verified facts.
+  // Mismatches are skipped by the lib and reported below. Fail-safe like above.
+  // (`submittedCorrections` was validated, de-duplicated, bounded and checked for
+  // overlap with the promoted ids BEFORE the nameplate was materialized.)
+  let visualCorrected: { supersededId: string; replacementId: string }[] = [];
+  let visualCorrectionMismatches: { observationId: string; field: string }[] = [];
+  // Codex round 2 F1: the confirm stays fail-safe (the nameplate document is the
+  // primary deliverable), but a swallowed correction error must not read as
+  // success to the client. This flag says "you asked for corrections and the
+  // server could not apply them" so the client can offer a retry instead of
+  // reporting complete while the misread stays active.
+  let visualCorrectionFailed = false;
+  if (submittedCorrections.length > 0) {
+    try {
+      const res = await correctVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        corrections: submittedCorrections,
+        correctedBy: ctx.userId ?? null,
+        expected: identity,
+      });
+      visualCorrected = res.corrected;
+      visualCorrectionMismatches = res.mismatched;
+      if (visualCorrectionMismatches.length > 0) {
+        console.warn(
+          `[nameplate-confirm] ${visualCorrectionMismatches.length} correction(s) contradicted the confirmed identity ` +
+            `notebook=${notebookId} photo=${fileId} fields=${visualCorrectionMismatches.map((m) => m.field).join(",")}`,
+        );
+      }
+    } catch (err) {
+      visualCorrectionFailed = true;
+      console.warn(
+        `[nameplate-confirm] visual correction failed notebook=${notebookId} photo=${fileId}: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+
   // (c) The notebook's own identity is NOT patched here. See the header.
 
   const nameplate = {
@@ -401,6 +573,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status,
       notebookId,
       nameplate,
+      // Slice 2: how many persisted visual observations this confirm promoted to
+      // technician-confirmed. 0 when the client sent none, the notebook is unbound
+      // or foreign, the ids were invalid, or they were not live candidates of this
+      // asset's capture — never a silent broadening.
+      visualPromotedCount: visualPromotedIds.length,
+      // Slice 3: how many vision readings were superseded by a technician-provided
+      // replacement on this photo. Same fail-safe semantics as the count above.
+      visualCorrectedCount: visualCorrected.length,
+      // Codex F1: corrections REFUSED because their value contradicted the identity
+      // confirmed by this same request. Explicit, never silently dropped — the client
+      // can show the technician which field disagreed with itself.
+      visualCorrectionMismatches,
+      // Codex round 2 F1: true when corrections were submitted and the server
+      // could not apply them (transient DB error, supersede race). The client
+      // must treat this as "edits not saved, retry", never as complete.
+      visualCorrectionFailed,
       manual: null,
       candidate: null,
       applicability: null,

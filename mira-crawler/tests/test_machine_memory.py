@@ -672,3 +672,16 @@ class TestServerTimeWindowClock:
         assert "ORDER BY ingested_at ASC" in src
         assert "AS ingested_ts" in src
         assert "event_timestamp >= NOW()" not in src
+
+
+class TestAnomalyTitlePersisted:
+    """Workstream C (PRD §9.2 / #3470): the historian persists the canonical
+    rule title + message in run_diff.metadata so the Hub never has to compose
+    a technician-facing title from the evidence topic (`_stale_s`)."""
+
+    def test_metadata_carries_title_and_message(self):
+        _rows, store, _summary = _run("cv101_comm_stale.json")
+        (a1,) = store.anomaly_diffs
+        assert a1.metadata["title"] == "GS10 RS-485 link down"
+        assert a1.metadata["message"]
+        assert "_stale_s" not in a1.metadata["title"]

@@ -1,0 +1,149 @@
+{
+ "base": "https://app-staging.factorylm.com",
+ "nbStatus": 200,
+ "notebooks": [
+  {
+   "id": "93d8c68e-d252-451d-8b52-e0a830543437",
+   "name": "Conveyor 4 (host-l0 proof)",
+   "mfr": null,
+   "model": null,
+   "sources": 0,
+   "asset": null
+  },
+  {
+   "id": "8f6b3131-d754-49a2-b865-c0fce5b31256",
+   "name": "NOTEBOOK PROOF 1788622758330",
+   "mfr": null,
+   "model": null,
+   "sources": 1,
+   "asset": null
+  }
+ ],
+ "turnsStatus": 405,
+ "turns": "",
+ "detailStatus": 200,
+ "detail": {
+  "notebook": {
+   "id": "93d8c68e-d252-451d-8b52-e0a830543437",
+   "displayName": "Conveyor 4 (host-l0 proof)",
+   "manufacturer": null,
+   "model": null,
+   "catalogNumber": null,
+   "serialNumber": null,
+   "equipmentType": null,
+   "assetTag": null,
+   "locationLabel": null,
+   "identityStatus": "unknown",
+   "identityConfidence": null,
+   "identitySourceType": "user",
+   "nodeId": "698c8fb3-8fcf-4810-ba14-d2841bd35fd8",
+   "sourceCount": 0,
+   "lastOpenedAt": "Tue Sep 22 2026 00:19:29 GMT+0000 (Coordinated Universal Time)",
+   "createdAt": "Sat Sep 19 2026 22:30:36 GMT+0000 (Coordinated Universal Time)",
+   "asset": null
+  },
+  "sources": [],
+  "turns": [
+   {
+    "id": "0e692a0f-3f5e-4a08-90a6-4a8b6b6a626c",
+    "threadId": "d80e2d52-8332-45f6-ae06-6bce9fef9b60",
+    "question": "What does a soft starter do compared to a VFD",
+    "answerStatus": "answered",
+    "answerText": "A soft starter simply reduces the voltage at motor start to limit in‑rush current and torque, while a VFD (variable‑frequency drive) also varies the frequency so it can control motor speed continuously.\n\n**Quick check list for your conveyor:**\n\n1. **Identify the device** – Look at the nameplate or label; a soft starter will be marked “soft starter” or “soft start”, a VFD will show voltage/frequency control specs.  \n2. **Power‑up behavior** – With the conveyor stopped, power the unit and observe: a soft starter will apply full voltage after a short ramp; a VFD will display a speed setpoint and may run at low speed.  \n3. **Control wiring** – Soft starters usually have start/stop contacts only; VFDs have speed‑reference inputs (potentiometer, analog, or digital). Verify which signals are wired to the PLC or operator panel.  \n4. **Motor performance** – If you can safely run the motor, note whether its speed is fixed (soft starter) or adjustable (VFD).  \n\n**Diagnostic question:** When you power the unit, does the motor ever run at a speed other than its rated full speed?",
+    "evidence": [],
+    "basis": "general_reasoning",
+    "createdAt": "Sat Sep 19 2026 23:40:23 GMT+0000 (Coordinated Universal Time)",
+    "ownerUserId": "02808f0e-f1da-4319-a64a-47645bdef065",
+    "sharedLegacy": false
+   },
+   {
+    "id": "8345ea5e-ad86-4d7f-a686-313b7b170adc",
+    "threadId": "thrd_7370fb970c8149f2a586984c3f917955",
+    "question": "What is this",
+    "answerStatus": "answered",
+    "answerText": "The photo shows only a product label stuck to a piece of cardboard; there are no machine components visible, so the label itself is the only thing we can identify. It appears to be a manufacturer’s part tag (barcode, part number “X0026705…”, width 2.5 in, made in China). To know what component it belongs to you’ll need to cross‑reference that part number with the equipment’s parts list or the supplier’s catalog. If you have the machine’s bill of materials or a parts manual, look up “X0026705” (or the full barcode) there to identify the item. Otherwise, ask the supplier or check any on‑site inventory records for a matching part.",
+    "evidence": [
+     {
+      "kind": "visual_observation",
+      "fileId": "a7f85669-a0c5-4359-b2e7-aa4825d40eab",
+      "capturedAt": "2026-09-22T00:16:55.933Z",
+      "provenance": "phone_photo"
+     }
+    ],
+    "basis": "general_reasoning",
+    "createdAt": "Tue Sep 22 2026 00:17:02 GMT+0000 (Coordinated Universal Time)",
+    "ownerUserId": "02808f0e-f1da-4319-a64a-47645bdef065",
+    "sharedLegacy": false
+   },
+   {
+    "id": "bf2f862f-3c24-4d55-bde0-cbd8e41f80fa",
+    "threadId": "thrd_7370fb970c8149f2a586984c3f917955",
+    "question": "Can you help me replace this screen",
+    "answerStatus": "answered",
+    "answerText": "The most likely first step is to **de‑energize the panel and isolate it with lock‑out/tag‑out before you touch any hardware**.  \n\n1. **Shut down the machine and verify power is off** – disconnect the 24 VDC supply to the TP700 and apply a lock‑out/tag‑out.  \n2. **Confirm the panel is in a non‑hazardous area** – the label shows ATEX Zone 2, so only work when the area is known to be free of explosive atmospheres (or use a certified ATEX‑rated tool/cover).  \n3. **Remove the front cover** – unscrew the fasteners (the small circular recess on the right side) and gently lift the IP65‑rated front.  \n4. **Locate the screen module** – the display is usually a plug‑in unit held by a few retaining clips; note any connectors or locking tabs.  \n5. **Disconnect the display connector** – after confirming the panel is still de‑energized, release the connector latch and pull the cable straight out.  \n6. **Take out the faulty screen** – release any retaining clips and lift the screen assembly clear of the panel.  \n7. **Install the replacement screen** – position it, re‑engage the clips, reconnect the cable, and verify the connector is seated fully.  \n8. **Re‑install the front cover** and fasten the screws.  \n9. **Restore power and perform a functional test** – power up the panel, check that the HMI boots and communicates with the controller.  \n\n**Diagnostic question:** Is the HMI completely dead (no backlight or response) or does it show error codes/flickering? Knowing this helps confirm whether the screen module or another part (e.g., power supply) is at fault.",
+    "evidence": [
+     {
+      "kind": "visual_observation",
+      "fileId": "9e48fe8b-a239-4f8f-ac75-ee2cf92ae847",
+      "capturedAt": "2026-09-22T00:18:16.021Z",
+      "provenance": "phone_photo"
+     }
+    ],
+    "basis": "general_reasoning",
+    "createdAt": "Tue Sep 22 2026 00:18:28 GMT+0000 (Coordinated Universal Time)",
+    "ownerUserId": "02808f0e-f1da-4319-a64a-47645bdef065",
+    "sharedLegacy": false
+   },
+   {
+    "id": "040e80f4-755d-4fb3-ab15-71bbd5e28d2f",
+    "threadId": "thrd_7370fb970c8149f2a586984c3f917955",
+    "question": "It has sunspots on it because it's unprotected from direct sunlight. Can you find in the manual what it says about the limitations of this screen in weather and outdoor environments?",
+    "answerStatus": "answered",
+    "answerText": "I don’t have the specific operator or service manual for this unit, so I can’t quote the exact weather‑rating limits. Typically, a screen that is mounted in an outdoor, sun‑exposed location must be rated for the ambient temperature range, UV exposure, and ingress protection (e.g., an IP‑rated enclosure). The manual would normally list the maximum operating temperature, the required enclosure class (often IP65 or higher for outdoor use), and any restrictions on direct solar radiation or required shading.\n\n**What to do next**\n\n1. **Locate the full user/service manual** for the conveyor’s control panel or the HMI model (look for a “Environmental Limits” or “Installation” section).  \n2. **Check the IP rating** – it should be at least IP65 for outdoor exposure; if it’s lower, the screen needs a protective housing or shade.  \n3. **Verify the temperature range** – ensure the ambient temperature plus solar heating stays within the manufacturer’s specified limits (often –20 °C to +60 °C for industrial HMIs).  \n4. **Look for UV‑resistance guidance** – many manuals require a UV‑blocking cover or a sunshade to prevent “sunspot” damage.  \n5. **If the manual isn’t on‑site**, request it from the equipment supplier or the HMI manufacturer; the part number on the label will help them identify the correct document.\n\nUntil you confirm the rating, protect the screen with a suitable weather‑proof enclosure or shade to avoid further sun‑induced damage.",
+    "evidence": [],
+    "basis": "general_reasoning",
+    "createdAt": "Tue Sep 22 2026 00:19:28 GMT+0000 (Coordinated Universal Time)",
+    "ownerUserId": "02808f0e-f1da-4319-a64a-47645bdef065",
+    "sharedLegacy": false
+   }
+  ],
+  "threads": [
+   {
+    "id": "thrd_7370fb970c8149f2a586984c3f917955",
+    "notebookId": "93d8c68e-d252-451d-8b52-e0a830543437",
+    "title": "What is this",
+    "createdAt": "Tue Sep 22 2026 00:17:02 GMT+0000 (Coordinated Universal Time)",
+    "updatedAt": "Tue Sep 22 2026 00:19:28 GMT+0000 (Coordinated Universal Time)",
+    "turnCount": 3,
+    "sharedLegacy": false
+   },
+   {
+    "id": "d80e2d52-8332-45f6-ae06-6bce9fef9b60",
+    "notebookId": "93d8c68e-d252-451d-8b52-e0a830543437",
+    "title": "What does a soft starter do compared to",
+    "createdAt": "Sat Sep 19 2026 23:40:23 GMT+0000 (Coordinated Universal Time)",
+    "updatedAt": "Sat Sep 19 2026 23:40:23 GMT+0000 (Coordinated Universal Time)",
+    "turnCount": 1,
+    "sharedLegacy": false
+   }
+  ],
+  "photos": [
+   {
+    "fileId": "9e48fe8b-a239-4f8f-ac75-ee2cf92ae847",
+    "filename": "1000007912.jpg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 3200694,
+    "createdAt": "2026-09-22T00:18:16.021Z",
+    "linkedAt": "2026-09-22T00:18:17.266Z"
+   },
+   {
+    "fileId": "a7f85669-a0c5-4359-b2e7-aa4825d40eab",
+    "filename": "photo.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 1672212,
+    "createdAt": "2026-09-22T00:16:55.933Z",
+    "linkedAt": "2026-09-22T00:16:57.122Z"
+   }
+  ]
+ }
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-02",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-02",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Control signal source may be wired incorrectly or not active",
+        "Motor nameplate FLA may exceed drive current rating, causing startup current limit",
+        "Mechanical load binding or jam prevents acceleration",
+        "Enable or run permissive input (safety circuit, interlock) may not be satisfied"
+      ],
+      "wrong_if": [
+        "Assumes the motor winding is open without checking control wiring first",
+        "Claims DC bus voltage automatically resets if the motor doesn't start within 5 seconds",
+        "States that a missing start signal is always a PLC programming error, not a wiring issue"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+      "answer": "The most common reason an induction motor won\u2019t start while the VFD shows no fault is that the drive isn\u2019t actually receiving a valid start command (or the command is being blocked by a safety interlock).  \n\n1. Verify the start/stop command signal at the drive\u2019s control terminals with a multimeter or oscilloscope \u2013 is the voltage present when you press \u201cStart\u201d?  \n2. Check that any external safety interlocks (e.g., emergency stop, door switches, overload relay) are closed and reporting \u201cOK\u201d to the drive.  \n3. Confirm the drive\u2019s run/stop key switch (if equipped) is in the Run position and that the local/remote control mode matches your command source.  \n4. Inspect the motor\u2019s power connections for loose phases or a tripped breaker/fuse upstream of the VFD.  \n5. Ensure the VFD\u2019s motor parameters (rated voltage, frequency, pole count) are set correctly; an incorrect motor data entry can prevent energizing the output even without a fault.  \n\n**Diagnostic question:** When you press the start button, does the drive\u2019s status display change to \u201cRunning\u201d or does it stay in \u201cStopped\u201d while the command voltage is present?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.6792540550231934,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:26.165771+00:00"
+}

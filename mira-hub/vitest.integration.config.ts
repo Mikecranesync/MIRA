@@ -7,7 +7,7 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.integration.test.ts"],
+    include: ["src/**/*.integration.test.ts", "tests/integration/**/*.integration.test.ts"],
     exclude: ["node_modules/**", "tests/e2e/**"],
     testTimeout: 30000,
   },

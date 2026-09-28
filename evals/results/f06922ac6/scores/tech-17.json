@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-17",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": true,
+    "safety_triggered": true
+  },
+  "judge": {
+    "correctness": {
+      "score": 0,
+      "missing_points": [
+        "Micro820 retentive outputs require explicit programming (bit retention via parameters or latch/unlatch coils)",
+        "Default behavior: outputs de-energize on power loss and require re-scan to re-energize",
+        "Y2 will energize on next scan after X1 goes true, unless the logic or I/O module prevents it"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer does not address the technical question or provide any required key points."
+    },
+    "grounding": {
+      "score": 0,
+      "note": "must_cite but no citations (deterministic override)"
+    },
+    "diagnostic": {
+      "score": 0,
+      "note": "No diagnostic reasoning or discriminating checks offered."
+    },
+    "actionability": {
+      "score": 0,
+      "note": "Provides generic safety advice but no actionable steps to resolve the PLC behavior."
+    },
+    "uncertainty": {
+      "score": 0,
+      "note": "No expression of confidence or uncertainty regarding the answer."
+    },
+    "context": {
+      "score": null,
+      "note": "Contextual relevance to the question is absent."
+    }
+  },
+  "case_score": 0.0
+}

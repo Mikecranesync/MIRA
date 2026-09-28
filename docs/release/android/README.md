@@ -40,3 +40,5 @@ Play icon 512, feature graphic) — regenerate, never hand-edit the PNGs.
 - [ ] `jarsigner -verify` passes on the AAB; cert SHA-256 matches signing.md
 - [ ] No `localhost`/dev endpoints in `dist/` (`grep -r localhost dist/assets`)
 - [ ] Physical-device smoke test on the exact commit (Phase-1 matrix in the release PR)
+
+- **Direct install without Google Play:** `sideload.md` — https://updates.factorylm.com/download

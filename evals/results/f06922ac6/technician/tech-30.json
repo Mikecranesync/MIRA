@@ -1,0 +1,49 @@
+{
+  "case_id": "tech-30",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-30",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "Inductive proximity sensor, industrial automation sorting line",
+    "question": "Proximity sensor on the sorting line is missing detections. Light looks OK. What's next?",
+    "turns": [
+      "Proximity sensor on the sorting line is missing detections. Light looks OK. What's next?",
+      "Tested with a metal target at 30mm (sensor rated 50mm). Sensor triggered. Tested at 60mm. No trigger. Sensor is suppose to work to 50mm. What does this tell you?",
+      "Checked the sensor cable at the connector. Found mud/coolant around the connector and the cable sleeve is cracked. After cleaning and sealing the connector, tested again at 50mm. Sensor triggers cleanly. What was the problem?",
+      "After 2 days, sensor is missing detections again even though the connector looks clean. What's the root cause and how do you fix it?"
+    ],
+    "expected": {
+      "key_points": [
+        "Sensor performance degraded (range reduction from 50mm spec to intermittent detection), narrowed to contamination in the connector affecting signal integrity",
+        "Root cause: moisture or coolant ingress into the connector causing intermittent electrical contact or signal noise",
+        "Long-term fix: use sealed M12 connectors, cable management to route away from coolant spray, or relocate sensor to protected area"
+      ],
+      "wrong_if": [
+        "Recommends sensor replacement without identifying contamination",
+        "Ignores the connector/cable as a potential failure point",
+        "Assumes cleaning once will permanently solve a contaminated-environment problem",
+        "Assumes the sensor coil/signal circuit is dirty without checking the external connector first"
+      ],
+      "final_turn_must_narrow_to": "Moisture/coolant ingress at the sensor connector causing intermittent signal; permanent fix requires sealed connector and environmental protection"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Proximity sensor on the sorting line is missing detections. Light looks OK. What's next?",
+      "answer": "The most common cause is a loss of power or signal to the sensor.  \n\n1. Verify the sensor\u2019s supply voltage and ground with a multimeter (ensure the line is de\u2011energized before probing).  \n2. Check the sensor\u2019s output wiring at the PLC or control box for loose connections, broken conductors, or blown fuses.  \n3. Inspect the sensor\u2019s mounting and alignment \u2013 the target or reflector must be correctly positioned and free of debris.  \n4. Confirm the sensor\u2019s configuration (e.g., polarity, mode, threshold) matches the application; reset to default if unsure.  \n5. Look at the PLC/drive diagnostics (e.g., PowerFlex 525 status) for any input fault or communication error.  \n\n**Diagnostic question:** Is the sensor a photo\u2011electric type (with a separate emitter and receiver) or an inductive proximity sensor? The answer will determine whether alignment or target material is the next focus.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.4471430778503418,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:22.415980+00:00"
+}

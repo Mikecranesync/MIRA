@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-02",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-02",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Control signal source may be wired incorrectly or not active",
+        "Motor nameplate FLA may exceed drive current rating, causing startup current limit",
+        "Mechanical load binding or jam prevents acceleration",
+        "Enable or run permissive input (safety circuit, interlock) may not be satisfied"
+      ],
+      "wrong_if": [
+        "Assumes the motor winding is open without checking control wiring first",
+        "Claims DC bus voltage automatically resets if the motor doesn't start within 5 seconds",
+        "States that a missing start signal is always a PLC programming error, not a wiring issue"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+      "answer": "The most common reason is that the drive is not actually receiving or passing the start command to the motor (e.g., the command signal is missing, disabled, or the output is inhibited).  \n\n1. Verify the start/stop command source (PLC, push\u2011button, HMI) is active and correctly wired to the drive\u2019s control terminals.  \n2. Check the drive\u2019s control mode settings (local, remote, auto) and ensure the start command is enabled in the current mode.  \n3. Look at the drive\u2019s \u201crun\u201d indicator and output status LEDs \u2013 if the run lamp is off but the command is present, the drive may be in a \u201chold\u201d or \u201cinhibit\u201d state.  \n4. Confirm that the motor\u2019s power contacts are closed (run relay or contactor) and that the motor windings have proper voltage when the drive is commanded to run (isolate the drive before measuring).  \n5. Review any safety interlocks or overload trips that could be silently preventing start (e.g., external safety relay, thermal overload).  \n\n**Diagnostic question:** Is the drive\u2019s \u201crun\u201d status lamp illuminated when you issue the start command?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.4148588180541992,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T07:01:12.221193+00:00"
+}

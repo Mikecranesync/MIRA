@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-26",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-26",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "Motor M-47 (identity unknown)",
+    "question": "Motor M-47 is drawing 2 amps more than yesterday. Is it time to replace the bearing?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "A 2-amp increase alone is insufficient to diagnose bearing health without knowing the motor nameplate, starting condition (cold vs warm), load, and historical baseline",
+        "Abstention should acknowledge that trending requires baseline data and controlled conditions, which the system does not have for this specific machine",
+        "Correct response offers to help if the technician provides motor nameplate, historical current logs, temperature, and load conditions"
+      ],
+      "wrong_if": [
+        "Recommends bearing replacement based on current increase alone",
+        "Claims 2 amps is always a sign of bearing wear",
+        "Ignores the possibility that the load or operating condition changed"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor M-47 is drawing 2 amps more than yesterday. Is it time to replace the bearing?",
+      "answer": "The most common reason a motor suddenly draws extra current is a mechanical load increase or a developing internal fault, so start by confirming the load and motor condition before deciding on a bearing replacement.  \n\n1. **Verify the actual load** \u2013 Is the driven equipment (pump, conveyor, etc.) operating under the same conditions as yesterday? Check for jams, increased friction, or a change in process that could raise torque demand.  \n2. **Inspect motor temperature** \u2013 Feel the motor housing; a hotter than normal motor often indicates higher slip or internal friction.  \n3. **Listen and feel the shaft** \u2013 With the motor stopped and isolated, manually rotate the shaft. Any roughness, grinding, or excessive play can point to bearing wear.  \n4. **Measure motor current under no\u2011load** \u2013 If possible, run the motor without the driven equipment (or with a disconnect) and record the current. A significant rise over the no\u2011load baseline suggests an internal problem (e.g., bearing, rotor winding).  \n5. **Check for electrical issues** \u2013 Look for loose connections, voltage imbalance, or a drop in supply voltage that could cause the motor to draw more current to maintain torque.  \n\n**Diagnostic question:** Is the motor\u2019s load (the machine it drives) operating exactly as it did yesterday, or has anything changed (e.g., a blockage, increased resistance, or a different operating speed)?  \n\nIf the load is unchanged and the shaft feels rough or has play, the bearing is a likely culprit and should be inspected/replaced per the motor\u2019s manual. Otherwise, focus on load or electrical causes first.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 1.6184871196746826,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:13.388553+00:00"
+}

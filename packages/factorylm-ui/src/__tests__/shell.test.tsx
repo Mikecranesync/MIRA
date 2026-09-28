@@ -1,0 +1,162 @@
+import { afterEach, describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { renderHarness, type HarnessView } from "./harness";
+
+const views: HarnessView[] = [];
+
+afterEach(() => {
+  views.splice(0).forEach((view) => view.cleanup());
+});
+
+function render(...args: Parameters<typeof renderHarness>): HarnessView {
+  const view = renderHarness(...args);
+  views.push(view);
+  return view;
+}
+
+describe("shared FactoryLM shell", () => {
+  for (const surface of ["public", "web", "mobile", "hub"] as const) {
+    it(`renders the canonical landmarks in ${surface}`, () => {
+      const view = render({ surface, fixture: "project-tree" });
+
+      expect(view.container.querySelector("main")).not.toBeNull();
+      expect(view.container.querySelector('[aria-label="FactoryLM navigation"]')).not.toBeNull();
+      expect(view.container.querySelector("header")).not.toBeNull();
+      // The public demo keeps no history, so its thread control is "Start over"
+      // (product decision, #3811) -- the same button, named for what it does on
+      // that surface. Every other surface keeps "New chat".
+      const newThread = surface === "public" ? "Start over" : "New chat";
+      expect(view.buttonNamed(newThread)).not.toBeNull();
+      expect(view.buttonNamed(newThread)?.disabled).toBe(true);
+      expect(view.container.querySelector('[aria-label="Conversation placeholder"]')).toBeNull();
+      expect(view.container.querySelector('[aria-label="Conversation"]')).not.toBeNull();
+      expect(view.container.querySelector('form[aria-label="Composer"]')).not.toBeNull();
+    });
+  }
+
+  it("renders and selects the exact duplicate-machine link nested under the Brake folder", () => {
+    const view = render({ surface: "mobile", fixture: "project-tree" });
+    const project = view.container.querySelector('[data-project-id="project-brake-system"]');
+    const folder = view.container.querySelector('[data-folder-id="folder-brake-history"]');
+    if (!project || !folder) throw new Error("Brake project and folder controls are required");
+
+    view.click(project);
+    expect(view.activeContext()).toEqual({ projectId: "project-brake-system", folderId: "", machineId: "" });
+    view.click(folder);
+    expect(view.activeContext()).toEqual({ projectId: "project-brake-system", folderId: "folder-brake-history", machineId: "" });
+    const brakeFolderItem = folder.closest("li");
+    const machine = brakeFolderItem?.querySelector('[data-machine-id="machine-drive-a"]');
+    expect(machine).not.toBeNull();
+    if (!machine) throw new Error("Brake folder must render its duplicate Drive A machine link");
+    view.click(machine);
+    expect(view.activeContext()).toEqual({ projectId: "project-brake-system", folderId: "folder-brake-history", machineId: "machine-drive-a" });
+  });
+
+  it("opens and closes mobile navigation through the shared reducer", () => {
+    const view = render({ surface: "mobile", fixture: "project-tree" });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const close = view.buttonNamed("Close navigation");
+    const open = view.buttonNamed("Open navigation");
+    if (!shell || !close || !open) throw new Error("mobile navigation controls are required");
+
+    expect(shell.dataset.navigationVisible).toBe("true");
+    view.click(close);
+    expect(shell.dataset.navigationVisible).toBe("false");
+    view.click(open);
+    expect(shell.dataset.navigationVisible).toBe("true");
+  });
+
+  it("closes mobile navigation after project, folder, and machine selection", () => {
+    const view = render({ surface: "mobile", fixture: "project-tree" });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const open = view.buttonNamed("Open navigation");
+    const project = view.container.querySelector('[data-project-id="project-brake-system"]');
+    const folder = view.container.querySelector('[data-folder-id="folder-brake-history"]');
+    if (!shell || !open || !project || !folder) throw new Error("project-tree navigation controls are required");
+
+    view.click(project);
+    expect(shell.dataset.navigationVisible).toBe("false");
+    view.click(open);
+    view.click(folder);
+    expect(shell.dataset.navigationVisible).toBe("false");
+    view.click(open);
+    const machine = folder.closest("li")?.querySelector('[data-machine-id="machine-drive-a"]');
+    if (!machine) throw new Error("Brake folder must render its duplicate Drive A machine link");
+    view.click(machine);
+    expect(shell.dataset.navigationVisible).toBe("false");
+  });
+
+  it("retains mobile drawer and inspector-sheet layout foundations", () => {
+    const css = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
+
+    expect(css).toMatch(/\.fl-shell__sidebar\s*\{[^}]*position:\s*fixed[^}]*transform:\s*translateX\(-110%\)/s);
+    expect(css).toMatch(/data-navigation-visible="true"[^}]*transform:\s*translateX\(0\)/s);
+    expect(css).toMatch(/\.fl-shell__inspector\s*\{[^}]*position:\s*fixed[^}]*inset-block-end:\s*0/s);
+  });
+
+  it("gates the inspector to the Hub capability without a separate shell tree", () => {
+    const web = render({ surface: "web", fixture: "enterprise-inspector" });
+    const hub = render({ surface: "hub", fixture: "enterprise-inspector" });
+
+    expect(web.buttonNamed("Inspector")).toBeNull();
+    expect(web.container.querySelector('[aria-label="Inspector"]')).toBeNull();
+    const inspector = hub.buttonNamed("Inspector");
+    if (!inspector) throw new Error("Hub must expose its inspector control");
+    hub.click(inspector);
+    expect(hub.container.querySelector('[aria-label="Inspector"]')?.textContent).toContain("Asset binding");
+  });
+
+  it("lets a host open project items and mount navigation footer controls", () => {
+    const opened: string[] = [];
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+      onOpenItem: (item) => opened.push(`${item.kind}:${item.id}`),
+      navigationFooter: <button type="button">Sign out</button>,
+    });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const item = view.container.querySelector<HTMLButtonElement>('button[data-item-id="thread-drive-a"]');
+    if (!shell || !item) throw new Error("thread item must be a button when onOpenItem is provided");
+
+    expect(item.dataset.itemKind).toBe("thread");
+    view.click(item);
+    expect(opened).toEqual(["thread:thread-drive-a"]);
+    expect(shell.dataset.navigationVisible).toBe("false");
+    expect(view.container.querySelector(".fl-shell__nav-footer")?.textContent).toContain("Sign out");
+
+    const inert = render({ surface: "web", fixture: "project-tree" });
+    expect(inert.container.querySelector('button[data-item-id="thread-drive-a"]')).toBeNull();
+    expect(inert.container.querySelector(".fl-shell__nav-footer")).toBeNull();
+  });
+
+  it("renders and gates the New project button when hook is present", () => {
+    const created: string[] = [];
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+      hooks: { onCreateProject: () => created.push("create") },
+    });
+    const shell = view.container.querySelector<HTMLElement>(".fl-shell");
+    const button = view.buttonNamed("New project");
+    if (!shell || !button) throw new Error("New project button must be rendered when hook is provided");
+
+    expect(button.disabled).toBe(false);
+    view.click(button);
+    expect(created).toEqual(["create"]);
+    expect(shell.dataset.navigationVisible).toBe("false");
+  });
+
+  it("disables New project button with aria-describedby hint when hook is absent", () => {
+    const view = render({
+      surface: "mobile",
+      fixture: "project-tree",
+    });
+    const button = view.buttonNamed("New project");
+    if (!button) throw new Error("New project button must exist even without hook");
+
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-describedby")).toBe("fl-new-project-reason");
+    const hint = view.container.querySelector("#fl-new-project-reason");
+    expect(hint?.textContent).toContain("Not available");
+  });
+});

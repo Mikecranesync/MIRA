@@ -123,6 +123,10 @@ export async function fetchMachineMemory(
     latest_diffs: latestDiffs.map((d) => ({
       ...d,
       next_check: (d.metadata as { next_check?: string } | null)?.next_check ?? null,
+      // The canonical anomaly title, when the historian persisted it
+      // (Workstream C; older rows carry none and fall back to the rule
+      // catalog in anomaly-titles.ts).
+      title: (d.metadata as { title?: string } | null)?.title ?? null,
     })),
   };
 }

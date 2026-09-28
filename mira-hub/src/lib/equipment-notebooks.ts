@@ -86,6 +86,17 @@ export type AssetSelectionMethod = (typeof ASSET_SELECTION_METHODS)[number];
 export type NotebookAssetBinding = {
   /** kg_entities.entity_id — the cmms_equipment UUID as text. */
   entityId: string;
+  /**
+   * The bound asset's CURRENT technician-facing identity, resolved live from
+   * kg_entities on the read path (Slice 0) — never the notebook's frozen
+   * display_name/asset_tag. `name` is kg_entities.name (e.g. "Discharge
+   * Conveyor"); `assetTag` is properties->>'asset_tag' (e.g. "CV-101", the
+   * sticker/search handle). Both null on write-path RETURNING (no join there)
+   * and for a binding whose asset row is missing/unverified — callers fall back
+   * to the notebook's own fields. See docs/prd Slice 0 + dogfood-cv101-identity.
+   */
+  name: string | null;
+  assetTag: string | null;
   selectedVia: AssetSelectionMethod | null;
   /** Null means selected-but-unconfirmed; the UI must show that state. */
   confirmedBy: string | null;
@@ -114,6 +125,29 @@ export type NotebookSource = {
   readiness: Readiness;
 };
 
+export const LEGACY_THREAD_ID = "legacy";
+const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+
+export function normalizeNotebookThreadId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return THREAD_ID_RE.test(trimmed) ? trimmed : null;
+}
+
+function storedThreadId(threadId: string | null | undefined): string | null {
+  return threadId && threadId !== LEGACY_THREAD_ID ? threadId : null;
+}
+
+function publicThreadId(stored: unknown): string {
+  return stored == null ? LEGACY_THREAD_ID : String(stored);
+}
+
+function threadTitleFromQuestion(question: string): string {
+  const words = question.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  const title = words.slice(0, 8).join(" ");
+  return title || "New chat";
+}
+
 // Aliased for SELECTs that join the source-count subquery (needs `n.`).
 const NOTEBOOK_COLS = `
   n.id::text AS id, n.display_name, n.manufacturer, n.model, n.catalog_number,
@@ -124,6 +158,36 @@ const NOTEBOOK_COLS = `
 // Un-aliased for RETURNING / single-table SELECTs — a RETURNING clause has no
 // table alias, so the `n.` form errors ("missing FROM-clause entry for n").
 const NOTEBOOK_COLS_BARE = NOTEBOOK_COLS.replace(/\bn\./g, "");
+
+// Slice 0 — resolve the technician-facing machine identity from the CURRENTLY
+// BOUND asset, not the notebook's frozen display_name/asset_tag. The CV-101 bug:
+// notebook display_name "Sensor v0 overnight 2026-08-28" masks its bound asset
+// (kg_entities.name "Discharge Conveyor", properties->>'asset_tag' "CV-101").
+//
+// The key equipment_notebooks.equipment_entity_id stores coalesce(entity_id,
+// id::text) of the asset's kg_entities row (createAndBindNotebookTx), so match
+// EITHER — a bridged/seeded asset carries entity_id (the CV-101 case); a
+// picker-created asset may key on id. LATERAL + LIMIT 1 keeps this strictly
+// single-row so a notebook is never duplicated in the list; the verified
+// equipment/asset identity node wins, preferring the entity_id-bearing row.
+// Runs under withTenantContext (RLS + the explicit ae.tenant_id = n.tenant_id,
+// both UUID); the notebook's OWN backing node (entity_id NULL, id = node_id)
+// can never match equipment_entity_id, so it is not a candidate here.
+// Only in the read paths (list/get) — NOT in NOTEBOOK_COLS, which
+// NOTEBOOK_COLS_BARE reuses for RETURNING clauses that have no FROM to join.
+const BOUND_ASSET_COLS = `ba.bound_asset_name, ba.bound_asset_tag`;
+const BOUND_ASSET_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT ae.name AS bound_asset_name,
+           ae.properties->>'asset_tag' AS bound_asset_tag
+      FROM kg_entities ae
+     WHERE ae.tenant_id = n.tenant_id
+       AND ae.entity_type IN ('equipment', 'asset')
+       AND ae.approval_state = 'verified'
+       AND coalesce(ae.entity_id, ae.id::text) = n.equipment_entity_id
+     ORDER BY (ae.entity_id IS NOT NULL) DESC
+     LIMIT 1
+  ) ba ON true`;
 
 function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNotebook {
   return {
@@ -148,6 +212,10 @@ function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNo
     asset: r.equipment_entity_id
       ? {
           entityId: String(r.equipment_entity_id),
+          // Live from the bound asset (Slice 0). Present only on the read paths
+          // (BOUND_ASSET_JOIN); undefined on write-path RETURNING → null.
+          name: (r.bound_asset_name as string) ?? null,
+          assetTag: (r.bound_asset_tag as string) ?? null,
           selectedVia: (r.asset_selected_via as AssetSelectionMethod) ?? null,
           confirmedBy: (r.asset_confirmed_by as string) ?? null,
           confirmedAt: r.asset_confirmed_at ? String(r.asset_confirmed_at) : null,
@@ -239,10 +307,10 @@ export async function listNotebooks(
     const assetFilter = opts.equipmentEntityId ? ` AND n.equipment_entity_id = $2` : "";
     const args: unknown[] = opts.equipmentEntityId ? [tenantId, opts.equipmentEntityId] : [tenantId];
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS},
+      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS},
               (SELECT count(*) FROM equipment_notebook_sources s
                 WHERE s.notebook_id = n.id AND s.match_state <> 'rejected') AS source_count
-         FROM equipment_notebooks n
+         FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid${assetFilter}
         ORDER BY n.last_opened_at DESC NULLS LAST, n.created_at DESC
         LIMIT 100`,
@@ -260,8 +328,8 @@ export async function getNotebook(
 ): Promise<EquipmentNotebook | null> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS}
-         FROM equipment_notebooks n
+      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
+         FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`,
       [tenantId, notebookId],
     );
@@ -1150,6 +1218,208 @@ export async function validateChatSources(
   });
 }
 
+/** Thrown by recordTurn when the notebook does not exist for this tenant —
+ *  the INSERT is atomic with ownership, so a foreign id lands zero rows. */
+export class NotebookNotFoundError extends Error {
+  constructor(notebookId: string) {
+    super(`notebook_not_found: ${notebookId}`);
+    this.name = "NotebookNotFoundError";
+  }
+}
+
+export type StoredNotebookTurn = {
+  id: string;
+  question: string;
+  answerStatus: "answered" | "insufficient_evidence" | "error";
+  answerText: string | null;
+  enabledSourceDocIds: string[];
+  evidence: unknown[];
+  model: string | null;
+  basis: string | null;
+};
+
+export type NotebookTurnRequestClaim =
+  | { status: "claimed"; claimToken: string }
+  | { status: "in_progress" }
+  | { status: "mismatch" }
+  | { status: "replay"; turn: StoredNotebookTurn };
+
+function storedNotebookTurn(row: Record<string, unknown>): StoredNotebookTurn {
+  return {
+    id: String(row.id),
+    question: String(row.question),
+    answerStatus: String(row.answer_status) as StoredNotebookTurn["answerStatus"],
+    answerText: row.answer_text == null ? null : String(row.answer_text),
+    enabledSourceDocIds: Array.isArray(row.enabled_source_doc_ids)
+      ? row.enabled_source_doc_ids.map(String)
+      : [],
+    evidence: Array.isArray(row.evidence) ? row.evidence : [],
+    model: row.model == null ? null : String(row.model),
+    basis: row.basis == null ? null : String(row.basis),
+  };
+}
+
+/**
+ * Atomically own one client-minted notebook request before retrieval or
+ * inference. The pending row is hidden from history until recordTurn completes
+ * it. A duplicate sees either `in_progress` or the exact terminal row to
+ * replay; it never runs a second provider/judge pass.
+ *
+ * A ten-minute abandoned lease is recoverable. Normal provider timeouts finish
+ * well inside that bound, so a live first request cannot be stolen; a crashed
+ * worker cannot strand the key forever.
+ */
+export async function claimNotebookTurnRequest(
+  tenantId: string,
+  notebookId: string,
+  request: {
+    ownerUserId: string;
+    clientRequestId: string;
+    question: string;
+    threadId?: string | null;
+    requestPayload?: unknown;
+  },
+): Promise<NotebookTurnRequestClaim> {
+  const owner = request.ownerUserId.trim();
+  if (!owner) throw new Error("claimNotebookTurnRequest requires ownerUserId (server-derived)");
+  const payload = JSON.stringify(request.requestPayload ?? null);
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `WITH candidate AS (
+         SELECT gen_random_uuid() AS token
+       ), owned_notebook AS (
+         SELECT id, tenant_id
+           FROM equipment_notebooks
+          WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), claimed AS (
+         INSERT INTO equipment_notebook_turns AS t
+           (notebook_id, tenant_id, question, answer_status, answer_text,
+            enabled_source_doc_ids, evidence, model, owner_user_id, thread_id,
+            client_request_id, client_request_state, client_request_started_at,
+            client_request_claim_token, client_request_payload)
+         SELECT nb.id, nb.tenant_id, $5, 'error', NULL,
+                '[]'::jsonb, '[]'::jsonb, NULL, $3, $6,
+                $4::uuid, 'pending', now(), candidate.token, $7::jsonb
+           FROM owned_notebook nb CROSS JOIN candidate
+         ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
+           WHERE client_request_id IS NOT NULL
+         DO UPDATE SET
+           client_request_state = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN 'pending' ELSE t.client_request_state END,
+           client_request_started_at = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN now() ELSE t.client_request_started_at END,
+           client_request_claim_token = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN (SELECT token FROM candidate) ELSE t.client_request_claim_token END,
+           client_request_payload = CASE WHEN
+             t.question = $5
+             AND t.client_request_payload = $7::jsonb
+             AND (
+               (t.client_request_state = 'pending'
+                 AND t.client_request_started_at < now() - interval '10 minutes')
+               OR
+               (t.client_request_state = 'complete'
+                 AND t.answer_status = 'error'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(t.evidence, '[]'::jsonb)) e
+                    WHERE e->>'kind' = 'safety_stop'
+                 ))
+             ) THEN $7::jsonb ELSE t.client_request_payload END
+         RETURNING t.client_request_claim_token::text AS claim_token,
+                   t.client_request_state, t.client_request_payload,
+                   t.id::text, t.question, t.answer_status, t.answer_text,
+                   t.enabled_source_doc_ids, t.evidence, t.model, t.basis
+       )
+       SELECT CASE
+                WHEN claimed.question <> $5
+                  OR claimed.client_request_payload IS NULL
+                  OR claimed.client_request_payload <> $7::jsonb
+                  THEN 'mismatch'
+                WHEN claimed.claim_token = candidate.token::text THEN 'claimed'
+                WHEN claimed.client_request_state = 'complete' THEN 'replay'
+                ELSE 'in_progress'
+              END AS claim_status,
+              claimed.claim_token, claimed.id, claimed.question,
+              claimed.answer_status, claimed.answer_text,
+              claimed.enabled_source_doc_ids, claimed.evidence,
+              claimed.model, claimed.basis
+         FROM claimed CROSS JOIN candidate`,
+      [
+        notebookId,
+        tenantId,
+        owner,
+        request.clientRequestId,
+        request.question,
+        storedThreadId(request.threadId),
+        payload,
+      ],
+    );
+    const row = res.rows[0] as Record<string, unknown> | undefined;
+    if (!row) throw new NotebookNotFoundError(notebookId);
+    const status = String(row.claim_status);
+    if (status === "replay") return { status, turn: storedNotebookTurn(row) };
+    if (status === "claimed") return { status, claimToken: String(row.claim_token) };
+    if (status === "in_progress" || status === "mismatch") return { status };
+    throw new Error(`unexpected notebook request claim status: ${status}`);
+  });
+}
+
+/** Release a pending claim when the route returns a non-turn HTTP refusal. */
+export async function abandonNotebookTurnRequest(
+  tenantId: string,
+  notebookId: string,
+  ownerUserId: string,
+  clientRequestId: string | null,
+  claimToken: string | null,
+): Promise<void> {
+  if (!clientRequestId || !claimToken) return;
+  await withTenantContext(tenantId, async (c) => {
+    await c.query(
+      `DELETE FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND owner_user_id = $3 AND client_request_id = $4::uuid
+          AND client_request_state = 'pending'
+          AND client_request_claim_token = $5::uuid`,
+      [tenantId, notebookId, ownerUserId, clientRequestId, claimToken],
+    );
+  });
+}
+
 export async function recordTurn(
   tenantId: string,
   notebookId: string,
@@ -1160,6 +1430,18 @@ export async function recordTurn(
     enabledSourceDocIds: string[];
     evidence: unknown[];
     model: string | null;
+    /** 086: the technician who asked. The ROUTE derives this from the
+     *  authenticated session (ctx.userId) — never from the request body.
+     *  Required so no code path can persist an ownerless turn by omission;
+     *  ownerless rows exist only as pre-086 legacy history. */
+    ownerUserId: string;
+    /** Client-minted UUID. Retries reuse it so one logical send writes one row. */
+    clientRequestId?: string | null;
+    /** Server-side execution lease returned by claimNotebookTurnRequest. */
+    claimToken?: string | null;
+    /** 087 / THRD-0: conversation identity inside this notebook/project.
+     *  Omitted/null/legacy preserves the pre-thread default conversation. */
+    threadId?: string | null;
     /** 081 snapshot: which asset this specific answer was about. Point-in-time
      *  and never backfilled — rewriting it when a notebook is rebound would
      *  destroy the only record of what an answer was actually grounded on. */
@@ -1170,14 +1452,74 @@ export async function recordTurn(
      *  (refusals, safety stops, errors). Never inferred client-side. */
     basis?: string | null;
   },
-): Promise<void> {
-  await withTenantContext(tenantId, async (c) => {
-    await c.query(
-      `INSERT INTO equipment_notebook_turns
+): Promise<string | null> {
+  const owner = (turn.ownerUserId ?? "").trim();
+  if (!owner) throw new Error("recordTurn requires ownerUserId (server-derived)");
+  return withTenantContext(tenantId, async (c) => {
+    // Atomic with tenant ownership: the row set is SELECTed from the notebook
+    // itself, scoped to (id, tenant_id). A notebook id that is not this
+    // tenant's yields zero rows — nothing is written, and we fail closed —
+    // instead of a turn carrying the caller's tenant_id landing in a foreign
+    // notebook (the hole the zero-source safety-stop path used to have).
+    const res = await c.query(
+      `WITH owned_notebook AS (
+         SELECT id, tenant_id
+           FROM equipment_notebooks
+          WHERE id = $1::uuid AND tenant_id = $2::uuid
+       ), completed_claim AS (
+       UPDATE equipment_notebook_turns t
+          SET question = $3,
+              answer_status = $4,
+              answer_text = $5,
+              enabled_source_doc_ids = $6::jsonb,
+              evidence = $7::jsonb,
+              model = $8,
+              equipment_entity_id = $9,
+              asset_uns_path = $10,
+              basis = $11,
+              thread_id = $13,
+              client_request_state = 'complete',
+              client_request_started_at = NULL,
+              client_request_claim_token = NULL
+         FROM owned_notebook nb
+        WHERE $15::uuid IS NOT NULL
+          AND t.notebook_id = nb.id
+          AND t.tenant_id = nb.tenant_id
+          AND t.owner_user_id = $12
+          AND t.client_request_id = $14::uuid
+          AND t.client_request_state = 'pending'
+          AND t.client_request_claim_token = $15::uuid
+       RETURNING t.id
+       ), inserted AS (
+       INSERT INTO equipment_notebook_turns
          (notebook_id, tenant_id, question, answer_status, answer_text,
           enabled_source_doc_ids, evidence, model,
-          equipment_entity_id, asset_uns_path, basis)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)`,
+          equipment_entity_id, asset_uns_path, basis, owner_user_id, thread_id,
+          client_request_id, client_request_state, client_request_started_at,
+          client_request_claim_token)
+       SELECT nb.id, nb.tenant_id, $3, $4, $5, $6::jsonb, $7::jsonb, $8,
+              $9, $10, $11, $12, $13, $14::uuid, 'complete', NULL, NULL
+         FROM owned_notebook nb
+        WHERE $15::uuid IS NULL
+       ON CONFLICT (tenant_id, notebook_id, owner_user_id, client_request_id)
+         WHERE client_request_id IS NOT NULL
+       DO NOTHING
+       RETURNING id
+       )
+       SELECT id FROM completed_claim
+       UNION ALL
+       SELECT id FROM inserted
+       UNION ALL
+       SELECT t.id
+         FROM equipment_notebook_turns t
+         JOIN owned_notebook nb
+           ON nb.id = t.notebook_id AND nb.tenant_id = t.tenant_id
+         WHERE $14::uuid IS NOT NULL
+           AND t.owner_user_id = $12
+           AND t.client_request_id = $14::uuid
+           AND t.client_request_state = 'complete'
+           AND $15::uuid IS NULL
+        LIMIT 1`,
       [
         notebookId,
         tenantId,
@@ -1190,8 +1532,17 @@ export async function recordTurn(
         turn.equipmentEntityId ?? null,
         turn.assetUnsPath ?? null,
         turn.basis ?? null,
+        owner,
+        storedThreadId(turn.threadId),
+        turn.clientRequestId ?? null,
+        turn.claimToken ?? null,
       ],
     );
+    if (!res.rowCount) throw new NotebookNotFoundError(notebookId);
+    // Turn Flight Recorder (design §2): `mira.turn.row_id` / `persistence.turn_row_id`
+    // correlate a span/packet to this row. The INSERT/UPDATE already RETURNS id
+    // (see the CTE above) — this was previously discarded (Promise<void>).
+    return (res.rows[0]?.id as string | undefined) ?? null;
   });
 }
 
@@ -1273,43 +1624,69 @@ export async function listTurns(
   tenantId: string,
   notebookId: string,
   limit = 50,
+  /** 086: WHO is reading. History is the viewer's own turns plus ownerless
+   *  legacy rows; another technician's owned turns are never returned. With
+   *  no viewer only legacy rows are returned (fail closed), so a caller that
+   *  forgets the session cannot leak a private conversation. */
+  opts: { viewerUserId?: string | null; threadId?: string | null } = {},
 ): Promise<
   {
     id: string;
+    threadId: string;
     question: string;
     answerStatus: string;
     answerText: string | null;
     evidence: unknown[];
     basis: string | null;
     createdAt: string;
+    /** 086: hub_users.id of the asking technician; null = legacy shared row. */
+    ownerUserId: string | null;
+    /** 086: true for a pre-ownership row every tenant user can read. */
+    sharedLegacy: boolean;
   }[]
 > {
+  const viewer = (opts.viewerUserId ?? "").trim() || null;
+  const threadId = opts.threadId === undefined ? undefined : storedThreadId(opts.threadId);
   const turns = await withTenantContext(tenantId, async (c) => {
     // Take the MOST RECENT `limit` turns (inner DESC), then present them
     // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
     // returns the OLDEST n — so past n turns the recent conversation vanishes
     // from the notebook on reload. Recent-window + chronological display fixes
     // that while keeping the render order the UI expects.
+    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    const values: unknown[] = [tenantId, notebookId, limit];
+    if (viewer) values.push(viewer);
+    const threadPredicate = opts.threadId === undefined
+      ? ""
+      : threadId === null
+        ? " AND thread_id IS NULL"
+        : ` AND thread_id = $${values.push(threadId)}`;
     const res = await c.query(
-      `SELECT id, question, answer_status, answer_text, evidence, basis, created_at
+      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
-           SELECT id::text AS id, question, answer_status, answer_text, evidence, basis, created_at
-             FROM equipment_notebook_turns
+           SELECT id::text AS id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
+            FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+              AND client_request_state = 'complete'
+              AND ${ownerPredicate}
+              ${threadPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent
         ORDER BY created_at ASC`,
-      [tenantId, notebookId, limit],
+      values,
     );
     return res.rows.map((r: Record<string, unknown>) => ({
       id: String(r.id),
+      threadId: publicThreadId(r.thread_id),
       question: String(r.question),
       answerStatus: String(r.answer_status),
       answerText: (r.answer_text as string) ?? null,
       evidence: Array.isArray(r.evidence) ? (r.evidence as unknown[]) : [],
       basis: (r.basis as string) ?? null,
       createdAt: String(r.created_at),
+      ownerUserId: r.owner_user_id == null ? null : String(r.owner_user_id),
+      sharedLegacy: r.owner_user_id == null,
     }));
   });
 
@@ -1340,4 +1717,53 @@ export async function listTurns(
     // take down history reads.
     return turns;
   }
+}
+
+export async function listThreads(
+  tenantId: string,
+  notebookId: string,
+  limit = 50,
+  opts: { viewerUserId?: string | null } = {},
+): Promise<
+  {
+    id: string;
+    notebookId: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    turnCount: number;
+    sharedLegacy: boolean;
+  }[]
+> {
+  const viewer = (opts.viewerUserId ?? "").trim() || null;
+  return withTenantContext(tenantId, async (c) => {
+    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    const values: unknown[] = [tenantId, notebookId, limit];
+    if (viewer) values.push(viewer);
+    const res = await c.query(
+      `SELECT thread_id,
+              min(created_at) AS created_at,
+              max(created_at) AS updated_at,
+              count(*)::int AS turn_count,
+              (array_agg(question ORDER BY created_at ASC))[1] AS first_question,
+              bool_or(owner_user_id IS NULL) AS shared_legacy
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND client_request_state = 'complete'
+          AND ${ownerPredicate}
+        GROUP BY thread_id
+        ORDER BY updated_at DESC
+        LIMIT $3`,
+      values,
+    );
+    return res.rows.map((r: Record<string, unknown>) => ({
+      id: publicThreadId(r.thread_id),
+      notebookId,
+      title: threadTitleFromQuestion(String(r.first_question ?? "")),
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+      turnCount: Number(r.turn_count ?? 0),
+      sharedLegacy: Boolean(r.shared_legacy),
+    }));
+  });
 }

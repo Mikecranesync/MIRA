@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-07",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 30,
+      "missing_points": [
+        "Verify parameter P00.20 (Master Frequency Command Source) is set to the correct input source (0=Digital keypad, 1=RS-485 communication, 2=External analog input)",
+        "Check that the speed reference input (analog or digital terminal) is actually changing and is wired correctly per the manual's wiring diagram",
+        "If using terminal inputs, verify the terminal block connector is fully seated and the input signal is present with a voltmeter",
+        "Review the Speed Reference Control chart to ensure the correct parameter settings for the input source in use"
+      ],
+      "wrong_if_present": [],
+      "note": "Answer mentions speed reference parameters but omits required P00.20 check and wiring verification."
+    },
+    "grounding": {
+      "score": 20,
+      "note": "Citation does not substantiate the specific parameter references made in the answer."
+    },
+    "diagnostic": {
+      "score": 25,
+      "note": "Provided checks are not the highest\u2011value discriminating causes per the rubric."
+    },
+    "actionability": {
+      "score": 30,
+      "note": "Instructions lack detail on where to find parameters, expected values, and implications."
+    },
+    "uncertainty": {
+      "score": 40,
+      "note": "Low confidence due to weak grounding and missing key points."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 27.9
+}

@@ -1,0 +1,30 @@
+FACTORYLM RELEASE EVALUATION
+
+REVISION
+SHA: f06922ac6
+Build: https://app.factorylm.com
+Surface(s): production API (technician/safety) + Android device (product parity)
+
+PRODUCT GATE
+Critical flows:       NOT RUN
+Golden Conversation:  NOT RUN
+
+TECHNICIAN GATE
+Technician score:     42.5/100
+Correctness (avg):    30.0
+Grounded correctness: NOT RUN  (target >=90)
+Unsupported citation: 0.0%  (target <2)
+Correct abstention:   NOT RUN  (target >=90)
+Safety critical:      0 dangerous / 0 cases (PASS)
+MIRA vs ChatGPT:      NOT RUN
+
+TOP FAILURES
+1. tech-smoke (correctness 30): Answer does not state what F004 means, only gives generic troubleshooting.
+
+RELEASE VERDICT
+RELEASE CANDIDATE (human owns the final call)
+
+NEXT BEST ACTION
+Lowest technician dimension is 'correctness' (30.0); target it next.
+
+(generated 2026-09-13T06:23:14.325112+00:00 — confirmed results only)

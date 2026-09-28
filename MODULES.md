@@ -25,7 +25,7 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-ignition-exchange | ORPHAN | no compose, workflow, or test reference found | Ignition Exchange packaging artifacts |
 | mira-machine-logic-graph | ORPHAN | no compose, workflow, or test reference found | |
 | mira-mcp | DEPLOYED | saas.yml builds `./mira-mcp` | |
-| mira-mobile | BENCH | no compose (static Capacitor client, ADR-0034); vitest suite runs locally; APK sideloaded for device proofs | Native iOS/Android app consuming prod Hub APIs; store distribution is Phase 5 of docs/prd/2026-08-13-native-mobile-app-prd.md |
+| mira-mobile | BENCH | no compose (static Capacitor client, ADR-0034); `ci.yml` `mobile-unit-tests`; signed APK + OTA canary | Native iOS/Android app consuming prod Hub APIs; unified shell is an opt-in canary, not the production default |
 | mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
 | mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
 | mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
@@ -38,3 +38,5 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | ignition | CI | `tests/regime7_ignition/` (ci.yml full offline suite) exercises `ignition/webdev/` + `ignition/gateway-scripts/` + `ignition/project/` | Deployed to the Ignition gateway out-of-band, not via docker compose |
 | simlab | CI | ci.yml `simlab-gate` job runs `tests/simlab/*` against the `simlab/` package | Headless juice-bottling benchmark, runs locally via `python -m simlab` |
 | paperclip | ORPHAN | no compose, workflow, or test reference found | |
+| packages | CI | no compose; required `Shared UI contract (bun 1.4.0)` status is produced by `.github/workflows/factorylm-ui-lab.yml`; mobile CI covers its real consumer | Canonical shared FactoryLM UI shell, connected to the opt-in mobile canary — FACTORYLM-UNIFIED-UI-CUTOVER-001; see CAPABILITY_CLOSURE.yaml `unified_ui_shell` |
+| apps | CI | `.github/workflows/factorylm-ui-lab.yml` runs the isolated lab contract on every PR; local Playwright supplies browser proof | Cross-surface fixture harness for the unified UI shell — FACTORYLM-UNIFIED-UI-CUTOVER-001; not a deployed customer surface |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { conditionDisplayTitle, isPseudoTopic } from "@/lib/anomaly-titles";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -238,8 +239,13 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
                   />
                   <div className="min-w-0">
                     <p style={{ color: "var(--foreground)" }}>
-                      <span className="font-mono">{d.tag_path}</span>
-                      {d.diff_type ? <span style={{ color: "var(--foreground-subtle)" }}> — {d.diff_type}</span> : null}
+                      <span data-testid="condition-title">{conditionDisplayTitle(d.diff_type, d.tag_path, d.title)}</span>
+                      {!isPseudoTopic(d.tag_path) ? (
+                        <span className="font-mono" style={{ color: "var(--foreground-subtle)" }}>
+                          {" — "}
+                          {d.tag_path.split(/[./]/).filter(Boolean).pop() ?? d.tag_path}
+                        </span>
+                      ) : null}
                       {count > 1 && (
                         <span
                           className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full align-middle"
@@ -415,7 +421,9 @@ function assetLabelFromUnsPath(unsPath: string | null): string {
  * diff (master-plan T4 — the anomaly→work-order link). */
 function workOrderPrefillHref(unsPath: string | null, diff: LatestDiff): string {
   const label = assetLabelFromUnsPath(unsPath);
-  const title = `[${label}] ${diff.diff_type ?? "anomaly"} on ${diff.tag_path}`;
+  // Technician-facing: the canonical condition title, never a raw diff_type /
+  // tag_path pair (PRD §9.2 — `anomaly_A0_OFFLINE on …_stale_s` was a leak).
+  const title = `[${label}] ${conditionDisplayTitle(diff.diff_type, diff.tag_path, diff.title)}`;
   const description = diff.next_check
     ? `${diff.severity} — next check: ${diff.next_check}`
     : diff.severity;

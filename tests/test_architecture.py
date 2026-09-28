@@ -59,14 +59,13 @@ def _assert_no_forbidden_imports(
             if imported.startswith(pattern):
                 violations.append(f"  {file_path}: imports '{imported}'")
 
-    assert not violations, (
-        f"Architecture violation: {contract_name}\n" + "\n".join(violations)
-    )
+    assert not violations, f"Architecture violation: {contract_name}\n" + "\n".join(violations)
 
 
 # ---------------------------------------------------------------------------
 # Contract 1: Bots cannot import from crawler
 # ---------------------------------------------------------------------------
+
 
 def test_bots_cannot_import_crawler():
     _assert_no_forbidden_imports(
@@ -80,6 +79,7 @@ def test_bots_cannot_import_crawler():
 # Contract 2: Crawler cannot import from bots
 # ---------------------------------------------------------------------------
 
+
 def test_crawler_cannot_import_bots():
     _assert_no_forbidden_imports(
         "mira-crawler",
@@ -91,6 +91,7 @@ def test_crawler_cannot_import_bots():
 # ---------------------------------------------------------------------------
 # Contract 3: MCP server cannot import from bots or crawler
 # ---------------------------------------------------------------------------
+
 
 def test_mcp_cannot_import_bots():
     _assert_no_forbidden_imports(
@@ -111,6 +112,7 @@ def test_mcp_cannot_import_crawler():
 # ---------------------------------------------------------------------------
 # Contract 4: No module imports from mira-core internal DB layer
 # ---------------------------------------------------------------------------
+
 
 def test_bots_cannot_import_core_db():
     _assert_no_forbidden_imports(
@@ -158,24 +160,21 @@ def test_mcp_cannot_import_core_db():
 # here must conform unless explicitly allowlisted below, with a reason.
 _INGEST_SURFACE_GLOBS = [
     "mira-relay/*.py",
-    "mira-relay/**/*.py",   # future transports, e.g. mira-relay/mqtt_ingest/
+    "mira-relay/**/*.py",  # future transports, e.g. mira-relay/mqtt_ingest/
     "simlab/publishers.py",
 ]
 
 # The ONLY modules permitted to DEFINE the contract primitives. Each entry MUST
 # carry a reason (acceptance criterion: legitimate modules allowlisted explicitly).
 _ONE_PIPELINE_ALLOWLIST: dict[str, str] = {
-    "mira-relay/ingest_contract.py":
-        "THE canonical contract — the one allowed home for normalize_tag_path, "
-        "build_tag_entry and build_ingest_batch (and the canonical {source_system, "
-        "tags} shape they emit).",
-    "mira-relay/tag_ingest.py":
-        "THE canonical pipeline — defines ingest_batch (enforcement) + NeonTagStore "
-        "(load_allowlist, persist_batch) and holds the ONLY writes to tag_events / "
-        "live_signal_cache; re-exports the normalizer from ingest_contract.",
-    "mira-relay/relay_server.py":
-        "THE canonical HTTP route — authenticates and calls ingest_batch; mentions "
-        "approved_tags only in its docstring.",
+    "mira-relay/ingest_contract.py": "THE canonical contract — the one allowed home for normalize_tag_path, "
+    "build_tag_entry and build_ingest_batch (and the canonical {source_system, "
+    "tags} shape they emit).",
+    "mira-relay/tag_ingest.py": "THE canonical pipeline — defines ingest_batch (enforcement) + NeonTagStore "
+    "(load_allowlist, persist_batch) and holds the ONLY writes to tag_events / "
+    "live_signal_cache; re-exports the normalizer from ingest_contract.",
+    "mira-relay/relay_server.py": "THE canonical HTTP route — authenticates and calls ingest_batch; mentions "
+    "approved_tags only in its docstring.",
 }
 
 # Defining any of these (a FunctionDef / method) outside the canonical core is a
@@ -215,11 +214,18 @@ def scan_ingest_module(rel_path: str, source: str) -> list[str]:
         return [f"{rel_path}: unparseable ({exc})"]
 
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in _FORBIDDEN_DEFS:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in _FORBIDDEN_DEFS
+        ):
             violations.append(f"{rel_path}:{node.lineno} {_FORBIDDEN_DEFS[node.name]}")
         # Rival batch shape: an inline {…"source_system"…"tags"…} dict literal.
         if isinstance(node, ast.Dict):
-            keys = {k.value for k in node.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            keys = {
+                k.value
+                for k in node.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            }
             if {"source_system", "tags"} <= keys:
                 violations.append(
                     f"{rel_path}:{node.lineno} builds an ingest batch inline "
@@ -477,9 +483,7 @@ _SETS_VERIFIED_TRUE_RE = re.compile(r"\bverified\s*=\s*true\b", re.IGNORECASE)
 _SET_TENANT_ID_RE = re.compile(r"\bSET\b.*?\btenant_id\s*=", re.IGNORECASE | re.DOTALL)
 # Accepted provenance predicate #1 (either shape): a source_url host/domain
 # restriction — the row's origin URL is directly checkable.
-_SOURCE_URL_RESTRICTION_RE = re.compile(
-    r"\bsource_url\s*(?:like|ilike|~|~\*|=)\s*'", re.IGNORECASE
-)
+_SOURCE_URL_RESTRICTION_RE = re.compile(r"\bsource_url\s*(?:like|ilike|~|~\*|=)\s*'", re.IGNORECASE)
 # Accepted provenance predicate #2 (SAME-TENANT shape only): tenant_id pinned
 # to a literal UUID in the WHERE clause. Optional ::type cast tolerated
 # (e.g. "tenant_id::text = '...'", "tenant_id = '...'::uuid") since both
@@ -616,8 +620,7 @@ def test_verified_promotion_checker_catches_violations():
     provenance-restricted promotions of both shapes (same-tenant and
     cross-tenant-with-source_url)."""
     bad_cases = {
-        "the REAL pulled backfill, verbatim (0bde5f2e5, cross-tenant + shape-only)":
-            _REAL_PULLED_BACKFILL_STMT,
+        "the REAL pulled backfill, verbatim (0bde5f2e5, cross-tenant + shape-only)": _REAL_PULLED_BACKFILL_STMT,
         "source_type + manufacturer shape, no tenant reassignment": (
             "UPDATE knowledge_entries\n"
             "   SET verified = true\n"
@@ -783,9 +786,7 @@ def ambiguous_module_names(dir_to_modules: dict[str, set[str]]) -> dict[str, set
     return {n: d for n, d in providers.items() if len(d) > 1}
 
 
-def scan_bare_ambiguous_imports(
-    path: str, text: str, ambiguous: set[str]
-) -> list[str]:
+def scan_bare_ambiguous_imports(path: str, text: str, ambiguous: set[str]) -> list[str]:
     """Violations where `path` bare-imports one of the `ambiguous` names."""
     if not ambiguous:
         return []
@@ -819,8 +820,7 @@ def test_no_test_bare_imports_an_ambiguous_tool_module():
     assert len(sources) > 100, f"only found {len(sources)} test files; discovery is broken"
     tool_dirs = referenced_tool_dirs(sources)
     assert "tools/internet_print_test" in tool_dirs and "tools/routing_gauntlet" in tool_dirs, (
-        "tools/ path discovery failed to find the two known dirs; "
-        f"found: {sorted(tool_dirs)}"
+        f"tools/ path discovery failed to find the two known dirs; found: {sorted(tool_dirs)}"
     )
 
     dir_to_modules = {
@@ -846,19 +846,20 @@ def test_no_test_bare_imports_an_ambiguous_tool_module():
         "Keep the sys.path.insert -- the tool's own modules bare-import their siblings.\n\n"
         "Ambiguous names: "
         + "; ".join(f"{n} -> {sorted(d)}" for n, d in sorted(ambiguous.items()))
-        + "\n\nOffenders:\n" + "\n".join(offenders)
+        + "\n\nOffenders:\n"
+        + "\n".join(offenders)
     )
 
 
 def test_ambiguous_tool_import_checker_catches_violations():
     """The Contract 10 guard must FAIL on the known bad shapes and pass on the good ones."""
     # Discovery finds a tools/ dir from the shapes actually used in this repo.
-    assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, str(REPO / "tools" / "routing_gauntlet"))')]) == {
-        "tools/routing_gauntlet"
-    }
-    assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, str(P / "tools" / "qa" / "security"))')]) == {
-        "tools/qa/security"
-    }
+    assert referenced_tool_dirs(
+        [("t.py", 'sys.path.insert(0, str(REPO / "tools" / "routing_gauntlet"))')]
+    ) == {"tools/routing_gauntlet"}
+    assert referenced_tool_dirs(
+        [("t.py", 'sys.path.insert(0, str(P / "tools" / "qa" / "security"))')]
+    ) == {"tools/qa/security"}
     # The dir written as one literal (not a pathlib chain).
     assert referenced_tool_dirs([("t.py", 'P = "tools/qa/security"')]) == {"tools/qa/security"}
     # A dir hoisted into a variable is still found — binding discovery to the
@@ -887,17 +888,17 @@ def test_ambiguous_tool_import_checker_catches_violations():
     )
     assert set(ambiguous) == {"runner"}, ambiguous
     # Dunders are shared by most tool dirs but are never bare-importable.
-    assert ambiguous_module_names(
-        {"tools/a": {"__init__", "__main__"}, "tools/b": {"__init__", "__main__"}}
-    ) == {}
+    assert (
+        ambiguous_module_names(
+            {"tools/a": {"__init__", "__main__"}, "tools/b": {"__init__", "__main__"}}
+        )
+        == {}
+    )
 
     bad_cases = {
-        "module-level bare import (test_routing_gauntlet's old shape)":
-            "from runner import ADVERSARIAL_VOTES, apply_arbitration\n",
-        "indented lazy bare import (test_grader_gate's old shape)":
-            "def helper():\n    import runner\n",
-        "aliased bare import":
-            "import runner as r\n",
+        "module-level bare import (test_routing_gauntlet's old shape)": "from runner import ADVERSARIAL_VOTES, apply_arbitration\n",
+        "indented lazy bare import (test_grader_gate's old shape)": "def helper():\n    import runner\n",
+        "aliased bare import": "import runner as r\n",
     }
     for label, src in bad_cases.items():
         assert scan_bare_ambiguous_imports("bad.py", src, set(ambiguous)), (
@@ -905,14 +906,10 @@ def test_ambiguous_tool_import_checker_catches_violations():
         )
 
     good_cases = {
-        "unambiguous sibling stays bare (runner.run_one reaches the same object)":
-            "import submit as submitmod\n",
-        "dotted package path resolves without the bare name":
-            "from tools.routing_gauntlet.runner import run_tier1\n",
-        "explicit path load under a unique name":
-            "spec = importlib.util.spec_from_file_location('print_test_runner', D / 'runner.py')\n",
-        "a name that merely CONTAINS an ambiguous one":
-            "import runner_utils\n",
+        "unambiguous sibling stays bare (runner.run_one reaches the same object)": "import submit as submitmod\n",
+        "dotted package path resolves without the bare name": "from tools.routing_gauntlet.runner import run_tier1\n",
+        "explicit path load under a unique name": "spec = importlib.util.spec_from_file_location('print_test_runner', D / 'runner.py')\n",
+        "a name that merely CONTAINS an ambiguous one": "import runner_utils\n",
     }
     for label, src in good_cases.items():
         assert scan_bare_ambiguous_imports("good.py", src, set(ambiguous)) == [], (
@@ -971,7 +968,9 @@ def test_tag_grammar_regex_locked_across_surfaces():
     for rel, extractor in _TAG_REGEX_SITES.items():
         path = _ROOT / rel
         if not path.is_file():
-            offenders.append(f"{rel}: file missing — grammar site moved without updating Contract 11")
+            offenders.append(
+                f"{rel}: file missing — grammar site moved without updating Contract 11"
+            )
             continue
         literal = extract_tag_regex(path.read_text(encoding="utf-8", errors="replace"), extractor)
         if literal is None:
@@ -994,7 +993,9 @@ def test_tag_grammar_corpus_selfconsistent():
     names = [c["name"] for c in cases]
     assert len(names) == len(set(names)), "duplicate case names in the corpus"
     for case in cases:
-        assert "input" in case and "expect" in case, f"case {case.get('name')!r} missing input/expect"
+        assert "input" in case and "expect" in case, (
+            f"case {case.get('name')!r} missing input/expect"
+        )
         for key in ("expect", "mobile_expect"):
             value = case.get(key)
             if value is not None:
@@ -1031,12 +1032,24 @@ def test_tag_grammar_suites_still_wired():
 def test_tag_regex_extractor_catches_desync():
     """The Contract 11 extractor must see a changed or missing literal."""
     ts = "export const ASSET_TAG_REGEX = /^[A-Za-z0-9_-]{1,64}$/;\n"
-    assert extract_tag_regex(ts, _TAG_REGEX_SITES["mira-hub/src/lib/asset-tag.ts"]) == "^[A-Za-z0-9_-]{1,64}$"
+    assert (
+        extract_tag_regex(ts, _TAG_REGEX_SITES["mira-hub/src/lib/asset-tag.ts"])
+        == "^[A-Za-z0-9_-]{1,64}$"
+    )
     widened = "const ASSET_TAG_REGEX = /^[A-Za-z0-9._-]{1,128}$/;\n"
-    assert extract_tag_regex(widened, _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"]) == "^[A-Za-z0-9._-]{1,128}$"
+    assert (
+        extract_tag_regex(widened, _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"])
+        == "^[A-Za-z0-9._-]{1,128}$"
+    )
     py = 'ASSET_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")\n'
-    assert extract_tag_regex(py, _TAG_REGEX_SITES["mira-core/mira-ingest/asset_tag.py"]) == "^[A-Za-z0-9_-]{1,64}$"
-    assert extract_tag_regex("const OTHER = 1;\n", _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"]) is None
+    assert (
+        extract_tag_regex(py, _TAG_REGEX_SITES["mira-core/mira-ingest/asset_tag.py"])
+        == "^[A-Za-z0-9_-]{1,64}$"
+    )
+    assert (
+        extract_tag_regex("const OTHER = 1;\n", _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"])
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1115,13 +1128,20 @@ def test_container_map_checker_catches_drift():
 # ingester visibility, etc.) are CU-03's job — this contract only stops the
 # population of writers from growing without an explicit is_private decision.
 
-_KE_INSERT_RE = re.compile(
-    r'INSERT\s+INTO\s+(?:public\s*\.\s*)?"?knowledge_entries', re.IGNORECASE
-)
+_KE_INSERT_RE = re.compile(r'INSERT\s+INTO\s+(?:public\s*\.\s*)?"?knowledge_entries', re.IGNORECASE)
 _KE_WRITE_SUFFIXES = {".py", ".ts", ".tsx", ".sql"}
 _KE_EXCLUDED_DIRS = {
-    "node_modules", ".git", "__pycache__", ".next", "dist", "build",
-    ".claude", ".codegraph", ".venv", "venv", "out",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".next",
+    "dist",
+    "build",
+    ".claude",
+    ".codegraph",
+    ".venv",
+    "venv",
+    "out",
 }
 # Chars after the INSERT keyword within which is_private must appear. The
 # largest real statement in this repo declares it at offset 241; 600 leaves
@@ -1133,17 +1153,13 @@ _KE_WINDOW = 600
 # a reason; the honesty test below fails if an entry stops violating (remove it
 # then) or stops existing.
 _KE_INSERT_ALLOWLIST: dict[str, str] = {
-    "tools/seeds/gs11-field-guide-knowledge.sql":
-        "OEM seed; omits the column so rows take the DB default false (correct for "
-        "shared corpus). Explicit is_private false preferred on next touch.",
-    "mira-hub/src/lib/__tests__/node-knowledge-ingest-batching.test.ts":
-        "not a writer — asserts on mock-captured SQL via .includes('INSERT INTO "
-        "knowledge_entries'); the real writer (node-knowledge-ingest.ts) pins true.",
-    "mira-hub/src/lib/__tests__/node-knowledge-ingest-empty.test.ts":
-        "not a writer — same mock-capture assertion string as the batching test.",
-    "mira-hub/src/app/api/documents/upload/__tests__/route.test.ts":
-        "not a writer — regex assertion on mock-captured SQL; the test itself ASSERTS "
-        "is_private true is present (the #1833 guard), just >600 chars after the match.",
+    "tools/seeds/gs11-field-guide-knowledge.sql": "OEM seed; omits the column so rows take the DB default false (correct for "
+    "shared corpus). Explicit is_private false preferred on next touch.",
+    "mira-hub/src/lib/__tests__/node-knowledge-ingest-batching.test.ts": "not a writer — asserts on mock-captured SQL via .includes('INSERT INTO "
+    "knowledge_entries'); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/lib/__tests__/node-knowledge-ingest-empty.test.ts": "not a writer — same mock-capture assertion string as the batching test.",
+    "mira-hub/src/app/api/documents/upload/__tests__/route.test.ts": "not a writer — regex assertion on mock-captured SQL; the test itself ASSERTS "
+    "is_private true is present (the #1833 guard), just >600 chars after the match.",
 }
 
 
@@ -1155,7 +1171,7 @@ def scan_knowledge_entries_insert(rel_path: str, source: str) -> list[str]:
     INSERT keyword (the statement's column list / VALUES / kwargs)."""
     violations: list[str] = []
     for m in _KE_INSERT_RE.finditer(source):
-        window = source[m.start(): m.start() + _KE_WINDOW]
+        window = source[m.start() : m.start() + _KE_WINDOW]
         if "is_private" not in window:
             line = source.count("\n", 0, m.start()) + 1
             violations.append(
@@ -1202,7 +1218,9 @@ def test_ke_insert_allowlist_is_honest():
         assert reason.strip(), f"allowlist entry {rel} has no reason"
         path = _ROOT / rel
         assert path.is_file(), f"allowlisted {rel} no longer exists — remove the entry"
-        violations = scan_knowledge_entries_insert(rel, path.read_text(encoding="utf-8", errors="replace"))
+        violations = scan_knowledge_entries_insert(
+            rel, path.read_text(encoding="utf-8", errors="replace")
+        )
         assert violations, (
             f"allowlisted {rel} now declares is_private — remove its Contract 13 "
             "allowlist entry so the fence stays tight"
@@ -1212,33 +1230,23 @@ def test_ke_insert_allowlist_is_honest():
 def test_ke_insert_checker_catches_violations():
     """The Contract 13 guard must FAIL on the known bad shapes."""
     bad_cases = {
-        "sql column list omits it":
-            "INSERT INTO knowledge_entries (id, tenant_id, content) VALUES (:i, :t, :c)\n",
-        "lowercase sql":
-            "insert into knowledge_entries (id, content) values (1, 'x')\n",
-        "ts template literal":
-            "await sql`INSERT INTO knowledge_entries (id, tenant_id) VALUES (${a}, ${b})`\n",
-        "schema-qualified table (Gate 7 F6)":
-            "INSERT INTO public.knowledge_entries (id, content) VALUES (:i, :c)\n",
-        "quoted table (Gate 7 F6)":
-            'INSERT INTO "knowledge_entries" (id, content) VALUES (:i, :c)\n',
-        "is_private only in a later statement (Gate 7 F5)":
-            "INSERT INTO knowledge_entries (id, content) VALUES (:i, :c);\n"
-            + "-- filler\n" * 80
-            + "UPDATE knowledge_entries SET is_private = false;\n",
+        "sql column list omits it": "INSERT INTO knowledge_entries (id, tenant_id, content) VALUES (:i, :t, :c)\n",
+        "lowercase sql": "insert into knowledge_entries (id, content) values (1, 'x')\n",
+        "ts template literal": "await sql`INSERT INTO knowledge_entries (id, tenant_id) VALUES (${a}, ${b})`\n",
+        "schema-qualified table (Gate 7 F6)": "INSERT INTO public.knowledge_entries (id, content) VALUES (:i, :c)\n",
+        "quoted table (Gate 7 F6)": 'INSERT INTO "knowledge_entries" (id, content) VALUES (:i, :c)\n',
+        "is_private only in a later statement (Gate 7 F5)": "INSERT INTO knowledge_entries (id, content) VALUES (:i, :c);\n"
+        + "-- filler\n" * 80
+        + "UPDATE knowledge_entries SET is_private = false;\n",
     }
     for label, src in bad_cases.items():
         assert scan_knowledge_entries_insert("bad.py", src), f"checker missed: {label}"
 
     good_cases = {
-        "explicit false (OEM)":
-            "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, false)\n",
-        "explicit true (tenant)":
-            "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, true)\n",
-        "bound param":
-            "INSERT INTO knowledge_entries (id, is_private) VALUES (:id, :is_private)\n",
-        "non-INSERT statement (UPDATE)":
-            "UPDATE knowledge_entries SET is_private = true WHERE id = :i\n",
+        "explicit false (OEM)": "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, false)\n",
+        "explicit true (tenant)": "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, true)\n",
+        "bound param": "INSERT INTO knowledge_entries (id, is_private) VALUES (:id, :is_private)\n",
+        "non-INSERT statement (UPDATE)": "UPDATE knowledge_entries SET is_private = true WHERE id = :i\n",
     }
     for label, src in good_cases.items():
         assert scan_knowledge_entries_insert("good.py", src) == [], f"false positive: {label}"
@@ -1319,9 +1327,7 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
             # celery_app.send_task("tasks.ingest.ingest_url", ...) dispatches by
             # NAME, bypassing every symbol-based check (Gate 7 finding).
             first = node.args[0] if node.args else None
-            named = (
-                isinstance(first, ast.Constant) and first.value == _INGEST_URL_TASK_NAME
-            )
+            named = isinstance(first, ast.Constant) and first.value == _INGEST_URL_TASK_NAME
             if not named:
                 continue
         elif called not in names:
@@ -1362,8 +1368,17 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
 
 _INGEST_URL_TASK_NAME = "tasks.ingest.ingest_url"
 _INGEST_URL_SCAN_SKIP = {
-    "node_modules", ".git", "__pycache__", ".venv", "venv", ".next",
-    "dist", "build", "out", ".claude", ".codegraph",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".next",
+    "dist",
+    "build",
+    "out",
+    ".claude",
+    ".codegraph",
 }
 
 
@@ -1381,8 +1396,7 @@ def _ingest_url_dispatch_files() -> list[Path]:
         dirnames[:] = [
             d
             for d in dirnames
-            if d not in _INGEST_URL_SCAN_SKIP
-            and not (Path(dirpath) / d / ".git").is_file()
+            if d not in _INGEST_URL_SCAN_SKIP and not (Path(dirpath) / d / ".git").is_file()
         ]
         out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
     return sorted(out)
@@ -1454,43 +1468,38 @@ def test_ingest_url_scanner_sees_the_known_population():
                 )
                 if nm in names:
                     seen += 1
-    assert seen >= 8, f"scanner sees only {seen} ingest_url dispatch sites — expected the known population"
+    assert seen >= 8, (
+        f"scanner sees only {seen} ingest_url dispatch sites — expected the known population"
+    )
 
 
 def test_ingest_url_scanner_catches_violations():
     bad = {
         "plain kwarg dispatch": 'ingest_url.delay(url=u, source_type="manual")\n',
-        "direct call": 'ingest_url(url=u)\n',
+        "direct call": "ingest_url(url=u)\n",
         "apply_async": 'ingest_url.apply_async(kwargs={"url": u})\n',
         "apply_async dict without the key": 'ingest_url.apply_async(kwargs={"url": u, "source_type": "m"})\n',
         "send_task by name": 'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u})\n',
-        "send_task positional args (cannot set a keyword-only param)":
-            'app.send_task("tasks.ingest.ingest_url", args=[u, "m", "", "manual"])\n',
-        "apply_async with a non-literal kwargs dict":
-            'ingest_url.apply_async(kwargs=payload)\n',
-        "apply_async kwargs built by a call":
-            'ingest_url.apply_async(kwargs=dict(url=u))\n',
-        "helper wrapper": 'def queue(u):\n    ingest_url.delay(url=u)\n',
+        "send_task positional args (cannot set a keyword-only param)": 'app.send_task("tasks.ingest.ingest_url", args=[u, "m", "", "manual"])\n',
+        "apply_async with a non-literal kwargs dict": "ingest_url.apply_async(kwargs=payload)\n",
+        "apply_async kwargs built by a call": "ingest_url.apply_async(kwargs=dict(url=u))\n",
+        "helper wrapper": "def queue(u):\n    ingest_url.delay(url=u)\n",
         "import alias": (
-            "from tasks.ingest import ingest_url as iu\n"
-            'iu.delay(url=u, source_type="manual")\n'
+            'from tasks.ingest import ingest_url as iu\niu.delay(url=u, source_type="manual")\n'
         ),
     }
     for label, src in bad.items():
         assert scan_ingest_url_dispatches("bad.py", src), f"checker missed: {label}"
 
     good = {
-        "explicit false": 'ingest_url.delay(url=u, is_private=False)\n',
-        "explicit true": 'ingest_url.delay(url=u, is_private=True)\n',
+        "explicit false": "ingest_url.delay(url=u, is_private=False)\n",
+        "explicit true": "ingest_url.delay(url=u, is_private=True)\n",
         "threaded variable": 'ingest_url.delay(url=u, is_private=entry["is_private"])\n',
         "aliased + explicit": (
-            "from tasks.ingest import ingest_url as iu\n"
-            "iu.delay(url=u, is_private=False)\n"
+            "from tasks.ingest import ingest_url as iu\niu.delay(url=u, is_private=False)\n"
         ),
-        "apply_async kwargs dict carrying the key":
-            'ingest_url.apply_async(kwargs={"url": u, "is_private": False})\n',
-        "send_task by name WITH the key":
-            'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u, "is_private": False})\n',
+        "apply_async kwargs dict carrying the key": 'ingest_url.apply_async(kwargs={"url": u, "is_private": False})\n',
+        "send_task by name WITH the key": 'app.send_task("tasks.ingest.ingest_url", kwargs={"url": u, "is_private": False})\n',
         "send_task for an unrelated task": 'app.send_task("tasks.other.thing", kwargs={"url": u})\n',
     }
     for label, src in good.items():
@@ -1505,13 +1514,12 @@ def test_ingest_url_contract_cannot_be_satisfied_by_prose():
     text and can be flipped by a docstring; this must not be.
     """
     prose_only = {
-        "trailing comment": 'ingest_url.delay(url=u)  # is_private=False\n',
-        "preceding comment": '# is_private=False\ningest_url.delay(url=u)\n',
+        "trailing comment": "ingest_url.delay(url=u)  # is_private=False\n",
+        "preceding comment": "# is_private=False\ningest_url.delay(url=u)\n",
         "docstring above": '"""We pass is_private=False here."""\ningest_url.delay(url=u)\n',
         "unrelated string arg": 'ingest_url.delay(url=u, source_type="is_private=False")\n',
-        "later real call": 'ingest_url.delay(url=u)\nother(is_private=False)\n',
-        "kwargs dict with the name only as a VALUE":
-            'ingest_url.apply_async(kwargs={"url": u, "note": "is_private"})\n',
+        "later real call": "ingest_url.delay(url=u)\nother(is_private=False)\n",
+        "kwargs dict with the name only as a VALUE": 'ingest_url.apply_async(kwargs={"url": u, "note": "is_private"})\n',
     }
     for label, src in prose_only.items():
         assert scan_ingest_url_dispatches("prose.py", src), (
@@ -1525,10 +1533,19 @@ def test_ingest_url_contract_cannot_be_satisfied_by_prose():
 # Doctrine section 6 defines the architecture tag taxonomy (type:*, domain:*).
 # CU-06 adopts it in docs/architecture/convergence/REGISTRY.yaml as an inline
 # `tags: [...]` line per module entry. This contract validates the vocabulary
-# by REGEX OVER RAW TEXT, deliberately not yaml.safe_load: the registry has 5
-# duplicate top-level keys (docs/infra/scripts/tests/tools appear for both the
-# MIRA and factorylm repos) which a YAML parser silently last-wins-shadows —
-# recorded as a CU-06 discovery finding; renaming keys is out of scope here.
+# by REGEX OVER RAW TEXT, deliberately not yaml.safe_load, to stay independent
+# of strict-parse changes elsewhere in the registry's lifecycle.
+#
+# The registry USED TO have 5 duplicate top-level keys (docs/infra/scripts/
+# tests/tools appeared for both the MIRA and factorylm repos), which a YAML
+# parser would silently last-wins-shadow — recorded as a CU-06 discovery
+# finding. FACTORYLM-UNIFIED-UI-CUTOVER-001 (Task 1) renamed the five
+# factorylm-repo copies to factorylm-docs/factorylm-infra/factorylm-scripts/
+# factorylm-tests/factorylm-tools so the registry now has unique top-level
+# keys and yaml.safe_load succeeds (required by
+# tools/ui_surface_lifecycle_guard.py, which strict-parses this file). This
+# scanner keeps working on raw text either way — unique keys just mean a
+# strict parse is now also safe to layer on top.
 # Vocabulary = the section-6 advisory sets plus two CU-06 extensions the real
 # module population needs (the doctrine list is "such as", i.e. extensible):
 #   type:docs   — documentation/knowledge dirs (wiki/, docs/, prompts)
@@ -1537,10 +1554,17 @@ def test_ingest_url_contract_cannot_be_satisfied_by_prose():
 
 _REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 _ALLOWED_TAGS: dict[str, set[str]] = {
-    "type": {"presentation", "adapter", "engine", "domain", "infra", "test",
-             "simulation", "docs"},
-    "domain": {"assets", "identity", "knowledge", "diagnostics", "cmms",
-               "telemetry", "mobile", "platform"},
+    "type": {"presentation", "adapter", "engine", "domain", "infra", "test", "simulation", "docs"},
+    "domain": {
+        "assets",
+        "identity",
+        "knowledge",
+        "diagnostics",
+        "cmms",
+        "telemetry",
+        "mobile",
+        "platform",
+    },
 }
 _TOP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\s*(?:#.*)?$")  # tolerate a trailing comment
 _TAGS_LINE_RE = re.compile(r"^\s{2}tags:\s*\[(.*)\]\s*$")

@@ -1,0 +1,717 @@
+- id: tech-16
+  category: electrical_plc_vfd
+  mode: grounded
+  question: PowerFlex 40 showing F2 fault. What does this code mean and what's the
+    most likely root cause?
+  turns: []
+  equipment: Allen-Bradley PowerFlex 40 VFD
+  cite_family: Allen-Bradley PowerFlex 40
+  expected:
+    must_cite: true
+    key_points:
+    - F2 = overcurrent fault
+    - Overcurrent indicates load exceeding drive's rated current capacity or phase
+      loss on input
+    - Must check for stalled motor, mechanical jam, or undersized drive
+    wrong_if:
+    - Confuses F2 with overvoltage (that's F1)
+    - States F2 is a temperature fault
+    - Recommends resetting without investigating cause
+  notes: Grounded to Allen-Bradley PowerFlex 40 manual fault code table (section 10.2
+    typical layout). F2 is industry-standard overcurrent; checking load and three-phase
+    input is immediate action.
+- id: tech-17
+  category: electrical_plc_vfd
+  mode: grounded
+  question: Micro820 ladder rung has input X1 in series with output Y2 coil (simple
+    logic). After a power loss, Y2 stays de-energized even though X1 is now on. What's
+    most likely?
+  turns: []
+  equipment: Allen-Bradley Micro820 PLC
+  cite_family: Allen-Bradley Micro820
+  expected:
+    must_cite: true
+    key_points:
+    - Micro820 retentive outputs require explicit programming (bit retention via parameters
+      or latch/unlatch coils)
+    - 'Default behavior: outputs de-energize on power loss and require re-scan to
+      re-energize'
+    - Y2 will energize on next scan after X1 goes true, unless the logic or I/O module
+      prevents it
+    wrong_if:
+    - Blames the PLC as broken when the logic simply requires manual restart
+    - Claims Micro820 automatically retains all outputs (false—requires config)
+    - Suggests fault code without evidence
+  notes: Grounded to Micro820 user manual, section on retentive bits and startup behavior.
+    This tests understanding of PLC I/O state after power recovery.
+- id: tech-18
+  category: electrical_plc_vfd
+  mode: general
+  question: Modbus register HR 101 on a VFD reads 1050 but motor is running at half
+    speed. What should you check first?
+  turns: []
+  equipment: Automation Direct GS10 or similar Modbus-enabled VFD
+  expected:
+    must_cite: false
+    key_points:
+    - 'GS10 Modbus registers require parameter cross-reference: confirm the exact
+      register mapping in the drive''s Modbus register table for your current firmware
+      version'
+    - 'A discrepancy between register value and actual motor speed suggests: scaling
+      mismatch between setpoint and drive output, frequency command not reaching the
+      drive, or drive mode setting (open-loop vs closed-loop) preventing command execution'
+    - 'Verification steps: (1) confirm the Modbus parameter being written and its
+      address, (2) check the speed reference source selection (P3xx parameter, depending
+      on control mode), (3) verify three-phase output voltage at motor terminals,
+      (4) confirm the motor is not mechanically stalled or overloaded'
+    wrong_if:
+    - Assumes register value is the only truth without checking actual wiring, drive
+      output voltage, or motor terminals
+    - Recommends replacing the VFD immediately without verifying control wiring and
+      parameter configuration
+    - Ignores the possibility of open-loop vs closed-loop control mode mismatch or
+      incorrect speed reference source
+    - Treats all Modbus register values as directly representing motor speed without
+      accounting for drive-specific scaling or control logic
+    cite_family: Automation Direct GS10
+  notes: General question testing technician's Modbus troubleshooting logic. Technician
+    should know to cross-check register against actual motor behavior and drive parameters.
+- id: tech-19
+  category: electrical_plc_vfd
+  mode: general
+  question: Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase
+    at contactor input. Zero volts across motor terminals. What's the failure point?
+  turns: []
+  equipment: 480V three-phase system with contactor and AC motor
+  expected:
+    must_cite: false
+    key_points:
+    - Contactor coil energized and contacts pulled in, input voltage present, but
+      output zero → contactor main contacts are open/pitted or connection failed post-contactor
+    - Failure is in the contactor itself (welded open, burned contacts) or wiring/lugs
+      from contactor to motor
+    - Motor coil is likely OK; issue is between contactor and motor
+    wrong_if:
+    - Blames the motor as shorted without checking contactor status
+    - Suggests the PLC control circuit is at fault when the contactor is already pulled
+      in
+    - Recommends checking upstream breaker without first verifying contactor contacts
+  notes: 'Classic troubleshooting flow: presence of voltage at input + pulled contactor
+    + zero at output = contactor mechanical failure. This tests the logical chain.'
+- id: tech-20
+  category: electrical_plc_vfd
+  mode: general
+  question: Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA.
+    After a cold start, overload trips. Why?
+  turns: []
+  equipment: Siemens 3RU2 overload relay, AC induction motor
+  expected:
+    must_cite: false
+    key_points:
+    - Induction motor inrush current at cold start can be 5–7x FLA for 1–2 seconds
+      (soft-starters or VFDs not present)
+    - Overload relay calibrated to 10A may not have sufficient tolerance for inrush
+      if it's time-delayed improperly or if motor is starting under load
+    - If motor is cold and load is normal, increase overload trip point to ~12A or
+      verify that 3RU2 time-delay curve is appropriate for the motor
+    wrong_if:
+    - Assumes the motor is overloaded without checking startup conditions
+    - Recommends replacing the motor before checking overload settings
+    - Ignores the difference between FLA and inrush current
+  notes: Tests knowledge of inrush vs running current and overload calibration. Technician
+    must distinguish cold-start transient from steady-state overload.
+- id: tech-21
+  category: mechanical
+  mode: general
+  question: Bearing on a 3 HP pump motor is making a grinding noise but the motor
+    is running. What's the best next step?
+  turns: []
+  equipment: AC induction motor with ball bearing, pump load
+  expected:
+    must_cite: false
+    key_points:
+    - Grinding noise while running indicates bearing spalling or contamination (dirt/metal
+      particles in bearing)
+    - Bearing is degrading and will fail soon; continue running is not safe
+    - 'Next step: stop the motor, de-energize, and inspect the bearing (feel for roughness
+      when spinning by hand, check for play)'
+    wrong_if:
+    - Continues running the motor without concern
+    - Assumes it's just normal operating noise
+    - Recommends replacing the entire motor without bearing inspection
+    - Suggests applying grease to the bearing if it is not designed for re-greasing
+  notes: Safety and predictive maintenance. Grinding = spalling or contamination,
+    not normal wear noise. Technician must stop and investigate.
+- id: tech-22
+  category: mechanical
+  mode: general
+  question: Flexible coupling between motor and pump shows a 0.5 inch offset between
+    the two shafts. Motor and pump both running smoothly. Is this normal or a problem?
+  turns: []
+  equipment: Flexible coupling, motor-pump shaft pair
+  expected:
+    must_cite: false
+    key_points:
+    - Flexible couplings are designed to accommodate minor misalignment; 0.5 inch
+      is significant and suggests either parallel misalignment or axial offset
+    - Alignment should be checked and corrected to within manufacturer specs (typically
+      0.002-0.005 inch for modern systems)
+    - Alignment should be checked and corrected to within manufacturer specs (typically
+      0.05 inch for modern systems)
+    wrong_if:
+    - Claims any flexible coupling can handle 0.5 inch without consequence
+    - Assumes smooth running means proper alignment
+    - Recommends replacement without re-alignment attempt
+  notes: Coupling tolerance and misalignment diagnosis. Flexibility absorbs some offset,
+    but 0.5 inch is excessive and will cause hidden wear.
+- id: tech-23
+  category: sensors_instrumentation
+  mode: general
+  question: Proximity sensor on pump discharge is PNP type, wired to a 24 DC input
+    on the Micro820. Sensor is not triggering the input even though the object is
+    in range. What should you verify?
+  turns: []
+  equipment: PNP proximity sensor, Allen-Bradley Micro820 PLC, 24 VDC I/O
+  expected:
+    must_cite: false
+    key_points:
+    - PNP sensor switches to +24V (supply/high) when triggered; NPN switches to ground
+      (common)
+    - PNP output can drive an input if sensor common and input common are the same
+      reference; if isolated, wiring will fail
+    - 'Verify: sensor supply voltage, sensor common connected to input common, input
+      voltage reading with object present'
+    wrong_if:
+    - Blames the sensor without checking wiring or power supply
+    - Confuses PNP (switches to +V/supply) with NPN (switches to ground/common)
+    - Assumes the input is broken without testing voltage at the input terminal
+  notes: Common PLC I/O wiring issue. PNP sensors require proper common reference.
+    Testing voltage at the input verifies wiring before replacing hardware.
+- id: tech-24
+  category: sensors_instrumentation
+  mode: general
+  question: Transmitter outputting 4-20 mA for temperature is reading 8 mA but the
+    actual temperature is 75°F. Loop resistance is 500 ohms. What's the likely issue?
+  turns: []
+  equipment: 4-20 mA temperature transmitter, analog input, 500 ohm loop
+  expected:
+    must_cite: false
+    key_points:
+    - 4 mA = 0°F (start), 20 mA = 100°F (end), linear; 8 mA should correspond to ~25°F,
+      not 75°F
+    - Discrepancy suggests transmitter calibration error, sensor failure, or PLC input
+      card not reading correctly
+    - Verify transmitter output with a calibrated loop meter (milliamp clamp meter),
+      then compare to PLC reading to isolate the fault
+    wrong_if:
+    - Assumes the transmitter is working and blames the PLC without testing
+    - Recommends replacing the transmitter without verification
+    - Fails to ask for or verify the transmitter's output range (assumed 0-100°F in
+      this case)
+  notes: Analog loop troubleshooting. The 8 mA reading suggests transmitter is working
+    (not an open), but calibration or sensor is off. Loop meter confirms the mA independently.
+- id: tech-25
+  category: missing_information
+  mode: abstention
+  question: What's the optimal setpoint for the compressor pressure relief valve on
+    the System 7 air compressor in building 3?
+  turns: []
+  equipment: System 7 air compressor, building 3
+  expected:
+    abstain_correct: true
+    key_points:
+    - Abstention acknowledges that the relief valve setpoint is plant-specific and
+      documented on the compressor nameplate or in facility maintenance records
+    - The answer should state that the system has no knowledge of this machine's configuration,
+      nameplate, or current pressurized-air system requirements
+    - Correct abstention offers to help if the technician can provide the compressor
+      nameplate or maintenance history
+    wrong_if:
+    - Guesses a generic pressure (e.g., 100 PSI) without qualifying the guess
+    - Claims relief valves are always set to a standard value
+    - Suggests the technician 'just check and see' without understanding the safety
+      risks of improper relief setting
+  notes: Plant-specific machine configuration. No general KB covers 'System 7 in building
+    3'. Technician must provide nameplate or maintenance records to answer correctly.
+- id: tech-26
+  category: missing_information
+  mode: abstention
+  question: Motor M-47 is drawing 2 amps more than yesterday. Is it time to replace
+    the bearing?
+  turns: []
+  equipment: Motor M-47 (identity unknown)
+  expected:
+    abstain_correct: true
+    key_points:
+    - A 2-amp increase alone is insufficient to diagnose bearing health without knowing
+      the motor nameplate, starting condition (cold vs warm), load, and historical
+      baseline
+    - Abstention should acknowledge that trending requires baseline data and controlled
+      conditions, which the system does not have for this specific machine
+    - Correct response offers to help if the technician provides motor nameplate,
+      historical current logs, temperature, and load conditions
+    wrong_if:
+    - Recommends bearing replacement based on current increase alone
+    - Claims 2 amps is always a sign of bearing wear
+    - Ignores the possibility that the load or operating condition changed
+  notes: History and baseline are required for diagnostic confidence. A 2-amp change
+    is data, not diagnosis. Abstention + offer to help is the right response.
+- id: tech-27
+  category: missing_information
+  mode: abstention
+  question: Pump PMP-12 is cavitating. What's the suction lift limit?
+  turns: []
+  equipment: Pump PMP-12 (identity unknown)
+  expected:
+    abstain_correct: true
+    key_points:
+    - Suction lift limit is a design parameter on the pump nameplate and depends on
+      the pump type, speed, and fluid
+    - Generic pump knowledge does not apply to an unidentified machine 'PMP-12'
+    - Correct abstention explains that the system needs the pump model/nameplate and
+      fluid specifications to answer
+    wrong_if:
+    - Guesses a generic suction lift (e.g., 10 feet) as universal
+    - Recommends priming the pump without verifying the actual limit or cavitation
+      source
+    - Confuses suction lift with discharge head
+  notes: Equipment identity required. Pump cavitation has multiple causes; suction
+    lift limit is nameplate data, not general knowledge.
+- id: tech-28
+  category: multi_turn
+  mode: multi_turn
+  question: Motor M-7 won't start. Breaker is in. What do you check next?
+  turns:
+  - Motor M-7 won't start. Breaker is in. What do you check next?
+  - Contactor is pulling in, humming. Motor shaft is locked. 480 three-phase at the
+    breaker input. What's happening at the contactor output?
+  - Contactor output has 480V between phases but 0V at the motor terminals. Wiring
+    lugs look dark/oxidized. What's the most likely fault?
+  - Verified the lug connection is corroded and loose. After cleaning and tightening,
+    motor starts. What was the root cause and how do you prevent recurrence?
+  equipment: 480V three-phase motor with magnetic contactor
+  expected:
+    key_points:
+    - Multi-turn diagnosis narrowed from supply to contactor to wiring connection
+    - Root cause identified as corroded lug connection causing voltage drop to zero
+      at motor
+    - 'Preventive action: scheduled lug inspection, anti-oxidant compound application,
+      or replacement with rated connectors'
+    wrong_if:
+    - Restarts the diagnosis from scratch in turn 4 instead of building on evidence
+      from turns 1–3
+    - Asks for information that was already provided (e.g., 'is the contactor pulling
+      in' in turn 4)
+    - Jumps to motor replacement without testing the connection
+    final_turn_must_narrow_to: Corroded or loose wiring lug connection causing voltage
+      drop between contactor output and motor input
+  notes: 'Standard electrical troubleshooting narrowing: supply → contactor → connection.
+    Each turn adds evidence that should eliminate prior possibilities.'
+- id: tech-29
+  category: multi_turn
+  mode: multi_turn
+  question: GS10 VFD showing oH fault and motor not running. Power supply looks OK.
+    What's the next step?
+  turns:
+  - GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's
+    the next step?
+  - 'Checked the manual: oH is overtemp. VFD enclosure temperature is 85°C. Ambient
+    is 40°C. Fan is running. What should you look for?'
+  - Checked heat sink fins—caked with dust and debris. Cleaned fins with compressed
+    air. Temps dropped to 60°C. oH cleared and motor starts. What was the problem?
+  - Motor ran for 30 min then oH came back. Temp at 80°C again. What's the long-term
+    fix?
+  equipment: Automation Direct GS10 VFD, AC motor load
+  expected:
+    key_points:
+    - oH (overheat/over-temperature) = overtemp fault on GS10, narrowed to inadequate
+      heat dissipation (blocked heat sink) rather than hardware failure
+    - 'Immediate fix: clean heat sink; long-term fix: improved ventilation, environmental
+      controls, or duty cycle adjustment'
+    - Recurrence after cleaning suggests ongoing thermal load; need to verify load
+      is within VFD rating or improve airflow permanently
+    wrong_if:
+    - Assumes heat sink cleaning permanently solves the problem without addressing
+      root cause (ambient, load, ventilation)
+    - Recommends VFD replacement after one cleaning cycle
+    - Ignores the 40°C ambient temperature as a factor in thermal design
+    final_turn_must_narrow_to: VFD overtemp (oH code) due to blocked heat sink; long-term
+      solution requires permanent ventilation/cooling improvement
+  notes: 'Thermal troubleshooting across turns: fault code → sensor reading → visual
+    inspection → fix → recurrence → root cause (environmental or load).'
+- id: tech-30
+  category: multi_turn
+  mode: multi_turn
+  question: Proximity sensor on the sorting line is missing detections. Light looks
+    OK. What's next?
+  turns:
+  - Proximity sensor on the sorting line is missing detections. Light looks OK. What's
+    next?
+  - Tested with a metal target at 30mm (sensor rated 50mm). Sensor triggered. Tested
+    at 60mm. No trigger. Sensor is suppose to work to 50mm. What does this tell you?
+  - Checked the sensor cable at the connector. Found mud/coolant around the connector
+    and the cable sleeve is cracked. After cleaning and sealing the connector, tested
+    again at 50mm. Sensor triggers cleanly. What was the problem?
+  - After 2 days, sensor is missing detections again even though the connector looks
+    clean. What's the root cause and how do you fix it?
+  equipment: Inductive proximity sensor, industrial automation sorting line
+  expected:
+    key_points:
+    - Sensor performance degraded (range reduction from 50mm spec to intermittent
+      detection), narrowed to contamination in the connector affecting signal integrity
+    - 'Root cause: moisture or coolant ingress into the connector causing intermittent
+      electrical contact or signal noise'
+    - 'Long-term fix: use sealed M12 connectors, cable management to route away from
+      coolant spray, or relocate sensor to protected area'
+    wrong_if:
+    - Recommends sensor replacement without identifying contamination
+    - Ignores the connector/cable as a potential failure point
+    - Assumes cleaning once will permanently solve a contaminated-environment problem
+    - Assumes the sensor coil/signal circuit is dirty without checking the external
+      connector first
+    final_turn_must_narrow_to: Moisture/coolant ingress at the sensor connector causing
+      intermittent signal; permanent fix requires sealed connector and environmental
+      protection
+  notes: 'Sensor troubleshooting with environmental factor: range test narrows to
+    hardware fault, visual inspection finds connector issue, recurrence reveals environmental
+    root cause.'
+- id: tech-01
+  category: general_industrial
+  mode: general
+  question: What is the primary function of an AC drive in a motor control system?
+  turns: []
+  expected:
+    key_points:
+    - AC drives convert incoming AC power to DC, then synthesize it back to variable-frequency
+      AC output
+    - The output frequency directly controls motor speed
+    - AC drives provide soft-start capability, reducing inrush current compared to
+      across-the-line starters
+    - Provides motor protection functions including overload and thermal monitoring
+    wrong_if:
+    - Claims drives are only used for emergency stop or lock rotor protection
+    - States that AC drives increase motor speed beyond nameplate rating without load
+      reduction
+    - Confuses AC drive output with a capacitor-based reactive power compensation
+      device
+- id: tech-02
+  category: general_industrial
+  mode: general
+  question: Why would an induction motor not start when given a command signal, even
+    though the drive shows no fault code?
+  turns: []
+  expected:
+    key_points:
+    - Control signal source may be wired incorrectly or not active
+    - Motor nameplate FLA may exceed drive current rating, causing startup current
+      limit
+    - Mechanical load binding or jam prevents acceleration
+    - Enable or run permissive input (safety circuit, interlock) may not be satisfied
+    wrong_if:
+    - Assumes the motor winding is open without checking control wiring first
+    - Claims DC bus voltage automatically resets if the motor doesn't start within
+      5 seconds
+    - States that a missing start signal is always a PLC programming error, not a
+      wiring issue
+- id: tech-03
+  category: general_industrial
+  mode: general
+  question: What does a Modbus TCP communication link require to function reliably
+    with an industrial drive?
+  turns: []
+  expected:
+    key_points:
+    - Network switch or hub with proper Ethernet cabling and RJ45 connectors
+    - Consistent IP addressing and no address conflicts on the network segment
+    - Drive firmware must support Modbus TCP protocol version used by the master
+    - Network latency and packet loss must be within drive specification (typically
+      <100 ms typical response)
+    wrong_if:
+    - Suggests that Modbus TCP requires a dedicated industrial protocol license
+    - Claims that adding a second network card to a drive automatically improves redundancy
+      without configuration
+    - States that UDP is preferred over TCP for real-time Modbus on factory networks
+- id: tech-04
+  category: general_industrial
+  mode: general
+  question: Describe the difference between a constant-torque load and a variable-torque
+    load in motor applications.
+  turns: []
+  expected:
+    key_points:
+    - Constant-torque loads require the same torque output across all speeds (conveyors,
+      punch presses, hoists)
+    - Variable-torque loads require less torque at lower speeds (centrifugal fans,
+      centrifugal pumps)
+    - AC drives can be sized more conservatively for variable-torque because power
+      demand scales with speed
+    - Constant-torque applications may require larger drives due to full torque requirement
+      at low speeds
+    wrong_if:
+    - Confuses constant-torque with constant-speed operation
+    - Claims all HVAC and pump applications are constant-torque
+    - States that variable-torque drives cannot be used for hoists or lifting
+- id: tech-05
+  category: troubleshooting
+  mode: general
+  question: Motor will not run after power is applied and the drive shows no fault
+    code. What is the first check?
+  turns: []
+  expected:
+    key_points:
+    - Verify control power (24 VDC or equivalent) is present and within specification
+    - Confirm a valid run/start command is being sent to the drive input terminals
+    - Check that safety interlocks and e-stop circuits are in the run permissive state
+    - Verify that input wiring to the drive is connected per the manual diagram
+    wrong_if:
+    - Immediately recommends measuring DC bus voltage without checking control signal
+      first
+    - Assumes the motor winding is faulty without verifying the control path is active
+    - Suggests resetting parameters before checking basic control wiring
+- id: tech-06
+  category: troubleshooting
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: PowerFlex 525 is displaying fault code F007. What does this indicate and
+    what should the technician check?
+  turns: []
+  expected:
+    key_points:
+    - F007 is Motor Overload fault, indicating internal electronic overload trip has
+      occurred
+    - The drive's output current has exceeded the hardware current limit
+    - Technician should verify connections between motor and load and verify level
+      and time requirements
+    - Check that the motor load is not excessively high or jammed; reduce load so
+      output current does not exceed the motor overload current parameter
+    wrong_if:
+    - Confuses F007 with F006 (Motor Stalled), which is inability to accelerate motor
+    - Claims F007 is a temperature fault on the heatsink or control module
+    - States F007 can be cleared by cycling power without addressing the overload
+      condition
+    - Cites a PowerFlex 40 fault code table instead of PowerFlex 525
+- id: tech-07
+  category: troubleshooting
+  mode: grounded
+  must_cite: true
+  cite_family: Automation Direct GS10
+  question: GS10 drive is running at full nameplate speed but will not respond to
+    speed command changes. What are the top two causes to verify?
+  turns: []
+  expected:
+    key_points:
+    - Verify parameter P00.20 (Master Frequency Command Source) is set to the correct
+      input source (0=Digital keypad, 1=RS-485 communication, 2=External analog input)
+    - Check that the speed reference input (analog or digital terminal) is actually
+      changing and is wired correctly per the manual's wiring diagram
+    - If using terminal inputs, verify the terminal block connector is fully seated
+      and the input signal is present with a voltmeter
+    - Review the Speed Reference Control chart to ensure the correct parameter settings
+      for the input source in use
+    wrong_if:
+    - Assumes the motor speed feedback is not working without checking command source
+      first
+    - States that speed commands are only via analog 0-10V input on GS10
+    - Recommends resetting all drive parameters before checking the control wiring
+    - Claims the drive display showing 'RUN' means the speed control input is working
+- id: tech-08
+  category: troubleshooting
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: PowerFlex 525 displays fault F013 (Ground Fault) immediately after startup.
+    What must be checked and what is the safety risk?
+  turns: []
+  expected:
+    key_points:
+    - F013 indicates a current path to earth ground has been detected at one or more
+      drive output terminals
+    - Technician must inspect motor winding insulation and output cable insulation
+      for damage or moisture
+    - Ground faults present an electric shock hazard to personnel; LOTO and de-energization
+      recommended before inspection
+    - Check wiring between drive output terminals (T1, T2, T3) and motor leads for
+      damaged insulation or loose connections
+    wrong_if:
+    - Recommends operating the drive with a ground fault present to 'warm up the motor'
+    - States F013 can be safely ignored if the drive is 480V three-phase only
+    - Claims ground faults only occur in wet environments, not in dry industrial settings
+    - Suggests immediately replacing the motor without measuring the actual insulation
+      resistance
+- id: tech-09
+  category: troubleshooting
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: Motor accelerates to 50% speed and then stops under load. Drive displays
+    fault F006. What does this mean and what is the most likely cause?
+  turns: []
+  expected:
+    key_points:
+    - 'F006 = Motor Stalled fault: drive attempted to accelerate motor but could not
+      reach commanded speed'
+    - F006 indicates stall condition (inability to move despite command and acceleration
+      attempt)
+    - Check that Acceleration Time parameter is sufficient for the motor load (increase
+      if needed)
+    - Verify load is not exceeding motor torque capability; mechanical binding or
+      excessive friction on startup
+    wrong_if:
+    - Confuses F006 (stalled) with F007 (overload); F006 means unable to move, F007
+      means current exceeded
+    - Claims F006 requires immediate motor winding test without checking acceleration
+      ramp settings
+    - States increasing motor nameplate FLA is the primary fix for F006
+    - Suggests the problem is always a failed contactor, not a mechanical load issue
+- id: tech-10
+  category: troubleshooting
+  mode: general
+  question: A technician reports that every time the drive is powered up, the motor
+    jerks before settling to a steady speed. No fault code appears. What should be
+    investigated?
+  turns: []
+  expected:
+    key_points:
+    - The jerking indicates a rapid change in acceleration or current draw during
+      initialization
+    - Soft-start ramp time parameter may be set too short (high acceleration jerk)
+    - DC bus may be unstable at power-on; check input line voltage stability and any
+      inrush limiting components
+    - Motor mechanical connection may be loose or have slack in the coupling
+    wrong_if:
+    - States that jerking is normal on every startup and requires no investigation
+    - Recommends immediately replacing the drive without checking acceleration time
+      settings
+    - Assumes the motor winding is shorted without evidence of electrical fault
+    - Claims that reducing run command frequency will eliminate mechanical jerk
+- id: tech-11
+  category: manual_grounded
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: What is the correct procedure to manually reset a PowerFlex 525 fault,
+    and which parameter controls automatic reset behavior?
+  turns: []
+  expected:
+    key_points:
+    - 'Manual fault reset on PowerFlex 525: press Esc key to acknowledge the fault
+      display'
+    - After addressing the root cause, initiate restart by pressing the Run button
+      or cycling drive power
+    - Automatic fault reset behavior is controlled by A541 (Auto Restart Tries) and
+      A542 (Auto Restart Delay) parameters
+    - 'To manually clear a fault from memory: Set A551 (Fault Clear) to ''1'' Reset
+      Fault to acknowledge and prepare for restart'
+    wrong_if:
+    - States that pressing the Run button automatically resets any fault without addressing
+      root cause
+    - Claims A551 is used only for clearing communication errors, not general faults
+    - Recommends cycling input power as the primary fault reset method before attempting
+      manual clear via Esc key
+    - Confuses reset procedures between PowerFlex 40 and PowerFlex 525 parameter numbers
+      and sequences
+    must_cite: true
+    cite_family: Allen-Bradley PowerFlex 525
+- id: tech-12
+  category: manual_grounded
+  mode: grounded
+  must_cite: true
+  cite_family: Automation Direct GS10
+  question: Describe the default factory reset procedure for the GS10 drive and what
+    parameter controls this.
+  turns: []
+  expected:
+    key_points:
+    - Default parameters are reset by setting P053 (Reset Defaults) to value '2' 'Factory
+      Reset'
+    - After factory reset, all user parameters return to original defaults from the
+      factory
+    - The drive must be power-cycled to apply the factory reset completely
+    - GS10 keypad will require re-entry of basic parameters after factory reset (Speed
+      Reference, Control Source, etc.)
+    wrong_if:
+    - States that holding the Esc key for 10 seconds performs a factory reset
+    - Claims factory reset clears stored fault history but retains custom parameter
+      values
+    - Recommends factory reset as the first troubleshooting step before checking control
+      wiring
+    - Confuses parameter P053 with P051 or P052 (which are backfill or recovery functions)
+- id: tech-13
+  category: manual_grounded
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: What does fault code F048 (Params Defaulted) indicate on a PowerFlex 525,
+    and what is the required corrective action?
+  turns: []
+  expected:
+    key_points:
+    - F048 indicates the drive was commanded to write default values to EEPROM but
+      the operation failed
+    - This is a Type 1 (auto-resettable) fault that can clear if the condition is
+      no longer present
+    - 'Corrective action: clear the fault by cycling power to the drive or setting
+      A551 (Fault Clear) to ''1'' ''Reset Fault'''
+    - Program the drive parameters as needed after the fault is cleared
+    wrong_if:
+    - Confuses F048 with F100 or F101 (parameter checksum or storage errors)
+    - States that F048 requires replacing the drive control module
+    - Claims F048 means the drive EEPROM is permanently corrupted and cannot store
+      parameters
+    - Recommends operating the drive continuously to 'test' if it clears F048 without
+      confirming root cause
+- id: tech-14
+  category: manual_grounded
+  mode: grounded
+  must_cite: true
+  cite_family: Allen-Bradley PowerFlex 525
+  question: Explain the difference between Type 1 and Type 2 faults on a PowerFlex
+    525 and provide an example of each.
+  turns: []
+  expected:
+    key_points:
+    - 'Type 1 (Auto-Reset/Run) faults can be automatically reset if the fault condition
+      clears; example: F002 Auxiliary Input'
+    - 'Type 2 (Non-Resettable) faults require drive or motor repair or wiring correction
+      before the fault can be cleared; example: F006 Motor Stalled, F070 Power Unit
+      failure'
+    - Type 1 faults show in the fault log but may not halt operation if auto-reset
+      is enabled
+    - Type 2 faults always halt the drive and require manual intervention to clear
+    wrong_if:
+    - States all PowerFlex 525 faults are Type 1 and can auto-reset within 30 seconds
+    - Claims Type 2 faults only occur after the 100th power cycle
+    - Confuses fault type with fault severity; a Type 1 fault may still indicate serious
+      damage
+    - Recommends ignoring any Type 1 fault as merely informational
+- id: tech-15
+  category: manual_grounded
+  mode: grounded
+  must_cite: true
+  cite_family: Automation Direct GS10
+  question: What are the three main methods to clear a fault on the GS10 drive, and
+    which method is the safest in a production environment?
+  turns: []
+  expected:
+    key_points:
+    - 'Method 1: Press the Stop button on the keypad or set control mode to Manual,
+      then address the fault condition and restart'
+    - 'Method 2: Cycle the drive power completely OFF then back ON after confirming
+      the fault condition has been corrected and load is secured'
+    - 'Method 3: Use a digital input terminal (e.g., terminal block inputs used for
+      fault clear command via drive configuration) to signal fault clear after root
+      cause is addressed'
+    - The safest method in production is Method 2 (power cycle) after confirming the
+      fault condition has been corrected and the motor load is secured
+    wrong_if:
+    - States that only the keypad method is safe; all three are valid when used correctly
+      in appropriate contexts
+    - Recommends power-cycling the drive immediately during active motor operation
+      to clear a fault
+    - Claims that digital input fault clear commands bypass the need to address root
+      causes before clearing
+    - Suggests any single button press will clear a fault within seconds without addressing
+      the underlying problem
+    must_cite: true
+    cite_family: Automation Direct GS10

@@ -19,6 +19,7 @@
  * unconfirmed/degraded, gray = unknown/absent, red = fault.
  */
 import type { AssetSelectionMethod, NotebookAssetBinding } from "../api/resources";
+import { notebookDisplayName } from "./resource-copy";
 
 export type AssetCardTone = "confirmed" | "unconfirmed" | "unresolvable" | "unbound";
 
@@ -110,7 +111,7 @@ export function resolvedAssetFromNotebook(nb: {
   return {
     state: "resolved",
     entityId: nb.asset.entityId,
-    name: nb.displayName,
+    name: notebookDisplayName(nb.displayName),
     selectedVia: nb.asset.selectedVia,
     confirmedAt: nb.asset.confirmedAt,
   };

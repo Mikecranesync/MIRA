@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **69** (12 dynamic) |
-| API routes | **179** (66 dynamic) |
+| Pages | **70** (12 dynamic) |
+| API routes | **185** (70 dynamic) |
 
-## Pages (69)
+## Pages (70)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -80,6 +80,7 @@
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
+| `/v3` | static | `v3/page.tsx` |
 | `/visual` | static | `(hub)/visual/page.tsx` |
 | `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |
@@ -87,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (179)
+## API routes (185)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -175,12 +176,15 @@
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
 | `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
+| `/api/equipment-notebooks/[id]/fixes` | dynamic | `api/equipment-notebooks/[id]/fixes/route.ts` |
 | `/api/equipment-notebooks/[id]/look` | dynamic | `api/equipment-notebooks/[id]/look/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
+| `/api/equipment-notebooks/[id]/turns/[turnId]/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/[turnId]/diagnostics/route.ts` |
+| `/api/equipment-notebooks/[id]/turns/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/diagnostics/route.ts` |
 | `/api/equipment-notebooks/recognize-nameplate` | static | `api/equipment-notebooks/recognize-nameplate/route.ts` |
 | `/api/events` | static | `api/events/route.ts` |
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
@@ -191,6 +195,7 @@
 | `/api/files/[fileId]/links/[linkId]` | dynamic | `api/files/[fileId]/links/[linkId]/route.ts` |
 | `/api/files/[fileId]/relocate` | dynamic | `api/files/[fileId]/relocate/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/hub/ask` | static | `api/hub/ask/route.ts` |
 | `/api/hub/status` | static | `api/hub/status/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
 | `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
@@ -228,6 +233,7 @@
 | `/api/namespace/node/[id]/files` | dynamic | `api/namespace/node/[id]/files/route.ts` |
 | `/api/namespace/path` | static | `api/namespace/path/route.ts` |
 | `/api/namespace/tree` | static | `api/namespace/tree/route.ts` |
+| `/api/observability/coverage` | static | `api/observability/coverage/route.ts` |
 | `/api/picker/dropbox/key` | static | `api/picker/dropbox/key/route.ts` |
 | `/api/picker/google/token` | static | `api/picker/google/token/route.ts` |
 | `/api/pm-schedules` | static | `api/pm-schedules/route.ts` |

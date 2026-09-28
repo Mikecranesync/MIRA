@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-20",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Siemens 3RU2 overload relay, AC induction motor",
+    "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load",
+        "If motor is cold and load is normal, increase overload trip point to ~12A or verify that 3RU2 time-delay curve is appropriate for the motor"
+      ],
+      "wrong_if": [
+        "Assumes the motor is overloaded without checking startup conditions",
+        "Recommends replacing the motor before checking overload settings",
+        "Ignores the difference between FLA and inrush current"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+      "answer": "The most common reason the 3RU2 trips on a cold start is that the overload is set too close to the motor\u2019s full\u2011load current, so the motor\u2019s normal in\u2011rush (locked\u2011rotor) current exceeds the relay\u2019s trip threshold.\n\n**Quick safety\u2011first checklist**\n\n1. **Verify the overload setting** \u2013 ensure the dial or digital setting is truly at 10\u202fA (or the nearest standard setting above 10\u202fA). If the relay is calibrated in percent of full\u2011load current, 10\u202fA may correspond to only ~125\u202f% of the motor\u2019s FLA, which is often insufficient for start\u2011up.  \n2. **Confirm motor starting method** \u2013 is the motor being started directly across the line, or through a soft\u2011starter/VFD? Direct\u2011on\u2011line starts can produce 5\u20117\u202f\u00d7\u202fFLA for a few cycles, easily tripping a 10\u202fA overload.  \n3. **Check the motor\u2019s actual FLA** \u2013 the nameplate says 8\u202fA, but verify with a clamp\u2011meter under load; some motors run a few amps higher than printed.  \n4. **Inspect wiring and connections** \u2013 loose or undersized conductors can cause voltage drop, increasing current draw during start.  \n5. **Measure the start\u2011up current** \u2013 with a proper current probe, capture the peak current on the first start; compare it to the overload\u2019s instantaneous trip setting (usually listed in the relay\u2019s manual).  \n\n**Diagnostic question**: Are you using a direct\u2011on\u2011line starter, or is the motor fed through a soft\u2011starter or VFD? Your answer will determine whether the overload setting or the starting method needs adjustment.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 2.193540096282959,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-09-13T06:36:00.141124+00:00"
+}

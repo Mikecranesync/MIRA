@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 80,
+      "missing_points": [
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers acceleration and coupling but omits DC\u2011bus stability point."
+    },
+    "grounding": {
+      "score": null,
+      "note": "General guidance, no specific source grounding required."
+    },
+    "diagnostic": {
+      "score": 70,
+      "note": "Provides a prioritized checklist but still lists multiple possible causes rather than a single discriminating test."
+    },
+    "actionability": {
+      "score": 85,
+      "note": "Clear step\u2011by\u2011step actions with what to check, where, and expected outcome."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Confident recommendations with limited hedging."
+    },
+    "context": {
+      "score": null,
+      "note": "Context not applicable."
+    }
+  },
+  "case_score": 78.8
+}

@@ -139,23 +139,73 @@ def _expand(operand: str, env: dict, home: str) -> Optional[str]:
     return _VAR_RE.sub(repl, operand)
 
 
+#: MSYS/Cygwin drive prefixes, as Git Bash spells them. `/c/x` and
+#: `/cygdrive/c/x` both mean `C:\x` to the `rm` that actually runs.
+_MSYS_DRIVE_RE = re.compile(r"^/(?:cygdrive/)?([A-Za-z])(?:/(.*))?$")
+
+
+def _decode_msys_drive(path: str) -> str:
+    """Rewrite a Git Bash/MSYS drive path to its Windows form. Windows only.
+
+    `os.path.realpath` does not know this spelling: it reads the leading "/" as
+    "root of the current drive" and `c` as an ordinary directory, so
+    `/c/Users/x` resolved to `C:\\c\\Users\\x` — a path that does not exist.
+    The guard then compared that phantom against the repo root, correctly found
+    no match, and ALLOWED, while Git Bash's `rm` decoded `/c/` to `C:\\` and
+    deleted the real thing. Fail-open on the one guard whose job is to fail
+    closed (#3827).
+
+    `pwd` returns this form under Git Bash, so `rm -rf $(pwd)` at the repo root
+    is the live case, not a hypothetical.
+
+    Only the single-letter drive form is translated, so ordinary POSIX paths
+    (`/tmp/scratch`, `/usr/lib`) are untouched. Gated on Windows: on Linux
+    `/c/foo` is a legitimate absolute path and must keep resolving as one.
+    """
+    if os.name != "nt":
+        return path
+    match = _MSYS_DRIVE_RE.match(path.replace("\\", "/"))
+    if not match:
+        return path
+    drive, rest = match.group(1), match.group(2) or ""
+    return "{}:/{}".format(drive.upper(), rest)
+
+
 def _resolve(path: str, cwd: str) -> str:
     """Absolute, normalized, symlink-resolved path (read-only; never executes)."""
+    path = _decode_msys_drive(path)
     if not os.path.isabs(path):
-        path = os.path.join(cwd, path)
+        path = os.path.join(_decode_msys_drive(cwd), path)
     return os.path.realpath(path)
+
+
+def _norm(p: str) -> str:
+    """Separator- and case-normalized path for comparison ONLY.
+
+    `os.path.realpath` returns native separators, so on Windows every path here
+    is backslash-delimited. The containment test below used a hardcoded "/",
+    which meant it never matched on Windows and the guard silently allowed
+    `rm -rf /`, `rm -rf $HOME` and `rm -rf <repo root>` — fail-OPEN on a safety
+    floor. Windows paths are also case-insensitive, so compare case-folded there.
+    """
+    p = p.replace("\\", "/")
+    return p.lower() if os.name == "nt" else p
 
 
 def _is_ancestor_or_equal(a: str, b: str) -> bool:
     """True if `a` is `b` or an ancestor directory of `b`."""
-    a = a.rstrip("/") or "/"
-    b = b.rstrip("/") or "/"
+    a = _norm(a).rstrip("/") or "/"
+    b = _norm(b).rstrip("/") or "/"
     return a == b or b.startswith(a + "/")
 
 
 def _danger(p: str, home: str, repo_root: str) -> Optional[str]:
-    if p == "/" or p == "//":
-        return "the root filesystem '/'"
+    pn = _norm(p)
+    # A bare drive root ("c:/") is the Windows equivalent of "/" — both name an
+    # entire filesystem. `rm -rf /` under Git Bash resolves to the MSYS install
+    # root, which is equally catastrophic.
+    if pn in ("/", "//") or re.fullmatch(r"[A-Za-z]:/?", pn):
+        return "the root filesystem ({})".format(p)
     if home:
         home_r = os.path.realpath(home)
         if _is_ancestor_or_equal(p, home_r):
@@ -164,7 +214,7 @@ def _danger(p: str, home: str, repo_root: str) -> Optional[str]:
         repo_r = os.path.realpath(repo_root)
         if _is_ancestor_or_equal(p, repo_r):
             return "the repository root ({})".format(repo_r)
-    if os.path.basename(p.rstrip("/")) == ".git":
+    if os.path.basename(pn.rstrip("/")) == ".git":
         return "a .git admin directory ({})".format(p)
     return None
 

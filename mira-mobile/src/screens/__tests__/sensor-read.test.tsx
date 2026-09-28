@@ -21,7 +21,14 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
-    get: vi.fn(async () => ({ value: null })),
+    // These suites pin the CLASSIC chat surface, which still ships behind
+    // More → "Chat style". ChatV2 is the default, so the preference is
+    // returned explicitly here rather than relied upon — the ChatV2 contracts
+    // are pinned separately in src/screens/__tests__/chat-v2.test.tsx and
+    // src/chat-adapter/__tests__/.
+    get: vi.fn(async ({ key }: { key: string }) =>
+      key === "flm.chatui.v1" ? { value: "legacy" } : { value: null },
+    ),
     set: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
   },
@@ -205,5 +212,20 @@ describe("Sensor READ (S3)", () => {
     await waitFor(() => expect(recognizeComponentNameplate).toHaveBeenCalledWith("nb1", file));
     // The flow's own identity form appears — nothing re-implemented here.
     await screen.findByRole("button", { name: "Find the manual for this component" });
+  });
+
+  it("can mount directly into the existing QR scanner for a shell Scan action", async () => {
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={{ current: null }}
+        onExit={() => {}}
+        onOpenNotebook={() => {}}
+        initialSensorStart="read-scan"
+      />,
+    );
+
+    expect(await screen.findByRole("dialog", { name: "Scan FactoryLM QR" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "READ" })).toBeTruthy();
   });
 });

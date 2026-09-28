@@ -1,0 +1,50 @@
+{
+  "frozen_at": "2026-09-05T04:32:00+00:00",
+  "license_class": "public-eval-only",
+  "lineage_key": "mitsubishi/fx5u/public-forum",
+  "question": {
+    "answerability_score": 72,
+    "dedupe_hash": "2eace69e3ccc4857333e4b3404b321ae4a3abf548271ff10ea656daeceee6ad6",
+    "discovered_at": null,
+    "equipment_type": "PLC",
+    "error_code": "",
+    "external_post_id": null,
+    "firmware_or_revision": "",
+    "intent_tags": [
+      "programming",
+      "parameter",
+      "protocol"
+    ],
+    "lead_score": 70,
+    "license_class": "public-eval-only",
+    "lineage_key": "mitsubishi/fx5u/public-forum",
+    "manufacturer": "Mitsubishi",
+    "model": "FX5U",
+    "normalized_question": "How do I connect a Mitsubishi FX5U PLC to a Baykon BX11-EN weighing indicator over Modbus/TCP? Which registers hold the weight value, and what do I need to get right about data format?",
+    "posted_at": null,
+    "product_family": "MELSEC iQ-F",
+    "protocol": "Modbus/TCP",
+    "public_author_handle": null,
+    "question_id": "FIELD-SEED-004",
+    "raw_text": null,
+    "rights": {
+      "cross_tenant_reuse_allowed": false,
+      "derivatives_retained": false,
+      "evaluation_allowed": true,
+      "public_export_allowed": false,
+      "rights_resolved": true,
+      "training_allowed": false
+    },
+    "safety_class": "none",
+    "source_platform": "public-forum",
+    "source_url": null,
+    "split_assignment": "fresh",
+    "symptom": "integration \u2014 reading weight registers"
+  },
+  "question_id": "FIELD-SEED-004",
+  "safety_class": "none",
+  "snapshot_hash": "a0ddc11aaa8f5e2ebabd2d548843346b3137bb9a95dc7ccd636b41febb11eb49",
+  "split_assignment": "fresh",
+  "stage": "answer_radar.question_freeze",
+  "version": "v1"
+}

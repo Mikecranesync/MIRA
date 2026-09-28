@@ -1,0 +1,26 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "grader_role": "adversary",
+  "correctness": 26,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 5,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "overconfident_answer",
+  "factual_errors": [
+    {
+      "claim": "Firmware-level bug in PLX32 causes Modbus server thread hang after a specific error condition",
+      "why_wrong": "Ground truth identifies four root causes (connection pool exhaustion, network idle timeout, TCP keep-alive, firewall/NAT) \u2014 no mention of firmware-level bugs. MIRA elevates this to reason #3, equal weight with real causes, misprioritizing technician diagnosis effort.",
+      "severity": "major"
+    },
+    {
+      "claim": "Excessive traffic or malformed frames can trigger gateway's error-state and stop responding to persistent connections",
+      "why_wrong": "Ground truth root cause is connection pool exhaustion and network idle timeouts, not error states triggered by malformed frames. MIRA conflates error-handling with resource exhaustion, mischaracterizing the failure mechanism.",
+      "severity": "major"
+    }
+  ],
+  "notes": "MIRA identifies legitimate secondary causes (keep-alive/timeout mismatch, network hardware) and provides reasonable diagnostic steps, but **completely misses the primary root cause: Connection Table Exhaustion** (4\u20138 simultaneous connection limit on PLX32; fresh connections per transaction fill the pool; TCP RST responses; cyclical recovery via 60\u2013120s idle timeout). The ground truth explains the key diagnostic signal: ModScan succeeds because it maintains persistent point-to-point connections, avoiding gateway pooling exhaustion and mid-network Layer 3 timeouts. MIRA presents 5 equal hypotheses without ranking likelihood or explaining the connection-pool mechanism. Zero citations to authoritative sources (FlowFuse, Industrial Monitor Direct, ProSoft manual, control.com forum). No mention of specific technical numbers grounded in field experience: ProSoft connection limit, gateway idle timeout, Layer 3 device timeout, recommended keep-alive config, or Yokogawa CENTUM error code A3B0. Actionability is reduced because the answer fails to guide the technician toward the most probable root cause. Total score 62/100 fails the 85-point threshold and the 34-point correctness gate.\""
+}

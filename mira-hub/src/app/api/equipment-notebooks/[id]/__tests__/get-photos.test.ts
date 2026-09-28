@@ -14,6 +14,7 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
   listSources: vi.fn(),
   listTurns: vi.fn(),
+  listThreads: vi.fn(async () => []),
   updateNotebook: vi.fn(),
 }));
 vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn() }));

@@ -1,0 +1,145 @@
+MIRA FIELD BENCHMARK — 2026-09-27
+
+Discovered:                   6
+Unique after dedupe:          6
+Qualified maintenance:        6
+Evaluated today:              6
+
+Verified correct:             0
+  of which abstentions:       0
+  of which refusals:          0
+Incorrect:                    3
+Unsafe answers:               0
+Ungraded:                     0
+
+UNS-gate turns:               3   (excluded from the denominator)
+Engine errors:                0   (excluded from the denominator)
+
+Scored denominator:           3
+Correct-answer rate:       0.0%
+VCAD:                         0
+
+Citation coverage:         0.0%
+Median answer time:        6138 ms
+
+TOP FAILURES
+   1x  incomplete_diagnosis_unsupported_intermediate_step
+   1x  unnecessary_clarification
+   1x  incomplete_answer
+
+KNOWLEDGE TO ACQUIRE
+  - Festo SPC-100-P-F — 0 retrieved chunks
+  - Mitsubishi FX5U — 0 retrieved chunks
+
+PER-QUESTION
+[
+  {
+    "seed_id": "FIELD-SEED-001",
+    "status": "answered",
+    "chunks": 2,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      74,
+      75
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "incomplete_diagnosis_unsupported_intermediate_step",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "total 74 < 85",
+      "correctness 28 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-002",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      32,
+      40
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "unnecessary_clarification",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "total 32 < 85",
+      "correctness 5 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-003",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      46,
+      80
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "correct_refusal_no_diagnosis_inconsistent_gate_note",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-004",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      48,
+      37
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "incomplete_answer",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "critical unsupported asset-specific claim",
+      "total 37 < 85",
+      "correctness 10 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-005",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      24,
+      24
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "hallucinated_citation_wrong_domain_misrouted",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-006",
+    "status": "uns_gate",
+    "chunks": 3,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      54,
+      64
+    ],
+    "outcome": "uns_gate",
+    "verified_correct": false,
+    "failure_class": "hallucinated_citation_weak_refusal",
+    "reasons": [
+      "engine asked for UNS/asset confirmation before troubleshooting (.claude/rules/uns-confirmation-gate.md) \u2014 a required chat-surface behaviour, reported separately from correctness"
+    ]
+  }
+]

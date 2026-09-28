@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-02",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 55,
+      "missing_points": [
+        "Motor nameplate FLA may exceed drive current rating, causing startup current limit",
+        "Mechanical load binding or jam prevents acceleration"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers control signal and interlock issues but omits current rating and mechanical load considerations."
+    },
+    "grounding": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable"
+    },
+    "actionability": {
+      "score": 80,
+      "note": "Provides clear, step\u2011by\u2011step checks and a diagnostic question."
+    },
+    "uncertainty": {
+      "score": 80,
+      "note": "Answer is presented confidently with specific actions."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable"
+    }
+  },
+  "case_score": 67.5
+}

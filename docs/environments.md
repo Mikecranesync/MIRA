@@ -4,7 +4,7 @@
 
 This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
 
-> **Status note (last refreshed 2026-06-15):** Staging is far more built than this doc long claimed. The CI gate (Doppler `factorylm/stg`, NeonDB staging branch, `staging-gate.yml`) has run on every PR since 2026-05-18. **And a full always-on staging stack now runs on the VPS** — compose project `mira-staging` from `/opt/mira-staging/docker-compose.staging-vps.yml`, all services healthy on offset ports (`stg-mira-hub` 4101, pipeline 4099, web 4200, mcp 4000/4001, atlas-api 4088, atlas-frontend 4100), pointed at the staging Neon branch (`ep-polished-hall-ahcqtcxe-pooler`, NOT prod) with its own Telegram bot `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`). Deploy via `.github/workflows/deploy-staging.yml` (push to `staging`/`release/*` or manual dispatch). **Both `docker-compose.staging.yml` (local-dev) and `docker-compose.staging-vps.yml` (the deployed one) exist** — Gap-1 and Gap-3 are CLOSED (see below). The one real gap was **human access**: the staging hub's `NEXTAUTH_URL` pointed at a Tailscale http IP, so browser/Google login broke. Fix in progress: `stg.factorylm.com` HTTPS subdomain — see `docs/plans/2026-06-15-staging-usable-subdomain.md`.
+> **Status note (refreshed 2026-09-07):** The full staging stack is defined by `/opt/mira-staging/docker-compose.staging-vps.yml`, uses offset `stg-*` services and the staging Neon branch, and has its own Telegram bot token. Its deploy contract is now manual and exact-current-main only: `.github/workflows/deploy-staging.yml` accepts `target_ref=refs/heads/main` plus the current 40-character `target_sha`, then revalidates both before protected credentials are exposed. Push-triggered and feature-ref deploys are retired. The workflow remains on operational HOLD until the protected `staging-deploy` environment, scoped non-root user, and dedicated SSH key are provisioned. The HTTPS/login gap remains tracked in `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
 ---
 
@@ -20,7 +20,7 @@ The three environments below are not aspirational — they are how every code ch
 
 | | **DEV** | **STAGING** | **PRODUCTION** |
 |---|---|---|---|
-| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (`165.245.138.91`) |
+| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (OVH `40.160.141.61`) |
 | **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) · **`docker-compose.staging-vps.yml`** (the deployed VPS stack, project `mira-staging`) | `docker-compose.saas.yml` |
 | **Doppler config** | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
 | **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) — `br-small-term-ahtkz61d` | main branch — `br-lively-bread-ahoa86se` |
@@ -28,14 +28,14 @@ The three environments below are not aspirational — they are how every code ch
 | **Purpose** | Write code, run unit/eval tests, iterate fast | Test against real-shape data; final gate before prod | Customer surface |
 | **Safe to break** | YES | YES (but must pass gate before promotion) | **NEVER** |
 | **Gate to enter** | none | local tests pass | staging gate passes (see below) |
-| **Who can deploy** | anyone | merge to main | `deploy-vps.yml` workflow (gated on `smoke-test.yml`) |
+| **Who can deploy** | anyone | maintainer through protected exact-main dispatch | `deploy-vps.yml` workflow (gated on `smoke-test.yml`) |
 
 ### Existing infrastructure (what's wired today)
 
 - **prod-guard** — `tools/hooks/prod-guard.sh` is registered as a `PreToolUse(Bash)` hook in `.claude/settings.json`. It blocks SSH to `*.factorylm.com` / `factorylm-prod`, `docker restart|stop|down|kill` of prod services, `nginx -s reload`, `systemctl restart|stop|reload mira-*|nginx|atlas-*`, `kubectl apply|delete|rollout`, and prod-targeted `scp`/`rsync`. Override: `MIRA_ALLOW_PROD=1` (human-only, per-shell).
 - **smoke test** — `.github/workflows/smoke-test.yml` runs on PR and on push to main. Pings `factorylm.com` + `app.factorylm.com`. Path-filtered (skips docs/wiki/markdown/.claude).
 - **staging gate** — `.github/workflows/staging-gate.yml` (PR #1386, active since 2026-05-18). Instantiates Supervisor in-process against the NeonDB staging branch, runs the question bank in `tools/staging_questions.yaml` through the Groq→Cerebras→Gemini judge cascade, grades replies on the 5-dimension rubric in `docs/specs/mira-answer-quality-standard.md`. No path filter — runs on every PR to main. `deploy-vps.yml` refuses to deploy any commit whose Staging Gate run was not `completed:success`.
-- **deploy-vps** — `.github/workflows/deploy-vps.yml` listens for `workflow_run: ["Smoke Test"] conclusion: success` on `main` and additionally verifies the Staging Gate run on the PR head SHA before deploying. Hotfix bypass via `workflow_dispatch` with `skip_staging_gate=true` (honor-system; record the reason in a PR/issue). Concurrency-locked (no parallel deploys).
+- **deploy-vps** — `.github/workflows/deploy-vps.yml` accepts `workflow_dispatch` with `approved_rc_sha` (required, 40-hex commit), `approved_release_tag` (optional, resolves from sha), and `services` (optional). No bypass inputs. Verifies the Staging Gate ran on the PR head SHA and a deployed-staging receipt exists for the approved SHA before deploying. Concurrency-locked (no parallel deploys).
 - **NeonDB staging branch** — `br-small-term-ahtkz61d` ("staging"), zero-copy fork of `br-lively-bread-ahoa86se` ("production") under project `divine-heart-77277150`. Endpoint `ep-polished-hall-ahcqtcxe-pooler`. URL stored as `NEON_STG_DATABASE_URL` secret on the `staging` GitHub environment.
 - **apply-migrations** — `.github/workflows/apply-migrations.yml` runs Hub migrations against prod NeonDB. Manual dispatch, `dry-run` mode default, `production` environment gate for audit + approval.
 

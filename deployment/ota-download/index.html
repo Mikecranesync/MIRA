@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Install FactoryLM for Android</title>
+<style>
+  /* Bundled subset of docs/design/factorylm-tokens.css (ui-style rule 4: plain-HTML
+     surfaces carry their own copy; keep values identical to the canonical file). */
+  :root {
+    --fl-bg: #f3f4f6; --fl-surface: #ffffff; --fl-text: #111827; --fl-muted: #6b7280;
+    --fl-line: #e5e7eb; --fl-accent: #4f46e5; --fl-accent-hover: #4338ca;
+    --fl-accent-tint: #eef2ff; --fl-ok-ink: #15803d; --fl-ok-bg: #f0fdf4;
+    --fl-warn: #d97706; --fl-warn-bg: #fffbeb; --fl-fault: #dc2626; --fl-fault-bg: #fef2f2;
+    --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --fl-radius: 8px; --fl-radius-card: 16px; --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fl-bg); color: var(--fl-text); font-family: var(--fl-font); line-height: 1.5; }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+  .card { background: var(--fl-surface); border: 1px solid var(--fl-line); border-radius: var(--fl-radius-card); box-shadow: var(--fl-shadow); padding: 20px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--fl-muted); font-size: 14px; }
+  .btn { display: block; text-align: center; background: var(--fl-accent); color: #fff; text-decoration: none; font-weight: 600; font-size: 17px; padding: 14px 18px; border-radius: var(--fl-radius); min-height: 48px; }
+  .btn:hover { background: var(--fl-accent-hover); }
+  .btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; margin-top: 14px; }
+  .meta dt { color: var(--fl-muted); } .meta dd { margin: 0; word-break: break-all; }
+  ol { padding-left: 20px; margin: 0; } li { margin-bottom: 8px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--fl-bg); padding: 1px 5px; border-radius: 4px; }
+  code.fp { display: block; padding: 8px 10px; word-break: break-all; line-height: 1.6; }
+  .note { background: var(--fl-warn-bg); border-left: 3px solid var(--fl-warn); padding: 10px 12px; border-radius: var(--fl-radius); font-size: 14px; }
+  .ok { background: var(--fl-ok-bg); color: var(--fl-ok-ink); padding: 10px 12px; border-radius: var(--fl-radius); font-size: 14px; }
+  .err { background: var(--fl-fault-bg); color: var(--fl-fault); padding: 10px 12px; border-radius: var(--fl-radius); font-size: 14px; }
+  footer { font-size: 13px; color: var(--fl-muted); text-align: center; }
+  footer a { color: var(--fl-muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Install FactoryLM for Android</h1>
+    <p class="muted">MIRA, the grounded maintenance assistant, for plant technicians. Direct install, no app store account needed.</p>
+    <a class="btn" id="dl" href="latest.apk" aria-disabled="true">Loading latest build…</a>
+    <dl class="meta">
+      <dt>Version</dt><dd id="v">—</dd>
+      <dt>Size</dt><dd id="s">—</dd>
+      <dt>Built</dt><dd id="b">—</dd>
+      <dt>SHA-256</dt><dd id="h">—</dd>
+    </dl>
+    <p class="err" id="err" hidden>Couldn't read the release info. The download button still points at the newest build.</p>
+  </div>
+
+  <div class="card">
+    <h2>Install in four taps</h2>
+    <ol>
+      <li>Tap <strong>Download</strong> above. Chrome may ask whether to keep the file. Keep it.</li>
+      <li>Open the downloaded file from the notification, or from <strong>Files → Downloads</strong>.</li>
+      <li>If Android says the phone isn't allowed to install from this source, tap <strong>Settings</strong>, switch it on for Chrome (or Files), then go back.</li>
+      <li>Tap <strong>Install</strong>, then <strong>Open</strong>. Sign in with your FactoryLM account.</li>
+    </ol>
+    <p class="note" style="margin-top:12px">Google Play Protect may show a “scan app” prompt the first time because this build isn't from the Play Store. Choose <strong>Scan</strong> or <strong>Install anyway</strong>; the app is signed by FactoryLM (fingerprint below).</p>
+  </div>
+
+  <div class="card">
+    <h2>Already installed?</h2>
+    <p class="muted">Screens and fixes arrive automatically inside the app. You only need this page again when a new version number is listed above; installing it over the old one keeps your sign-in and data.</p>
+  </div>
+
+  <div class="card">
+    <h2>Verify the signer (optional)</h2>
+    <p class="muted">Every FactoryLM build is signed with the same certificate. Its SHA-256 fingerprint is:</p>
+    <code class="fp">23:95:B9:60:50:C5:10:A5:C7:87:46:5B:83:25:6F:38:1B:1F:F5:E4:83:3D:2F:A8:8D:B7:35:79:29:3F:92:A9</code>
+  </div>
+
+  <footer>
+    <a href="https://factorylm.com/privacy">Privacy policy</a> · <a href="https://factorylm.com">factorylm.com</a>
+  </footer>
+</main>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  try {
+    const r = await fetch("latest.json", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const m = await r.json();
+    $("v").textContent = `${m.versionName} (build ${m.versionCode})`;
+    $("s").textContent = `${(m.sizeBytes / 1048576).toFixed(1)} MB`;
+    $("b").textContent = new Date(m.builtAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    $("h").textContent = m.sha256;
+    const a = $("dl");
+    a.href = m.file;
+    a.setAttribute("download", m.file);
+    a.textContent = `Download FactoryLM ${m.versionName}`;
+    a.removeAttribute("aria-disabled");
+  } catch (e) {
+    $("err").hidden = false;
+    const a = $("dl");
+    a.textContent = "Download FactoryLM";
+    a.removeAttribute("aria-disabled");
+  }
+})();
+</script>
+</body>
+</html>
