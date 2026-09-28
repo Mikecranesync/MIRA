@@ -120,8 +120,13 @@ class OpenAIDirect:
         try:
             body = resp.json()
             usage = body["usage"]
-            tokens_in = int(usage["prompt_tokens"])
-            tokens_out = int(usage["completion_tokens"])
+            tokens_in = usage["prompt_tokens"]
+            tokens_out = usage["completion_tokens"]
+            # Only non-negative whole numbers are usage (#4092 post-cap r2 F2):
+            # a negative or fractional count would shrink recorded spend.
+            for n in (tokens_in, tokens_out):
+                if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+                    raise TypeError(f"invalid token count {n!r}")
             content = body["choices"][0]["message"]["content"] or ""
         except (ValueError, KeyError, IndexError, TypeError) as e:
             # A 200 we cannot parse (malformed JSON, missing or non-numeric

@@ -292,7 +292,7 @@ def test_written_grade_is_bound_to_the_answer(tmp_path: Path):
             PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
         )
     rec = json.loads((tmp_path / "grade-B-S1.json").read_text())
-    assert rec["answer_sha256"] == answer_sha256("a1", None, None)
+    assert rec["answer_sha256"] == answer_sha256("a1", None, None, "q1", None)
     assert rec["condition"] == "machine_selected"
 
 
@@ -326,6 +326,18 @@ def test_another_conditions_grade_is_never_overwritten(tmp_path: Path):
             }
         ).encode(),
         json.dumps({"usage": {"prompt_tokens": 1, "completion_tokens": 1}}).encode(),
+        json.dumps(
+            {
+                "choices": [{"message": {"content": "x"}}],
+                "usage": {"prompt_tokens": -500, "completion_tokens": 1},
+            }
+        ).encode(),
+        json.dumps(
+            {
+                "choices": [{"message": {"content": "x"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 2.9},
+            }
+        ).encode(),
     ],
 )
 def test_malformed_200_is_charged_and_stops(body):
@@ -337,3 +349,11 @@ def test_malformed_200_is_charged_and_stops(body):
         with pytest.raises(BudgetExceeded, match="unparseable"):
             c.complete(http, "s", "u", max_completion_tokens=4000)
     assert c.spent_usd >= 0.12
+
+
+def test_same_answer_to_a_different_question_or_search_is_a_different_answer():
+    from answer_radar.score import answer_sha256
+
+    base = answer_sha256("a", ["c"], ["d"], "q1", {"candidate_count": 6})
+    assert base != answer_sha256("a", ["c"], ["d"], "q2", {"candidate_count": 6})
+    assert base != answer_sha256("a", ["c"], ["d"], "q1", {"candidate_count": 0})

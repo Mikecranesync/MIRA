@@ -28,14 +28,27 @@ from answer_radar.schema import (
 )
 
 
-def answer_sha256(answer_text: str, citations=(), source_documents=()) -> str:
-    """The identity a grade is bound to: the exact answer AND the evidence shown
-    with it. A later run with the same text but different citations or sources
-    is a different answer (#4092 Codex post-cap F1)."""
+def answer_sha256(
+    answer_text: str,
+    citations=(),
+    source_documents=(),
+    question: str = "",
+    retrieval=None,
+) -> str:
+    """The identity a grade is bound to: the question, the retrieval context,
+    the exact answer, and the evidence shown with it. Change any of them and an
+    old grade no longer applies (#4092 Codex post-cap F1 and r2 F1)."""
     payload = json.dumps(
-        [answer_text, list(citations or []), list(source_documents or [])],
+        [
+            question or "",
+            retrieval if retrieval is not None else {},
+            answer_text,
+            list(citations or []),
+            list(source_documents or []),
+        ],
         ensure_ascii=False,
         separators=(",", ":"),
+        sort_keys=True,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -150,7 +163,13 @@ def score(batch_path: Path, grades_dir: Path) -> tuple[str, list[dict]]:
             total_answer_time_ms=e["total_answer_time_ms"],
         )
         condition = (item.get("hub") or {}).get("condition")
-        answer_hash = answer_sha256(e["answer_text"], e.get("citations"), e.get("source_documents"))
+        answer_hash = answer_sha256(
+            e["answer_text"],
+            e.get("citations"),
+            e.get("source_documents"),
+            q.get("normalized_question") or "",
+            (item.get("hub") or {}).get("retrieval"),
+        )
         for gid, prefix in (("A", "grade-A-"), ("B", "grade-B-")):
             v = _verdict_from(grades_dir / f"{prefix}{sid}.json", gid, condition, answer_hash)
             if v:

@@ -227,6 +227,8 @@ def grade_packet(
                 entry.get("mira_answer") or "",
                 entry.get("citations"),
                 entry.get("source_documents"),
+                entry.get("question") or "",
+                entry.get("manual_search"),  # the packet's copy of hub.retrieval
             ),
             **grade,
         }
