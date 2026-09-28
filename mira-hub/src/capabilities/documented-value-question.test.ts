@@ -118,6 +118,12 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["Explain why the drive trips", "PowerFlex 525"],
     ["explain the wiring for the drive", "PowerFlex 525"],
     ["Explain the drive's wiring", "PowerFlex 525"],
+    // Codex #4069 pass 19: a symptom or condition INSIDE the meaning clause
+    // ends the pure code-meaning exception.
+    ["What does F005 on my drive when it trips mean?", "PowerFlex 525"],
+    ["what does F005 on my drive tripping mean", "PowerFlex 525"],
+    ["what does F005 while the conveyor is running mean", "GS10"],
+    ["what does F005 after the drive overheats mean", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
@@ -146,6 +152,8 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["What does F005 mean?", "PowerFlex 525"],
     ["What does F005 mean on my PowerFlex 525?", "PowerFlex 525"],
     ["What does fault E-12 mean on my TP700?", "TP700 Comfort"],
+    ["What does F005 on my PowerFlex 525 mean?", "PowerFlex 525"],
+    ["what does error code F005 mean", "PowerFlex 525"],
     // A pure code-meaning question stays with the E10 answer-floor rule (#4004).
     ["What does fault code ZX-9987 mean on my S7-1500?", "S7-1500"],
     ["what is the difference between a contactor and a relay", "GS10"],

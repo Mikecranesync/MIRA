@@ -120,6 +120,9 @@ function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
   return faultCodeTokens(clause).some((t) => !(model && model.includes(norm(t))));
 }
 
+// A condition or another clause folded into the "what does … mean" clause.
+const MEANING_CLAUSE_CONDITION = /\b(?:when|whenever|while|if|after|once|since|and|but|why|how)\b/i;
+
 // The whole question is "how does this/my <machine> work?" — the machine
 // itself, not a feature or procedure of it.
 const WHOLE_MACHINE_HOW_IT_WORKS =
@@ -179,6 +182,11 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
     return true;
   }
   if (CODE_MEANING.test(q) && askedCode && !PROCEDURE_ASK.test(q)) {
+    // Pass 19: a symptom or condition INSIDE the meaning clause ("what does
+    // F005 on my drive when it trips mean?") is not a pure code question either.
+    // The clause's own code vocabulary ("fault code", "error") is removed first.
+    const inner = (q.match(CODE_MEANING)?.[0] ?? "").replace(/\b(?:fault|error|alarm)s?\b/gi, " ");
+    if (SYMPTOM.test(inner) || MEANING_CLAUSE_CONDITION.test(inner)) return true;
     const rest = q.replace(CODE_MEANING, " ");
     // Mixed: the "mean" in the first clause must not read as the teaching
     // list's "what does X mean" — lean to declining (owner decision).
