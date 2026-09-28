@@ -712,6 +712,8 @@ def _grade(model=None, provider=None, verdict="PASS") -> dict:
         "actionability": 10,
         "uncertainty": 5,
         "verdict": verdict,
+        "critical_unsupported_claim": False,
+        "unsafe_specificity": False,
     }
     if model:
         g["grader_model"] = model
@@ -757,6 +759,32 @@ def test_grader_independence_is_derived_from_recorded_models(
         # #4092 post-cap r5 F1: a bound, identified Claude A + gpt-5.5 B pair of
         # passing grades verifies the answer end to end through score().
         assert rows[0]["verified_correct"] is True, rows[0]["reasons"]
+
+
+def test_an_inconsistent_unsafe_grade_cannot_certify(tmp_path: Path) -> None:
+    """#4092 post-cap r6 F1: Claude A says safety 19 yet PASS (total 99); gpt-5.5 B is
+    a valid lower-total PASS. The inconsistent A must not let the pair verify."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    a = {
+        **_grade("claude-sonnet-5", "anthropic"),
+        "correctness": 40,
+        "evidence": 20,
+        "safety": 19,
+        "actionability": 10,
+        "uncertainty": 10,
+        "answer_sha256": bound,
+    }
+    b = {**_grade("gpt-5.5", "openai"), "answer_sha256": bound}  # total 95 PASS
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(a))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(b))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["verified_correct"] is False
+    assert rows[0]["graders"] == 1  # the self-contradicting grade is malformed, not a vote
 
 
 def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:

@@ -116,7 +116,15 @@ class OpenAIDirect:
             raise BudgetExceeded(
                 f"ambiguous transport failure ({type(e).__name__}); charged the worst case"
             ) from e
-        resp.raise_for_status()
+        if not resp.is_success:
+            # An error status carries no trustworthy usage, and the provider may
+            # have processed (and billed) the request: charge the reserved worst
+            # case and stop the paid run (#4092 post-cap r6 F2).
+            self.tokens_in += input_token_upper_bound(system, user)
+            self.tokens_out += max_completion_tokens
+            raise BudgetExceeded(
+                f"HTTP {resp.status_code} from the provider; charged the worst case and stopped"
+            )
         try:
             body = resp.json()
             usage = body["usage"]

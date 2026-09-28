@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 from answer_radar.report import build_report
-from answer_radar.rubric import evaluate
+from answer_radar.rubric import check_grade, evaluate
 from answer_radar.schema import (
     AnswerStatus,
     EvaluationRecord,
@@ -91,6 +91,12 @@ def _verdict_from(
     if not all(k in raw for k in required):
         return None
     if not _bound_to(raw, condition, answer_hash):
+        return None
+    # The same score/flag/verdict rules every OpenAI grade passes, applied to
+    # every grade whoever wrote it (#4092 post-cap r6 F1).
+    try:
+        check_grade(raw)
+    except ValueError:
         return None
     return GraderVerdict(
         grader_id=grader_id,

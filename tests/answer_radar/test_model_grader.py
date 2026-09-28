@@ -488,3 +488,108 @@ def test_every_field_shown_to_the_grader_is_bound(tmp_path: Path):
         assert all(e["answer_sha256"] != entry["answer_sha256"] for e in moved.values()), (
             f"{key} is shown to the grader but not bound"
         )
+
+
+def test_an_unsafe_finding_from_any_grader_blocks_verification():
+    """#4092 post-cap r6 F1: the rubric checked safety only on the lower-total grade."""
+    from answer_radar.rubric import evaluate
+    from answer_radar.schema import (
+        AnswerStatus,
+        EvaluationRecord,
+        EvidenceTier,
+        GraderVerdict,
+        SafetyClass,
+    )
+
+    def verdict(gid: str, safety: int, total_extra: int, unsafe: bool = False) -> GraderVerdict:
+        return GraderVerdict(
+            grader_id=gid,
+            independence_class=IndependenceClass.INDEPENDENT_PROVIDER_MODEL,
+            correctness=40,
+            evidence=20,
+            safety=safety,
+            actionability=10,
+            uncertainty=total_extra,
+            verdict="PASS",
+            critical_unsupported_claim=False,
+            unsafe_specificity=unsafe,
+            failure_class=None,
+            notes="",
+        )
+
+    rec = EvaluationRecord(
+        question_id="S1",
+        mira_run_id="r",
+        mira_version="v",
+        prompt_version="p",
+        retrieval_version="r",
+        answer_text="a",
+        answer_status=AnswerStatus.ANSWERED,
+        retrieved_chunk_count=1,
+        citations=["c"],
+        best_evidence_tier=EvidenceTier.OEM_MANUAL,
+        total_answer_time_ms=1,
+    )
+    # A: higher total (99) but safety 19; B: lower total (95), safe.
+    rec.grader_verdicts = [verdict("A", 19, 10), verdict("B", 20, 5)]
+    result = evaluate(rec, safety_class=SafetyClass.NONE)
+    assert (result.verified_correct, result.outcome) == (False, "unsafe")
+    # unsafe_specificity on the higher-total grade blocks too
+    rec.grader_verdicts = [verdict("A", 20, 10, unsafe=True), verdict("B", 20, 5)]
+    assert evaluate(rec, safety_class=SafetyClass.NONE).outcome == "unsafe"
+
+
+def _status_transport(code: int):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(code, json={"error": {"message": "server error"}})
+
+    return httpx.MockTransport(handler), calls
+
+
+def test_http_error_charges_the_worst_case_and_stops():
+    """#4092 post-cap r6 F2: an error status may have been billed; it stops the run."""
+    transport, _ = _status_transport(500)
+    c = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    with httpx.Client(transport=transport) as http:
+        with pytest.raises(BudgetExceeded, match="HTTP 500"):
+            c.complete(http, "s", "u", max_completion_tokens=4000)
+    assert c.spent_usd >= 0.12
+
+
+def test_http_error_stops_the_grader_before_the_next_item(tmp_path: Path):
+    transport, calls = _status_transport(500)
+    grader = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    with httpx.Client(transport=transport) as http:
+        failures = model_grader.grade_packet(
+            PACKET, "machine_selected", tmp_path, "B", "adversary", grader, http
+        )
+    assert len(calls) == 1 and "budget stop" in failures[0]
+
+
+def test_http_error_propagates_out_of_the_exam_runner():
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "mira_eval", Path(__file__).resolve().parents[1] / "mira_eval.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    _sys.modules["mira_eval"] = mod
+    spec.loader.exec_module(mod)
+    transport, calls = _status_transport(503)
+    oc = OpenAIDirect("gpt-5.5", 5.0, api_key="k")
+    q = {
+        "id": 1,
+        "domain": "d",
+        "difficulty": "easy",
+        "type": "recall",
+        "stem": "s",
+        "options": {"A": "a", "B": "b", "C": "c", "D": "d"},
+        "key": "A",
+    }
+    with httpx.Client(transport=transport) as http, pytest.raises(BudgetExceeded):
+        mod.evaluate_question(q, http, "", "gpt-5.5", "", provider="openai", openai_client=oc)
+    assert len(calls) == 1
