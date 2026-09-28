@@ -79,7 +79,8 @@ class MiraStaging:
                 e.get("local_pdf") for e in (case.get("equal_context") or {}).get("excerpts", [])
             ]
             pdfs = [self._fixture(r) for r in refs if r]
-            if not refs or any(not r for r in refs) or any(not p.exists() for p in pdfs):
+            # r3 F4: a case with no declared sources is equal context as-is.
+            if any(not r for r in refs) or any(not p.exists() for p in pdfs):
                 return [
                     {
                         "case_id": case["id"],

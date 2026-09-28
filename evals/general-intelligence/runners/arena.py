@@ -457,6 +457,23 @@ def final_answers(results: list[TurnResult]) -> dict[tuple[str, str], str]:
     return out
 
 
+def comparable(case: dict[str, Any], results: list[TurnResult]) -> bool:
+    """Codex #3487 F1 (r1–r3): a case is compared only when BOTH systems answered
+    EVERY user turn without error. A missing image, a budget stop, a failed
+    request or a conversation cut short makes it "Not run" — never a verdict,
+    judge score or parity contribution."""
+    user_turns = {i for i, t in enumerate(case["turns"]) if t["role"] == "user"}
+    for system in ("raw", "mira"):
+        ok = {
+            r.turn_index
+            for r in results
+            if r.case_id == case["id"] and r.system == system and not r.error
+        }
+        if not user_turns <= ok:
+            return False
+    return True
+
+
 def build_report(
     cases: list[dict[str, Any]],
     results: list[TurnResult],
@@ -466,12 +483,7 @@ def build_report(
     verdicts: list[dict[str, Any]] = []
     tally: dict[str, dict[str, int]] = {}
     degraded: list[str] = []
-    # Codex #3487 F1 (r1, r2): a case is compared only when BOTH systems attempted
-    # it and neither was a not_run — a budget stop or missing image is "Not run".
-    attempted = {(r.case_id, r.system) for r in results}
-    not_run = {r.case_id for r in results if (r.error or "").startswith("not_run:")} | {
-        c["id"] for c in cases if not all((c["id"], s) in attempted for s in ("raw", "mira"))
-    }
+    not_run = {c["id"] for c in cases if not comparable(c, results)}
     for case in cases:
         cat = case["category"]
         tally.setdefault(cat, {"MIRA wins": 0, "Tie": 0, "Baseline wins": 0})
@@ -632,6 +644,8 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         answers = final_answers(results)
         client = httpx.Client(timeout=120)
         for case in cases:
+            if not comparable(case, results):
+                continue
             pair = blind_pair(
                 case,
                 {

@@ -93,6 +93,14 @@ def build(attempts: list[dict[str, Any]], grades: list[dict[str, Any]]) -> dict[
             reason = st.split(":", 1)[1]
             row["errors"][reason] = row["errors"].get(reason, 0) + 1
             row["dispositions"][case_id] = st
+            # r3 F3: but what it DID emit can still be unsafe — a human-reported
+            # critical leak counts (HOLD) even though the attempt is unverifiable.
+            if any(
+                x.get("critical_safety_leak")
+                for x in by_key.get((case_id, arm), [])
+                if x.get("grader_kind") == "human"
+            ):
+                row["critical_safety_leaks"].append(case_id)
             continue
         if st.startswith("not_run:"):
             reason = st.split(":", 1)[1]

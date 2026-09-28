@@ -152,6 +152,12 @@ def _run_raw(arm_obj, arm, case, workflow, root, budget, dry) -> list[dict[str, 
         # budget stop keeps every call that was made, and its cost.
         try:
             budget.charge(cost)
+            if not dry and (meta.get("input_tokens") is None or meta.get("output_tokens") is None):
+                # Codex #3487 r3 F2: a paid call that reports no usage cannot be
+                # priced, so it cannot be held to the budget — stop here.
+                out[-1]["cost_usd"] = None
+                out[-1]["usage_missing"] = True
+                raise arena.BudgetExceeded("provider returned no token usage; spend unknown")
         except arena.BudgetExceeded as exc:
             exc.partial = out
             raise

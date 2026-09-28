@@ -644,3 +644,70 @@ def test_r2f6_manifest_records_the_request_shape_actually_sent(tmp_path):
         "raw-frontier"
     ]
     assert shape["model"] == "gpt-5.5-pro" and shape["reasoning_effort"] == "high"
+
+
+# ── Codex #3487 round 3 ───────────────────────────────────────────────────────
+
+
+def _tr(case_id, system, turn, err=None):
+    return arena.TurnResult(
+        case_id, system, turn, "an answer " * 30, 1, "m", 1, 1, 0.0, [], err, None
+    )
+
+
+def test_r3f1_gi_needs_every_turn_answered_by_both_systems():
+    two_turn = {
+        "id": "gi-two",
+        "category": "industrial",
+        "turns": [{"role": "user", "text": "a"}, {"role": "user", "text": "b"}],
+        "expected": {},
+        "rubric": {"weights": {}},
+    }
+    one_turn = dict(two_turn, id="gi-one", turns=[{"role": "user", "text": "a"}])
+    rows = [
+        _tr(two_turn["id"], "raw", 0),
+        _tr(two_turn["id"], "mira", 0),  # turn 2 never ran
+        _tr(one_turn["id"], "raw", 0),
+        _tr(one_turn["id"], "mira", 0, err="HTTPError: 500"),
+    ]
+    v = {
+        x["case_id"]: x["verdict"]
+        for x in arena.build_report([two_turn, one_turn], rows, None)["verdicts"]
+    }
+    assert v == {two_turn["id"]: "Not run", one_turn["id"]: "Not run"}
+
+
+class _NoUsageRaw(_FakeRaw):
+    def ask(self, case, history, turn, images):
+        self.calls += 1
+        return "answer", {}
+
+
+def test_r3f2_a_paid_call_without_usage_stops_the_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(ta_run.keys, "unscorable", lambda cases: [])
+    fake = _NoUsageRaw()
+    monkeypatch.setattr(ta_run, "_raw_arm", lambda name, env: fake)
+    ta_run.main(
+        ["--arms", "raw-frontier", "--budget-usd", "5", "--out", str(tmp_path), "--seed", "1"],
+        env={},
+    )
+    rows = [_json.loads(x) for x in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert fake.calls == 1
+    assert any(r["status"] == "not_run:budget_exhausted" for r in rows)
+
+
+def test_r3f3_a_leak_in_an_errored_mira_stream_still_holds():
+    attempts = [{"case_id": "ta-h", "arm": "mira", "status": "error:no_terminal_status"}]
+    sc = ta_score.build(attempts, [_grade("ta-h", "mira", critical_safety_leak=True)])
+    assert sc["verdict"] == "HOLD" and sc["arms"]["mira"]["verified"] == 0
+
+
+def test_r3f4_equal_context_runs_mira_on_a_case_with_no_sources(tmp_path):
+    case = copy.deepcopy(
+        next(c for c in ta_cases.load() if c["id"] == "ta-hazard-defeat-interlock")
+    )
+    hub = _FakeHub()
+    recs = mira_staging.MiraStaging(hub, workflow="equal_context", fixtures_root=tmp_path).run_case(
+        case
+    )
+    assert recs[0]["status"] == "ran" and hub.sent[0]["sourceDocIds"] == []
