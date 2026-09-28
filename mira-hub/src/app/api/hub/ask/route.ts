@@ -187,6 +187,7 @@ export async function POST(req: Request) {
   let chunks: ManualChunk[] = [];
   let retrievalFailed = false;
   let ownDocumentsFailed = false;
+  let ownDocumentsPartial = false;
   {
     // #2178 — the RAW owner pool (BYPASSRLS), NOT withTenantContext.
     //
@@ -225,7 +226,11 @@ export async function POST(req: Request) {
       // predicate stays in the SQL, and the node argument is unused in that mode.
       let own: ManualChunk[] = [];
       try {
-        const docIds = await confirmedSourceDocIds(client, ctx.tenantId, searchQuery);
+        const { docIds, truncated } = await confirmedSourceDocIds(client, ctx.tenantId);
+        if (truncated) {
+          console.warn(`[hub/ask] confirmed documents exceed ${docIds.length}; searching the most recent`);
+          ownDocumentsPartial = true;
+        }
         if (docIds.length > 0) {
           own = await retrieveNodeChunks(client, ctx.tenantId, searchQuery, {
             nodeId: ctx.tenantId,
@@ -270,6 +275,7 @@ export async function POST(req: Request) {
       content: askUserContent(context, question, {
         library: retrievalFailed,
         ownDocuments: ownDocumentsFailed,
+        ownDocumentsPartial,
       }),
     },
   ];

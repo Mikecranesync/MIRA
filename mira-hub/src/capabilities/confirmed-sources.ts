@@ -1,14 +1,14 @@
 import type { PoolClient } from "pg";
-import { boundBm25Query, type ManualChunk } from "@/lib/manual-rag";
+import type { ManualChunk } from "@/lib/manual-rag";
 
-/** Cap on how many MATCHING confirmed documents one general ask searches —
- *  bounds the uuid[] parameter; candidates are already chosen by relevance. */
-export const CONFIRMED_SOURCE_LIMIT = 200;
+/** Bound on the admitted uuid[] parameter. It is a safety bound, not a
+ *  relevance filter: every confirmed document up to it is handed to
+ *  retrieveNodeChunks, which ranks and applies synonym expansion itself. */
+export const CONFIRMED_SOURCE_LIMIT = 5000;
 
 /**
  * The tenant's own documents a person has CONFIRMED as a source in any
- * notebook (`match_state IN ('user_confirmed','verified')`, not superseded)
- * that contain a match for this question.
+ * notebook (`match_state IN ('user_confirmed','verified')`, not superseded).
  *
  * Confirmation is the same trust signal validateChatSources uses for notebook
  * chat (#3437/#3468): retrieval admission for the tenant's private chunks,
@@ -16,38 +16,29 @@ export const CONFIRMED_SOURCE_LIMIT = 200;
  * admits what the tenant confirmed anywhere, ignoring one notebook's per-chat
  * `enabled_by_default` toggle (that narrows a chat, it does not revoke trust).
  *
- * Candidates are chosen by the question, not by an unordered page: only
- * documents whose own chunks match the OR-form of the query are returned,
- * newest confirmation first, so the cap bounds the uuid[] parameter without
- * hiding a relevant manual behind 200 irrelevant ones. Tenant-scoped on both
- * tables; the chunk probe is a pure-tenant read of the tenant's own rows.
+ * No question-based prefilter (review of #4087, round 2): choosing candidates
+ * here with the raw question dropped documents that retrieval's own synonym
+ * expansion would find ("slow down ramp" → "deceleration"), and any
+ * recency-ordered cap can drop the most relevant older manual. Retrieval ranks.
+ * The bound only protects the parameter; hitting it is reported, not silent.
  */
 export async function confirmedSourceDocIds(
   client: Pick<PoolClient, "query">,
   tenantId: string,
-  query: string,
-): Promise<string[]> {
-  const q = boundBm25Query(query.trim());
-  if (!q) return [];
+): Promise<{ docIds: string[]; truncated: boolean }> {
   const res = await client.query(
     `SELECT s.doc_id::text AS doc_id
        FROM equipment_notebook_sources s
       WHERE s.tenant_id = $1::uuid
         AND s.match_state IN ('user_confirmed', 'verified')
         AND s.superseded_at IS NULL
-        AND EXISTS (
-          SELECT 1 FROM knowledge_entries k
-           WHERE k.tenant_id = $1::uuid
-             AND k.doc_id = s.doc_id
-             AND k.ingest_route = 'v2'
-             AND k.content_tsv @@ to_tsquery('english',
-                   replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')))
       GROUP BY s.doc_id
       ORDER BY MAX(s.created_at) DESC
-      LIMIT ${CONFIRMED_SOURCE_LIMIT}`,
-    [tenantId, q],
+      LIMIT ${CONFIRMED_SOURCE_LIMIT + 1}`,
+    [tenantId],
   );
-  return res.rows.map((r: Record<string, unknown>) => String(r.doc_id));
+  const all = res.rows.map((r: Record<string, unknown>) => String(r.doc_id));
+  return { docIds: all.slice(0, CONFIRMED_SOURCE_LIMIT), truncated: all.length > CONFIRMED_SOURCE_LIMIT };
 }
 
 const chunkKey = (c: ManualChunk) => `${c.sourceUrl}|${c.sourcePage}|${c.content.slice(0, 120)}`;
@@ -74,11 +65,13 @@ export function preferOwnDocuments(
 export function askUserContent(
   context: string,
   question: string,
-  failed: { library: boolean; ownDocuments: boolean },
+  failed: { library: boolean; ownDocuments: boolean; ownDocumentsPartial?: boolean },
 ): string {
   const ownNote = failed.ownDocuments
     ? "\n\n(NOTE: the technician's own uploaded manuals could NOT be searched for this question — do not say their manuals lack this information.)"
-    : "";
+    : failed.ownDocumentsPartial
+      ? "\n\n(NOTE: only the most recently confirmed of the technician's manuals were searched — do not say their manuals lack this information.)"
+      : "";
   if (context) return `CONTEXT:\n${context}${ownNote}\n\n---\n\nUSER QUESTION:\n${question}`;
   if (failed.library || failed.ownDocuments) {
     return `CONTEXT: (plant-document search was UNAVAILABLE for this question — the manuals were NOT searched; answer from general knowledge and say the document search was unavailable, not that the documents did not match)\n\n---\n\nUSER QUESTION:\n${question}`;

@@ -8,28 +8,30 @@ import { askUserContent, confirmedSourceDocIds, preferOwnDocuments, CONFIRMED_SO
 const TENANT = "22222222-2222-4222-8222-222222222222";
 
 describe("confirmedSourceDocIds (#3437)", () => {
-  it("asks for this tenant's confirmed, current sources that MATCH the question, newest first", async () => {
+  it("returns every confirmed, current source for the tenant, newest first — retrieval does the ranking", async () => {
     const query = vi.fn(async () => ({ rows: [{ doc_id: "d-1" }, { doc_id: "d-2" }] }));
-    await expect(confirmedSourceDocIds({ query } as never, TENANT, "torque spec")).resolves.toEqual(["d-1", "d-2"]);
+    await expect(confirmedSourceDocIds({ query } as never, TENANT)).resolves.toEqual({
+      docIds: ["d-1", "d-2"],
+      truncated: false,
+    });
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
-    expect(params).toEqual([TENANT, "torque spec"]);
+    expect(params).toEqual([TENANT]);
     expect(sql).toMatch(/s\.tenant_id = \$1::uuid/);
-    expect(sql).toMatch(/k\.tenant_id = \$1::uuid/);
     expect(sql).toMatch(/match_state IN \('user_confirmed', 'verified'\)/);
     expect(sql).toMatch(/superseded_at IS NULL/);
-    // F3: candidates are chosen by the question, deterministically ordered —
-    // a relevant manual can't be hidden behind an unordered first page.
-    expect(sql).toMatch(/EXISTS \(/);
-    expect(sql).toMatch(/content_tsv @@/);
-    expect(sql).toMatch(/ORDER BY MAX\(s\.created_at\) DESC/);
     expect(sql).not.toMatch(/candidate/);
-    expect(sql).toContain(`LIMIT ${CONFIRMED_SOURCE_LIMIT}`);
+    // Round 2 F1/F2: no question-based prefilter — it defeated retrieval's
+    // synonym expansion and let a recency cap drop the relevant older manual.
+    expect(sql).not.toMatch(/tsquery|content_tsv|EXISTS/);
+    expect(sql).toMatch(/ORDER BY MAX\(s\.created_at\) DESC/);
   });
 
-  it("does not query for an empty question", async () => {
-    const query = vi.fn();
-    await expect(confirmedSourceDocIds({ query } as never, TENANT, "   ")).resolves.toEqual([]);
-    expect(query).not.toHaveBeenCalled();
+  it("reports (never hides) hitting the parameter bound", async () => {
+    const rows = Array.from({ length: CONFIRMED_SOURCE_LIMIT + 1 }, (_, i) => ({ doc_id: `d-${i}` }));
+    const query = vi.fn(async () => ({ rows }));
+    const r = await confirmedSourceDocIds({ query } as never, TENANT);
+    expect(r.truncated).toBe(true);
+    expect(r.docIds).toHaveLength(CONFIRMED_SOURCE_LIMIT);
   });
 });
 
@@ -43,6 +45,10 @@ describe("askUserContent (F4: an unavailable lane is never a 'no match')", () =>
     const c = askUserContent("", "Q?", { library: false, ownDocuments: true });
     expect(c).toMatch(/UNAVAILABLE/);
     expect(c).not.toMatch(/no manual excerpt matched/);
+  });
+  it("says when only part of the confirmed manuals were searched", () => {
+    const c = askUserContent("ctx", "Q?", { library: false, ownDocuments: false, ownDocumentsPartial: true });
+    expect(c).toMatch(/only the most recently confirmed/);
   });
   it("keeps the honest no-match wording when both searches ran", () => {
     expect(askUserContent("", "Q?", { library: false, ownDocuments: false })).toMatch(/no manual excerpt matched/);
@@ -86,7 +92,8 @@ describe("/api/hub/ask wires the confirmed-document lane (#3437)", () => {
   });
 
   it("admits the tenant's CONFIRMED documents on the same raw client and tenant", () => {
-    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId,\s*searchQuery\s*\)/);
+    expect(code).toMatch(/confirmedSourceDocIds\(\s*client,\s*ctx\.tenantId\s*\)/);
+    expect(code).toMatch(/ownDocumentsPartial = true/);
     expect(code).toMatch(/ownDocumentsFailed = true/);
     expect(code).toMatch(/retrieveNodeChunks\(\s*client,\s*ctx\.tenantId/);
     expect(code).toMatch(/validatedDocScope:\s*true/);
