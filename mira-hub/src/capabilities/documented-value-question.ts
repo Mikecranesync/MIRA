@@ -124,7 +124,15 @@ const CODE_MEANING_ALLOWED = new RegExp(
 );
 function onlyCodeMeaningWords(q: string, boundModel?: string | null): boolean {
   let t = q.toLowerCase();
-  for (const code of faultCodeTokens(t)) t = t.split(code).join(" ");
+  // Exactly ONE code — the one asked about — may be removed. Any other
+  // code-shaped token not in the bound model's name is another machine's model
+  // ("… mean on my GS10?" in a PowerFlex notebook) and stays, so it declines
+  // (pass 22).
+  const norm = (x: string) => x.replace(/[^a-z0-9]/g, "");
+  const model = norm((boundModel ?? "").toLowerCase());
+  const codes = [...new Set(faultCodeTokens(t).filter((c) => !(model && model.includes(norm(c)))))];
+  if (codes.length !== 1) return false;
+  t = t.split(codes[0]).join(" ");
   for (const w of (boundModel ?? "").toLowerCase().split(/[^a-z0-9]+/)) {
     if (w) t = t.replace(new RegExp(`\\b${w}\\b`, "g"), " ");
   }

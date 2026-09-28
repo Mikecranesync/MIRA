@@ -136,6 +136,9 @@ describe("#4068 asksAboutThisEquipment", () => {
     ["what does F005 mean on my drive right now", "PowerFlex 525"],
     // …and a code question naming a machine other than the bound one declines too.
     ["What does fault code ZX-9987 mean on my S7-1500?", "ThermoSeal TS-440"],
+    // Codex #4069 pass 22: a second code-shaped token is another machine's model.
+    ["What does F005 mean on my GS10?", "PowerFlex 525"],
+    ["what does F005 on the PLX32 mean", "PowerFlex 525"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier
