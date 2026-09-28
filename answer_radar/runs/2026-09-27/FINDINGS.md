@@ -1,7 +1,11 @@
 # Answer Radar re-run — 2026-09-27 (vs day-one 2026-09-05)
 
-**Result: VCAD 0 of 6 again.** Both independent graders returned FAIL on all six, with
-zero disagreements. Scorecard: `SCORECARD-2026-09-27.txt`. Answers: `batch-2026-09-27T2017.json`.
+**Result: VCAD 0 of 6 again.** Both graders returned FAIL on all six, with zero disagreements.
+The graders were two Claude Sonnet sessions, which `score.py` (#4063) now labels
+`SAME_MODEL_DIFFERENT_RUN`, a non-promoting class, so a PASS from them could not count either.
+Scorecard: `SCORECARD-2026-09-27.txt`, regenerated with #4063's `score.py` from
+`batch-scored-001-rerun.json`. Citation coverage now counts answers that cite (0 of 3 scored),
+not answers that retrieved (the earlier 33.3%). Answers: `batch-2026-09-27T2017.json`.
 Grades: `grades/`.
 
 ## Read this first — what this benchmark measures
