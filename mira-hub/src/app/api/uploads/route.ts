@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import {
+  claimUploadForRequeue,
   createUpload,
   findUploadByExternalFileId,
   listUploads,
   type Upload,
   type UploadProvider,
+  type UploadStatus,
 } from "@/lib/uploads";
 import {
   inferKindFromMime,
@@ -104,7 +106,42 @@ export async function POST(req: NextRequest) {
       body.provider,
       body.externalFileId,
     );
-    if (existing) {
+    if (existing && TERMINAL_RETRYABLE.includes(existing.status)) {
+      // #4081 — a re-pick IS the retry. The old answer was 409 "DELETE first",
+      // but listUploads hides cancelled rows, so there was no card to delete
+      // and the picker closed on nothing, forever. Requeue the SAME row through
+      // the one atomic claim the retry endpoint also uses: if another request
+      // got there first, answer with the row as it now is.
+      const claimed = await claimUploadForRequeue(
+        existing.id,
+        ctx.tenantId,
+        TERMINAL_RETRYABLE,
+        "re-picked",
+        body.externalDownloadUrl ?? null,
+      );
+      if (!claimed) {
+        const current = await findUploadByExternalFileId(ctx.tenantId, body.provider, body.externalFileId);
+        if (current) return idempotentResponse(current, requestId);
+        return NextResponse.json({ error: "upload_changed_retry_pick" }, { status: 409, headers: { "X-Request-Id": requestId } });
+      }
+      makeUploadLogger({ requestId, uploadId: claimed.id, tenantId: ctx.tenantId }).log("requeued_on_repick", {
+        previousStatus: existing.status,
+      });
+      void runIngestPipeline({
+        uploadId: claimed.id,
+        tenantId: ctx.tenantId,
+        requestId,
+        provider: body.provider,
+        externalFileId: body.externalFileId ?? null,
+        // The claim stored the fresh pick's link (a Dropbox link expires).
+        externalDownloadUrl: claimed.externalDownloadUrl,
+        filename: claimed.filename,
+        mimeType: claimed.mimeType ?? mime,
+        kind: claimed.kind,
+        assetTag: claimed.assetTag,
+      });
+      return NextResponse.json(claimed, { status: 202, headers: { "X-Request-Id": requestId } });
+    } else if (existing) {
       return idempotentResponse(existing, requestId);
     }
   }
@@ -165,6 +202,7 @@ export async function POST(req: NextRequest) {
 }
 
 const IN_FLIGHT_STATUSES: ReadonlyArray<string> = ["queued", "fetching", "parsing"];
+const TERMINAL_RETRYABLE: ReadonlyArray<UploadStatus> = ["failed", "cancelled"];
 
 function isUniqueViolation(err: unknown): boolean {
   // pg's UniqueViolation has SQLSTATE 23505
