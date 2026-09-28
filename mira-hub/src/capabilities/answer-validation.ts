@@ -647,6 +647,12 @@ const MAX_FAULT_CODE_LEN = 128;
 
 const FAULT_CODE_TOKEN = /\b[A-Za-z]{1,4}[-_]?\d{2,8}(?:[-_][A-Za-z0-9]+)?\b/g;
 
+/** The fault-code-shaped tokens in the text — E10's one definition, shared so
+ *  other classifiers agree with it (#4069 passes 15–16). */
+export function faultCodeTokens(text: string): string[] {
+  return text.match(new RegExp(FAULT_CODE_TOKEN.source, "g")) ?? [];
+}
+
 // A sentence that quotes-without-defining ("I can't verify what Q-447 means")
 // is honest and allowed.
 const NON_VERIFICATION =

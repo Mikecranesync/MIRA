@@ -30,6 +30,7 @@ const MODEL_HINTS: Hint[] = [
   { test: /\bcompactlogix\b|\bcontrollogix\b|\bmicrologix\b|\bflexlogix\b|\bsoftlogix\b/i, type: "PLCs" },
   { test: /\bmicro8[0-9]{2}\b|\bmicro1400\b|\bmicro820\b|\bmicro850\b|\bmicro870\b/i, type: "PLCs" },
   { test: /\bplc-?\d/i, type: "PLCs" },
+  { test: /\bslc[ -]?500\b|\bslc[ -]?5\/0?[1-5]\b/i, type: "PLCs" }, // Allen-Bradley SLC 500 (#4068)
   { test: /\bs7-?\d{3,4}\b/i, type: "PLCs" },
   { test: /\bdo-?more\b|\bproductivity\d{3,4}\b|\bclick\b|\bdl\d{2,3}\b/i, type: "PLCs" },
   { test: /\bfx[1-9][a-z]?\b|\bq\d{2}\b|\bl-?series\b/i, type: "PLCs" }, // Mitsubishi
@@ -135,4 +136,25 @@ function normalizeTypeLabel(raw: string): string {
     .split(/\s+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ");
+}
+
+const toAre = (re: RegExp) => `(?:${re.source.replace(/\\b/g, "\\y")})`;
+
+/**
+ * #4068 / Codex #4069 — the SQL form of `inferEquipmentType(...) === type`
+ * (model/title/URL; no manufacturer default), honouring hint PRECEDENCE: a row
+ * is `type` iff some `type` hint matches AND no EARLIER hint of another type
+ * does (the classifier returns the first matching hint). One term per `type`
+ * hint: `match` must hold and `unless` (the earlier other-family hints) must
+ * not. Postgres AREs: JS `\\b` is `\\y`; every other construct in
+ * MODEL_HINTS is ARE-compatible. Empty when the type has no model hints.
+ */
+export function familySqlTerms(type: string): Array<{ match: string; unless: string | null }> {
+  const terms: Array<{ match: string; unless: string | null }> = [];
+  MODEL_HINTS.forEach((h, i) => {
+    if (h.type !== type) return;
+    const earlier = MODEL_HINTS.slice(0, i).filter((e) => e.type !== type).map((e) => toAre(e.test));
+    terms.push({ match: toAre(h.test), unless: earlier.length ? earlier.join("|") : null });
+  });
+  return terms;
 }

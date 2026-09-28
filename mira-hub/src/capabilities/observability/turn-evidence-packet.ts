@@ -115,6 +115,12 @@ export type TurnEvidencePacketRetrieval = {
   oem_model: string | null;
   /** Where that model came from when oem_model is non-null. */
   oem_model_source: "notebook" | "photo" | null;
+  /**
+   * #4068 — which OEM scope produced the chunks: the bound model's own pages,
+   * the same-manufacturer / same-family fallback, or — with no model bound —
+   * a manufacturer-only search. Null when no OEM search ran or it returned nothing.
+   */
+  oem_scope: "model" | "vendor_fallback" | "manufacturer" | null;
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;
@@ -321,6 +327,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       oem_manufacturer_source: null,
       oem_model: null,
       oem_model_source: null,
+      oem_scope: null,
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
     },

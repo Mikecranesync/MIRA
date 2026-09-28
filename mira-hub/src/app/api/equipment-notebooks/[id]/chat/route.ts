@@ -177,7 +177,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
-import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
+import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
   selectForSemanticCheck,
   semanticCheckEnabled,
@@ -1722,6 +1722,9 @@ async function handleChatTurn(
     : null;
   const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
+  // the decline below must never say "I couldn't find it" when nothing ran.
+  let oemRetrievalFailed = false;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -1742,6 +1745,7 @@ async function handleChatTurn(
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
           rec.error("retrieval", "oem_query_failed");
+          oemRetrievalFailed = true;
           return [];
         } finally {
           try {
@@ -1797,7 +1801,17 @@ async function handleChatTurn(
       ? "model_extraction_failed"
       : oemIdentity.ambiguous
       ? "ambiguous_model_observation"
+      : oemRetrievalFailed
+      ? "oem_query_failed"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
+    const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
+      !oemRetrieval || chunks.length === 0
+        ? null
+        : chunks.some((c) => c.retrievalScope === "vendor_fallback")
+          ? "vendor_fallback"
+          : oemModel
+            ? "model"
+            : "manufacturer";
     rec.stage("retrieval", {
       strategy: retrievalStrategy,
       executed: retrievalExecuted,
@@ -1807,6 +1821,7 @@ async function handleChatTurn(
       oem_manufacturer_source: oemManufacturer?.source ?? null,
       oem_model: oemModel?.value ?? null,
       oem_model_source: oemModel?.source ?? null,
+      oem_scope: oemScope,
       zero_result_reason: zeroResultReason,
       // Server-recalled earlier-photo observations for this thread (never the
       // client history, which is text-only by construction).
@@ -1822,6 +1837,7 @@ async function handleChatTurn(
         "mira.retrieval.oem_manufacturer_source": oemManufacturer?.source ?? null,
         "mira.retrieval.oem_model": oemModel?.value ?? null,
         "mira.retrieval.oem_model_source": oemModel?.source ?? null,
+        "mira.retrieval.oem_scope": oemScope,
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
         "mira.visual.prior_file_ids": priorLookFileIds,
@@ -1871,23 +1887,41 @@ async function handleChatTurn(
   // general knowledge with no citation. That is exactly the "honest
   // refuse-to-cite" #3970 promised and never implemented. Conceptual questions
   // on the same notebook are not matched and keep the general lane.
-  const missingModelManual =
-    // A photo in this turn (or recalled from the conversation) is evidence of
-    // its own — a nameplate can answer "what voltage" — so it keeps the lane.
+  // Shared preconditions: a bound model, an OEM search (model scope, then the
+  // #4068 same-family fallback) that found nothing, and no other evidence — a
+  // photo in this turn (or recalled from the conversation) or a machine window
+  // is evidence of its own, so it keeps the lane.
+  const boundAndEmpty =
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
-    !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
-      ? `${oemManufacturer!.name} ${oemModel.value}`
+    !visualEntry && priorLookRows.length === 0;
+  const missingModelManual =
+    boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
+      ? `${oemManufacturer!.name} ${oemModel!.value}`
+      : null;
+  // #4068 (owner decision 2026-09-27, "both"): a troubleshooting/procedure
+  // question about THIS machine with nothing citable declines honestly instead
+  // of an uncited general answer. Teaching questions never match.
+  const noEvidenceForMachine =
+    // A refused machine-evidence request (unconfirmed / mismatched asset) keeps
+    // its own honest path — the identity-dispute contract answers with neutral
+    // machine context, and this gate must not pre-empt it.
+    !missingModelManual && boundAndEmpty && !machineRequestRefused && asksAboutThisEquipment(message, oemModel!.value)
+      ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = missingModelManual
+    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+      ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
+      : noEvidenceForMachine
+        ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
         : null;
@@ -1896,7 +1930,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -1908,7 +1942,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -2166,6 +2200,34 @@ async function handleChatTurn(
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
+  // #4068: excerpts from the same-manufacturer fallback belong to a SIBLING
+  // model (each excerpt header names it). Say so, and never present a sibling
+  // model's value as this machine's own specification.
+  const fallbackSources = [
+    ...new Set(
+      chunks
+        .filter((c) => c.retrievalScope === "vendor_fallback")
+        .map((c) => [c.manufacturer, c.modelNumber].filter(Boolean).join(" "))
+        .filter(Boolean),
+    ),
+  ];
+  const relatedManualWarning =
+    oemModel && fallbackSources.length > 0
+      // Codex #4069 pass 11 F2: this text streams (gate off) before the answer's
+      // refusal status is known, so it states what was FOUND, never that the
+      // answer used it — true whether the model then answers or refuses.
+      ? `⚠️ No page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question. The closest match is a related manual (${fallbackSources.join(", ")}). ` +
+        `Anything taken from it may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
+      : null;
+  const vendorFallbackDirective =
+    oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")
+      ? `\n\nRELATED-MANUAL EXCERPTS — no page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question; ` +
+        `these excerpts come from related ${oemManufacturer?.name ?? "same-manufacturer"} manuals named in each excerpt header. ` +
+        `Say that the source is a related manual when you cite it. Use them only for behaviour and protocols the models share. ` +
+        `Do NOT present a value from them (rating, parameter, address, setting) as the ${oemModel.value}'s own specification, and do NOT ` +
+        `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
+        `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
+      : "";
   const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
@@ -2180,7 +2242,7 @@ async function handleChatTurn(
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
   const systemPrompt = withStepSafety(withAnswerLanguage(
     docGrounded
-      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
+      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
       : withVisual + machineContext,
  ));
   // appendManualContext only appends the grounding RULES — the excerpts
@@ -2309,6 +2371,9 @@ async function handleChatTurn(
       // accepted text is released through the same frame grammar. The client
       // keeps its existing "working" state until the first content frame.
       const gate = answerGateEnabled();
+      // #4068: with the gate off, content streams live — the related-manual
+      // warning goes out as the first content, before any model text.
+      let relatedWarningStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -2437,6 +2502,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (relatedManualWarning && !relatedWarningStreamed) {
+                        relatedWarningStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${relatedManualWarning}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       const frame: NotebookContentFrame = { kind: "content", content: norm };
                       controller.enqueue(enc.encode(sse(frame)));
                     }
@@ -2587,6 +2658,11 @@ async function handleChatTurn(
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
+        // Codex #4069 pass 18 F2: gate off, the related-manual warning already
+        // streamed ahead of this text — the saved turn carries what the tech saw.
+        if (relatedWarningStreamed && relatedManualWarning && partial.length) {
+          partial = `${relatedManualWarning}\n\n${partial}`;
+        }
         const partialText = gate ? null : partial.length ? (flagBanner ? `${flagBanner}\n\n${partial}` : partial) : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         const stoppedAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
@@ -2791,6 +2867,16 @@ async function handleChatTurn(
       }
 
       if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+
+      // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
+      // grounded on related-manual pages (the same-family fallback) may relay
+      // that manual's steps, but ALWAYS under a fixed, server-written warning —
+      // never left to the model's phrasing. Stacked below any hazard banner.
+      if (relatedManualWarning && served && !refused && answerText) {
+        answerText = flagBanner && answerText.startsWith(flagBanner)
+          ? `${flagBanner}\n\n${relatedManualWarning}${answerText.slice(flagBanner.length)}`
+          : `${relatedManualWarning}\n\n${answerText}`;
+      }
 
       // The Jev shadow judgment (started before generation) is collected here,
       // BEFORE the commit point, for the same reason the semantic await is: the
