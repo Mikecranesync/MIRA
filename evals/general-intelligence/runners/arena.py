@@ -71,6 +71,9 @@ _COST_PER_MTOK: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-120b": (0.15, 0.60),
     "meta-llama/Llama-3.3-70B-Instruct-Turbo": (0.88, 0.88),
     "MiniMaxAI/MiniMax-M3": (0.30, 1.20),
+    # docs/research/2026-07-17-printsense-inference-burn-study.md (OpenAI pricing
+    # fetched 2026-07-17). Hidden reasoning tokens bill as output.
+    "gpt-5.5": (5.00, 30.00),
 }
 _COST_UNKNOWN = (15.0, 60.0)
 
@@ -185,12 +188,31 @@ class RawFrontier:
     name = "raw"
 
     def __init__(
-        self, base_url: str, api_key: str, model: str, http: Callable[..., Any] | None = None
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        http: Callable[..., Any] | None = None,
+        reasoning_effort: str = "medium",
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self._http = http
+        self.reasoning_effort = reasoning_effort
+
+    def request_body(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """gpt-5.x rejects `max_tokens`/`temperature` and spends hidden reasoning
+        from the completion budget, so it gets `max_completion_tokens` and an
+        explicit effort. Open-weight models keep the classic parameters."""
+        if self.model.startswith("gpt-5"):
+            return {
+                "model": self.model,
+                "messages": messages,
+                "max_completion_tokens": 8000,
+                "reasoning_effort": self.reasoning_effort,
+            }
+        return {"model": self.model, "messages": messages, "temperature": 0.3, "max_tokens": 900}
 
     def ask(
         self,
@@ -212,7 +234,7 @@ class RawFrontier:
             *history,
             {"role": "user", "content": content},
         ]
-        body = {"model": self.model, "messages": messages, "temperature": 0.3, "max_tokens": 900}
+        body = self.request_body(messages)
         client = self._http or httpx.Client(timeout=120)
         r = client.post(
             f"{self.base_url}/chat/completions",
