@@ -753,6 +753,10 @@ def test_grader_independence_is_derived_from_recorded_models(
     assert rows[0]["independence"] == expected
     if expected == "SAME_MODEL_DIFFERENT_RUN":
         assert rows[0]["verified_correct"] is False
+    if expected == "INDEPENDENT_PROVIDER_MODEL":
+        # #4092 post-cap r5 F1: a bound, identified Claude A + gpt-5.5 B pair of
+        # passing grades verifies the answer end to end through score().
+        assert rows[0]["verified_correct"] is True, rows[0]["reasons"]
 
 
 def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:

@@ -143,10 +143,25 @@ def test_grade_packet_stamps_identity_and_proves_independence(tmp_path: Path):
     )
     assert "a3" not in calls[0]["messages"][1]["content"]
 
+    # Bind A the same way the packet bound B; score() always passes the hash
+    # (#4092 post-cap r5: the unhashed call skipped the binding check).
+    bound = rec["answer_sha256"]
+    (tmp_path / "grade-A-S1.json").write_text(
+        json.dumps(
+            {
+                **GOOD,
+                "grader_provider": "anthropic",
+                "grader_model": "claude-sonnet-5",
+                "answer_sha256": bound,
+            }
+        )
+    )
+    assert _independence(tmp_path, "S1", bound) is IndependenceClass.INDEPENDENT_PROVIDER_MODEL
+    # A legacy A grade with no hash cannot join a promoting pair.
     (tmp_path / "grade-A-S1.json").write_text(
         json.dumps({**GOOD, "grader_provider": "anthropic", "grader_model": "claude-sonnet-5"})
     )
-    assert _independence(tmp_path, "S1") is IndependenceClass.INDEPENDENT_PROVIDER_MODEL
+    assert _independence(tmp_path, "S1", bound) is IndependenceClass.SAME_MODEL_DIFFERENT_RUN
 
 
 def test_malformed_reply_is_missing_not_guessed(tmp_path: Path):
