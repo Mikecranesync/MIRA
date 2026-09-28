@@ -18,11 +18,11 @@ import {
   forwardToPhotoIngest,
 } from "@/lib/mira-ingest-client";
 import { makeUploadLogger } from "@/lib/upload-log";
-import { updateUploadStatus, type Upload, type UploadKind } from "@/lib/uploads";
+import { setUploadContentSha256, updateUploadStatus, type Upload, type UploadKind } from "@/lib/uploads";
+import { isMimeCompatible, sniffMime } from "@/lib/sniff-mime";
 import { runWorkflow } from "@/lib/workflow";
 import { createHash } from "node:crypto";
 import { isV2Document, writeDocumentToInbox } from "@/lib/local-upload";
-import { NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES } from "@/lib/config";
 import { WORKFLOW_VERSIONS } from "@/lib/workflow-versions";
 
@@ -122,31 +122,26 @@ export async function runIngestPipeline(input: PipelineInput): Promise<void> {
               // local one does: the v2 Inbox writer (knowledge_entries,
               // is_private=true). This path used to forward to the Open WebUI KB
               // only, which chat never reads and prod no longer runs.
-              let stream = fetched.stream;
               if (isV2Document(kind, mime)) {
                 const buffer = await readAllCapped(fetched.stream, MAX_UPLOAD_BYTES);
-                try {
-                  await writeDocumentToInbox({
-                    tenantId,
-                    uploadId,
-                    filename,
-                    mime,
-                    buffer,
-                    contentSha256: createHash("sha256").update(buffer).digest("hex"),
-                    log,
-                  });
-                  run.setOutput({ kind, route: "v2" });
-                  return { kbFileId: null, kbChunkCount: null };
-                } catch (err) {
-                  // No text is a property of the file; another path can't fix it.
-                  if (err instanceof NoExtractableTextError) throw err;
-                  // Same fallback as the local door: keep the legacy forward.
-                  log.error("v2_inbox_fallback", err);
-                  stream = bufferStream(buffer);
+                // The declared MIME must match the fetched bytes — the same check
+                // the legacy forward and the local door make (#4088 review F3).
+                if (!isMimeCompatible(mime, sniffMime(buffer.subarray(0, 16)))) {
+                  throw new Error(`file content does not match its declared type (${mime})`);
                 }
+                const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+                // Persist the hash so a later identical upload is recognised (F4).
+                await setUploadContentSha256(uploadId, tenantId, contentSha256);
+                // No legacy fallback (F2): the Open WebUI store is not citable, so
+                // "parsed" there would be a false success that blocks re-pick and
+                // retry. A writer failure fails the upload; the retry endpoint and
+                // a re-pick (#4085) can then run the v2 write again.
+                await writeDocumentToInbox({ tenantId, uploadId, filename, mime, buffer, contentSha256, log });
+                run.setOutput({ kind, route: "v2" });
+                return { kbFileId: null, kbChunkCount: null };
               }
 
-              const result = await forwardToIngest(stream, filename, mime, { requestId });
+              const result = await forwardToIngest(fetched.stream, filename, mime, { requestId });
               await updateUploadStatus(uploadId, tenantId, "parsed", null, {
                 kbFileId: result.fileId ?? undefined,
                 kbChunkCount: result.chunkCount ?? undefined,
@@ -192,13 +187,4 @@ export async function readAllCapped(stream: ReadableStream<Uint8Array>, maxBytes
     parts.push(value);
   }
   return Buffer.concat(parts);
-}
-
-function bufferStream(buffer: Buffer): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(buffer);
-      controller.close();
-    },
-  });
 }
