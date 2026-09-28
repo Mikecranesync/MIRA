@@ -139,6 +139,12 @@ describe("#4068 asksAboutThisEquipment", () => {
     // Codex #4069 pass 22: a second code-shaped token is another machine's model.
     ["What does F005 mean on my GS10?", "PowerFlex 525"],
     ["what does F005 on the PLX32 mean", "PowerFlex 525"],
+    // Codex #4069 pass 24 F1: a "why" about this machine is diagnostic, even
+    // behind "explain" and even when bound only by "it".
+    ["Explain why it keeps rebooting", "PowerFlex 525"],
+    ["why does it keep restarting", "TP700 Comfort"],
+    ["explain why my panel reboots", "TP700 Comfort"],
+    ["why is it so slow today", "GS10"],
     // Owner decision 2026-09-27 ("lean to declining"): in a machine-bound
     // notebook with nothing citable, anything outside the narrow teaching list
     // declines — including generic-class and procedure questions that earlier

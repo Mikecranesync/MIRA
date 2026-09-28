@@ -50,14 +50,32 @@ export function normalizeManufacturer(
  * notebook must still reach rows stored as "Rockwell Automation".
  */
 export function manufacturerSearchNames(raw: string | null | undefined): string[] {
+  const names = vendorGroup(raw);
+  return names
+    .filter((n) => !names.some((m) => m !== n && n.includes(m)))
+    .sort();
+}
+
+/** Every spelling in the vendor group of `raw` (input, canonical, aliases). */
+function vendorGroup(raw: string | null | undefined): string[] {
   if (!raw || !raw.trim()) return [];
   const { canonical } = normalizeManufacturer(raw);
   const group = new Set<string>([normKey(raw), normKey(canonical)]);
   for (const [alias, target] of Object.entries(OCR_VARIANT_ALIASES)) {
     if (normKey(target) === normKey(canonical)) group.add(normKey(alias));
   }
-  const names = [...group].filter(Boolean);
-  return names
-    .filter((n) => !names.some((m) => m !== n && n.includes(m)))
-    .sort();
+  return [...group].filter(Boolean);
+}
+
+/**
+ * Codex #4069 pass 24 F2 — does a STORED manufacturer belong to `bound`'s
+ * vendor group? The search needles are ILIKE substrings, so "sew" also matches
+ * "Sewon"; admission needs a group spelling as a whole word ("SEW-EURODRIVE
+ * GmbH", "Rockwell Automation"), never a mere substring.
+ */
+export function manufacturerInGroup(stored: string | null | undefined, bound: string | null | undefined): boolean {
+  const s = normKey(stored ?? "");
+  if (!s) return false;
+  const escape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return vendorGroup(bound).some((g) => new RegExp(`(?:^|[^a-z0-9])${escape(g)}(?:$|[^a-z0-9])`).test(s));
 }

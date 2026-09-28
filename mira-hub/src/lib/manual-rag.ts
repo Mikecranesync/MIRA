@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
-import { manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
   rerankChunks,
@@ -475,7 +475,11 @@ export async function retrieveManualChunks(
     if (names.length <= 1) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
     const merged: ManualChunk[] = [];
     for (const name of names) merged.push(...(await runBm25Query(client, tenantId, text, topK, name, s.model)));
-    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank)).slice(0, topK);
+    // Pass 24 F2: a substring needle only narrows the search; admission needs
+    // the stored maker to be in the vendor group as a whole word.
+    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank))
+      .filter((c) => manufacturerInGroup(c.manufacturer, s.mfr))
+      .slice(0, topK);
   };
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
@@ -514,6 +518,7 @@ export async function retrieveManualChunks(
       vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms)));
     }
     return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
+      .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
       .filter(
         (c) =>
           inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===

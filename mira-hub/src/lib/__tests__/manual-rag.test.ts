@@ -1132,6 +1132,20 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(out[0].retrievalScope).toBe("vendor_fallback");
   });
 
+  it("Codex #4069 pass 24 F2: a short alias never admits another maker whose name merely contains it", async () => {
+    const { client } = corpusClient([
+      plc({ manufacturer: "Sewon", source_url: "https://oem.example/sewon.pdf", content: "Sewon controller wiring." }),
+      plc({ manufacturer: "SEW-EURODRIVE GmbH", source_url: "https://oem.example/sew.pdf", content: "SEW controller wiring." }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVI-C X9",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW-EURODRIVE GmbH"]);
+  });
+
   it("Codex #4069 F2/F3: an Allen-Bradley notebook reaches 'Rockwell Automation' rows, even below many other-family rows", async () => {
     const { client, calls } = corpusClient([...Array.from({ length: 30 }, (_, i) => drive(i)), plc()]);
     const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the swap", SLC);

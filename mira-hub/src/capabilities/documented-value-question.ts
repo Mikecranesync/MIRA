@@ -91,7 +91,7 @@ const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_
 // Symptoms: a problem is happening on real equipment ("it stopped
 // communicating", "the drive trips every morning") — enough on their own.
 const SYMPTOM =
-  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|reboot(?:s|ed|ing)?|restart(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
 // Procedure words: "wire", "install", "configure"… — a generic "how do I wire
 // a VFD?" is teaching, so these count only when bound to THIS machine
 // (Codex #4069 pass 6 F3).
@@ -208,6 +208,9 @@ export function asksAboutThisEquipment(question: string, boundModel?: string | n
   // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
   // ("how does my drive work when it trips on F005?") is troubleshooting.
   if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
+  // Pass 24 F1: a "why" about THIS machine is a diagnosis, whatever the symptom
+  // word ("Explain why it keeps rebooting") — the class, not another word list.
+  if (bound && /\bwhy\b/i.test(q) && !EXPLICIT_GENERAL.test(q)) return true;
   // Pass 13: a described symptom ("what is causing the drive to trip every
   // morning?") is a problem to work, bound or not — unless the question marks
   // itself as general ("in general", "generally", "difference between", …).

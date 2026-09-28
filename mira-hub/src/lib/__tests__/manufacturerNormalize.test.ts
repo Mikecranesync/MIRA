@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manufacturerSearchNames, normalizeManufacturer } from "../manufacturerNormalize";
+import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "../manufacturerNormalize";
 
 describe("normalizeManufacturer", () => {
   it("collapses known OCR variants to the canonical name (alias)", () => {
@@ -80,5 +80,20 @@ describe("manufacturerSearchNames (#4068 same-family fallback)", () => {
 
   it("blank input searches nothing", () => {
     expect(manufacturerSearchNames("  ")).toEqual([]);
+  });
+});
+
+describe("manufacturerInGroup (Codex #4069 pass 24 F2)", () => {
+  it.each([
+    ["SEW-EURODRIVE GmbH", "SEW-Eurodrive", true],
+    ["SEW", "SEW-Eurodrive", true],
+    ["Rockwell Automation", "Allen-Bradley", true],
+    ["Allen-Bradley", "Rockwell Automation", true],
+    ["Sewon", "SEW-Eurodrive", false],
+    ["Rockwellington Pumps", "Allen-Bradley", false],
+    ["Baykon", "Baykon", true],
+    ["Baykonix", "Baykon", false],
+  ])("%s belongs to %s's vendor group: %s", (stored, bound, expected) => {
+    expect(manufacturerInGroup(stored, bound)).toBe(expected);
   });
 });
