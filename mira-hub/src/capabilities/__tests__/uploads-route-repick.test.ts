@@ -67,10 +67,16 @@ beforeEach(() => {
 describe("POST /api/uploads — re-picking a file whose earlier import ended (#4081)", () => {
   it.each(["cancelled", "failed"])("a %s import is requeued on the SAME row, with the fresh link", async (status) => {
     vi.mocked(findUploadByExternalFileId).mockResolvedValue(row(status) as never);
-    vi.mocked(claimUploadForRequeue).mockResolvedValue(row("queued") as never);
+    vi.mocked(claimUploadForRequeue).mockResolvedValue({
+      ...row("queued"),
+      externalDownloadUrl: "https://fresh.link/manual.pdf",
+    } as never);
     const res = await repick();
     expect(res.status).toBe(202);
-    expect(claimUploadForRequeue).toHaveBeenCalledWith(ID, TENANT, ["failed", "cancelled"], "re-picked");
+    // F2: the fresh link is persisted BY the winning claim, so a later Retry uses it.
+    expect(claimUploadForRequeue).toHaveBeenCalledWith(
+      ID, TENANT, ["failed", "cancelled"], "re-picked", "https://fresh.link/manual.pdf",
+    );
     expect(createUpload).not.toHaveBeenCalled();
     expect(runIngestPipeline).toHaveBeenCalledOnce();
     expect(vi.mocked(runIngestPipeline).mock.calls[0][0]).toMatchObject({

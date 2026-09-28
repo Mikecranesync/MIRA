@@ -112,7 +112,13 @@ export async function POST(req: NextRequest) {
       // and the picker closed on nothing, forever. Requeue the SAME row through
       // the one atomic claim the retry endpoint also uses: if another request
       // got there first, answer with the row as it now is.
-      const claimed = await claimUploadForRequeue(existing.id, ctx.tenantId, TERMINAL_RETRYABLE, "re-picked");
+      const claimed = await claimUploadForRequeue(
+        existing.id,
+        ctx.tenantId,
+        TERMINAL_RETRYABLE,
+        "re-picked",
+        body.externalDownloadUrl ?? null,
+      );
       if (!claimed) {
         const current = await findUploadByExternalFileId(ctx.tenantId, body.provider, body.externalFileId);
         if (current) return idempotentResponse(current, requestId);
@@ -127,8 +133,8 @@ export async function POST(req: NextRequest) {
         requestId,
         provider: body.provider,
         externalFileId: body.externalFileId ?? null,
-        // The fresh pick's link, not the stored one: a Dropbox link expires.
-        externalDownloadUrl: body.externalDownloadUrl ?? claimed.externalDownloadUrl,
+        // The claim stored the fresh pick's link (a Dropbox link expires).
+        externalDownloadUrl: claimed.externalDownloadUrl,
         filename: claimed.filename,
         mimeType: claimed.mimeType ?? mime,
         kind: claimed.kind,
