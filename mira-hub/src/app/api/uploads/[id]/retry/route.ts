@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getUpload, updateUploadStatus } from "@/lib/uploads";
+import { claimUploadForRequeue, getUpload } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { pipelineInputFromRow, runIngestPipeline } from "@/lib/upload-pipeline";
@@ -64,14 +64,23 @@ export async function POST(
   // Reset the row to queued before the pipeline picks it up so listUploads
   // can show the in-flight UI immediately. The pipeline will move it
   // through fetching → parsing → parsed/failed.
-  await updateUploadStatus(id, ctx.tenantId, "queued", "user retry");
+  // The status check above and this transition are ONE statement here, shared
+  // with the re-pick path (#4081): only one caller can move a failed row to
+  // queued, so two requests can't both start a pipeline for it.
+  const claimed = await claimUploadForRequeue(id, ctx.tenantId, ["failed"], "user retry");
+  if (!claimed) {
+    const current = await getUpload(id, ctx.tenantId);
+    return NextResponse.json(
+      { error: "upload_not_in_failed_state", currentStatus: current?.status ?? "deleted" },
+      { status: 409 },
+    );
+  }
 
-  void runIngestPipeline(pipelineInputFromRow(row, requestId));
+  void runIngestPipeline(pipelineInputFromRow(claimed, requestId));
 
   // Return the row in its new "queued" state so the client can update
   // the list optimistically.
-  const refreshed = await getUpload(id, ctx.tenantId);
-  return NextResponse.json(refreshed ?? row, {
+  return NextResponse.json(claimed, {
     status: 202,
     headers: { "X-Request-Id": requestId },
   });
