@@ -191,6 +191,74 @@ interface LocalIngestParams {
 }
 
 /**
+ * #1806 v2 write for one document already recorded in hub_uploads: land it in
+ * the tenant's Inbox node through the single node writer (writePdfChunksForNode
+ * / writeTextChunksForNode — is_private=true, ingest_route='v2'), or mark it a
+ * duplicate of bytes already indexed there, and set the row parsed. Shared by
+ * the local door and the cloud (Drive/Dropbox) pipeline so there is one writer.
+ *
+ * Throws NoExtractableTextError for a file with no text (a property of the
+ * file) and any other error for the caller's fallback; it never deletes the
+ * caller's buffer.
+ */
+export async function writeDocumentToInbox(p: {
+  tenantId: string;
+  uploadId: string;
+  filename: string;
+  mime: string;
+  buffer: Uint8Array;
+  contentSha256: string | null;
+  log: ReturnType<typeof makeUploadLogger>;
+}): Promise<void> {
+  const { log } = p;
+  const inbox = await resolveOrCreateInboxNode(p.tenantId);
+
+  // ARPK 1b — content dedup: an exact re-drop of already-indexed bytes into
+  // the Inbox is marked parsed-as-duplicate instead of chunked again (the
+  // 158x-ingest class). Best-effort: a lookup failure falls through to a
+  // normal ingest, never a lost upload.
+  if (p.contentSha256) {
+    try {
+      const dup = await findDuplicateUpload(p.tenantId, p.contentSha256, inbox.nodeId);
+      if (dup) {
+        await updateUploadStatus(p.uploadId, p.tenantId, "parsed", `duplicate of ${dup.id}`, {
+          kbChunkCount: dup.kbChunkCount ?? undefined,
+          kgEntityId: inbox.nodeId,
+          ingestRoute: "v2",
+        });
+        log.log("parsed", { kind: "document", route: "v2", duplicateOf: dup.id, nodeId: inbox.nodeId });
+        return;
+      }
+    } catch (err) {
+      log.error("dedup_lookup_skipped", err);
+    }
+  }
+
+  const nodeArgs = {
+    tenantId: p.tenantId,
+    uploadId: p.uploadId,
+    nodeId: inbox.nodeId,
+    unsPath: inbox.unsPath,
+    filename: p.filename,
+    buffer: p.buffer,
+  };
+  const chunkCount = isTextMime(p.mime)
+    ? await writeTextChunksForNode(nodeArgs)
+    : await writePdfChunksForNode(nodeArgs);
+  await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+    kbChunkCount: chunkCount,
+    kgEntityId: inbox.nodeId,
+    ingestRoute: "v2",
+  });
+  log.log("parsed", { kind: "document", route: "v2", nodeId: inbox.nodeId, kbChunkCount: chunkCount });
+}
+
+/** True for a document the v2 Inbox writer can chunk (PDF or text). */
+export function isV2Document(kind: UploadKind, mime: string): boolean {
+  return kind === "document" && (mime === "application/pdf" || isTextMime(mime));
+}
+
+/**
  * Forward a local upload's bytes to mira-ingest and record the result. Shared
  * by the initial upload and the retry path. On success the persisted buffer is
  * deleted; on failure it is KEPT so the upload can be retried.
@@ -219,71 +287,17 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
   // bytes ARE the text so no PDF extraction). On ANY failure, fall through to the
   // legacy OW path below so the door keeps working. Photo + remote-fetch (cloud)
   // doors keep the OW path.
-  const isV2Doc =
-    p.kind === "document" &&
-    (p.mime === "application/pdf" || isTextMime(p.mime));
+  const isV2Doc = isV2Document(p.kind, p.mime);
   if (isV2Doc) {
     try {
-      const inbox = await resolveOrCreateInboxNode(p.tenantId);
-
-      // ARPK 1b — content dedup: an exact re-drop of already-indexed bytes into
-      // the Inbox is marked parsed-as-duplicate instead of chunked again (the
-      // 158x-ingest class). Best-effort: a lookup failure falls through to a
-      // normal ingest, never a lost upload.
-      if (p.contentSha256) {
-        try {
-          const dup = await findDuplicateUpload(
-            p.tenantId,
-            p.contentSha256,
-            inbox.nodeId,
-          );
-          if (dup) {
-            await updateUploadStatus(
-              p.uploadId,
-              p.tenantId,
-              "parsed",
-              `duplicate of ${dup.id}`,
-              {
-                kbChunkCount: dup.kbChunkCount ?? undefined,
-                kgEntityId: inbox.nodeId,
-                ingestRoute: "v2",
-              },
-            );
-            log.log("parsed", {
-              kind: p.kind,
-              route: "v2",
-              duplicateOf: dup.id,
-              nodeId: inbox.nodeId,
-            });
-            await deleteUploadBuffer(p.uploadId);
-            return;
-          }
-        } catch (err) {
-          log.error("dedup_lookup_skipped", err);
-        }
-      }
-
-      const nodeArgs = {
+      await writeDocumentToInbox({
         tenantId: p.tenantId,
         uploadId: p.uploadId,
-        nodeId: inbox.nodeId,
-        unsPath: inbox.unsPath,
         filename: p.filename,
+        mime: p.mime,
         buffer: p.buffer,
-      };
-      const chunkCount = isTextMime(p.mime)
-        ? await writeTextChunksForNode(nodeArgs)
-        : await writePdfChunksForNode(nodeArgs);
-      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
-        kbChunkCount: chunkCount,
-        kgEntityId: inbox.nodeId,
-        ingestRoute: "v2",
-      });
-      log.log("parsed", {
-        kind: p.kind,
-        route: "v2",
-        nodeId: inbox.nodeId,
-        kbChunkCount: chunkCount,
+        contentSha256: p.contentSha256 ?? null,
+        log,
       });
       await deleteUploadBuffer(p.uploadId);
       return;
