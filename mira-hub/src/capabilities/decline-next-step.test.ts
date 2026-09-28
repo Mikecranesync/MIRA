@@ -8,6 +8,9 @@ describe("declineKind", () => {
     "I need the service password to get into the parameter menu",
     "is there a master code to unlock the HMI",
     "what is the PIN code for the operator panel",
+    "What is the PIN for this panel?",
+    "What is the service PIN on my Demag hoist?",
+    "what's the service pin for the drive keypad",
   ])("credential: %s", (m) => expect(declineKind(m)).toBe("credential"));
 
   it.each([
@@ -21,6 +24,8 @@ describe("declineKind", () => {
     "what firmware version supports Modbus TCP",
     "how do I update the parameter set",
     "the drive trips on F005, what should I check",
+    "which pin on the M12 connector carries 24 V",
+    "pin 3 of the encoder cable reads 0 V, what do I check",
   ])("control — ordinary questions keep the generic decline: %s", (m) => expect(declineKind(m)).toBeNull());
 });
 

@@ -522,6 +522,19 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(String(status?.message)).not.toContain("photograph the nameplate");
   });
 
+  it("2h-i-b. Codex #4094 F1: a bare 'service PIN' request also declines toward the owner/OEM", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "What is the service PIN on my hoist, what should I check?", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+    expect(String(status?.message)).not.toContain("photograph the nameplate");
+  });
+
   it("2h-ii. 2026-09-28 Answer Radar seed 003: firmware recovery declines toward OEM service", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "AUMA", model: "AC 01.2" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
