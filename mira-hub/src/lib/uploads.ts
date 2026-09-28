@@ -37,6 +37,9 @@ export interface Upload {
   ingestRoute: string | null;
   /** sha256 hex of the uploaded bytes — server-side content dedup (ARPK 1b, migration 072). */
   contentSha256: string | null;
+  /** Identity of the current import attempt (migration 099). A pipeline may
+   *  write status or chunks only while the row still carries its attempt. */
+  attemptId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,15 +55,19 @@ let schemaReady: Promise<void> | null = null;
 export function ensureUploadsSchema(): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    const { rows } = await pool.query(
-      `SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'hub_uploads' AND column_name = 'content_sha256'`,
-    );
-    if (rows.length === 0) {
-      schemaReady = null; // don't cache a failure — allow retry once the migration lands
-      throw new Error(
-        "hub_uploads schema is out of date — apply mira-hub/db/migrations/072_hub_uploads_content_sha256.sql",
+    for (const [column, migration] of [
+      ["content_sha256", "072_hub_uploads_content_sha256.sql"],
+      ["attempt_id", "099_hub_uploads_attempt_id.sql"],
+    ] as const) {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'hub_uploads' AND column_name = $1`,
+        [column],
       );
+      if (rows.length === 0) {
+        schemaReady = null; // don't cache a failure — allow retry once the migration lands
+        throw new Error(`hub_uploads schema is out of date — apply mira-hub/db/migrations/${migration}`);
+      }
     }
   })();
   return schemaReady;
@@ -123,6 +130,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     kgEntityId: (r.kg_entity_id as string | null) ?? null,
     ingestRoute: (r.ingest_route as string | null) ?? null,
     contentSha256: (r.content_sha256 as string | null) ?? null,
+    attemptId: (r.attempt_id as string | null) ?? null,
     createdAt: toIsoString(r.created_at as Date | string),
     updatedAt: toIsoString(r.updated_at as Date | string),
   };
@@ -177,6 +185,24 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
  * never match (status/ingest_route predicates), so a failed first attempt
  * doesn't block a retry.
  */
+/** Record an upload's content hash once its bytes are known (cloud fetch).
+ *  Local uploads set it at createUpload; a cloud row only learns it after the
+ *  fetch, and findDuplicateUpload matches on it (#4088 review F4). */
+export async function setUploadContentSha256(
+  id: string,
+  tenantId: string,
+  contentSha256: string,
+  attemptId: string | null,
+): Promise<void> {
+  const { rowCount } = await pool.query(
+    `UPDATE hub_uploads SET content_sha256 = $3
+      WHERE id = $1 AND tenant_id = $2
+        AND attempt_id IS NOT DISTINCT FROM $4::uuid AND status <> 'cancelled'`,
+    [id, tenantId, contentSha256, attemptId],
+  );
+  if ((rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(id);
+}
+
 export async function findDuplicateUpload(
   tenantId: string,
   contentSha256: string,
@@ -192,6 +218,10 @@ export async function findDuplicateUpload(
        AND status = 'parsed'
        AND ingest_route = 'v2'
        AND kind = 'document'
+       -- Only an upload that owns its chunks can be the original: a row marked
+       -- "duplicate of" has none, and chaining to it breaks when its source
+       -- goes away (review of #4091, F1).
+       AND (status_detail IS NULL OR status_detail NOT LIKE 'duplicate of %')
      ORDER BY created_at DESC
      LIMIT 1
   `,
@@ -288,12 +318,252 @@ export async function updateUploadStatus(
   );
 }
 
+/**
+ * Atomically move an upload from one of `from` back to `queued`, returning the
+ * updated row, or null when the row is gone or already in another state.
+ *
+ * This is the single claim for re-running an import (#4081, retry #704): the
+ * status check and the transition are one statement, so a concurrent re-pick
+ * and retry cannot both start a pipeline for the same terminal row, and
+ * neither can act on a row another request has already requeued. Reusing the
+ * row (not deleting and recreating it) keeps doc_id stable, so a still-running
+ * pipeline from before a cancel writes to the same upload, where chunk writes
+ * are idempotent (ON CONFLICT on tenant + source_url + chunk_index).
+ */
+export async function claimUploadForRequeue(
+  id: string,
+  tenantId: string,
+  from: ReadonlyArray<UploadStatus>,
+  detail: string,
+  /** A re-pick's fresh provider link (Dropbox links expire). Written only by
+   *  the winning claim, so a later Retry fetches from it (#4085 review F2). */
+  freshDownloadUrl?: string | null,
+): Promise<Upload | null> {
+  const { rows } = await pool.query(
+    `UPDATE hub_uploads
+        SET status = 'queued', status_detail = $4,
+            external_download_url = COALESCE($5, external_download_url),
+            attempt_id = gen_random_uuid(),
+            updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2 AND status = ANY($3::text[])
+      RETURNING *`,
+    [id, tenantId, [...from], detail, freshDownloadUrl ?? null],
+  );
+  return rows.length > 0 ? rowToUpload(rows[0]) : null;
+}
+
+/** A pipeline's attempt was revoked (cancel, delete, or a newer requeue). The
+ *  pipeline must stop without writing anything further. */
+export class UploadAttemptRevokedError extends Error {
+  constructor(readonly uploadId: string) {
+    super(`upload ${uploadId}: import attempt was superseded or cancelled`);
+    this.name = "UploadAttemptRevokedError";
+  }
+}
+
+/**
+ * updateUploadStatus for a pipeline: succeeds only while the row still carries
+ * `attemptId` and is not cancelled. Throws UploadAttemptRevokedError otherwise,
+ * so a superseded pipeline can never overwrite a newer attempt's status (#4085
+ * review) or flip a cancelled upload to parsed (#4088 review).
+ */
+export async function updateUploadStatusForAttempt(
+  id: string,
+  tenantId: string,
+  attemptId: string | null,
+  status: UploadStatus,
+  detail?: string | null,
+  extras?: { kbFileId?: string; kbChunkCount?: number; kgEntityId?: string; ingestRoute?: string },
+): Promise<void> {
+  const { rowCount } = await pool.query(
+    `
+    UPDATE hub_uploads
+       SET status = $3,
+           status_detail = COALESCE($4, status_detail),
+           kb_file_id = COALESCE($5, kb_file_id),
+           kb_chunk_count = COALESCE($6, kb_chunk_count),
+           kg_entity_id = COALESCE($7::uuid, kg_entity_id),
+           ingest_route = COALESCE($8, ingest_route),
+           updated_at = NOW()
+     WHERE id = $1
+       AND tenant_id = $2
+       AND attempt_id IS NOT DISTINCT FROM $9::uuid
+       AND status <> 'cancelled'
+  `,
+    [
+      id,
+      tenantId,
+      status,
+      detail ?? null,
+      extras?.kbFileId ?? null,
+      extras?.kbChunkCount ?? null,
+      extras?.kgEntityId ?? null,
+      extras?.ingestRoute ?? null,
+      attemptId,
+    ],
+  );
+  if ((rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(id);
+}
+
+/**
+ * Cancel an in-flight import: mark it cancelled, REVOKE its attempt (a fresh
+ * attempt id nobody holds), and remove any chunks that attempt already wrote —
+ * one transaction. The row lock waits for a chunk insert in progress (which
+ * holds the row FOR SHARE), so a cancel can never be followed by that attempt's
+ * chunks. Returns false when the row is gone or no longer in flight.
+ */
+export async function cancelUpload(id: string, tenantId: string, detail: string): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      `UPDATE hub_uploads
+          SET status = 'cancelled', status_detail = $3,
+              attempt_id = gen_random_uuid(), updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2 AND status IN ('queued', 'fetching', 'parsing')`,
+      [id, tenantId, detail],
+    );
+    if ((res.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    await client.query(
+      `
+      DELETE FROM knowledge_entries
+       WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      [id, tenantId],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteUpload(id: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   const { rowCount } = await pool.query(
     `DELETE FROM hub_uploads WHERE id = $1 AND tenant_id = $2`,
     [id, tenantId],
   );
   return (rowCount ?? 0) > 0;
+}
+
+export type DeleteUploadOutcome = "deleted" | "not_found" | "retained" | "in_progress";
+
+const DELETABLE_STATUSES = ["parsed", "failed", "cancelled"];
+
+/**
+ * Delete an upload AND everything that makes it citable, in one transaction.
+ * `deleteUpload` alone removed only the hub_uploads row: knowledge_entries has
+ * no FK to it (doc_id = upload id), so a deleted manual kept appearing in My
+ * Documents and kept being cited (#4080).
+ *
+ * Serialization (review of #4084):
+ *  - the upload row is locked FOR UPDATE and must still be finished — a retry
+ *    or re-pick that requeued it first wins, and this returns `in_progress`;
+ *    a requeue that arrives after the lock waits, then finds no row;
+ *  - linked filing-cabinet rows are locked before the verified check, so a
+ *    concurrent verify cannot slip between the check and the chunk delete. A
+ *    document the cabinet holds as verified is retained forever (migration
+ *    059), so the delete is refused as a whole.
+ *
+ * What goes: the tenant's private chunks (never the shared OEM corpus), the
+ * notebook source rows that pointed at this document, and the row itself. A
+ * canonical file that referenced the upload keeps its bytes but loses the
+ * pointer, so the same bytes uploaded again are indexed again instead of being
+ * reported as an already-indexed duplicate.
+ */
+export async function deleteUploadAndKnowledge(
+  id: string,
+  tenantId: string,
+): Promise<DeleteUploadOutcome> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const upload = await client.query(
+      `SELECT status FROM hub_uploads WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+      [id, tenantId],
+    );
+    if ((upload.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return "not_found";
+    }
+    if (!DELETABLE_STATUSES.includes(String(upload.rows[0].status))) {
+      await client.query("ROLLBACK");
+      return "in_progress";
+    }
+    const files = await client.query(
+      `SELECT verified FROM namespace_direct_uploads
+        WHERE upload_id = $1::uuid AND tenant_id::text = $2
+        FOR UPDATE`,
+      [id, tenantId],
+    );
+    if (files.rows.some((r: Record<string, unknown>) => r.verified === true)) {
+      await client.query("ROLLBACK");
+      return "retained";
+    }
+    // Review of #4091 (F1): identical bytes uploaded again were marked parsed
+    // "duplicate of <this id>" WITHOUT chunks of their own. Deleting this
+    // original must not strand them: its chunks pass to the newest duplicate
+    // (doc_id and the node-doc/<id>/ source prefix move with them, embeddings
+    // intact), which becomes the original; any others now point at the heir.
+    const dependents = await client.query(
+      `SELECT id FROM hub_uploads
+        WHERE tenant_id = $2 AND status = 'parsed' AND status_detail = 'duplicate of ' || $1
+        ORDER BY created_at DESC
+        FOR UPDATE`,
+      [id, tenantId],
+    );
+    const heir = dependents.rows.length > 0 ? String(dependents.rows[0].id) : null;
+    if (heir) {
+      await client.query(
+        `
+        UPDATE knowledge_entries
+           SET doc_id = $3::uuid,
+               source_url = 'node-doc/' || $3 || substr(source_url, length('node-doc/' || $1) + 1)
+         WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true
+           AND source_url LIKE 'node-doc/' || $1 || '/%'`,
+        [id, tenantId, heir],
+      );
+      await client.query(
+        `UPDATE hub_uploads SET status_detail = NULL, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2`,
+        [heir, tenantId],
+      );
+      await client.query(
+        `UPDATE hub_uploads SET status_detail = 'duplicate of ' || $3, updated_at = NOW()
+          WHERE tenant_id = $2 AND status = 'parsed' AND status_detail = 'duplicate of ' || $1`,
+        [id, tenantId, heir],
+      );
+    }
+    await client.query(
+      `
+      DELETE FROM knowledge_entries
+       WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      [id, tenantId],
+    );
+    await client.query(
+      `DELETE FROM equipment_notebook_sources
+        WHERE doc_id = $1::uuid AND tenant_id::text = $2`,
+      [id, tenantId],
+    );
+    await client.query(
+      `UPDATE namespace_direct_uploads SET upload_id = NULL
+        WHERE upload_id = $1::uuid AND tenant_id::text = $2`,
+      [id, tenantId],
+    );
+    await client.query(`DELETE FROM hub_uploads WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    await client.query("COMMIT");
+    return "deleted";
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export interface UploadCounts {

@@ -19,8 +19,9 @@
 
 import { randomUUID } from "crypto";
 import pool from "@/lib/db";
-import { withTenantContext } from "@/lib/tenant-context";
-import { createUpload, updateUploadStatus } from "@/lib/uploads";
+import { withTenantContext, withUploadRowTenantContext } from "@/lib/tenant-context";
+import { createUpload, updateUploadStatus, UploadAttemptRevokedError } from "@/lib/uploads";
+import type { PoolClient } from "pg";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -341,6 +342,12 @@ interface NodeChunkOpts {
   nodeId: string;
   unsPath: string | null;
   filename: string;
+  /** The upload's import attempt (migration 099). When present (the
+   *  background doors), chunks are inserted only while the upload row still
+   *  carries this attempt and is not cancelled — with the row held FOR SHARE,
+   *  so a cancel or delete waits for this transaction and then removes what
+   *  it wrote. Omitted by the synchronous node-attach door. */
+  attemptId?: string | null;
 }
 
 /**
@@ -357,7 +364,7 @@ async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
+  const { tenantId, uploadId, nodeId, unsPath, filename, attemptId } = opts;
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
@@ -367,7 +374,14 @@ async function writeChunkRowsForNode(
   let idx = 0;
   let batch: ChunkRow[] = [];
 
-  await withTenantContext(tenantId, async (c) => {
+  const inTx = async <T,>(fn: (c: PoolClient) => Promise<T>): Promise<T> => {
+    if (attemptId === undefined) return withTenantContext(tenantId, fn);
+    const r = await withUploadRowTenantContext(tenantId, uploadId, attemptId, fn);
+    if (!r.held) throw new UploadAttemptRevokedError(uploadId);
+    return r.result;
+  };
+
+  await inTx(async (c) => {
     // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
     // tenant_id / source_url / doc_id are constant across the whole file, so
     // they are fixed leading params ($1..$3) and only id/content/page/metadata
@@ -454,6 +468,7 @@ export async function writePdfChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
 
@@ -484,6 +499,7 @@ export async function writeTextChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
   const text = new TextDecoder("utf-8", { fatal: false }).decode(
