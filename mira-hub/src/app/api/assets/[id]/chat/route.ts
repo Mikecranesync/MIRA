@@ -364,11 +364,13 @@ export async function POST(
       // carrying the node_id they were ingested under, which is the whole bug.
       //
       // NOTE: the `verified === true` filter above is deliberately NOT applied
-      // here. retrieveNodeChunks already runs the sanctioned approvalFilterSql()
-      // seam internally (same as notebook chat). These are the tenant's OWN
-      // private uploads, which are never `verified` in the shared-corpus sense —
-      // filtering on it would drop every attached document and silently undo
-      // this lane. Attachment by a human IS the approval here.
+      // here. These are the tenant's OWN private uploads, which are never
+      // `verified` in the shared-corpus sense — filtering on it would drop
+      // every attached document and silently undo this lane. Attachment by a
+      // human IS the approval here, and it has to be SAID to retrieval: under
+      // MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) retrieveNodeChunks admits a
+      // private chunk only when its doc is in `approvedSourceDocIds`. Without
+      // it every attached manual was filtered out on prod (#3437).
       if (attachedDocIds.length > 0) {
         try {
           const attached = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
@@ -376,6 +378,7 @@ export async function POST(
             unsPath: null,
             docIds: attachedDocIds,
             validatedDocScope: true,
+            approvedSourceDocIds: attachedDocIds,
           });
           // Attached documents are preferred over generic manufacturer results
           // (a filed manual beats a string match), de-duped so one document

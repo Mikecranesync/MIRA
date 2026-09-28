@@ -318,10 +318,13 @@ export async function POST(
         if (!filename) return { row, chunks: [] as ManualChunk[], filename: null, missing: true };
       }
 
+      // A document the technician opened to chat with is their own upload
+      // (resolved above by tenant_id + doc_id): choosing it is the admission,
+      // or doc-scoped chat answered from nothing on prod (#3437).
       const chunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
         nodeId: id,
         unsPath: row.uns_path,
-        ...(docId ? { docId } : {}),
+        ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
       });
       let allChunks = chunks;
       if (linkedDocIds.length > 0) {
@@ -330,11 +333,20 @@ export async function POST(
           unsPath: row.uns_path,
           docIds: linkedDocIds,
           validatedDocScope: true,
+          // #3437 — a file a person linked to this node is admitted under the
+          // approval gate. Without this, prod retrieval kept only
+          // `verified = true` rows and every linked private upload vanished.
+          approvedSourceDocIds: linkedDocIds,
         });
         allChunks = mergeChunks(chunks, linkedChunks);
       }
+      // The ask gate keeps shared rows only when verified; a linked or opened
+      // file's private chunks are approved by that act (same rule as above).
+      const admitted = new Set(docId ? [docId, ...linkedDocIds] : linkedDocIds);
       const approvedChunks = approvedAskEnforcementEnabled()
-        ? allChunks.filter((chunk) => chunk.verified === true)
+        ? allChunks.filter(
+            (chunk) => chunk.verified === true || (chunk.docId != null && admitted.has(chunk.docId)),
+          )
         : allChunks;
       return { row, chunks: approvedChunks, filename, missing: false };
     });

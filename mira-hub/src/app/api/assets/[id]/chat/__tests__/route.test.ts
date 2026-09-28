@@ -294,6 +294,9 @@ describe("POST /api/assets/[id]/chat", () => {
     const opts = vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3] as Record<string, unknown>;
     expect(opts.docIds).toEqual(["doc-1", "doc-2"]);
     expect(opts.validatedDocScope).toBe(true);
+    // #3437 — the attachment IS the approval, and retrieval must be told so,
+    // or MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) filters every private upload.
+    expect(opts.approvedSourceDocIds).toEqual(["doc-1", "doc-2"]);
 
     const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
     expect(chunks.length).toBe(1);
