@@ -597,6 +597,44 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(routeGone.payload.manual).toMatchObject({ attached: false });
   });
 
+  it("Codex #4118 r13 F17: a failed chunk read is retryable — no verdict, no source write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(withTenantContext).mockRejectedValueOnce(new Error("connection terminated unexpectedly"));
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.retryable).toBe(true);
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, matchState: "candidate", enabledByDefault: false });
+  });
+
+  it("Codex #4118 r13 F17: a writer that throws is retryable, never 'not added'", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.manual).not.toMatchObject({ attached: false });
+  });
+
+  it("Codex #4118 r13 F17 control: a successful read + write is not marked retryable", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
+    expect(out.status).toBe("complete");
+    expect(out.payload.retryable).toBeUndefined();
+  });
+
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());

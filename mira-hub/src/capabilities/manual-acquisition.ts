@@ -104,7 +104,7 @@ function outcome(status: ManualAcquisitionStatus, payload: Record<string, unknow
 async function chunksForDoc(
   tenantId: string,
   docId: string,
-): Promise<Array<{ content: string; page: number | null }>> {
+): Promise<Array<{ content: string; page: number | null }> | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       const r = await c.query<{ content: string; source_page: number | null }>(
@@ -120,10 +120,11 @@ async function chunksForDoc(
         page: row.source_page === null ? null : Number(row.source_page),
       }));
     });
-  } catch {
-    // A read failure must not turn into a false "verified" — no chunks means
-    // no evidence means the manual stays a candidate.
-    return [];
+  } catch (err) {
+    // A read failure is NOT "no evidence": it must neither verify the manual
+    // nor settle it as a candidate. null = retry later (Codex #4118 r13 F17).
+    console.error("[manual-acquisition] chunk read failed:", err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -408,8 +409,31 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let enabled = false;
   let matchState: string = "candidate";
   let attached = true;
+  // A database failure while judging the manual is transient: the manual stays
+  // an UNDECIDED candidate (the pending evidence from the attach above, which
+  // a retry may still promote), and the outcome says "retry", never "reviewed"
+  // (Codex #4118 r13 F17).
+  const retryLater = () =>
+    outcome("candidate_review", {
+      candidate: candidateView,
+      manual: {
+        fileId: manualParked.fileId,
+        docId: manualDocId,
+        filename: manualFilename,
+        discoveryUrl: candidate.url,
+        finalUrl: download.finalUrl,
+        matchState: "candidate",
+        enabledByDefault: false,
+        chunkCount: manualChunks,
+        indexed: manualDocId !== null,
+        reused,
+      },
+      retryable: true,
+      message: "Manual saved; MIRA could not finish checking it and will try again.",
+    });
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
+    if (chunks === null) return retryLater();
     verdict = assessApplicability({
       identity: {
         manufacturer: identity.manufacturer,
@@ -435,11 +459,17 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     // reported as added (F9).
     const write = input.writeSourceState ?? writeUnconditionally;
     const promote = verdict.state === "verified" && !requiresUserConfirmation;
-    const persisted = await write(ctx.tenantId, notebookId, manualDocId, {
-      matchState: promote ? "verified" : "candidate",
-      enabledByDefault: promote,
-      matchEvidence: verifiedEvidence,
-    });
+    let persisted: PersistedSource;
+    try {
+      persisted = await write(ctx.tenantId, notebookId, manualDocId, {
+        matchState: promote ? "verified" : "candidate",
+        enabledByDefault: promote,
+        matchEvidence: verifiedEvidence,
+      });
+    } catch (err) {
+      console.error("[manual-acquisition] source write failed:", err instanceof Error ? err.message : err);
+      return retryLater();
+    }
     if (persisted) {
       matchState = persisted.matchState;
       enabled = persisted.enabledByDefault;

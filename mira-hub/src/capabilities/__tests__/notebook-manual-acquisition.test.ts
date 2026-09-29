@@ -445,3 +445,17 @@ describe("Codex #4118 r12 F16 — a PDF that could not be READ (non-scan) is ret
     );
   });
 });
+
+describe("Codex #4118 r13 F17 — a database failure during assessment is retryable, not a verdict", () => {
+  it("candidate_review with retryable → search_unavailable", () => {
+    const r = recordFromOutcome("K", null, { status: "candidate_review", payload: { manual: { docId: "d1", indexed: true }, retryable: true } });
+    expect(r.state).toBe("search_unavailable");
+  });
+  it("the fenced writer rethrows a database failure (it is not 'source missing')", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.failWith = { code: "08006" };
+    await expect(
+      fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "verified", enabledByDefault: true, matchEvidence: {} }),
+    ).rejects.toThrow();
+  });
+});

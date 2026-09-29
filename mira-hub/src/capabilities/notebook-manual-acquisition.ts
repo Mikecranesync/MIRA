@@ -183,6 +183,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     reason?: unknown;
     httpStatus?: unknown;
     ingestFailed?: unknown;
+    retryable?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -199,7 +200,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   const downloadReason = out.status === "download_rejected" ? str(p.reason) : null;
   // A PDF that downloaded but could not be READ for a non-scan reason (e.g. the
   // database dropped mid-ingest) is retryable too (Codex #4118 r12 F16).
-  const transientIngest = out.status === "candidate_review" && p.ingestFailed === true;
+  const transientIngest = out.status === "candidate_review" && (p.ingestFailed === true || p.retryable === true);
   const transientDownload =
     transientIngest ||
     (downloadReason !== null &&
@@ -284,8 +285,10 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
         return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : current();
       });
     } catch (err) {
+      // A database failure is NOT "the source is gone" (null): rethrow so the
+      // pipeline records a retryable outcome (Codex #4118 r13 F17).
       console.error("[manual-acquisition] fenced write failed:", err instanceof Error ? err.message : err);
-      return null;
+      throw err;
     }
   };
 }
