@@ -18,7 +18,7 @@ vi.mock("@/lib/tenant-context", () => ({
         db.queries.push({ sql, params });
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
-        if (/RETURNING id/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/RETURNING id|FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
         return { rowCount: 1, rows: [] };
       }),
     }),
@@ -82,7 +82,7 @@ describe("startManualAcquisition", () => {
       notebookId: "nb",
       nodeId: "node",
       identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: undefined },
-      promoteVerified: expect.any(Function),
+      writeSourceState: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING id/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10]);
@@ -216,26 +216,53 @@ describe("Codex #4118 F2 — what the record says was actually attached", () => 
   });
 });
 
-describe("Codex #4118 F3 — fencedPromoter", () => {
-  it("enables only while the notebook is still confirmed as THIS identity and owns this claim — in one statement", async () => {
-    const { fencedPromoter } = await import("../notebook-manual-acquisition");
+describe("Codex #4118 F3/F5 — fencedWriter", () => {
+  it("locks the notebook row, re-checks ownership + identity, then writes and stamps the search key", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
     db.claimRows = 1;
-    expect(await fencedPromoter("SMC|VQ1000FPGC6C6D|")("t", "nb", "doc", { reason: "r" })).toBe(true);
+    const ok = await fencedWriter("SMC|VQ1000FPGC6C6D|")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: { reason: "r" },
+    });
+    expect(ok).toBe(true);
+    const [lock, write] = db.queries.slice(-2);
+    expect(lock.sql).toMatch(/FOR UPDATE/);
+    expect(lock.sql).toMatch(/n\.identity_status = 'user_confirmed'/);
+    expect(lock.sql).toMatch(/n\.manual_acquisition->>'key' = \$3/);
+    expect(lock.sql).toMatch(/regexp_replace\(coalesce\(n\.model, ''\)/);
+    expect(write.sql).toMatch(/UPDATE equipment_notebook_sources/);
+    expect(JSON.parse(write.params[5] as string)).toMatchObject({ reason: "r", autoAcquisitionKey: "SMC|VQ1000FPGC6C6D|" });
+  });
+  it("refuses — and writes NOTHING — when the locked check finds no owning, matching notebook", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.claimRows = 0;
+    db.queries = [];
+    const ok = await fencedWriter("K")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    expect(ok).toBe(false);
+    expect(db.queries.some((q) => /UPDATE equipment_notebook_sources/.test(q.sql))).toBe(false);
+  });
+});
+
+describe("revokeStaleAutoAcquiredSources", () => {
+  it("turns off only auto-enabled manuals whose search key no longer matches the confirmed identity", async () => {
+    const { revokeStaleAutoAcquiredSources } = await import("../notebook-manual-acquisition");
+    db.queries = [];
+    await revokeStaleAutoAcquiredSources("t", "nb");
     const q = db.queries.at(-1)!;
-    expect(q.sql).toMatch(/UPDATE equipment_notebook_sources s/);
-    expect(q.sql).toMatch(/n\.identity_status = 'user_confirmed'/);
-    expect(q.sql).toMatch(/n\.manual_acquisition->>'key' = \$5/);
-    expect(q.sql).toMatch(/regexp_replace\(coalesce\(n\.model, ''\)/);
-    expect(q.params[4]).toBe("SMC|VQ1000FPGC6C6D|");
+    expect(q.sql).toMatch(/SET enabled_by_default = false, match_state = 'candidate'/);
+    expect(q.sql).toMatch(/s\.match_evidence->>'autoAcquisitionKey' IS NOT NULL/);
+    expect(q.sql).toMatch(/n\.identity_status <> 'user_confirmed' OR s\.match_evidence->>'autoAcquisitionKey' <> /);
+    expect(q.sql).toMatch(/s\.enabled_by_default = true/);
   });
-  it("refuses (false) when no row matched — the identity moved on", async () => {
-    const { fencedPromoter } = await import("../notebook-manual-acquisition");
-    const { withTenantContext } = await import("@/lib/tenant-context");
-    vi.mocked(withTenantContext).mockImplementationOnce(async (_t: string, fn: (c: unknown) => unknown) =>
-      fn({ query: vi.fn(async () => ({ rowCount: 0, rows: [] })) }),
-    );
-    expect(await fencedPromoter("K")("t", "nb", "doc", {})).toBe(false);
+  it("never throws", async () => {
+    const { revokeStaleAutoAcquiredSources } = await import("../notebook-manual-acquisition");
+    db.failWith = { code: "XX000" };
+    expect(await revokeStaleAutoAcquiredSources("t", "nb")).toBe(0);
   });
+});
+
+describe("key normalization", () => {
   it("the SQL key normalization matches acquisitionKey for the same identity", () => {
     const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
     // Mirror of the SQL: upper(regexp_replace(x, '[^A-Za-z0-9]', '', 'g')).

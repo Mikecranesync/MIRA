@@ -55,20 +55,19 @@ export interface ManualAcquisitionInput {
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
   /**
-   * Enable a verified manual. Returns false to refuse (the manual then stays a
-   * disabled candidate). Defaults to an unconditional promotion — the confirm
-   * route's behaviour.
+   * Write this notebook's source state for the discovered manual. Returns false
+   * to REFUSE — the caller then writes nothing more for this document (a lost
+   * ownership never demotes or overwrites a newer decision). Defaults to an
+   * unconditional write — the confirm route's behaviour.
    */
-  promoteVerified?: (tenantId: string, notebookId: string, docId: string, matchEvidence: Record<string, unknown>) => Promise<boolean>;
+  writeSourceState?: SourceStateWriter;
 }
 
-async function promoteUnconditionally(
-  tenantId: string,
-  notebookId: string,
-  docId: string,
-  matchEvidence: Record<string, unknown>,
-): Promise<boolean> {
-  await setSourceState(tenantId, notebookId, docId, { matchState: "verified", enabledByDefault: true, matchEvidence });
+export type SourceStatePatch = { matchState: "verified" | "candidate"; enabledByDefault: boolean; matchEvidence: Record<string, unknown> };
+export type SourceStateWriter = (tenantId: string, notebookId: string, docId: string, patch: SourceStatePatch) => Promise<boolean>;
+
+async function writeUnconditionally(tenantId: string, notebookId: string, docId: string, patch: SourceStatePatch): Promise<boolean> {
+  await setSourceState(tenantId, notebookId, docId, patch);
   return true;
 }
 
@@ -380,29 +379,21 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       applicabilityConfidence: verdict.confidence,
       reason: verdict.reason,
     };
-    // The route promotes unconditionally (the technician is confirming right
-    // now). A background caller passes a FENCED promoter that refuses when the
-    // notebook's identity changed mid-search; a refused promotion leaves the
-    // manual a disabled candidate (#4075, Codex #4118 F3).
-    const promoted =
-      verdict.state === "verified" && !requiresUserConfirmation
-        ? await (input.promoteVerified ?? promoteUnconditionally)(ctx.tenantId, notebookId, manualDocId, verifiedEvidence)
-        : false;
-    if (promoted) {
-      matchState = "verified";
-      enabled = true;
+    // The route writes unconditionally (the technician is confirming right
+    // now). A background caller passes a FENCED writer that refuses once the
+    // notebook's identity or search ownership moved on; a refusal means NO
+    // write at all — neither the promotion nor a demotion (Codex #4118 F3/F5).
+    const write = input.writeSourceState ?? writeUnconditionally;
+    if (verdict.state === "verified" && !requiresUserConfirmation) {
+      if (await write(ctx.tenantId, notebookId, manualDocId, { matchState: "verified", enabledByDefault: true, matchEvidence: verifiedEvidence })) {
+        matchState = "verified";
+        enabled = true;
+      }
     } else {
-      await setSourceState(ctx.tenantId, notebookId, manualDocId, {
+      await write(ctx.tenantId, notebookId, manualDocId, {
         matchState: "candidate",
         enabledByDefault: false,
-        matchEvidence: {
-          ...baseEvidence,
-          decisionMethod: verdict.method,
-          matchedTokens: verdict.matchedTokens,
-          evidencePages: verdict.evidencePages,
-          applicabilityConfidence: verdict.confidence,
-          reason: verdict.reason,
-        },
+        matchEvidence: verifiedEvidence,
       });
     }
   }

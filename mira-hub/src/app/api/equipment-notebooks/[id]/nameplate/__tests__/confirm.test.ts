@@ -507,26 +507,30 @@ describe("manual import: candidate until the document proves itself", () => {
       { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
     ]);
 
-  it("a refusing promoter leaves a text-verified manual a DISABLED candidate", async () => {
+  it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
-    const promoteVerified = vi.fn(async () => false);
-    const out = await acquireManualForIdentity({ ...acquireInput, promoteVerified });
-    expect(promoteVerified).toHaveBeenCalledTimes(1);
-    expect((promoteVerified.mock.calls[0] as unknown[])[3]).toMatchObject({ decisionMethod: "catalog_number_exact" });
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => false);
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    // Exactly one attempt (the promotion) — no demotion afterwards.
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect((writeSourceState.mock.calls[0] as unknown[])[3]).toMatchObject({
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: expect.objectContaining({ decisionMethod: "catalog_number_exact" }),
+    });
+    expect(setSourceState).not.toHaveBeenCalled();
     expect(out.status).toBe("candidate_review");
     expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
-    for (const call of vi.mocked(setSourceState).mock.calls) {
-      expect((call[3] as { enabledByDefault?: boolean }).enabledByDefault).not.toBe(true);
-    }
   });
 
-  it("control: an accepting promoter yields complete + verified, and the default path still enables", async () => {
+  it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
-    const accepted = await acquireManualForIdentity({ ...acquireInput, promoteVerified: vi.fn(async () => true) });
+    const accepted = await acquireManualForIdentity({ ...acquireInput, writeSourceState: vi.fn(async () => true) });
     expect(accepted.status).toBe("complete");
     expect(accepted.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: true });
     vi.mocked(setSourceState).mockClear();

@@ -21,7 +21,11 @@
  * disabled flag means "no automatic search", never a failed request.
  */
 import { withTenantContext } from "@/lib/tenant-context";
-import { acquireManualForIdentity, type ManualAcquisitionOutcome } from "@/capabilities/manual-acquisition";
+import {
+  acquireManualForIdentity,
+  type ManualAcquisitionOutcome,
+  type SourceStateWriter,
+} from "@/capabilities/manual-acquisition";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -163,33 +167,79 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
   || '|' || upper(regexp_replace(coalesce(n.catalog_number, ''), '[^A-Za-z0-9]', '', 'g'))`;
 
 /**
- * Enable a verified manual ONLY if, at this instant, the notebook is still
- * confirmed as the identity the search ran for AND still owns this search's
- * claim. One statement, so a re-bind between the check and the write cannot
- * slip through. A refusal leaves the manual a disabled candidate.
+ * Write this search's source state ONLY while, at that instant, the notebook is
+ * still confirmed as the identity the search ran for AND still owns this
+ * search's claim. The notebook row is locked (FOR UPDATE) before the source is
+ * written, in the same transaction, so a concurrent identity change either
+ * waits for this write (and then revokes it — revokeStaleAutoAcquiredSources)
+ * or commits first and makes this write refuse. A refusal writes NOTHING, so a
+ * stale search can neither enable its manual nor demote a newer decision
+ * (Codex #4118 F3/F5). The search key is stamped into the evidence so a later
+ * identity change can find what this search enabled.
  */
-export function fencedPromoter(key: string) {
-  return async (tenantId: string, notebookId: string, docId: string, matchEvidence: Record<string, unknown>): Promise<boolean> => {
+export function fencedWriter(key: string): SourceStateWriter {
+  return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
-        const r = await c.query(
-          `UPDATE equipment_notebook_sources s
-              SET match_state = 'verified', enabled_by_default = true, match_evidence = $4::jsonb
-             FROM equipment_notebooks n
-            WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.doc_id = $3::uuid
-              AND n.tenant_id = s.tenant_id AND n.id = s.notebook_id
+        const owner = await c.query(
+          `SELECT n.id FROM equipment_notebooks n
+            WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
               AND n.identity_status = 'user_confirmed'
-              AND n.manual_acquisition->>'key' = $5
-              AND ${NOTEBOOK_KEY_SQL} = $5`,
-          [tenantId, notebookId, docId, JSON.stringify(matchEvidence), key],
+              AND n.manual_acquisition->>'key' = $3
+              AND ${NOTEBOOK_KEY_SQL} = $3
+            FOR UPDATE`,
+          [tenantId, notebookId, key],
         );
-        return (r.rowCount ?? 0) > 0;
+        if ((owner.rowCount ?? 0) === 0) return false;
+        await c.query(
+          `UPDATE equipment_notebook_sources
+              SET match_state = $4, enabled_by_default = $5, match_evidence = $6::jsonb
+            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+          [
+            tenantId,
+            notebookId,
+            docId,
+            patch.matchState,
+            patch.enabledByDefault,
+            JSON.stringify({ ...patch.matchEvidence, autoAcquisitionKey: key }),
+          ],
+        );
+        return true;
       });
     } catch (err) {
-      console.error("[manual-acquisition] fenced promote failed:", err instanceof Error ? err.message : err);
+      console.error("[manual-acquisition] fenced write failed:", err instanceof Error ? err.message : err);
       return false;
     }
   };
+}
+
+/**
+ * After a notebook's identity changes, turn off every manual an automatic
+ * search enabled for a DIFFERENT identity (or for a notebook no longer
+ * confirmed). They stay attached as candidates the technician can review.
+ * Never throws; returns how many sources were turned off.
+ */
+export async function revokeStaleAutoAcquiredSources(tenantId: string, notebookId: string): Promise<number> {
+  try {
+    return await withTenantContext(tenantId, async (c) => {
+      const r = await c.query(
+        `UPDATE equipment_notebook_sources s
+            SET enabled_by_default = false, match_state = 'candidate',
+                match_evidence = s.match_evidence || jsonb_build_object('revokedBecause', 'notebook identity changed')
+           FROM equipment_notebooks n
+          WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid
+            AND n.tenant_id = s.tenant_id AND n.id = s.notebook_id
+            AND s.enabled_by_default = true
+            AND s.match_evidence->>'autoAcquisitionKey' IS NOT NULL
+            AND (n.identity_status <> 'user_confirmed' OR s.match_evidence->>'autoAcquisitionKey' <> ${NOTEBOOK_KEY_SQL})`,
+        [tenantId, notebookId],
+      );
+      return r.rowCount ?? 0;
+    });
+  } catch (err) {
+    console.error("[manual-acquisition] revoke failed:", err instanceof Error ? err.message : err);
+    return 0;
+  }
 }
 
 async function finish(tenantId: string, notebookId: string, rec: AcquisitionRecord): Promise<void> {
@@ -245,7 +295,7 @@ export async function startManualAcquisition(
           model: clean(input.identity.model) || undefined,
           catalogNumber: clean(input.identity.catalogNumber) || undefined,
         },
-        promoteVerified: fencedPromoter(key),
+        writeSourceState: fencedWriter(key),
       });
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
