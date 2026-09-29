@@ -44,7 +44,10 @@ import httpx
 
 # Expected cascade members. If one is missing from _build_providers() (its key
 # is unset) that's itself a DOWN — coverage is silently reduced.
-EXPECTED = ("groq", "cerebras", "together")
+# Cerebras was ARCHIVED 2026-09-29 (HTTP 402 quota since 2026-09-07; its key now
+# lives in Doppler as CEREBRAS_API_KEY_ARCHIVED). Restoring it = rename the key
+# back AND add "cerebras" here.
+EXPECTED = ("groq", "together")
 
 PROBE_PROMPT = [{"role": "user", "content": "Reply with the single word: OK"}]
 # Generous budget so a reasoning model (gpt-oss-120b) emits real content rather
