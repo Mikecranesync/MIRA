@@ -61,3 +61,17 @@ describe("every isolation example the prompts teach passes the answer checker", 
     ).not.toBeNull();
   });
 });
+
+describe("the general prompt answers a teaching question as an explanation (#4122)", () => {
+  // "How does a VFD control motor speed?" came back as a 5-step procedure with
+  // "powered but locked out" readings: the shape rule demanded a check list for
+  // every question. The carve-out keeps the check list for troubleshooting only.
+  const general = /const GENERAL_SYSTEM_PROMPT = `([\s\S]*?)`;/.exec(routeSource)?.[1] ?? "";
+
+  it("keeps the check list for troubleshooting and excludes how-it-works questions", () => {
+    expect(general.length).toBeGreaterThan(500);
+    expect(general).toMatch(/If the technician is troubleshooting or doing work on equipment, lead with/);
+    expect(general).toMatch(/If the question asks how something works, what something means, or what a term is, answer it as an explanation/);
+    expect(general).toMatch(/Do NOT turn it into a procedure/);
+  });
+});
