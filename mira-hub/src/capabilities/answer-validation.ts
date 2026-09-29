@@ -683,6 +683,12 @@ const NON_VERIFICATION =
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
+// Symptoms: a problem is happening on real equipment ("it stopped
+// communicating", "the drive trips every morning") — enough on their own.
+export const SYMPTOM =
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|reboot(?:s|ed|ing)?|restart(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
+
+
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
  * ------------------------------------------------------------------------ */
@@ -873,8 +879,8 @@ function codeMeaningViolation(
  *  #4098: the fault-triage steps are the right next step only for a fault
  *  question. A request for a manual, software or a specification got "confirm
  *  the exact code on the display" (Answer Radar seed 002). The copy now follows
- *  the question: a fault code or fault context (FAULT_CONTEXT, the same test
- *  the code-meaning rule uses) keeps the triage steps; anything else gets the
+ *  the question: a fault code, fault context (FAULT_CONTEXT) or a described
+ *  symptom (SYMPTOM) keeps the triage steps; anything else gets the
  *  documentation next step. Copy only — what is withheld is unchanged. */
 export function specificityFallback(code: string | null, question = ""): string {
   const head = code
@@ -882,7 +888,10 @@ export function specificityFallback(code: string | null, question = ""): string 
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
   // Not faultCodeTokens(question): a model name like "SPC-100" is code-shaped
   // and would send every documentation request back to fault triage.
-  const fault = code !== null || FAULT_CONTEXT.test(question);
+  // #4104 review F1: FAULT_CONTEXT alone missed "keeps tripping"; SYMPTOM is
+  // the fuller grammar documented-value-question.ts already used. In doubt,
+  // keep the triage steps (the pre-#4098 behaviour).
+  const fault = code !== null || FAULT_CONTEXT.test(question) || SYMPTOM.test(question);
   if (!fault) {
     return `${head}
 

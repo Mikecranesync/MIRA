@@ -996,11 +996,11 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(text).not.toContain("Confirm the exact code");
   });
 
-  it("5d. #4098 control: a fault question that trips the gate keeps the fault-triage steps", async () => {
+  it("5d. #4098 control (#4104 F1): a tripping question with no fault keyword keeps the fault-triage steps", async () => {
     delete process.env.NOTEBOOK_ANSWER_GATE;
     domainMock.getNotebook.mockResolvedValue(nb() as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("The supply voltage is 480 VAC.")));
-    const text = await (await POST(chatReq({ message: "my drive keeps tripping on an overvoltage fault", mode: "general" }), params)).text();
+    const text = await (await POST(chatReq({ message: "my drive keeps tripping on overvoltage", mode: "general" }), params)).text();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(packetOf().answer_gate.decision).toBe("blocked");
     expect(text).toContain("Confirm the exact code");

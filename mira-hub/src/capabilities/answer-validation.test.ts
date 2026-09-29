@@ -753,8 +753,26 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
     "the drive trips on overcurrent at startup",
     "what does alarm 12 mean",
     "it shows an error after the swap",
+    "my drive keeps tripping on overvoltage", // #4104 review F1: no fault/alarm/error/code word
+    "the conveyor stopped and won't start",
   ])("fault question keeps the fault-triage steps: %s", (q) => {
     expect(specificityFallback(null, q)).toContain("Confirm the exact code");
+  });
+
+  it("#4104 F1 reproduction: a tripping question blocked for a rating keeps triage", () => {
+    const v = validateAnswer({
+      answerText: "The supply voltage is 480 VAC.",
+      question: "my drive keeps tripping on overvoltage",
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: false,
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.violation).toBe("unsupported-specificity:exact-rating");
+      expect(v.replacement).toContain("Confirm the exact code");
+    }
   });
 
   it("a code-meaning fallback always keeps the triage steps", () => {

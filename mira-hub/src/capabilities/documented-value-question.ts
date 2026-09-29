@@ -14,7 +14,7 @@
  * it never makes an answer less guarded than it was.
  */
 
-import { faultCodeTokens } from "./answer-validation";
+import { faultCodeTokens, SYMPTOM } from "./answer-validation";
 
 // A documentation-only quantity or artifact of THIS equipment.
 const DOCUMENTED_VALUE =
@@ -88,10 +88,7 @@ const EQUIPMENT_NOUN =
   "(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)";
 const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
 
-// Symptoms: a problem is happening on real equipment ("it stopped
-// communicating", "the drive trips every morning") — enough on their own.
-const SYMPTOM =
-  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|reboot(?:s|ed|ing)?|restart(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
+// Symptoms live in answer-validation.ts (shared with its fallback-copy choice, #4098).
 // Procedure words: "wire", "install", "configure"… — a generic "how do I wire
 // a VFD?" is teaching, so these count only when bound to THIS machine
 // (Codex #4069 pass 6 F3).
