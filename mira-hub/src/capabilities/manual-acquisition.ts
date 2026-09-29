@@ -220,6 +220,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       candidate: candidateView,
       message: `MIRA would not download that file (${download.reason}). Nothing was added to this notebook.`,
       reason: download.reason,
+      httpStatus: download.status ?? null,
     });
   }
 

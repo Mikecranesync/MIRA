@@ -408,11 +408,22 @@ describe("Codex #4118 r10 F15 — a transient download failure is retryable; a g
     expect(r.state).toBe("search_unavailable");
     expect(r.download_reason).toBe(reason);
   });
-  it.each(["not_pdf", "blocked_host", "host_not_allowed", "too_large", "http_error"])(
+  it.each(["not_pdf", "blocked_host", "host_not_allowed", "too_large", "http_error" /* no status */])(
     "control: %s stays download_rejected (final)",
     (reason) => {
       const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", { status: "download_rejected", payload: { reason } });
       expect(r.state).toBe("download_rejected");
     },
   );
+});
+
+describe("Codex #4118 r11 F15 — a temporary HTTP status is retryable; a permanent one is final", () => {
+  it.each([429, 503, 502, 504, 500, 408])("http_error %i → search_unavailable", (httpStatus) => {
+    const r = recordFromOutcome("K", null, { status: "download_rejected", payload: { reason: "http_error", httpStatus } });
+    expect(r.state).toBe("search_unavailable");
+  });
+  it.each([404, 403, 401, 410])("control: http_error %i stays download_rejected", (httpStatus) => {
+    const r = recordFromOutcome("K", null, { status: "download_rejected", payload: { reason: "http_error", httpStatus } });
+    expect(r.state).toBe("download_rejected");
+  });
 });

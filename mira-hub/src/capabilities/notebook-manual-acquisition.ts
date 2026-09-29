@@ -39,6 +39,8 @@ export const UNAVAILABLE_RETRY_MINUTES = 30;
 
 /** safe-download rejections that say nothing about the file — only that it could not be fetched right now. */
 const TRANSIENT_DOWNLOAD_REASONS = new Set(["timeout", "network_error"]);
+/** HTTP statuses that mean "try again later", not "no such file" (Codex #4118 r11 F15). */
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 export type AcquisitionState = "running" | ManualAcquisitionOutcome["status"];
 
@@ -168,6 +170,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     oemRequestUrl?: unknown;
     warning?: unknown;
     reason?: unknown;
+    httpStatus?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -182,7 +185,10 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // the network dropped) is retryable, like an unavailable search; every other
   // rejection is a security/content guard and stays final (Codex #4118 r10 F15).
   const downloadReason = out.status === "download_rejected" ? str(p.reason) : null;
-  const transientDownload = downloadReason !== null && TRANSIENT_DOWNLOAD_REASONS.has(downloadReason);
+  const transientDownload =
+    downloadReason !== null &&
+    (TRANSIENT_DOWNLOAD_REASONS.has(downloadReason) ||
+      (downloadReason === "http_error" && typeof p.httpStatus === "number" && TRANSIENT_HTTP_STATUSES.has(p.httpStatus)));
   return {
     key,
     state: indexingElsewhere ? "running" : transientDownload ? "search_unavailable" : out.status,
