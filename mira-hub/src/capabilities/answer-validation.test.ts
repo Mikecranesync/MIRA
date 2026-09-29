@@ -810,6 +810,12 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
     ["A PT100 is 100 Ω at 0 °C nominal and its maximum temperature is 850 °C.", Q77],
     // an R0 that does not belong to the named designation is not a definition
     ["The PT100 nominal resistance is 1000 Ω at 0 °C.", Q77],
+    // #4108 review round 2 F1: a value must be bound to its own sensor and quantity
+    ["The PT100 nominal resistance is 1000 Ω at 0 °C, whereas the PT1000 nominal resistance is 100 Ω at 0 °C.", Q77],
+    ["The PT100 maximum lead resistance is 100 ohms at 0 °C.", Q77],
+    // #4108 review round 2 F2: never strip a range endpoint or a sign
+    ["The PT100 resistance range is 10 to 100 ohms at 0 °C.", Q77],
+    ["The PT100 nominal resistance is -100 Ω at 0 °C.", Q77],
     // #4108 review F1/F2/F3: the technician's numbers exempt nothing
     ["The terminal torque is 22 N·m at 40 °C.", AMBIENT],
     ["The operating range is -20 to 40 °C.", AMBIENT],
@@ -822,6 +828,14 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
   // withdrawn (#4108 review F1-F3): it cannot tell a measured value from a rating.
   it("restating the technician's own numbers remains a known false block (Q6)", () => {
     blocked("The drive's rated ambient is 40 °C and the panel is at 45 °C, so derate it.", Q6);
+  });
+
+  it("a blocked sentence reports the surviving claim, not the exempt definition (#4108 r2 F3)", () => {
+    const m = exactRatingMatch("A PT100 has a nominal resistance of 100 Ω at 0 °C and its maximum voltage is 480 V.");
+    expect(m).not.toBeNull();
+    expect(m!.term).toBe("maximum");
+    expect(m!.unit).toBe("v");
+    expect(m!.excerpt).toContain("480 V");
   });
 
   it("with evidence the grounded path is unchanged", () => {
