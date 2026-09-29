@@ -209,7 +209,7 @@ for (const w of LABEL_WORDS) GENERIC_TECH_WORDS.add(w);
 const LABEL_ALT = [...LABEL_WORDS].map((w) => w.replace(/\//g, "\\/")).join("|");
 /** An UPPERCASE label, then its value ("SN 123456", "REV B"). */
 const LABEL_VALUE_UPPER_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})(?:\\s*[:#.]\\s*|\\s+)[^\\s,;]+`, "g");
-/** A label in any case with an explicit separator ("sn: pf525", "Serial#123", "SN=PF525"). */
+/** A label in any case with an explicit separator ("sn: pf525", "Serial#123", "SN=PF525"; r20 adds a spaced "="). */
 const LABEL_VALUE_SEP_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})\\s*[:#=]\\s*[^\\s,;]+`, "gi");
 /**
  * STRONG labels never occur in ordinary prose, so they take their value in ANY
@@ -227,7 +227,7 @@ const STRONG_LABEL_VALUE_RE = new RegExp(`(?<![A-Za-z0-9])(?:${STRONG_LABEL_ALT}
  * — then its value ("Serial Number: PF525", "S/N No. PF525") — Codex #4120 r18 F19.
  */
 const LABEL_VALUE_COMPOUND_RE = new RegExp(
-  `(?<![A-Za-z0-9])(?:${LABEL_ALT})[\\s.]+(?:number|num|no|nr)\\b\\.?\\s*[:#.]?\\s*[^\\s,;]+`,
+  `(?<![A-Za-z0-9])(?:${LABEL_ALT})[\\s.]+(?:number|num|no|nr)\\b\\.?\\s*[:#.=]?\\s*[^\\s,;]+`,
   "gi",
 );
 
