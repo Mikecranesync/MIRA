@@ -459,3 +459,38 @@ describe("Codex #4118 r13 F17 — a database failure during assessment is retrya
     ).rejects.toThrow();
   });
 });
+
+describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, removals are honored", () => {
+  it("the record keeps whether the attempt attached, and a technician removal is final + removed", () => {
+    const linked = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true }, retryable: true, linked: true },
+    });
+    expect(linked).toMatchObject({ state: "search_unavailable", linked: true, doc_id: "d1" });
+    const removed = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, attached: false }, removedByTechnician: true, linked: false },
+    });
+    expect(removed).toMatchObject({ state: "candidate_review", source_removed: true, attached_indexed: false, linked: false });
+  });
+  it("F18: the fenced attach gate throws on a database failure (never a silent refusal)", async () => {
+    const { fencedBeforeAttach } = await import("../notebook-manual-acquisition");
+    db.failWith = { code: "08006" };
+    await expect(fencedBeforeAttach("K", "g1")("t", "nb", "doc")).rejects.toThrow();
+  });
+  it("F19: a linked retryable record is reconciled against the notebook's sources", async () => {
+    db.sourceRow = null;
+    const r = await reconcileAcquisition("t", "nb", {
+      key: "K",
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: "11111111-1111-4111-8111-111111111111",
+      linked: true,
+    });
+    expect(r?.source_removed).toBe(true);
+  });
+});

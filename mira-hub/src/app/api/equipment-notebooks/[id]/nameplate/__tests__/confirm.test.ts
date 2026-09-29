@@ -635,6 +635,35 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(out.payload.retryable).toBeUndefined();
   });
 
+  it("Codex #4118 r14 F18: an attach gate that throws is retryable and attaches nothing", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      beforeAttach: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.linked).toBe(false);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r14 F19: a manual the technician removed is never attached again", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, beforeAttach: vi.fn(async () => "removed" as const) });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+  });
+
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());

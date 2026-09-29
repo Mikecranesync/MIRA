@@ -1948,7 +1948,17 @@ async function handleChatTurn(
       // and refuses (started=false) while a live search still holds it. A
       // "search_unavailable" record does too — the claim retries it once its
       // backoff has passed (Codex #4118 r7 F12).
-      if (!acq || acq.key !== key || acq.state === "running" || acq.state === "search_unavailable") {
+      // A retryable record is reconciled FIRST: a manual its attempt attached
+      // and the technician then removed is never re-fetched (Codex #4118 r14 F19).
+      if (acq && acq.key === key && acq.state === "search_unavailable") {
+        acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      }
+      if (
+        !acq ||
+        acq.key !== key ||
+        acq.state === "running" ||
+        (acq.state === "search_unavailable" && !acq.source_removed)
+      ) {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
           userId: ctx.userId ?? null,

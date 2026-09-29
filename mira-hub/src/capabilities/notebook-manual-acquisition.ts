@@ -64,6 +64,8 @@ export interface AcquisitionRecord {
   doc_id?: string | null;
   /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
   file_id?: string | null;
+  /** This attempt actually attached the manual to the notebook (Codex #4118 r14 F19). */
+  linked?: boolean;
   /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
   retries?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
@@ -149,7 +151,18 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   'retries', CASE WHEN manual_acquisition->>'key' = $3::text
                                    AND manual_acquisition->>'state' = 'search_unavailable'
                                   THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
-                                  ELSE 0 END)
+                                  ELSE 0 END,
+                  -- A retry remembers what the previous attempt ATTACHED, so a
+                  -- manual the technician removed in between is never put back
+                  -- (Codex #4118 r14 F19).
+                  'prior_doc_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                                        AND manual_acquisition->>'state' = 'search_unavailable'
+                                        AND manual_acquisition->>'linked' = 'true'
+                                       THEN manual_acquisition->'doc_id' END,
+                  'prior_file_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                                         AND manual_acquisition->>'state' = 'search_unavailable'
+                                         AND manual_acquisition->>'linked' = 'true'
+                                        THEN manual_acquisition->'file_id' END)
           WHERE tenant_id = $1 AND id = $2
             AND (manual_acquisition IS NULL
                  OR manual_acquisition->>'key' IS DISTINCT FROM $3::text
@@ -184,11 +197,14 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     httpStatus?: unknown;
     ingestFailed?: unknown;
     retryable?: unknown;
+    linked?: unknown;
+    removedByTechnician?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
   // chat must never point at a source that is not there (Codex #4118 F9).
-  const attachedIndexed = Boolean(str(p.manual?.docId)) && p.manual?.indexed === true && p.manual?.attached !== false;
+  const attachedIndexed =
+    Boolean(str(p.manual?.docId)) && p.manual?.indexed === true && p.manual?.attached !== false && p.removedByTechnician !== true;
   // Another request is indexing these exact bytes: nothing is attached here YET.
   // Leave the claim "running" so the stale-claim recovery retries it and the
   // retry reuses the finished document instead of reporting a phantom source.
@@ -219,6 +235,8 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
+    linked: p.linked === true,
+    ...(p.removedByTechnician === true ? { source_removed: true } : {}),
   };
 }
 
@@ -302,29 +320,47 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
  * fencedWriter under a row lock.
  */
 export function fencedBeforeAttach(key: string, gen: string) {
-  return async (tenantId: string, notebookId: string, _docId: string | null): Promise<boolean> => {
-    try {
-      return await withTenantContext(tenantId, async (c) => {
-        const owner = await c.query(
-          `SELECT n.id FROM equipment_notebooks n
-            WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
-              AND n.identity_status = 'user_confirmed'
-              AND n.manual_acquisition->>'key' = $3
-              AND n.manual_acquisition->>'gen' = $4
-              AND ${NOTEBOOK_KEY_SQL} = $3
-            FOR UPDATE`,
-          [tenantId, notebookId, key, gen],
+  return async (tenantId: string, notebookId: string, _docId: string | null): Promise<boolean | "removed"> => {
+    // A database failure THROWS: it is retryable, not a refusal (Codex #4118 r14 F18).
+    return withTenantContext(tenantId, async (c) => {
+      const owner = await c.query<{ prior_doc: string | null; prior_file: string | null }>(
+        `SELECT n.manual_acquisition->>'prior_doc_id' AS prior_doc,
+                n.manual_acquisition->>'prior_file_id' AS prior_file
+           FROM equipment_notebooks n
+          WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
+            AND n.identity_status = 'user_confirmed'
+            AND n.manual_acquisition->>'key' = $3
+            AND n.manual_acquisition->>'gen' = $4
+            AND ${NOTEBOOK_KEY_SQL} = $3
+          FOR UPDATE`,
+        [tenantId, notebookId, key, gen],
+      );
+      // Ownership. An existing source row is NOT a reason to stop: a retried
+      // search must still reach its applicability check (Codex #4118 r4 F7),
+      // and the notebook-source upsert refuses to let a candidate re-attach
+      // overwrite a trusted row's evidence (r4 F5).
+      const row = owner.rows[0];
+      if (!row) return false;
+      // A retry whose previous attempt attached a manual the technician has
+      // since removed (or rejected) must not put it back (r14 F19).
+      if (row.prior_doc) {
+        const src = await c.query<{ match_state: string }>(
+          `SELECT match_state FROM equipment_notebook_sources
+            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+          [tenantId, notebookId, row.prior_doc],
         );
-        // Ownership only. An existing source row is NOT a reason to stop: a
-        // retried search must still reach its applicability check (Codex #4118
-        // r4 F7), and the notebook-source upsert itself refuses to let a
-        // candidate re-attach overwrite a trusted row's evidence (r4 F5).
-        return (owner.rowCount ?? 0) > 0;
-      });
-    } catch (err) {
-      console.error("[manual-acquisition] pre-attach check failed:", err instanceof Error ? err.message : err);
-      return false;
-    }
+        if (!src.rows[0] || src.rows[0].match_state === "rejected") return "removed";
+      } else if (row.prior_file) {
+        const link = await c.query(
+          `SELECT 1 FROM workspace_file_links
+            WHERE tenant_id = $1::uuid AND file_id = $2::uuid
+              AND target_type = 'equipment_notebook' AND target_id = $3::uuid`,
+          [tenantId, row.prior_file, notebookId],
+        );
+        if ((link.rowCount ?? 0) === 0) return "removed";
+      }
+      return true;
+    });
   };
 }
 
@@ -419,9 +455,13 @@ export async function reconcileAcquisition(
   if (!rec) return rec;
   // An indexed document is checked against the notebook's sources (r8 F13); a
   // file-only outcome (a scanned manual) against the notebook's file link (r9 F14).
+  // A retryable record whose attempt attached a manual is checked too, so a
+  // removal during the backoff is honored before any retry (r14 F19).
+  const retryLinked = rec.state === "search_unavailable" && rec.linked === true;
   const bySource =
-    Boolean(rec.doc_id) && (rec.state === "complete" || (rec.state === "candidate_review" && rec.attached_indexed));
-  const byFile = !bySource && Boolean(rec.file_id) && rec.state === "no_extractable_text";
+    Boolean(rec.doc_id) &&
+    (rec.state === "complete" || (rec.state === "candidate_review" && rec.attached_indexed) || retryLinked);
+  const byFile = !bySource && Boolean(rec.file_id) && (rec.state === "no_extractable_text" || retryLinked);
   if (!bySource && !byFile) return rec;
   try {
     return await withTenantContext(tenantId, async (c) => {

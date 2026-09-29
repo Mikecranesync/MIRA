@@ -70,7 +70,7 @@ export interface ManualAcquisitionInput {
    * source that is already on the notebook, or write after losing ownership
    * (Codex #4118 r3 F5). Defaults to always attaching (the confirm route).
    */
-  beforeAttach?: (tenantId: string, notebookId: string, docId: string | null) => Promise<boolean>;
+  beforeAttach?: (tenantId: string, notebookId: string, docId: string | null) => Promise<boolean | "removed">;
 }
 
 export type SourceStatePatch = { matchState: "verified" | "candidate"; enabledByDefault: boolean; matchEvidence: Record<string, unknown> };
@@ -226,6 +226,30 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   }
 
   const manualFilename = safePdfFilename(download.finalUrl);
+  // The attach gate: true = attach, false = this search lost ownership,
+  // "removed" = the technician removed this manual since an earlier attempt
+  // (never re-attached — Codex #4118 r14 F19), "error" = a database failure
+  // (retryable, not a refusal — r14 F18).
+  const gateAttach = async (docId: string | null): Promise<boolean | "removed" | "error"> => {
+    if (!input.beforeAttach) return true;
+    try {
+      return await input.beforeAttach(ctx.tenantId, notebookId, docId);
+    } catch (err) {
+      console.error("[manual-acquisition] attach gate failed:", err instanceof Error ? err.message : err);
+      return "error";
+    }
+  };
+  const gateOutcome = (gate: "removed" | "error", fileId: string, docId: string | null) =>
+    outcome("candidate_review", {
+      candidate: candidateView,
+      manual: { fileId, docId, filename: manualFilename, discoveryUrl: candidate.url, finalUrl: download.finalUrl, attached: false },
+      linked: false,
+      ...(gate === "error" ? { retryable: true } : { removedByTechnician: true }),
+      message:
+        gate === "error"
+          ? "MIRA found the manual but could not attach it just now, and will try again."
+          : "This manual was removed from the notebook, so MIRA did not add it back.",
+    });
   const manualParked = await parkOrReuseFile({
     tenantId: ctx.tenantId,
     filename: manualFilename,
@@ -309,7 +333,9 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       scannedPdf =
         err instanceof NoExtractableTextError || /no extractable text/i.test((err as Error).message);
       manualDocId = null;
-      if (!input.beforeAttach || (await input.beforeAttach(ctx.tenantId, notebookId, null))) await attachFileToTargets(
+      const fileGate = await gateAttach(null);
+      if (fileGate === "error" || fileGate === "removed") return gateOutcome(fileGate, manualParked.fileId, null);
+      if (fileGate) await attachFileToTargets(
         ctx.tenantId,
         manualParked.fileId,
         [
@@ -323,6 +349,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
         { createdBy: ctx.userId ?? null },
       );
       return outcome(scannedPdf ? "no_extractable_text" : "candidate_review", {
+        linked: fileGate,
         candidate: candidateView,
         manual: {
           fileId: manualParked.fileId,
@@ -366,7 +393,9 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     confirmedIdentity: identity,
     reusedExistingDocument: reused,
   };
-  if (input.beforeAttach && !(await input.beforeAttach(ctx.tenantId, notebookId, manualDocId))) {
+  const docGate = await gateAttach(manualDocId);
+  if (docGate === "error" || docGate === "removed") return gateOutcome(docGate, manualParked.fileId, manualDocId);
+  if (!docGate) {
     // Already a source on this notebook, or this search lost ownership: leave
     // whatever is there untouched and report what exists.
     return outcome("candidate_review", {
@@ -429,6 +458,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
         reused,
       },
       retryable: true,
+      linked: true,
       message: "Manual saved; MIRA could not finish checking it and will try again.",
     });
   if (manualDocId) {
@@ -479,6 +509,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
 
   const answering = attached && enabled && (matchState === "verified" || matchState === "user_confirmed");
   return outcome(answering ? "complete" : "candidate_review", {
+    linked: true,
     candidate: candidateView,
     manual: {
       fileId: manualParked.fileId,

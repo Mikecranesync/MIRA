@@ -299,6 +299,31 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(await tryStart()).toBe(false);
   });
 
+  it("r14 F19: a retry carries the attached manual forward; removal in between is reported, never re-attached", async () => {
+    // A previous attempt ATTACHED DOC, then failed transiently.
+    const c = await raw();
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = jsonb_build_object('key', $2::text, 'gen', 'old',
+         'state', 'search_unavailable', 'linked', true, 'doc_id', $3::text,
+         'started_at', to_jsonb(now() - interval '61 minutes'), 'finished_at', to_jsonb(now() - interval '60 minutes'))
+        WHERE id = $1`,
+      [NB, KEY_A, DOC],
+    );
+    await c.end();
+    const gates: unknown[] = [];
+    const acquire = vi.fn(async (inp: { beforeAttach: (t: string, n: string, d: string) => Promise<unknown> }) => {
+      gates.push(await inp.beforeAttach(T, NB, DOC)); // source still there
+      await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1"); // technician removes it
+      gates.push(await inp.beforeAttach(T, NB, DOC));
+      return { status: "search_unavailable", payload: {} };
+    });
+    expect(
+      await startManualAcquisition(acqInput, { acquire: acquire as never, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" } }),
+    ).toBe(true);
+    await vi.waitFor(() => expect(gates.length).toBe(2));
+    expect(gates).toEqual([true, "removed"]);
+  });
+
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {
     expect((await promote())?.enabledByDefault).toBe(true); // verified + enabled + autoAcquisitionKey A
     const c = await raw();

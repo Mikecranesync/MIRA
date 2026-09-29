@@ -1320,6 +1320,30 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
   });
 
+  it("Codex #4118 r14 F19: a retryable record whose manual the technician removed is NOT retried", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: "d1",
+      linked: true,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    // Once for the pre-retry check, once for the reply text — never leaks.
+    acqMock.reconcileAcquisition
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }))
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("no longer in this notebook's Sources");
+  });
+
   it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(true);
     acqMock.readAcquisition.mockResolvedValue({
