@@ -192,7 +192,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
-import { declineKind, declineText } from "@/capabilities/decline-next-step";
+import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
   selectForSemanticCheck,
@@ -2034,16 +2034,29 @@ async function handleChatTurn(
     }
   }
   rec.stage("retrieval", { manual_acquisition: manualAcquisition });
+  // #4128 — a credential or firmware-recovery question about THIS equipment in
+  // a chat where nothing identifies the equipment: no sources, no notebook or
+  // photo identity, no proposal (a named machine keeps #4095's proposal path).
+  // Generic steps for an unknown device are guesses; the #4094 detector picks
+  // the kinds, and a teaching question never matches asksAboutThisEquipment.
+  const unidentifiedServiceText =
+    !notebookRetrieval && oemManufacturer === null && oemModel === null && identityProposal === null &&
+    !groundedMachineEntry && !machineRequestRefused && asksAboutThisEquipment(message, null)
+      ? unidentifiedServiceDecline(message)
+      : null;
+
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : unidentifiedServiceText
+      ? unidentifiedServiceText
       : (missingModelManual || noEvidenceForMachine) && declineKind(message)
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
@@ -2060,7 +2073,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -2072,7 +2085,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
