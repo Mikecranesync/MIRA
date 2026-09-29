@@ -208,9 +208,18 @@ const OFF_THEN_MOVE_BY_HAND = new RegExp(
   "i",
 );
 
+// A sentence naming approved energy-isolating equipment describes a real
+// lockout, not an improvised one (#4114 review round 3: "the approved lockable
+// isolation valve as our lockout, with a personal padlock").
+const APPROVED_ISOLATION =
+  /\b(?:approved|lockable|padlock(?:ed|s)?|personal\s+(?:pad)?locks?|isolation\s+(?:valve|point|device)s?|energy[-\s]isolating|disconnect(?:s|\s+switch)?|breakers?)\b/i;
+
 export function detectImprovisedLockout(message: string): boolean {
   const msg = (message || "").toLowerCase();
-  return USED_AS_LOCKOUT.test(msg) || OFF_THEN_MOVE_BY_HAND.test(msg);
+  const usedAs = msg
+    .split(/(?<=[.!?;])\s+/)
+    .some((sentence) => USED_AS_LOCKOUT.test(sentence) && !APPROVED_ISOLATION.test(sentence));
+  return usedAs || OFF_THEN_MOVE_BY_HAND.test(msg);
 }
 
 /**
@@ -265,7 +274,7 @@ const HAZARD_BANNER_CLASSES: Array<{ re: RegExp; banner: string }> = [
   {
     re: /^improvised-lockout$/,
     banner:
-      "⚠️ **Not a lockout.** A valve, knob, regulator or manual override does not isolate energy for people. Use the machine's authorized lockout procedure: lock every energy source, release or block stored air pressure, springs and gravity, verify zero energy — and keep out of the path of anything that can move.",
+      "⚠️ **Not a lockout unless your procedure says so.** A control knob, button, regulator or manual override is not an energy-isolating device for people. Use the machine's authorized lockout procedure: lock every energy source, release or block stored air pressure, springs and gravity, verify zero energy — and keep out of the path of anything that can move.",
   },
   {
     re: /smoke|fire|burning|burn mark|melted|exploded|shocked|arcing/,

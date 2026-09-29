@@ -247,7 +247,7 @@ describe("#4113: improvised lockout is a flag with its own banner and directive"
     "After the pressure is bled we move the clamp manually.",
   ])("flags: %s", (q) => {
     expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
-    expect(hazardBanner(IMPROVISED_LOCKOUT)).toMatch(/Not a lockout/);
+    expect(hazardBanner(IMPROVISED_LOCKOUT)).toMatch(/Not a lockout unless your procedure says so/);
     expect(flagDirectiveFor(IMPROVISED_LOCKOUT)).toMatch(/NOT a\s+personnel\s+lockout/);
   });
 
@@ -322,5 +322,22 @@ describe("#4114 review round 2: composition and approved lockout equipment", () 
     "Our procedure uses a lockable isolation point as the lockout for the air supply.",
   ])("approved lockout equipment is not improvised (F5): %s", (q) => {
     expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+
+describe("#4114 review round 3: approved isolation valves are not improvised", () => {
+  it.each([
+    "We use the approved lockable isolation valve as our lockout, with a personal padlock. How do I verify zero energy?",
+    "We use the isolation valve as our lockout point and hang a padlock on it.",
+  ])("not flagged: %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "We use the control valve as our lockout on the gates.",
+    "Operators use the regulator as a lockout.",
+  ])("an ordinary control valve or regulator is still flagged: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
   });
 });
