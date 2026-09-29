@@ -931,3 +931,45 @@ describe("#4111 review: the implied-restore rule follows steps and actions, not 
     expect(run(a).ok).toBe(true);
   });
 });
+
+
+describe("#4111 review round 2: positive shape, clause-scoped exemptions", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LOCK = "Lock out the drive and verify zero volts.";
+
+  it.each([
+    // F1: a display comparison never exempts a physical terminal measurement
+    `${LOCK} Measure the actual line voltage at the input terminals for comparison with the value on the remote display.`,
+    // F2: a shared verb across coordinated objects, both orders
+    `${LOCK} Measure winding resistance and actual line voltage at the input terminals.`,
+    `${LOCK} Measure the actual line voltage at the input terminals and winding resistance.`,
+    // F2: a prohibited action followed by a separate affirmative measurement
+    `${LOCK} Do not open the cover; measure the actual line voltage at the input terminals.`,
+    // F3: a negated dead state is not a dead check
+    `${LOCK} Measure the actual line voltage at the input terminals to confirm the supply is not dead.`,
+    `${LOCK} Measure the supply voltage at the terminals to confirm it is not zero.`,
+    // dead check sharing a clause without a comma
+    `${LOCK} Check fuse continuity then measure the supply voltage at the terminals.`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    // display-only readings, fronted and trailing source
+    `${LOCK} From the remote display, read the actual line voltage.`,
+    `${LOCK} Read the actual line voltage from the remote display.`,
+    // coordinated prohibition shares its verb
+    `${LOCK} Do not probe and measure the actual line voltage at the input terminals.`,
+    // explicit absence-of-voltage verification and resistance-only checks
+    `${LOCK} Verify the absence of voltage at the input terminals before touching them.`,
+    `${LOCK} Check winding resistance at the motor terminals.`,
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});

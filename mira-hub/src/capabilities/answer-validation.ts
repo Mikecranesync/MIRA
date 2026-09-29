@@ -975,51 +975,45 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
 
 // #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
 // volts. 2. Measure the actual line voltage at the drive's input terminals."
-// After a completed lockout, a LIVE supply measurement can only be taken by
-// restoring power — the restore step is implied, never written, so the
-// explicit restore-to-measure rule above never fired and the answer was served
-// with no energized-work banner (2 of 5 turns; the other 3 wrote the restore
-// and got the banner). This recognises only that narrow shape: an isolation
-// step that verifies zero/dead, followed later by a measurement of a live
-// supply quantity, with no restore written in between. A dead check ("verify
-// zero volts at the input terminals", winding resistance) never matches.
+// After a lockout, a live supply reading at a physical contact point implies a
+// restore that is never written, so the explicit restore-to-measure rule never
+// fired and the answer was served with no energized-work banner (2 of 5 turns).
+//
+// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
+// withholds the answer, so a miss costs more than an extra warning. Each
+// bolted-on exemption (display reading, dead check, splitting on "and") opened
+// a new bypass. The rule therefore fires on a positive shape and keeps only
+// two exemptions, both clause-scoped:
+//   fire   = after an affirmative lockout, a clause with a measure verb, a live
+//            supply quantity, and a physical CONTACT point;
+//   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
+//            clause is a prohibition of the measurement.
+// A display-only reading has no contact point, so it never fires; a resistance
+// or continuity check sharing the clause does not exempt a live-voltage
+// reading; "not dead" is not a dead check.
 const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
-const VERIFIED_DEAD = /\b(?:verify|confirm)\w*\b[^.!?\n]{0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+voltage|(?:is|are)\s+dead|dead\b)/i;
 const LIVE_SUPPLY_QUANTITY =
-  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
-const DEAD_MEASUREMENT = /\b(?:zero|absence|dead|no\s+voltage|de[-\s]?energi[sz]ed|isolated|locked\s+out|resistance|continuity|insulation)\b/i;
+  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
+const CONTACT_POINT =
+  /\b(?:terminals?|conductors?|phases?|legs?|lugs?|busbars?|bus\s+bars?|test\s+leads?|leads?|wires?|feeder|L1|L2|L3|line[-\s]to[-\s]line)\b/i;
+// Affirmative verification that voltage is ABSENT. "not dead"/"not zero" is
+// the opposite claim and never matches.
+const VERIFIES_ABSENCE =
+  /\b(?:verify|confirm|check|test)\w*\b(?:(?!\bnot\b)[^.!?\n]){0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+(?:any\s+)?voltage|no\s+voltage)\b/i;
 const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
 const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
 
-// Clauses for this rule also split on "and" / "then": each is one action, so a
-// dead check never exempts a sibling live measurement (#4111 review F2).
-const ACTION_BOUNDARY = new RegExp(CLAUSE_BOUNDARY.source + "|\\bthen\\b|\\band\\b", "i");
-
-/** State machine over ordered clauses (#4111 review F1-F4):
- *  an affirmative lockout (verified or not) → isolated;
- *  an AFFIRMATIVE restore ends isolation (a prohibited one does not); while
- *  isolated, the first clause that affirmatively takes a physical live-supply
- *  measurement — not prohibited, not a dead check, not an installed-display
- *  reading — is returned. */
 function liveMeasurementAfterLockout(text: string): string | null {
-  let lockedOut = false;
   let isolated = false;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    for (const clause of sentence.split(ACTION_BOUNDARY)) {
+    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
       if (!clause.trim()) continue;
+      // Only an affirmative restore ends isolation; "do not restore" does not.
       if (RESTORE_ENERGY.test(clause) && !RESTORE_PROHIBITION.test(clause)) {
-        lockedOut = false;
         isolated = false;
         continue;
       }
-      // Any AFFIRMATIVE lockout isolates; verification is not required for a
-      // later live reading to imply a restore. "Do not lock out" does not.
       if (LOCKOUT_STEP.test(clause) && !LOCKOUT_PROHIBITION.test(clause)) {
-        lockedOut = true;
-        isolated = true;
-        continue;
-      }
-      if (lockedOut && VERIFIED_DEAD.test(clause)) {
         isolated = true;
         continue;
       }
@@ -1027,9 +1021,9 @@ function liveMeasurementAfterLockout(text: string): string | null {
       if (
         MEASURE_VERB.test(clause) &&
         LIVE_SUPPLY_QUANTITY.test(clause) &&
-        !DEAD_MEASUREMENT.test(clause) &&
-        !MEASURE_PROHIBITION.test(clause) &&
-        !EXTERNAL_READING.test(clause)
+        CONTACT_POINT.test(clause) &&
+        !VERIFIES_ABSENCE.test(clause) &&
+        !MEASURE_PROHIBITION.test(clause)
       ) {
         return clause.trim();
       }
