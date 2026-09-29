@@ -181,6 +181,10 @@ export type TurnEvidencePacketAnswerGate = {
    * evidence-consistency.ts. null when the turn had no observation in context.
    */
   evidence_followed: EvidenceFollowedAssessment | null;
+  /** #4098: when the exact-rating rule matched, WHICH quantity word and unit
+   *  fired (e.g. {term:"nominal", unit:"ω"}). Tokens of the rule's closed
+   *  vocabulary, never answer text; null when that rule did not fire. */
+  gate_match: { term: string; unit: string } | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -365,6 +369,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_input_tokens: null,
       citations_shipped: 0,
       evidence_followed: null,
+      gate_match: null,
     },
     persistence: {
       turn_row_id: null,
