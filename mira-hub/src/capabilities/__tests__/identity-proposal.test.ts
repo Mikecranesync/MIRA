@@ -151,3 +151,28 @@ describe("Codex #4120 r3", () => {
   });
 });
 
+
+describe("Codex #4120 r4", () => {
+  it.each([
+    "Compare Siemens S7-1200 and TP700",
+    "Compare Siemens TP700 and S7-1200",
+    "Compare Allen-Bradley SLC 5/03 and PLC 5/40",
+    "Compare Allen-Bradley PLC 5/40 and SLC 5/03",
+  ])("F2: two different machines in a comparison → no proposal: %s", (text) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toBeNull();
+  });
+  it("F9: repeating the chosen model still proposes", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 faults. The S7-1200 is on Ethernet.", CORPUS)).toEqual({
+      manufacturer: "Siemens",
+      model: "S7-1200",
+    });
+    expect(proposeIdentityFromText("Allen-Bradley PF525 trips. How do I diagnose PF525?", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "525",
+    });
+  });
+  it("F9 control: a different second model still refuses", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 faults. The S7-1500 is on Ethernet.", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Allen-Bradley PF525 trips. How do I diagnose PF753?", CORPUS)).toBeNull();
+  });
+});

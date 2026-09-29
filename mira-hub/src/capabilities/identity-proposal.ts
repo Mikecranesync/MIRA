@@ -161,46 +161,52 @@ export function manufacturerMentionInText(message: string, corpus: readonly stri
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-/**
- * Another model of the SAME family named elsewhere without repeating the
- * manufacturer ("SLC 5/03 and SLC 5/04", "FX5U or FX3U") — Codex #4120 F2.
- */
 /** CamelCase product-family word ("MicroLogix", "PowerFlex", "CompactLogix"). */
 const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
 
 /**
- * Does the text OUTSIDE the chosen machine's own mention windows name another
- * machine? Any standalone model-shaped token, a CamelCase family word followed
- * by a number ("MicroLogix 1400"), or another number of the chosen family
- * ("SLC 5/04") counts (Codex #4120 r2 F2, r3 F2). The chosen mention's window
- * is removed first, so an alias of the chosen model ("PF525" → 525) never
- * counts against itself (r3 F8).
+ * Every machine-model mention anywhere in the message, as written: a standalone
+ * model token ("S7-1200", "PF525", "TP700"), or a family word followed by its
+ * number — CamelCase ("MicroLogix 1400") or all-caps ("SLC 5/04", "PLC 5/40").
+ * A generic device word only counts as a family with a separated number
+ * ("PLC 5/40", not "PLC 5"), and "PLC S7-1200" yields the model alone.
  */
-function namesAnotherMachine(rest: string, model: string): boolean {
-  const tokens = rest.split(/\s+/).map(cleanToken).filter(Boolean);
-  const family = model.includes(" ") ? model.split(" ")[0] : (model.match(/^[A-Za-z]{2,}/)?.[0] ?? null);
+function modelMentions(message: string): string[] {
+  const tokens = message
+    .split(/\s+/)
+    .map((t) => cleanToken(t.replace(/^[("'‘“[]+/u, "")))
+    .filter(Boolean);
+  const out: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const next = tokens[i + 1];
-    if (isModelToken(t)) return true;
-    if (CAMEL_FAMILY_RE.test(t) && next && isFamilyNumber(next)) return true;
-    if (family && t.toUpperCase() === family.toUpperCase() && next && isFamilyNumber(next)) return true;
+    if (isModelToken(t)) {
+      out.push(t);
+      continue;
+    }
+    if (!next || isModelToken(next) || !isFamilyNumber(next) || NON_MACHINE_TOKEN_RE.test(next)) continue;
+    const allCapsFamily =
+      ALLCAPS_CODE_RE.test(t) && (!GENERIC_DEVICE_WORDS.has(t) || /[/.\-]/.test(next));
+    if (CAMEL_FAMILY_RE.test(t) || allCapsFamily) {
+      out.push(`${t} ${next}`);
+      i++;
+    }
   }
-  return false;
+  return out;
 }
 
-/** Blank the chosen machine's mention windows (mention + next 3 tokens). */
-function outsideWindows(message: string, windows: { start: number; end: number }[]): string {
-  let out = message;
-  for (const w of windows) out = out.slice(0, w.start) + " ".repeat(w.end - w.start) + out.slice(w.end);
-  return out;
+/** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525). */
+function canonicalModel(span: string): string {
+  return norm(resolveModelFromObservationText(span).model ?? span);
 }
 
 /**
  * Propose a machine from the technician's free text, or null. Never throws.
  * `knownManufacturers` is the shared library's manufacturer list. Proposes ONLY
- * when exactly one distinct (manufacturer, model) pair is named and no other
- * model of that family appears — anything ambiguous yields nothing.
+ * when exactly one (manufacturer, model) pair is named and every model mention
+ * in the message is that same model — a comparison or a second machine, in any
+ * order or spelling, yields nothing (Codex #4120 F1/F2), while repeating the
+ * chosen model, or an alias of it, still proposes (r4 F9).
  */
 export function proposeIdentityFromText(
   message: string,
@@ -209,28 +215,14 @@ export function proposeIdentityFromText(
   try {
     if (resolveModelFromObservationText(message).ambiguous) return null;
     const candidates = new Map<string, IdentityProposal>();
-    const windows: { start: number; end: number }[] = [];
     for (const mention of manufacturerMentions(message, knownManufacturers)) {
       const model = modelAfterManufacturer(message.slice(mention.index), mention.text);
-      // The mention plus EXACTLY the tokens the model was read from (through the
-      // model's last part — "525" inside "PF525", "5/03" of "SLC 5/03").
-      const mentionEnd = mention.index + mention.text.length;
-      let end = mentionEnd;
-      if (model) {
-        const near = message.slice(mentionEnd).match(/^(?:\s+\S+){0,3}/)?.[0] ?? "";
-        const last = model.split(" ").at(-1)!;
-        const at = near.toUpperCase().indexOf(last.toUpperCase());
-        if (at >= 0) {
-          const tokenEnd = near.slice(at + last.length).match(/^\S*/)?.[0].length ?? 0;
-          end = mentionEnd + at + last.length + tokenEnd;
-        }
-      }
-      windows.push({ start: mention.index, end });
-      if (model) candidates.set(`${norm(mention.text)}|${norm(model)}`, { manufacturer: mention.text, model });
+      if (model) candidates.set(`${norm(mention.text)}|${canonicalModel(model)}`, { manufacturer: mention.text, model });
     }
     if (candidates.size !== 1) return null;
     const only = [...candidates.values()][0];
-    return namesAnotherMachine(outsideWindows(message, windows), only.model) ? null : only;
+    const chosen = canonicalModel(only.model);
+    return modelMentions(message).every((m) => canonicalModel(m) === chosen) ? only : null;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
