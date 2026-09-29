@@ -304,3 +304,16 @@ describe("Codex #4120 r14", () => {
     expect(proposeIdentityFromText("Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r15", () => {
+  it.each(["Siemens SN: 123456 is on the label", "Siemens SERIAL 123456 is on the label", "Siemens REV 3 board"])(
+    "F19: a nameplate label + number is never the proposed model: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F19: a serial label is not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley SLC 5/03 SN 123456 is on the label", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+  });
+});

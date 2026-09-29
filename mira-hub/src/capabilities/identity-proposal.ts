@@ -192,6 +192,10 @@ const GENERIC_TECH_WORDS = new Set([
   "MODBUS", "PROFINET", "DEVICENET", "ETHERNET", "ETHERNETIP", "ENCODER", "PHOTOELECTRIC", "PROXIMITY",
   "LOAD", "CELL", "POINT", "FLEX", "COMPACT", "INDUCTION", "SERVO", "STEPPER", "GEARMOTOR", "MOTOR",
   "NEMA", "VARIABLE", "FREQUENCY", "DRIVE", "VFD", "TIA", "PORTAL",
+  // Nameplate LABEL words: what follows them is a serial, part, lot or revision
+  // number, never a model ("SN: 123456", "SERIAL 123456") — Codex #4120 r15 F19.
+  "SN", "S/N", "SERIAL", "SER", "PN", "P/N", "PART", "CAT", "CATALOG", "ORDER", "ID", "NO", "NR", "LOT",
+  "BATCH", "REV", "REVISION", "VER", "VERSION", "FW", "FIRMWARE", "MFG", "DATE", "QTY",
 ]);
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
