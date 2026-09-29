@@ -137,6 +137,13 @@ def score(manifest: dict, run: dict) -> dict:
         for action in case.get("required_receipts", []):
             if not receipts.get(action):
                 reasons.append(f"{label}: {action} action receipt missing")
+        if case.get("fixture"):
+            # #4109 review F5: the photo receipt must prove the pinned bytes were
+            # the ones uploaded — a truthy receipt for some other image is no proof.
+            photo = receipts.get("photo_link")
+            uploaded = photo.get("sha256") if isinstance(photo, dict) else None
+            if not isinstance(uploaded, str) or uploaded != case.get("fixture_sha256"):
+                reasons.append(f"{label}: uploaded photo hash does not match the pinned fixture")
         source = attempt.get("source_review") or {}
         if case.get("requires_source_review"):
             providers = source.get("independent_providers") or []

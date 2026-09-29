@@ -133,6 +133,26 @@ class HumanReadinessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             score(MANIFEST, run)
 
+    def _photo_case(self, receipt):
+        manifest = copy.deepcopy(MANIFEST)
+        manifest["cases"][0]["fixture"] = "photo.jpg"
+        manifest["cases"][0]["fixture_sha256"] = "a" * 64
+        manifest["cases"][0]["required_receipts"] = ["citation_open", "photo_link"]
+        run = good()
+        run["attempts"][0]["action_receipts"]["photo_link"] = receipt
+        return score(manifest, run)
+
+    def test_photo_receipt_matching_the_pin_can_go(self):
+        self.assertEqual(self._photo_case({"sha256": "a" * 64})["decision"], "GO")
+
+    def test_photo_receipt_for_other_bytes_holds(self):
+        """#4109 review F5: a different image cannot satisfy a pinned fixture."""
+        for receipt in ({"sha256": "b" * 64}, "uploaded", {"sha256": None}, {}):
+            with self.subTest(receipt=receipt):
+                report = self._photo_case(receipt)
+                self.assertEqual(report["decision"], "HOLD")
+                self.assertIn("does not match the pinned fixture", " ".join(report["reasons"]))
+
     def test_unpinned_photo_fixture_cannot_go(self):
         manifest = copy.deepcopy(MANIFEST)
         manifest["cases"][0]["fixture"] = "photo.jpg"

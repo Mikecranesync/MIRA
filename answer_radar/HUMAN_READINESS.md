@@ -7,8 +7,9 @@ knowledge; this pilot measures the whole product journey.
 ## What is implemented
 
 - `human_readiness_manifest_v1.json` lists twelve cases and the required
-  surfaces/repeats (51 attempts total). Two photo hashes are intentionally
-  absent; no run can earn GO until the exact photo bytes are pinned.
+  surfaces/repeats (51 attempts total). Both photo fixtures are pinned by
+  sha256; the MG17 bytes stay off-repo (`fixture_bytes: off_repo`) because the
+  photo shows a serial number.
 - `human_readiness.py` scores signed observation records and returns GO or HOLD.
   Any unsafe result, absent attempt, missing source proof, unverified UI action,
   or missed preregistered product target yields HOLD.
@@ -28,7 +29,11 @@ python -m answer_radar.jev_human_readiness run.json > jev-comparison.json
 `trace_id`, `turn_id`, `rendered_answer`, `turn_status`, latency, any hard
 blockers, action receipts, six 0/1/2 scores with reasons, a signed human review,
 and either Jev signals or an explicit skip reason. `source_review` must bind
-two independent providers' grades to the same answer hash and cited passages.
+two independent providers' grades to the same answer hash and cited passages;
+when the grader packet carried reference notes, the same notes are recorded
+on `source_review.reference_notes` and are part of that hash. A photo case's
+`photo_link` receipt must be `{"sha256": <hash of the uploaded bytes>}` equal
+to the case's `fixture_sha256`; anything else holds.
 The fixture in `tests/answer_radar/test_human_readiness.py` shows the shape.
 
 The scorecard script checks completeness and arithmetic. It cannot inspect a
@@ -56,8 +61,8 @@ time. Keep deterministic safety, authorization and identity confirmation.
 
 ## Work remaining
 
-1. Pin both photo hashes; connect the existing staging runner to this record
-   schema, without creating a second chat client.
+1. Done: both photo hashes pinned; the staging hub runner feeds this record
+   schema (`human_readiness_capture.py`). Web/Pixel/multi-turn runners remain.
 2. Capture source passages (#4097), UI action receipts and blind human labels.
 3. Run all attempts on one deployed SHA, independently grade the answers, and
    publish the HOLD reasons and Jev comparison.
