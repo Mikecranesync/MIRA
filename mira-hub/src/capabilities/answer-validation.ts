@@ -647,56 +647,41 @@ export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
 
 // #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
 // about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
-// the IEC 60751 definition of the sensor type and was blocked 5/5 on staging
-// (731649c23). The exemption is value-checked, not keyword-checked: a sentence
-// is exempt only when it names a designation below AND every value-with-unit in
-// it is one of that designation's defining values. "This PT100 is rated to
-// 500 °C" keeps a value the table does not define, so it is still blocked.
-// Add a designation only with its standard's defining values.
-const DEFINING_VALUES: ReadonlyArray<{ re: RegExp; values: ReadonlyArray<string> }> = [
-  // IEC 60751 platinum RTDs: nominal resistance R0 at 0 °C.
-  { re: /\bpt[-\s]?100\b/i, values: ["100ohm", "0c"] },
-  { re: /\bpt[-\s]?500\b/i, values: ["500ohm", "0c"] },
-  { re: /\bpt[-\s]?1000\b/i, values: ["1000ohm", "0c"] },
+// the IEC 60751 definition of the sensor type, and was blocked 5/5 on staging
+// (731649c23). The exemption recognizes the defining RELATIONSHIP, not loose
+// numbers: "<R0> Ω at 0 °C" for a designation the sentence names, with R0 the
+// value that designation is defined by. Those spans are removed and the full
+// rating grammar re-runs on what remains, so any other value in the sentence
+// ("…and its maximum is 850 °C", "minimum operating temperature is 0 °C",
+// "22 N·m") still blocks. #4108 review: a value-set comparison let unrelated
+// numbers launder invented ones; this does not compare values at all beyond R0.
+// Add a designation only with its standard's defining R0.
+const RTD_R0: ReadonlyArray<{ re: RegExp; ohms: number }> = [
+  { re: /\bpt[-\s]?100\b/i, ohms: 100 },
+  { re: /\bpt[-\s]?500\b/i, ohms: 500 },
+  { re: /\bpt[-\s]?1000\b/i, ohms: 1000 },
 ];
 
-const VALUE_WITH_UNIT_RE =
-  /([-–+]?\d[\d,]*(?:\.\d+)?)\s*(k?(?:ohms?|ω|Ω)|°\s?[cf]|celsius|fahrenheit|v(?:olts?|dc|ac)?|a(?:mps?)?|ma|hz|rpm|bar|psi|k?pa|mpa|kw|hp|mm|cm)(?![a-z])/gi;
+const RTD_DEFINITION_SPAN_RE =
+  /(\d[\d,]*(?:\.\d+)?)\s*(k)?\s?(?:ohms?|ω)(?![a-z])\s+at\s+0\s*°\s?c\b/gi;
 
-/** Every value-with-unit in `s`, normalized to "<number><unit>" ("1,000 Ω" → "1000ohm"). */
-function valuesWithUnits(s: string): string[] {
-  const out: string[] = [];
-  for (const m of s.matchAll(VALUE_WITH_UNIT_RE)) {
-    let n = Number(m[1].replace(/,/g, "").replace("–", "-"));
-    let u = m[2].toLowerCase().replace(/\s+/g, "");
-    if (/^k(?:ohms?|ω)$/.test(u)) {
-      n *= 1000;
-      u = "ohm";
-    } else if (/^(?:ohms?|ω)$/.test(u)) u = "ohm";
-    else if (u === "°c" || u === "celsius") u = "c";
-    else if (u === "°f" || u === "fahrenheit") u = "f";
-    if (Number.isFinite(n)) out.push(`${n}${u}`);
-  }
-  return out;
+/** The sentence with every "<R0> Ω at 0 °C" span removed whose R0 belongs to a
+ *  designation the sentence names; any other span is left in place. */
+function withoutRtdDefinitions(sentence: string): string {
+  const named = RTD_R0.filter((d) => d.re.test(sentence)).map((d) => d.ohms);
+  if (named.length === 0) return sentence;
+  return sentence.replace(RTD_DEFINITION_SPAN_RE, (span, num: string, kilo?: string) => {
+    const ohms = Number(num.replace(/,/g, "")) * (kilo ? 1000 : 1);
+    return named.includes(ohms) ? " " : span;
+  });
 }
 
-/** A matched rating sentence that is not a claim about the machine: its every
- *  value is either a defining value of a designation it names, or a value the
- *  technician wrote in the question (restating their own numbers). */
-function isDefinitionOrEcho(sentence: string, question: string): boolean {
-  const vals = valuesWithUnits(sentence);
-  if (vals.length === 0) return false;
-  const allowed = new Set(valuesWithUnits(question));
-  for (const d of DEFINING_VALUES) if (d.re.test(sentence)) for (const v of d.values) allowed.add(v);
-  return vals.every((v) => allowed.has(v));
-}
-
-export function exactRatingMatch(text: string, question = ""): ExactRatingMatch | null {
+export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m && !isDefinitionOrEcho(sentence, question)) {
+    if (m && EXACT_RATING_RE.test(withoutRtdDefinitions(sentence))) {
       return {
         excerpt: m[0].slice(0, 160),
         term: (m[1] ?? m[4] ?? "").toLowerCase(),
@@ -1099,7 +1084,7 @@ export function validateAnswer(opts: {
   }
 
   if (!evidenceSufficient) {
-    const er = exactRatingMatch(scanText, scanQuestion);
+    const er = exactRatingMatch(scanText);
     if (er) {
       return {
         ok: false,

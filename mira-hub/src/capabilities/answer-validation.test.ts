@@ -774,47 +774,57 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
   });
 });
 
-describe("#4098 part 2: established definitions and the technician's own numbers", () => {
+describe("#4098 part 2: established RTD definitions in general chat", () => {
   const Q77 = "A technician is comparing two RTD sensor types: PT100 and PT1000. What is the primary difference?";
   const Q6 =
     "A VFD is installed in a panel that has reached 45°C ambient. The drive's rated ambient temperature is 40°C. What is the CORRECT action?";
+  const AMBIENT = "The ambient temperature is 40 °C.";
   const check = (answerText: string, question: string) =>
     validateAnswer({ answerText, question, general: true, served: true, refused: false, evidenceSufficient: false });
+  const blocked = (answerText: string, question: string) => {
+    const v = check(answerText, question);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:exact-rating");
+  };
 
   it.each([
     "A PT100 has a nominal resistance of 100 Ω at 0 °C.",
-    "PT1000 has a base resistance of 1,000 Ω at 0°C vs. PT100's 100 Ω at 0°C, so lead resistance matters less.",
     "The nominal resistance of a Pt1000 is 1000 ohms at 0 °C.",
     "A PT-100 element reads a nominal 100 ohm at 0 °C.",
     "The PT1000 nominal value is 1 kΩ at 0 °C.",
-  ])("a standard RTD definition is served in general chat: %s", (a) => {
+    "PT1000 has a base resistance of 1,000 Ω at 0°C vs. PT100's 100 Ω at 0°C, so lead resistance matters less.",
+  ])("a standard RTD definition is served: %s", (a) => {
     expect(check(a, Q77).ok).toBe(true);
-  });
-
-  it.each([
-    "The drive's rated ambient is 40 °C and the panel is at 45 °C, so derate it.",
-    "Its rating is 40°C; at 45°C the drive must be derated.",
-  ])("restating the technician's own numbers is served: %s", (a) => {
-    expect(check(a, Q6).ok).toBe(true);
   });
 
   it.each([
     ["The DC bus voltage limit is 810 VDC.", Q77],
     ["Terminal screw torque is 1.2 N·m.", Q77],
     ["Supply voltage is 480 VAC.", Q77],
-    // a designation does not launder a value its standard does not define
+    // a designation never launders a value its definition does not contain
     ["This PT100 is rated to a maximum of 500 °C.", Q77],
     ["The PT1000 operating range is 0 °C to 850 °C.", Q77],
-    // the technician's numbers do not launder new ones
+    // #4108 review F3: the reference temperature is not an operating limit
+    ["The PT100 minimum operating temperature is 0 °C.", Q77],
+    // a definition span does not cover another claim in the same sentence
+    ["A PT100 is 100 Ω at 0 °C nominal and its maximum temperature is 850 °C.", Q77],
+    // an R0 that does not belong to the named designation is not a definition
+    ["The PT100 nominal resistance is 1000 Ω at 0 °C.", Q77],
+    // #4108 review F1/F2/F3: the technician's numbers exempt nothing
+    ["The terminal torque is 22 N·m at 40 °C.", AMBIENT],
+    ["The operating range is -20 to 40 °C.", AMBIENT],
+    ["The drive rated ambient temperature is 45 °C.", Q6],
     ["The rated current is 12 A at 40 °C.", Q6],
-    ["Its rating is 40 °C, derated to 50 °C.", Q6],
-  ])("an unsupported machine value is still blocked: %s", (a, q) => {
-    const v = check(a, q);
-    expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:exact-rating");
+  ])("an unsupported value is still blocked: %s", (a, q) => blocked(a, q));
+
+  // Measured on staging 731649c23 (Q6 blocked 2/5): restating the technician's
+  // own numbers is still blocked. A value-set echo exemption was tried and
+  // withdrawn (#4108 review F1-F3): it cannot tell a measured value from a rating.
+  it("restating the technician's own numbers remains a known false block (Q6)", () => {
+    blocked("The drive's rated ambient is 40 °C and the panel is at 45 °C, so derate it.", Q6);
   });
 
-  it("with evidence the grounded path is unchanged (no exemption needed)", () => {
+  it("with evidence the grounded path is unchanged", () => {
     const v = validateAnswer({
       answerText: "The supply voltage is 480 VAC.",
       question: Q77,
