@@ -317,3 +317,22 @@ describe("Codex #4120 r15", () => {
     });
   });
 });
+
+describe("Codex #4120 r16", () => {
+  it("F19: a serial VALUE after a label is never a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley SLC 5/03 SN: AB1234 is on the label", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+  });
+  it("F19: a label right after the manufacturer yields no model, even a parser-known one", () => {
+    expect(proposeIdentityFromText("Siemens SN: PF525 is on the label", CORPUS)).toBeNull();
+  });
+  it.each(["Siemens S7-1200,TP700 comparison", "Siemens S7-1200/S7-1500 comparison", "Siemens S7-1200;TP700 comparison"])(
+    "F20: punctuation-joined models are two machines: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F20 control: a family number with a slash is still one model", () => {
+    expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});

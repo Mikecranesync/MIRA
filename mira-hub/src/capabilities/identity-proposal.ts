@@ -118,7 +118,7 @@ function modelSpanAt(tokens: string[]): string | null {
   const [t1, t2, t3] = tokens;
   if (!t1) return null;
   if (GENERIC_DEVICE_WORDS.has(t1.toUpperCase())) return null;
-  if (isModelToken(t1)) return t1;
+  if (isModelToken(t1)) return splitJoinedModels(t1).length > 1 ? null : t1;
   // An all-caps family code followed by a digit-bearing token: "SLC 5/03", "AC 01.2" —
   // but not a rating with its unit spelled out after it ("DC 24 V").
   // Never a technology word ("MODBUS 40001", "NEMA 4") — Codex #4120 r14 F18.
@@ -142,6 +142,8 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
   for (const m of message.matchAll(re)) {
     const rest = message.slice((m.index ?? 0) + m[0].length);
     const tokens = rest.trim().split(/\s+/).slice(0, 4).map(cleanToken);
+    // "Siemens SN: PF525" names a serial, not a model — never parse past a label.
+    if (tokens[0] && LABEL_WORDS.has(tokens[0].toUpperCase())) continue;
     // The existing parser first, scoped to THIS mention's window, so a model is
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
@@ -192,11 +194,17 @@ const GENERIC_TECH_WORDS = new Set([
   "MODBUS", "PROFINET", "DEVICENET", "ETHERNET", "ETHERNETIP", "ENCODER", "PHOTOELECTRIC", "PROXIMITY",
   "LOAD", "CELL", "POINT", "FLEX", "COMPACT", "INDUCTION", "SERVO", "STEPPER", "GEARMOTOR", "MOTOR",
   "NEMA", "VARIABLE", "FREQUENCY", "DRIVE", "VFD", "TIA", "PORTAL",
-  // Nameplate LABEL words: what follows them is a serial, part, lot or revision
-  // number, never a model ("SN: 123456", "SERIAL 123456") — Codex #4120 r15 F19.
+]);
+/**
+ * Nameplate LABEL words: the token after one is a serial, part, lot or
+ * revision VALUE, never a model — whatever its shape ("SN: 123456",
+ * "SN: AB1234", "SN: PF525") — Codex #4120 r15/r16 F19.
+ */
+const LABEL_WORDS = new Set([
   "SN", "S/N", "SERIAL", "SER", "PN", "P/N", "PART", "CAT", "CATALOG", "ORDER", "ID", "NO", "NR", "LOT",
   "BATCH", "REV", "REVISION", "VER", "VERSION", "FW", "FIRMWARE", "MFG", "DATE", "QTY",
 ]);
+for (const w of LABEL_WORDS) GENERIC_TECH_WORDS.add(w);
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
 
@@ -212,14 +220,22 @@ const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
  */
 function modelMentions(message: string, chosenModel: string): string[] {
   const chosenFamily = chosenModel.includes(" ") ? chosenModel.split(" ")[0].toUpperCase() : null;
+  // Commas/semicolons separate mentions ("S7-1200,TP700"), and a slash-joined
+  // pair of whole models ("S7-1200/S7-1500") is two mentions — Codex #4120 r16 F20.
   const tokens = message
-    .split(/\s+/)
+    .split(/[\s,;]+/)
     .map((t) => cleanToken(t.replace(/^[("'‘“[]+/u, "")))
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap(splitJoinedModels);
   const out: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const next = tokens[i + 1];
+    // A label and its VALUE are never a model ("SN: AB1234") — r16 F19.
+    if (LABEL_WORDS.has(t.toUpperCase())) {
+      i++;
+      continue;
+    }
     // Case-insensitive here, so a lowercase second model ("fx3u", "s7-1500")
     // still counts against the proposal (Codex #4120 r8 F12). This scan can
     // only REMOVE a proposal, never create one, so the looser reading is safe.
@@ -259,6 +275,14 @@ function modelMentions(message: string, chosenModel: string): string[] {
     }
   }
   return out;
+}
+
+/** "S7-1200/S7-1500" → both models; anything else (incl. "5/03") stays one token. */
+function splitJoinedModels(t: string): string[] {
+  if (!t.includes("/")) return [t];
+  const parts = t.split("/");
+  const isModel = (p: string) => isModelToken(p) || (p.length >= 3 && isModelToken(p.toUpperCase()));
+  return parts.length > 1 && parts.every((p) => p.length >= 2 && isModel(p)) ? parts : [t];
 }
 
 /** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525). */
