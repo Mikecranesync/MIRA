@@ -271,3 +271,16 @@ describe("Codex #4120 r11", () => {
     expect(proposeIdentityFromText("Compare Allen-Bradley SLC 5/03 and plc 5/40", CORPUS)).toBeNull();
   });
 });
+
+describe("Codex #4120 r12", () => {
+  it.each(["Compare Allen-Bradley SLC 5/03 and kinetix 5500", "Compare Allen-Bradley SLC 5/03 and stratix 5700"])(
+    "F16: a servo or network product line is a second machine: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it.each([
+    ["Siemens S7-1200 on profinet 2 keeps dropping", { manufacturer: "Siemens", model: "S7-1200" }],
+    ["Siemens S7-1200 reads Modbus 40001", { manufacturer: "Siemens", model: "S7-1200" }],
+  ])("F16 control: a technology word is still not a machine: %s", (text, want) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toEqual(want);
+  });
+});

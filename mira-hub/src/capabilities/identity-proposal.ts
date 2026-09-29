@@ -174,8 +174,17 @@ export function manufacturerMentionInText(message: string, corpus: readonly stri
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-/** equipment-type.ts categories whose hints name product families (not Networking/Sensors/…). */
-const PRODUCT_FAMILY_TYPES = new Set(["PLCs", "VFDs", "HMIs"]);
+/**
+ * Words the shared equipment vocabulary (equipment-type.ts) recognizes that
+ * name a TECHNOLOGY, not a product line: a protocol, a sensing principle, a
+ * motor kind. "Modbus 40001" and "encoder 1024" are not machines; "Kinetix
+ * 5500" and "Stratix 5700" are (Codex #4120 r11 F14, r12 F16).
+ */
+const GENERIC_TECH_WORDS = new Set([
+  "MODBUS", "PROFINET", "DEVICENET", "ETHERNET", "ETHERNETIP", "ENCODER", "PHOTOELECTRIC", "PROXIMITY",
+  "LOAD", "CELL", "POINT", "FLEX", "COMPACT", "INDUCTION", "SERVO", "STEPPER", "GEARMOTOR", "MOTOR",
+  "NEMA", "VARIABLE", "FREQUENCY", "DRIVE", "VFD", "TIA", "PORTAL",
+]);
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
 
@@ -218,16 +227,17 @@ function modelMentions(message: string, chosenModel: string): string[] {
     // equipment vocabulary knows (equipment-type.ts). An ordinary word before a
     // number ("has 100 inputs", "baud 19200") is never a machine (Codex #4120
     // r9 F12, r10 F13).
-    // "Recognized" means a PRODUCT family (PLC, drive, HMI) — not an equipment
-    // category like Modbus or encoder (Codex #4120 r11 F14) — or a lowercase
-    // generic device word with a separated number, exactly as its uppercase form
-    // ("plc 5/40" like "PLC 5/40", r11 F15).
+    // "Recognized" means a PRODUCT line the vocabulary knows (any category —
+    // Kinetix, Stratix, MicroLogix), never a technology word like Modbus or
+    // encoder (Codex #4120 r11 F14, r12 F16) — or a lowercase generic device
+    // word with a separated number, exactly as its uppercase form ("plc 5/40"
+    // like "PLC 5/40", r11 F15).
     const upper = t.toUpperCase();
     const lowerFamily =
       LOWER_FAMILY_RE.test(t) &&
       ((chosenFamily !== null && upper === chosenFamily) ||
         (GENERIC_DEVICE_WORDS.has(upper) && /[/.\-]/.test(next)) ||
-        PRODUCT_FAMILY_TYPES.has(inferEquipmentType({ modelNumber: `${t} ${next}` })));
+        (!GENERIC_TECH_WORDS.has(upper) && inferEquipmentType({ modelNumber: `${t} ${next}` }) !== "Other"));
     if (CAMEL_FAMILY_RE.test(t) || allCapsFamily || lowerFamily) {
       out.push(`${t} ${next}`);
       i++;
