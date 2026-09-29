@@ -201,6 +201,9 @@ const OEM_HOSTS: Record<string, string[]> = {
   yaskawa: ["yaskawa.com"],
   omron: ["omron.com"],
   festo: ["festo.com"],
+  // SMC documentation lives on regional first-party hosts (static.smc.eu,
+  // smcworld.com, content2.smcetech.com), not only smcusa.com.
+  smc: ["smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"],
   sick: ["sick.com"],
   banner: ["bannerengineering.com"],
   "mitsubishi electric": ["mitsubishielectric.com"],
