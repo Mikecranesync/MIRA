@@ -890,8 +890,17 @@ export async function upsertNotebookSourceTx(
          ELSE EXCLUDED.match_state IN ('user_confirmed', 'verified')
        END,
        source_role    = EXCLUDED.source_role,
-       match_evidence = COALESCE(EXCLUDED.match_evidence,
-                                 equipment_notebook_sources.match_evidence),
+       -- A system 'candidate' re-suggestion never replaces the evidence of a
+       -- row that is already trusted or human-ruled: the same rule as the trust
+       -- columns above. Without it a stale background search that re-finds a
+       -- shared manual would overwrite a newer verified source's provenance
+       -- (and its autoAcquisitionKey, which migration 101 needs) — Codex #4118 r4 F5.
+       match_evidence = CASE
+         WHEN equipment_notebook_sources.match_state IN ('verified', 'user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.match_evidence
+         ELSE COALESCE(EXCLUDED.match_evidence, equipment_notebook_sources.match_evidence)
+       END,
        -- Set-if-provided, never cleared: an upsert without an origin keeps the
        -- one already recorded.
        origin_file_id = COALESCE(EXCLUDED.origin_file_id,

@@ -107,6 +107,22 @@ const veMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
+// #4075 — the automatic manual search. The pure helpers (key, decline text) are
+// the real ones; only the flag, the notebook read and the background start are
+// seams. Off by default so every other test in this file is unaffected.
+const acqMock = vi.hoisted(() => ({
+  acquisitionEnabled: vi.fn(() => false),
+  readAcquisition: vi.fn(async () => null as unknown),
+  reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
+  startManualAcquisition: vi.fn(async () => false),
+}));
+vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
+  const actual = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+    "@/capabilities/notebook-manual-acquisition",
+  );
+  return { ...actual, ...acqMock };
+});
+
 import { POST } from "../[id]/chat/route";
 import { withTenantContext } from "@/lib/tenant-context";
 
@@ -1175,3 +1191,218 @@ describe("#4099: the MACHINE CONTEXT block is sent only when it states a fact", 
     expect(sys).toContain("Loaded source documents: PF525.pdf");
   });
 });
+
+describe("#4075 — a confirmed identity with no manual starts, and then reports, the official-manual search", () => {
+  const confirmed = (extra: Record<string, unknown> = {}) => ({
+    id: NB,
+    displayName: "SMC VQ1000-FPG-C6C6-D",
+    manufacturer: "Siemens",
+    model: "TP700 Comfort",
+    catalogNumber: null,
+    identityStatus: "user_confirmed",
+    nodeId: "n1",
+    ...extra,
+  });
+  const KEY = "SIEMENS|TP700COMFORT|";
+  const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+  const ask = async () => {
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    return frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+  };
+
+  it("never searched → starts the search once, says it is looking, and records it in the packet", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue(null);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    const arg = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+      notebookId: string;
+      nodeId: string;
+      identity: { manufacturer: string; model: string; identityStatus: string };
+    };
+    expect(arg.notebookId).toBe(NB);
+    expect(arg.nodeId).toBe("n1");
+    expect(arg.identity).toMatchObject({ manufacturer: "Siemens", model: "TP700 Comfort", identityStatus: "user_confirmed" });
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: true, candidate_host: null });
+  });
+
+  it("an earlier search left a candidate → says so (with its host), turned off until checked, and does not search again", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "candidate_review",
+      started_at: "2026-09-29T07:00:00Z",
+      finished_at: "2026-09-29T07:00:40Z",
+      candidate_host: "www.smcworld.com",
+      match_state: "candidate",
+      oem_request_url: null,
+      attached_indexed: true,
+    });
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("possible manual");
+    expect(msg).toContain("www.smcworld.com");
+    expect(msg).toContain("isn't turned on");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toEqual({
+      state: "candidate_review",
+      started_this_turn: false,
+      candidate_host: "www.smcworld.com",
+    });
+  });
+
+  it("a search recorded for a DIFFERENT identity (the notebook was re-bound) is not reported; a new one starts", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: "SMC|VQ1000FPGC6C6D|",
+      state: "no_manual_found",
+      started_at: null,
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).not.toContain("couldn't find one");
+  });
+
+  it("Codex #4118 r8 F13: a finished record is reconciled first — a removed source is never reported as in Sources", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "complete",
+      started_at: null,
+      finished_at: null,
+      candidate_host: "www.smcworld.com",
+      match_state: "verified",
+      oem_request_url: null,
+      attached_indexed: true,
+      doc_id: "d1",
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.reconcileAcquisition.mockImplementationOnce(async () => ({ ...rec, attached_indexed: false, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("no longer in this notebook's Sources");
+    expect(msg).not.toContain("turn it on in Sources");
+  });
+
+  it("Codex #4118 r7 F12: a matching 'search_unavailable' record goes back through the claim (retried after its backoff)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+  });
+
+  it("Codex #4118 r14 F19: a retryable record whose manual the technician removed is NOT retried", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: "d1",
+      linked: true,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    // Once for the pre-retry check, once for the reply text — never leaks.
+    acqMock.reconcileAcquisition
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }))
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("no longer in this notebook's Sources");
+  });
+
+  it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: "2026-09-29T06:00:00Z",
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: true });
+  });
+
+  it("control: a live 'running' claim refuses the restart and the turn still says it is looking", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: false });
+  });
+
+  it("control: feature off → the #4068 decline is unchanged and nothing is started", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(acqMock.readAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("Siemens TP700 Comfort manuals");
+    expect(msg).toContain("won't guess");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toBeNull();
+  });
+
+  it("control: an identity the technician did NOT confirm never starts a search", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue(null);
+    domainMock.getNotebook.mockResolvedValue(confirmed({ identityStatus: "candidate" }) as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("won't guess");
+  });
+});
+
