@@ -104,7 +104,7 @@ def sanitize_paths(paths: list[Path], seen: dict[str, str]) -> list[Path]:
             if not RAW_ID.search(text):
                 continue
             new = RAW_ID.sub(_swap, text)
-            _refuse_if_grading_changes(f, text, new)
+            _refuse_if_grading_changes(f, text, new, paths)
             planned.append((f, new))
     # Check every file before writing any: a refusal leaves the run untouched.
     for f, new in planned:
@@ -114,34 +114,53 @@ def sanitize_paths(paths: list[Path], seen: dict[str, str]) -> list[Path]:
     return [f for f, _ in planned]
 
 
-def _refuse_if_grading_changes(path: Path, before: str, after: str) -> None:
-    """Sanitizing must never move what a grade is bound to (#4100 review F1).
+def _bound_hashes(roots: list[Path]) -> set[str]:
+    """Every answer_sha256 a grade or grader-packet entry records under `roots`."""
+    found: set[str] = set()
+    for root in roots:
+        for f in artifact_files(root):
+            try:
+                data = load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if isinstance(item.get("answer_sha256"), str):
+                    found.add(item["answer_sha256"])
+                for v in item.values():  # a grader packet: {key: entry}
+                    if isinstance(v, dict) and isinstance(v.get("answer_sha256"), str):
+                        found.add(v["answer_sha256"])
+    return found
+
+
+def _refuse_if_grading_changes(path: Path, before: str, after: str, roots: list[Path]) -> None:
+    """Sanitizing must never move what an EXISTING grade is bound to (#4100 F1/F3).
 
     A batch row's `score.answer_identity` hashes fields that can carry ids
-    (retrieved document ids in `source_documents`, citation text). If a grade was
-    made before sanitizing, rewriting those fields orphans it. So: a batch whose
-    identities would change, or a grader packet whose content would change, is
-    refused — sanitize the batch BEFORE building packets and grading.
+    (retrieved document ids in `source_documents`). A fresh, ungraded batch may
+    be sanitized freely — its identity is computed after. But if a grade or a
+    grader packet under the run already records an identity that the rewrite
+    would change, refuse: rewriting would orphan that grade.
     """
     from answer_radar.score import answer_identity
 
     old = json.loads(before) if path.suffix == ".json" else None
-    if (
+    if not (
         isinstance(old, list)
         and old
         and all(isinstance(r, dict) and "evaluation" in r for r in old)
     ):
-        new = json.loads(after)
-        if [answer_identity(r) for r in old] != [answer_identity(r) for r in new]:
-            raise SystemExit(
-                f"{path}: sanitizing would change graded answer identities; "
-                "sanitize the batch before building grader packets and grading"
-            )
-    elif isinstance(old, dict) and any(
-        isinstance(v, dict) and "answer_sha256" in v for v in old.values()
-    ):
+        return
+    new = json.loads(after)
+    changed = {
+        answer_identity(o) for o, n in zip(old, new) if answer_identity(o) != answer_identity(n)
+    }
+    if changed & _bound_hashes([*roots, path.parent]):
         raise SystemExit(
-            f"{path}: a grader packet contains raw ids; rebuild it from the sanitized batch instead"
+            f"{path}: sanitizing would change an answer that is already graded; "
+            "sanitize the batch before building grader packets and grading"
         )
 
 

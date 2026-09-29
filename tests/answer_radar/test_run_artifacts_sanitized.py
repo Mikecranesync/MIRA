@@ -69,25 +69,42 @@ def _row(source_doc: str) -> dict:
     }
 
 
-def test_a_rewrite_that_would_orphan_grades_is_refused(tmp_path: Path):
-    """#4100 review F1: a UUID in an identity-bound field (source_documents) must
-    not be rewritten after grading; nothing in the run is touched."""
+def test_a_fresh_ungraded_batch_is_sanitized(tmp_path: Path):
+    """#4100 F3: before grading, an identity-bound UUID is simply pseudonymized."""
     batch = tmp_path / "batch.json"
     batch.write_text(json.dumps([_row(TENANT)]))
+    assert sanitize.sanitize_paths([tmp_path], {}) == [batch]
+    assert sanitize.raw_ids(sanitize.load(batch)) == []
+
+
+def test_a_rewrite_that_would_orphan_an_existing_grade_is_refused(tmp_path: Path):
+    """#4100 F1: once a grade binds the raw-id identity, rewriting it is refused
+    and nothing in the run is touched."""
+    from answer_radar.score import answer_identity
+
+    row = _row(TENANT)
+    batch = tmp_path / "batch.json"
+    batch.write_text(json.dumps([row]))
+    grades = tmp_path / "grades"
+    grades.mkdir()
+    (grades / "grade-A-S1.json").write_text(json.dumps({"answer_sha256": answer_identity(row)}))
     other = tmp_path / "notes.jsonl"
     other.write_text(json.dumps({"trace_id": TRACE}) + "\n")
     before = (batch.read_text(), other.read_text())
-    with pytest.raises(SystemExit, match="graded answer identities"):
+    with pytest.raises(SystemExit, match="already graded"):
         sanitize.sanitize_paths([tmp_path], {})
     assert (batch.read_text(), other.read_text()) == before
 
 
-def test_a_grader_packet_with_raw_ids_is_refused(tmp_path: Path):
-    packet = tmp_path / "packet.json"
-    packet.write_text(
-        json.dumps({"S1__new_chat": {"answer_sha256": SHA256, "source_documents": [TENANT]}})
+def test_a_grader_packet_binding_the_old_identity_also_refuses(tmp_path: Path):
+    from answer_radar.score import answer_identity
+
+    row = _row(TENANT)
+    (tmp_path / "batch.json").write_text(json.dumps([row]))
+    (tmp_path / "packet.json").write_text(
+        json.dumps({"S1__new_chat": {"answer_sha256": answer_identity(row)}})
     )
-    with pytest.raises(SystemExit, match="grader packet"):
+    with pytest.raises(SystemExit, match="already graded"):
         sanitize.sanitize_paths([tmp_path], {})
 
 
