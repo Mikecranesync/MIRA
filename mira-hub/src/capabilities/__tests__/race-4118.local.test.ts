@@ -16,6 +16,13 @@ import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
 import { fencedAttach, fencedWriter, reconcileAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
+import { attachFileToTargetsTx } from "@/lib/workspace-files";
+
+// The real attach needs the full workspace schema; F22 stubs it once per test.
+vi.mock("@/lib/workspace-files", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/workspace-files")>("@/lib/workspace-files");
+  return { ...actual, attachFileToTargetsTx: vi.fn(actual.attachFileToTargetsTx) };
+});
 import { upsertNotebookSourceTx } from "@/lib/equipment-notebooks";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
@@ -335,6 +342,40 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     // F20: the earlier attachment survives this failed retry (finish keeps it).
     await vi.waitFor(async () => expect((await record()).state).toBe("search_unavailable"));
     expect((await record()).prior_doc_id).toBe(DOC);
+  });
+
+  it("r16 F22: the attachment is recorded in the attach transaction — a crash before finish cannot lose it", async () => {
+    await priorRecord({ gen: GEN, prior_doc_id: null, linked: false });
+    const c0 = await raw();
+    await c0.query(
+      "UPDATE equipment_notebooks SET manual_acquisition = manual_acquisition - 'prior_doc_id' - 'prior_file_id' WHERE id = $1",
+      [NB],
+    );
+    await c0.end();
+    vi.mocked(attachFileToTargetsTx).mockImplementationOnce(async () => ({ ok: true, links: [] }));
+    expect(await fencedAttach(KEY_A, GEN)(T, NB, FILE_X, DOC, [], null)).toBe(true);
+    // No finish ran (the "worker died"): the record already carries the attachment.
+    const rec = await record();
+    expect(rec.prior_doc_id).toBe(DOC);
+    expect(rec.prior_file_id).toBe(FILE_X);
+    // Stale-running recovery keeps it, so the removal checks still run.
+    const c = await raw();
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = manual_acquisition || jsonb_build_object('state', 'running',
+         'started_at', to_jsonb(now() - interval '30 minutes')) WHERE id = $1`,
+      [NB],
+    );
+    await c.end();
+    await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1");
+    const seen: unknown[] = [];
+    const acquire = vi.fn(async (inp: { attach: (...a: unknown[]) => Promise<unknown> }) => {
+      seen.push(await inp.attach(T, NB, FILE_X, DOC, [], null));
+      return { status: "no_manual_found", payload: {} };
+    });
+    expect(
+      await startManualAcquisition(acqInput, { acquire: acquire as never, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" } }),
+    ).toBe(true);
+    await vi.waitFor(() => expect(seen).toEqual(["removed"]));
   });
 
   it("r15 F19: a removal IN FLIGHT holds the row lock — the attach waits, then honors it (never undoes it)", async () => {

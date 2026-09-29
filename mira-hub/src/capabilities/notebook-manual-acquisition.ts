@@ -381,6 +381,18 @@ export function fencedAttach(key: string, gen: string): NonNullable<ManualAcquis
       // check — r4 F7); the upsert keeps a trusted row's evidence (r4 F5).
       const res = await attachFileToTargetsTx(c, tenantId, fileId, targets, { createdBy });
       if (!res.ok) throw new Error(`attach failed: ${res.error}`);
+      // Record what was attached IN THIS TRANSACTION, fenced by our generation:
+      // if the worker dies before finish, stale-running recovery still knows,
+      // so a later removal is honored (Codex #4118 r16 F22).
+      await c.query(
+        `UPDATE equipment_notebooks
+            SET manual_acquisition = manual_acquisition || jsonb_build_object(
+                  'prior_file_id', $5::text,
+                  'prior_doc_id', COALESCE($6::text, manual_acquisition->>'prior_doc_id'))
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+            AND manual_acquisition->>'key' = $3 AND manual_acquisition->>'gen' = $4`,
+        [tenantId, notebookId, key, gen, fileId, docId],
+      );
       return true;
     });
 }
