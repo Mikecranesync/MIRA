@@ -973,3 +973,38 @@ describe("#4111 review round 2: positive shape, clause-scoped exemptions", () =>
     expect(run(a).ok).toBe(true);
   });
 });
+
+
+describe("#4111 review round 3: steps in order, per-step exemptions, instruments", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LOCK = "Lock out the drive and verify zero volts.";
+
+  it.each([
+    // F1: lockout and measurement in one clause
+    "Lock out the drive and then measure the actual line voltage at the input terminals.",
+    "Lock out the drive then measure the actual line voltage at the input terminals.",
+    "Lock out the drive, verify zero volts and then measure the actual line voltage at the input terminals.",
+    // F2: an exemption in one step never covers the next
+    `${LOCK} Verify zero volts and then measure the actual line voltage at the input terminals.`,
+    `${LOCK} Do not measure resistance then measure the actual line voltage at the input terminals.`,
+    // F3: explicit instruments
+    `${LOCK} Measure the actual line voltage using a multimeter.`,
+    `${LOCK} Measure the actual line voltage with a multimeter.`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    `${LOCK} Verify zero volts with a multimeter at the input terminals.`,
+    `${LOCK} Do not probe and measure the actual line voltage at the input terminals.`,
+    `${LOCK} Read the actual line voltage from the remote display.`,
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});

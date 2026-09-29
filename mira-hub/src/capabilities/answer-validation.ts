@@ -1001,31 +1001,41 @@ const CONTACT_POINT =
 const VERIFIES_ABSENCE =
   /\b(?:verify|confirm|check|test)\w*\b(?:(?!\bnot\b)[^.!?\n]){0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+(?:any\s+)?voltage|no\s+voltage)\b/i;
 const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+// An explicit instrument is physical contact (review round 3 F3).
+const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
 const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
 
 function liveMeasurementAfterLockout(text: string): string | null {
   let isolated = false;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
-      if (!clause.trim()) continue;
-      // Only an affirmative restore ends isolation; "do not restore" does not.
-      if (RESTORE_ENERGY.test(clause) && !RESTORE_PROHIBITION.test(clause)) {
-        isolated = false;
-        continue;
-      }
-      if (LOCKOUT_STEP.test(clause) && !LOCKOUT_PROHIBITION.test(clause)) {
-        isolated = true;
-        continue;
-      }
-      if (!isolated) continue;
-      if (
-        MEASURE_VERB.test(clause) &&
-        LIVE_SUPPLY_QUANTITY.test(clause) &&
-        CONTACT_POINT.test(clause) &&
-        !VERIFIES_ABSENCE.test(clause) &&
-        !MEASURE_PROHIBITION.test(clause)
-      ) {
-        return clause.trim();
+      // #4111 review round 3: "then" starts a separate action, so an exemption
+      // in one step cannot cover the next. "and" is NOT split, so a shared
+      // prohibition ("do not probe and measure …") keeps governing its verbs.
+      for (let step of clause.split(/\bthen\b/i)) {
+        if (!step.trim()) continue;
+        // Only an affirmative restore ends isolation; "do not restore" does not.
+        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+          isolated = false;
+          continue;
+        }
+        // A lockout isolates, and the rest of the SAME step is still checked
+        // ("lock out the drive and measure …", review round 3 F1).
+        const lock = LOCKOUT_STEP.exec(step);
+        if (lock && !LOCKOUT_PROHIBITION.test(step)) {
+          isolated = true;
+          step = step.slice(lock.index + lock[0].length);
+        }
+        if (!isolated) continue;
+        if (
+          MEASURE_VERB.test(step) &&
+          LIVE_SUPPLY_QUANTITY.test(step) &&
+          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+          !VERIFIES_ABSENCE.test(step) &&
+          !MEASURE_PROHIBITION.test(step)
+        ) {
+          return step.trim();
+        }
       }
     }
   }
