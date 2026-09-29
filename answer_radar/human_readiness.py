@@ -16,6 +16,33 @@ from pathlib import Path
 DIMENSIONS = ("task", "support", "identity", "next_step", "ui", "clarity")
 SHA = re.compile(r"^[0-9a-f]{12,40}$")
 HASH = re.compile(r"^[0-9a-f]{64}$")
+# A turn that reached one of these ended with an answer or MIRA's own decline;
+# anything else ("error", a missing terminal frame) is an app failure (#4109 F3).
+COMPLETED_STATUSES = ("answered", "insufficient_evidence")
+
+
+def _graded_row_mismatch(attempt: dict, case: dict, answer_hash: str) -> str | None:
+    """Why the graded identity is NOT this attempt's answer, or None (#4109 F1).
+
+    The grades bind `answer_hash`; it counts only if it is recomputed from the
+    attempt's own grading row, and that row shows the graders exactly the
+    question, answer text and passages this attempt rendered.
+    """
+    from answer_radar.score import answer_identity
+
+    row = attempt.get("grading_row")
+    if not isinstance(row, dict) or not isinstance(row.get("evaluation"), dict):
+        return "grading row missing"
+    if answer_identity(row) != answer_hash:
+        return "grades bind a different answer"
+    ev = row["evaluation"]
+    if ev.get("answer_text") != attempt.get("rendered_answer"):
+        return "graded answer text differs from the rendered answer"
+    if (ev.get("cited_passages") or []) != (attempt.get("cited_passages") or []):
+        return "graded passages differ from the attempt's passages"
+    if (row.get("question") or {}).get("normalized_question") != case.get("question"):
+        return "graded question differs from the case"
+    return None
 
 
 def _percentile(values: list[int], q: float) -> float | None:
@@ -82,6 +109,11 @@ def score(manifest: dict, run: dict) -> dict:
             reasons.append(f"{label}: hard-blocker review missing")
             blockers = []
         hard_blockers.extend(f"{label}: {' '.join(x.split())}" for x in blockers)
+        # #4109 review F3: what the capture observed blocks regardless of review.
+        derived = attempt.get("derived_hard_blockers") or []
+        if not isinstance(derived, list):
+            derived = [str(derived)]
+        hard_blockers.extend(f"{label}: {' '.join(str(x).split())}" for x in derived)
 
         scores = attempt.get("scores") or {}
         notes = attempt.get("score_reasons") or {}
@@ -96,6 +128,8 @@ def score(manifest: dict, run: dict) -> dict:
             reasons.append(f"{label}: trace/turn evidence missing")
         if not attempt.get("rendered_answer") or not attempt.get("turn_status"):
             reasons.append(f"{label}: rendered answer/status missing")
+        elif attempt.get("turn_status") not in COMPLETED_STATUSES:
+            reasons.append(f"{label}: turn did not complete ({attempt.get('turn_status')})")
         case = expected[key]
         receipts = attempt.get("action_receipts") or {}
         for action in case.get("required_receipts", []):
@@ -107,6 +141,7 @@ def score(manifest: dict, run: dict) -> dict:
             answer_hash = source.get("answer_sha256")
             if (
                 source.get("passage_bound") is not True
+                or not all(isinstance(x, str) and x.strip() for x in providers)
                 or len(set(providers)) < 2
                 or source.get("agree_pass") is not True
                 or not isinstance(answer_hash, str)
@@ -114,6 +149,11 @@ def score(manifest: dict, run: dict) -> dict:
                 or source.get("grade_answer_hashes") != [answer_hash, answer_hash]
             ):
                 reasons.append(f"{label}: independent passage-bound source review missing")
+            elif _graded_row_mismatch(attempt, case, answer_hash):
+                reasons.append(
+                    f"{label}: source review is not bound to this attempt "
+                    f"({_graded_row_mismatch(attempt, case, answer_hash)})"
+                )
         jev = attempt.get("jev")
         if not isinstance(jev, dict) or not (jev.get("signals") or jev.get("skipped_reason")):
             # A disabled shadow is a recorded skip, not a missing observation.

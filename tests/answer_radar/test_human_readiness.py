@@ -2,6 +2,7 @@ import copy
 import unittest
 
 from answer_radar.human_readiness import DIMENSIONS, score
+from answer_radar.score import answer_identity
 
 
 SHA = "ae03a3877912c7c1242e18fdd84e0dea39df15ab"
@@ -10,6 +11,7 @@ MANIFEST = {
     "cases": [
         {
             "id": "one",
+            "question": "Question one",
             "surfaces": ["web"],
             "repeats": 1,
             "critical": True,
@@ -19,6 +21,7 @@ MANIFEST = {
         },
         {
             "id": "two",
+            "question": "Question two",
             "surfaces": ["hub"],
             "repeats": 1,
             "critical": False,
@@ -29,7 +32,26 @@ MANIFEST = {
 }
 
 
+QUESTIONS = {"one": "Question one", "two": "Question two"}
+
+
+def grading_row(cid, answer="Answer", passages=()):
+    """The row the graders saw, shaped as human_readiness_capture builds it."""
+    return {
+        "question": {"question_id": cid, "normalized_question": QUESTIONS[cid]},
+        "evaluation": {
+            "answer_text": answer,
+            "citations": [f"doc p.{i + 1}" for i in range(len(passages))],
+            "cited_passages": list(passages),
+            "source_documents": [],
+        },
+        "hub": {"turn_status": "answered", "answer_origin": "content_frames"},
+    }
+
+
 def attempt(cid, surface):
+    row = grading_row(cid)
+    h = answer_identity(row)
     return {
         "case_id": cid,
         "surface": surface,
@@ -48,9 +70,10 @@ def attempt(cid, surface):
             "passage_bound": True,
             "independent_providers": ["anthropic", "openai"],
             "agree_pass": True,
-            "answer_sha256": "a" * 64,
-            "grade_answer_hashes": ["a" * 64, "a" * 64],
+            "answer_sha256": h,
+            "grade_answer_hashes": [h, h],
         },
+        "grading_row": row,
         "jev": {"skipped_reason": "disabled"},
         "latency_ms": {"first_meaningful": 3000, "total": 5000},
     }
@@ -121,3 +144,55 @@ class HumanReadinessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewBindingTests(unittest.TestCase):
+    """#4109 review F1/F3: grades bind THIS attempt, and observed failures HOLD."""
+
+    def _reasons(self, run):
+        report = score(MANIFEST, run)
+        return report["decision"], " ".join(report["reasons"] + report.get("hard_blockers", []))
+
+    def test_changing_the_rendered_answer_after_grading_holds(self):
+        run = good()
+        run["attempts"][1]["rendered_answer"] = "A different, ungraded answer"
+        decision, why = self._reasons(run)
+        self.assertEqual(decision, "HOLD")
+        self.assertIn("not bound to this attempt", why)
+
+    def test_changing_the_passages_after_grading_holds(self):
+        run = good()
+        run["attempts"][1]["cited_passages"] = [{"quote": "a passage nobody graded"}]
+        self.assertEqual(score(MANIFEST, run)["decision"], "HOLD")
+
+    def test_a_grading_row_for_another_question_holds(self):
+        run = good()
+        row = grading_row("one")  # case "one"'s question under case "two"
+        run["attempts"][1]["grading_row"] = row
+        h = answer_identity(row)
+        run["attempts"][1]["source_review"].update(answer_sha256=h, grade_answer_hashes=[h, h])
+        decision, why = self._reasons(run)
+        self.assertEqual(decision, "HOLD")
+        self.assertIn("graded question differs", why)
+
+    def test_missing_grading_row_holds(self):
+        run = good()
+        del run["attempts"][1]["grading_row"]
+        self.assertEqual(score(MANIFEST, run)["decision"], "HOLD")
+
+    def test_an_error_status_holds_even_with_passing_review(self):
+        run = good()
+        run["attempts"][1]["turn_status"] = "error"
+        decision, why = self._reasons(run)
+        self.assertEqual(decision, "HOLD")
+        self.assertIn("did not complete", why)
+
+    def test_a_machine_derived_blocker_holds_even_with_an_empty_human_list(self):
+        run = good()
+        run["attempts"][1]["derived_hard_blockers"] = ["app could not complete the turn"]
+        self.assertEqual(score(MANIFEST, run)["decision"], "HOLD")
+
+    def test_a_missing_second_provider_is_not_independence(self):
+        run = good()
+        run["attempts"][1]["source_review"]["independent_providers"] = ["anthropic", None]
+        self.assertEqual(score(MANIFEST, run)["decision"], "HOLD")

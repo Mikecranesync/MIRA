@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from answer_radar import human_readiness, human_readiness_capture as cap
 from answer_radar.hub_runner import _readable_frame
 
@@ -138,16 +140,38 @@ def test_a_failed_turn_is_a_derived_blocker():
 
 
 def _grades(
-    tmp_path: Path, row, *, hash_=None, verdicts=("PASS", "PASS"), providers=("anthropic", "openai")
+    tmp_path: Path,
+    row,
+    *,
+    hash_=None,
+    verdicts=("PASS", "PASS"),
+    providers=("anthropic", "openai"),
+    models=("claude-x", "gpt-5.5"),
+    drop=(),
 ):
+    """Rubric-valid grade files (score.py/rubric.py shape); `drop` removes fields."""
     from answer_radar.score import answer_identity
 
     h = hash_ or answer_identity(row)
     qid = row["question"]["question_id"]
-    for slot, v, p in zip("AB", verdicts, providers):
-        (tmp_path / f"grade-{slot}-{qid}.json").write_text(
-            json.dumps({"verdict": v, "grader_provider": p, "answer_sha256": h})
-        )
+    for slot, v, p, m in zip("AB", verdicts, providers, models):
+        top = v == "PASS"
+        g = {
+            "correctness": 40 if top else 0,
+            "evidence": 20 if top else 0,
+            "safety": 20,
+            "actionability": 10 if top else 0,
+            "uncertainty": 10 if top else 0,
+            "verdict": v,
+            "critical_unsupported_claim": False,
+            "unsafe_specificity": False,
+            "grader_provider": p,
+            "grader_model": m,
+            "answer_sha256": h,
+        }
+        for k in drop:
+            g.pop(k, None)
+        (tmp_path / f"grade-{slot}-{qid}.json").write_text(json.dumps(g))
 
 
 def test_source_review_is_derived_from_grade_files(tmp_path: Path):
@@ -218,3 +242,102 @@ def test_pinned_photo_fixtures_match_their_committed_bytes():
     for c in pinned:
         data = (root / c["fixture"]).read_bytes()
         assert hashlib.sha256(data).hexdigest() == c["fixture_sha256"], c["id"]
+
+
+# ---- #4109 review F1-F4 --------------------------------------------------------
+
+CITED = [
+    {"kind": "content", "content": "1000 Ω [1]"},
+    {"kind": "sources", "citations": [PASSAGE]},
+    {"kind": "status", "status": "answered"},
+]
+
+
+def test_uncited_numeric_prose_is_never_passage_bound_even_if_it_reads_as_a_decline(tmp_path: Path):
+    """F2: 'send me the fault log' reads as an abstention to the text classifier."""
+    for status in ("answered", "insufficient_evidence"):
+        _, (attempt, row) = _capture(
+            [
+                {"kind": "content", "content": "Set P041 to 12 s, then send me the fault log."},
+                {"kind": "status", "status": status},
+            ]
+        )
+        _grades(tmp_path, row)
+        cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+        assert attempt["source_review"]["passage_bound"] is False, status
+
+
+def test_a_server_certified_decline_stays_passage_bound(tmp_path: Path):
+    _, (attempt, row) = _capture(
+        [
+            {
+                "kind": "status",
+                "status": "insufficient_evidence",
+                "message": "I couldn't find that in the documents for this machine.",
+            }
+        ]
+    )
+    assert row["hub"]["answer_origin"] == "server_status_message"
+    _grades(tmp_path, row)
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+    assert attempt["source_review"]["passage_bound"] is True
+
+
+@pytest.mark.parametrize(
+    "frames",
+    [
+        [{"kind": "content", "content": "partial"}],  # cut off: no terminal status
+        [{"kind": "content", "content": "x"}, {"kind": "status", "status": "error"}],
+    ],
+)
+def test_error_and_truncated_streams_are_error_rows_with_a_blocker(frames):
+    """F3: the capture itself must record the failure."""
+    _, (attempt, row) = _capture(frames)
+    assert row["evaluation"]["answer_status"] == "error"
+    assert attempt["derived_hard_blockers"]
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"drop": ("correctness",)},  # missing rubric score
+        {"drop": ("unsafe_specificity",)},  # missing safety flag
+        {"providers": ("anthropic", None)},  # absent provider
+        {"models": ("gpt-5.5", "gpt-5.5")},  # identical models
+        {"models": ("claude-x", None)},  # missing model identity
+    ],
+)
+def test_invalid_or_non_independent_grades_never_pass(tmp_path: Path, kw):
+    """F4: grades go through rubric.check_grade and score._independence."""
+    _, (attempt, row) = _capture(CITED)
+    _grades(tmp_path, row, **kw)
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+    sr = attempt["source_review"]
+    assert not (sr["agree_pass"] and len(set(sr["independent_providers"])) >= 2)
+
+
+def test_a_pass_verdict_contradicting_its_scores_is_rejected(tmp_path: Path):
+    _, (attempt, row) = _capture(CITED)
+    _grades(tmp_path, row)
+    qid = row["question"]["question_id"]
+    f = tmp_path / f"grade-A-{qid}.json"
+    g = json.loads(f.read_text())
+    g["correctness"] = 0  # PASS with failing scores is malformed
+    f.write_text(json.dumps(g))
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+    assert attempt["source_review"]["agree_pass"] is False
+
+
+def test_an_older_batch_row_is_not_attached_to_a_newer_attempt(tmp_path: Path):
+    """F1: attachment joins on the grading row itself, not on case/surface/rep."""
+    _, (old_attempt, old_row) = _capture(CITED)
+    _, (new_attempt, _new_row) = _capture(
+        [
+            {"kind": "content", "content": "999 Ω [1]"},
+            {"kind": "sources", "citations": [PASSAGE]},
+            {"kind": "status", "status": "answered"},
+        ]
+    )
+    _grades(tmp_path, old_row)
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [new_attempt]}, [old_row], tmp_path)
+    assert "error" in new_attempt["source_review"]

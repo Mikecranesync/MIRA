@@ -23,10 +23,17 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from answer_radar.hub_runner import _citation_label, _cited_passage, _frames, deployed_sha
+from answer_radar.hub_runner import (
+    TERMINAL_STATUSES,
+    _citation_label,
+    _cited_passage,
+    _frames,
+    deployed_sha,
+)
+from answer_radar.rubric import check_grade
 from answer_radar.runner import classify_answer
-from answer_radar.schema import AnswerStatus
-from answer_radar.score import answer_identity
+from answer_radar.schema import AnswerStatus, IndependenceClass
+from answer_radar.score import _claims_checkable, _independence, answer_identity
 
 JEV_SIGNALS = (
     "over_specificity",
@@ -90,8 +97,12 @@ def ask_hub_case(
     frames = _frames(raw)
     content = "".join(f.get("content", "") for f in frames if f.get("kind") == "content")
     status_frame = next((f for f in frames if f.get("kind") == "status"), {})
+    # Where the text came from, as hub_runner records it: the route's fixed
+    # decline copy arrives only as the status frame's message (#4109 review F2).
+    answer_origin = "content_frames" if content else None
     if not content and status_frame.get("message"):
         content = str(status_frame["message"])
+        answer_origin = "server_status_message"
     sources = next((f for f in frames if f.get("kind") == "sources"), {})
     raw_citations = sources.get("citations") or []
     trace_id = hd.get("x-mira-trace-id")
@@ -106,10 +117,18 @@ def ask_hub_case(
     answer_status = classify_answer(content, st)
     if status == "insufficient_evidence" and answer_status is AnswerStatus.ANSWERED:
         answer_status = AnswerStatus.ABSTAINED
+    # #4109 review F3, same rule as hub_runner: a 200 stream must end in exactly
+    # one recognised terminal status; an error status or a cut-off stream is an
+    # engine error, never a graded answer.
+    terminal = [f.get("status") for f in frames if f.get("kind") == "status"]
+    if status == "error" or (
+        st == 200 and (len(terminal) != 1 or terminal[0] not in TERMINAL_STATUSES)
+    ):
+        answer_status = AnswerStatus.ERROR
 
     aid = attempt_id(case["id"], "hub", rep)
     derived: list[str] = []
-    if st != 200 or status == "error" or not content.strip():
+    if st != 200 or answer_status is AnswerStatus.ERROR or not content.strip():
         derived.append("app could not complete the turn (no rendered answer or an error status)")
     attempt = {
         "case_id": case["id"],
@@ -165,6 +184,7 @@ def ask_hub_case(
         "hub": {
             "condition": "new_chat",
             "turn_status": status,
+            "answer_origin": answer_origin,
             "basis": (next((f for f in frames if f.get("kind") == "evidence"), {}) or {}).get(
                 "basis"
             ),
@@ -174,6 +194,9 @@ def ask_hub_case(
             },
         },
     }
+    # #4109 review F1: the attempt carries the exact row its graders see, so the
+    # scorer can recompute the graded identity from the attempt it scores.
+    attempt["grading_row"] = row
     return attempt, row
 
 
@@ -193,38 +216,63 @@ def capture(hub, manifest: dict[str, Any]) -> tuple[dict[str, Any], list[dict[st
     return {"build_sha": build, "attempts": attempts}, rows
 
 
+def _bound_row(a: dict[str, Any], row: dict[str, Any]) -> str | None:
+    """Why `row` is not the grading row of attempt `a`, or None when it is."""
+    if answer_identity(row) != answer_identity(a.get("grading_row") or {}):
+        return "batch row is not this attempt's grading row"
+    ev = row["evaluation"]
+    if ev.get("answer_text") != a.get("rendered_answer"):
+        return "graded answer differs from the rendered answer"
+    if (ev.get("cited_passages") or []) != (a.get("cited_passages") or []):
+        return "graded passages differ from the attempt's passages"
+    return None
+
+
 def attach_source_reviews(
     run: dict[str, Any], rows: list[dict[str, Any]], grades_dir: Path
 ) -> None:
-    """Derive each attempt's source_review from real grade files (never asserted)."""
+    """Derive each attempt's source_review from real grade files (never asserted).
+
+    #4109 review: the batch row must be the attempt's own grading row (F1); each
+    grade must pass the canonical rubric check (F4); independence is the class
+    score.py derives from recorded provider AND model identities (F4); and an
+    uncited answer is passage-bound only as a server-certified decline (F2).
+    """
     by_id = {r["question"]["question_id"]: r for r in rows}
     for a in run["attempts"]:
-        row = by_id.get(attempt_id(a["case_id"], a["surface"], a["rep"]))
+        sid = attempt_id(a["case_id"], a["surface"], a["rep"])
+        row = by_id.get(sid)
         if row is None:
             continue
+        unbound = _bound_row(a, row)
+        if unbound:
+            a["source_review"] = {"error": unbound}
+            continue
         expected = answer_identity(row)
-        grades = []
+        grades, valid = [], True
         for slot in ("A", "B"):
-            f = grades_dir / f"grade-{slot}-{row['question']['question_id']}.json"
+            f = grades_dir / f"grade-{slot}-{sid}.json"
             try:
-                grades.append(json.loads(f.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError):
-                grades.append({})
-        citations = row["evaluation"]["citations"]
-        passages = row["evaluation"]["cited_passages"]
+                g = json.loads(f.read_text(encoding="utf-8"))
+                check_grade(g)
+            except (OSError, json.JSONDecodeError, ValueError):
+                g, valid = {}, False
+            grades.append(g)
+        independent = (
+            valid
+            and _independence(grades_dir, sid, expected)
+            is IndependenceClass.INDEPENDENT_PROVIDER_MODEL
+        )
         a["source_review"] = {
             "answer_sha256": expected,
             "grade_answer_hashes": [g.get("answer_sha256") for g in grades],
-            "independent_providers": [g.get("grader_provider") for g in grades],
-            "agree_pass": all(str(g.get("verdict", "")).upper() == "PASS" for g in grades),
-            # Passage-bound: every citation's passage was shown and hashed; an
-            # uncited turn has no passage to bind, which is only true of a decline.
-            "passage_bound": len(passages) == len(citations)
-            and all(isinstance(p.get("quote"), str) and p["quote"].strip() for p in passages)
-            and (
-                bool(citations)
-                or row["evaluation"]["answer_status"] in ("abstained", "refused_safety")
-            ),
+            # Only a proven independent-provider pair names providers at all.
+            "independent_providers": [g.get("grader_provider") for g in grades]
+            if independent
+            else [],
+            "agree_pass": valid
+            and all(str(g.get("verdict", "")).upper() == "PASS" for g in grades),
+            "passage_bound": _claims_checkable(row),
         }
 
 
