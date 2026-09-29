@@ -10,6 +10,7 @@ const db = vi.hoisted(() => ({
   claimRows: 1,
   readRow: null as unknown,
   failWith: null as null | { code: string },
+  existingSource: false,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -18,7 +19,9 @@ vi.mock("@/lib/tenant-context", () => ({
         db.queries.push({ sql, params });
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
-        if (/RETURNING id|FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
+        if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
         return { rowCount: 1, rows: [] };
       }),
     }),
@@ -46,6 +49,7 @@ beforeEach(() => {
   db.claimRows = 1;
   db.readRow = null;
   db.failWith = null;
+  db.existingSource = false;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -83,8 +87,9 @@ describe("startManualAcquisition", () => {
       nodeId: "node",
       identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: undefined },
       writeSourceState: expect.any(Function),
+      beforeAttach: expect.any(Function),
     });
-    const claimQ = db.queries.find((q) => /RETURNING id/.test(q.sql))!;
+    const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10]);
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
@@ -92,6 +97,10 @@ describe("startManualAcquisition", () => {
     // Only OUR claim is overwritten — a re-bind mid-search wins.
     expect(finishQ.params[3]).toBe("SMC|VQ1000FPGC6C6D|");
     expect(finishQ.sql).toMatch(/WHERE tenant_id = \$1 AND id = \$2 AND manual_acquisition->>'key' = \$4/);
+    // Codex #4118 r3 F6: the outcome is written only by the CURRENT claim generation.
+    expect(finishQ.sql).toMatch(/manual_acquisition->>'gen' = \$5/);
+    expect(finishQ.params[4]).toBe("g1");
+    expect(claimQ.sql).toMatch(/'gen', gen_random_uuid\(\)::text/);
     // The claim is keyed and stale-aware, so a second caller cannot double-start.
     expect(claimQ.sql).toMatch(/manual_acquisition->>'key' IS DISTINCT FROM \$3::text/);
     expect(claimQ.sql).toMatch(/manual_acquisition->>'state' = 'running'/);
@@ -220,7 +229,7 @@ describe("Codex #4118 F3/F5 — fencedWriter", () => {
   it("locks the notebook row, re-checks ownership + identity, then writes and stamps the search key", async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
     db.claimRows = 1;
-    const ok = await fencedWriter("SMC|VQ1000FPGC6C6D|")("t", "nb", "doc", {
+    const ok = await fencedWriter("SMC|VQ1000FPGC6C6D|", "g1")("t", "nb", "doc", {
       matchState: "verified",
       enabledByDefault: true,
       matchEvidence: { reason: "r" },
@@ -230,6 +239,8 @@ describe("Codex #4118 F3/F5 — fencedWriter", () => {
     expect(lock.sql).toMatch(/FOR UPDATE/);
     expect(lock.sql).toMatch(/n\.identity_status = 'user_confirmed'/);
     expect(lock.sql).toMatch(/n\.manual_acquisition->>'key' = \$3/);
+    expect(lock.sql).toMatch(/n\.manual_acquisition->>'gen' = \$4/);
+    expect(lock.params[3]).toBe("g1");
     expect(lock.sql).toMatch(/regexp_replace\(coalesce\(n\.model, ''\)/);
     expect(write.sql).toMatch(/UPDATE equipment_notebook_sources/);
     expect(JSON.parse(write.params[5] as string)).toMatchObject({ reason: "r", autoAcquisitionKey: "SMC|VQ1000FPGC6C6D|" });
@@ -238,27 +249,22 @@ describe("Codex #4118 F3/F5 — fencedWriter", () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
     db.claimRows = 0;
     db.queries = [];
-    const ok = await fencedWriter("K")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    const ok = await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
     expect(ok).toBe(false);
     expect(db.queries.some((q) => /UPDATE equipment_notebook_sources/.test(q.sql))).toBe(false);
   });
 });
 
-describe("revokeStaleAutoAcquiredSources", () => {
-  it("turns off only auto-enabled manuals whose search key no longer matches the confirmed identity", async () => {
-    const { revokeStaleAutoAcquiredSources } = await import("../notebook-manual-acquisition");
-    db.queries = [];
-    await revokeStaleAutoAcquiredSources("t", "nb");
-    const q = db.queries.at(-1)!;
-    expect(q.sql).toMatch(/SET enabled_by_default = false, match_state = 'candidate'/);
-    expect(q.sql).toMatch(/s\.match_evidence->>'autoAcquisitionKey' IS NOT NULL/);
-    expect(q.sql).toMatch(/n\.identity_status <> 'user_confirmed' OR s\.match_evidence->>'autoAcquisitionKey' <> /);
-    expect(q.sql).toMatch(/s\.enabled_by_default = true/);
-  });
-  it("never throws", async () => {
-    const { revokeStaleAutoAcquiredSources } = await import("../notebook-manual-acquisition");
-    db.failWith = { code: "XX000" };
-    expect(await revokeStaleAutoAcquiredSources("t", "nb")).toBe(0);
+describe("Codex #4118 r3 F5 — fencedBeforeAttach", () => {
+  it("attaches only while this generation owns the notebook and the doc is not already a source", async () => {
+    const { fencedBeforeAttach } = await import("../notebook-manual-acquisition");
+    db.claimRows = 1;
+    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(true);
+    db.existingSource = true;
+    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(false);
+    db.existingSource = false;
+    db.claimRows = 0;
+    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(false);
   });
 });
 

@@ -526,6 +526,23 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
   });
 
+  it("Codex #4118 r3 F5: a refusing beforeAttach skips the attach and every later write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => true);
+    const beforeAttach = vi.fn(async () => false);
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, beforeAttach });
+    expect(beforeAttach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, MANUAL_DOC_ID);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, attachSkipped: true });
+  });
+
   it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());

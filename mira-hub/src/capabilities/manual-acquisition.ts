@@ -61,6 +61,14 @@ export interface ManualAcquisitionInput {
    * unconditional write — the confirm route's behaviour.
    */
   writeSourceState?: SourceStateWriter;
+  /**
+   * Called before the manual is attached to the notebook (docId null for a
+   * file-only attach). Returns false to SKIP the attach and every later write
+   * for it — a background search must never overwrite the evidence of a
+   * source that is already on the notebook, or write after losing ownership
+   * (Codex #4118 r3 F5). Defaults to always attaching (the confirm route).
+   */
+  beforeAttach?: (tenantId: string, notebookId: string, docId: string | null) => Promise<boolean>;
 }
 
 export type SourceStatePatch = { matchState: "verified" | "candidate"; enabledByDefault: boolean; matchEvidence: Record<string, unknown> };
@@ -285,7 +293,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       scannedPdf =
         err instanceof NoExtractableTextError || /no extractable text/i.test((err as Error).message);
       manualDocId = null;
-      await attachFileToTargets(
+      if (!input.beforeAttach || (await input.beforeAttach(ctx.tenantId, notebookId, null))) await attachFileToTargets(
         ctx.tenantId,
         manualParked.fileId,
         [
@@ -339,6 +347,27 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     confirmedIdentity: identity,
     reusedExistingDocument: reused,
   };
+  if (input.beforeAttach && !(await input.beforeAttach(ctx.tenantId, notebookId, manualDocId))) {
+    // Already a source on this notebook, or this search lost ownership: leave
+    // whatever is there untouched and report what exists.
+    return outcome("candidate_review", {
+      candidate: candidateView,
+      manual: {
+        fileId: manualParked.fileId,
+        docId: manualDocId,
+        filename: manualFilename,
+        discoveryUrl: candidate.url,
+        finalUrl: download.finalUrl,
+        matchState: null,
+        enabledByDefault: null,
+        chunkCount: manualChunks,
+        indexed: manualDocId !== null,
+        reused,
+        attachSkipped: true,
+      },
+      message: "That manual is already in this notebook's sources.",
+    });
+  }
   await attachFileToTargets(
     ctx.tenantId,
     manualParked.fileId,

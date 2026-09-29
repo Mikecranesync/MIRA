@@ -592,6 +592,7 @@ capabilities:
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts # decline-time fallback + honest state"
     schema:
       - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
+      - "mira-hub/db/migrations/101_notebook_manual_acquisition_revoke_trigger.sql   # identity change revokes auto-enabled manuals atomically"
     environments:
       dev: unset
       staging: unset

@@ -1,17 +1,29 @@
 /**
- * LOCAL-ONLY concurrency proof for Codex #4118 F3 (not committed). Runs the REAL
- * fencedWriter / revokeStaleAutoAcquiredSources against a throwaway postgres:16.
- * Requires PG_RACE=1 and NEON_DATABASE_URL pointing at that container.
+ * LOCAL, OPT-IN concurrency proof for Codex #4118 (never runs in CI). Drives the
+ * REAL fencedWriter / fencedBeforeAttach and the REAL migration-101 trigger
+ * against a throwaway postgres:16 with TLS (the Hub pool requires it):
+ *
+ *   docker run -d --name pg-race-4118 -e POSTGRES_PASSWORD=race -p 127.0.0.1:55432:5432 postgres:16 \
+ *     -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+ *   PG_RACE=1 NEON_DATABASE_URL=postgres://postgres:race@127.0.0.1:55432/postgres \
+ *     npx vitest run src/capabilities/__tests__/race-4118.local.test.ts
+ *
+ * The schema is the minimal subset these functions touch, then migrations 100
+ * and 101 are applied from the repo files verbatim.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { fencedWriter, revokeStaleAutoAcquiredSources } from "../notebook-manual-acquisition";
+import { fencedBeforeAttach, fencedWriter } from "../notebook-manual-acquisition";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
 const T = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC = "33333333-3333-4333-8333-333333333333";
 const KEY_A = "SMC|VQ1000FPGC6C6D|";
+const GEN = "gen-1";
+const MIGRATIONS = join(__dirname, "../../../db/migrations");
 
 async function raw(): Promise<Client> {
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -24,14 +36,30 @@ async function source(c: Client) {
   return r.rows[0];
 }
 
-run("Codex #4118 F3 — real Postgres, real functions", () => {
+run("Codex #4118 — real Postgres, real functions, real trigger", () => {
+  beforeAll(async () => {
+    const c = await raw();
+    await c.query(`
+      DO $$ BEGIN CREATE ROLE factorylm_app; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      CREATE TABLE IF NOT EXISTS equipment_notebooks (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, manufacturer text,
+        model text, catalog_number text, identity_status text NOT NULL DEFAULT 'unknown');
+      CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
+        doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
+        PRIMARY KEY (notebook_id, doc_id));
+      GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources TO factorylm_app;`);
+    await c.query(readFileSync(join(MIGRATIONS, "100_notebook_manual_acquisition.sql"), "utf8"));
+    if (process.env.PG_RACE_SKIP_101 !== "1") await c.query(readFileSync(join(MIGRATIONS, "101_notebook_manual_acquisition_revoke_trigger.sql"), "utf8"));
+    await c.end();
+  });
+
   beforeEach(async () => {
     const c = await raw();
     await c.query("DELETE FROM equipment_notebook_sources; DELETE FROM equipment_notebooks;");
     await c.query(
       `INSERT INTO equipment_notebooks (id, tenant_id, manufacturer, model, identity_status, manual_acquisition)
-       VALUES ($1, $2, 'SMC', 'VQ1000-FPG-C6C6-D', 'user_confirmed', jsonb_build_object('key', $3::text, 'state', 'running'))`,
-      [NB, T, KEY_A],
+       VALUES ($1, $2, 'SMC', 'VQ1000-FPG-C6C6-D', 'user_confirmed',
+               jsonb_build_object('key', $3::text, 'gen', $4::text, 'state', 'running'))`,
+      [NB, T, KEY_A, GEN],
     );
     await c.query(
       `INSERT INTO equipment_notebook_sources (tenant_id, notebook_id, doc_id, match_state, enabled_by_default, match_evidence)
@@ -41,10 +69,10 @@ run("Codex #4118 F3 — real Postgres, real functions", () => {
     await c.end();
   });
 
-  const promote = () =>
-    fencedWriter(KEY_A)(T, NB, DOC, { matchState: "verified", enabledByDefault: true, matchEvidence: { reason: "r" } });
+  const promote = (gen = GEN) =>
+    fencedWriter(KEY_A, gen)(T, NB, DOC, { matchState: "verified", enabledByDefault: true, matchEvidence: { reason: "r" } });
 
-  it("control: nothing changed → the write lands and is stamped with the search key", async () => {
+  it("control: nothing changed → the write lands, stamped with the search key", async () => {
     expect(await promote()).toBe(true);
     const c = await raw();
     const s = await source(c);
@@ -53,7 +81,7 @@ run("Codex #4118 F3 — real Postgres, real functions", () => {
     expect(s.match_evidence.autoAcquisitionKey).toBe(KEY_A);
   });
 
-  it("a rebind holding the row lock → the writer BLOCKS, then re-checks the new version and REFUSES", async () => {
+  it("F3: a rebind holding the row lock → the writer BLOCKS, then re-checks the new version and REFUSES", async () => {
     const rebind = await raw();
     await rebind.query("BEGIN");
     await rebind.query("UPDATE equipment_notebooks SET model = 'VQ1000-XYZ' WHERE id = $1", [NB]);
@@ -63,7 +91,7 @@ run("Codex #4118 F3 — real Postgres, real functions", () => {
       return v;
     });
     await new Promise((r) => setTimeout(r, 700));
-    expect(settled).toBe(false); // blocked on FOR UPDATE
+    expect(settled).toBe(false);
     await rebind.query("COMMIT");
     await rebind.end();
     expect(await pending).toBe(false);
@@ -71,22 +99,43 @@ run("Codex #4118 F3 — real Postgres, real functions", () => {
     const s = await source(c);
     await c.end();
     expect(s.enabled_by_default).toBe(false);
-    expect(s.match_state).toBe("candidate");
   });
 
-  it("the write commits first → a later rebind + revoke turns the manual off", async () => {
+  it("F3: the write commits first → the identity change itself revokes it, in the SAME statement's transaction", async () => {
     expect(await promote()).toBe(true);
     const c = await raw();
+    await c.query("BEGIN");
     await c.query("UPDATE equipment_notebooks SET model = 'VQ1000-XYZ' WHERE id = $1", [NB]);
-    expect(await revokeStaleAutoAcquiredSources(T, NB)).toBe(1);
-    const s = await source(c);
+    // Inside the identity transaction, before commit: already revoked.
+    const inside = await source(c);
+    expect(inside.enabled_by_default).toBe(false);
+    expect(inside.match_evidence.revokedBecause).toBe("notebook identity changed");
+    await c.query("COMMIT");
     await c.end();
-    expect(s.enabled_by_default).toBe(false);
-    expect(s.match_evidence.revokedBecause).toBe("notebook identity changed");
   });
 
-  it("revoke leaves a manual alone when the identity still matches", async () => {
+  it("F3 control: an unrelated notebook update (display_name) revokes nothing; a matching identity keeps it", async () => {
     expect(await promote()).toBe(true);
-    expect(await revokeStaleAutoAcquiredSources(T, NB)).toBe(0);
+    const c = await raw();
+    await c.query("UPDATE equipment_notebooks SET model = 'VQ1000-FPG-C6C6-D' WHERE id = $1", [NB]);
+    expect((await source(c)).enabled_by_default).toBe(true);
+    await c.end();
+  });
+
+  it("F6: a stale-claim takeover (new generation) fences out the old worker", async () => {
+    const c = await raw();
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = manual_acquisition || jsonb_build_object('gen', 'gen-2') WHERE id = $1`,
+      [NB],
+    );
+    await c.end();
+    expect(await promote(GEN)).toBe(false);
+    expect(await promote("gen-2")).toBe(true);
+  });
+
+  it("F5: the pre-attach check refuses a document that is already a source, and allows a new one", async () => {
+    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, DOC)).toBe(false);
+    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, "44444444-4444-4444-8444-444444444444")).toBe(true);
+    expect(await fencedBeforeAttach(KEY_A, "gen-other")(T, NB, "44444444-4444-4444-8444-444444444444")).toBe(false);
   });
 });

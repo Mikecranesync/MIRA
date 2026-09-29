@@ -17,7 +17,6 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
-import { revokeStaleAutoAcquiredSources } from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
 
@@ -86,9 +85,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const ok = await updateNotebook(ctx.tenantId, id, body);
   if (!ok) return NextResponse.json({ error: "not_found_or_empty_patch" }, { status: 404 });
-  // #4075 (Codex #4118 F3): a manual an automatic search enabled for the OLD
-  // identity must not keep answering for the new one.
-  await revokeStaleAutoAcquiredSources(ctx.tenantId, id);
   return NextResponse.json({ ok: true });
 }
 

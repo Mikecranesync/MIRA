@@ -44,6 +44,8 @@ export interface AcquisitionRecord {
   candidate_url?: string | null;
   /** An INDEXED document was attached to this notebook's sources (reviewable in Sources). */
   attached_indexed?: boolean;
+  /** The claim generation that wrote this record (Codex #4118 r3 F6). */
+  gen?: string;
 }
 
 export interface ConfirmedIdentity {
@@ -105,13 +107,16 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * no record, a record for a DIFFERENT identity, or a stale "running" record.
  * Exactly one concurrent caller wins.
  */
-async function claim(tenantId: string, notebookId: string, key: string): Promise<boolean> {
+async function claim(tenantId: string, notebookId: string, key: string): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
-      const r = await c.query(
+      // Every claim mints a fresh generation; only the holder of the CURRENT
+      // generation may write sources or the outcome, so a slow worker whose
+      // stale claim was taken over is fenced out (Codex #4118 r3 F6).
+      const r = await c.query<{ gen: string }>(
         `UPDATE equipment_notebooks
             SET manual_acquisition = jsonb_build_object(
-                  'key', $3::text, 'state', 'running',
+                  'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
                   'started_at', to_jsonb(now()), 'finished_at', NULL,
                   'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL)
           WHERE tenant_id = $1 AND id = $2
@@ -120,16 +125,16 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  OR (manual_acquisition->>'state' = 'running'
                      AND (manual_acquisition->>'started_at')::timestamptz
                          < now() - make_interval(mins => $4)))
-          RETURNING id`,
+          RETURNING manual_acquisition->>'gen' AS gen`,
         [tenantId, notebookId, key, STALE_RUNNING_MINUTES],
       );
-      return (r.rowCount ?? 0) > 0;
+      return r.rows[0]?.gen ?? null;
     });
   } catch (err) {
     if (!isUndefinedColumn(err)) {
       console.error("[manual-acquisition] claim failed:", err instanceof Error ? err.message : err);
     }
-    return false;
+    return null;
   }
 }
 
@@ -177,7 +182,7 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * (Codex #4118 F3/F5). The search key is stamped into the evidence so a later
  * identity change can find what this search enabled.
  */
-export function fencedWriter(key: string): SourceStateWriter {
+export function fencedWriter(key: string, gen: string): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
@@ -186,9 +191,10 @@ export function fencedWriter(key: string): SourceStateWriter {
             WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
               AND n.identity_status = 'user_confirmed'
               AND n.manual_acquisition->>'key' = $3
+              AND n.manual_acquisition->>'gen' = $4
               AND ${NOTEBOOK_KEY_SQL} = $3
             FOR UPDATE`,
-          [tenantId, notebookId, key],
+          [tenantId, notebookId, key, gen],
         );
         if ((owner.rowCount ?? 0) === 0) return false;
         await c.query(
@@ -214,32 +220,40 @@ export function fencedWriter(key: string): SourceStateWriter {
 }
 
 /**
- * After a notebook's identity changes, turn off every manual an automatic
- * search enabled for a DIFFERENT identity (or for a notebook no longer
- * confirmed). They stay attached as candidates the technician can review.
- * Never throws; returns how many sources were turned off.
+ * Attach only while this search still owns the notebook (current generation,
+ * same confirmed identity) AND the document is not already one of the
+ * notebook's sources — so a re-found shared manual never has its evidence (or
+ * its technician decision) overwritten (Codex #4118 r3 F5). The remaining
+ * window between this check and the attach is narrowed by the generation token;
+ * the promotion itself stays fenced by fencedWriter under a row lock.
  */
-export async function revokeStaleAutoAcquiredSources(tenantId: string, notebookId: string): Promise<number> {
-  try {
-    return await withTenantContext(tenantId, async (c) => {
-      const r = await c.query(
-        `UPDATE equipment_notebook_sources s
-            SET enabled_by_default = false, match_state = 'candidate',
-                match_evidence = s.match_evidence || jsonb_build_object('revokedBecause', 'notebook identity changed')
-           FROM equipment_notebooks n
-          WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid
-            AND n.tenant_id = s.tenant_id AND n.id = s.notebook_id
-            AND s.enabled_by_default = true
-            AND s.match_evidence->>'autoAcquisitionKey' IS NOT NULL
-            AND (n.identity_status <> 'user_confirmed' OR s.match_evidence->>'autoAcquisitionKey' <> ${NOTEBOOK_KEY_SQL})`,
-        [tenantId, notebookId],
-      );
-      return r.rowCount ?? 0;
-    });
-  } catch (err) {
-    console.error("[manual-acquisition] revoke failed:", err instanceof Error ? err.message : err);
-    return 0;
-  }
+export function fencedBeforeAttach(key: string, gen: string) {
+  return async (tenantId: string, notebookId: string, docId: string | null): Promise<boolean> => {
+    try {
+      return await withTenantContext(tenantId, async (c) => {
+        const owner = await c.query(
+          `SELECT n.id FROM equipment_notebooks n
+            WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
+              AND n.identity_status = 'user_confirmed'
+              AND n.manual_acquisition->>'key' = $3
+              AND n.manual_acquisition->>'gen' = $4
+              AND ${NOTEBOOK_KEY_SQL} = $3
+            FOR UPDATE`,
+          [tenantId, notebookId, key, gen],
+        );
+        if ((owner.rowCount ?? 0) === 0) return false;
+        if (docId === null) return true;
+        const existing = await c.query(
+          `SELECT 1 FROM equipment_notebook_sources WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+          [tenantId, notebookId, docId],
+        );
+        return (existing.rowCount ?? 0) === 0;
+      });
+    } catch (err) {
+      console.error("[manual-acquisition] pre-attach check failed:", err instanceof Error ? err.message : err);
+      return false;
+    }
+  };
 }
 
 async function finish(tenantId: string, notebookId: string, rec: AcquisitionRecord): Promise<void> {
@@ -250,8 +264,9 @@ async function finish(tenantId: string, notebookId: string, rec: AcquisitionReco
         `UPDATE equipment_notebooks
             SET manual_acquisition = jsonb_set($3::jsonb, '{started_at}',
                   COALESCE(manual_acquisition->'started_at', 'null'::jsonb))
-          WHERE tenant_id = $1 AND id = $2 AND manual_acquisition->>'key' = $4`,
-        [tenantId, notebookId, JSON.stringify(rec), rec.key],
+          WHERE tenant_id = $1 AND id = $2 AND manual_acquisition->>'key' = $4
+            AND manual_acquisition->>'gen' = $5`,
+        [tenantId, notebookId, JSON.stringify(rec), rec.key, rec.gen ?? ""],
       );
     });
   } catch (err) {
@@ -279,7 +294,8 @@ export async function startManualAcquisition(
   if (!acquisitionEnabled(deps.env)) return false;
   const key = acquisitionKey(input.identity);
   if (!key) return false;
-  if (!(await claim(input.tenantId, input.notebookId, key))) return false;
+  const gen = await claim(input.tenantId, input.notebookId, key);
+  if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
   void (async () => {
@@ -295,13 +311,14 @@ export async function startManualAcquisition(
           model: clean(input.identity.model) || undefined,
           catalogNumber: clean(input.identity.catalogNumber) || undefined,
         },
-        writeSourceState: fencedWriter(key),
+        writeSourceState: fencedWriter(key, gen),
+        beforeAttach: fencedBeforeAttach(key, gen),
       });
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
       out = { status: "search_unavailable", payload: {} };
     }
-    await finish(input.tenantId, input.notebookId, recordFromOutcome(key, startedAt, out));
+    await finish(input.tenantId, input.notebookId, { ...recordFromOutcome(key, startedAt, out), gen });
     console.log(
       `[manual-acquisition] notebook=${input.notebookId} state=${out.status}` +
         ` host=${(out.payload as { candidate?: { host?: string } }).candidate?.host ?? "-"}`,
