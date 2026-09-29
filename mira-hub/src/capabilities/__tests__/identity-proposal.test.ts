@@ -220,3 +220,13 @@ describe("Codex #4120 r7", () => {
     expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 processor faulted", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r8", () => {
+  it.each(["Compare Mitsubishi FX5U and fx3u", "Compare Siemens S7-1200 and s7-1500", "Compare Siemens s7-1500 and S7-1200"])(
+    "F12: a lowercase second model still refuses: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F12 control: the same model repeated in lowercase still proposes", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 faults; the s7-1200 is on Ethernet", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
+  });
+});

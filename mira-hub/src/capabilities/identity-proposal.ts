@@ -192,7 +192,10 @@ function modelMentions(message: string): string[] {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const next = tokens[i + 1];
-    if (isModelToken(t)) {
+    // Case-insensitive here, so a lowercase second model ("fx3u", "s7-1500")
+    // still counts against the proposal (Codex #4120 r8 F12). This scan can
+    // only REMOVE a proposal, never create one, so the looser reading is safe.
+    if (isModelToken(t) || (t.length >= 3 && isModelToken(t.toUpperCase()))) {
       out.push(t);
       continue;
     }
