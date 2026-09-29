@@ -45,6 +45,13 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import {
+  acquisitionEnabled,
+  acquisitionKey,
+  acquisitionDeclineText,
+  readAcquisition,
+  startManualAcquisition,
+} from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
 import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
@@ -1909,6 +1916,59 @@ async function handleChatTurn(
     !missingModelManual && boundAndEmpty && !machineRequestRefused && asksAboutThisEquipment(message, oemModel!.value)
       ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
+  // #4075 — the automatic official-manual search for a CONFIRMED identity. Only
+  // when the notebook's own bound model found nothing and this turn is about to
+  // decline for lack of a manual. The chat never runs the search inline: it
+  // starts it (the fallback for notebooks created before the create-time trigger)
+  // and reports the recorded state honestly. Identity is the notebook's own
+  // confirmed fields — never this message's free text.
+  let manualAcquisition: { state: string; started_this_turn: boolean; candidate_host: string | null } | null = null;
+  let acquisitionText: string | null = null;
+  if (
+    (missingModelManual || noEvidenceForMachine) &&
+    !oemRetrievalFailed &&
+    nb &&
+    oemManufacturer?.source === "notebook" &&
+    oemModel?.source === "notebook" &&
+    acquisitionEnabled()
+  ) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      let started = false;
+      if (!acq || acq.key !== key) {
+        started = await startManualAcquisition({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId ?? null,
+          notebookId,
+          nodeId: nb.nodeId,
+          identity,
+        });
+        if (started) {
+          acq = {
+            key,
+            state: "running",
+            started_at: new Date().toISOString(),
+            finished_at: null,
+            candidate_host: null,
+            match_state: null,
+            oem_request_url: null,
+          };
+        }
+      }
+      if (acq && acq.key === key) {
+        manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
+        acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
+      }
+    }
+  }
+  rec.stage("retrieval", { manual_acquisition: manualAcquisition });
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
@@ -1921,6 +1981,8 @@ async function handleChatTurn(
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
       : (missingModelManual || noEvidenceForMachine) && declineKind(message)
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
+      : acquisitionText
+      ? acquisitionText
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine

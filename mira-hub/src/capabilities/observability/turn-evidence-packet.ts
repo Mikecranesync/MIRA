@@ -124,6 +124,17 @@ export type TurnEvidencePacketRetrieval = {
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;
+  /**
+   * #4075 — the automatic official-manual search for this notebook's confirmed
+   * identity, as the chat saw it on this turn: its recorded state ("running" or
+   * the pipeline's outcome status) and whether THIS turn started it. Null when
+   * no search applies (feature off, identity not confirmed, or sources answered).
+   */
+  manual_acquisition: {
+    state: string;
+    started_this_turn: boolean;
+    candidate_host: string | null;
+  } | null;
 };
 
 export type TurnEvidencePacketContext = {
@@ -334,6 +345,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       oem_scope: null,
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
+      manual_acquisition: null,
     },
     context: {
       evidence_doc_ids: [],
