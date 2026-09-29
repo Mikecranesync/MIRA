@@ -341,3 +341,22 @@ def test_an_older_batch_row_is_not_attached_to_a_newer_attempt(tmp_path: Path):
     _grades(tmp_path, old_row)
     cap.attach_source_reviews({"build_sha": SHA, "attempts": [new_attempt]}, [old_row], tmp_path)
     assert "error" in new_attempt["source_review"]
+
+
+@pytest.mark.parametrize(
+    "models",
+    [("claude-x", "   "), ("claude-x", 7), ("GPT-5.5", " gpt-5.5 ")],
+)
+def test_blank_non_string_or_same_normalized_models_are_not_independent(tmp_path: Path, models):
+    """#4109 review round 2 F4: identities are normalized before comparing."""
+    _, (attempt, row) = _capture(CITED)
+    _grades(tmp_path, row, models=models)
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+    assert attempt["source_review"]["independent_providers"] == []
+
+
+def test_distinct_provider_and_model_pairs_stay_eligible(tmp_path: Path):
+    _, (attempt, row) = _capture(CITED)
+    _grades(tmp_path, row)
+    cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
+    assert attempt["source_review"]["independent_providers"] == ["anthropic", "openai"]
