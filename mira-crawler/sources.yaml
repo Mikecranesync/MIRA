@@ -112,6 +112,30 @@ tiers:
       crawl_pattern: direct
       description: "WAGO 750-8202 PFC200 2ETH RS programmable fieldbus controller manual"
 
+    # #4113: a photographed SMC VQ1000-FPG-C6C6-D was answered as a generic
+    # "manual override" with no source. These catalogs carry the answer as
+    # extractable text: "Residual pressure release manual override" (C6
+    # fitting variant) and "preventing the dropping at the cylinder stroke end
+    # when the SUP residual pressure is released". Both verified 200
+    # application/pdf and not disallowed by robots.txt on 2026-09-29.
+    smc_vq1000_2000_double_check_block:
+      url: "https://content2.smcetech.com/pdf/1900A.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: SMC
+      equipment_id: VQ1000-FPG
+      crawl_pattern: direct
+      description: "SMC VQ1000/2000 double check block (separated type) catalog — residual pressure release manual override, drop prevention"
+
+    smc_vq_vv_fpg_double_check_block:
+      url: "https://www.smcworld.com/catalog/New-products-en/mpv/22-E789-VQ-VV-FPG/data/22-E789-VQ-VV-FPG.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: SMC
+      equipment_id: VQ1000-FPG
+      crawl_pattern: direct
+      description: "SMC VQ/VV FPG double check block catalog (22-E789) — residual pressure release valve, drop prevention"
+
     # NOTE: wago_topjob_s removed 2026-07-27 — old URL 404s and WAGO publishes no
     # zero-login official replacement (only distributor catalogs); low diagnostic
     # value (DIN-rail terminal block). Re-add if an official wago.com PDF surfaces.
