@@ -113,6 +113,7 @@ vi.mock("@/lib/visual-evidence-context", () => veMock);
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => false),
   readAcquisition: vi.fn(async () => null as unknown),
+  reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
   startManualAcquisition: vi.fn(async () => false),
 }));
 vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
@@ -1275,6 +1276,48 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     const fr = await ask();
     expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
     expect(String(fr.find((f) => f.kind === "status")?.message)).not.toContain("couldn't find one");
+  });
+
+  it("Codex #4118 r8 F13: a finished record is reconciled first — a removed source is never reported as in Sources", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "complete",
+      started_at: null,
+      finished_at: null,
+      candidate_host: "www.smcworld.com",
+      match_state: "verified",
+      oem_request_url: null,
+      attached_indexed: true,
+      doc_id: "d1",
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.reconcileAcquisition.mockImplementationOnce(async () => ({ ...rec, attached_indexed: false, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("no longer in this notebook's Sources");
+    expect(msg).not.toContain("turn it on in Sources");
+  });
+
+  it("Codex #4118 r7 F12: a matching 'search_unavailable' record goes back through the claim (retried after its backoff)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
   });
 
   it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {

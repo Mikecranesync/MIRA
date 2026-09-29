@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
-import { fencedBeforeAttach, fencedWriter, startManualAcquisition } from "../notebook-manual-acquisition";
+import { fencedBeforeAttach, fencedWriter, reconcileAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
 import { upsertNotebookSourceTx } from "@/lib/equipment-notebooks";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
@@ -233,6 +233,23 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(await tryStart()).toBe(false);
     await setRecord("complete", 600);
     expect(await tryStart()).toBe(false);
+  });
+
+  it("r8 F13: a completed acquisition whose source was deleted is reconciled as removed; control: present", async () => {
+    const rec = {
+      key: KEY_A,
+      state: "complete" as const,
+      started_at: null,
+      finished_at: null,
+      candidate_host: null,
+      match_state: "verified",
+      oem_request_url: null,
+      attached_indexed: true,
+      doc_id: DOC,
+    };
+    expect((await reconcileAcquisition(T, NB, rec))?.source_removed).toBeUndefined();
+    await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1");
+    expect(await reconcileAcquisition(T, NB, rec)).toMatchObject({ source_removed: true, attached_indexed: false });
   });
 
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {

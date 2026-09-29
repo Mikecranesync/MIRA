@@ -53,6 +53,10 @@ export interface AcquisitionRecord {
   attached_indexed?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
+  /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
+  doc_id?: string | null;
+  /** Set at read time: the acquired source was since removed or rejected by the technician. */
+  source_removed?: boolean;
 }
 
 export interface ConfirmedIdentity {
@@ -176,6 +180,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     oem_request_url: str(p.oemRequestUrl),
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
+    doc_id: str(p.manual?.docId),
   };
 }
 
@@ -359,8 +364,41 @@ export async function startManualAcquisition(
  * manuals had nothing. Null when there is nothing honest to add (no record, or a
  * record for a different identity). Never claims a manual it did not attach.
  */
+/**
+ * Check a finished record against the notebook's CURRENT sources before it is
+ * shown: a document the technician removed (or rejected) since the search is
+ * reported as removed — never "it's in Sources" — and is never re-attached
+ * automatically (Codex #4118 r8 F13). A read failure leaves the record as-is.
+ */
+export async function reconcileAcquisition(
+  tenantId: string,
+  notebookId: string,
+  rec: AcquisitionRecord | null,
+): Promise<AcquisitionRecord | null> {
+  if (!rec || !rec.doc_id || (rec.state !== "complete" && rec.state !== "candidate_review")) return rec;
+  if (rec.state === "candidate_review" && !rec.attached_indexed) return rec;
+  try {
+    return await withTenantContext(tenantId, async (c) => {
+      const r = await c.query<{ match_state: string }>(
+        `SELECT match_state FROM equipment_notebook_sources
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+        [tenantId, notebookId, rec.doc_id],
+      );
+      const row = r.rows[0];
+      if (row && row.match_state !== "rejected") return rec;
+      return { ...rec, attached_indexed: false, source_removed: true };
+    });
+  } catch (err) {
+    console.error("[manual-acquisition] reconcile failed:", err instanceof Error ? err.message : err);
+    return rec;
+  }
+}
+
 export function acquisitionDeclineText(rec: AcquisitionRecord | null, key: string | null, label: string): string | null {
   if (!rec || !key || rec.key !== key) return null;
+  if (rec.source_removed) {
+    return `I found a manual for the ${label} earlier, but it's no longer in this notebook's Sources, so I can't answer from it. If you need it, add it back or upload the manual, and ask again — I'll answer from it and show you the page.`;
+  }
   switch (rec.state) {
     case "running":
       return `I don't have the ${label} manual yet — I'm looking for the official one now. It will show up in this notebook's Sources when I find it; ask again in a minute and I'll answer from it and show you the page.`;

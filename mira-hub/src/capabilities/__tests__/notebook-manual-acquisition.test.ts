@@ -13,6 +13,7 @@ const db = vi.hoisted(() => ({
   existingSource: false,
   updatedSource: { match_state: "verified", enabled_by_default: true } as unknown,
   currentSource: null as unknown,
+  sourceRow: null as unknown,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -24,6 +25,7 @@ vi.mock("@/lib/tenant-context", () => ({
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
         if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
+        if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
         if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
         return { rowCount: 1, rows: [] };
@@ -39,6 +41,7 @@ import {
   acquisitionEnabled,
   acquisitionKey,
   readAcquisition,
+  reconcileAcquisition,
   recordFromOutcome,
   startManualAcquisition,
   type AcquisitionRecord,
@@ -56,6 +59,7 @@ beforeEach(() => {
   db.existingSource = false;
   db.updatedSource = { match_state: "verified", enabled_by_default: true };
   db.currentSource = null;
+  db.sourceRow = null;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -311,3 +315,51 @@ describe("key normalization", () => {
   });
 });
 
+
+describe("Codex #4118 r8 F13 — a finished record is checked against the notebook's current sources", () => {
+  const done: AcquisitionRecord = {
+    key: "K",
+    state: "complete",
+    started_at: null,
+    finished_at: null,
+    candidate_host: "www.smcworld.com",
+    match_state: "verified",
+    oem_request_url: null,
+    attached_indexed: true,
+    doc_id: "11111111-1111-4111-8111-111111111111",
+  };
+  it("the record keeps the acquired document id", () => {
+    const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", {
+      status: "complete",
+      payload: { manual: { fileId: "f1", docId: "d1", indexed: true, attached: true } },
+    });
+    expect(r.doc_id).toBe("d1");
+  });
+  it("a removed source → marked removed; the text never says it is in Sources", async () => {
+    db.sourceRow = null;
+    const r = await reconcileAcquisition("t", "nb", done);
+    expect(r).toMatchObject({ source_removed: true, attached_indexed: false });
+    const text = acquisitionDeclineText(r, "K", "SMC VQ1000")!;
+    expect(text).toMatch(/no longer in this notebook's Sources/);
+    expect(text).not.toMatch(/turn it on in Sources|Check it in this notebook's Sources/);
+  });
+  it("a rejected source counts as removed; an attached candidate too", async () => {
+    db.sourceRow = { match_state: "rejected" };
+    expect((await reconcileAcquisition("t", "nb", done))?.source_removed).toBe(true);
+    db.sourceRow = null;
+    const cand = { ...done, state: "candidate_review" as const, match_state: "candidate" };
+    expect((await reconcileAcquisition("t", "nb", cand))?.source_removed).toBe(true);
+  });
+  it("control: a source still present keeps the record (and its Sources text)", async () => {
+    db.sourceRow = { match_state: "verified" };
+    const r = await reconcileAcquisition("t", "nb", done);
+    expect(r?.source_removed).toBeUndefined();
+    expect(acquisitionDeclineText(r, "K", "SMC VQ1000")).toMatch(/added it to this notebook's Sources/);
+  });
+  it("a record without a document, or a running search, is not queried", async () => {
+    db.queries = [];
+    await reconcileAcquisition("t", "nb", { ...done, doc_id: null });
+    await reconcileAcquisition("t", "nb", { ...done, state: "running" });
+    expect(db.queries.length).toBe(0);
+  });
+});

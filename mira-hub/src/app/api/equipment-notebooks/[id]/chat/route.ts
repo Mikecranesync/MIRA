@@ -50,6 +50,7 @@ import {
   acquisitionKey,
   acquisitionDeclineText,
   readAcquisition,
+  reconcileAcquisition,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
@@ -1967,6 +1968,7 @@ async function handleChatTurn(
           };
         }
       }
+      if (!started) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
