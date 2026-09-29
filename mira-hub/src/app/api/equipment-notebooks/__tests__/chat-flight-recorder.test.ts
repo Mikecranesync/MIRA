@@ -1199,7 +1199,12 @@ describe("#4095 — a blank chat PROPOSES the named machine, never binds it", ()
     expect(systemPromptOf(fetchMock)).toContain("Allen-Bradley SLC 5/03");
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const p = packetOf();
-    expect(p.identity.proposal).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+    // Content-free packet: the model is a hash, never text (Codex #4120 r3 F5).
+    expect(p.identity.proposal).toEqual({
+      manufacturer: "Allen-Bradley",
+      model_sha256: "b217f051d1e3a5ff26ec33794df34402b690bc6dca1ff40cc4d34ffe191553a3",
+    });
+    expect(JSON.stringify(p)).not.toContain("SLC 5/03");
     // The proposal alone never changes this turn's retrieval.
     expect(p.retrieval.strategy).toBe("skipped_general_mode");
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();

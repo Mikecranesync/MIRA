@@ -37,6 +37,7 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
@@ -2181,7 +2182,12 @@ async function handleChatTurn(
   rec.stage("identity", {
     manufacturer_present: Boolean(nb?.manufacturer),
     model_present: Boolean(nb?.model),
-    proposal: identityProposal,
+    proposal: identityProposal
+      ? {
+          manufacturer: identityProposal.manufacturer,
+          model_sha256: createHash("sha256").update(identityProposal.model.toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex"),
+        }
+      : null,
   });
   setSpanAttrs(
     {

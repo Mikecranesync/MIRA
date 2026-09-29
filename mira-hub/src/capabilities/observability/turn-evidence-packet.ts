@@ -99,9 +99,11 @@ export type TurnEvidencePacketIdentity = {
   /**
    * #4095 — a machine PROPOSED from the technician's free text in an unbound
    * notebook (never bound, never used for retrieval on this turn). Null when
-   * none was proposed.
+   * none was proposed. The packet is content-free: the manufacturer is a
+   * library vendor name; the model is recorded ONLY as a sha256 of its
+   * normalized form, never as text (Codex #4120 r3 F5).
    */
-  proposal: { manufacturer: string; model: string } | null;
+  proposal: { manufacturer: string; model_sha256: string } | null;
 };
 
 export type TurnEvidencePacketRetrieval = {

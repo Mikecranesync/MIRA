@@ -138,3 +138,16 @@ describe("Codex #4120 r2 — other-family models and sensitive free text", () =>
   });
 });
 
+describe("Codex #4120 r3", () => {
+  it("F2: a multi-token model of another family ('MicroLogix 1400') → no proposal", () => {
+    expect(proposeIdentityFromText("Compare Allen-Bradley SLC 5/03 and MicroLogix 1400", CORPUS)).toBeNull();
+  });
+  it("F8: a parser-recognized alias of the chosen model is not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley PF525 trips on startup", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "525" });
+    expect(proposeIdentityFromText("Allen-Bradley Micro820 lost its program", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+  it("F8 control: the r2 other-family case still refuses", () => {
+    expect(proposeIdentityFromText("Compare Mitsubishi FX5U and Q03UDECPU", CORPUS)).toBeNull();
+  });
+});
+

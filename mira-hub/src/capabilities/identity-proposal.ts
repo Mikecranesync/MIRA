@@ -165,27 +165,35 @@ const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
  * Another model of the SAME family named elsewhere without repeating the
  * manufacturer ("SLC 5/03 and SLC 5/04", "FX5U or FX3U") — Codex #4120 F2.
  */
-function namesAnotherFamilyModel(message: string, model: string): boolean {
-  const tokens = message.split(/\s+/).map(cleanToken);
-  // Any OTHER standalone model-shaped token — same family or not ("FX5U and
-  // Q03UDECPU") — means two machines are named (Codex #4120 r2 F2).
-  const modelParts = new Set(model.split(" ").map(norm));
-  for (const t of tokens) {
-    if (isModelToken(t) && !modelParts.has(norm(t))) return true;
-  }
+/** CamelCase product-family word ("MicroLogix", "PowerFlex", "CompactLogix"). */
+const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
+
+/**
+ * Does the text OUTSIDE the chosen machine's own mention windows name another
+ * machine? Any standalone model-shaped token, a CamelCase family word followed
+ * by a number ("MicroLogix 1400"), or another number of the chosen family
+ * ("SLC 5/04") counts (Codex #4120 r2 F2, r3 F2). The chosen mention's window
+ * is removed first, so an alias of the chosen model ("PF525" → 525) never
+ * counts against itself (r3 F8).
+ */
+function namesAnotherMachine(rest: string, model: string): boolean {
+  const tokens = rest.split(/\s+/).map(cleanToken).filter(Boolean);
   const family = model.includes(" ") ? model.split(" ")[0] : (model.match(/^[A-Za-z]{2,}/)?.[0] ?? null);
-  if (!family) return false;
   for (let i = 0; i < tokens.length; i++) {
-    const span = model.includes(" ")
-      ? tokens[i]?.toUpperCase() === family.toUpperCase() && tokens[i + 1] && isFamilyNumber(tokens[i + 1])
-        ? `${tokens[i]} ${tokens[i + 1]}`
-        : null
-      : isModelToken(tokens[i]) && tokens[i].toUpperCase().startsWith(family.toUpperCase())
-        ? tokens[i]
-        : null;
-    if (span && norm(span) !== norm(model)) return true;
+    const t = tokens[i];
+    const next = tokens[i + 1];
+    if (isModelToken(t)) return true;
+    if (CAMEL_FAMILY_RE.test(t) && next && isFamilyNumber(next)) return true;
+    if (family && t.toUpperCase() === family.toUpperCase() && next && isFamilyNumber(next)) return true;
   }
   return false;
+}
+
+/** Blank the chosen machine's mention windows (mention + next 3 tokens). */
+function outsideWindows(message: string, windows: { start: number; end: number }[]): string {
+  let out = message;
+  for (const w of windows) out = out.slice(0, w.start) + " ".repeat(w.end - w.start) + out.slice(w.end);
+  return out;
 }
 
 /**
@@ -201,13 +209,28 @@ export function proposeIdentityFromText(
   try {
     if (resolveModelFromObservationText(message).ambiguous) return null;
     const candidates = new Map<string, IdentityProposal>();
+    const windows: { start: number; end: number }[] = [];
     for (const mention of manufacturerMentions(message, knownManufacturers)) {
       const model = modelAfterManufacturer(message.slice(mention.index), mention.text);
+      // The mention plus EXACTLY the tokens the model was read from (through the
+      // model's last part — "525" inside "PF525", "5/03" of "SLC 5/03").
+      const mentionEnd = mention.index + mention.text.length;
+      let end = mentionEnd;
+      if (model) {
+        const near = message.slice(mentionEnd).match(/^(?:\s+\S+){0,3}/)?.[0] ?? "";
+        const last = model.split(" ").at(-1)!;
+        const at = near.toUpperCase().indexOf(last.toUpperCase());
+        if (at >= 0) {
+          const tokenEnd = near.slice(at + last.length).match(/^\S*/)?.[0].length ?? 0;
+          end = mentionEnd + at + last.length + tokenEnd;
+        }
+      }
+      windows.push({ start: mention.index, end });
       if (model) candidates.set(`${norm(mention.text)}|${norm(model)}`, { manufacturer: mention.text, model });
     }
     if (candidates.size !== 1) return null;
     const only = [...candidates.values()][0];
-    return namesAnotherFamilyModel(message, only.model) ? null : only;
+    return namesAnotherMachine(outsideWindows(message, windows), only.model) ? null : only;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
