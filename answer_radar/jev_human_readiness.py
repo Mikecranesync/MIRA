@@ -12,6 +12,8 @@ from pathlib import Path
 
 SIGNALS = ("over_specificity", "wrong_family_grounding",
            "contradicts_observations", "unsupported_numerics")
+CLASSES = {"none", "identity", "retrieval_mismatch", "missing_evidence",
+           "interpretation", "overreach", "unresponsive"}
 
 
 def _auc(pairs: list[tuple[float, bool]]) -> float | None:
@@ -33,6 +35,7 @@ def compare(run: dict) -> dict:
     pairs: dict[str, list[tuple[float, bool]]] = {s: [] for s in SIGNALS}
     latencies: list[int] = []
     tokens: list[int] = []
+    classes: list[tuple[str, str]] = []
     for a in attempts:
         key = f"{a.get('case_id')}/{a.get('surface')}/{a.get('rep')}"
         review = a.get("human_review") or {}
@@ -54,6 +57,10 @@ def compare(run: dict) -> dict:
             continue
         for s in SIGNALS:
             pairs[s].append((values[s], labels[s]))
+        truth_class = review.get("blind_jev_failure_class")
+        predicted_class = jev.get("failure_class")
+        if truth_class in CLASSES and predicted_class in CLASSES:
+            classes.append((truth_class, predicted_class))
         if type(jev.get("latency_ms")) is int and jev["latency_ms"] >= 0:
             latencies.append(jev["latency_ms"])
         if type(jev.get("input_tokens")) is int and jev["input_tokens"] >= 0:
@@ -67,6 +74,12 @@ def compare(run: dict) -> dict:
         }
     report["jev_latency_ms"] = {"n": len(latencies), "values": latencies}
     report["jev_input_tokens"] = {"n": len(tokens), "total": sum(tokens)}
+    report["failure_class"] = {
+        "n": len(classes),
+        "accuracy": round(sum(t == p for t, p in classes) / len(classes), 4)
+        if classes else None,
+        "confusion": [{"truth": t, "predicted": p} for t, p in classes],
+    }
     report["interpretation"] = "Shadow correlation only; no threshold or latency improvement inferred"
     return report
 
