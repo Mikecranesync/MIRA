@@ -370,3 +370,19 @@ describe("Codex #4120 r18", () => {
     });
   });
 });
+
+describe("Codex #4120 r19", () => {
+  it.each(["Siemens Serial PF525 is on the label", "Siemens serial PF525 is on the label", "Siemens SN=PF525", "Siemens sn PF525 on it"])(
+    "F19: a strong label takes its value in any case and separator: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F19: a strong label's value is not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley PF525 Serial PF753 is on the label", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "525",
+    });
+  });
+  it("F19 control: weak everyday words still do not swallow a model", () => {
+    expect(proposeIdentityFromText("Compare Siemens S7-1200 and no S7-1500", CORPUS)).toBeNull();
+  });
+});
