@@ -441,3 +441,72 @@ def test_notes_edited_after_grading_unbind_the_review(tmp_path: Path):
     attempt["source_review"]["reference_notes"] = "edited notes"
     reasons = human_readiness.score(_SR_MANIFEST, run)["reasons"]
     assert any("grades bind a different answer" in r for r in reasons), reasons
+
+
+class LookHub(FakeHub):
+    """FakeHub plus the LOOK route; records the uploaded multipart body."""
+
+    def __init__(self, *a, look_status=200, **kw):
+        super().__init__(*a, **kw)
+        self.look_status, self.uploads = look_status, []
+
+    def _req(self, method, path, body=None, headers=None):
+        self.uploads.append((path, body))
+        return (
+            self.look_status,
+            {"x-mira-trace-id": "l" * 32},
+            json.dumps({"fileId": "file-1", "observation": {"text": "32906X"}}).encode(),
+        )
+
+
+PHOTO = b"\xff\xd8 fake jpeg bytes"
+FOLLOWUP = dict(CASE, id="photo-followup", question="Which part number did the earlier photo show?")
+ANSWERED = [{"kind": "content", "content": "32906X"}, {"kind": "status", "status": "answered"}]
+
+
+def _followup(considered, look_status=200):
+    packet = {
+        **PACKET,
+        "retrieval": {**PACKET["retrieval"], "prior_visual_observations_considered": considered},
+    }
+    hub = LookHub(ANSWERED, packet, look_status=look_status)
+    attempt, _ = cap.ask_hub_case(hub, FOLLOWUP, 0, SHA, PHOTO)
+    return hub, attempt
+
+
+def test_photo_followup_uploads_the_bytes_then_asks_in_the_same_notebook():
+    import hashlib
+
+    hub, attempt = _followup(1)
+    assert hub.uploads and hub.uploads[0][0] == "/api/equipment-notebooks/nb-1/look/"
+    assert PHOTO in hub.uploads[0][1]
+    receipts = attempt["action_receipts"]
+    assert receipts["photo_link"]["sha256"] == hashlib.sha256(PHOTO).hexdigest()
+    assert receipts["prior_observation"] == {"considered": 1}
+
+
+def test_no_prior_observation_receipt_when_the_server_considered_none():
+    _, attempt = _followup(0)
+    assert "photo_link" in attempt["action_receipts"]
+    assert "prior_observation" not in attempt["action_receipts"]
+
+
+def test_a_failed_upload_earns_no_receipts():
+    _, attempt = _followup(1, look_status=503)
+    assert attempt["action_receipts"] == {}
+
+
+def test_single_turn_cases_carry_no_receipts():
+    _, (attempt, _) = _capture(ANSWERED)
+    assert attempt["action_receipts"] == {}
+
+
+def test_the_followup_fixture_is_pinned_to_its_committed_bytes():
+    import hashlib
+
+    manifest = json.loads(
+        (Path(cap.REPO_ROOT) / "answer_radar/human_readiness_manifest_v1.json").read_text()
+    )
+    case = next(c for c in manifest["cases"] if c["id"] == "photo-followup")
+    data = (Path(cap.REPO_ROOT) / case["fixture"]).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == case["fixture_sha256"]

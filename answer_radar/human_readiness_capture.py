@@ -18,6 +18,7 @@ need action receipts from a real browser or device; they stay missing (HOLD).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -52,6 +53,40 @@ HUB_TURN_CASES = frozenset(
         "letter-consistency",
     }
 )
+#: Hub cases that open with a photo LOOK turn, then ask the case question in the
+#: same notebook (the "earlier photo" is a real server-side observation).
+PHOTO_FOLLOWUP_CASES = frozenset({"photo-followup"})
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _multipart(field: str, filename: str, data: bytes, mime: str) -> tuple[bytes, str]:
+    boundary = uuid.uuid4().hex
+    head = (
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; '
+        f'filename="{filename}"\r\nContent-Type: {mime}\r\n\r\n'
+    ).encode()
+    return head + data + f"\r\n--{boundary}--\r\n".encode(), boundary
+
+
+def post_look(hub, nb_id: str, image: bytes) -> dict[str, Any]:
+    """Upload one photo through the product's own LOOK route; never raises."""
+    body, boundary = _multipart("image", "photo.jpg", image, "image/jpeg")
+    st, hd, raw = hub._req(
+        "POST",
+        f"/api/equipment-notebooks/{nb_id}/look/",
+        body,
+        {"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        out = json.loads(raw or b"{}")
+    except json.JSONDecodeError:
+        out = {}
+    return {
+        "status": st,
+        "file_id": out.get("fileId"),
+        "trace_id": hd.get("x-mira-trace-id") or out.get("traceId"),
+        "observed": bool((out.get("observation") or {}).get("text")),
+    }
 
 
 def attempt_id(case_id: str, surface: str, rep: int) -> str:
@@ -76,12 +111,15 @@ def _jev(packet: dict[str, Any]) -> dict[str, Any]:
 
 
 def ask_hub_case(
-    hub, case: dict[str, Any], rep: int, build: str
+    hub, case: dict[str, Any], rep: int, build: str, image: bytes | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """One blank-chat attempt. Returns (attempt record, batch row for the graders)."""
     # Named "General" — the notebook the home screen's blank chat uses — so the
     # run measures the product's own condition (#4099: names can move answers).
     nb = hub.create_notebook("General")
+    look: dict[str, Any] | None = None
+    if image is not None:
+        look = post_look(hub, nb["id"], image)
     body = {
         "message": case["question"],
         "sourceDocIds": [],
@@ -156,7 +194,7 @@ def ask_hub_case(
         "scores": {},
         "score_reasons": {},
         "human_review": {},
-        "action_receipts": {},
+        "action_receipts": _photo_receipts(image, look, packet) if image is not None else {},
         "source_review": {},
     }
     row = {
@@ -200,15 +238,37 @@ def ask_hub_case(
     return attempt, row
 
 
+def _photo_receipts(
+    image: bytes, look: dict[str, Any] | None, packet: dict[str, Any]
+) -> dict[str, Any]:
+    """Receipts from server evidence only; an unproven action gets no receipt."""
+    receipts: dict[str, Any] = {}
+    if look and look.get("status") == 200 and look.get("file_id"):
+        receipts["photo_link"] = {
+            "sha256": hashlib.sha256(image).hexdigest(),
+            "file_id": look["file_id"],
+            "look_trace_id": look.get("trace_id"),
+        }
+    considered = (packet.get("retrieval") or {}).get("prior_visual_observations_considered")
+    if isinstance(considered, int) and considered >= 1 and receipts:
+        receipts["prior_observation"] = {"considered": considered}
+    return receipts
+
+
 def capture(hub, manifest: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Every hub-surface single-turn attempt on one pinned build; aborts on a mid-run deploy."""
     build = deployed_sha(hub)
     attempts, rows = [], []
     for case in manifest["cases"]:
-        if case["surfaces"] != ["hub"] or case["id"] not in HUB_TURN_CASES:
+        if case["surfaces"] != ["hub"] or case["id"] not in HUB_TURN_CASES | PHOTO_FOLLOWUP_CASES:
             continue
+        image = None
+        if case["id"] in PHOTO_FOLLOWUP_CASES:
+            image = (REPO_ROOT / case["fixture"]).read_bytes()
+            if hashlib.sha256(image).hexdigest() != case.get("fixture_sha256"):
+                raise SystemExit(f"{case['id']}: fixture bytes do not match the pinned sha256")
         for rep in range(case["repeats"]):
-            a, r = ask_hub_case(hub, case, rep, build)
+            a, r = ask_hub_case(hub, case, rep, build, image)
             attempts.append(a)
             rows.append(r)
     if deployed_sha(hub) != build:
