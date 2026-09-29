@@ -103,6 +103,7 @@ import {
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
+import { withRetailCodeNote } from "@/capabilities/retail-codes";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -2404,11 +2405,13 @@ async function handleChatTurn(
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
   // #4131: a label data identifier ("1P <order no.>") in this turn's photo
   // context gets its standard meaning stated; otherwise byte-identical.
-  const systemPrompt = withLabelDataIdentifiers(withStepSafety(withAnswerLanguage(
+  // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
+  // not-a-part-number; otherwise byte-identical.
+  const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
       : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
- )), lookContext);
+ )), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
