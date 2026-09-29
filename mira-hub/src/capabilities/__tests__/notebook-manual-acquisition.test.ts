@@ -35,6 +35,7 @@ vi.mock("@/lib/tenant-context", () => ({
     }),
   ),
 }));
+vi.mock("@/lib/workspace-files", () => ({ attachFileToTargetsTx: vi.fn(async () => ({ ok: true, links: [] })) }));
 // The real pipeline is covered by the nameplate confirm tests; here it is a seam.
 vi.mock("@/capabilities/manual-acquisition", () => ({ acquireManualForIdentity: vi.fn() }));
 
@@ -100,7 +101,7 @@ describe("startManualAcquisition", () => {
       nodeId: "node",
       identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: undefined },
       writeSourceState: expect.any(Function),
-      beforeAttach: expect.any(Function),
+      attach: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
@@ -297,17 +298,21 @@ describe("Codex #4118 F3/F5/F8/F9 — fencedWriter", () => {
   });
 });
 
-describe("Codex #4118 r3 F5 — fencedBeforeAttach", () => {
-  it("attaches only while this generation owns the notebook; an existing source row does NOT block (r4 F7)", async () => {
-    const { fencedBeforeAttach } = await import("../notebook-manual-acquisition");
+describe("Codex #4118 r3 F5 / r15 F19 — fencedAttach", () => {
+  const tgt = [{ targetType: "equipment_notebook" as const, targetId: "nb", role: "manual" as const, displayLabel: "m.pdf" }];
+  it("attaches (in the same transaction) only while this generation owns the notebook", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
     db.claimRows = 1;
-    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(true);
-    db.existingSource = true;
-    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(true);
+    expect(await fencedAttach("K", "g1")("t", "nb", "file", "doc", tgt, null)).toBe(true);
+    expect(attachFileToTargetsTx).toHaveBeenCalled();
+    vi.mocked(attachFileToTargetsTx).mockClear();
     db.claimRows = 0;
-    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(false);
+    expect(await fencedAttach("K", "g1")("t", "nb", "file", "doc", tgt, null)).toBe(false);
+    expect(attachFileToTargetsTx).not.toHaveBeenCalled();
   });
 });
+
 
 describe("key normalization", () => {
   it("the SQL key normalization matches acquisitionKey for the same identity", () => {
@@ -474,9 +479,9 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
     expect(removed).toMatchObject({ state: "candidate_review", source_removed: true, attached_indexed: false, linked: false });
   });
   it("F18: the fenced attach gate throws on a database failure (never a silent refusal)", async () => {
-    const { fencedBeforeAttach } = await import("../notebook-manual-acquisition");
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
     db.failWith = { code: "08006" };
-    await expect(fencedBeforeAttach("K", "g1")("t", "nb", "doc")).rejects.toThrow();
+    await expect(fencedAttach("K", "g1")("t", "nb", "file", "doc", [], null)).rejects.toThrow();
   });
   it("F19: a linked retryable record is reconciled against the notebook's sources", async () => {
     db.sourceRow = null;

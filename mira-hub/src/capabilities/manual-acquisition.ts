@@ -18,6 +18,7 @@ import {
   parkOrReuseFile,
   linkFileToUpload,
   attachFileToTargets,
+  type AttachTarget,
   claimIngest,
   releaseIngestClaim,
 } from "@/lib/workspace-files";
@@ -64,13 +65,23 @@ export interface ManualAcquisitionInput {
    */
   writeSourceState?: SourceStateWriter;
   /**
-   * Called before the manual is attached to the notebook (docId null for a
-   * file-only attach). Returns false to SKIP the attach and every later write
-   * for it — a background search must never overwrite the evidence of a
-   * source that is already on the notebook, or write after losing ownership
-   * (Codex #4118 r3 F5). Defaults to always attaching (the confirm route).
+   * Attach the manual's file to the notebook (docId null for a file-only
+   * attach). Returns true when attached, false when this search lost
+   * ownership (skip every later write), "removed" when the technician removed
+   * the manual an earlier attempt attached (never put back — Codex #4118
+   * r14/r15 F19), or "resume" when that earlier attachment of the SAME
+   * document still stands (assess it; do not re-attach). Throws on a database
+   * failure (retryable — r14 F18). Defaults to an unconditional attach (the
+   * confirm route: the technician is acting right now).
    */
-  beforeAttach?: (tenantId: string, notebookId: string, docId: string | null) => Promise<boolean | "removed">;
+  attach?: (
+    tenantId: string,
+    notebookId: string,
+    fileId: string,
+    docId: string | null,
+    targets: AttachTarget[],
+    createdBy: string | null,
+  ) => Promise<boolean | "removed" | "resume">;
 }
 
 export type SourceStatePatch = { matchState: "verified" | "candidate"; enabledByDefault: boolean; matchEvidence: Record<string, unknown> };
@@ -226,16 +237,17 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   }
 
   const manualFilename = safePdfFilename(download.finalUrl);
-  // The attach gate: true = attach, false = this search lost ownership,
-  // "removed" = the technician removed this manual since an earlier attempt
-  // (never re-attached — Codex #4118 r14 F19), "error" = a database failure
-  // (retryable, not a refusal — r14 F18).
-  const gateAttach = async (docId: string | null): Promise<boolean | "removed" | "error"> => {
-    if (!input.beforeAttach) return true;
+  // One attach call: "error" = a database failure (retryable, not a refusal).
+  const doAttach = async (
+    docId: string | null,
+    targets: AttachTarget[],
+  ): Promise<boolean | "removed" | "resume" | "error"> => {
     try {
-      return await input.beforeAttach(ctx.tenantId, notebookId, docId);
+      if (input.attach) return await input.attach(ctx.tenantId, notebookId, manualParked.fileId, docId, targets, ctx.userId ?? null);
+      await attachFileToTargets(ctx.tenantId, manualParked.fileId, targets, { createdBy: ctx.userId ?? null });
+      return true;
     } catch (err) {
-      console.error("[manual-acquisition] attach gate failed:", err instanceof Error ? err.message : err);
+      console.error("[manual-acquisition] attach failed:", err instanceof Error ? err.message : err);
       return "error";
     }
   };
@@ -333,23 +345,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       scannedPdf =
         err instanceof NoExtractableTextError || /no extractable text/i.test((err as Error).message);
       manualDocId = null;
-      const fileGate = await gateAttach(null);
+      const fileGate = await doAttach(null, [
+        { targetType: "equipment_notebook", targetId: notebookId, role: "manual", displayLabel: manualFilename },
+      ]);
       if (fileGate === "error" || fileGate === "removed") return gateOutcome(fileGate, manualParked.fileId, null);
-      if (fileGate) await attachFileToTargets(
-        ctx.tenantId,
-        manualParked.fileId,
-        [
-          {
-            targetType: "equipment_notebook",
-            targetId: notebookId,
-            role: "manual",
-            displayLabel: manualFilename,
-          },
-        ],
-        { createdBy: ctx.userId ?? null },
-      );
       return outcome(scannedPdf ? "no_extractable_text" : "candidate_review", {
-        linked: fileGate,
+        linked: fileGate === true || fileGate === "resume",
         candidate: candidateView,
         manual: {
           fileId: manualParked.fileId,
@@ -393,9 +394,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     confirmedIdentity: identity,
     reusedExistingDocument: reused,
   };
-  const docGate = await gateAttach(manualDocId);
+  const docGate = await doAttach(manualDocId, [
+    {
+      targetType: "equipment_notebook",
+      targetId: notebookId,
+      role: "manual",
+      displayLabel: manualFilename,
+      matchState: "candidate",
+      matchEvidence: { ...baseEvidence, decisionMethod: "pending_applicability_check" },
+    },
+  ]);
   if (docGate === "error" || docGate === "removed") return gateOutcome(docGate, manualParked.fileId, manualDocId);
-  if (!docGate) {
+  if (docGate === false) {
     // Already a source on this notebook, or this search lost ownership: leave
     // whatever is there untouched and report what exists.
     return outcome("candidate_review", {
@@ -416,21 +426,6 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       message: "That manual is already in this notebook's sources.",
     });
   }
-  await attachFileToTargets(
-    ctx.tenantId,
-    manualParked.fileId,
-    [
-      {
-        targetType: "equipment_notebook",
-        targetId: notebookId,
-        role: "manual",
-        displayLabel: manualFilename,
-        matchState: "candidate",
-        matchEvidence: { ...baseEvidence, decisionMethod: "pending_applicability_check" },
-      },
-    ],
-    { createdBy: ctx.userId ?? null },
-  );
 
   // Judge applicability from THIS document's own chunks — never from the
   // search-result title or the URL.
@@ -438,6 +433,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let enabled = false;
   let matchState: string = "candidate";
   let attached = true;
+  let removedDuringRun = false;
   // A database failure while judging the manual is transient: the manual stays
   // an UNDECIDED candidate (the pending evidence from the attach above, which
   // a retry may still promote), and the outcome says "retry", never "reviewed"
@@ -505,11 +501,13 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       enabled = persisted.enabledByDefault;
     }
     attached = persisted !== null && persisted.matchState !== "rejected";
+    removedDuringRun = persisted === null;
   }
 
   const answering = attached && enabled && (matchState === "verified" || matchState === "user_confirmed");
   return outcome(answering ? "complete" : "candidate_review", {
-    linked: true,
+    linked: !removedDuringRun,
+    ...(removedDuringRun ? { removedByTechnician: true } : {}),
     candidate: candidateView,
     manual: {
       fileId: manualParked.fileId,

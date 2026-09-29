@@ -526,22 +526,23 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
   });
 
-  it("Codex #4118 r3 F5: a refusing beforeAttach skips the attach and every later write", async () => {
+  it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
     vi.mocked(attachFileToTargets).mockClear();
     vi.mocked(setSourceState).mockClear();
     const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
-    const beforeAttach = vi.fn(async () => false);
-    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, beforeAttach });
-    expect(beforeAttach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, MANUAL_DOC_ID);
+    const attach = vi.fn(async () => false);
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach });
+    expect(attach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, expect.any(String), MANUAL_DOC_ID, expect.any(Array), expect.anything());
     expect(attachFileToTargets).not.toHaveBeenCalled();
     expect(writeSourceState).not.toHaveBeenCalled();
     expect(setSourceState).not.toHaveBeenCalled();
     expect(out.status).toBe("candidate_review");
     expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, attachSkipped: true });
   });
+
 
   it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
@@ -642,7 +643,7 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(attachFileToTargets).mockClear();
     const out = await acquireManualForIdentity({
       ...acquireInput,
-      beforeAttach: vi.fn(async () => {
+      attach: vi.fn(async () => {
         throw new Error("connection terminated unexpectedly");
       }),
     });
@@ -657,11 +658,37 @@ describe("manual import: candidate until the document proves itself", () => {
     provingText();
     vi.mocked(attachFileToTargets).mockClear();
     const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
-    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, beforeAttach: vi.fn(async () => "removed" as const) });
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "removed" as const) });
     expect(out.status).toBe("candidate_review");
     expect(out.payload.removedByTechnician).toBe(true);
     expect(attachFileToTargets).not.toHaveBeenCalled();
     expect(writeSourceState).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r15 F19: 'resume' assesses the existing source without re-attaching", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "resume" as const) });
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe("complete");
+  });
+
+  it("Codex #4118 r15 F19: a source gone at write time is reported as removed by the technician", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => null),
+      attach: vi.fn(async () => "resume" as const),
+    });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(out.payload.linked).toBe(false);
   });
 
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {

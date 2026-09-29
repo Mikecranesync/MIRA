@@ -1,6 +1,6 @@
 /**
  * LOCAL, OPT-IN concurrency proof for Codex #4118 (never runs in CI). Drives the
- * REAL fencedWriter / fencedBeforeAttach and the REAL migration-101 trigger
+ * REAL fencedWriter / fencedAttach and the REAL migration-101 trigger
  * against a throwaway postgres:16 with TLS (the Hub pool requires it):
  *
  *   docker run -d --name pg-race-4118 -e POSTGRES_PASSWORD=race -p 127.0.0.1:55432:5432 postgres:16 \
@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
-import { fencedBeforeAttach, fencedWriter, reconcileAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
+import { fencedAttach, fencedWriter, reconcileAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
 import { upsertNotebookSourceTx } from "@/lib/equipment-notebooks";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
@@ -24,6 +24,7 @@ const NB = "22222222-2222-4222-8222-222222222222";
 const DOC = "33333333-3333-4333-8333-333333333333";
 const KEY_A = "SMC|VQ1000FPGC6C6D|";
 const GEN = "gen-1";
+const FILE_X = "55555555-5555-4555-8555-555555555555";
 const MIGRATIONS = join(__dirname, "../../../db/migrations");
 
 async function raw(): Promise<Client> {
@@ -47,6 +48,8 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
       CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
         doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
         source_role text, added_by text, origin_file_id uuid, PRIMARY KEY (notebook_id, doc_id));
+      CREATE TABLE IF NOT EXISTS namespace_direct_uploads (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, upload_id uuid);
+      GRANT SELECT ON namespace_direct_uploads TO factorylm_app;
       CREATE TABLE IF NOT EXISTS workspace_file_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
         file_id uuid NOT NULL, target_type text NOT NULL, target_id uuid NOT NULL);
       GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources, workspace_file_links TO factorylm_app;`);
@@ -139,8 +142,11 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
   });
 
   it("r4 F7: an existing source row does not block the pre-attach check; a lost generation does", async () => {
-    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, DOC)).toBe(true);
-    expect(await fencedBeforeAttach(KEY_A, "gen-other")(T, NB, DOC)).toBe(false);
+    // Ownership held, no prior attachment → the attach itself runs (a file this
+    // minimal schema does not hold makes it throw "attach failed: file_not_found",
+    // proving it was reached inside the fenced transaction).
+    await expect(fencedAttach(KEY_A, GEN)(T, NB, FILE_X, DOC, [], null)).rejects.toThrow(/file_not_found/);
+    expect(await fencedAttach(KEY_A, "gen-other")(T, NB, FILE_X, DOC, [], null)).toBe(false);
   });
 
   const setSource = async (sql: string) => {
@@ -299,30 +305,55 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(await tryStart()).toBe(false);
   });
 
-  it("r14 F19: a retry carries the attached manual forward; removal in between is reported, never re-attached", async () => {
-    // A previous attempt ATTACHED DOC, then failed transiently.
+  const priorRecord = async (extra: Record<string, unknown> = {}) => {
     const c = await raw();
     await c.query(
       `UPDATE equipment_notebooks SET manual_acquisition = jsonb_build_object('key', $2::text, 'gen', 'old',
          'state', 'search_unavailable', 'linked', true, 'doc_id', $3::text,
          'started_at', to_jsonb(now() - interval '61 minutes'), 'finished_at', to_jsonb(now() - interval '60 minutes'))
+         || $4::jsonb
         WHERE id = $1`,
-      [NB, KEY_A, DOC],
+      [NB, KEY_A, DOC, JSON.stringify(extra)],
     );
     await c.end();
-    const gates: unknown[] = [];
-    const acquire = vi.fn(async (inp: { beforeAttach: (t: string, n: string, d: string) => Promise<unknown> }) => {
-      gates.push(await inp.beforeAttach(T, NB, DOC)); // source still there
+  };
+
+  it("r14/r15 F19/F20: a retry carries the attached manual forward — same doc resumes, removal is reported", async () => {
+    await priorRecord();
+    const results: unknown[] = [];
+    const acquire = vi.fn(async (inp: { attach: (...a: unknown[]) => Promise<unknown> }) => {
+      results.push(await inp.attach(T, NB, FILE_X, DOC, [], null)); // same document, still there
       await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1"); // technician removes it
-      gates.push(await inp.beforeAttach(T, NB, DOC));
+      results.push(await inp.attach(T, NB, FILE_X, DOC, [], null));
       return { status: "search_unavailable", payload: {} };
     });
     expect(
       await startManualAcquisition(acqInput, { acquire: acquire as never, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" } }),
     ).toBe(true);
-    await vi.waitFor(() => expect(gates.length).toBe(2));
-    expect(gates).toEqual([true, "removed"]);
+    await vi.waitFor(() => expect(results.length).toBe(2));
+    expect(results).toEqual(["resume", "removed"]);
+    // F20: the earlier attachment survives this failed retry (finish keeps it).
+    await vi.waitFor(async () => expect((await record()).state).toBe("search_unavailable"));
+    expect((await record()).prior_doc_id).toBe(DOC);
   });
+
+  it("r15 F19: a removal IN FLIGHT holds the row lock — the attach waits, then honors it (never undoes it)", async () => {
+    await priorRecord({ gen: GEN, prior_doc_id: DOC });
+    const remover = await raw();
+    await remover.query("BEGIN");
+    await remover.query("DELETE FROM equipment_notebook_sources WHERE doc_id = $1", [DOC]);
+    let settled = false;
+    const pending = fencedAttach(KEY_A, GEN)(T, NB, FILE_X, DOC, [], null).then((v) => {
+      settled = true;
+      return v;
+    });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(settled).toBe(false);
+    await remover.query("COMMIT");
+    await remover.end();
+    expect(await pending).toBe("removed");
+  });
+
 
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {
     expect((await promote())?.enabledByDefault).toBe(true); // verified + enabled + autoAcquisitionKey A
