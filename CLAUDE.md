@@ -239,7 +239,6 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 ## Pointers
 
-- **Codebase flowchart (start here — baseline 2026-09-29):** `docs/architecture/CODEBASE_FLOWCHART.md`
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
 - **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
