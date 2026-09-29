@@ -868,6 +868,9 @@ def _bound_pass_pair(tmp_path, row):
         ([], [], "answered", "answered", False),
         # a server-certified decline with no source claims → checkable as a decline
         ([], [], "abstained", "insufficient_evidence", True),
+        # #4106 review r3: model prose the server labelled insufficient_evidence
+        # (arrived as content frames) is NOT the fixed decline copy
+        ([], [], "abstained", "insufficient_evidence:content_frames", False),
         # #4106 review F1: the runner's text classifier says "abstained" but the
         # server answered — a mixed claim/decline is NOT a certified decline
         ([], [], "abstained", "answered", False),
@@ -883,12 +886,32 @@ def test_verification_requires_checkable_claims(
     row["evaluation"].update(
         {"citations": citations, "cited_passages": passages, "answer_status": status}
     )
-    row["hub"] = {"condition": "new_chat", "turn_status": server_status}
+    status_only, _, origin = server_status.partition(":")
+    row["hub"] = {
+        "condition": "new_chat",
+        "turn_status": status_only,
+        # a decline's text arrives in the status frame unless the case says otherwise
+        "answer_origin": origin
+        or (
+            "server_status_message" if status_only == "insufficient_evidence" else "content_frames"
+        ),
+    }
     batch.write_text(_json.dumps([row]))
     _bound_pass_pair(tmp_path, row)
     _, rows = score_mod.score(batch, tmp_path)
     assert rows[0]["independence"] == "INDEPENDENT_PROVIDER_MODEL"
     assert rows[0]["verified_correct"] is verified, rows[0]["reasons"]
+
+
+def test_the_answer_origin_is_bound():
+    """#4106 review r3: the exemption consults answer_origin, so grades bind to it."""
+    from answer_radar import score as score_mod
+
+    row = _batch_row("S1", "aaa", 3)
+    row["hub"] = {"condition": "new_chat", "answer_origin": "content_frames"}
+    before = score_mod.answer_identity(row)
+    row["hub"]["answer_origin"] = "server_status_message"
+    assert score_mod.answer_identity(row) != before
 
 
 def test_the_answer_status_is_bound():

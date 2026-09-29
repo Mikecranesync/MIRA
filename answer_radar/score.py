@@ -44,7 +44,14 @@ def _claims_checkable(item: dict) -> bool:
     # fixed decline copy, and it is part of answer_identity. The runner's text
     # classifier (answer_status) is NOT enough — "Set P041 to 12 s … send me the
     # fault log" reads as an abstention to it (#4106 review F1).
-    return (item.get("hub") or {}).get("turn_status") == "insufficient_evidence"
+    # ...and only when its text IS that fixed copy: it arrived as the status
+    # frame's message, not as model prose the server labelled a refusal
+    # (#4106 review round 3).
+    hub = item.get("hub") or {}
+    return (
+        hub.get("turn_status") == "insufficient_evidence"
+        and hub.get("answer_origin") == "server_status_message"
+    )
 
 
 def answer_identity(item: dict, reference_notes: object = None) -> str:
@@ -73,6 +80,7 @@ def answer_identity(item: dict, reference_notes: object = None) -> str:
         "cited_passages": list(e.get("cited_passages") or []),
         # #4106 review F2: the scorer consults the status, so a grade binds to it.
         "answer_status": e.get("answer_status"),
+        "answer_origin": hub.get("answer_origin"),
         "server_turn_status": hub.get("turn_status"),
         "answer_basis": hub.get("basis"),
         "reference_notes": reference_notes,

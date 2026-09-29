@@ -195,8 +195,13 @@ def run_question_hub(
     # `content` frames — the clients render that message as the reply
     # (chat/route.ts Gate G abstain). Reading only `content` graded a real
     # "I couldn't find that…" reply as an empty answer (2026-09-27, seed 004).
+    # #4106 review: where the text came from. The route's fixed decline copy
+    # arrives only in the status frame's message; model prose arrives in
+    # content frames, even when the server labels it insufficient_evidence.
+    answer_origin = "content_frames" if content else None
     if not content and status_frame.get("message"):
         content = str(status_frame["message"])
+        answer_origin = "server_status_message"
     evidence = next((f for f in frames if f.get("kind") == "evidence"), {})
     citations = [_citation_label(c) for c in (sources.get("citations") or [])]
     cited_passages = [_cited_passage(c) for c in (sources.get("citations") or [])]
@@ -252,6 +257,7 @@ def run_question_hub(
         "trace_id": trace_id,
         "http": st,
         "turn_status": status,
+        "answer_origin": answer_origin,
         "basis": evidence.get("basis"),
         "retrieval": {
             k: retrieval.get(k)
