@@ -186,6 +186,9 @@ export const ENERGIZED_ELECTRICAL_HAZARD = "energized-electrical-hazard";
  */
 export const IMPROVISED_LOCKOUT = "improvised-lockout";
 
+/** Tier-1 phrases that report an incident in progress; these outrank everything. */
+const ACTIVE_INCIDENT_RE = /smoke|fire|burn|melted|exploded|shocked|arcing/;
+
 const LOCKOUT_TERM = "(?:lock[-\\s]?out|loto)";
 const USED_AS_LOCKOUT = new RegExp(
   "\\b(?:use[sd]?|using|treat(?:s|ed|ing)?|rel(?:y|ies|ied|ying)\\s+on|count(?:s|ed|ing)?\\s+on)\\b[^.?!]{0,40}?\\bas\\s+(?:a|an|the|their|our)?\\s*" + LOCKOUT_TERM + "\\b" +
@@ -193,8 +196,15 @@ const USED_AS_LOCKOUT = new RegExp(
     "|\\b" + LOCKOUT_TERM + "\\s+(?:with|using|by)\\s+(?:the\\s+|a\\s+)?(?:red\\s+)?(?:knob|button|regulator|override|selector|push[-\\s/]?lock)\\b",
   "i",
 );
-// Stored-energy source turned off / vented, then something moved by hand.
-const OFF_THEN_MOVE_BY_HAND = /\b(?:regulator|air|pressure|supply)\b[^.?!]{0,40}?\b(?:off|closed|shut|bled|dumped|vented|exhausted)\b[^?!]{0,80}?\b(?:push|pull|move|lift|reach|climb)(?:es|ed|ing|s)?\b/i;
+// Stored-energy source turned off / vented, then a PERSON moves something by
+// hand. #4114 review F2: a machine moving on its own ("the cylinder moves
+// slowly") is not this shape — the move must be a person's or explicitly manual.
+const OFF_THEN_MOVE_BY_HAND = new RegExp(
+  "\\b(?:regulator|air|pressure|supply)\\b[^.?!]{0,40}?\\b(?:off|closed|shut|bled|dumped|vented|exhausted)\\b[^?!]{0,80}?" +
+    "(?:\\b(?:we|they|people|operators?|i|you|someone|he|she|techs?|technicians?|workers?)\\b[^.?!]{0,25}?\\b(?:push|pull|move|lift|shove|open|close|reach|climb)(?:es|ed|ing|s)?\\b" +
+    "|\\b(?:by\\s+hand|manually|hand[-\\s]?push(?:es|ed|ing)?)\\b)",
+  "i",
+);
 
 export function detectImprovisedLockout(message: string): boolean {
   const msg = (message || "").toLowerCase();
@@ -210,24 +220,37 @@ export function matchSafetyStop(text: string): string | null {
   const msg = (text || "").toLowerCase().trim();
   if (!msg) return null;
 
-  // Tier-1 immediate phrases keep absolute precedence: a message that matches
-  // one must hard-stop exactly as before — the hazard-intent sentinel below
-  // only ADDS protection for prompts that previously flowed through unguarded.
+  // Tier-1 immediate phrases. An ACTIVE INCIDENT (smoke, fire, arcing, a
+  // shock) keeps absolute precedence. Every other tier-1 phrase ("safe to
+  // work", "cut the power") is remembered and returned right after the
+  // improvised-lockout check below, so a question that is both "is it safe to
+  // work?" and an improvised lockout keeps the lockout restrictions (#4114 F1).
+  // Every trigger is a flag, never a withheld answer (owner decision 2026-09-27).
+  let immediate: string | null = null;
   for (const phrase of SAFETY_PHRASES_IMMEDIATE) {
-    if (msg.includes(phrase)) return phrase;
+    if (msg.includes(phrase)) {
+      if (ACTIVE_INCIDENT_RE.test(phrase)) return phrase;
+      immediate ??= phrase;
+    }
   }
+
+  // #4113: an improvised lockout is a flag even when the message opens like a
+  // question — "what position should I leave it in?" is still the hazard. It
+  // outranks the other tier-1 phrases so its restrictions survive "is it safe
+  // to work?" (#4114 review F1).
+  if (detectImprovisedLockout(msg)) {
+    return IMPROVISED_LOCKOUT;
+  }
+
+  // The remaining tier-1 phrases keep their precedence over the energized
+  // sentinel, exactly as before.
+  if (immediate) return immediate;
 
   // Energized-electrical hazard-intent detection (NFPA 70E, issue #3763).
   // Conjunction gate: high-voltage context + work-while-energized intent.
   // Returns special sentinel so caller can route to directive (not SAFETY_STOP).
   if (detectEnergizedElectricalHazardIntent(msg)) {
     return ENERGIZED_ELECTRICAL_HAZARD;
-  }
-
-  // #4113: an improvised lockout is a flag even when the message opens like a
-  // question — "what position should I leave it in?" is still the hazard.
-  if (detectImprovisedLockout(msg)) {
-    return IMPROVISED_LOCKOUT;
   }
 
   for (const phrase of SAFETY_PHRASES) {

@@ -258,3 +258,39 @@ describe("#4113: improvised lockout is a flag with its own banner and directive"
     expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
   });
 });
+
+
+describe("#4114 review: precedence and manual movement", () => {
+  const Q2 =
+    "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
+
+  it("an improvised lockout keeps its restrictions when 'safe to work' is also asked (F1)", () => {
+    const t = matchSafetyStop(`${Q2} Is it safe to work?`);
+    expect(t).toBe(IMPROVISED_LOCKOUT);
+    expect(flagDirectiveFor(t!)).toMatch(/NOT a personnel\s+lockout/);
+  });
+
+  it("an active incident still outranks it", () => {
+    expect(matchSafetyStop(`${Q2} There is smoke coming from the valve.`)).toBe("smoke coming");
+  });
+
+  it("'safe to work' alone is still flagged as before", () => {
+    expect(matchSafetyStop("Is it safe to work on the gate?")).toBe("safe to work");
+  });
+
+  it.each([
+    "With the air supply off, the cylinder moves slowly. Why?",
+    "When the pressure is vented the gate drifts open and moves down.",
+    "The regulator is off and the actuator still moves.",
+  ])("equipment moving on its own is not an improvised lockout (F2): %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "With the air off we just push the gate open by hand.",
+    "Once the regulator is off, operators pull the clamp back.",
+    "With the pressure bled, the gate can be moved manually.",
+  ])("a person moving it after air-off still flags: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});
