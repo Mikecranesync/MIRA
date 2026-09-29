@@ -98,14 +98,16 @@ export function declineText(kind: DeclineKind, machine: string, manufacturer: st
  * when the technician asks both ("recover this actuator firmware by USB, and
  * what is its service password?"). Returns null when neither kind matches.
  */
-/** Words that tie a question to the technician's own equipment ("this actuator",
- *  "my drive", "for the panel"). A question with none of them ("What does a
- *  service password protect on a drive?") is about equipment in general and
- *  keeps the general lane. */
-const OWN_EQUIPMENT = /\b(?:this|my|your|our|these|those)\b|\b(?:on|for|of|in)\s+the\b/i;
+/** A definite reference ties the question to a specific piece of equipment:
+ *  "this actuator", "my drive", "the actuator firmware is corrupted", "how do I
+ *  recover it", "what is its password" (#4128 Codex r1 F1 — "the"/"it"/"its"
+ *  are the commonest forms). A question with none ("What does a service
+ *  password protect on a drive?") is about equipment in general and keeps the
+ *  general lane. */
+const SPECIFIC_EQUIPMENT = /\b(?:this|that|these|those|my|your|our|its?|the)\b/i;
 
 export function unidentifiedServiceDecline(message: string): string | null {
-  if (!OWN_EQUIPMENT.test(message)) return null;
+  if (!SPECIFIC_EQUIPMENT.test(message)) return null;
   const credential = CREDENTIAL.test(message) || credentialPin(message);
   const firmware = FIRMWARE_SERVICE.test(message);
   if (!credential && !firmware) return null;

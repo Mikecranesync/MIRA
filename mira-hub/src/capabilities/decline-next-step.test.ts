@@ -71,6 +71,8 @@ describe("unidentifiedServiceDecline (#4128)", () => {
   it.each([
     ["what's the service password for this drive?", "service line", "won't give generic steps"],
     ["My actuator firmware is corrupted. How do I recover it?", "won't give generic steps", "service line"],
+    ["The actuator firmware is corrupted. How do I recover it?", "won't give generic steps", "service line"],
+    ["What is its service password?", "service line", "won't give generic steps"],
   ])("only the half that was asked: %s", (m, present, absent) => {
     const t = unidentifiedServiceDecline(m)!;
     expect(t).toContain(present);

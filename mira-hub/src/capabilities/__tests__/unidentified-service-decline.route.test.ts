@@ -218,6 +218,18 @@ describe("#4128 unidentified equipment + credential / firmware recovery → hone
   });
 
   it.each([
+    ["The actuator firmware is corrupted. How do I recover it?", "won't give generic steps"],
+    ["How do I recover its firmware by USB?", "won't give generic steps"],
+    ["What is its service password?", "service line"],
+  ])("Codex #4129 r1 F1 — a definite or pronoun reference declines too: %s", async (message, expected) => {
+    const { fetchMock, status, packet } = await ask(message);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain(expected);
+    expect(packet.answer_gate.reason).toBe("unidentified_service_decline");
+  });
+
+  it.each([
     "What is firmware recovery?",
     "how does a VFD work in general",
     "What does a service password protect on a drive?",
