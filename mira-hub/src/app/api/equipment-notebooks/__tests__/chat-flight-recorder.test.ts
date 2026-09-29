@@ -1217,6 +1217,72 @@ describe("#4095 — a blank chat PROPOSES the named machine, never binds it", ()
     expect(packetOf().identity.proposal).toBeNull();
   });
 
+  it("Codex #4120 F4: the proposal is persisted with the turn's evidence", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    await (await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    const rec = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(rec.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+
+  it("Codex #4120 F4: an idempotent replay re-emits the stored proposal and runs nothing", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-1",
+        question: "Find the manual for this Allen-Bradley SLC 5/03",
+        answerStatus: "answered",
+        answerText: "General help.",
+        enabledSourceDocIds: [],
+        evidence: [{ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+        model: null,
+        basis: null,
+      },
+    } as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(
+      chatReq({
+        message: "Find the manual for this Allen-Bradley SLC 5/03",
+        mode: "general",
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "identity_proposal")).toEqual({
+      kind: "identity_proposal",
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4120 F3: a notebook bound to an asset (no identity strings) never gets a proposal", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    domainMock.resolveBoundAsset.mockResolvedValueOnce({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      unsPath: "enterprise.site.area.line.cv_101",
+    } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
+  it("Codex #4120 F3: fail closed when the notebook could not be loaded", async () => {
+    domainMock.getNotebook.mockResolvedValue(null as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
   it("control: a notebook already bound to a machine never gets a proposal", async () => {
     domainMock.getNotebook.mockResolvedValue({ ...unbound, manufacturer: "Siemens", model: "TP700 Comfort" } as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);

@@ -89,3 +89,28 @@ describe("unconfirmedMachineDirective", () => {
     expect(d).toMatch(/firmware or service procedure/);
   });
 });
+
+describe("Codex #4120 review — never a mixed, ambiguous or non-model proposal", () => {
+  it("F1: a model is bound to ITS manufacturer; two different machines → no proposal", () => {
+    expect(proposeIdentityFromText("A Siemens TP700 is connected to an Allen-Bradley SLC 5/03.", CORPUS)).toBeNull();
+  });
+  it("F1 control: the same machine named twice is still one proposal", () => {
+    expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 faulted; is the Allen-Bradley SLC 5/03 battery low?", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+  });
+  it("F2: a second model of the same family without the manufacturer repeated → no proposal", () => {
+    expect(proposeIdentityFromText("Compare the Mitsubishi FX5U and FX3U for this job", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Is an Allen-Bradley SLC 5/03 better than an SLC 5/04 here?", CORPUS)).toBeNull();
+  });
+  it("F5: an IP address, MAC or serial after the manufacturer is never a model", () => {
+    expect(proposeIdentityFromText("The Siemens 192.168.1.100 is unreachable.", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Siemens SN12345678 keeps faulting", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Siemens 1200 won't start", CORPUS)).toBeNull();
+  });
+  it("F5 control: a real letters+digits model still proposes", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 won't start", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
+  });
+});
+

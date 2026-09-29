@@ -638,6 +638,12 @@ function replayBasisLabel(basis: EvidenceBasis): string {
  *  A duplicate request never reaches retrieval/provider work. Safety is sent
  *  before content and repeated in the response header, so a second transport
  *  interruption remains fail-closed. */
+function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame {
+  if (typeof e !== "object" || e === null) return false;
+  const r = e as { kind?: unknown; manufacturer?: unknown; model?: unknown };
+  return r.kind === "identity_proposal" && typeof r.manufacturer === "string" && typeof r.model === "string";
+}
+
 function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
@@ -660,6 +666,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const identityDisputed = turn.evidence.some(
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
+  const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -713,6 +720,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           ? { kind: "status", status: "error", message: "No answer provider available." }
           : { kind: "status", status: "answered" };
       emit(status);
+      // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
+      if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -1732,7 +1741,10 @@ async function handleChatTurn(
   // procedures. Fail-open: any error means no proposal.
   const identityProposal: IdentityProposal | null = await (async () => {
     if (!general || notebookRetrieval || oemManufacturer !== null) return null;
-    if (nb?.manufacturer?.trim() || nb?.model?.trim()) return null;
+    // Only a notebook with NO identity at all: not bound to an asset, and loaded
+    // (fail closed when it could not be read) — Codex #4120 F3.
+    if (!nb || boundAsset.state !== "unbound") return null;
+    if (nb.manufacturer?.trim() || nb.model?.trim()) return null;
     let client: PoolClient | null = null;
     try {
       client = await pool.connect();
@@ -1748,6 +1760,11 @@ async function handleChatTurn(
       }
     }
   })();
+  // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
+  // history reload deliver the same proposal the live stream did.
+  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
+    ? [{ kind: "identity_proposal", ...identityProposal }]
+    : [];
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
@@ -3158,9 +3175,10 @@ async function handleChatTurn(
                   { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
+                  ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
