@@ -237,11 +237,30 @@ def test_pinned_photo_fixtures_match_their_committed_bytes():
 
     root = Path(__file__).resolve().parents[2]
     manifest = json.loads((root / "answer_radar/human_readiness_manifest_v1.json").read_text())
-    pinned = [c for c in manifest["cases"] if c.get("fixture_sha256")]
+    pinned = [c for c in manifest["cases"] if c.get("fixture_sha256") and c.get("fixture_bytes") != "off_repo"]
     assert pinned, "no pinned fixture: this check would pass vacuously"
     for c in pinned:
         data = (root / c["fixture"]).read_bytes()
         assert hashlib.sha256(data).hexdigest() == c["fixture_sha256"], c["id"]
+
+
+def test_off_repo_photo_pins_are_explicit_and_never_committed():
+    """A photo whose bytes must stay out of git (#4075 MG17: it shows a serial
+    number) is pinned by hash only. It must SAY so, carry a real sha256, and its
+    bytes must not be anywhere in the repo; the web/Pixel receipt for that case
+    must record the uploaded photo's sha256 equal to this pin."""
+    import re
+
+    root = Path(__file__).resolve().parents[2]
+    manifest = json.loads((root / "answer_radar/human_readiness_manifest_v1.json").read_text())
+    off = [c for c in manifest["cases"] if c.get("fixture_bytes") == "off_repo"]
+    assert off, "no off-repo pin: this check would pass vacuously"
+    for c in off:
+        assert re.fullmatch(r"[0-9a-f]{64}", c["fixture_sha256"] or ""), c["id"]
+        assert not (root / c["fixture"]).exists(), c["id"]
+    # Every photo case is pinned one way or the other — none left null.
+    photo = [c for c in manifest["cases"] if "photo" in c["id"] and c["id"] != "photo-followup"]
+    assert photo and all(c.get("fixture_sha256") for c in photo)
 
 
 # ---- #4109 review F1-F4 --------------------------------------------------------
