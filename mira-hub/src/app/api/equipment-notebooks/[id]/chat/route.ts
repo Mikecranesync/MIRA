@@ -1942,7 +1942,10 @@ async function handleChatTurn(
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
       let started = false;
-      if (!acq || acq.key !== key) {
+      // A matching "running" record also goes back through the atomic claim:
+      // its stale-window predicate recovers a search orphaned by a restart,
+      // and refuses (started=false) while a live search still holds it.
+      if (!acq || acq.key !== key || acq.state === "running") {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
           userId: ctx.userId ?? null,

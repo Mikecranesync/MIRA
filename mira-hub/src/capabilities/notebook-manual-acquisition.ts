@@ -36,6 +36,10 @@ export interface AcquisitionRecord {
   candidate_host: string | null;
   match_state: string | null;
   oem_request_url: string | null;
+  /** The discovered document's URL, when discovery returned one. */
+  candidate_url?: string | null;
+  /** An INDEXED document was attached to this notebook's sources (reviewable in Sources). */
+  attached_indexed?: boolean;
 }
 
 export interface ConfirmedIdentity {
@@ -128,19 +132,63 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
 /** The durable summary of an outcome. Only facts the pipeline returned. */
 export function recordFromOutcome(key: string, startedAt: string | null, out: ManualAcquisitionOutcome): AcquisitionRecord {
   const p = out.payload as {
-    candidate?: { host?: unknown } | null;
-    manual?: { matchState?: unknown } | null;
+    candidate?: { host?: unknown; url?: unknown } | null;
+    manual?: { matchState?: unknown; docId?: unknown; indexed?: unknown } | null;
     oemRequestUrl?: unknown;
+    warning?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+  const attachedIndexed = Boolean(str(p.manual?.docId)) && p.manual?.indexed === true;
+  // Another request is indexing these exact bytes: nothing is attached here YET.
+  // Leave the claim "running" so the stale-claim recovery retries it and the
+  // retry reuses the finished document instead of reporting a phantom source.
+  const indexingElsewhere =
+    out.status === "candidate_review" && !attachedIndexed && /currently indexing/i.test(String(p.warning ?? ""));
   return {
     key,
-    state: out.status,
+    state: indexingElsewhere ? "running" : out.status,
     started_at: startedAt,
-    finished_at: new Date().toISOString(),
+    finished_at: indexingElsewhere ? null : new Date().toISOString(),
     candidate_host: str(p.candidate?.host),
     match_state: str(p.manual?.matchState),
     oem_request_url: str(p.oemRequestUrl),
+    candidate_url: str(p.candidate?.url),
+    attached_indexed: attachedIndexed,
+  };
+}
+
+/** SQL twin of acquisitionKey() for the notebook row (ASCII-identical normalization). */
+const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^A-Za-z0-9]', '', 'g'))
+  || '|' || upper(regexp_replace(coalesce(n.model, ''), '[^A-Za-z0-9]', '', 'g'))
+  || '|' || upper(regexp_replace(coalesce(n.catalog_number, ''), '[^A-Za-z0-9]', '', 'g'))`;
+
+/**
+ * Enable a verified manual ONLY if, at this instant, the notebook is still
+ * confirmed as the identity the search ran for AND still owns this search's
+ * claim. One statement, so a re-bind between the check and the write cannot
+ * slip through. A refusal leaves the manual a disabled candidate.
+ */
+export function fencedPromoter(key: string) {
+  return async (tenantId: string, notebookId: string, docId: string, matchEvidence: Record<string, unknown>): Promise<boolean> => {
+    try {
+      return await withTenantContext(tenantId, async (c) => {
+        const r = await c.query(
+          `UPDATE equipment_notebook_sources s
+              SET match_state = 'verified', enabled_by_default = true, match_evidence = $4::jsonb
+             FROM equipment_notebooks n
+            WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.doc_id = $3::uuid
+              AND n.tenant_id = s.tenant_id AND n.id = s.notebook_id
+              AND n.identity_status = 'user_confirmed'
+              AND n.manual_acquisition->>'key' = $5
+              AND ${NOTEBOOK_KEY_SQL} = $5`,
+          [tenantId, notebookId, docId, JSON.stringify(matchEvidence), key],
+        );
+        return (r.rowCount ?? 0) > 0;
+      });
+    } catch (err) {
+      console.error("[manual-acquisition] fenced promote failed:", err instanceof Error ? err.message : err);
+      return false;
+    }
   };
 }
 
@@ -197,6 +245,7 @@ export async function startManualAcquisition(
           model: clean(input.identity.model) || undefined,
           catalogNumber: clean(input.identity.catalogNumber) || undefined,
         },
+        promoteVerified: fencedPromoter(key),
       });
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
@@ -226,7 +275,11 @@ export function acquisitionDeclineText(rec: AcquisitionRecord | null, key: strin
       // answer did not consult it — say so rather than imply it was searched.
       return `I found the official ${label} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
     case "candidate_review":
-      return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
+      // Only name Sources when an indexed document is actually there to review.
+      if (rec.attached_indexed) {
+        return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
+      }
+      return `I found a possible manual for the ${label}${rec.candidate_url ? ` at ${rec.candidate_url}` : rec.candidate_host ? ` on ${rec.candidate_host}` : ""}, but I couldn't confirm it's the official document for this model, so I didn't add it. If it's right, upload it to this notebook and ask again — I'll answer from it and show you the page.`;
     case "no_extractable_text":
       return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
     case "no_manual_found":

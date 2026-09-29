@@ -82,6 +82,7 @@ describe("startManualAcquisition", () => {
       notebookId: "nb",
       nodeId: "node",
       identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: undefined },
+      promoteVerified: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING id/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10]);
@@ -144,11 +145,22 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
   it("running → still looking", () => {
     expect(acquisitionDeclineText(rec({}), "K", "SMC VQ1000")).toContain("looking for the official one now");
   });
-  it("candidate → found a possible manual, not turned on", () => {
-    const t = acquisitionDeclineText(rec({ state: "candidate_review", candidate_host: "smcworld.com" }), "K", "SMC VQ1000")!;
+  it("candidate ATTACHED and indexed → points to Sources, not turned on", () => {
+    const t = acquisitionDeclineText(rec({ state: "candidate_review", candidate_host: "smcworld.com", attached_indexed: true }), "K", "SMC VQ1000")!;
     expect(t).toContain("possible manual");
     expect(t).toContain("smcworld.com");
     expect(t).toContain("isn't turned on");
+    expect(t).toContain("Sources");
+  });
+  it("Codex #4118 F2: candidate NOT attached → never sends the technician to Sources; gives the URL", () => {
+    const t = acquisitionDeclineText(
+      rec({ state: "candidate_review", candidate_host: "smcworld.com", candidate_url: "https://smcworld.com/x.pdf", attached_indexed: false }),
+      "K",
+      "SMC VQ1000",
+    )!;
+    expect(t).not.toContain("Sources");
+    expect(t).toContain("https://smcworld.com/x.pdf");
+    expect(t).toContain("didn't add it");
   });
   it("complete → never claims this answer consulted the manual", () => {
     const t = acquisitionDeclineText(rec({ state: "complete" }), "K", "SMC VQ1000")!;
@@ -177,3 +189,58 @@ describe("recordFromOutcome", () => {
     expect(r).toMatchObject({ key: "K", state: "no_manual_found", oem_request_url: "https://oem.example/r", candidate_host: null, match_state: null });
   });
 });
+
+describe("Codex #4118 F2 — what the record says was actually attached", () => {
+  it("a review-only candidate (no download) is recorded unattached, with its URL", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { candidate: { url: "https://oem.example/landing", host: "oem.example" } },
+    });
+    expect(r).toMatchObject({ state: "candidate_review", attached_indexed: false, candidate_url: "https://oem.example/landing" });
+  });
+  it("an attached, indexed candidate is recorded attached", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, matchState: "candidate" }, candidate: { host: "h" } },
+    });
+    expect(r.attached_indexed).toBe(true);
+  });
+  it("another request still indexing the same bytes → stays 'running' so the stale recovery retries it", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { fileId: "f1", docId: null, indexed: false }, warning: "another request is currently indexing this exact document — retry in a moment to attach it" },
+    });
+    expect(r.state).toBe("running");
+    expect(r.finished_at).toBeNull();
+    expect(r.attached_indexed).toBe(false);
+  });
+});
+
+describe("Codex #4118 F3 — fencedPromoter", () => {
+  it("enables only while the notebook is still confirmed as THIS identity and owns this claim — in one statement", async () => {
+    const { fencedPromoter } = await import("../notebook-manual-acquisition");
+    db.claimRows = 1;
+    expect(await fencedPromoter("SMC|VQ1000FPGC6C6D|")("t", "nb", "doc", { reason: "r" })).toBe(true);
+    const q = db.queries.at(-1)!;
+    expect(q.sql).toMatch(/UPDATE equipment_notebook_sources s/);
+    expect(q.sql).toMatch(/n\.identity_status = 'user_confirmed'/);
+    expect(q.sql).toMatch(/n\.manual_acquisition->>'key' = \$5/);
+    expect(q.sql).toMatch(/regexp_replace\(coalesce\(n\.model, ''\)/);
+    expect(q.params[4]).toBe("SMC|VQ1000FPGC6C6D|");
+  });
+  it("refuses (false) when no row matched — the identity moved on", async () => {
+    const { fencedPromoter } = await import("../notebook-manual-acquisition");
+    const { withTenantContext } = await import("@/lib/tenant-context");
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t: string, fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn(async () => ({ rowCount: 0, rows: [] })) }),
+    );
+    expect(await fencedPromoter("K")("t", "nb", "doc", {})).toBe(false);
+  });
+  it("the SQL key normalization matches acquisitionKey for the same identity", () => {
+    const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    // Mirror of the SQL: upper(regexp_replace(x, '[^A-Za-z0-9]', '', 'g')).
+    const sqlNorm = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    for (const s of ["VQ1000-FPG-C6C6-D", "smc", "SLC 5/03", "AC 01.2", "Ölfilter-7"]) expect(sqlNorm(s)).toBe(norm(s));
+  });
+});
+

@@ -54,6 +54,22 @@ export interface ManualAcquisitionInput {
   nodeId: string;
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
+  /**
+   * Enable a verified manual. Returns false to refuse (the manual then stays a
+   * disabled candidate). Defaults to an unconditional promotion — the confirm
+   * route's behaviour.
+   */
+  promoteVerified?: (tenantId: string, notebookId: string, docId: string, matchEvidence: Record<string, unknown>) => Promise<boolean>;
+}
+
+async function promoteUnconditionally(
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+  matchEvidence: Record<string, unknown>,
+): Promise<boolean> {
+  await setSourceState(tenantId, notebookId, docId, { matchState: "verified", enabledByDefault: true, matchEvidence });
+  return true;
 }
 
 function outcome(status: ManualAcquisitionStatus, payload: Record<string, unknown> = {}): ManualAcquisitionOutcome {
@@ -356,21 +372,25 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       chunks,
       oemHost: discovery.oemHost,
     });
-    if (verdict.state === "verified" && !requiresUserConfirmation) {
+    const verifiedEvidence = {
+      ...baseEvidence,
+      decisionMethod: verdict.method,
+      matchedTokens: verdict.matchedTokens,
+      evidencePages: verdict.evidencePages,
+      applicabilityConfidence: verdict.confidence,
+      reason: verdict.reason,
+    };
+    // The route promotes unconditionally (the technician is confirming right
+    // now). A background caller passes a FENCED promoter that refuses when the
+    // notebook's identity changed mid-search; a refused promotion leaves the
+    // manual a disabled candidate (#4075, Codex #4118 F3).
+    const promoted =
+      verdict.state === "verified" && !requiresUserConfirmation
+        ? await (input.promoteVerified ?? promoteUnconditionally)(ctx.tenantId, notebookId, manualDocId, verifiedEvidence)
+        : false;
+    if (promoted) {
       matchState = "verified";
       enabled = true;
-      await setSourceState(ctx.tenantId, notebookId, manualDocId, {
-        matchState: "verified",
-        enabledByDefault: true,
-        matchEvidence: {
-          ...baseEvidence,
-          decisionMethod: verdict.method,
-          matchedTokens: verdict.matchedTokens,
-          evidencePages: verdict.evidencePages,
-          applicabilityConfidence: verdict.confidence,
-          reason: verdict.reason,
-        },
-      });
     } else {
       await setSourceState(ctx.tenantId, notebookId, manualDocId, {
         matchState: "candidate",

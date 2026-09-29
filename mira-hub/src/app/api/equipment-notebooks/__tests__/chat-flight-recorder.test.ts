@@ -1242,6 +1242,7 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
       candidate_host: "www.smcworld.com",
       match_state: "candidate",
       oem_request_url: null,
+      attached_indexed: true,
     });
     domainMock.getNotebook.mockResolvedValue(confirmed() as never);
     const fr = await ask();
@@ -1274,6 +1275,45 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     const fr = await ask();
     expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
     expect(String(fr.find((f) => f.kind === "status")?.message)).not.toContain("couldn't find one");
+  });
+
+  it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: "2026-09-29T06:00:00Z",
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: true });
+  });
+
+  it("control: a live 'running' claim refuses the restart and the turn still says it is looking", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: false });
   });
 
   it("control: feature off → the #4068 decline is unchanged and nothing is started", async () => {
