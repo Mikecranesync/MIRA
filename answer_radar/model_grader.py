@@ -111,6 +111,7 @@ def build_user_message(entry: dict) -> str:
             "manual_search",
             "citations",
             "source_documents",
+            "cited_passages",
         )
     }
     # Only the bound key: notes under any other key would be shown to the grader
