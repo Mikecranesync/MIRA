@@ -1132,3 +1132,46 @@ describe("Jev shadow sufficiency on the packet (MIRA_JEV_SHADOW)", () => {
     expect(record.packet.answer_gate).toMatchObject({ evidence_sufficient: true, jev_sufficient: null, jev_skipped_reason: "error" });
   });
 });
+
+describe("#4099: the MACHINE CONTEXT block is sent only when it states a fact", () => {
+  const nbOf = (extra: Record<string, unknown> = {}) => ({ id: NB, displayName: "General", manufacturer: null, model: null, ...extra });
+  async function systemPromptFor(message: string, notebook: Record<string, unknown>, docs: string[] = []): Promise<string> {
+    domainMock.getNotebook.mockResolvedValue(notebook as never);
+    // The suite default lists PF525.pdf as a loaded source; a blank chat has none.
+    domainMock.listSources.mockResolvedValue((docs.length ? [{ filename: "PF525.pdf", docId: DOC_A }] : []) as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: docs, nodeId: "n1" } as never);
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: unknown, init?: { body?: string }) => {
+        if (init?.body) bodies.push(JSON.parse(init.body));
+        return providerStream("B");
+      }),
+    );
+    await (await POST(chatReq({ message, mode: "general", sourceDocIds: docs }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    return bodies[0].messages.find((m) => m.role === "system")!.content;
+  }
+
+  it("a blank chat (no identity, no asset, no documents) sends no block", async () => {
+    // Measured on gpt-oss-120b with the served params: with this empty block the
+    // Q9 option letter contradicted its own worked answer in 7 of 16 samples;
+    // with it removed, 0 of 16.
+    const sys = await systemPromptFor("how does a VFD work", nbOf());
+    expect(sys).not.toContain("MACHINE CONTEXT");
+    expect(sys).not.toContain("an unspecified machine");
+    expect(sys).not.toContain('"General"');
+  });
+
+  it("a known manufacturer/model still sends the block", async () => {
+    const sys = await systemPromptFor("how does a VFD work", nbOf({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }));
+    expect(sys).toContain("MACHINE CONTEXT");
+    expect(sys).toContain("Allen-Bradley PowerFlex 525");
+  });
+
+  it("loaded documents still send the block", async () => {
+    const sys = await systemPromptFor("how does a VFD work", nbOf(), [DOC_A]);
+    expect(sys).toContain("MACHINE CONTEXT");
+    expect(sys).toContain("Loaded source documents: PF525.pdf");
+  });
+});
