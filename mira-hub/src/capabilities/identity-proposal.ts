@@ -173,6 +173,18 @@ export function manufacturerMentionInText(message: string, corpus: readonly stri
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
+const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
+/** Ordinary words that precede a number in prose, never a product family. */
+const SCAN_STOPWORDS = new Set([
+  "a", "an", "and", "or", "the", "to", "of", "in", "on", "at", "by", "for", "with", "from", "about", "than",
+  "over", "under", "after", "before", "every", "per", "since", "until", "is", "are", "was", "were", "be",
+  "page", "pages", "step", "steps", "section", "chapter", "figure", "table", "item", "line", "row", "rev",
+  "version", "ver", "code", "error", "fault", "alarm", "parameter", "param", "address", "register", "slot",
+  "port", "node", "station", "channel", "ch", "input", "output", "terminal", "pin", "wire", "cable", "no",
+  "number", "model", "type", "series", "size", "approx", "around", "only", "just", "last", "next",
+]);
+
 /** CamelCase product-family word ("MicroLogix", "PowerFlex", "CompactLogix"). */
 const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
 
@@ -203,7 +215,12 @@ function modelMentions(message: string): string[] {
     if (tokens[i + 2] && UNIT_WORD_RE.test(tokens[i + 2])) continue;
     const allCapsFamily =
       ALLCAPS_CODE_RE.test(t) && (!GENERIC_DEVICE_WORDS.has(t) || /[/.\-]/.test(next));
-    if (CAMEL_FAMILY_RE.test(t) || allCapsFamily) {
+    // A lowercase family ("slc 5/04", "micrologix 1400") counts too, when its
+    // number is family-shaped (a separator, or 3+ digits) and the word is not an
+    // ordinary short word ("for 2 hours") — Codex #4120 r9 F12.
+    const lowerFamily =
+      LOWER_FAMILY_RE.test(t) && !SCAN_STOPWORDS.has(t.toLowerCase()) && /[/.\-]|\d{3,}/.test(next);
+    if (CAMEL_FAMILY_RE.test(t) || allCapsFamily || lowerFamily) {
       out.push(`${t} ${next}`);
       i++;
     }

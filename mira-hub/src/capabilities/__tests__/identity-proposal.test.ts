@@ -230,3 +230,17 @@ describe("Codex #4120 r8", () => {
     expect(proposeIdentityFromText("Siemens S7-1200 faults; the s7-1200 is on Ethernet", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
   });
 });
+
+describe("Codex #4120 r9", () => {
+  it.each(["Compare Allen-Bradley SLC 5/03 and slc 5/04", "Compare Allen-Bradley SLC 5/03 and micrologix 1400"])(
+    "F12: a lowercase multi-word second model still refuses: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it.each([
+    "The Allen-Bradley SLC 5/03 faulted for 2 hours",
+    "The Allen-Bradley SLC 5/03 shows it on page 12",
+    "Allen-Bradley SLC 5/03 lost comms on port 44818",
+  ])("F12 control: ordinary prose numbers do not block the proposal: %s", (text) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});
