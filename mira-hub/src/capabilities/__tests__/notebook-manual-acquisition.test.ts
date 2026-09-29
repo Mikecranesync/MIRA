@@ -11,6 +11,8 @@ const db = vi.hoisted(() => ({
   readRow: null as unknown,
   failWith: null as null | { code: string },
   existingSource: false,
+  updatedSource: { match_state: "verified", enabled_by_default: true } as unknown,
+  currentSource: null as unknown,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -21,6 +23,8 @@ vi.mock("@/lib/tenant-context", () => ({
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
         if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
+        if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
         return { rowCount: 1, rows: [] };
       }),
@@ -50,6 +54,8 @@ beforeEach(() => {
   db.readRow = null;
   db.failWith = null;
   db.existingSource = false;
+  db.updatedSource = { match_state: "verified", enabled_by_default: true };
+  db.currentSource = null;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -225,16 +231,32 @@ describe("Codex #4118 F2 — what the record says was actually attached", () => 
   });
 });
 
-describe("Codex #4118 F3/F5 — fencedWriter", () => {
-  it("locks the notebook row, re-checks ownership + identity, then writes and stamps the search key", async () => {
+describe("Codex #4118 F9 — a removed source is not recorded as attached", () => {
+  it("attached:false wins over docId+indexed", () => {
+    const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", {
+      status: "candidate_review",
+      payload: { manual: { fileId: "f1", docId: "d1", indexed: true, attached: false } },
+    });
+    expect(r.attached_indexed).toBe(false);
+    const control = recordFromOutcome("K", "2026-09-29T00:00:00Z", {
+      status: "candidate_review",
+      payload: { manual: { fileId: "f1", docId: "d1", indexed: true, attached: true } },
+    });
+    expect(control.attached_indexed).toBe(true);
+  });
+});
+
+describe("Codex #4118 F3/F5/F8/F9 — fencedWriter", () => {
+  const promote = async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
-    db.claimRows = 1;
-    const ok = await fencedWriter("SMC|VQ1000FPGC6C6D|", "g1")("t", "nb", "doc", {
+    return fencedWriter("SMC|VQ1000FPGC6C6D|", "g1")("t", "nb", "doc", {
       matchState: "verified",
       enabledByDefault: true,
       matchEvidence: { reason: "r" },
     });
-    expect(ok).toBe(true);
+  };
+  it("locks the notebook row, re-checks ownership + identity, writes only an undecided candidate, stamps the key", async () => {
+    expect(await promote()).toEqual({ matchState: "verified", enabledByDefault: true });
     const [lock, write] = db.queries.slice(-2);
     expect(lock.sql).toMatch(/FOR UPDATE/);
     expect(lock.sql).toMatch(/n\.identity_status = 'user_confirmed'/);
@@ -243,14 +265,26 @@ describe("Codex #4118 F3/F5 — fencedWriter", () => {
     expect(lock.params[3]).toBe("g1");
     expect(lock.sql).toMatch(/regexp_replace\(coalesce\(n\.model, ''\)/);
     expect(write.sql).toMatch(/UPDATE equipment_notebook_sources/);
+    expect(write.sql).toMatch(/match_state = 'candidate'/);
+    expect(write.sql).toMatch(/decisionMethod' = 'pending_applicability_check'/);
     expect(JSON.parse(write.params[5] as string)).toMatchObject({ reason: "r", autoAcquisitionKey: "SMC|VQ1000FPGC6C6D|" });
+  });
+  it("F8: a decided source is not written — the writer reports its persisted state", async () => {
+    db.updatedSource = null;
+    db.currentSource = { match_state: "rejected", enabled_by_default: false };
+    expect(await promote()).toEqual({ matchState: "rejected", enabledByDefault: false });
+  });
+  it("F9: a source removed meanwhile is reported as absent (null), not as written", async () => {
+    db.updatedSource = null;
+    db.currentSource = null;
+    expect(await promote()).toBeNull();
   });
   it("refuses — and writes NOTHING — when the locked check finds no owning, matching notebook", async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
     db.claimRows = 0;
-    db.queries = [];
-    const ok = await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
-    expect(ok).toBe(false);
+    db.currentSource = { match_state: "candidate", enabled_by_default: false };
+    const res = await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    expect(res).toEqual({ matchState: "candidate", enabledByDefault: false });
     expect(db.queries.some((q) => /UPDATE equipment_notebook_sources/.test(q.sql))).toBe(false);
   });
 });

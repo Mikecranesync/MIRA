@@ -64,7 +64,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     );
     await c.query(
       `INSERT INTO equipment_notebook_sources (tenant_id, notebook_id, doc_id, match_state, enabled_by_default, match_evidence)
-       VALUES ($1, $2, $3, 'candidate', false, '{}'::jsonb)`,
+       VALUES ($1, $2, $3, 'candidate', false, '{"decisionMethod":"pending_applicability_check"}'::jsonb)`,
       [T, NB, DOC],
     );
     await c.end();
@@ -74,7 +74,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     fencedWriter(KEY_A, gen)(T, NB, DOC, { matchState: "verified", enabledByDefault: true, matchEvidence: { reason: "r" } });
 
   it("control: nothing changed → the write lands, stamped with the search key", async () => {
-    expect(await promote()).toBe(true);
+    expect(await promote()).toEqual({ matchState: "verified", enabledByDefault: true });
     const c = await raw();
     const s = await source(c);
     await c.end();
@@ -95,7 +95,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(settled).toBe(false);
     await rebind.query("COMMIT");
     await rebind.end();
-    expect(await pending).toBe(false);
+    expect(await pending).toEqual({ matchState: "candidate", enabledByDefault: false });
     const c = await raw();
     const s = await source(c);
     await c.end();
@@ -103,7 +103,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
   });
 
   it("F3: the write commits first → the identity change itself revokes it, in the SAME statement's transaction", async () => {
-    expect(await promote()).toBe(true);
+    expect((await promote())?.enabledByDefault).toBe(true);
     const c = await raw();
     await c.query("BEGIN");
     await c.query("UPDATE equipment_notebooks SET model = 'VQ1000-XYZ' WHERE id = $1", [NB]);
@@ -116,7 +116,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
   });
 
   it("F3 control: an unrelated notebook update (display_name) revokes nothing; a matching identity keeps it", async () => {
-    expect(await promote()).toBe(true);
+    expect((await promote())?.enabledByDefault).toBe(true);
     const c = await raw();
     await c.query("UPDATE equipment_notebooks SET model = 'VQ1000-FPG-C6C6-D' WHERE id = $1", [NB]);
     expect((await source(c)).enabled_by_default).toBe(true);
@@ -130,8 +130,8 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
       [NB],
     );
     await c.end();
-    expect(await promote(GEN)).toBe(false);
-    expect(await promote("gen-2")).toBe(true);
+    expect(await promote(GEN)).toEqual({ matchState: "candidate", enabledByDefault: false });
+    expect(await promote("gen-2")).toEqual({ matchState: "verified", enabledByDefault: true });
   });
 
   it("r4 F7: an existing source row does not block the pre-attach check; a lost generation does", async () => {
@@ -139,8 +139,53 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(await fencedBeforeAttach(KEY_A, "gen-other")(T, NB, DOC)).toBe(false);
   });
 
+  const setSource = async (sql: string) => {
+    const c = await raw();
+    await c.query(sql, [DOC]);
+    await c.end();
+  };
+
+  it.each([
+    ["rejected by the technician", "UPDATE equipment_notebook_sources SET match_state = 'rejected' WHERE doc_id = $1", "rejected", false],
+    ["confirmed by the technician", "UPDATE equipment_notebook_sources SET match_state = 'user_confirmed', enabled_by_default = true WHERE doc_id = $1", "user_confirmed", true],
+    [
+      "verified then disabled by the technician",
+      "UPDATE equipment_notebook_sources SET match_state = 'verified', enabled_by_default = false, match_evidence = '{\"decisionMethod\":\"catalog_number_exact\"}'::jsonb WHERE doc_id = $1",
+      "verified",
+      false,
+    ],
+  ])("r5 F8: a source %s after attachment is NOT overwritten, and the writer reports it", async (_l, sql, state, enabled) => {
+    await setSource(sql);
+    const c0 = await raw();
+    const before = await source(c0);
+    await c0.end();
+    expect(await promote()).toEqual({ matchState: state, enabledByDefault: enabled });
+    const c = await raw();
+    const after = await source(c);
+    await c.end();
+    expect(after).toEqual(before);
+  });
+
+  it("r5 F8: an inconclusive re-assessment cannot demote a user-confirmed source", async () => {
+    await setSource("UPDATE equipment_notebook_sources SET match_state = 'user_confirmed', enabled_by_default = true WHERE doc_id = $1");
+    const res = await fencedWriter(KEY_A, GEN)(T, NB, DOC, { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    expect(res).toEqual({ matchState: "user_confirmed", enabledByDefault: true });
+  });
+
+  it("r5 F9: a source deleted after attachment → the writer reports null, and nothing is recreated", async () => {
+    await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1");
+    expect(await promote()).toBeNull();
+    const c = await raw();
+    expect(await source(c)).toBeUndefined();
+    await c.end();
+  });
+
+  it("r5 control: an undecided candidate this acquisition attached is still promoted", async () => {
+    expect(await promote()).toEqual({ matchState: "verified", enabledByDefault: true });
+  });
+
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {
-    expect(await promote()).toBe(true); // verified + enabled + autoAcquisitionKey A
+    expect((await promote())?.enabledByDefault).toBe(true); // verified + enabled + autoAcquisitionKey A
     const c = await raw();
     await c.query("BEGIN");
     await upsertNotebookSourceTx(c as never, {

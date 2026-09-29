@@ -512,7 +512,7 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
     vi.mocked(setSourceState).mockClear();
-    const writeSourceState = vi.fn(async () => false);
+    const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
     const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
     // Exactly one attempt (the promotion) — no demotion afterwards.
     expect(writeSourceState).toHaveBeenCalledTimes(1);
@@ -532,7 +532,7 @@ describe("manual import: candidate until the document proves itself", () => {
     provingText();
     vi.mocked(attachFileToTargets).mockClear();
     vi.mocked(setSourceState).mockClear();
-    const writeSourceState = vi.fn(async () => true);
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
     const beforeAttach = vi.fn(async () => false);
     const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, beforeAttach });
     expect(beforeAttach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, MANUAL_DOC_ID);
@@ -547,13 +547,54 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
-    const accepted = await acquireManualForIdentity({ ...acquireInput, writeSourceState: vi.fn(async () => true) });
+    const accepted = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
     expect(accepted.status).toBe("complete");
     expect(accepted.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: true });
     vi.mocked(setSourceState).mockClear();
     const byDefault = await acquireManualForIdentity(acquireInput);
     expect(byDefault.status).toBe("complete");
     expect(vi.mocked(setSourceState).mock.calls.at(-1)![3]).toMatchObject({ matchState: "verified", enabledByDefault: true });
+  });
+
+  it("Codex #4118 F8: a technician's decision the writer declined is reported as it stands, never as enabled", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const rejected = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "rejected", enabledByDefault: false })),
+    });
+    expect(rejected.status).toBe("candidate_review");
+    expect(rejected.payload.manual).toMatchObject({ matchState: "rejected", enabledByDefault: false, attached: false });
+    const disabled = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: false })),
+    });
+    expect(disabled.status).toBe("candidate_review");
+    expect(disabled.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: false, attached: true });
+    const confirmed = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "user_confirmed", enabledByDefault: true })),
+    });
+    expect(confirmed.status).toBe("complete");
+  });
+
+  it("Codex #4118 F9: a source removed before the write is not reported as added", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const gone = await acquireManualForIdentity({ ...acquireInput, writeSourceState: vi.fn(async () => null) });
+    expect(gone.status).toBe("candidate_review");
+    expect(gone.payload.manual).toMatchObject({ attached: false, enabledByDefault: false });
+    expect(String(gone.payload.message)).toMatch(/not among this notebook's sources/);
+    // The default (route) writer: a zero-row update is also "not attached".
+    vi.mocked(setSourceState).mockResolvedValueOnce(false);
+    const routeGone = await acquireManualForIdentity(acquireInput);
+    expect(routeGone.status).toBe("candidate_review");
+    expect(routeGone.payload.manual).toMatchObject({ attached: false });
   });
 
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {

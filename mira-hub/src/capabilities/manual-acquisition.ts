@@ -55,10 +55,12 @@ export interface ManualAcquisitionInput {
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
   /**
-   * Write this notebook's source state for the discovered manual. Returns false
-   * to REFUSE — the caller then writes nothing more for this document (a lost
-   * ownership never demotes or overwrites a newer decision). Defaults to an
-   * unconditional write — the confirm route's behaviour.
+   * Write this notebook's source state for the discovered manual and return
+   * what is ACTUALLY persisted afterwards: the written state, the untouched
+   * existing state when the writer declined (a technician's decision, or lost
+   * ownership), or null when the notebook has no such source row at all. The
+   * outcome reports that — never the state it merely asked for (Codex #4118
+   * F8/F9). Defaults to an unconditional write — the confirm route's behaviour.
    */
   writeSourceState?: SourceStateWriter;
   /**
@@ -72,11 +74,23 @@ export interface ManualAcquisitionInput {
 }
 
 export type SourceStatePatch = { matchState: "verified" | "candidate"; enabledByDefault: boolean; matchEvidence: Record<string, unknown> };
-export type SourceStateWriter = (tenantId: string, notebookId: string, docId: string, patch: SourceStatePatch) => Promise<boolean>;
+/** A notebook source as persisted; null = no such source on the notebook. */
+export type PersistedSource = { matchState: string; enabledByDefault: boolean } | null;
+export type SourceStateWriter = (
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+  patch: SourceStatePatch,
+) => Promise<PersistedSource>;
 
-async function writeUnconditionally(tenantId: string, notebookId: string, docId: string, patch: SourceStatePatch): Promise<boolean> {
-  await setSourceState(tenantId, notebookId, docId, patch);
-  return true;
+async function writeUnconditionally(
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+  patch: SourceStatePatch,
+): Promise<PersistedSource> {
+  const updated = await setSourceState(tenantId, notebookId, docId, patch);
+  return updated ? { matchState: patch.matchState, enabledByDefault: patch.enabledByDefault } : null;
 }
 
 function outcome(status: ManualAcquisitionStatus, payload: Record<string, unknown> = {}): ManualAcquisitionOutcome {
@@ -388,7 +402,8 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   // search-result title or the URL.
   let verdict: ApplicabilityVerdict | null = null;
   let enabled = false;
-  let matchState: "candidate" | "verified" = "candidate";
+  let matchState: string = "candidate";
+  let attached = true;
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     verdict = assessApplicability({
@@ -409,25 +424,27 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       reason: verdict.reason,
     };
     // The route writes unconditionally (the technician is confirming right
-    // now). A background caller passes a FENCED writer that refuses once the
-    // notebook's identity or search ownership moved on; a refusal means NO
-    // write at all — neither the promotion nor a demotion (Codex #4118 F3/F5).
+    // now). A background caller passes a FENCED writer that writes only an
+    // undecided candidate it still owns; otherwise it writes NOTHING (Codex
+    // #4118 F3/F5/F8). Either way the outcome reports what is persisted: a
+    // technician's decision stands, and a source removed meanwhile is not
+    // reported as added (F9).
     const write = input.writeSourceState ?? writeUnconditionally;
-    if (verdict.state === "verified" && !requiresUserConfirmation) {
-      if (await write(ctx.tenantId, notebookId, manualDocId, { matchState: "verified", enabledByDefault: true, matchEvidence: verifiedEvidence })) {
-        matchState = "verified";
-        enabled = true;
-      }
-    } else {
-      await write(ctx.tenantId, notebookId, manualDocId, {
-        matchState: "candidate",
-        enabledByDefault: false,
-        matchEvidence: verifiedEvidence,
-      });
+    const promote = verdict.state === "verified" && !requiresUserConfirmation;
+    const persisted = await write(ctx.tenantId, notebookId, manualDocId, {
+      matchState: promote ? "verified" : "candidate",
+      enabledByDefault: promote,
+      matchEvidence: verifiedEvidence,
+    });
+    if (persisted) {
+      matchState = persisted.matchState;
+      enabled = persisted.enabledByDefault;
     }
+    attached = persisted !== null && persisted.matchState !== "rejected";
   }
 
-  return outcome(matchState === "verified" ? "complete" : "candidate_review", {
+  const answering = attached && enabled && (matchState === "verified" || matchState === "user_confirmed");
+  return outcome(answering ? "complete" : "candidate_review", {
     candidate: candidateView,
     manual: {
       fileId: manualParked.fileId,
@@ -440,10 +457,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       chunkCount: manualChunks,
       indexed: manualDocId !== null,
       reused,
+      attached,
     },
     applicability: verdict,
-    message:
-      matchState === "verified"
+    message: !attached
+      ? "The manual was found, but it is not among this notebook's sources."
+      : answering
         ? `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
         : `Manual saved but left off until you confirm it — ${
             verdict?.reason ?? "its text does not prove it covers this component"

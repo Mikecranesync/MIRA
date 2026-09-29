@@ -24,6 +24,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
+  type PersistedSource,
   type SourceStateWriter,
 } from "@/capabilities/manual-acquisition";
 
@@ -147,7 +148,9 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     warning?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
-  const attachedIndexed = Boolean(str(p.manual?.docId)) && p.manual?.indexed === true;
+  // A source that was removed (or rejected) meanwhile is not "attached" — the
+  // chat must never point at a source that is not there (Codex #4118 F9).
+  const attachedIndexed = Boolean(str(p.manual?.docId)) && p.manual?.indexed === true && p.manual?.attached !== false;
   // Another request is indexing these exact bytes: nothing is attached here YET.
   // Leave the claim "running" so the stale-claim recovery retries it and the
   // retry reuses the finished document instead of reporting a phantom source.
@@ -174,18 +177,30 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
 /**
  * Write this search's source state ONLY while, at that instant, the notebook is
  * still confirmed as the identity the search ran for AND still owns this
- * search's claim. The notebook row is locked (FOR UPDATE) before the source is
- * written, in the same transaction, so a concurrent identity change either
- * waits for this write (and then revokes it — revokeStaleAutoAcquiredSources)
- * or commits first and makes this write refuse. A refusal writes NOTHING, so a
- * stale search can neither enable its manual nor demote a newer decision
- * (Codex #4118 F3/F5). The search key is stamped into the evidence so a later
- * identity change can find what this search enabled.
+ * search's claim — and ONLY onto an undecided candidate this acquisition
+ * attached (decisionMethod "pending_applicability_check"). The notebook row is
+ * locked (FOR UPDATE) before the source is written, in the same transaction, so
+ * a concurrent identity change either waits for this write (and then the
+ * migration-101 trigger revokes it) or commits first and makes this write
+ * refuse (Codex #4118 F3/F5). A technician's decision — rejected, confirmed, a
+ * verified source they disabled — is never overwritten (F8), and the result is
+ * what is actually persisted afterwards, null when the source is gone (F9).
+ * The search key is stamped into the evidence so a later identity change can
+ * find what this search enabled.
  */
 export function fencedWriter(key: string, gen: string): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
+        const current = async (): Promise<PersistedSource> => {
+          const r = await c.query<{ match_state: string; enabled_by_default: boolean }>(
+            `SELECT match_state, enabled_by_default FROM equipment_notebook_sources
+              WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+            [tenantId, notebookId, docId],
+          );
+          const row = r.rows[0];
+          return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : null;
+        };
         const owner = await c.query(
           `SELECT n.id FROM equipment_notebooks n
             WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
@@ -196,11 +211,14 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
             FOR UPDATE`,
           [tenantId, notebookId, key, gen],
         );
-        if ((owner.rowCount ?? 0) === 0) return false;
-        await c.query(
+        if ((owner.rowCount ?? 0) === 0) return current();
+        const written = await c.query<{ match_state: string; enabled_by_default: boolean }>(
           `UPDATE equipment_notebook_sources
               SET match_state = $4, enabled_by_default = $5, match_evidence = $6::jsonb
-            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid
+              AND match_state = 'candidate'
+              AND match_evidence->>'decisionMethod' = 'pending_applicability_check'
+            RETURNING match_state, enabled_by_default`,
           [
             tenantId,
             notebookId,
@@ -210,11 +228,12 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
             JSON.stringify({ ...patch.matchEvidence, autoAcquisitionKey: key }),
           ],
         );
-        return true;
+        const row = written.rows[0];
+        return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : current();
       });
     } catch (err) {
       console.error("[manual-acquisition] fenced write failed:", err instanceof Error ? err.message : err);
-      return false;
+      return null;
     }
   };
 }
