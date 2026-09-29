@@ -46,6 +46,9 @@ export type AnswerValidation =
       detail: string;
       /** Full deterministic replacement served instead of the candidate. */
       replacement: string;
+      /** Closed-vocabulary facts about the match (never answer text), safe to
+       *  record on the Turn Evidence Packet (#4098). */
+      match?: { term: string; unit: string };
     };
 
 /* ------------------------------------------------------------------------ *
@@ -620,8 +623,13 @@ const QTY =
   "(?:rated|rating|ratings|range|maximum|minimum|max|min|nominal|operating|supply|input|output|limit|limits|spec|specification|tolerance|clearance|torque|pressure|voltage|current|speed|temperature|frequency|power|capacity|width|height|length|depth|weight|diameter|thickness|gap|setting|setpoint)";
 const HEDGE =
   /\b(?:typically|usually|often|generally|commonly|normally|for example|e\.g\.|such as|many|most|some|industrial|standard|common|might|may|could|would|should|approximately|around|about|roughly|likely)\b/i;
+// Capture groups name WHICH quantity word and unit matched — closed-vocabulary
+// tokens of this grammar, never answer text (#4098: the Turn Evidence Packet
+// may carry these, so a false refusal can be diagnosed from staging turns).
+// Groups: 1 quantity word, 2 unit (quantity-first); 3 unit, 4 rating word
+// (value-first). Adding groups does not change what matches.
 const EXACT_RATING_RE = new RegExp(
-  `\\b${QTY}\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*${UNIT}\\b|\\b(?:${RANGE}|${NUM})\\s*${UNIT}\\b[^.!?\\n]{0,40}?\\b(?:rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
+  `\\b(${QTY})\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*(${UNIT})\\b|\\b(?:${RANGE}|${NUM})\\s*(${UNIT})\\b[^.!?\\n]{0,40}?\\b(rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
   "i",
 );
 
@@ -629,11 +637,26 @@ const EXACT_RATING_RE = new RegExp(
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
 export function unsupportedExactRating(text: string): string | null {
+  return exactRatingMatch(text)?.excerpt ?? null;
+}
+
+/** Which part of the exact-rating grammar fired. `term` and `unit` are tokens
+ *  of this file's closed vocabulary (lower-cased), safe for the text-free
+ *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
+export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
+
+export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    if (m) {
+      return {
+        excerpt: m[0].slice(0, 160),
+        term: (m[1] ?? m[4] ?? "").toLowerCase(),
+        unit: (m[2] ?? m[3] ?? "").toLowerCase().replace(/\s+/g, ""),
+      };
+    }
   }
   return null;
 }
@@ -659,6 +682,7 @@ const NON_VERIFICATION =
   /\b(?:cannot|can'?t|unable\s+to|not\s+(?:able\s+to\s+)?(?:verify|confirm)|couldn'?t|unverified|don'?t\s+have|do\s+not\s+have|no\s+documentation|not\s+documented|isn'?t\s+documented|won'?t\s+guess|not\s+something\s+I\s+can)\b/i;
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
+
 
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
@@ -845,17 +869,24 @@ function codeMeaningViolation(
 
 /** Deterministic replacement for a specificity rejection — honest about the
  *  gap, still useful, funnels to upload (#3787 two-lane design, guardrails
- *  2–4). Never interpolates model output beyond the technician-shaped code. */
+ *  2–4). Never interpolates model output beyond the technician-shaped code.
+ *
+ *  #4098 / #4104 review: the old copy offered only fault-triage steps, so a
+ *  request for a manual or software got "confirm the exact code on the
+ *  display" (Answer Radar seed 002). Choosing the copy by classifying the
+ *  question failed in both directions under review ("keeps tripping" lost
+ *  triage; "I lost the manual" gained it). So nothing is classified: the
+ *  fallback offers both next steps, each labelled with when it applies.
+ *  Copy only — what is withheld is unchanged. */
 export function specificityFallback(code: string | null): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
   return `${head}
 
-What I can tell you honestly:
-- Confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly.
-- With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- Note whether the problem returns immediately on restart or only under load — that separates a latched trip from an active condition.
+What you can do next:
+- If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
+- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -1022,14 +1053,15 @@ export function validateAnswer(opts: {
   }
 
   if (!evidenceSufficient) {
-    const er = unsupportedExactRating(scanText);
+    const er = exactRatingMatch(scanText);
     if (er) {
       return {
         ok: false,
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
-        detail: er,
+        detail: er.excerpt,
         replacement: specificityFallback(null),
+        match: { term: er.term, unit: er.unit },
       };
     }
   }

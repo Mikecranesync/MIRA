@@ -977,6 +977,38 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     // The unsupported number never reached the wire; the honest fallback did.
     expect(text).not.toContain("+60");
     expect(text).toContain("won't guess");
+    // #4098: WHICH grammar terms fired is recorded — closed-vocabulary tokens,
+    // never answer text, so the packet's content ban still holds.
+    expect(p.answer_gate.gate_match).toEqual({ term: "operating", unit: "°c" });
+    expect(JSON.stringify(p)).not.toContain("+60");
+  });
+
+  it("5c. #4098 seed 002: a manual-location question that trips the gate gets a documentation next step", async () => {
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The SPC-100 supply voltage is 24 VDC and its manual is on the Festo site.")));
+    const raw = await (
+      await POST(chatReq({ message: "I need the manual and the WinPISA software for an obsolete Festo SPC-100-P-F. Where is the documentation?", mode: "general" }), params)
+    ).text();
+    // Content is released in ~120-char frames; join them before matching.
+    const text = framesOf(raw).filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.decision).toBe("blocked");
+    // The relevant next step is there (#4098); the fault step is labelled as
+    // conditional rather than presented as the answer (#4104 review).
+    expect(text).toContain("If you need the document itself");
+    expect(text).toContain("If this is about a fault or a stopped machine");
+  });
+
+  it("5d. #4098 control (#4104 F1): a tripping question keeps the fault-triage steps", async () => {
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The supply voltage is 480 VAC.")));
+    const raw = await (await POST(chatReq({ message: "my drive keeps tripping on overvoltage", mode: "general" }), params)).text();
+    const text = framesOf(raw).filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.decision).toBe("blocked");
+    expect(text).toContain("If this is about a fault or a stopped machine: confirm the exact code");
   });
 
   it("5b. with the emergency lever NOTEBOOK_ANSWER_GATE=0 the claim is served but still flagged in the packet", async () => {

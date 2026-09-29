@@ -2799,6 +2799,10 @@ async function handleChatTurn(
       // contract, exactly like a notebook-grounded one).
       const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      // #4098: which quantity word + unit the exact-rating rule matched —
+      // closed-vocabulary tokens, never text — so false refusals are
+      // diagnosable from the Turn Evidence Packet. Recorded gate on or off.
+      const gateMatch = !validation.ok && validation.match ? validation.match : null;
       if (!validation.ok) {
         console.error(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
@@ -2988,6 +2992,7 @@ async function handleChatTurn(
           jev_input_tokens: jev.input_tokens,
           citations_shipped: emittedCitations.length,
           evidence_followed: evidenceFollowed,
+          gate_match: gateMatch,
         });
         // SHADOW. Assemble the judgeable view of this turn while the text still
         // exists. The packet deliberately stores no question and no answer, so
