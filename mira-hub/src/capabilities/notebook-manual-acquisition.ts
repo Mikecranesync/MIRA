@@ -55,6 +55,8 @@ export interface AcquisitionRecord {
   gen?: string;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
   doc_id?: string | null;
+  /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
+  file_id?: string | null;
   /** Set at read time: the acquired source was since removed or rejected by the technician. */
   source_removed?: boolean;
 }
@@ -157,7 +159,7 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
 export function recordFromOutcome(key: string, startedAt: string | null, out: ManualAcquisitionOutcome): AcquisitionRecord {
   const p = out.payload as {
     candidate?: { host?: unknown; url?: unknown } | null;
-    manual?: { matchState?: unknown; docId?: unknown; indexed?: unknown; attached?: unknown } | null;
+    manual?: { matchState?: unknown; docId?: unknown; fileId?: unknown; indexed?: unknown; attached?: unknown } | null;
     oemRequestUrl?: unknown;
     warning?: unknown;
   };
@@ -181,6 +183,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
     doc_id: str(p.manual?.docId),
+    file_id: str(p.manual?.fileId),
   };
 }
 
@@ -375,17 +378,32 @@ export async function reconcileAcquisition(
   notebookId: string,
   rec: AcquisitionRecord | null,
 ): Promise<AcquisitionRecord | null> {
-  if (!rec || !rec.doc_id || (rec.state !== "complete" && rec.state !== "candidate_review")) return rec;
-  if (rec.state === "candidate_review" && !rec.attached_indexed) return rec;
+  if (!rec) return rec;
+  // An indexed document is checked against the notebook's sources (r8 F13); a
+  // file-only outcome (a scanned manual) against the notebook's file link (r9 F14).
+  const bySource =
+    Boolean(rec.doc_id) && (rec.state === "complete" || (rec.state === "candidate_review" && rec.attached_indexed));
+  const byFile = !bySource && Boolean(rec.file_id) && rec.state === "no_extractable_text";
+  if (!bySource && !byFile) return rec;
   try {
     return await withTenantContext(tenantId, async (c) => {
-      const r = await c.query<{ match_state: string }>(
-        `SELECT match_state FROM equipment_notebook_sources
-          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
-        [tenantId, notebookId, rec.doc_id],
-      );
-      const row = r.rows[0];
-      if (row && row.match_state !== "rejected") return rec;
+      if (bySource) {
+        const r = await c.query<{ match_state: string }>(
+          `SELECT match_state FROM equipment_notebook_sources
+            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+          [tenantId, notebookId, rec.doc_id],
+        );
+        const row = r.rows[0];
+        if (row && row.match_state !== "rejected") return rec;
+      } else {
+        const r = await c.query(
+          `SELECT 1 FROM workspace_file_links
+            WHERE tenant_id = $1::uuid AND file_id = $2::uuid
+              AND target_type = 'equipment_notebook' AND target_id = $3::uuid`,
+          [tenantId, rec.file_id, notebookId],
+        );
+        if ((r.rowCount ?? 0) > 0) return rec;
+      }
       return { ...rec, attached_indexed: false, source_removed: true };
     });
   } catch (err) {

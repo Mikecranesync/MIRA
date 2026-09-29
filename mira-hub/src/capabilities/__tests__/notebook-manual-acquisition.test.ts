@@ -14,6 +14,7 @@ const db = vi.hoisted(() => ({
   updatedSource: { match_state: "verified", enabled_by_default: true } as unknown,
   currentSource: null as unknown,
   sourceRow: null as unknown,
+  fileLinked: false,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -25,6 +26,7 @@ vi.mock("@/lib/tenant-context", () => ({
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
         if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
+        if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
         if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
         if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
@@ -60,6 +62,7 @@ beforeEach(() => {
   db.updatedSource = { match_state: "verified", enabled_by_default: true };
   db.currentSource = null;
   db.sourceRow = null;
+  db.fileLinked = false;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -361,5 +364,40 @@ describe("Codex #4118 r8 F13 — a finished record is checked against the notebo
     await reconcileAcquisition("t", "nb", { ...done, doc_id: null });
     await reconcileAcquisition("t", "nb", { ...done, state: "running" });
     expect(db.queries.length).toBe(0);
+  });
+});
+
+describe("Codex #4118 r9 F14 — a scanned (file-only) manual is checked against the notebook's file link", () => {
+  const scanned: AcquisitionRecord = {
+    key: "K",
+    state: "no_extractable_text",
+    started_at: null,
+    finished_at: null,
+    candidate_host: null,
+    match_state: null,
+    oem_request_url: null,
+    doc_id: null,
+    file_id: "22222222-2222-4222-8222-222222222222",
+  };
+  it("the record keeps the acquired file id", () => {
+    const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", {
+      status: "no_extractable_text",
+      payload: { manual: { fileId: "f1", docId: null, indexed: false } },
+    });
+    expect(r.file_id).toBe("f1");
+  });
+  it("an unlinked file → removed; the text never says it is saved in Sources", async () => {
+    db.fileLinked = false;
+    const r = await reconcileAcquisition("t", "nb", scanned);
+    expect(r?.source_removed).toBe(true);
+    const text = acquisitionDeclineText(r, "K", "SMC VQ1000")!;
+    expect(text).toMatch(/no longer in this notebook's Sources/);
+    expect(text).not.toMatch(/saved in this notebook's Sources/);
+  });
+  it("control: a still-linked file keeps the record and its 'saved' text", async () => {
+    db.fileLinked = true;
+    const r = await reconcileAcquisition("t", "nb", scanned);
+    expect(r?.source_removed).toBeUndefined();
+    expect(acquisitionDeclineText(r, "K", "SMC VQ1000")).toMatch(/saved in this notebook's Sources/);
   });
 });

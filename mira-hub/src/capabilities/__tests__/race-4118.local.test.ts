@@ -47,7 +47,9 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
       CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
         doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
         source_role text, added_by text, origin_file_id uuid, PRIMARY KEY (notebook_id, doc_id));
-      GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources TO factorylm_app;`);
+      CREATE TABLE IF NOT EXISTS workspace_file_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+        file_id uuid NOT NULL, target_type text NOT NULL, target_id uuid NOT NULL);
+      GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources, workspace_file_links TO factorylm_app;`);
     await c.query(readFileSync(join(MIGRATIONS, "100_notebook_manual_acquisition.sql"), "utf8"));
     if (process.env.PG_RACE_SKIP_101 !== "1") await c.query(readFileSync(join(MIGRATIONS, "101_notebook_manual_acquisition_revoke_trigger.sql"), "utf8"));
     if (process.env.PG_RACE_SKIP_102 !== "1")
@@ -250,6 +252,31 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect((await reconcileAcquisition(T, NB, rec))?.source_removed).toBeUndefined();
     await setSource("DELETE FROM equipment_notebook_sources WHERE doc_id = $1");
     expect(await reconcileAcquisition(T, NB, rec)).toMatchObject({ source_removed: true, attached_indexed: false });
+  });
+
+  it("r9 F14: a scanned manual whose notebook file link was removed is reconciled as removed; control: linked", async () => {
+    const FILE = "44444444-4444-4444-8444-444444444444";
+    const rec = {
+      key: KEY_A,
+      state: "no_extractable_text" as const,
+      started_at: null,
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: null,
+      file_id: FILE,
+    };
+    const c = await raw();
+    await c.query("DELETE FROM workspace_file_links");
+    await c.query(
+      "INSERT INTO workspace_file_links (tenant_id, file_id, target_type, target_id) VALUES ($1, $2, 'equipment_notebook', $3)",
+      [T, FILE, NB],
+    );
+    expect((await reconcileAcquisition(T, NB, rec))?.source_removed).toBeUndefined();
+    await c.query("DELETE FROM workspace_file_links WHERE file_id = $1", [FILE]);
+    await c.end();
+    expect((await reconcileAcquisition(T, NB, rec))?.source_removed).toBe(true);
   });
 
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {
