@@ -39,7 +39,12 @@ def _claims_checkable(item: dict) -> bool:
             isinstance(p, dict) and isinstance(p.get("quote"), str) and p["quote"].strip()
             for p in passages
         )
-    return e.get("answer_status") in ("abstained", "refused_safety")
+    # An uncited answer is checkable only as a decline the SERVER certified:
+    # hub.turn_status "insufficient_evidence" is emitted with the route's own
+    # fixed decline copy, and it is part of answer_identity. The runner's text
+    # classifier (answer_status) is NOT enough — "Set P041 to 12 s … send me the
+    # fault log" reads as an abstention to it (#4106 review F1).
+    return (item.get("hub") or {}).get("turn_status") == "insufficient_evidence"
 
 
 def answer_identity(item: dict, reference_notes: object = None) -> str:
@@ -66,6 +71,8 @@ def answer_identity(item: dict, reference_notes: object = None) -> str:
         "citations": list(e.get("citations") or []),
         "source_documents": list(e.get("source_documents") or []),
         "cited_passages": list(e.get("cited_passages") or []),
+        # #4106 review F2: the scorer consults the status, so a grade binds to it.
+        "answer_status": e.get("answer_status"),
         "server_turn_status": hub.get("turn_status"),
         "answer_basis": hub.get("basis"),
         "reference_notes": reference_notes,
