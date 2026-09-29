@@ -12,8 +12,10 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { turnOnlySampler } from "@/capabilities/observability/turn-sampler";
 import { __testing__installInMemoryExporter } from "@/capabilities/observability/tracing";
 import type { TurnRecord } from "@/lib/inference/persist-usage";
 
@@ -363,6 +365,30 @@ describe("per-stage timings land in the durable packet", () => {
   });
 });
 
+
+describe("an unsampled turn still records its stage timings (#4107 review F2)", () => {
+  it("at turn sample ratio 0 nothing exports, yet the packet's stage durations are numbers", async () => {
+    const exporter = new InMemorySpanExporter();
+    const unsampled = new BasicTracerProvider({
+      sampler: turnOnlySampler(0),
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    }).getTracer("t");
+    const spy = vi.spyOn(trace, "getTracer").mockReturnValue(unsampled);
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance here.", { prompt_tokens: 3, completion_tokens: 2 })));
+      const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+      await res.text();
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+      expect(exporter.getFinishedSpans()).toHaveLength(0);
+      for (const k of ["identity", "retrieval", "context", "generation"] as const) {
+        expect(typeof record.packet.timings_ms[k], `timings_ms.${k}`).toBe("number");
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
 
 describe("retrieval routing is decided by evidence context, not by general mode alone (2026-09-22)", () => {
   const chunk = (docId: string | null, sourceUrl = "https://oem.example/tp700.pdf") => ({ docId, sourceUrl, title: "TP700 Comfort Operating Instructions", content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true });

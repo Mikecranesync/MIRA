@@ -211,7 +211,9 @@ async function handleLookTurn(
   // ── Turn Flight Recorder (file header) ──────────────────────────────────
   const tracer = getTracer();
   const turnId = clientKey ?? crypto.randomUUID();
-  const rootSpan = tracer.startSpan("mira.turn");
+  // #4103: a root of its own, not a child of the framework request span, so
+  // the turn-only sampler keeps it (see capabilities/observability/turn-sampler).
+  const rootSpan = tracer.startSpan("mira.turn", { root: true });
   const rootCtx = trace.setSpan(context.active(), rootSpan);
   const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
   setSpanAttrs(
