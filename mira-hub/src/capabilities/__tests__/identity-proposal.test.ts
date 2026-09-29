@@ -176,3 +176,24 @@ describe("Codex #4120 r4", () => {
     expect(proposeIdentityFromText("Allen-Bradley PF525 trips. How do I diagnose PF753?", CORPUS)).toBeNull();
   });
 });
+
+describe("Codex #4120 r5", () => {
+  it.each(["Siemens 4-20mA transmitter is not responding", "Siemens 0-10V sensor stopped working"])(
+    "F10: a signal range is never a model: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F10: a signal range is not a second machine", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 reads a 4-20mA sensor", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
+  });
+  it("F11: a panel's own 6AV catalog number keeps the proposal", () => {
+    expect(proposeIdentityFromText("Siemens TP700 Comfort will not boot", CORPUS)).toEqual({ manufacturer: "Siemens", model: "TP700" });
+    expect(proposeIdentityFromText("Siemens TP700 Comfort 6AV2124-0GC01-0AX0 will not boot", CORPUS)).toEqual({
+      manufacturer: "Siemens",
+      model: "TP700",
+    });
+  });
+  it("F11 control: a 6AV number next to a non-panel model, or a second model, still refuses", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 with 6AV2124-0GC01-0AX0 panel", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Compare Siemens S7-1200 and TP700", CORPUS)).toBeNull();
+  });
+});

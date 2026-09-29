@@ -56,7 +56,7 @@ const GENERIC_DEVICE_WORDS = new Set(["PLC", "VFD", "HMI", "CPU", "DRIVE", "PANE
  * name no machine ("RS-485", "DH-485", "IP65", "24VDC", "M12", "IEC61131").
  */
 const NON_MACHINE_TOKEN_RE =
-  /^(?:RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|MM|BAR|PSI|RPM|MS|S)|\d+(?:ST|ND|RD|TH))$/i;
+  /^(?:\d+(?:\.\d+)?(?:-|to)\d+(?:\.\d+)?\s*(?:MA|V|VDC|VAC|A|HZ|KHZ|PSI|BAR|MM|RPM|%|°?C|°?F)?|RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|MM|BAR|PSI|RPM|MS|S)|\d+(?:ST|ND|RD|TH))$/i;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -201,6 +201,19 @@ function canonicalModel(span: string): string {
 }
 
 /**
+ * Is this mention the chosen machine? Its canonical model matches, or it is a
+ * Siemens 6AV order number the existing parser pairs with the chosen panel
+ * ("TP700 … 6AV2124-0GC01-0AX0" describes ONE nameplate — manual-rag.ts), so
+ * more precise identity never removes the proposal (Codex #4120 r5 F11).
+ */
+function sameMachine(mention: string, model: string, chosen: string): boolean {
+  if (canonicalModel(mention) === chosen) return true;
+  if (!/^6AV/i.test(mention)) return false;
+  const paired = resolveModelFromObservationText(`${model} ${mention}`);
+  return !paired.ambiguous && paired.model !== null && norm(paired.model) === chosen;
+}
+
+/**
  * Propose a machine from the technician's free text, or null. Never throws.
  * `knownManufacturers` is the shared library's manufacturer list. Proposes ONLY
  * when exactly one (manufacturer, model) pair is named and every model mention
@@ -222,7 +235,7 @@ export function proposeIdentityFromText(
     if (candidates.size !== 1) return null;
     const only = [...candidates.values()][0];
     const chosen = canonicalModel(only.model);
-    return modelMentions(message).every((m) => canonicalModel(m) === chosen) ? only : null;
+    return modelMentions(message).every((m) => sameMachine(m, only.model, chosen)) ? only : null;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
