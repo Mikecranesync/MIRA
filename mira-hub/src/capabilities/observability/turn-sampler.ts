@@ -1,0 +1,70 @@
+/**
+ * Which traces reach Langfuse (2026-09-29, #4103).
+ *
+ * The flight recorder exists to explain technician turns. On staging, the
+ * automatic HTTP / fetch / pg instrumentation turned every health check, page
+ * load and pool connect into its own trace: of the newest 1,000 traces, zero
+ * were chat turns (889 `GET`, 90 `pg-pool.connect`), and the plan's usage
+ * threshold suspended ingestion for 3.5 days.
+ *
+ * Default: export only traces ROOTED at a `mira.turn` span (chat and look turns
+ * both open one), sampled by `MIRA_OTEL_TURN_SAMPLE_RATIO` (0..1, default 1).
+ * Children follow their parent, so a kept turn keeps its whole waterfall.
+ * The durable per-turn record is the Turn Evidence Packet on `decision_traces`
+ * (Neon), which is written for 100% of turns regardless of this sampler.
+ *
+ * `MIRA_OTEL_AUTO_INSTRUMENT=1` restores the automatic HTTP/fetch/pg spans (and
+ * with them every non-turn trace) for a debugging session.
+ */
+import type { Attributes, Context, Link, SpanKind } from "@opentelemetry/api";
+import {
+  ParentBasedSampler,
+  SamplingDecision,
+  TraceIdRatioBasedSampler,
+} from "@opentelemetry/sdk-trace-base";
+import type { Sampler, SamplingResult } from "@opentelemetry/sdk-trace-base";
+
+export const TURN_ROOT_SPAN = "mira.turn";
+
+export function autoInstrumentEnabled(): boolean {
+  return process.env.MIRA_OTEL_AUTO_INSTRUMENT === "1";
+}
+
+/** The configured turn sampling ratio, clamped to [0, 1]; bad values mean 1. */
+export function turnSampleRatio(): number {
+  const raw = process.env.MIRA_OTEL_TURN_SAMPLE_RATIO;
+  if (raw === undefined || raw.trim() === "") return 1;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** Root spans: keep `mira.turn` (at the configured ratio); drop anything else. */
+class TurnRootSampler implements Sampler {
+  private readonly ratio: Sampler;
+
+  constructor(ratio: number) {
+    this.ratio = new TraceIdRatioBasedSampler(ratio);
+  }
+
+  shouldSample(
+    context: Context,
+    traceId: string,
+    spanName: string,
+    spanKind: SpanKind,
+    attributes: Attributes,
+    links: Link[],
+  ): SamplingResult {
+    if (spanName !== TURN_ROOT_SPAN) return { decision: SamplingDecision.NOT_RECORD };
+    return this.ratio.shouldSample(context, traceId, spanName, spanKind, attributes, links);
+  }
+
+  toString(): string {
+    return `TurnRootSampler{${TURN_ROOT_SPAN},${this.ratio.toString()}}`;
+  }
+}
+
+/** The SDK sampler: turn-rooted traces only, children follow their parent. */
+export function turnOnlySampler(ratio = turnSampleRatio()): Sampler {
+  return new ParentBasedSampler({ root: new TurnRootSampler(ratio) });
+}

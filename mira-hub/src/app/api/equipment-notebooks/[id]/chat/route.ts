@@ -859,7 +859,9 @@ async function handleChatTurn(
   // "active" for it) — see the design doc's own caveat about this.
   const tracer = getTracer();
   const turnId = clientRequestId ?? crypto.randomUUID();
-  const rootSpan = tracer.startSpan("mira.turn");
+  // #4103: a root of its own, not a child of the framework request span, so
+  // the turn-only sampler keeps it (see capabilities/observability/turn-sampler).
+  const rootSpan = tracer.startSpan("mira.turn", { root: true });
   const rootCtx = trace.setSpan(context.active(), rootSpan);
   const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
   setSpanAttrs(
