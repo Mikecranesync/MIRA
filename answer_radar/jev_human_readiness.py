@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 SIGNALS = ("over_specificity", "wrong_family_grounding",
@@ -74,7 +75,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path)
     args = parser.parse_args()
-    print(json.dumps(compare(json.loads(args.run.read_text())), indent=2, sort_keys=True))
+    try:
+        report = compare(json.loads(args.run.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+        sys.stderr.write(f"Jev comparison input error: {exc}\n")
+        raise SystemExit(2) from None
+    sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":
