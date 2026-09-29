@@ -645,12 +645,58 @@ export function unsupportedExactRating(text: string): string | null {
  *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
 export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
 
-export function exactRatingMatch(text: string): ExactRatingMatch | null {
+// #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
+// about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
+// the IEC 60751 definition of the sensor type and was blocked 5/5 on staging
+// (731649c23). The exemption is value-checked, not keyword-checked: a sentence
+// is exempt only when it names a designation below AND every value-with-unit in
+// it is one of that designation's defining values. "This PT100 is rated to
+// 500 °C" keeps a value the table does not define, so it is still blocked.
+// Add a designation only with its standard's defining values.
+const DEFINING_VALUES: ReadonlyArray<{ re: RegExp; values: ReadonlyArray<string> }> = [
+  // IEC 60751 platinum RTDs: nominal resistance R0 at 0 °C.
+  { re: /\bpt[-\s]?100\b/i, values: ["100ohm", "0c"] },
+  { re: /\bpt[-\s]?500\b/i, values: ["500ohm", "0c"] },
+  { re: /\bpt[-\s]?1000\b/i, values: ["1000ohm", "0c"] },
+];
+
+const VALUE_WITH_UNIT_RE =
+  /([-–+]?\d[\d,]*(?:\.\d+)?)\s*(k?(?:ohms?|ω|Ω)|°\s?[cf]|celsius|fahrenheit|v(?:olts?|dc|ac)?|a(?:mps?)?|ma|hz|rpm|bar|psi|k?pa|mpa|kw|hp|mm|cm)(?![a-z])/gi;
+
+/** Every value-with-unit in `s`, normalized to "<number><unit>" ("1,000 Ω" → "1000ohm"). */
+function valuesWithUnits(s: string): string[] {
+  const out: string[] = [];
+  for (const m of s.matchAll(VALUE_WITH_UNIT_RE)) {
+    let n = Number(m[1].replace(/,/g, "").replace("–", "-"));
+    let u = m[2].toLowerCase().replace(/\s+/g, "");
+    if (/^k(?:ohms?|ω)$/.test(u)) {
+      n *= 1000;
+      u = "ohm";
+    } else if (/^(?:ohms?|ω)$/.test(u)) u = "ohm";
+    else if (u === "°c" || u === "celsius") u = "c";
+    else if (u === "°f" || u === "fahrenheit") u = "f";
+    if (Number.isFinite(n)) out.push(`${n}${u}`);
+  }
+  return out;
+}
+
+/** A matched rating sentence that is not a claim about the machine: its every
+ *  value is either a defining value of a designation it names, or a value the
+ *  technician wrote in the question (restating their own numbers). */
+function isDefinitionOrEcho(sentence: string, question: string): boolean {
+  const vals = valuesWithUnits(sentence);
+  if (vals.length === 0) return false;
+  const allowed = new Set(valuesWithUnits(question));
+  for (const d of DEFINING_VALUES) if (d.re.test(sentence)) for (const v of d.values) allowed.add(v);
+  return vals.every((v) => allowed.has(v));
+}
+
+export function exactRatingMatch(text: string, question = ""): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m) {
+    if (m && !isDefinitionOrEcho(sentence, question)) {
       return {
         excerpt: m[0].slice(0, 160),
         term: (m[1] ?? m[4] ?? "").toLowerCase(),
@@ -1053,7 +1099,7 @@ export function validateAnswer(opts: {
   }
 
   if (!evidenceSufficient) {
-    const er = exactRatingMatch(scanText);
+    const er = exactRatingMatch(scanText, scanQuestion);
     if (er) {
       return {
         ok: false,

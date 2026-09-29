@@ -718,10 +718,11 @@ describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036
 
 describe("#4098: exact-rating match facts and fallback copy", () => {
   it("names the quantity word and unit that fired, without answer text", () => {
-    // Measured, and the likely Q77 trigger: the reference temperature "at 0 °C"
-    // is what matches, not "100 Ω" — `ω` is a non-word character, so the unit
-    // alternative's trailing \b can never follow it.
-    const m = exactRatingMatch("A PT100 has a nominal resistance of 100 Ω at 0 °C.");
+    // Measured on Q77: the reference temperature "at 0 °C" is what matches, not
+    // "100 Ω" (`ω` is a non-word character, so the unit's trailing \b never
+    // follows it). That PT100 DEFINITION is now exempt (part 2, below); the
+    // same grammar on a non-definitional value still names term and unit.
+    const m = exactRatingMatch("The motor's nominal winding temperature is 120 °C.");
     expect(m).toMatchObject({ term: "nominal", unit: "°c" });
     expect(exactRatingMatch("The drive typically runs at 480 V.")).toBeNull(); // hedged
   });
@@ -770,5 +771,58 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
     const t = specificityFallback("F005");
     expect(t).toContain("I can't verify what F005 means");
     expect(t).toContain("If this is about a fault or a stopped machine");
+  });
+});
+
+describe("#4098 part 2: established definitions and the technician's own numbers", () => {
+  const Q77 = "A technician is comparing two RTD sensor types: PT100 and PT1000. What is the primary difference?";
+  const Q6 =
+    "A VFD is installed in a panel that has reached 45°C ambient. The drive's rated ambient temperature is 40°C. What is the CORRECT action?";
+  const check = (answerText: string, question: string) =>
+    validateAnswer({ answerText, question, general: true, served: true, refused: false, evidenceSufficient: false });
+
+  it.each([
+    "A PT100 has a nominal resistance of 100 Ω at 0 °C.",
+    "PT1000 has a base resistance of 1,000 Ω at 0°C vs. PT100's 100 Ω at 0°C, so lead resistance matters less.",
+    "The nominal resistance of a Pt1000 is 1000 ohms at 0 °C.",
+    "A PT-100 element reads a nominal 100 ohm at 0 °C.",
+    "The PT1000 nominal value is 1 kΩ at 0 °C.",
+  ])("a standard RTD definition is served in general chat: %s", (a) => {
+    expect(check(a, Q77).ok).toBe(true);
+  });
+
+  it.each([
+    "The drive's rated ambient is 40 °C and the panel is at 45 °C, so derate it.",
+    "Its rating is 40°C; at 45°C the drive must be derated.",
+  ])("restating the technician's own numbers is served: %s", (a) => {
+    expect(check(a, Q6).ok).toBe(true);
+  });
+
+  it.each([
+    ["The DC bus voltage limit is 810 VDC.", Q77],
+    ["Terminal screw torque is 1.2 N·m.", Q77],
+    ["Supply voltage is 480 VAC.", Q77],
+    // a designation does not launder a value its standard does not define
+    ["This PT100 is rated to a maximum of 500 °C.", Q77],
+    ["The PT1000 operating range is 0 °C to 850 °C.", Q77],
+    // the technician's numbers do not launder new ones
+    ["The rated current is 12 A at 40 °C.", Q6],
+    ["Its rating is 40 °C, derated to 50 °C.", Q6],
+  ])("an unsupported machine value is still blocked: %s", (a, q) => {
+    const v = check(a, q);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:exact-rating");
+  });
+
+  it("with evidence the grounded path is unchanged (no exemption needed)", () => {
+    const v = validateAnswer({
+      answerText: "The supply voltage is 480 VAC.",
+      question: Q77,
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: true,
+    });
+    expect(v.ok).toBe(true);
   });
 });
