@@ -177,6 +177,31 @@ export function detectEnergizedElectricalHazardIntent(message: string): boolean 
 export const ENERGIZED_ELECTRICAL_HAZARD = "energized-electrical-hazard";
 
 /**
+ * #4113: an IMPROVISED lockout — a valve, knob, regulator or override that
+ * people rely on instead of the machine's energy-control procedure, or air
+ * turned off and a part then moved by hand. Hub-only sentinel (like the
+ * energized-work one); it FLAGS the turn (banner + directive), never stops it.
+ * A genuine lockout question ("lock out the air supply valve", "how do I
+ * perform lockout tagout") is NOT this shape and stays unflagged.
+ */
+export const IMPROVISED_LOCKOUT = "improvised-lockout";
+
+const LOCKOUT_TERM = "(?:lock[-\\s]?out|loto)";
+const USED_AS_LOCKOUT = new RegExp(
+  "\\b(?:use[sd]?|using|treat(?:s|ed|ing)?|rel(?:y|ies|ied|ying)\\s+on|count(?:s|ed|ing)?\\s+on)\\b[^.?!]{0,40}?\\bas\\s+(?:a|an|the|their|our)?\\s*" + LOCKOUT_TERM + "\\b" +
+    "|\\binstead\\s+of\\s+(?:a\\s+|the\\s+)?" + LOCKOUT_TERM + "\\b" +
+    "|\\b" + LOCKOUT_TERM + "\\s+(?:with|using|by)\\s+(?:the\\s+|a\\s+)?(?:red\\s+)?(?:knob|button|regulator|override|selector|push[-\\s/]?lock)\\b",
+  "i",
+);
+// Stored-energy source turned off / vented, then something moved by hand.
+const OFF_THEN_MOVE_BY_HAND = /\b(?:regulator|air|pressure|supply)\b[^.?!]{0,40}?\b(?:off|closed|shut|bled|dumped|vented|exhausted)\b[^?!]{0,80}?\b(?:push|pull|move|lift|reach|climb)(?:es|ed|ing|s)?\b/i;
+
+export function detectImprovisedLockout(message: string): boolean {
+  const msg = (message || "").toLowerCase();
+  return USED_AS_LOCKOUT.test(msg) || OFF_THEN_MOVE_BY_HAND.test(msg);
+}
+
+/**
  * The phrase that triggers a safety stop, or null when the message should
  * take the normal chat path. Mirrors Python's two-tier short-circuit on the
  * lowercased, trimmed message.
@@ -199,6 +224,12 @@ export function matchSafetyStop(text: string): string | null {
     return ENERGIZED_ELECTRICAL_HAZARD;
   }
 
+  // #4113: an improvised lockout is a flag even when the message opens like a
+  // question — "what position should I leave it in?" is still the hazard.
+  if (detectImprovisedLockout(msg)) {
+    return IMPROVISED_LOCKOUT;
+  }
+
   for (const phrase of SAFETY_PHRASES) {
     if (msg.includes(phrase)) {
       return EDUCATIONAL_QUESTION_RE.test(msg) ? null : phrase;
@@ -217,6 +248,11 @@ export function matchSafetyStop(text: string): string | null {
  * follows. Classes are matched on the trigger the detector returned.
  */
 const HAZARD_BANNER_CLASSES: Array<{ re: RegExp; banner: string }> = [
+  {
+    re: /^improvised-lockout$/,
+    banner:
+      "⚠️ **Not a lockout.** A valve, knob, regulator or manual override does not isolate energy for people. Use the machine's authorized lockout procedure: lock every energy source, release or block stored air pressure, springs and gravity, verify zero energy — and keep out of the path of anything that can move.",
+  },
   {
     re: /smoke|fire|burning|burn mark|melted|exploded|shocked|arcing/,
     banner:
@@ -256,6 +292,7 @@ export function hazardBanner(trigger: string): string {
 /** Prompt directive for a flagged (non-electrical) turn: answer fully, keep
  *  isolation conditions inline at the step they apply, no lecture. */
 export function safetyFlagDirective(trigger: string): string {
+  if (trigger === IMPROVISED_LOCKOUT) return IMPROVISED_LOCKOUT_DIRECTIVE;
   return `## SAFETY FLAG: ${trigger}
 
 The question touches a hazard. Answer it fully and specifically — a technician
@@ -264,6 +301,24 @@ less informed. State the isolation / zero-energy / PPE condition inline, at the
 step it applies to. One line of hazard framing at most; never a lecture in
 place of the answer. The UI already shows a safety banner above your answer.`;
 }
+
+/** #4113 directive: answer the component question, but never endorse an
+ *  improvised device as personnel protection or tell anyone to move a part. */
+export const IMPROVISED_LOCKOUT_DIRECTIVE = `## SAFETY FLAG: improvised lockout
+
+The technician describes a valve, knob, regulator or manual override being used
+as a lockout, or air being turned off and a part then moved by hand.
+- Answer what the component is and what it does, from the evidence you have; say
+  plainly what you could not confirm.
+- State directly that this device (or regulator position) is NOT a personnel
+  lockout, and that the machine's authorized energy-control procedure governs:
+  lock every energy source, release or block stored pressure, springs and
+  gravity, and verify zero energy.
+- NEVER instruct them to push, pull or move the gate/part, press an override, or
+  bleed air "to test" it. Stored pressure or gravity can move it.
+- If they are relying on it as a lockout today, say to stop and escalate to
+  their supervisor / safety lead before anyone works in the path.
+The UI already shows a safety banner above your answer.`;
 
 /** A flagged turn shows its banner on EVERY outcome, including errors and
  *  refusals (a 412, a 503, a stopped stream): prefix a user-visible message. */

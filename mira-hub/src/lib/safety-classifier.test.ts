@@ -18,6 +18,9 @@ import {
   SAFETY_PHRASES_IMMEDIATE,
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
+  IMPROVISED_LOCKOUT,
+  hazardBanner,
+  flagDirectiveFor,
   detectEnergizedElectricalHazardIntent,
   safetyFlagHeaders,
   withSafetyFlag,
@@ -225,5 +228,33 @@ describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn sh
     expect(withSafetyFlag("Try again in a minute.", null)).toBe("Try again in a minute.");
     expect(safetyFlagHeaders("smoke coming")).toEqual({ "X-Safety-Flag": "smoke coming" });
     expect(safetyFlagHeaders(null)).toBeUndefined();
+  });
+});
+
+describe("#4113: improvised lockout is a flag with its own banner and directive", () => {
+  const Q2 =
+    "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
+
+  it.each([
+    Q2,
+    "We use the red knob as our lockout on the gates.",
+    "Is it ok to lockout with the regulator instead?",
+    "They rely on the push-lock button as a lock out.",
+    "Operators use the valve instead of lockout.",
+    "With the air off we just push the gate open by hand.",
+    "After the pressure is bled we move the clamp manually.",
+  ])("flags: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+    expect(hazardBanner(IMPROVISED_LOCKOUT)).toMatch(/Not a lockout/);
+    expect(flagDirectiveFor(IMPROVISED_LOCKOUT)).toMatch(/NOT a personnel\s+lockout/);
+  });
+
+  it.each([
+    "How do I perform lockout tagout?",
+    "Lock out the air supply valve at the FRL before replacing the cylinder.",
+    "What is the red button?",
+    "The regulator is set to 6 bar and the gate moves slowly.",
+  ])("does not flag a genuine lockout question or an ordinary one: %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
   });
 });
