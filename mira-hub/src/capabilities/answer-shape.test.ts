@@ -26,6 +26,16 @@ describe("withStepSafety", () => {
     expect(ISOLATION_STEP_RULE).toMatch(/qualified person under the site's energized-work procedure/);
   });
 
+  // #4122 slice 2, staging 9e4bf1f2: the power-restored exemption was used for work that
+  // never needs power ("tighten only after … power is restored"), and a breaker reset
+  // (which applies power) sat in a list headed "With the lockout in place".
+  it("keeps mechanical work de-energized and every power-applying action out of a locked-out list (#4122)", () => {
+    expect(ISOLATION_STEP_RULE).toMatch(/Tightening, torquing, replacing, cleaning or inspecting/);
+    expect(ISOLATION_STEP_RULE).toMatch(/never tell the technician to restore power first/);
+    expect(ISOLATION_STEP_RULE).toMatch(/Resetting a breaker/);
+    expect(ISOLATION_STEP_RULE).toMatch(/never under a lockout heading or inside a locked-out list/);
+  });
+
   it("still teaches no voltage number anywhere in the rule (#4096)", () => {
     expect(ISOLATION_STEP_RULE).not.toMatch(/\d\s*V\b/);
   });

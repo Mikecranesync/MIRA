@@ -22,7 +22,14 @@ export const ISOLATION_STEP_RULE =
   "never by re-energizing. If a check genuinely needs power (a live reading, a firmware load, a test " +
   "run), make it its own later step that says the lockout is removed and power restored by a " +
   "qualified person under the site's energized-work procedure; if it can be done de-energized, keep " +
-  "it de-energized.";
+  "it de-energized. " +
+  // #4122 slice 2 (staging 9e4bf1f2): the exemption above was stretched to work that
+  // never needs power ("tighten only after … power is restored"), and a breaker reset —
+  // which applies power — was listed under "With the lockout in place".
+  "Tightening, torquing, replacing, cleaning or inspecting are de-energized work: do them locked " +
+  "out and never tell the technician to restore power first. Resetting a breaker, re-fitting a fuse " +
+  "to see whether it trips, or starting the machine applies power, so it is an energized step — " +
+  "never under a lockout heading or inside a locked-out list; it goes in its own later step as above.";
 
 export function withStepSafety(systemPrompt: string): string {
   return `${systemPrompt}\n\n${ISOLATION_STEP_RULE}`;
