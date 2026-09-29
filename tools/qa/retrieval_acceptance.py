@@ -178,6 +178,7 @@ class Hub:
         trace_frame = next((f for f in frames if f.get("kind") == "trace"), {})
         return hd.get("x-mira-trace-id"), {
             "http": st,
+            "client_request_id": body["clientRequestId"],
             "kinds": [f.get("kind") for f in frames],
             "trace_frame": trace_frame,
             "citations": len(sources.get("citations") or []),
@@ -201,27 +202,25 @@ class Hub:
         return hd.get("x-mira-trace-id"), j
 
     def diagnostics(
-        self, notebook_id: str, trace_id: str | None, attempts: int = 8
+        self, notebook_id: str, client_request_id: str, attempts: int = 8
     ) -> dict[str, Any]:
-        if not trace_id:
-            raise RuntimeError(
-                f"no x-mira-trace-id on the chat response for notebook {notebook_id} (flight recorder disabled?)"
-            )
+        """The turn's durable packet, found by the idempotency key this harness sent.
+
+        Keyed on client_request_id, not the trace id: a turn not sampled for export
+        (MIRA_OTEL_TURN_SAMPLE_RATIO < 1, #4107) has no trace id but still has its packet.
+        """
+        path = (
+            f"/api/equipment-notebooks/{notebook_id}/turns/diagnostics/"
+            f"?client_request_id={client_request_id}"
+        )
         for _ in range(attempts):
-            st, _, j = self.json(
-                "GET", f"/api/equipment-notebooks/{notebook_id}/turns/diagnostics/?limit=5"
-            )
-            rows = (j or {}).get("turns") or [] if isinstance(j, dict) else []
-            hit = next((t for t in rows if t.get("traceId") == trace_id), None)
-            if hit:
-                st2, _, d = self.json(
-                    "GET",
-                    f"/api/equipment-notebooks/{notebook_id}/turns/{hit['turnId']}/diagnostics/",
-                )
-                if st2 == 200 and isinstance(d, dict) and d.get("packet"):
-                    return d
+            st, _, d = self.json("GET", path)
+            if st == 200 and isinstance(d, dict) and d.get("packet"):
+                return d
             time.sleep(2)
-        raise RuntimeError(f"no diagnostics row for trace {trace_id} on notebook {notebook_id}")
+        raise RuntimeError(
+            f"no diagnostics packet for client_request_id {client_request_id} on notebook {notebook_id}"
+        )
 
     def attach_manual(self, notebook: dict[str, Any], pdf: Path) -> str:
         st, _, up = self.multipart(
@@ -247,11 +246,12 @@ class Hub:
 
 def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
     p = d["packet"]
+    # Sampled turn: one trace id on header, packet and trace frame. Unsampled turn
+    # (#4107 turn sampling): no trace id anywhere, never a mismatched one.
+    ids = {row.trace_id, d.get("traceId"), w["trace_frame"].get("traceId")}
     row.check(
-        "trace id on header == packet == diagnostics",
-        bool(row.trace_id)
-        and d.get("traceId") == row.trace_id
-        and w["trace_frame"].get("traceId") == row.trace_id,
+        "trace id on header == packet == diagnostics (or absent on all three)",
+        len(ids) == 1,
         f"hdr={row.trace_id} pkt={d.get('traceId')} frame={w['trace_frame'].get('traceId')}",
     )
     row.check(
@@ -330,7 +330,7 @@ def run(args: argparse.Namespace) -> int:
     row.trace_id, w = hub.chat(
         nb["id"], {"message": "how does a VFD work in general", "mode": "general"}
     )
-    d = hub.diagnostics(nb["id"], row.trace_id)
+    d = hub.diagnostics(nb["id"], w["client_request_id"])
     row.turn_id = d["turnId"]
     p = d["packet"]
     row.check(
@@ -364,7 +364,7 @@ def run(args: argparse.Namespace) -> int:
             "mode": "general",
         },
     )
-    d = hub.diagnostics(nb["id"], row.trace_id)
+    d = hub.diagnostics(nb["id"], w["client_request_id"])
     row.turn_id = d["turnId"]
     p = d["packet"]
     r = p["retrieval"]
@@ -422,7 +422,7 @@ def run(args: argparse.Namespace) -> int:
             "sourceDocIds": [doc_id],
         },
     )
-    d = hub.diagnostics(nb["id"], row.trace_id)
+    d = hub.diagnostics(nb["id"], w["client_request_id"])
     row.turn_id = d["turnId"]
     p = d["packet"]
     r = p["retrieval"]
@@ -473,7 +473,7 @@ def run(args: argparse.Namespace) -> int:
             },
         },
     )
-    d_photo = hub.diagnostics(nb["id"], t_photo)
+    d_photo = hub.diagnostics(nb["id"], w_photo["client_request_id"])
     row.check(
         "photo turn: observation in context",
         d_photo["packet"]["visual_evidence"]["observation_in_context"]
@@ -498,7 +498,7 @@ def run(args: argparse.Namespace) -> int:
             ],
         },
     )
-    d = hub.diagnostics(nb["id"], row.trace_id)
+    d = hub.diagnostics(nb["id"], w["client_request_id"])
     row.turn_id = d["turnId"]
     p = d["packet"]
     v, c, r = p["visual_evidence"], p["context"], p["retrieval"]
@@ -544,7 +544,7 @@ def run(args: argparse.Namespace) -> int:
             "mode": "general",
         },
     )
-    d = hub.diagnostics(nb["id"], row.trace_id)
+    d = hub.diagnostics(nb["id"], w["client_request_id"])
     row.turn_id = d["turnId"]
     p = d["packet"]
     a = p["answer_gate"]
