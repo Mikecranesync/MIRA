@@ -244,3 +244,17 @@ describe("Codex #4120 r9", () => {
     expect(proposeIdentityFromText(text, CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r10", () => {
+  it.each([
+    ["Siemens S7-1200 has 100 inputs", { manufacturer: "Siemens", model: "S7-1200" }],
+    ["Allen-Bradley SLC 5/03 lost comms at baud 19200", { manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+    ["Allen-Bradley SLC 5/03 ran 100 hours before it faulted", { manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+  ])("F13: an ordinary word before a number does not block the proposal: %s", (text, want) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toEqual(want);
+  });
+  it.each(["Compare Allen-Bradley SLC 5/03 and compactlogix 5380", "Compare Allen-Bradley SLC 5/03 and slc 5/05"])(
+    "F13 control: a recognized lowercase family still refuses: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+});

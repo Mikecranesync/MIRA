@@ -23,6 +23,7 @@
  *    (two different ones named) yields no proposal.
  */
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
+import { inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
 
 export interface IdentityProposal {
@@ -175,15 +176,6 @@ const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
-/** Ordinary words that precede a number in prose, never a product family. */
-const SCAN_STOPWORDS = new Set([
-  "a", "an", "and", "or", "the", "to", "of", "in", "on", "at", "by", "for", "with", "from", "about", "than",
-  "over", "under", "after", "before", "every", "per", "since", "until", "is", "are", "was", "were", "be",
-  "page", "pages", "step", "steps", "section", "chapter", "figure", "table", "item", "line", "row", "rev",
-  "version", "ver", "code", "error", "fault", "alarm", "parameter", "param", "address", "register", "slot",
-  "port", "node", "station", "channel", "ch", "input", "output", "terminal", "pin", "wire", "cable", "no",
-  "number", "model", "type", "series", "size", "approx", "around", "only", "just", "last", "next",
-]);
 
 /** CamelCase product-family word ("MicroLogix", "PowerFlex", "CompactLogix"). */
 const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
@@ -195,7 +187,8 @@ const CAMEL_FAMILY_RE = /^[A-Z][a-z]+[A-Z][A-Za-z]*$/;
  * A generic device word only counts as a family with a separated number
  * ("PLC 5/40", not "PLC 5"), and "PLC S7-1200" yields the model alone.
  */
-function modelMentions(message: string): string[] {
+function modelMentions(message: string, chosenModel: string): string[] {
+  const chosenFamily = chosenModel.includes(" ") ? chosenModel.split(" ")[0].toUpperCase() : null;
   const tokens = message
     .split(/\s+/)
     .map((t) => cleanToken(t.replace(/^[("'‘“[]+/u, "")))
@@ -211,15 +204,22 @@ function modelMentions(message: string): string[] {
       out.push(t);
       continue;
     }
-    if (!next || isModelToken(next) || !isFamilyNumber(next) || NON_MACHINE_TOKEN_RE.test(next)) continue;
+    // A next token that is a model on its own ("the s7-1200") is scanned at its
+    // own position — never glued to the word before it.
+    const nextIsModel = next && (isModelToken(next) || (next.length >= 3 && isModelToken(next.toUpperCase())));
+    if (!next || nextIsModel || !isFamilyNumber(next) || NON_MACHINE_TOKEN_RE.test(next)) continue;
     if (tokens[i + 2] && UNIT_WORD_RE.test(tokens[i + 2])) continue;
     const allCapsFamily =
       ALLCAPS_CODE_RE.test(t) && (!GENERIC_DEVICE_WORDS.has(t) || /[/.\-]/.test(next));
-    // A lowercase family ("slc 5/04", "micrologix 1400") counts too, when its
-    // number is family-shaped (a separator, or 3+ digits) and the word is not an
-    // ordinary short word ("for 2 hours") — Codex #4120 r9 F12.
+    // A lowercase family ("slc 5/04", "micrologix 1400") counts too — but only
+    // a RECOGNIZED one: the chosen machine's own family, or a family the shared
+    // equipment vocabulary knows (equipment-type.ts). An ordinary word before a
+    // number ("has 100 inputs", "baud 19200") is never a machine (Codex #4120
+    // r9 F12, r10 F13).
     const lowerFamily =
-      LOWER_FAMILY_RE.test(t) && !SCAN_STOPWORDS.has(t.toLowerCase()) && /[/.\-]|\d{3,}/.test(next);
+      LOWER_FAMILY_RE.test(t) &&
+      ((chosenFamily !== null && t.toUpperCase() === chosenFamily) ||
+        inferEquipmentType({ modelNumber: `${t} ${next}` }) !== "Other");
     if (CAMEL_FAMILY_RE.test(t) || allCapsFamily || lowerFamily) {
       out.push(`${t} ${next}`);
       i++;
@@ -268,7 +268,7 @@ export function proposeIdentityFromText(
     if (candidates.size !== 1) return null;
     const only = [...candidates.values()][0];
     const chosen = canonicalModel(only.model);
-    return modelMentions(message).every((m) => sameMachine(m, only.model, chosen)) ? only : null;
+    return modelMentions(message, only.model).every((m) => sameMachine(m, only.model, chosen)) ? only : null;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
