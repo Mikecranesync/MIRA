@@ -34,6 +34,10 @@ from pathlib import Path
 
 import httpx
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from answer_radar.openai_direct import DEFAULT_MODEL as DEFAULT_OPENAI_MODEL  # noqa: E402
+from answer_radar.openai_direct import BudgetExceeded, OpenAIDirect  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -285,6 +289,7 @@ def evaluate_question(
     rag_context: str = "",
     provider: str = "openwebui",
     provider_url: str = "",
+    openai_client: OpenAIDirect | None = None,
 ) -> dict:
     """Send one question to the API and score the response."""
     result = {
@@ -316,6 +321,8 @@ def evaluate_question(
             response_text = _call_claude(
                 client, api_key, model, system_content, user_content, max_tokens=tokens,
             )
+        elif provider == "openai":
+            response_text = openai_client.complete(client, system_content, user_content)
         elif provider in ("groq", "cerebras"):
             tokens = 800 if is_calc else 300
             response_text = _call_openai_compat(
@@ -327,6 +334,8 @@ def evaluate_question(
         result["response_raw"] = response_text
         result["model_answer"] = parse_answer(response_text)
         result["is_correct"] = result["model_answer"] == q["key"]
+    except BudgetExceeded:
+        raise
     except httpx.TimeoutException:
         result["error"] = "TIMEOUT"
         logger.warning("Q%d: timeout after %ds", q["id"], REQUEST_TIMEOUT)
@@ -341,7 +350,7 @@ def evaluate_question(
     return result
 
 
-def write_results(results: list[dict], model: str, timestamp: str) -> None:
+def write_results(results: list[dict], model: str, timestamp: str, requested: int | None = None) -> None:
     """Write the three output files."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -351,6 +360,8 @@ def write_results(results: list[dict], model: str, timestamp: str) -> None:
         "model": model,
         "timestamp": timestamp,
         "total": len(results),
+        "requested": requested if requested is not None else len(results),
+        "complete": requested is None or len(results) == requested,
         "correct": sum(1 for r in results if r["is_correct"]),
         "results": results,
     }
@@ -374,6 +385,8 @@ def write_results(results: list[dict], model: str, timestamp: str) -> None:
     # 3. Human-readable report
     report_path = RESULTS_DIR / "mcq_eval_report.txt"
     report = build_report(results, model, timestamp)
+    if requested is not None and len(results) < requested:
+        report = f"INCOMPLETE RUN: {len(results)} of {requested} questions answered (budget stop)\n" + report
     with open(report_path, "w") as f:
         f.write(report)
     logger.info("Written: %s", report_path)
@@ -477,12 +490,15 @@ def main():
     parser.add_argument("--rag", action="store_true", help="Enable NeonDB RAG retrieval per question")
     parser.add_argument("--claude", action="store_true", help="Use Claude API instead of Open WebUI")
     parser.add_argument("--groq", action="store_true", help="Use Groq API (Llama 3.3 70B)")
+    parser.add_argument("--openai", action="store_true", help="Use api.openai.com directly (paid)")
+    parser.add_argument("--budget-usd", type=float, default=0.0, help="Hard spend cap for --openai (required)")
     parser.add_argument("--cerebras", action="store_true", help="Use Cerebras API (Llama 3.1 8B)")
     parser.add_argument("--ollama-url", type=str, default=None, help="Ollama URL for RAG embeddings")
     args = parser.parse_args()
 
     provider = "openwebui"
     provider_url = ""
+    openai_client = None
     if args.groq:
         provider = "groq"
         provider_url = GROQ_API_URL
@@ -491,6 +507,15 @@ def main():
             logger.error("GROQ_API_KEY not set.")
             sys.exit(1)
         model = args.model or os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    elif args.openai:
+        provider = "openai"
+        api_key = ""
+        model = args.model or os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+        try:
+            openai_client = OpenAIDirect(model, args.budget_usd)
+        except ValueError as e:
+            logger.error("--openai: %s", e)
+            sys.exit(1)
     elif args.cerebras:
         provider = "cerebras"
         provider_url = CEREBRAS_API_URL
@@ -553,14 +578,24 @@ def main():
             if rag_mode:
                 rag_context = retrieve_rag_context(q["stem"], ollama_url)
 
-            result = evaluate_question(
-                q, client, url, model, api_key,
-                rag_context=rag_context, provider=provider, provider_url=provider_url,
-            )
+            try:
+                result = evaluate_question(
+                    q, client, url, model, api_key,
+                    rag_context=rag_context, provider=provider, provider_url=provider_url,
+                    openai_client=openai_client,
+                )
+            except BudgetExceeded as e:
+                logger.error("Budget stop before Q%d: %s", q["id"], e)
+                break
             results.append(result)
 
             if result["is_correct"]:
                 correct_count += 1
+
+            if openai_client and openai_client.spent_usd >= openai_client.budget_usd:
+                logger.error("Budget reached ($%.4f) after %d questions; stopping.",
+                             openai_client.spent_usd, i)
+                break
 
             # Delay between requests
             if i < len(questions):
@@ -569,11 +604,19 @@ def main():
     print()  # newline after progress
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    write_results(results, model, timestamp)
+    write_results(results, model, timestamp, requested=len(questions))
 
     # Print summary to stdout
     report = build_report(results, model, timestamp)
     print(report)
+    if openai_client:
+        print(f"OpenAI spend: ${openai_client.spent_usd:.4f} "
+              f"({openai_client.tokens_in} in / {openai_client.tokens_out} out tokens)")
+    if len(results) < len(questions):
+        # A budget-truncated run is not a benchmark result (#4092 Codex round 2 F3).
+        print(f"INCOMPLETE: {len(results)} of {len(questions)} questions answered; "
+              "the report above covers only the answered subset.")
+        sys.exit(3)
 
 
 if __name__ == "__main__":

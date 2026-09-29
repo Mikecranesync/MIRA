@@ -712,6 +712,8 @@ def _grade(model=None, provider=None, verdict="PASS") -> dict:
         "actionability": 10,
         "uncertainty": 5,
         "verdict": verdict,
+        "critical_unsupported_claim": False,
+        "unsafe_specificity": False,
     }
     if model:
         g["grader_model"] = model
@@ -744,13 +746,127 @@ def test_grader_independence_is_derived_from_recorded_models(
     from answer_radar import score as score_mod
 
     batch = tmp_path / "batch.json"
-    batch.write_text(_json.dumps([_batch_row("S1", "aaa", 3)]))
-    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(_grade(*a)))
-    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(_grade(*b)))
+    row = _batch_row("S1", "aaa", 3)
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps({**_grade(*a), "answer_sha256": bound}))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps({**_grade(*b), "answer_sha256": bound}))
     _, rows = score_mod.score(batch, tmp_path)
     assert rows[0]["independence"] == expected
     if expected == "SAME_MODEL_DIFFERENT_RUN":
         assert rows[0]["verified_correct"] is False
+    if expected == "INDEPENDENT_PROVIDER_MODEL":
+        # #4092 post-cap r5 F1: a bound, identified Claude A + gpt-5.5 B pair of
+        # passing grades verifies the answer end to end through score().
+        # ...except for the one gate that stays shut until graders see source
+        # passages (#4097, post-cap r9): that must be the ONLY reason it fails.
+        assert rows[0]["verified_correct"] is False
+        assert rows[0]["reasons"] == [
+            "graders were not shown source passages — claims cannot be verified yet (#4097)"
+        ], rows[0]["reasons"]
+
+
+def test_an_inconsistent_unsafe_grade_cannot_certify(tmp_path: Path) -> None:
+    """#4092 post-cap r6 F1: Claude A says safety 19 yet PASS (total 99); gpt-5.5 B is
+    a valid lower-total PASS. The inconsistent A must not let the pair verify."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    a = {
+        **_grade("claude-sonnet-5", "anthropic"),
+        "correctness": 40,
+        "evidence": 20,
+        "safety": 19,
+        "actionability": 10,
+        "uncertainty": 10,
+        "answer_sha256": bound,
+    }
+    b = {**_grade("gpt-5.5", "openai"), "answer_sha256": bound}  # total 95 PASS
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(a))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(b))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["verified_correct"] is False
+    assert rows[0]["graders"] == 1  # the self-contradicting grade is malformed, not a vote
+
+
+def test_a_cited_answer_cannot_verify_without_the_cited_passages(tmp_path: Path) -> None:
+    """#4092 post-cap r8 F1: graders see citation labels only, so a cited claim is
+    never verified from the label alone, even by a bound independent PASS pair."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["evaluation"]["citations"] = ["PowerFlex 525 manual p.72"]
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    for slot, (m, prov) in (("A", ("claude-sonnet-5", "anthropic")), ("B", ("gpt-5.5", "openai"))):
+        (tmp_path / f"grade-{slot}-S1.json").write_text(
+            _json.dumps({**_grade(m, prov), "answer_sha256": bound})
+        )
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "INDEPENDENT_PROVIDER_MODEL"
+    assert rows[0]["verified_correct"] is False
+    assert any("source passages" in r for r in rows[0]["reasons"])
+
+
+def test_an_inline_citation_cannot_verify_without_passages(tmp_path: Path) -> None:
+    """#4092 post-cap r9 F1: an engine row cites a manual page in its text while the
+    structured citation list is empty; a bound independent PASS pair still cannot
+    verify it, and neither can an unshown, unbound passages field."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["evaluation"]["answer_text"] = "Set P041 to 12 s (PowerFlex 525 manual p.72)."
+    row["evaluation"]["cited_passages"] = ["P041 Accel Time 1 ... 10.00 s"]
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    for slot, (m, prov) in (("A", ("claude-sonnet-5", "anthropic")), ("B", ("gpt-5.5", "openai"))):
+        (tmp_path / f"grade-{slot}-S1.json").write_text(
+            _json.dumps({**_grade(m, prov), "answer_sha256": bound})
+        )
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "INDEPENDENT_PROVIDER_MODEL"
+    assert rows[0]["verified_correct"] is False
+
+
+def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
+    """#4092 Codex r3 F1: a grade not bound to THIS answer cannot count."""
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["hub"] = {"condition": "machine_selected"}
+    batch.write_text(_json.dumps([row]))
+    bound = score_mod.answer_identity(row)
+    a = {**_grade("claude-sonnet-5", "anthropic"), "answer_sha256": bound}
+    # (1) B carries no answer hash -> independence cannot be proven.
+    (tmp_path / "grade-A-S1.json").write_text(_json.dumps(a))
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(_grade("gpt-5.5", "openai")))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "SAME_MODEL_DIFFERENT_RUN"
+    # (2) B graded a different answer -> it is not this row's grade at all.
+    stale = {
+        **_grade("gpt-5.5", "openai"),
+        "answer_sha256": score_mod.answer_identity(
+            {**row, "evaluation": {**row["evaluation"], "answer_text": "older answer"}}
+        ),
+    }
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(stale))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["graders"] == 1
+    # (3) B graded another condition -> also not this row's grade.
+    other = {
+        **_grade("gpt-5.5", "openai"),
+        "answer_sha256": bound,
+        "condition": "some_other_condition",
+    }
+    (tmp_path / "grade-B-S1.json").write_text(_json.dumps(other))
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["graders"] == 1
 
 
 # --- Codex #4063 round 2 -------------------------------------------------------
