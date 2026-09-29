@@ -96,6 +96,12 @@ export type TurnEvidencePacketIdentity = {
   model_present: boolean;
   order_number_present: boolean;
   unresolved_reason: string | null;
+  /**
+   * #4095 — a machine PROPOSED from the technician's free text in an unbound
+   * notebook (never bound, never used for retrieval on this turn). Null when
+   * none was proposed.
+   */
+  proposal: { manufacturer: string; model: string } | null;
 };
 
 export type TurnEvidencePacketRetrieval = {
@@ -321,6 +327,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       model_present: false,
       order_number_present: false,
       unresolved_reason: null,
+      proposal: null,
     },
     retrieval: {
       strategy: null,

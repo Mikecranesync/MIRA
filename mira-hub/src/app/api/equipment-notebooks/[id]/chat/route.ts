@@ -45,6 +45,12 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import {
+  proposeIdentityFromText,
+  unconfirmedMachineDirective,
+  type IdentityProposal,
+  type NotebookIdentityProposalFrame,
+} from "@/capabilities/identity-proposal";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
 import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
@@ -1718,6 +1724,30 @@ async function handleChatTurn(
     }
   })();
   const oemModel = oemIdentity.model;
+  // #4095 (owner decisions 2026-09-28/29) — "propose, then confirm". A general
+  // turn in an UNBOUND notebook that names a library manufacturer and a model
+  // gets an identity_proposal frame. It never binds, never scopes retrieval on
+  // this turn (retrieval above is already decided), and the answer is told the
+  // machine is unconfirmed so it cannot state that machine's specs or service
+  // procedures. Fail-open: any error means no proposal.
+  const identityProposal: IdentityProposal | null = await (async () => {
+    if (!general || notebookRetrieval || oemManufacturer !== null) return null;
+    if (nb?.manufacturer?.trim() || nb?.model?.trim()) return null;
+    let client: PoolClient | null = null;
+    try {
+      client = await pool.connect();
+      return proposeIdentityFromText(message, await corpusManufacturers(client));
+    } catch (err) {
+      console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      try {
+        client?.release();
+      } catch {
+        /* already released */
+      }
+    }
+  })();
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
@@ -2134,6 +2164,7 @@ async function handleChatTurn(
   rec.stage("identity", {
     manufacturer_present: Boolean(nb?.manufacturer),
     model_present: Boolean(nb?.model),
+    proposal: identityProposal,
   });
   setSpanAttrs(
     {
@@ -2258,7 +2289,7 @@ async function handleChatTurn(
   const systemPrompt = withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
-      : withVisual + machineContext,
+      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
  ));
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -3239,6 +3270,12 @@ async function handleChatTurn(
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
+      // #4095 — the proposal rides next to the answer; the client offers
+      // "Use its manuals" / "Not this". Emitted whatever the answer status.
+      if (identityProposal) {
+        const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
+        controller.enqueue(enc.encode(sse(proposalFrame)));
+      }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]
