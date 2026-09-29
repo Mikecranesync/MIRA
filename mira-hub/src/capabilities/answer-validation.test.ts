@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
-import { chunkForRelease, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
+import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
   validateAnswer({ answerText, question, general: false, served: true, refused: false });
@@ -712,5 +712,63 @@ describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036
   it("unsupportedExactRating returns the matched excerpt", () => {
     expect(unsupportedExactRating("The maximum speed is 1750 rpm.")).toMatch(/1750\s*rpm/i);
     expect(unsupportedExactRating("Speed depends on the drive setting.")).toBeNull();
+  });
+});
+
+
+describe("#4098: exact-rating match facts and fallback copy", () => {
+  it("names the quantity word and unit that fired, without answer text", () => {
+    // Measured, and the likely Q77 trigger: the reference temperature "at 0 °C"
+    // is what matches, not "100 Ω" — `ω` is a non-word character, so the unit
+    // alternative's trailing \b can never follow it.
+    const m = exactRatingMatch("A PT100 has a nominal resistance of 100 Ω at 0 °C.");
+    expect(m).toMatchObject({ term: "nominal", unit: "°c" });
+    expect(exactRatingMatch("The drive typically runs at 480 V.")).toBeNull(); // hedged
+  });
+
+  it("validateAnswer carries the match on an exact-rating block", () => {
+    const v = validateAnswer({
+      answerText: "The supply voltage is 480 VAC.",
+      question: "what voltage does it take",
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: false,
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.match).toEqual({ term: "supply", unit: "vac" });
+  });
+
+  // #4104 review: classifying the question to pick the copy failed both ways
+  // ("keeps tripping" lost triage, F1; "I lost the manual" gained it, F4). The
+  // fallback no longer classifies — every question gets both labelled steps.
+  it.each([
+    "I need the manual and commissioning software for an obsolete positioning controller. Where is it?",
+    "I lost the manual for my Festo SPC-100-P-F. Where can I download a replacement?",
+    "The manufacturer does not list the manual for the SPC-100. Where can I download it?",
+    "my drive keeps tripping on overvoltage",
+    "the conveyor stopped and won't start",
+    "what is the rated torque of the gearbox",
+  ])("offers both the fault and the documentation next step: %s", (q) => {
+    const v = validateAnswer({
+      answerText: "The supply voltage is 480 VAC.",
+      question: q,
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: false,
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.violation).toBe("unsupported-specificity:exact-rating");
+      expect(v.replacement).toContain("If this is about a fault or a stopped machine: confirm the exact code");
+      expect(v.replacement).toContain("If you need the document itself: get it from the manufacturer's support or documentation site");
+    }
+  });
+
+  it("a code-meaning fallback keeps the code-specific head and both steps", () => {
+    const t = specificityFallback("F005");
+    expect(t).toContain("I can't verify what F005 means");
+    expect(t).toContain("If this is about a fault or a stopped machine");
   });
 });
