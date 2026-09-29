@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
-import { chunkForRelease, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
+import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
   validateAnswer({ answerText, question, general: false, served: true, refused: false });
@@ -712,5 +712,52 @@ describe("exact-rating claims with no evidence (2026-09-22 staging traces 952036
   it("unsupportedExactRating returns the matched excerpt", () => {
     expect(unsupportedExactRating("The maximum speed is 1750 rpm.")).toMatch(/1750\s*rpm/i);
     expect(unsupportedExactRating("Speed depends on the drive setting.")).toBeNull();
+  });
+});
+
+
+describe("#4098: exact-rating match facts and fallback copy", () => {
+  it("names the quantity word and unit that fired, without answer text", () => {
+    // Measured, and the likely Q77 trigger: the reference temperature "at 0 °C"
+    // is what matches, not "100 Ω" — `ω` is a non-word character, so the unit
+    // alternative's trailing \b can never follow it.
+    const m = exactRatingMatch("A PT100 has a nominal resistance of 100 Ω at 0 °C.");
+    expect(m).toMatchObject({ term: "nominal", unit: "°c" });
+    expect(exactRatingMatch("The drive typically runs at 480 V.")).toBeNull(); // hedged
+  });
+
+  it("validateAnswer carries the match on an exact-rating block", () => {
+    const v = validateAnswer({
+      answerText: "The supply voltage is 480 VAC.",
+      question: "what voltage does it take",
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: false,
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.match).toEqual({ term: "supply", unit: "vac" });
+  });
+
+  it.each([
+    "I need the manual and commissioning software for an obsolete positioning controller. Where is it?",
+    "Where can I download the user manual for this panel?",
+    "what is the rated torque of the gearbox",
+  ])("non-fault question gets the documentation next step: %s", (q) => {
+    const t = specificityFallback(null, q);
+    expect(t).toContain("manufacturer's support or documentation site");
+    expect(t).not.toContain("Confirm the exact code");
+  });
+
+  it.each([
+    "the drive trips on overcurrent at startup",
+    "what does alarm 12 mean",
+    "it shows an error after the swap",
+  ])("fault question keeps the fault-triage steps: %s", (q) => {
+    expect(specificityFallback(null, q)).toContain("Confirm the exact code");
+  });
+
+  it("a code-meaning fallback always keeps the triage steps", () => {
+    expect(specificityFallback("F005", "where is the manual")).toContain("Confirm the exact code");
   });
 });

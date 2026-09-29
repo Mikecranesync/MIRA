@@ -46,6 +46,9 @@ export type AnswerValidation =
       detail: string;
       /** Full deterministic replacement served instead of the candidate. */
       replacement: string;
+      /** Closed-vocabulary facts about the match (never answer text), safe to
+       *  record on the Turn Evidence Packet (#4098). */
+      match?: { term: string; unit: string };
     };
 
 /* ------------------------------------------------------------------------ *
@@ -620,8 +623,13 @@ const QTY =
   "(?:rated|rating|ratings|range|maximum|minimum|max|min|nominal|operating|supply|input|output|limit|limits|spec|specification|tolerance|clearance|torque|pressure|voltage|current|speed|temperature|frequency|power|capacity|width|height|length|depth|weight|diameter|thickness|gap|setting|setpoint)";
 const HEDGE =
   /\b(?:typically|usually|often|generally|commonly|normally|for example|e\.g\.|such as|many|most|some|industrial|standard|common|might|may|could|would|should|approximately|around|about|roughly|likely)\b/i;
+// Capture groups name WHICH quantity word and unit matched — closed-vocabulary
+// tokens of this grammar, never answer text (#4098: the Turn Evidence Packet
+// may carry these, so a false refusal can be diagnosed from staging turns).
+// Groups: 1 quantity word, 2 unit (quantity-first); 3 unit, 4 rating word
+// (value-first). Adding groups does not change what matches.
 const EXACT_RATING_RE = new RegExp(
-  `\\b${QTY}\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*${UNIT}\\b|\\b(?:${RANGE}|${NUM})\\s*${UNIT}\\b[^.!?\\n]{0,40}?\\b(?:rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
+  `\\b(${QTY})\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*(${UNIT})\\b|\\b(?:${RANGE}|${NUM})\\s*(${UNIT})\\b[^.!?\\n]{0,40}?\\b(rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
   "i",
 );
 
@@ -629,11 +637,26 @@ const EXACT_RATING_RE = new RegExp(
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
 export function unsupportedExactRating(text: string): string | null {
+  return exactRatingMatch(text)?.excerpt ?? null;
+}
+
+/** Which part of the exact-rating grammar fired. `term` and `unit` are tokens
+ *  of this file's closed vocabulary (lower-cased), safe for the text-free
+ *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
+export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
+
+export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
     const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    if (m) {
+      return {
+        excerpt: m[0].slice(0, 160),
+        term: (m[1] ?? m[4] ?? "").toLowerCase(),
+        unit: (m[2] ?? m[3] ?? "").toLowerCase().replace(/\s+/g, ""),
+      };
+    }
   }
   return null;
 }
@@ -845,11 +868,30 @@ function codeMeaningViolation(
 
 /** Deterministic replacement for a specificity rejection — honest about the
  *  gap, still useful, funnels to upload (#3787 two-lane design, guardrails
- *  2–4). Never interpolates model output beyond the technician-shaped code. */
-export function specificityFallback(code: string | null): string {
+ *  2–4). Never interpolates model output beyond the technician-shaped code.
+ *
+ *  #4098: the fault-triage steps are the right next step only for a fault
+ *  question. A request for a manual, software or a specification got "confirm
+ *  the exact code on the display" (Answer Radar seed 002). The copy now follows
+ *  the question: a fault code or fault context (FAULT_CONTEXT, the same test
+ *  the code-meaning rule uses) keeps the triage steps; anything else gets the
+ *  documentation next step. Copy only — what is withheld is unchanged. */
+export function specificityFallback(code: string | null, question = ""): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
+  // Not faultCodeTokens(question): a model name like "SPC-100" is code-shaped
+  // and would send every documentation request back to fault triage.
+  const fault = code !== null || FAULT_CONTEXT.test(question);
+  if (!fault) {
+    return `${head}
+
+What you can do next:
+- Get it from the source that owns it: the manufacturer's support or documentation site, or your distributor. Search by the exact model or part number on the nameplate.
+- For obsolete equipment, ask the manufacturer or distributor for the archived manual (and any required software) by name.
+
+If you add the manual to this notebook and ask again, I'll answer from it and show you the page.`;
+  }
   return `${head}
 
 What I can tell you honestly:
@@ -1005,7 +1047,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: `fabricated-doc:${p.id}`,
         detail: m[0].slice(0, 160),
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, scanQuestion),
       };
     }
   }
@@ -1017,19 +1059,20 @@ export function validateAnswer(opts: {
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:exact-setting",
       detail: es[0].slice(0, 160),
-      replacement: specificityFallback(null),
+      replacement: specificityFallback(null, scanQuestion),
     };
   }
 
   if (!evidenceSufficient) {
-    const er = unsupportedExactRating(scanText);
+    const er = exactRatingMatch(scanText);
     if (er) {
       return {
         ok: false,
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
-        detail: er,
-        replacement: specificityFallback(null),
+        detail: er.excerpt,
+        replacement: specificityFallback(null, scanQuestion),
+        match: { term: er.term, unit: er.unit },
       };
     }
   }
