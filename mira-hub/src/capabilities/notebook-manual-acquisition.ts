@@ -36,6 +36,8 @@ export const STALE_RUNNING_MINUTES = 10;
  * turn (Codex #4118 r7 F12). Every other finished outcome is final for its key.
  */
 export const UNAVAILABLE_RETRY_MINUTES = 30;
+/** At most this many automatic retries per identity; after that the outcome stands. */
+export const MAX_AUTOMATIC_RETRIES = 3;
 
 /** safe-download rejections that say nothing about the file — only that it could not be fetched right now. */
 const TRANSIENT_DOWNLOAD_REASONS = new Set(["timeout", "network_error"]);
@@ -62,6 +64,8 @@ export interface AcquisitionRecord {
   doc_id?: string | null;
   /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
   file_id?: string | null;
+  /** Automatic retries already spent on a retryable failure (capped by MAX_AUTOMATIC_RETRIES). */
+  retries?: number;
   /** Why a download failed, when it did (safe-download's rejection reason). */
   download_reason?: string | null;
   /** Set at read time: the acquired source was since removed or rejected by the technician. */
@@ -139,7 +143,13 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
             SET manual_acquisition = jsonb_build_object(
                   'key', $3::text, 'state', 'running', 'gen', gen_random_uuid()::text,
                   'started_at', to_jsonb(now()), 'finished_at', NULL,
-                  'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL)
+                  'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL,
+                  -- Automatic retries of a retryable failure are counted and capped
+                  -- (Codex #4118 r12 F16): a PDF that never reads stops, eventually.
+                  'retries', CASE WHEN manual_acquisition->>'key' = $3::text
+                                   AND manual_acquisition->>'state' = 'search_unavailable'
+                                  THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
+                                  ELSE 0 END)
           WHERE tenant_id = $1 AND id = $2
             AND (manual_acquisition IS NULL
                  OR manual_acquisition->>'key' IS DISTINCT FROM $3::text
@@ -147,10 +157,11 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                      AND (manual_acquisition->>'started_at')::timestamptz
                          < now() - make_interval(mins => $4))
                  OR (manual_acquisition->>'state' = 'search_unavailable'
+                     AND COALESCE((manual_acquisition->>'retries')::int, 0) < $6
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
                          < now() - make_interval(mins => $5)))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -171,6 +182,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     warning?: unknown;
     reason?: unknown;
     httpStatus?: unknown;
+    ingestFailed?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -185,10 +197,14 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // the network dropped) is retryable, like an unavailable search; every other
   // rejection is a security/content guard and stays final (Codex #4118 r10 F15).
   const downloadReason = out.status === "download_rejected" ? str(p.reason) : null;
+  // A PDF that downloaded but could not be READ for a non-scan reason (e.g. the
+  // database dropped mid-ingest) is retryable too (Codex #4118 r12 F16).
+  const transientIngest = out.status === "candidate_review" && p.ingestFailed === true;
   const transientDownload =
-    downloadReason !== null &&
-    (TRANSIENT_DOWNLOAD_REASONS.has(downloadReason) ||
-      (downloadReason === "http_error" && typeof p.httpStatus === "number" && TRANSIENT_HTTP_STATUSES.has(p.httpStatus)));
+    transientIngest ||
+    (downloadReason !== null &&
+      (TRANSIENT_DOWNLOAD_REASONS.has(downloadReason) ||
+        (downloadReason === "http_error" && typeof p.httpStatus === "number" && TRANSIENT_HTTP_STATUSES.has(p.httpStatus))));
   return {
     key,
     state: indexingElsewhere ? "running" : transientDownload ? "search_unavailable" : out.status,
@@ -315,8 +331,9 @@ async function finish(tenantId: string, notebookId: string, rec: AcquisitionReco
       // Only overwrite OUR claim: a re-bind to another identity mid-search wins.
       await c.query(
         `UPDATE equipment_notebooks
-            SET manual_acquisition = jsonb_set($3::jsonb, '{started_at}',
-                  COALESCE(manual_acquisition->'started_at', 'null'::jsonb))
+            SET manual_acquisition = jsonb_set(
+                  jsonb_set($3::jsonb, '{started_at}', COALESCE(manual_acquisition->'started_at', 'null'::jsonb)),
+                  '{retries}', COALESCE(manual_acquisition->'retries', '0'::jsonb))
           WHERE tenant_id = $1 AND id = $2 AND manual_acquisition->>'key' = $4
             AND manual_acquisition->>'gen' = $5`,
         [tenantId, notebookId, JSON.stringify(rec), rec.key, rec.gen ?? ""],

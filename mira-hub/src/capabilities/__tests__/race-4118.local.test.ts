@@ -207,15 +207,22 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     nodeId: "node",
     identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null },
   };
-  const setRecord = async (state: string, finishedAgoMinutes: number) => {
+  const setRecord = async (state: string, finishedAgoMinutes: number, retries = 0) => {
     const c = await raw();
     await c.query(
       `UPDATE equipment_notebooks SET manual_acquisition = jsonb_build_object('key', $2::text, 'gen', 'old', 'state', $3::text,
-         'started_at', to_jsonb(now() - make_interval(mins => $4 + 1)), 'finished_at', to_jsonb(now() - make_interval(mins => $4)))
+         'started_at', to_jsonb(now() - make_interval(mins => $4 + 1)), 'finished_at', to_jsonb(now() - make_interval(mins => $4)),
+         'retries', $5::int)
         WHERE id = $1`,
-      [NB, KEY_A, state, finishedAgoMinutes],
+      [NB, KEY_A, state, finishedAgoMinutes, retries],
     );
     await c.end();
+  };
+  const record = async () => {
+    const c = await raw();
+    const r = await c.query("SELECT manual_acquisition FROM equipment_notebooks WHERE id = $1", [NB]);
+    await c.end();
+    return r.rows[0].manual_acquisition;
   };
   const tryStart = () =>
     startManualAcquisition(acqInput, {
@@ -277,6 +284,19 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     await c.query("DELETE FROM workspace_file_links WHERE file_id = $1", [FILE]);
     await c.end();
     expect((await reconcileAcquisition(T, NB, rec))?.source_removed).toBe(true);
+  });
+
+  it("r12 F16: automatic retries are counted, kept through finish, and capped", async () => {
+    await setRecord("search_unavailable", 45, 2);
+    const acquire = vi.fn(async () => ({ status: "search_unavailable", payload: {} }));
+    expect(
+      await startManualAcquisition(acqInput, { acquire: acquire as never, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" } }),
+    ).toBe(true);
+    await vi.waitFor(async () => expect((await record()).state).toBe("search_unavailable"));
+    expect((await record()).retries).toBe(3); // counted by the claim, preserved by finish
+    // At the cap: never claimed again, however old the failure.
+    await setRecord("search_unavailable", 600, 3);
+    expect(await tryStart()).toBe(false);
   });
 
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {

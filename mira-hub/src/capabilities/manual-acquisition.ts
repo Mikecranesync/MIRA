@@ -334,6 +334,9 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
           chunkCount: 0,
           indexed: false,
         },
+        // A non-scan failure (e.g. a dropped database connection) is retryable;
+        // the record layer schedules the retry (Codex #4118 r12 F16).
+        ingestFailed: !scannedPdf,
         warning: scannedPdf
           ? "That manual is a scanned image with no readable text. It is saved and viewable in this notebook, but MIRA cannot cite it in chat."
           : "MIRA saved the file but could not read it. It is viewable in this notebook, but not searchable in chat.",

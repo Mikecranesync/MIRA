@@ -635,6 +635,18 @@ describe("scanned manuals are stored, viewable, and never a chat source", () => 
     expect(attachArgs[2][0]).toMatchObject({ role: "manual" });
     expect(attachArgs[2][0].matchState).toBeUndefined();
     expect(setSourceState).not.toHaveBeenCalled();
+    expect(body.ingestFailed).toBe(false);
+  });
+
+  it("Codex #4118 r12 F16: a NON-scan ingest failure is flagged retryable (ingestFailed), a scan is not", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(ingestPdfToNode).mockRejectedValue(new Error("connection terminated unexpectedly"));
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("candidate_review");
+    expect(body.ingestFailed).toBe(true);
+    expect(body.manual).toMatchObject({ docId: null, indexed: false });
   });
 });
 

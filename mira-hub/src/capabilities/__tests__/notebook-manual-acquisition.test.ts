@@ -103,7 +103,7 @@ describe("startManualAcquisition", () => {
       beforeAttach: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30]);
+    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
@@ -425,5 +425,23 @@ describe("Codex #4118 r11 F15 — a temporary HTTP status is retryable; a perman
   it.each([404, 403, 401, 410])("control: http_error %i stays download_rejected", (httpStatus) => {
     const r = recordFromOutcome("K", null, { status: "download_rejected", payload: { reason: "http_error", httpStatus } });
     expect(r.state).toBe("download_rejected");
+  });
+});
+
+describe("Codex #4118 r12 F16 — a PDF that could not be READ (non-scan) is retryable; a scan is final", () => {
+  it("candidate_review with ingestFailed → search_unavailable", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { fileId: "f1", docId: null, indexed: false }, ingestFailed: true },
+    });
+    expect(r.state).toBe("search_unavailable");
+  });
+  it("controls: a scanned PDF stays no_extractable_text; a real review candidate stays candidate_review", () => {
+    expect(recordFromOutcome("K", null, { status: "no_extractable_text", payload: { ingestFailed: false } }).state).toBe(
+      "no_extractable_text",
+    );
+    expect(recordFromOutcome("K", null, { status: "candidate_review", payload: { manual: { docId: "d1", indexed: true } } }).state).toBe(
+      "candidate_review",
+    );
   });
 });
