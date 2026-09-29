@@ -464,6 +464,7 @@ def test_every_field_shown_to_the_grader_is_bound(tmp_path: Path):
         "manual_search": ("hub", "retrieval"),
         "citations": ("evaluation", "citations"),
         "source_documents": ("evaluation", "source_documents"),
+        "cited_passages": ("evaluation", "cited_passages"),  # #4097
         "reference_notes": None,
     }
     assert set(shown) == set(source), "a grader-visible field has no identity mapping"
@@ -478,7 +479,7 @@ def test_every_field_shown_to_the_grader_is_bound(tmp_path: Path):
                 "new_chat"
                 if field == "condition"
                 else ["changed"]
-                if field in ("citations", "source_documents")
+                if field in ("citations", "source_documents", "cited_passages")
                 else {"changed": 1}
                 if field == "retrieval"
                 else "changed"
@@ -618,3 +619,21 @@ def test_a_condition_with_no_entries_fails_loudly(tmp_path: Path):
             PACKET, "machine_slected", tmp_path, "B", "adversary", grader, http
         )
     assert calls == []
+
+
+def test_the_grader_is_shown_the_cited_passage_text(tmp_path: Path):
+    """#4097: the passage behind a citation reaches the independent grader verbatim."""
+    from answer_radar.grader_packet import build_packet
+
+    passage = {
+        "citation_id": "1",
+        "source_title": "PF525 manual",
+        "page": 72,
+        "quote": "P041 Accel Time 1: 10.00 s",
+    }
+    row = _row(**{"evaluation.cited_passages": [passage]})
+    batch = tmp_path / "b.json"
+    batch.write_text(json.dumps([row]))
+    entry = build_packet([batch])["S1__machine_selected"]
+    shown = json.loads(model_grader.build_user_message(entry))
+    assert shown["cited_passages"] == [passage]

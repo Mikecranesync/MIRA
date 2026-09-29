@@ -29,6 +29,19 @@ from answer_radar.schema import (
 )
 
 
+def _claims_checkable(item: dict) -> bool:
+    """Could the graders check this answer's claims against what they were shown?"""
+    e = item["evaluation"]
+    citations = list(e.get("citations") or [])
+    passages = list(e.get("cited_passages") or [])
+    if citations:
+        return len(passages) == len(citations) and all(
+            isinstance(p, dict) and isinstance(p.get("quote"), str) and p["quote"].strip()
+            for p in passages
+        )
+    return e.get("answer_status") in ("abstained", "refused_safety")
+
+
 def answer_identity(item: dict, reference_notes: object = None) -> str:
     """The identity a grade is bound to, computed from one batch row.
 
@@ -52,6 +65,7 @@ def answer_identity(item: dict, reference_notes: object = None) -> str:
         "answer_text": e.get("answer_text") or "",
         "citations": list(e.get("citations") or []),
         "source_documents": list(e.get("source_documents") or []),
+        "cited_passages": list(e.get("cited_passages") or []),
         "server_turn_status": hub.get("turn_status"),
         "answer_basis": hub.get("basis"),
         "reference_notes": reference_notes,
@@ -195,14 +209,13 @@ def score(
             rec.failure_class = rec.grader_verdicts[0].failure_class
 
         result = evaluate(rec, safety_class=SafetyClass(q["safety_class"]))
-        if result.verified_correct:
-            # Graders are shown MIRA's answer and citation LABELS, never the source
-            # passages (no batch captures them yet), so no asset-specific claim
-            # can be checked against its source — whether it is cited in the
-            # structured list, inline in the answer text (#4092 post-cap r9 F1),
-            # or not at all. Fail closed: nothing verifies until #4097 shows the
-            # passages to the graders AND binds them in answer_identity; a
-            # passages field that is neither shown nor bound must not lift this.
+        if result.verified_correct and not _claims_checkable(item):
+            # #4097: graders may only verify what they could check. A cited answer
+            # needs the passage behind EVERY citation (shown to the graders and
+            # bound in answer_identity); an answer with no structured citations
+            # can verify only as an honest decline (no source claims to check).
+            # Anything else — an uncited answer, inline "p.72" citations with an
+            # empty list, a citation whose passage is missing — stays unverified.
             result = dataclasses.replace(
                 result,
                 verified_correct=False,

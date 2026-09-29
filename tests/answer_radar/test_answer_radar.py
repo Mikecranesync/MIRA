@@ -833,6 +833,64 @@ def test_an_inline_citation_cannot_verify_without_passages(tmp_path: Path) -> No
     assert rows[0]["verified_correct"] is False
 
 
+def _bound_pass_pair(tmp_path, row):
+    from answer_radar import score as score_mod
+
+    bound = score_mod.answer_identity(row)
+    for slot, (m, prov) in (("A", ("claude-sonnet-5", "anthropic")), ("B", ("gpt-5.5", "openai"))):
+        (tmp_path / f"grade-{slot}-S1.json").write_text(
+            _json.dumps({**_grade(m, prov), "answer_sha256": bound})
+        )
+
+
+@pytest.mark.parametrize(
+    "citations,passages,status,verified",
+    [
+        # #4097: every citation has its passage → the graders could check it.
+        (
+            ["PF525 manual p.72"],
+            [{"citation_id": "1", "quote": "P041 Accel Time 1: 10.00 s"}],
+            "answered",
+            True,
+        ),
+        # a citation whose passage is missing → unverifiable
+        (["PF525 manual p.72"], [{"citation_id": "1", "quote": None}], "answered", False),
+        # two citations, one passage → unverifiable
+        (["a p.1", "b p.2"], [{"citation_id": "1", "quote": "x"}], "answered", False),
+        # no citations, an answer that asserts things → nothing to check against
+        ([], [], "answered", False),
+        # an honest decline with no source claims → checkable as a decline
+        ([], [], "abstained", True),
+    ],
+)
+def test_verification_requires_checkable_claims(tmp_path, citations, passages, status, verified):
+    from answer_radar import score as score_mod
+
+    batch = tmp_path / "batch.json"
+    row = _batch_row("S1", "aaa", 3)
+    row["evaluation"].update(
+        {"citations": citations, "cited_passages": passages, "answer_status": status}
+    )
+    batch.write_text(_json.dumps([row]))
+    _bound_pass_pair(tmp_path, row)
+    _, rows = score_mod.score(batch, tmp_path)
+    assert rows[0]["independence"] == "INDEPENDENT_PROVIDER_MODEL"
+    assert rows[0]["verified_correct"] is verified, rows[0]["reasons"]
+
+
+def test_a_grade_made_without_the_passages_does_not_bind_to_them(tmp_path):
+    """Adding the passages later changes the identity: an old grade cannot verify."""
+    from answer_radar import score as score_mod
+
+    row = _batch_row("S1", "aaa", 3)
+    row["evaluation"]["citations"] = ["PF525 manual p.72"]
+    old_hash = score_mod.answer_identity(row)
+    row["evaluation"]["cited_passages"] = [
+        {"citation_id": "1", "quote": "P041 Accel Time 1: 10.00 s"}
+    ]
+    assert score_mod.answer_identity(row) != old_hash
+
+
 def test_unbound_or_mismatched_grades_never_promote(tmp_path: Path) -> None:
     """#4092 Codex r3 F1: a grade not bound to THIS answer cannot count."""
     from answer_radar import score as score_mod
@@ -1076,3 +1134,28 @@ def test_median_answer_time_averages_the_two_middle_values() -> None:
     ]
     rep = build_report(graded, discovered=6, unique_after_dedupe=6, qualified=6)
     assert rep.median_answer_time_ms == 6138
+
+
+def test_the_hub_runner_keeps_each_citation_passage() -> None:
+    """#4097: EvidenceCitation.quote is captured; a missing quote is None, never ''."""
+    from answer_radar.hub_runner import _cited_passage
+
+    assert _cited_passage(
+        {
+            "citationId": "1",
+            "sourceTitle": "PF525 manual",
+            "page": 72,
+            "quote": "P041 Accel Time 1: 10.00 s",
+        }
+    ) == {
+        "citation_id": "1",
+        "source_title": "PF525 manual",
+        "page": 72,
+        "quote": "P041 Accel Time 1: 10.00 s",
+    }
+    assert (
+        _cited_passage({"citationId": "2", "sourceTitle": "x", "page": None, "quote": "  "})[
+            "quote"
+        ]
+        is None
+    )

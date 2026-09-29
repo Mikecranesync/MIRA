@@ -122,6 +122,23 @@ def _frames(raw: bytes) -> list[dict[str, Any]]:
     return out
 
 
+def _cited_passage(c: Any) -> dict[str, Any]:
+    """The passage behind one citation, as shown on the Hub's citation card (#4097).
+
+    `quote` is EvidenceCitation.quote; a citation without one records None, which
+    `score` treats as an unverifiable citation (never as an empty passage).
+    """
+    if not isinstance(c, dict):
+        return {"citation_id": None, "source_title": str(c)[:120], "page": None, "quote": None}
+    quote = c.get("quote")
+    return {
+        "citation_id": c.get("citationId"),
+        "source_title": c.get("sourceTitle") or c.get("label") or c.get("title"),
+        "page": c.get("page"),
+        "quote": quote if isinstance(quote, str) and quote.strip() else None,
+    }
+
+
 def _citation_label(c: Any) -> str:
     if isinstance(c, dict):
         # EvidenceCitation.sourceTitle is the Hub's typed field
@@ -182,6 +199,7 @@ def run_question_hub(
         content = str(status_frame["message"])
     evidence = next((f for f in frames if f.get("kind") == "evidence"), {})
     citations = [_citation_label(c) for c in (sources.get("citations") or [])]
+    cited_passages = [_cited_passage(c) for c in (sources.get("citations") or [])]
     if st != 200 and not content:
         content = f"[ENGINE ERROR {st}] {raw[:200].decode(errors='replace')}"
 
@@ -220,6 +238,7 @@ def run_question_hub(
         answer_text=content,
         answer_status=answer_status,
         citations=citations,
+        cited_passages=cited_passages,
         source_documents=doc_ids[:10],
         retrieved_chunk_count=chunk_count,
         best_evidence_tier=EvidenceTier.TRUSTED_INDEPENDENT if citations else EvidenceTier.NONE,
