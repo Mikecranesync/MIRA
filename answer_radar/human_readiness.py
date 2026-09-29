@@ -9,6 +9,7 @@ import argparse
 import json
 import math
 import re
+import sys
 from pathlib import Path
 
 DIMENSIONS = ("task", "support", "identity", "next_step", "ui", "clarity")
@@ -80,7 +81,7 @@ def score(manifest: dict, run: dict) -> dict:
         if not isinstance(blockers, list) or not all(isinstance(x, str) for x in blockers):
             reasons.append(f"{label}: hard-blocker review missing")
             blockers = []
-        hard_blockers.extend(f"{label}: {x}" for x in blockers)
+        hard_blockers.extend(f"{label}: {' '.join(x.split())}" for x in blockers)
 
         scores = attempt.get("scores") or {}
         notes = attempt.get("score_reasons") or {}
@@ -169,12 +170,17 @@ def main() -> None:
     parser.add_argument("run", type=Path)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    report = score(json.loads(args.manifest.read_text()), json.loads(args.run.read_text()))
+    try:
+        report = score(json.loads(args.manifest.read_text(encoding="utf-8")),
+                       json.loads(args.run.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+        sys.stderr.write(f"human-readiness input error: {exc}\n")
+        raise SystemExit(2) from None
     output = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:
-        args.out.write_text(output)
+        args.out.write_text(output, encoding="utf-8")
     else:
-        print(output, end="")
+        sys.stdout.write(output)
     raise SystemExit(0 if report["decision"] == "GO" else 1)
 
 
