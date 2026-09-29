@@ -8,14 +8,14 @@
  *   PG_RACE=1 NEON_DATABASE_URL=postgres://postgres:race@127.0.0.1:55432/postgres \
  *     npx vitest run src/capabilities/__tests__/race-4118.local.test.ts
  *
- * The schema is the minimal subset these functions touch, then migrations 100
- * and 101 are applied from the repo files verbatim.
+ * The schema is the minimal subset these functions touch, then migrations 100,
+ * 101 and 102 are applied from the repo files verbatim.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
-import { fencedBeforeAttach, fencedWriter } from "../notebook-manual-acquisition";
+import { fencedBeforeAttach, fencedWriter, startManualAcquisition } from "../notebook-manual-acquisition";
 import { upsertNotebookSourceTx } from "@/lib/equipment-notebooks";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
@@ -50,6 +50,8 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
       GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources TO factorylm_app;`);
     await c.query(readFileSync(join(MIGRATIONS, "100_notebook_manual_acquisition.sql"), "utf8"));
     if (process.env.PG_RACE_SKIP_101 !== "1") await c.query(readFileSync(join(MIGRATIONS, "101_notebook_manual_acquisition_revoke_trigger.sql"), "utf8"));
+    if (process.env.PG_RACE_SKIP_102 !== "1")
+      await c.query(readFileSync(join(MIGRATIONS, "102_notebook_manual_acquisition_revoke_spares_confirmed.sql"), "utf8"));
     await c.end();
   });
 
@@ -182,6 +184,55 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
 
   it("r5 control: an undecided candidate this acquisition attached is still promoted", async () => {
     expect(await promote()).toEqual({ matchState: "verified", enabledByDefault: true });
+  });
+
+  it("r7 F11: a technician-confirmed auto-found manual survives an identity change", async () => {
+    expect((await promote())?.enabledByDefault).toBe(true); // auto-enabled, stamped with KEY_A
+    await setSource("UPDATE equipment_notebook_sources SET match_state = 'user_confirmed' WHERE doc_id = $1"); // PATCH keeps evidence
+    const c = await raw();
+    await c.query("UPDATE equipment_notebooks SET model = 'VQ1000-XYZ' WHERE id = $1", [NB]);
+    const s = await source(c);
+    await c.end();
+    expect(s.match_state).toBe("user_confirmed");
+    expect(s.enabled_by_default).toBe(true);
+    expect(s.match_evidence.revokedBecause).toBeUndefined();
+  });
+
+  const acqInput = {
+    tenantId: T,
+    userId: null,
+    notebookId: NB,
+    nodeId: "node",
+    identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null },
+  };
+  const setRecord = async (state: string, finishedAgoMinutes: number) => {
+    const c = await raw();
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = jsonb_build_object('key', $2::text, 'gen', 'old', 'state', $3::text,
+         'started_at', to_jsonb(now() - make_interval(mins => $4 + 1)), 'finished_at', to_jsonb(now() - make_interval(mins => $4)))
+        WHERE id = $1`,
+      [NB, KEY_A, state, finishedAgoMinutes],
+    );
+    await c.end();
+  };
+  const tryStart = () =>
+    startManualAcquisition(acqInput, {
+      acquire: vi.fn(async () => ({ status: "no_manual_found", payload: {} })) as never,
+      env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" },
+    });
+
+  it("r7 F12: a search that failed on an unavailable service is retried after the backoff", async () => {
+    await setRecord("search_unavailable", 45);
+    expect(await tryStart()).toBe(true);
+  });
+
+  it("r7 F12 controls: not before the backoff; a finished real outcome is never re-run", async () => {
+    await setRecord("search_unavailable", 5);
+    expect(await tryStart()).toBe(false);
+    await setRecord("no_manual_found", 600);
+    expect(await tryStart()).toBe(false);
+    await setRecord("complete", 600);
+    expect(await tryStart()).toBe(false);
   });
 
   it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {

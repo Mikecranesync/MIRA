@@ -30,6 +30,12 @@ import {
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
+/**
+ * A search that failed because the discovery service was unavailable is retried
+ * — but no sooner than this, so a down service is not hammered once per chat
+ * turn (Codex #4118 r7 F12). Every other finished outcome is final for its key.
+ */
+export const UNAVAILABLE_RETRY_MINUTES = 30;
 
 export type AcquisitionState = "running" | ManualAcquisitionOutcome["status"];
 
@@ -105,8 +111,9 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
 
 /**
  * Atomically claim the search for this identity. Succeeds when the notebook has
- * no record, a record for a DIFFERENT identity, or a stale "running" record.
- * Exactly one concurrent caller wins.
+ * no record, a record for a DIFFERENT identity, a stale "running" record, or a
+ * "search_unavailable" record older than the retry backoff. Exactly one
+ * concurrent caller wins.
  */
 async function claim(tenantId: string, notebookId: string, key: string): Promise<string | null> {
   try {
@@ -125,9 +132,12 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  OR manual_acquisition->>'key' IS DISTINCT FROM $3::text
                  OR (manual_acquisition->>'state' = 'running'
                      AND (manual_acquisition->>'started_at')::timestamptz
-                         < now() - make_interval(mins => $4)))
+                         < now() - make_interval(mins => $4))
+                 OR (manual_acquisition->>'state' = 'search_unavailable'
+                     AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
+                         < now() - make_interval(mins => $5)))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES],
       );
       return r.rows[0]?.gen ?? null;
     });

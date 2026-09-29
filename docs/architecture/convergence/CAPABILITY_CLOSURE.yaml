@@ -593,6 +593,7 @@ capabilities:
     schema:
       - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
       - "mira-hub/db/migrations/101_notebook_manual_acquisition_revoke_trigger.sql   # identity change revokes auto-enabled manuals atomically"
+      - "mira-hub/db/migrations/102_notebook_manual_acquisition_revoke_spares_confirmed.sql   # the revocation never touches a technician-confirmed manual"
     environments:
       dev: unset
       staging: unset

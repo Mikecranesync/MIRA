@@ -1944,8 +1944,10 @@ async function handleChatTurn(
       let started = false;
       // A matching "running" record also goes back through the atomic claim:
       // its stale-window predicate recovers a search orphaned by a restart,
-      // and refuses (started=false) while a live search still holds it.
-      if (!acq || acq.key !== key || acq.state === "running") {
+      // and refuses (started=false) while a live search still holds it. A
+      // "search_unavailable" record does too — the claim retries it once its
+      // backoff has passed (Codex #4118 r7 F12).
+      if (!acq || acq.key !== key || acq.state === "running" || acq.state === "search_unavailable") {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,
           userId: ctx.userId ?? null,
