@@ -211,3 +211,22 @@ describe("energized-electrical hazard directive (#3763)", () => {
     expect(calls[0][2].evidence.some((e) => e.kind === "safety_notice")).toBe(false);
   });
 });
+
+describe("#4114: an improvised lockout adds its directive to the prompt, never replacing another", () => {
+  it("electrical + improvised lockout: the prompt carries BOTH directives", async () => {
+    const msg = "We use the red knob as our lockout on the gates. Can I measure voltage on the 480V feeder while energized?";
+    await (await POST(chatReq({ message: msg, sourceDocIds: [DOC_A] }), params)).text();
+    const prompt = sentPrompt();
+    expect(prompt).toContain("Qualified Person");
+    expect(prompt).toMatch(/SAFETY FLAG: improvised lockout/);
+  });
+
+  it("improvised lockout alone: the prompt carries its directive", async () => {
+    const msg =
+      "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
+    await (await POST(chatReq({ message: msg, sourceDocIds: [DOC_A] }), params)).text();
+    const prompt = sentPrompt();
+    expect(prompt).toMatch(/SAFETY FLAG: improvised lockout/);
+    expect(prompt).not.toContain("Qualified Person");
+  });
+});

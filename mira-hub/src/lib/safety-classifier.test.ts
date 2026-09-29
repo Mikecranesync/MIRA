@@ -19,8 +19,10 @@ import {
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
   IMPROVISED_LOCKOUT,
+  ENERGIZED_ELECTRICAL_HAZARD,
   hazardBanner,
   flagDirectiveFor,
+  improvisedLockoutAddendum,
   detectEnergizedElectricalHazardIntent,
   safetyFlagHeaders,
   withSafetyFlag,
@@ -246,7 +248,7 @@ describe("#4113: improvised lockout is a flag with its own banner and directive"
   ])("flags: %s", (q) => {
     expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
     expect(hazardBanner(IMPROVISED_LOCKOUT)).toMatch(/Not a lockout/);
-    expect(flagDirectiveFor(IMPROVISED_LOCKOUT)).toMatch(/NOT a personnel\s+lockout/);
+    expect(flagDirectiveFor(IMPROVISED_LOCKOUT)).toMatch(/NOT a\s+personnel\s+lockout/);
   });
 
   it.each([
@@ -264,14 +266,17 @@ describe("#4114 review: precedence and manual movement", () => {
   const Q2 =
     "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
 
-  it("an improvised lockout keeps its restrictions when 'safe to work' is also asked (F1)", () => {
-    const t = matchSafetyStop(`${Q2} Is it safe to work?`);
-    expect(t).toBe(IMPROVISED_LOCKOUT);
-    expect(flagDirectiveFor(t!)).toMatch(/NOT a personnel\s+lockout/);
+  it("a trailing 'safe to work' keeps its trigger AND carries the lockout restrictions (F1)", () => {
+    const msg = `${Q2} Is it safe to work?`;
+    const t = matchSafetyStop(msg);
+    expect(t).toBe("safe to work");
+    expect(flagDirectiveFor(t!, msg)).toMatch(/NOT a\s+personnel\s+lockout/);
   });
 
-  it("an active incident still outranks it", () => {
-    expect(matchSafetyStop(`${Q2} There is smoke coming from the valve.`)).toBe("smoke coming");
+  it("an active incident keeps its trigger and still carries the lockout restrictions", () => {
+    const msg = `${Q2} There is smoke coming from the valve.`;
+    expect(matchSafetyStop(msg)).toBe("smoke coming");
+    expect(flagDirectiveFor("smoke coming", msg)).toMatch(/NOT a\s+personnel\s+lockout/);
   });
 
   it("'safe to work' alone is still flagged as before", () => {
@@ -292,5 +297,30 @@ describe("#4114 review: precedence and manual movement", () => {
     "With the pressure bled, the gate can be moved manually.",
   ])("a person moving it after air-off still flags: %s", (q) => {
     expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+
+describe("#4114 review round 2: composition and approved lockout equipment", () => {
+  it("an energized-electrical question keeps the NFPA 70E directive and gains the lockout one (F1)", () => {
+    const msg = "We use the red knob as our lockout on the gates. Can I measure voltage on the 480V feeder while energized?";
+    const t = matchSafetyStop(msg);
+    expect(t).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    const d = flagDirectiveFor(t!, msg);
+    expect(d).toContain("Qualified Person");
+    expect(d).toMatch(/NOT a\s+personnel\s+lockout/);
+  });
+
+  it("no addendum when the message has no improvised lockout", () => {
+    expect(flagDirectiveFor("safe to work", "Is it safe to work on the gate?")).not.toMatch(/personnel\s+lockout/);
+    expect(improvisedLockoutAddendum("Is it safe to work on the gate?", "safe to work")).toBe("");
+  });
+
+  it.each([
+    "We use a padlock on the approved disconnect as our lockout. How do I verify zero energy?",
+    "We use the main breaker as our lockout point with a personal lock.",
+    "Our procedure uses a lockable isolation point as the lockout for the air supply.",
+  ])("approved lockout equipment is not improvised (F5): %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
   });
 });
