@@ -322,6 +322,19 @@ class TestIsOemHost:
         assert is_oem_host("Oriental Motor", "evil-orientalmotor.com") is False
         assert is_oem_host("Oriental Motor", "orientalmotor.com.attacker.net") is False
 
+    def test_smc_regional_documentation_hosts_are_oem(self):
+        # 2026-09-29 staging probe: discovery found the real VQ(C)1000 instruction
+        # manual at static.smc.eu, but with only smcusa.com listed it scored
+        # oem_host=False and stopped at manual review.
+        assert is_oem_host("SMC", "static.smc.eu") is True
+        assert is_oem_host("smc", "content2.smcetech.com") is True
+        assert is_oem_host("SMC Corporation", "www.smcworld.com") is True
+        assert is_oem_host("SMC", "www.smcusa.com") is True
+
+    def test_smc_does_not_match_lookalike_hosts(self):
+        assert is_oem_host("SMC", "notsmc.eu") is False
+        assert is_oem_host("SMC", "smc.eu.attacker.net") is False
+
     def test_trusted_distributor_is_NOT_oem_host(self):
         # Codex P1 (2026-08-16): docs.rs-online.com is on the general trusted
         # list, but oem_host gates AUTO-verify — a distributor (or another
