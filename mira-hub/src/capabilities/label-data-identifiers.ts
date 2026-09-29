@@ -16,13 +16,26 @@
 export const LABEL_DATA_IDENTIFIER_NOTE =
   "LABEL DATA IDENTIFIERS (ANSI MH10.8.2 / ISO/IEC 15418, used on industrial product labels): a short prefix printed before a value names that value \u2014 \"1P\" = the supplier's part (order) number, \"S\" = serial number, \"Q\" = quantity, \"4L\" = country of origin, \"10D\" = date code. The prefix is not part of the value and says nothing about the product's electrical supply or configuration.";
 
-/** A "1P" data identifier followed by a code (the order number), as a vision
- *  model transcribes it: "1P 6AV2124-0GC01-0AX0", "1P6ES7…". Case-sensitive: a
- *  lowercase "1p" is not the identifier. */
-const DATA_IDENTIFIER_FIELD = /(?<![A-Za-z0-9])1P\s?[A-Z0-9][A-Z0-9.\-/]{4,}/;
+/** A "1P" data identifier followed by a code, as a vision model transcribes it:
+ *  "1P 6AV2124-0GC01-0AX0", "1P6ES7…", "1P: 6AV…", "(1P) 6AV…" (Codex #4132 F2).
+ *  Case-sensitive: a lowercase "1p" is not the identifier. */
+const DATA_IDENTIFIER_FIELD = /(?<![A-Za-z0-9])\(?1P\)?\s*[:#]?\s*([A-Z0-9][A-Z0-9.\-/]{4,})/g;
+
+/** On an electrical rating "1P" really is one pole / one phase ("Input: 1P
+ *  230VAC", "1P 240/415V C16") — never an order number (Codex #4132 F1). */
+const ELECTRICAL_RATING = /^[\d.,/]+(?:V|VAC|VDC|A|AMPS?|HZ|W|KW|KVA|MA)$/i;
+
+/** An order-number-shaped code: at least 7 characters with both a letter and a
+ *  digit, and not an electrical rating. */
+function isOrderCode(code: string): boolean {
+  return code.length >= 7 && /[A-Z]/.test(code) && /\d/.test(code) && !ELECTRICAL_RATING.test(code);
+}
 
 export function showsLabelDataIdentifier(observationText: string): boolean {
-  return DATA_IDENTIFIER_FIELD.test(observationText);
+  for (const m of observationText.matchAll(DATA_IDENTIFIER_FIELD)) {
+    if (isOrderCode(m[1])) return true;
+  }
+  return false;
 }
 
 /** The system prompt, plus the note when the photo context shows a data identifier. */

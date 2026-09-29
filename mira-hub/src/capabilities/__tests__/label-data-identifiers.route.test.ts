@@ -194,6 +194,16 @@ describe("#4131 label data identifiers reach the provider only when the photo sh
     expect(system.endsWith(LABEL_DATA_IDENTIFIER_NOTE)).toBe(true);
   });
 
+  it("Codex #4132 F2: a colon-separated transcription still delivers the note", async () => {
+    const system = await systemPromptFor("SIEMENS TP700 Comfort label. 1P: 6AV2124-0GC01-0AX0. Supply 24 Vdc");
+    expect(system.endsWith(LABEL_DATA_IDENTIFIER_NOTE)).toBe(true);
+  });
+
+  it("Codex #4132 F1: an electrical rating '1P 230VAC' never gets the part-number note", async () => {
+    const system = await systemPromptFor("Nameplate: Input: 1P 230VAC 50/60Hz, Circuit breaker: 1P 240/415V C16");
+    expect(system).not.toContain("LABEL DATA IDENTIFIERS");
+  });
+
   it("control — a label without a data identifier leaves the prompt without the note", async () => {
     const system = await systemPromptFor("STEPPERONLINE, P/N: MG17-G20, 20:1 45arcmin IP54");
     expect(system).not.toContain("LABEL DATA IDENTIFIERS");

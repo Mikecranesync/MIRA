@@ -15,6 +15,10 @@ describe("label data identifiers (#4131)", () => {
     "The label reads: SIEMENS, TP700 Comfort, 1P 6AV2124-0GC01-0AX0, S LBS3073983",
     "1P6ES7214-1AG40-0XB0 printed under the barcode",
     "Order code (1P 3RT2016-1BB41)",
+    // Codex #4132 F2: ordinary transcription separators
+    "1P: 6AV2124-0GC01-0AX0",
+    "(1P) 6AV2124-0GC01-0AX0",
+    "1P  6AV2124-0GC01-0AX0",
   ])("detects a 1P field: %s", (text) => expect(showsLabelDataIdentifier(text)).toBe(true));
 
   it.each([
@@ -23,6 +27,11 @@ describe("label data identifiers (#4131)", () => {
     "1P MCB and 3P MCB in the enclosure",
     "the 1p connector",
     "model X1P22000 on the plate",
+    // Codex #4132 F1: on an electrical rating 1P means one pole / one phase
+    "Input: 1P 230VAC 50/60Hz",
+    "Circuit breaker: 1P 240/415V C16",
+    "1P 16A breaker",
+    "Supply 1P 120V, 60Hz",
     "",
   ])("control — no 1P field: %s", (text) => expect(showsLabelDataIdentifier(text)).toBe(false));
 
