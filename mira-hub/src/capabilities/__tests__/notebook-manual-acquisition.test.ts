@@ -256,13 +256,12 @@ describe("Codex #4118 F3/F5 — fencedWriter", () => {
 });
 
 describe("Codex #4118 r3 F5 — fencedBeforeAttach", () => {
-  it("attaches only while this generation owns the notebook and the doc is not already a source", async () => {
+  it("attaches only while this generation owns the notebook; an existing source row does NOT block (r4 F7)", async () => {
     const { fencedBeforeAttach } = await import("../notebook-manual-acquisition");
     db.claimRows = 1;
     expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(true);
     db.existingSource = true;
-    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(false);
-    db.existingSource = false;
+    expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(true);
     db.claimRows = 0;
     expect(await fencedBeforeAttach("K", "g1")("t", "nb", "doc")).toBe(false);
   });

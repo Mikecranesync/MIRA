@@ -221,14 +221,14 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
 
 /**
  * Attach only while this search still owns the notebook (current generation,
- * same confirmed identity) AND the document is not already one of the
- * notebook's sources — so a re-found shared manual never has its evidence (or
- * its technician decision) overwritten (Codex #4118 r3 F5). The remaining
- * window between this check and the attach is narrowed by the generation token;
- * the promotion itself stays fenced by fencedWriter under a row lock.
+ * same confirmed identity). A stale worker that slips past this check cannot
+ * corrupt a trusted source: the notebook-source upsert never lets a candidate
+ * re-attach replace a verified/user-confirmed/rejected row's trust flags or
+ * evidence (Codex #4118 r4 F5), and every promotion stays fenced by
+ * fencedWriter under a row lock.
  */
 export function fencedBeforeAttach(key: string, gen: string) {
-  return async (tenantId: string, notebookId: string, docId: string | null): Promise<boolean> => {
+  return async (tenantId: string, notebookId: string, _docId: string | null): Promise<boolean> => {
     try {
       return await withTenantContext(tenantId, async (c) => {
         const owner = await c.query(
@@ -241,13 +241,11 @@ export function fencedBeforeAttach(key: string, gen: string) {
             FOR UPDATE`,
           [tenantId, notebookId, key, gen],
         );
-        if ((owner.rowCount ?? 0) === 0) return false;
-        if (docId === null) return true;
-        const existing = await c.query(
-          `SELECT 1 FROM equipment_notebook_sources WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
-          [tenantId, notebookId, docId],
-        );
-        return (existing.rowCount ?? 0) === 0;
+        // Ownership only. An existing source row is NOT a reason to stop: a
+        // retried search must still reach its applicability check (Codex #4118
+        // r4 F7), and the notebook-source upsert itself refuses to let a
+        // candidate re-attach overwrite a trusted row's evidence (r4 F5).
+        return (owner.rowCount ?? 0) > 0;
       });
     } catch (err) {
       console.error("[manual-acquisition] pre-attach check failed:", err instanceof Error ? err.message : err);

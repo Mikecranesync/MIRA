@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { fencedBeforeAttach, fencedWriter } from "../notebook-manual-acquisition";
+import { upsertNotebookSourceTx } from "@/lib/equipment-notebooks";
 
 const run = process.env.PG_RACE === "1" ? describe : describe.skip;
 const T = "11111111-1111-4111-8111-111111111111";
@@ -45,7 +46,7 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
         model text, catalog_number text, identity_status text NOT NULL DEFAULT 'unknown');
       CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
         doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
-        PRIMARY KEY (notebook_id, doc_id));
+        source_role text, added_by text, origin_file_id uuid, PRIMARY KEY (notebook_id, doc_id));
       GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources TO factorylm_app;`);
     await c.query(readFileSync(join(MIGRATIONS, "100_notebook_manual_acquisition.sql"), "utf8"));
     if (process.env.PG_RACE_SKIP_101 !== "1") await c.query(readFileSync(join(MIGRATIONS, "101_notebook_manual_acquisition_revoke_trigger.sql"), "utf8"));
@@ -133,9 +134,48 @@ run("Codex #4118 — real Postgres, real functions, real trigger", () => {
     expect(await promote("gen-2")).toBe(true);
   });
 
-  it("F5: the pre-attach check refuses a document that is already a source, and allows a new one", async () => {
-    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, DOC)).toBe(false);
-    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, "44444444-4444-4444-8444-444444444444")).toBe(true);
-    expect(await fencedBeforeAttach(KEY_A, "gen-other")(T, NB, "44444444-4444-4444-8444-444444444444")).toBe(false);
+  it("r4 F7: an existing source row does not block the pre-attach check; a lost generation does", async () => {
+    expect(await fencedBeforeAttach(KEY_A, GEN)(T, NB, DOC)).toBe(true);
+    expect(await fencedBeforeAttach(KEY_A, "gen-other")(T, NB, DOC)).toBe(false);
+  });
+
+  it("r4 F5: a stale candidate re-attach cannot overwrite a VERIFIED source's evidence or flags", async () => {
+    expect(await promote()).toBe(true); // verified + enabled + autoAcquisitionKey A
+    const c = await raw();
+    await c.query("BEGIN");
+    await upsertNotebookSourceTx(c as never, {
+      notebookId: NB,
+      docId: DOC,
+      tenantId: T,
+      matchState: "candidate",
+      sourceRole: "manual",
+      addedBy: null,
+      matchEvidence: { decisionMethod: "pending_applicability_check", from: "stale worker" },
+    } as never);
+    await c.query("COMMIT");
+    const s = await source(c);
+    await c.end();
+    expect(s.match_state).toBe("verified");
+    expect(s.enabled_by_default).toBe(true);
+    expect(s.match_evidence.autoAcquisitionKey).toBe(KEY_A);
+    expect(s.match_evidence.from).toBeUndefined();
+  });
+
+  it("r4 F5 control: a candidate re-attach over a CANDIDATE row still refreshes its evidence", async () => {
+    const c = await raw();
+    await c.query("BEGIN");
+    await upsertNotebookSourceTx(c as never, {
+      notebookId: NB,
+      docId: DOC,
+      tenantId: T,
+      matchState: "candidate",
+      sourceRole: "manual",
+      addedBy: null,
+      matchEvidence: { from: "retry" },
+    } as never);
+    await c.query("COMMIT");
+    const s = await source(c);
+    await c.end();
+    expect(s.match_evidence.from).toBe("retry");
   });
 });
