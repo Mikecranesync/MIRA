@@ -22,13 +22,16 @@ export const LABEL_DATA_IDENTIFIER_NOTE =
 const DATA_IDENTIFIER_FIELD = /(?<![A-Za-z0-9])\(?1P\)?\s*[:#]?\s*([A-Z0-9][A-Z0-9.\-/]{4,})/g;
 
 /** On an electrical rating "1P" really is one pole / one phase ("Input: 1P
- *  230VAC", "1P 240/415V C16") — never an order number (Codex #4132 F1). */
-const ELECTRICAL_RATING = /^[\d.,/]+(?:V|VAC|VDC|A|AMPS?|HZ|W|KW|KVA|MA)$/i;
+ *  230VAC", "1P 240/415V C16", "1P 100-240VAC") — never an order number (Codex
+ *  #4132 F1 r1/r2). A number followed by an electrical unit ANYWHERE in the code
+ *  marks a rating, including ranges and slashed pairs. */
+const ELECTRICAL_UNIT = /\d\s*(?:V|VAC|VDC|A|AMPS?|HZ|W|KW|KVA|MA)(?![A-Z0-9])/i;
 
-/** An order-number-shaped code: at least 7 characters with both a letter and a
- *  digit, and not an electrical rating. */
-function isOrderCode(code: string): boolean {
-  return code.length >= 7 && /[A-Z]/.test(code) && /\d/.test(code) && !ELECTRICAL_RATING.test(code);
+/** An order-number-shaped code: trailing transcription punctuation stripped,
+ *  at least 7 characters, a letter AND a digit, and no number-plus-unit rating. */
+function isOrderCode(raw: string): boolean {
+  const code = raw.replace(/[.,;:/\-]+$/, "");
+  return code.length >= 7 && /[A-Z]/.test(code) && /\d/.test(code) && !ELECTRICAL_UNIT.test(code);
 }
 
 export function showsLabelDataIdentifier(observationText: string): boolean {

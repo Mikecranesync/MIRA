@@ -19,6 +19,9 @@ describe("label data identifiers (#4131)", () => {
     "1P: 6AV2124-0GC01-0AX0",
     "(1P) 6AV2124-0GC01-0AX0",
     "1P  6AV2124-0GC01-0AX0",
+    // trailing transcription punctuation does not hide a real order code
+    "Order no. 1P 6AV2124-0GC01-0AX0.",
+    "1P 3RT2016-1BB41, S LBS3073983",
   ])("detects a 1P field: %s", (text) => expect(showsLabelDataIdentifier(text)).toBe(true));
 
   it.each([
@@ -32,6 +35,14 @@ describe("label data identifiers (#4131)", () => {
     "Circuit breaker: 1P 240/415V C16",
     "1P 16A breaker",
     "Supply 1P 120V, 60Hz",
+    // Codex #4132 r2 F1: punctuation and voltage ranges are still ratings
+    "Input: 1P 230VAC.",
+    "Circuit breaker: 1P 240/415V.",
+    "Input: 1P 100-240VAC 50/60Hz",
+    "Rated 1P 100-240V~ 2.5A",
+    "1P+N 230V 16A",
+    "1P 16A.",
+    "Motor 1P 1.5KW 230V",
     "",
   ])("control — no 1P field: %s", (text) => expect(showsLabelDataIdentifier(text)).toBe(false));
 

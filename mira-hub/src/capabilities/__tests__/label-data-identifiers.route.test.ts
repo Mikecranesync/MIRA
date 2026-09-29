@@ -204,6 +204,11 @@ describe("#4131 label data identifiers reach the provider only when the photo sh
     expect(system).not.toContain("LABEL DATA IDENTIFIERS");
   });
 
+  it("Codex #4132 r2 F1: trailing punctuation and a voltage range are still ratings", async () => {
+    const system = await systemPromptFor("Input: 1P 230VAC. Circuit breaker: 1P 240/415V. Input: 1P 100-240VAC 50/60Hz");
+    expect(system).not.toContain("LABEL DATA IDENTIFIERS");
+  });
+
   it("control — a label without a data identifier leaves the prompt without the note", async () => {
     const system = await systemPromptFor("STEPPERONLINE, P/N: MG17-G20, 20:1 45arcmin IP54");
     expect(system).not.toContain("LABEL DATA IDENTIFIERS");
