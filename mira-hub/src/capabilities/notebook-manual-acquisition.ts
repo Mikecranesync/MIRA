@@ -143,7 +143,7 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
 export function recordFromOutcome(key: string, startedAt: string | null, out: ManualAcquisitionOutcome): AcquisitionRecord {
   const p = out.payload as {
     candidate?: { host?: unknown; url?: unknown } | null;
-    manual?: { matchState?: unknown; docId?: unknown; indexed?: unknown } | null;
+    manual?: { matchState?: unknown; docId?: unknown; indexed?: unknown; attached?: unknown } | null;
     oemRequestUrl?: unknown;
     warning?: unknown;
   };
