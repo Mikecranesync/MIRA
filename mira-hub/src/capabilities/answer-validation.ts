@@ -989,18 +989,50 @@ const LIVE_SUPPLY_QUANTITY =
   /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
 const DEAD_MEASUREMENT = /\b(?:zero|absence|dead|no\s+voltage|de[-\s]?energi[sz]ed|isolated|locked\s+out|resistance|continuity|insulation)\b/i;
 const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
 
+// Clauses for this rule also split on "and" / "then": each is one action, so a
+// dead check never exempts a sibling live measurement (#4111 review F2).
+const ACTION_BOUNDARY = new RegExp(CLAUSE_BOUNDARY.source + "|\\bthen\\b|\\band\\b", "i");
+
+/** State machine over ordered clauses (#4111 review F1-F4):
+ *  an affirmative lockout (verified or not) → isolated;
+ *  an AFFIRMATIVE restore ends isolation (a prohibited one does not); while
+ *  isolated, the first clause that affirmatively takes a physical live-supply
+ *  measurement — not prohibited, not a dead check, not an installed-display
+ *  reading — is returned. */
 function liveMeasurementAfterLockout(text: string): string | null {
+  let lockedOut = false;
   let isolated = false;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    if (!isolated) {
-      if (LOCKOUT_STEP.test(sentence) && VERIFIED_DEAD.test(sentence)) isolated = true;
-      continue;
-    }
-    // A written restore is the explicit rule's job, not this one.
-    if (RESTORE_ENERGY.test(sentence)) return null;
-    if (MEASURE_VERB.test(sentence) && LIVE_SUPPLY_QUANTITY.test(sentence) && !DEAD_MEASUREMENT.test(sentence)) {
-      return sentence.trim();
+    for (const clause of sentence.split(ACTION_BOUNDARY)) {
+      if (!clause.trim()) continue;
+      if (RESTORE_ENERGY.test(clause) && !RESTORE_PROHIBITION.test(clause)) {
+        lockedOut = false;
+        isolated = false;
+        continue;
+      }
+      // Any AFFIRMATIVE lockout isolates; verification is not required for a
+      // later live reading to imply a restore. "Do not lock out" does not.
+      if (LOCKOUT_STEP.test(clause) && !LOCKOUT_PROHIBITION.test(clause)) {
+        lockedOut = true;
+        isolated = true;
+        continue;
+      }
+      if (lockedOut && VERIFIED_DEAD.test(clause)) {
+        isolated = true;
+        continue;
+      }
+      if (!isolated) continue;
+      if (
+        MEASURE_VERB.test(clause) &&
+        LIVE_SUPPLY_QUANTITY.test(clause) &&
+        !DEAD_MEASUREMENT.test(clause) &&
+        !MEASURE_PROHIBITION.test(clause) &&
+        !EXTERNAL_READING.test(clause)
+      ) {
+        return clause.trim();
+      }
     }
   }
   return null;

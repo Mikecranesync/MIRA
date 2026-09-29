@@ -887,3 +887,47 @@ describe("#4110: a live supply measurement after lockout gets the energized-work
     expect(run(a).ok).toBe(true);
   });
 });
+
+
+describe("#4111 review: the implied-restore rule follows steps and actions, not sentences", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LIVE = "Measure the actual line voltage at the input terminals.";
+
+  it.each([
+    // F1: lockout and verification in separate sentences / steps
+    `Lock out the drive. Verify zero volts. ${LIVE}`,
+    `1. Lock out and tag out the drive.\n2. Verify zero volts with a meter.\n3. ${LIVE}`,
+    `Lock out the drive and verify zero volts. ${LIVE}`,
+    // a lockout without a written verification still makes the live reading implied
+    `Lock out the drive. ${LIVE}`,
+    // F2: a dead check beside the live measurement, both orders
+    "Lock out the drive and verify zero volts. Measure the actual line voltage at the input terminals, then check winding resistance.",
+    "Lock out the drive and verify zero volts. Check winding resistance and measure the actual line voltage at the input terminals.",
+    "Lock out the drive and verify zero volts. Check fuse continuity, then measure the supply voltage at the terminals.",
+    // F3: a PROHIBITED restoration does not end the locked-out state
+    `Lock out the drive and verify zero volts. Do not restore power yet. ${LIVE}`,
+    `Lock out the drive and verify zero volts. Never re-energize without a permit. ${LIVE}`,
+    // F4: a prohibition or display reading does not hide a later physical one
+    `Lock out the drive and verify zero volts. Do not measure the input on the display. ${LIVE}`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    // F4 controls: prohibited physical reading, installed-display reading
+    "Lock out the drive and verify zero volts. Do not measure the actual line voltage at the input terminals.",
+    "Lock out the drive and verify zero volts. Read the actual line voltage from the remote display.",
+    // dead-only procedures
+    "Lock out the drive and verify zero volts. Check winding resistance, then check fuse continuity.",
+    // a prohibited lockout is not an isolation step
+    "Do not lock out the drive yet. Read the actual line voltage from the drive display.",
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});
