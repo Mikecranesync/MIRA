@@ -327,18 +327,21 @@ export async function getNotebook(
   notebookId: string,
 ): Promise<EquipmentNotebook | null> {
   return withTenantContext(tenantId, async (c) => {
+    // #4130: one round trip, not two. A data-modifying CTE always executes, and
+    // the outer SELECT reads the statement's starting snapshot — so the row is
+    // returned as it was BEFORE the touch, exactly as the old SELECT-then-UPDATE
+    // did, and a missing/foreign id still touches nothing and returns null.
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
+      `WITH touched AS (
+         UPDATE equipment_notebooks SET last_opened_at = now(), updated_at = now()
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+       )
+       SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
          FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`,
       [tenantId, notebookId],
     );
     if (res.rows.length === 0) return null;
-    await c.query(
-      `UPDATE equipment_notebooks SET last_opened_at = now(), updated_at = now()
-        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [tenantId, notebookId],
-    );
     return rowToNotebook(res.rows[0]);
   });
 }
