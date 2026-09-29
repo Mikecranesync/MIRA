@@ -683,11 +683,6 @@ const NON_VERIFICATION =
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
 
-// Symptoms: a problem is happening on real equipment ("it stopped
-// communicating", "the drive trips every morning") — enough on their own.
-export const SYMPTOM =
-  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|reboot(?:s|ed|ing)?|restart(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
-
 
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
@@ -876,37 +871,22 @@ function codeMeaningViolation(
  *  gap, still useful, funnels to upload (#3787 two-lane design, guardrails
  *  2–4). Never interpolates model output beyond the technician-shaped code.
  *
- *  #4098: the fault-triage steps are the right next step only for a fault
- *  question. A request for a manual, software or a specification got "confirm
- *  the exact code on the display" (Answer Radar seed 002). The copy now follows
- *  the question: a fault code, fault context (FAULT_CONTEXT) or a described
- *  symptom (SYMPTOM) keeps the triage steps; anything else gets the
- *  documentation next step. Copy only — what is withheld is unchanged. */
-export function specificityFallback(code: string | null, question = ""): string {
+ *  #4098 / #4104 review: the old copy offered only fault-triage steps, so a
+ *  request for a manual or software got "confirm the exact code on the
+ *  display" (Answer Radar seed 002). Choosing the copy by classifying the
+ *  question failed in both directions under review ("keeps tripping" lost
+ *  triage; "I lost the manual" gained it). So nothing is classified: the
+ *  fallback offers both next steps, each labelled with when it applies.
+ *  Copy only — what is withheld is unchanged. */
+export function specificityFallback(code: string | null): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
-  // Not faultCodeTokens(question): a model name like "SPC-100" is code-shaped
-  // and would send every documentation request back to fault triage.
-  // #4104 review F1: FAULT_CONTEXT alone missed "keeps tripping"; SYMPTOM is
-  // the fuller grammar documented-value-question.ts already used. In doubt,
-  // keep the triage steps (the pre-#4098 behaviour).
-  const fault = code !== null || FAULT_CONTEXT.test(question) || SYMPTOM.test(question);
-  if (!fault) {
-    return `${head}
-
-What you can do next:
-- Get it from the source that owns it: the manufacturer's support or documentation site, or your distributor. Search by the exact model or part number on the nameplate.
-- For obsolete equipment, ask the manufacturer or distributor for the archived manual (and any required software) by name.
-
-If you add the manual to this notebook and ask again, I'll answer from it and show you the page.`;
-  }
   return `${head}
 
-What I can tell you honestly:
-- Confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly.
-- With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- Note whether the problem returns immediately on restart or only under load — that separates a latched trip from an active condition.
+What you can do next:
+- If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
+- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -1056,7 +1036,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: `fabricated-doc:${p.id}`,
         detail: m[0].slice(0, 160),
-        replacement: specificityFallback(null, scanQuestion),
+        replacement: specificityFallback(null),
       };
     }
   }
@@ -1068,7 +1048,7 @@ export function validateAnswer(opts: {
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:exact-setting",
       detail: es[0].slice(0, 160),
-      replacement: specificityFallback(null, scanQuestion),
+      replacement: specificityFallback(null),
     };
   }
 
@@ -1080,7 +1060,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
         detail: er.excerpt,
-        replacement: specificityFallback(null, scanQuestion),
+        replacement: specificityFallback(null),
         match: { term: er.term, unit: er.unit },
       };
     }

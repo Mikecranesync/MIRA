@@ -739,30 +739,20 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
     if (!v.ok) expect(v.match).toEqual({ term: "supply", unit: "vac" });
   });
 
+  // #4104 review: classifying the question to pick the copy failed both ways
+  // ("keeps tripping" lost triage, F1; "I lost the manual" gained it, F4). The
+  // fallback no longer classifies — every question gets both labelled steps.
   it.each([
     "I need the manual and commissioning software for an obsolete positioning controller. Where is it?",
-    "Where can I download the user manual for this panel?",
-    "what is the rated torque of the gearbox",
-  ])("non-fault question gets the documentation next step: %s", (q) => {
-    const t = specificityFallback(null, q);
-    expect(t).toContain("manufacturer's support or documentation site");
-    expect(t).not.toContain("Confirm the exact code");
-  });
-
-  it.each([
-    "the drive trips on overcurrent at startup",
-    "what does alarm 12 mean",
-    "it shows an error after the swap",
-    "my drive keeps tripping on overvoltage", // #4104 review F1: no fault/alarm/error/code word
+    "I lost the manual for my Festo SPC-100-P-F. Where can I download a replacement?",
+    "The manufacturer does not list the manual for the SPC-100. Where can I download it?",
+    "my drive keeps tripping on overvoltage",
     "the conveyor stopped and won't start",
-  ])("fault question keeps the fault-triage steps: %s", (q) => {
-    expect(specificityFallback(null, q)).toContain("Confirm the exact code");
-  });
-
-  it("#4104 F1 reproduction: a tripping question blocked for a rating keeps triage", () => {
+    "what is the rated torque of the gearbox",
+  ])("offers both the fault and the documentation next step: %s", (q) => {
     const v = validateAnswer({
       answerText: "The supply voltage is 480 VAC.",
-      question: "my drive keeps tripping on overvoltage",
+      question: q,
       general: true,
       served: true,
       refused: false,
@@ -771,11 +761,14 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
     expect(v.ok).toBe(false);
     if (!v.ok) {
       expect(v.violation).toBe("unsupported-specificity:exact-rating");
-      expect(v.replacement).toContain("Confirm the exact code");
+      expect(v.replacement).toContain("If this is about a fault or a stopped machine: confirm the exact code");
+      expect(v.replacement).toContain("If you need the document itself: get it from the manufacturer's support or documentation site");
     }
   });
 
-  it("a code-meaning fallback always keeps the triage steps", () => {
-    expect(specificityFallback("F005", "where is the manual")).toContain("Confirm the exact code");
+  it("a code-meaning fallback keeps the code-specific head and both steps", () => {
+    const t = specificityFallback("F005");
+    expect(t).toContain("I can't verify what F005 means");
+    expect(t).toContain("If this is about a fault or a stopped machine");
   });
 });
