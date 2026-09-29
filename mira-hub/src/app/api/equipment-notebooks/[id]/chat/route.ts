@@ -970,17 +970,23 @@ async function handleChatTurn(
     serviceVersion: serviceVersion(),
     traceId: rootTraceId,
   });
+  // Stage spans also carry a monotonic start, so the durable packet's
+  // `timings_ms` is measured whether or not the span is sampled for export
+  // (#4103: an unsampled span has no start/end timestamps).
+  const stageStart = new WeakMap<Span, number>();
+  const startStage = (name: string): Span => {
+    const span = tracer.startSpan(name, undefined, rootCtx);
+    stageStart.set(span, performance.now());
+    return span;
+  };
   // End a stage span and copy its measured duration into the durable packet
-  // (`timings_ms`). The trace already carries exact start/end timestamps; this
-  // is the copy that survives telemetry retention. Never throws.
+  // (`timings_ms`), the copy that survives telemetry retention. Never throws.
   const endTimed = (span: Span, stage: keyof TurnEvidencePacket["timings_ms"]): void => {
     try {
-      const readable = span as unknown as { startTime?: [number, number]; endTime?: [number, number]; ended?: boolean };
       span.end();
-      if (readable.startTime && readable.endTime) {
-        const ms = Math.round(
-          (readable.endTime[0] - readable.startTime[0]) * 1000 + (readable.endTime[1] - readable.startTime[1]) / 1e6,
-        );
+      const started = stageStart.get(span);
+      if (started !== undefined) {
+        const ms = Math.round(performance.now() - started);
         if (ms >= 0) rec.timing(stage, ms);
       }
     } catch {
@@ -1382,7 +1388,7 @@ async function handleChatTurn(
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
-  const identityResolveSpan = tracer.startSpan("identity.resolve", undefined, rootCtx);
+  const identityResolveSpan = startStage("identity.resolve");
   openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
@@ -1648,7 +1654,7 @@ async function handleChatTurn(
 
   // Non-English questions search the English corpus in English (answered in their own language).
   const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
-  const retrievalSpan = tracer.startSpan("retrieval.execute", undefined, rootCtx);
+  const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
   //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
@@ -1953,7 +1959,7 @@ async function handleChatTurn(
       gateAnswerGateSpan,
     );
     gateAnswerGateSpan.end();
-    const gatePersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+    const gatePersistSpan = startStage("turn.persist");
     const gateTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
@@ -2278,7 +2284,7 @@ async function handleChatTurn(
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
   );
   {
-    const contextSpan = tracer.startSpan("context.assemble", undefined, rootCtx);
+    const contextSpan = startStage("context.assemble");
     // Same identity rule as retrieval.returned_doc_ids: doc id for notebook
     // chunks, source_url#page for shared-OEM chunks (which carry no doc id) —
     // so "what reached the model" is never empty when chunks did.
@@ -2430,7 +2436,7 @@ async function handleChatTurn(
         // also land here — checking once at the top of the loop covers all of
         // them (e.g. Groq 429 arriving after the technician tapped Stop).
         if (clientAbort.signal.aborted) break cascade;
-        genSpan = tracer.startSpan(`chat ${provider.model}`, undefined, rootCtx);
+        genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
         genResponseId = null;
         const genAttemptStartedAt = Date.now();
@@ -2699,7 +2705,7 @@ async function handleChatTurn(
           stoppedAnswerGateSpan,
         );
         stoppedAnswerGateSpan.end();
-        const stoppedPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+        const stoppedPersistSpan = startStage("turn.persist");
         let stoppedTurnRowId: string | null = null;
         try {
           stoppedTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
@@ -3109,7 +3115,7 @@ async function handleChatTurn(
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
-      const finalPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+      const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
         finalTurnRowId = await recordTurn(ctx.tenantId, notebookId, {

@@ -18,6 +18,7 @@
  */
 import type { Attributes, Context, Link, SpanKind } from "@opentelemetry/api";
 import {
+  AlwaysOffSampler,
   ParentBasedSampler,
   SamplingDecision,
   TraceIdRatioBasedSampler,
@@ -64,7 +65,17 @@ class TurnRootSampler implements Sampler {
   }
 }
 
-/** The SDK sampler: turn-rooted traces only, children follow their parent. */
+/**
+ * The SDK sampler: turn-rooted traces only, local children follow their parent.
+ * A span continuing a REMOTE parent (an incoming `traceparent`, which Next.js
+ * extracts itself) is never exported: the SDK default would export it whenever
+ * the caller's flag said "sampled", bypassing the turn filter. Turns are
+ * unaffected because the routes start `mira.turn` with `{ root: true }`.
+ */
 export function turnOnlySampler(ratio = turnSampleRatio()): Sampler {
-  return new ParentBasedSampler({ root: new TurnRootSampler(ratio) });
+  return new ParentBasedSampler({
+    root: new TurnRootSampler(ratio),
+    remoteParentSampled: new AlwaysOffSampler(),
+    remoteParentNotSampled: new AlwaysOffSampler(),
+  });
 }

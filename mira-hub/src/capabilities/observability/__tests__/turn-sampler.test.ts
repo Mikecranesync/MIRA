@@ -85,3 +85,31 @@ describe("the turn routes' root span under a framework request span (#4103)", ()
     expect(turn.isRecording()).toBe(true);
   });
 });
+
+describe("remote parents never bypass the turn filter (#4107 review F1)", () => {
+  const remote = (sampled: boolean) =>
+    trace.setSpanContext(ROOT_CONTEXT, {
+      traceId: TRACE,
+      spanId: "b7ad6b7169203331",
+      traceFlags: sampled ? TraceFlags.SAMPLED : TraceFlags.NONE,
+      isRemote: true,
+    });
+
+  it.each([
+    [true, 1],
+    [true, 0],
+    [false, 1],
+    [false, 0],
+  ])("a GET continuing a remote parent (sampled=%s, ratio=%s) is dropped", (sampled, ratio) => {
+    const d = turnOnlySampler(ratio).shouldSample(remote(sampled), TRACE, "GET /api/health", SpanKind.SERVER, {}, []);
+    expect(d.decision).toBe(SamplingDecision.NOT_RECORD);
+  });
+
+  it("a root:true mira.turn under a sampled remote request is kept, and its local child follows it", () => {
+    const tracer = new BasicTracerProvider({ sampler: turnOnlySampler(1) }).getTracer("t");
+    const turn = tracer.startSpan("mira.turn", { root: true }, remote(true));
+    expect(turn.isRecording()).toBe(true);
+    const child = tracer.startSpan("retrieval.execute", undefined, trace.setSpan(context.active(), turn));
+    expect(child.isRecording()).toBe(true);
+  });
+});
