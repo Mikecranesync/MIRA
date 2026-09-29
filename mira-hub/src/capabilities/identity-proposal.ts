@@ -211,6 +211,14 @@ const LABEL_ALT = [...LABEL_WORDS].map((w) => w.replace(/\//g, "\\/")).join("|")
 const LABEL_VALUE_UPPER_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})(?:\\s*[:#.]\\s*|\\s+)[^\\s,;]+`, "g");
 /** A label in any case with an explicit separator ("sn: pf525", "Serial#123"). */
 const LABEL_VALUE_SEP_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})\\s*[:#]\\s*[^\\s,;]+`, "gi");
+/**
+ * A COMPOUND label in any case — the label, then "Number"/"Num"/"No."/"Nr."
+ * — then its value ("Serial Number: PF525", "S/N No. PF525") — Codex #4120 r18 F19.
+ */
+const LABEL_VALUE_COMPOUND_RE = new RegExp(
+  `(?<![A-Za-z0-9])(?:${LABEL_ALT})[\\s.]+(?:number|num|no|nr)\\b\\.?\\s*[:#.]?\\s*[^\\s,;]+`,
+  "gi",
+);
 
 /**
  * Blank every nameplate label and its VALUE before ANY extraction step — the
@@ -221,7 +229,10 @@ const LABEL_VALUE_SEP_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})\\s*[:#]\
  */
 function withoutLabelValues(message: string): string {
   const blank = (m: string) => " ".repeat(m.length);
-  return message.replace(LABEL_VALUE_SEP_RE, blank).replace(LABEL_VALUE_UPPER_RE, blank);
+  return message
+    .replace(LABEL_VALUE_COMPOUND_RE, blank)
+    .replace(LABEL_VALUE_SEP_RE, blank)
+    .replace(LABEL_VALUE_UPPER_RE, blank);
 }
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;

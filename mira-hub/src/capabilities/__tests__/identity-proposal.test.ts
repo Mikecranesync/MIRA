@@ -353,3 +353,20 @@ describe("Codex #4120 r17", () => {
     expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 has no power", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r18", () => {
+  it.each([
+    "Siemens Serial Number: PF525 is on the label",
+    "Siemens SERIAL NUMBER: PF525 is on the label",
+    "Siemens S/N No. PF525 is on the label",
+    "Siemens part no. PF525 on the plate",
+  ])("F19: a compound label's value is never the model: %s", (text) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toBeNull();
+  });
+  it("F19: a compound label's value is not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley PF525 Serial Number: PF753 is on the label", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "525",
+    });
+  });
+});
