@@ -973,6 +973,39 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
   };
 }
 
+// #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
+// volts. 2. Measure the actual line voltage at the drive's input terminals."
+// After a completed lockout, a LIVE supply measurement can only be taken by
+// restoring power — the restore step is implied, never written, so the
+// explicit restore-to-measure rule above never fired and the answer was served
+// with no energized-work banner (2 of 5 turns; the other 3 wrote the restore
+// and got the banner). This recognises only that narrow shape: an isolation
+// step that verifies zero/dead, followed later by a measurement of a live
+// supply quantity, with no restore written in between. A dead check ("verify
+// zero volts at the input terminals", winding resistance) never matches.
+const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const VERIFIED_DEAD = /\b(?:verify|confirm)\w*\b[^.!?\n]{0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+voltage|(?:is|are)\s+dead|dead\b)/i;
+const LIVE_SUPPLY_QUANTITY =
+  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
+const DEAD_MEASUREMENT = /\b(?:zero|absence|dead|no\s+voltage|de[-\s]?energi[sz]ed|isolated|locked\s+out|resistance|continuity|insulation)\b/i;
+const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+
+function liveMeasurementAfterLockout(text: string): string | null {
+  let isolated = false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!isolated) {
+      if (LOCKOUT_STEP.test(sentence) && VERIFIED_DEAD.test(sentence)) isolated = true;
+      continue;
+    }
+    // A written restore is the explicit rule's job, not this one.
+    if (RESTORE_ENERGY.test(sentence)) return null;
+    if (MEASURE_VERB.test(sentence) && LIVE_SUPPLY_QUANTITY.test(sentence) && !DEAD_MEASUREMENT.test(sentence)) {
+      return sentence.trim();
+    }
+  }
+  return null;
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) return { ok: true };
   return {
@@ -1065,7 +1098,7 @@ export function validateAnswer(opts: {
   // Detection stays unconditional and runs before A2 for the same reason as
   // before: the same sentence usually satisfies A2's `energized` relation, and
   // letting A2 stop it would silently re-impose the withhold.
-  const restore = restoreEnergyToMeasure(scanText);
+  const restore = restoreEnergyToMeasure(scanText) ?? liveMeasurementAfterLockout(scanText);
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.

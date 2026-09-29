@@ -855,3 +855,35 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
     expect(v.ok).toBe(true);
   });
 });
+
+
+describe("#4110: a live supply measurement after lockout gets the energized-work banner", () => {
+  const Q3 =
+    "A 460V VFD shows 420V output voltage at full speed. What should the technician check first? A) Input voltage B) Carrier frequency C) Current limit D) Motor nameplate";
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: Q3, general: true, served: true, refused: false, evidenceSufficient: false });
+
+  // Real served answers, staging 134eec706 (traces d52829a4…, 217b1e71…).
+  it.each([
+    "A\n\nFirst check the **input voltage to the drive** – a low input can cause reduced output voltage.\n\n1. De-energize, lockout/tagout the VFD input supply and verify zero volts with a meter.\n2. Measure the actual line voltage at the drive's input terminals; compare to the nameplate (≈460 V).\n3. If the input is within spec, then proceed to verify the drive's output voltage under load.",
+    "A\n\nFirst check the **input voltage to the drive** – a low input will reduce the DC bus and thus the output voltage.\n\n1. De-energize, lockout/tagout the VFD and verify zero voltage at the input terminals.\n2. Measure the actual line voltage at the drive's input terminals with a qualified-person procedure.\n3. If the input is within the drive's rated range, then proceed to check the DC bus voltage.",
+  ])("the implied restore is warned, and the answer is kept: %#", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a.split("\n")[0]); // the full answer is still served
+    }
+  });
+
+  it.each([
+    // dead checks while locked out
+    "1. Lock out and tag out the drive and verify zero voltage.\n2. Measure the motor winding resistance phase to phase.",
+    "1. De-energize, lock out and verify zero volts.\n2. Verify the absence of voltage at the input terminals before touching them.",
+    "1. Lock out the feeder and verify it is dead.\n2. Check continuity of the input fuses.",
+    // a live reading with no lockout at all is not this rule's shape
+    "Read the input voltage from the drive's display (parameter d0.12).",
+  ])("no banner for a dead check or no lockout: %#", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});
