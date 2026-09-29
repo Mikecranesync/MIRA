@@ -237,7 +237,11 @@ def test_pinned_photo_fixtures_match_their_committed_bytes():
 
     root = Path(__file__).resolve().parents[2]
     manifest = json.loads((root / "answer_radar/human_readiness_manifest_v1.json").read_text())
-    pinned = [c for c in manifest["cases"] if c.get("fixture_sha256") and c.get("fixture_bytes") != "off_repo"]
+    pinned = [
+        c
+        for c in manifest["cases"]
+        if c.get("fixture_sha256") and c.get("fixture_bytes") != "off_repo"
+    ]
     assert pinned, "no pinned fixture: this check would pass vacuously"
     for c in pinned:
         data = (root / c["fixture"]).read_bytes()
@@ -379,3 +383,61 @@ def test_distinct_provider_and_model_pairs_stay_eligible(tmp_path: Path):
     _grades(tmp_path, row)
     cap.attach_source_reviews({"build_sha": SHA, "attempts": [attempt]}, [row], tmp_path)
     assert attempt["source_review"]["independent_providers"] == ["anthropic", "openai"]
+
+
+def _cited_capture():
+    return _capture(
+        [
+            {"kind": "content", "content": "1000 Ω [1]"},
+            {"kind": "sources", "citations": [PASSAGE]},
+            {"kind": "status", "status": "answered"},
+        ]
+    )
+
+
+_SR_MANIFEST = {
+    "version": 1,
+    "cases": [dict(CASE, critical=False, latency_class="answer_only", requires_source_review=True)],
+}
+
+
+def test_grades_bound_with_reference_notes_attach_when_given_the_same_notes(tmp_path: Path):
+    """grader_packet binds reference notes into answer_sha256; the attach must too."""
+    from answer_radar.score import answer_identity
+
+    _, (attempt, row) = _cited_capture()
+    sid = row["question"]["question_id"]
+    notes = {sid: "PT1000 is 1000 ohm at 0 C."}
+    _grades(tmp_path, row, hash_=answer_identity(row, notes[sid]))
+    run = {"build_sha": SHA, "attempts": [attempt]}
+    cap.attach_source_reviews(run, [row], tmp_path, references=notes)
+    sr = attempt["source_review"]
+    assert sr["independent_providers"] == ["anthropic", "openai"]
+    assert sr["reference_notes"] == notes[sid]
+    reasons = human_readiness.score(_SR_MANIFEST, run)["reasons"]
+    assert not any("source review" in r for r in reasons), reasons
+
+
+def test_notes_bound_grades_do_not_attach_without_the_notes(tmp_path: Path):
+    from answer_radar.score import answer_identity
+
+    _, (attempt, row) = _cited_capture()
+    _grades(tmp_path, row, hash_=answer_identity(row, "some notes"))
+    run = {"build_sha": SHA, "attempts": [attempt]}
+    cap.attach_source_reviews(run, [row], tmp_path)
+    assert attempt["source_review"]["independent_providers"] == []
+    reasons = human_readiness.score(_SR_MANIFEST, run)["reasons"]
+    assert any("independent passage-bound source review missing" in r for r in reasons)
+
+
+def test_notes_edited_after_grading_unbind_the_review(tmp_path: Path):
+    from answer_radar.score import answer_identity
+
+    _, (attempt, row) = _cited_capture()
+    sid = row["question"]["question_id"]
+    _grades(tmp_path, row, hash_=answer_identity(row, "original notes"))
+    run = {"build_sha": SHA, "attempts": [attempt]}
+    cap.attach_source_reviews(run, [row], tmp_path, references={sid: "original notes"})
+    attempt["source_review"]["reference_notes"] = "edited notes"
+    reasons = human_readiness.score(_SR_MANIFEST, run)["reasons"]
+    assert any("grades bind a different answer" in r for r in reasons), reasons

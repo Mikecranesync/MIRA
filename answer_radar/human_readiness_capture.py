@@ -229,7 +229,10 @@ def _bound_row(a: dict[str, Any], row: dict[str, Any]) -> str | None:
 
 
 def attach_source_reviews(
-    run: dict[str, Any], rows: list[dict[str, Any]], grades_dir: Path
+    run: dict[str, Any],
+    rows: list[dict[str, Any]],
+    grades_dir: Path,
+    references: dict[str, Any] | None = None,
 ) -> None:
     """Derive each attempt's source_review from real grade files (never asserted).
 
@@ -237,6 +240,10 @@ def attach_source_reviews(
     grade must pass the canonical rubric check (F4); independence is the class
     score.py derives from recorded provider AND model identities (F4); and an
     uncited answer is passage-bound only as a server-certified decline (F2).
+
+    `references` must be the same {seed_id: notes} the grader packet was built
+    with: the packet binds the notes into `answer_sha256`, so the notes the
+    graders were shown are part of the identity every grade must match.
     """
     by_id = {r["question"]["question_id"]: r for r in rows}
     for a in run["attempts"]:
@@ -248,7 +255,8 @@ def attach_source_reviews(
         if unbound:
             a["source_review"] = {"error": unbound}
             continue
-        expected = answer_identity(row)
+        notes = (references or {}).get(sid)
+        expected = answer_identity(row, notes)
         grades, valid = [], True
         for slot in ("A", "B"):
             f = grades_dir / f"grade-{slot}-{sid}.json"
@@ -265,6 +273,7 @@ def attach_source_reviews(
         )
         a["source_review"] = {
             "answer_sha256": expected,
+            "reference_notes": notes,
             "grade_answer_hashes": [g.get("answer_sha256") for g in grades],
             # Only a proven independent-provider pair names providers at all.
             "independent_providers": [g.get("grader_provider") for g in grades]

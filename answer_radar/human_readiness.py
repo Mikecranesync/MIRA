@@ -21,7 +21,9 @@ HASH = re.compile(r"^[0-9a-f]{64}$")
 COMPLETED_STATUSES = ("answered", "insufficient_evidence")
 
 
-def _graded_row_mismatch(attempt: dict, case: dict, answer_hash: str) -> str | None:
+def _graded_row_mismatch(
+    attempt: dict, case: dict, answer_hash: str, reference_notes: object = None
+) -> str | None:
     """Why the graded identity is NOT this attempt's answer, or None (#4109 F1).
 
     The grades bind `answer_hash`; it counts only if it is recomputed from the
@@ -33,7 +35,7 @@ def _graded_row_mismatch(attempt: dict, case: dict, answer_hash: str) -> str | N
     row = attempt.get("grading_row")
     if not isinstance(row, dict) or not isinstance(row.get("evaluation"), dict):
         return "grading row missing"
-    if answer_identity(row) != answer_hash:
+    if answer_identity(row, reference_notes) != answer_hash:
         return "grades bind a different answer"
     ev = row["evaluation"]
     if ev.get("answer_text") != attempt.get("rendered_answer"):
@@ -149,11 +151,10 @@ def score(manifest: dict, run: dict) -> dict:
                 or source.get("grade_answer_hashes") != [answer_hash, answer_hash]
             ):
                 reasons.append(f"{label}: independent passage-bound source review missing")
-            elif _graded_row_mismatch(attempt, case, answer_hash):
-                reasons.append(
-                    f"{label}: source review is not bound to this attempt "
-                    f"({_graded_row_mismatch(attempt, case, answer_hash)})"
-                )
+            elif mismatch := _graded_row_mismatch(
+                attempt, case, answer_hash, source.get("reference_notes")
+            ):
+                reasons.append(f"{label}: source review is not bound to this attempt ({mismatch})")
         jev = attempt.get("jev")
         if not isinstance(jev, dict) or not (jev.get("signals") or jev.get("skipped_reason")):
             # A disabled shadow is a recorded skip, not a missing observation.
