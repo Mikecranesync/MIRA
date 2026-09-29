@@ -114,3 +114,27 @@ describe("Codex #4120 review — never a mixed, ambiguous or non-model proposal"
   });
 });
 
+describe("Codex #4120 r2 — other-family models and sensitive free text", () => {
+  it("F2: a second model of ANOTHER family → no proposal", () => {
+    expect(proposeIdentityFromText("Compare Mitsubishi FX5U and Q03UDECPU", CORPUS)).toBeNull();
+  });
+  it("F2 control: interface/protocol tokens are not second machines", () => {
+    expect(proposeIdentityFromText("A Mitsubishi FX5U reads a Baykon indicator over RS-485 at 24VDC", CORPUS)).toEqual({
+      manufacturer: "Mitsubishi",
+      model: "FX5U",
+    });
+    expect(proposeIdentityFromText("An Allen-Bradley SLC 5/03 is on a DH-485 network in an IP65 box", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+  });
+  it("F5: serials, usernames and generic words never become a model", () => {
+    expect(proposeIdentityFromText("Siemens PLC SN12345678 keeps faulting", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Siemens john.smith123 is my login", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("Siemens AB12345678 order number", CORPUS)).toBeNull();
+  });
+  it("F5 control: a generic device word before a real model is skipped, not joined", () => {
+    expect(proposeIdentityFromText("Siemens PLC S7-1200 won't start", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
+  });
+});
+

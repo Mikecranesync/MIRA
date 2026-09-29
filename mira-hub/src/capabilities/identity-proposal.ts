@@ -44,6 +44,19 @@ const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const MAC_RE = /^[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}$/;
 const SERIAL_RE = /^(?:s\/?n|serial)/i;
 const MAX_MODEL_CHARS = 32;
+/** A run of 7+ digits is a serial/order/phone number, never a model (Codex #4120 r2 F5). */
+const LONG_DIGIT_RUN = /\d{7,}/;
+const HAS_UPPER = /[A-Z]/;
+/** Dotted word or e-mail shape ("john.smith123", "a@b") — a username, not a model. */
+const USERNAME_SHAPE = /[A-Za-z]{2,}\.[A-Za-z]|@/;
+/** Generic device words that precede a model but are not part of it ("PLC S7-1200"). */
+const GENERIC_DEVICE_WORDS = new Set(["PLC", "VFD", "HMI", "CPU", "DRIVE", "PANEL", "MOTOR", "VALVE", "SENSOR", "GATEWAY", "CONTROLLER", "UNIT"]);
+/**
+ * Interface, protocol, rating and standard tokens that look model-shaped but
+ * name no machine ("RS-485", "DH-485", "IP65", "24VDC", "M12", "IEC61131").
+ */
+const NON_MACHINE_TOKEN_RE =
+  /^(?:RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|MM|BAR|PSI|RPM|MS|S)|\d+(?:ST|ND|RD|TH))$/i;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -60,23 +73,39 @@ function isModelToken(t: string): boolean {
     MODEL_TOKEN_RE.test(t) &&
     HAS_DIGIT.test(t) &&
     HAS_LETTER.test(t) &&
+    HAS_UPPER.test(t) &&
     !FAULT_CODE_RE.test(t) &&
     !IPV4_RE.test(t) &&
     !MAC_RE.test(t) &&
     !SERIAL_RE.test(t) &&
+    !LONG_DIGIT_RUN.test(t) &&
+    !USERNAME_SHAPE.test(t) &&
+    !NON_MACHINE_TOKEN_RE.test(t) &&
     t.length <= MAX_MODEL_CHARS
   );
 }
 
 /** The digit-bearing token of a family code span ("5/03", "01.2"): digits required, never an IP. */
 function isFamilyNumber(t: string): boolean {
-  return MODEL_TOKEN_RE.test(t) && HAS_DIGIT.test(t) && !FAULT_CODE_RE.test(t) && !IPV4_RE.test(t) && t.length <= 12;
+  return (
+    MODEL_TOKEN_RE.test(t) &&
+    HAS_DIGIT.test(t) &&
+    !FAULT_CODE_RE.test(t) &&
+    !IPV4_RE.test(t) &&
+    !SERIAL_RE.test(t) &&
+    !LONG_DIGIT_RUN.test(t) &&
+    !USERNAME_SHAPE.test(t) &&
+    t.length <= 12
+  );
 }
 
 /** The model span starting at `tokens[0]`, or null. */
 function modelSpanAt(tokens: string[]): string | null {
+  // "Siemens PLC S7-1200": skip one generic device word before the model.
+  if (tokens[0] && GENERIC_DEVICE_WORDS.has(tokens[0].toUpperCase())) tokens = tokens.slice(1);
   const [t1, t2] = tokens;
   if (!t1) return null;
+  if (GENERIC_DEVICE_WORDS.has(t1.toUpperCase())) return null;
   if (isModelToken(t1)) return t1;
   // An all-caps family code followed by a digit-bearing token: "SLC 5/03", "AC 01.2".
   if (ALLCAPS_CODE_RE.test(t1) && t2 && isFamilyNumber(t2)) return `${t1} ${t2}`;
@@ -138,6 +167,12 @@ const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
  */
 function namesAnotherFamilyModel(message: string, model: string): boolean {
   const tokens = message.split(/\s+/).map(cleanToken);
+  // Any OTHER standalone model-shaped token — same family or not ("FX5U and
+  // Q03UDECPU") — means two machines are named (Codex #4120 r2 F2).
+  const modelParts = new Set(model.split(" ").map(norm));
+  for (const t of tokens) {
+    if (isModelToken(t) && !modelParts.has(norm(t))) return true;
+  }
   const family = model.includes(" ") ? model.split(" ")[0] : (model.match(/^[A-Za-z]{2,}/)?.[0] ?? null);
   if (!family) return false;
   for (let i = 0; i < tokens.length; i++) {
