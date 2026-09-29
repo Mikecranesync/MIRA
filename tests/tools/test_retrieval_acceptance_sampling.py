@@ -42,22 +42,77 @@ def test_packet_is_found_by_client_request_id_sampled_or_not(monkeypatch, packet
     assert calls == [f"/api/equipment-notebooks/nb-1/turns/diagnostics/?client_request_id={CRID}"]
 
 
-def _trace_check(hdr, pkt, frame):
+def _healthy(trace_id):
+    """A complete healthy general-mode answer, packet + wire, as the route emits it.
+
+    A sampled turn leads with a trace frame; an unsampled one has no trace id,
+    no header and no trace frame at all (chat/route.ts emits it only when
+    rootTraceId is set).
+    """
+    kinds = (["trace"] if trace_id else []) + ["sources", "content", "evidence", "done"]
+    w = {
+        "trace_frame": {"kind": "trace", "traceId": trace_id} if trace_id else {},
+        "kinds": kinds,
+        "status": "answered",
+        "content": "A VFD varies motor speed by changing the supply frequency.",
+        "basis": "general_reasoning",
+        "citations": 0,
+    }
+    d = {
+        "traceId": trace_id,
+        "packet": {
+            "environment": "staging",
+            "generation": {
+                "served_provider": "Groq",
+                "served_model": "m",
+                "input_tokens": 3,
+                "output_tokens": 2,
+            },
+            "retrieval": {"executed": False, "candidate_count": 0},
+            "context": {"chunk_count": 0, "evidence_doc_ids": [], "system_prompt_kind": "general"},
+        },
+    }
+    return d, w
+
+
+def _run(hdr, d, w):
     row = mod.Row(scenario="s", trace_id=hdr)
-    w = {"trace_frame": {"traceId": frame} if frame else {}, "kinds": ["trace"], "status": None}
-    d = {"traceId": pkt, "packet": {"environment": "staging", "generation": {}}}
-    try:
-        mod.common_checks(row, d, w)
-    except (KeyError, TypeError):
-        pass  # later checks need a fuller packet; the trace check runs first
-    return next(ok for name, ok, _ in row.checks if name.startswith("trace id on header"))
+    mod.common_checks(row, d, w)
+    return row
 
 
-def test_unsampled_turn_passes_when_no_trace_id_exists_anywhere():
-    assert _trace_check(None, None, None) is True
+def test_healthy_sampled_and_unsampled_turns_pass_every_common_check():
+    for trace in (TRACE, None):
+        d, w = _healthy(trace)
+        row = _run(trace, d, w)
+        assert row.passed, [c for c in row.checks if not c[1]]
 
 
-def test_sampled_turn_needs_one_matching_trace_id():
-    assert _trace_check(TRACE, TRACE, TRACE) is True
-    assert _trace_check(TRACE, None, TRACE) is False
-    assert _trace_check(None, TRACE, None) is False
+def test_sampled_turn_with_a_missing_misplaced_or_mismatched_trace_frame_fails():
+    d, w = _healthy(TRACE)
+    w["kinds"] = ["sources", "content"]
+    w["trace_frame"] = {}
+    assert not _run(TRACE, d, w).passed  # missing
+
+    d, w = _healthy(TRACE)
+    w["kinds"] = ["sources", "trace", "content"]
+    assert not _run(TRACE, d, w).passed  # misplaced
+
+    d, w = _healthy(TRACE)
+    w["trace_frame"] = {"kind": "trace", "traceId": "f" * 32}
+    assert not _run(TRACE, d, w).passed  # mismatched
+
+
+def test_trace_ids_that_disagree_fail_either_way():
+    d, w = _healthy(TRACE)
+    d["traceId"] = None
+    assert not _run(TRACE, d, w).passed
+    d, w = _healthy(None)
+    d["traceId"] = TRACE
+    assert not _run(None, d, w).passed
+
+
+def test_an_unsampled_turn_that_still_sends_a_trace_frame_fails():
+    d, w = _healthy(None)
+    w["kinds"] = ["trace"] + w["kinds"]
+    assert not _run(None, d, w).passed

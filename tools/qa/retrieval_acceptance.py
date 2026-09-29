@@ -254,9 +254,15 @@ def common_checks(row: Row, d: dict[str, Any], w: dict[str, Any]) -> None:
         len(ids) == 1,
         f"hdr={row.trace_id} pkt={d.get('traceId')} frame={w['trace_frame'].get('traceId')}",
     )
-    row.check(
-        "first SSE frame is the trace frame", w["kinds"][:1] == ["trace"], str(w["kinds"][:3])
-    )
+    if row.trace_id:
+        row.check(
+            "first SSE frame is the trace frame", w["kinds"][:1] == ["trace"], str(w["kinds"][:3])
+        )
+    else:
+        # An unsampled turn has no trace id, and the route sends no trace frame.
+        row.check(
+            "unsampled turn sends no trace frame", "trace" not in w["kinds"], str(w["kinds"][:3])
+        )
     row.check(
         "environment attribution", p.get("environment") == "staging", str(p.get("environment"))
     )
