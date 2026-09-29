@@ -2164,8 +2164,20 @@ async function handleChatTurn(
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
-  const machineContext =
-    `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
+  // #4099: the block is emitted only when it states a fact — a known identity,
+  // a bound asset, loaded documents, or a disputed identity. On a blank chat it
+  // said only "an unspecified machine", "none" and a quick-start note that
+  // applies to no document, and that noise measurably broke answers: on
+  // gpt-oss-120b (Groq, the served model/params) the Q9 option letter
+  // contradicted its own correct explanation in 11 of 24 samples with the
+  // block vs 0 of 24 without; the ablation isolated the "Equipment: an
+  // unspecified machine" line. The general prompt already says no manual is
+  // loaded, so nothing is lost.
+  const machineHasFacts =
+    identityDisputed || Boolean(nb?.manufacturer || nb?.model) || boundAsset.state === "resolved" || srcs.length > 0;
+  const machineContext = !machineHasFacts
+    ? ""
+    : `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
