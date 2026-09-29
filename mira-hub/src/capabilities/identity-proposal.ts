@@ -58,6 +58,12 @@ const GENERIC_DEVICE_WORDS = new Set(["PLC", "VFD", "HMI", "CPU", "DRIVE", "PANE
 const NON_MACHINE_TOKEN_RE =
   /^(?:\d+(?:\.\d+)?(?:-|to)\d+(?:\.\d+)?\s*(?:MA|V|VDC|VAC|A|HZ|KHZ|PSI|BAR|MM|RPM|%|°?C|°?F)?|RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|MM|BAR|PSI|RPM|MS|S)|\d+(?:ST|ND|RD|TH))$/i;
 
+/**
+ * A unit written as its own word after a number ("DC 24 V", "AC 230 volts"):
+ * the number is a rating, not a model (Codex #4120 r7 F10).
+ */
+const UNIT_WORD_RE = /^(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|PSI|BAR|RPM|MM|%|°?C|°?F|VOLTS?|AMPS?|AMPERES?|WATTS?|HERTZ)$/i;
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -108,12 +114,13 @@ function isFamilyNumber(t: string): boolean {
 function modelSpanAt(tokens: string[]): string | null {
   // "Siemens PLC S7-1200": skip one generic device word before the model.
   if (tokens[0] && GENERIC_DEVICE_WORDS.has(tokens[0].toUpperCase())) tokens = tokens.slice(1);
-  const [t1, t2] = tokens;
+  const [t1, t2, t3] = tokens;
   if (!t1) return null;
   if (GENERIC_DEVICE_WORDS.has(t1.toUpperCase())) return null;
   if (isModelToken(t1)) return t1;
-  // An all-caps family code followed by a digit-bearing token: "SLC 5/03", "AC 01.2".
-  if (ALLCAPS_CODE_RE.test(t1) && t2 && isFamilyNumber(t2)) return `${t1} ${t2}`;
+  // An all-caps family code followed by a digit-bearing token: "SLC 5/03", "AC 01.2" —
+  // but not a rating with its unit spelled out after it ("DC 24 V").
+  if (ALLCAPS_CODE_RE.test(t1) && t2 && isFamilyNumber(t2) && !(t3 && UNIT_WORD_RE.test(t3))) return `${t1} ${t2}`;
   return null;
 }
 
@@ -125,7 +132,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
   const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(manufacturer)}(?![A-Za-z0-9])`, "ig");
   for (const m of message.matchAll(re)) {
     const rest = message.slice((m.index ?? 0) + m[0].length);
-    const tokens = rest.trim().split(/\s+/).slice(0, 3).map(cleanToken);
+    const tokens = rest.trim().split(/\s+/).slice(0, 4).map(cleanToken);
     // The existing parser first, scoped to THIS mention's window, so a model is
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
@@ -190,6 +197,7 @@ function modelMentions(message: string): string[] {
       continue;
     }
     if (!next || isModelToken(next) || !isFamilyNumber(next) || NON_MACHINE_TOKEN_RE.test(next)) continue;
+    if (tokens[i + 2] && UNIT_WORD_RE.test(tokens[i + 2])) continue;
     const allCapsFamily =
       ALLCAPS_CODE_RE.test(t) && (!GENERIC_DEVICE_WORDS.has(t) || /[/.\-]/.test(next));
     if (CAMEL_FAMILY_RE.test(t) || allCapsFamily) {

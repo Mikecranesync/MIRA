@@ -207,3 +207,16 @@ describe("Codex #4120 r6", () => {
     expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r7", () => {
+  it.each(["Siemens DC 24 V power supply is dead", "Siemens AC 230 V motor stopped", "Siemens DC 24 volts power supply is dead"])(
+    "F10: a spaced rating is never a model: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F10: a spaced rating is not a second machine", () => {
+    expect(proposeIdentityFromText("Siemens S7-1200 on a DC 24 V supply keeps faulting", CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" });
+  });
+  it("F10 control: a family code + number followed by an ordinary word still proposes", () => {
+    expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 processor faulted", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});
