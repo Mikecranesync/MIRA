@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from human_readiness import DIMENSIONS, score
+from answer_radar.human_readiness import DIMENSIONS, score
 
 
 SHA = "ae03a3877912c7c1242e18fdd84e0dea39df15ab"
