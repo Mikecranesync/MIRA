@@ -83,6 +83,14 @@ class HumanReadinessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             score(MANIFEST, run)
 
+    def test_unpinned_photo_fixture_cannot_go(self):
+        manifest = copy.deepcopy(MANIFEST)
+        manifest["cases"][0]["fixture"] = "photo.jpg"
+        manifest["cases"][0]["fixture_sha256"] = None
+        report = score(manifest, good())
+        self.assertEqual(report["decision"], "HOLD")
+        self.assertIn("photo fixture hash not pinned", " ".join(report["reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()
