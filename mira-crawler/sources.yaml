@@ -144,6 +144,8 @@ tiers:
       format: pdf
       manufacturer: Rockwell
       equipment_id: SLC-500
+      # #4141: model-bound retrieval filters on model_number
+      model_number: "SLC 500, SLC 5/01, SLC 5/02, SLC 5/03, SLC 5/04, SLC 5/05"
       crawl_pattern: direct
       description: "SLC 500 Modular Hardware Style user manual (1747-UM011) — SLC 5/01-5/05 processors, status LEDs, major/minor faults, troubleshooting"
 
@@ -176,6 +178,8 @@ tiers:
       format: pdf
       manufacturer: Siemens
       equipment_id: SIMATIC-HMI-Comfort-Panels
+      # #4141: model-bound retrieval filters on model_number
+      model_number: "TP700 Comfort, TP900 Comfort, TP1200 Comfort"
       crawl_pattern: direct
       description: "SIMATIC HMI Comfort Panels operating instructions (07/2022, A5E36770603-AE) — TP700/TP900/TP1200 Comfort: mounting, interfaces, commissioning, maintenance, alarms"
 

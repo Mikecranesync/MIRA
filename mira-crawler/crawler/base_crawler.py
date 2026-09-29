@@ -101,6 +101,7 @@ class BaseCrawler:
         source_type = entry.get("source_type", "equipment_manual")
         manufacturer = entry.get("manufacturer", "")
         equipment_id = entry.get("equipment_id", "")
+        model_number = entry.get("model_number", "")
         filename = url.rsplit("/", 1)[-1] if "/" in url else ""
 
         # Content-level dedup
@@ -162,6 +163,7 @@ class BaseCrawler:
                 else self.config.mira_tenant_id
             ),
             manufacturer=manufacturer,
+            model_number=model_number,
             verified=self.oem_trusted,
             # Crawlers ingest public web/OEM content -> shared corpus. Trust
             # (verified) is decided above; visibility is never per-tenant here.
