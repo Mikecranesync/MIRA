@@ -258,3 +258,16 @@ describe("Codex #4120 r10", () => {
     (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
   );
 });
+
+describe("Codex #4120 r11", () => {
+  it.each([
+    ["Siemens S7-1200 reads Modbus 40001", { manufacturer: "Siemens", model: "S7-1200" }],
+    ["Allen-Bradley SLC 5/03 lost comms on Modbus 1", { manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+    ["Siemens S7-1200 uses encoder 1024 pulses per revolution", { manufacturer: "Siemens", model: "S7-1200" }],
+  ])("F14: an equipment category before a number is not a second machine: %s", (text, want) => {
+    expect(proposeIdentityFromText(text, CORPUS)).toEqual(want);
+  });
+  it("F15: a lowercase generic device family with a separated number still refuses", () => {
+    expect(proposeIdentityFromText("Compare Allen-Bradley SLC 5/03 and plc 5/40", CORPUS)).toBeNull();
+  });
+});

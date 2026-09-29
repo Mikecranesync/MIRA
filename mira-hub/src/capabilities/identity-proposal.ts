@@ -174,6 +174,8 @@ export function manufacturerMentionInText(message: string, corpus: readonly stri
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/** equipment-type.ts categories whose hints name product families (not Networking/Sensors/…). */
+const PRODUCT_FAMILY_TYPES = new Set(["PLCs", "VFDs", "HMIs"]);
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
 
@@ -216,10 +218,16 @@ function modelMentions(message: string, chosenModel: string): string[] {
     // equipment vocabulary knows (equipment-type.ts). An ordinary word before a
     // number ("has 100 inputs", "baud 19200") is never a machine (Codex #4120
     // r9 F12, r10 F13).
+    // "Recognized" means a PRODUCT family (PLC, drive, HMI) — not an equipment
+    // category like Modbus or encoder (Codex #4120 r11 F14) — or a lowercase
+    // generic device word with a separated number, exactly as its uppercase form
+    // ("plc 5/40" like "PLC 5/40", r11 F15).
+    const upper = t.toUpperCase();
     const lowerFamily =
       LOWER_FAMILY_RE.test(t) &&
-      ((chosenFamily !== null && t.toUpperCase() === chosenFamily) ||
-        inferEquipmentType({ modelNumber: `${t} ${next}` }) !== "Other");
+      ((chosenFamily !== null && upper === chosenFamily) ||
+        (GENERIC_DEVICE_WORDS.has(upper) && /[/.\-]/.test(next)) ||
+        PRODUCT_FAMILY_TYPES.has(inferEquipmentType({ modelNumber: `${t} ${next}` })));
     if (CAMEL_FAMILY_RE.test(t) || allCapsFamily || lowerFamily) {
       out.push(`${t} ${next}`);
       i++;
