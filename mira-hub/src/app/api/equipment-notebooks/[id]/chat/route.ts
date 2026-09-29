@@ -177,6 +177,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { declineKind, declineText } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
   selectForSemanticCheck,
@@ -1918,6 +1919,8 @@ async function handleChatTurn(
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : (missingModelManual || noEvidenceForMachine) && declineKind(message)
+      ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
