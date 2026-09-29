@@ -816,6 +816,11 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
     // #4108 review round 2 F2: never strip a range endpoint or a sign
     ["The PT100 resistance range is 10 to 100 ohms at 0 °C.", Q77],
     ["The PT100 nominal resistance is -100 Ω at 0 °C.", Q77],
+    // #4108 review round 3: separators outside a definition are never rewritten
+    ["The minimum and maximum operating temperatures are -20 and 60 °C.", Q77],
+    ["The supply voltage is 220 and 480 V.", Q77],
+    ["A PT100 has a nominal resistance of 100 Ω at 0 °C; the supply voltage is 220 and 480 V.", Q77],
+    ["A PT100 has a nominal resistance of 100 Ω at 0 °C, and the operating temperatures are -20 and 60 °C.", Q77],
     // #4108 review F1/F2/F3: the technician's numbers exempt nothing
     ["The terminal torque is 22 N·m at 40 °C.", AMBIENT],
     ["The operating range is -20 to 40 °C.", AMBIENT],

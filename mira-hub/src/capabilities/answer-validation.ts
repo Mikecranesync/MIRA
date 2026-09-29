@@ -688,14 +688,23 @@ function isRtdDefinitionClause(clause: string): boolean {
   return false;
 }
 
-/** The sentence with every whole-clause RTD definition removed. Clauses are
- *  split on ", " / ";" / " and " / " whereas " / " while " / " vs." — a thousands
- *  comma ("1,000") has no following space, so it never splits a number. */
+/** The sentence with every whole-clause RTD definition blanked out, and every
+ *  other byte — including the separators — left exactly as written (#4108
+ *  review round 3: rebuilding with commas broke the rating grammar's own
+ *  "220 and 480 V" range syntax). Clauses are delimited by ", " / ";" / " and "
+ *  / " whereas " / " while " / " vs."; a thousands comma ("1,000") has no
+ *  following space, so it never splits a number. */
 function withoutRtdDefinitions(sentence: string): string {
-  return sentence
-    .split(/,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+/i)
-    .filter((clause) => !isRtdDefinitionClause(clause))
-    .join(", ");
+  // The capture group keeps each separator in the array at the odd indexes.
+  const parts = sentence.split(/(,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+)/i);
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isRtdDefinitionClause(parts[i])) {
+      parts[i] = "";
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : sentence;
 }
 
 export function exactRatingMatch(text: string): ExactRatingMatch | null {
