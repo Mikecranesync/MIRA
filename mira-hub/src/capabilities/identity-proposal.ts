@@ -85,7 +85,11 @@ function isModelToken(t: string): boolean {
   );
 }
 
-/** The digit-bearing token of a family code span ("5/03", "01.2"): digits required, never an IP. */
+/**
+ * The digit-bearing token of a family code span ("5/03", "01.2"): digits
+ * required, never an IP, a rating or a signal range ("DC 24V", "AI 4-20mA" —
+ * Codex #4120 r6 F10).
+ */
 function isFamilyNumber(t: string): boolean {
   return (
     MODEL_TOKEN_RE.test(t) &&
@@ -95,6 +99,7 @@ function isFamilyNumber(t: string): boolean {
     !SERIAL_RE.test(t) &&
     !LONG_DIGIT_RUN.test(t) &&
     !USERNAME_SHAPE.test(t) &&
+    !NON_MACHINE_TOKEN_RE.test(t) &&
     t.length <= 12
   );
 }

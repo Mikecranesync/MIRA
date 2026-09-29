@@ -197,3 +197,13 @@ describe("Codex #4120 r5", () => {
     expect(proposeIdentityFromText("Compare Siemens S7-1200 and TP700", CORPUS)).toBeNull();
   });
 });
+
+describe("Codex #4120 r6", () => {
+  it.each(["Siemens DC 24V power supply is dead", "Siemens AI 4-20mA input is stuck", "Siemens AC 230V motor stopped"])(
+    "F10: a family word + rating or range is never a model: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F10 control: a family word + part number still proposes", () => {
+    expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});
