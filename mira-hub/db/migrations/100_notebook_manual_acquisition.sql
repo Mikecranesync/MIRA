@@ -1,4 +1,4 @@
--- Migration 099: remember a notebook's automatic manual search (#4075).
+-- Migration 100: remember a notebook's automatic manual search (#4075).
 --
 -- When a technician confirms a machine's identity (the web Scan machine flow
 -- creates the notebook with identity_status = 'user_confirmed'), MIRA now looks

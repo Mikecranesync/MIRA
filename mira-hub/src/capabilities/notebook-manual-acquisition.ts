@@ -11,7 +11,7 @@
  *
  * Why background: discovery alone may take up to a minute, and the notebook
  * create response and chat decline both answer immediately. The outcome is
- * recorded in equipment_notebooks.manual_acquisition (migration 099), which the
+ * recorded in equipment_notebooks.manual_acquisition (migration 100), which the
  * chat reads to answer honestly and to avoid repeating a search it already ran
  * for the same identity.
  *

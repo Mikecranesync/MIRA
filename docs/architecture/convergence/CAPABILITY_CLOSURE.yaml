@@ -591,7 +591,7 @@ capabilities:
       - "mira-hub/src/app/api/equipment-notebooks/route.ts          # create-time trigger"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts # decline-time fallback + honest state"
     schema:
-      - "mira-hub/db/migrations/099_notebook_manual_acquisition.sql"
+      - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
     environments:
       dev: unset
       staging: unset
@@ -600,7 +600,7 @@ capabilities:
     reason: >-
       New in #4075 slice 2. Ships off: the create-time trigger also fires for
       eval harnesses that create confirmed notebooks, so it is enabled in staging
-      only after merge and migration 099, and measured before any production
+      only after merge and migration 100, and measured before any production
       decision.
     owner: "Mike Harper"
     ci_jobs:
@@ -611,11 +611,11 @@ capabilities:
       Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
       mira-hub. The column is additive and nullable; code fails open without it.
     blocker: >-
-      Not enabled anywhere yet. Needs migration 099 on staging and a staging
+      Not enabled anywhere yet. Needs migration 100 on staging and a staging
       walk (scan a machine, ask, see the state change) before promotion.
     acknowledged_rules: []
     promotion_criteria:
-      - "Staging: set the flag after 099 is applied; scan SMC VQ1000-FPG and STEPPERONLINE MG17 notebooks; record the packet manual_acquisition states."
+      - "Staging: set the flag after 100 is applied; scan SMC VQ1000-FPG and STEPPERONLINE MG17 notebooks; record the packet manual_acquisition states."
       - "Production: owner decision after the staging walk and the #4102 human-readiness run."
     review_by: "2026-10-27"
     notes: >-

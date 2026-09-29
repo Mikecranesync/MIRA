@@ -111,7 +111,7 @@ describe("startManualAcquisition", () => {
     expect(db.queries).toHaveLength(0);
   });
 
-  it("fails open when the column does not exist yet (prod before migration 099)", async () => {
+  it("fails open when the column does not exist yet (prod before migration 100)", async () => {
     db.failWith = { code: "42703" };
     const acquire = vi.fn();
     expect(await startManualAcquisition(input, { acquire, env: ON })).toBe(false);
