@@ -89,3 +89,40 @@ export function declineText(kind: DeclineKind, machine: string, manufacturer: st
   }
   return `I couldn't find a ${machine} firmware recovery procedure in the manuals I have, so I won't guess at one. Contact ${manufacturer} service or your distributor before attempting it — a failed flash can leave the unit inoperable. If you have the ${machine} firmware or service manual, upload it to this notebook and ask again.`;
 }
+
+/**
+ * #4128 — the same two kinds of question in a chat with NO identified machine
+ * (unbound notebook, nothing named that the library knows, no photo identity).
+ * No manual can exist for a device nobody has identified, so generic recovery
+ * steps are guesses and a password cannot be known. Both halves are answered
+ * when the technician asks both ("recover this actuator firmware by USB, and
+ * what is its service password?"). Returns null when neither kind matches.
+ */
+/** Words that tie a question to the technician's own equipment ("this actuator",
+ *  "my drive", "for the panel"). A question with none of them ("What does a
+ *  service password protect on a drive?") is about equipment in general and
+ *  keeps the general lane. */
+const OWN_EQUIPMENT = /\b(?:this|my|your|our|these|those)\b|\b(?:on|for|of|in)\s+the\b/i;
+
+export function unidentifiedServiceDecline(message: string): string | null {
+  if (!OWN_EQUIPMENT.test(message)) return null;
+  const credential = CREDENTIAL.test(message) || credentialPin(message);
+  const firmware = FIRMWARE_SERVICE.test(message);
+  if (!credential && !firmware) return null;
+  const parts: string[] = [];
+  if (firmware) {
+    parts.push(
+      "Firmware recovery is specific to the exact make and model, and a failed flash can leave the unit " +
+        "inoperable, so I won't give generic steps. Tell me the make and model, or scan the nameplate, and " +
+        "I'll look for its manual; otherwise contact the manufacturer's service or your distributor.",
+    );
+  }
+  if (credential) {
+    parts.push(
+      "Passcodes and service passwords aren't something I can look up or guess, and no manual will contain " +
+        "one. Get it from the equipment owner or the manufacturer's service line.",
+    );
+  }
+  return parts.join(" ");
+}
+
