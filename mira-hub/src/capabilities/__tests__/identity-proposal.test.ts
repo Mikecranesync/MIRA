@@ -294,3 +294,13 @@ describe("Codex #4120 r13", () => {
     expect(proposeIdentityFromText("Compare Allen-Bradley SLC 5/03 and SLC 5/04", CORPUS)).toBeNull();
   });
 });
+
+describe("Codex #4120 r14", () => {
+  it.each(["Siemens MODBUS 40001 is not responding", "Siemens NEMA 4 enclosure leaks", "Siemens PROFINET 2 drops"])(
+    "F18: a technology word is never the proposed model: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F18 control: an all-caps product family is still proposed", () => {
+    expect(proposeIdentityFromText("Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});

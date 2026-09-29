@@ -121,7 +121,15 @@ function modelSpanAt(tokens: string[]): string | null {
   if (isModelToken(t1)) return t1;
   // An all-caps family code followed by a digit-bearing token: "SLC 5/03", "AC 01.2" —
   // but not a rating with its unit spelled out after it ("DC 24 V").
-  if (ALLCAPS_CODE_RE.test(t1) && t2 && isFamilyNumber(t2) && !(t3 && UNIT_WORD_RE.test(t3))) return `${t1} ${t2}`;
+  // Never a technology word ("MODBUS 40001", "NEMA 4") — Codex #4120 r14 F18.
+  if (
+    ALLCAPS_CODE_RE.test(t1) &&
+    !GENERIC_TECH_WORDS.has(t1.toUpperCase()) &&
+    t2 &&
+    isFamilyNumber(t2) &&
+    !(t3 && UNIT_WORD_RE.test(t3))
+  )
+    return `${t1} ${t2}`;
   return null;
 }
 
