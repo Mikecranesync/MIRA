@@ -1,0 +1,278 @@
+{
+  "frozen": "2026-09-29",
+  "note": "Frozen #4120 acceptance set. Expected outcome per input: a {manufacturer, model} proposal or null. Changing an expectation requires an owner decision, not a parser tweak.",
+  "corpus": [
+    "Rockwell Automation",
+    "FESTO",
+    "Mitsubishi Electric",
+    "Siemens",
+    "AutomationDirect",
+    "Columbus McKinnon"
+  ],
+  "cases": [
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-001",
+      "text": "An Allen-Bradley SLC 5/03 is on a DH-485 network. A technician wants to replace the interface",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "SLC 5/03"
+      }
+    },
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-002",
+      "text": "A Festo SPC-100-P-F controller throws a positioning error",
+      "expect": {
+        "manufacturer": "Festo",
+        "model": "SPC-100-P-F"
+      }
+    },
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-003",
+      "text": "An AUMA AC 01.2 actuator will not respond to the remote command",
+      "expect": null
+    },
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-004",
+      "text": "A Mitsubishi FX5U reads a Baykon indicator over RS-485",
+      "expect": {
+        "manufacturer": "Mitsubishi",
+        "model": "FX5U"
+      }
+    },
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-005",
+      "text": "A ProSoft PLX32 gateway drops EtherNet/IP connections",
+      "expect": null
+    },
+    {
+      "category": "radar_seed",
+      "id": "FIELD-SEED-006",
+      "text": "The G+ Mini hoist controller asks for a passcode",
+      "expect": null
+    },
+    {
+      "category": "real_equipment",
+      "text": "Siemens S7-1200 won't start",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "AutomationDirect GS10 won't start",
+      "expect": {
+        "manufacturer": "AutomationDirect",
+        "model": "GS10"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Allen-Bradley PowerFlex 525 shows F004",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "525"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Allen-Bradley PF525 trips on startup",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "525"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Allen-Bradley Micro820 lost its program",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "820"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Siemens TP700 Comfort 6AV2124-0GC01-0AX0 will not boot",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "TP700"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Siemens PLC S7-1200 won't start",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Siemens S7-1200 faults. The S7-1200 is on Ethernet.",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "real_equipment",
+      "text": "Allen-Bradley SLC 5/03 SN: AB1234 is on the label",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "SLC 5/03"
+      }
+    },
+    {
+      "category": "technology_word",
+      "text": "Siemens MODBUS 40001 is not responding",
+      "expect": null
+    },
+    {
+      "category": "technology_word",
+      "text": "Siemens PROFINET 2 drops",
+      "expect": null
+    },
+    {
+      "category": "technology_word",
+      "text": "Siemens S7-1200 reads MODBUS 40001",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "technology_word",
+      "text": "Siemens S7-1200 uses encoder 1024 pulses per revolution",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "rating",
+      "text": "Siemens NEMA 4 enclosure leaks",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens DC 24V power supply is dead",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens DC 24 V power supply is dead",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens 4-20mA transmitter is not responding",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens S7-1200 reads a 4-20mA sensor",
+      "expect": {
+        "manufacturer": "Siemens",
+        "model": "S7-1200"
+      }
+    },
+    {
+      "category": "rating",
+      "text": "Siemens SN: 123456 is on the label",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Siemens S7-1200 and TP700",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Siemens TP700 and S7-1200",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Mitsubishi FX5U and fx3u",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Allen-Bradley SLC 5/03 and PLC 5/40",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Allen-Bradley SLC 5/03 and micrologix 1400",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Compare Allen-Bradley SLC 5/03 and kinetix 5500",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Siemens S7-1200/S7-1500 comparison",
+      "expect": null
+    },
+    {
+      "category": "ambiguity",
+      "text": "Swap the Allen-Bradley PowerFlex 525 for a PowerFlex 753?",
+      "expect": null
+    },
+    {
+      "category": "no_machine",
+      "text": "How does a VFD work?",
+      "expect": null
+    },
+    {
+      "category": "no_machine",
+      "text": "Our Siemens drive keeps tripping",
+      "expect": null
+    },
+    {
+      "category": "no_machine",
+      "text": "Allen-Bradley F004 on the line drive",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens Serial Number = PF525 is on the label",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens serial number = PF525 is on the label",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens S/N No. = PF525 is on the label",
+      "expect": null
+    },
+    {
+      "category": "real_equipment",
+      "text": "Allen-Bradley PF525 Serial Number = PF753 is on the label",
+      "expect": {
+        "manufacturer": "Allen-Bradley",
+        "model": "525"
+      }
+    },
+    {
+      "category": "rating",
+      "text": "Siemens Serial Number: PF525 is on the label",
+      "expect": null
+    },
+    {
+      "category": "rating",
+      "text": "Siemens SN=PF525",
+      "expect": null
+    }
+  ]
+}

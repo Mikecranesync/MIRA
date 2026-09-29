@@ -1192,6 +1192,130 @@ describe("#4099: the MACHINE CONTEXT block is sent only when it states a fact", 
   });
 });
 
+describe("#4095 — a blank chat PROPOSES the named machine, never binds it", () => {
+  const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+  const unbound = { id: NB, displayName: "Unknown box", manufacturer: null, model: null };
+  const systemPromptOf = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body) as {
+      messages: { role: string; content: string }[];
+    };
+    return body.messages[0].content;
+  };
+
+  it("names a library manufacturer + model → identity_proposal frame, packet record, unconfirmed directive; retrieval unchanged", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    const fetchMock = vi.fn(async () => providerStream("A DH-485 link needs matching node addresses."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03 on DH-485", mode: "general" }), params),
+    );
+    const proposal = fr.find((f) => f.kind === "identity_proposal");
+    expect(proposal).toEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+    expect(systemPromptOf(fetchMock)).toContain("UNCONFIRMED MACHINE");
+    expect(systemPromptOf(fetchMock)).toContain("Allen-Bradley SLC 5/03");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    // Content-free packet: the model is a hash, never text (Codex #4120 r3 F5).
+    expect(p.identity.proposal).toEqual({
+      manufacturer: "Allen-Bradley",
+      model_sha256: "b217f051d1e3a5ff26ec33794df34402b690bc6dca1ff40cc4d34ffe191553a3",
+    });
+    expect(JSON.stringify(p)).not.toContain("SLC 5/03");
+    // The proposal alone never changes this turn's retrieval.
+    expect(p.retrieval.strategy).toBe("skipped_general_mode");
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(domainMock.getNotebook).toHaveBeenCalled();
+  });
+
+  it("control: a teaching question → no frame, no packet proposal, prompt unchanged", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    const fetchMock = vi.fn(async () => providerStream("A VFD varies frequency."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "how does a VFD work in general", mode: "general" }), params));
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+    expect(systemPromptOf(fetchMock)).not.toContain("UNCONFIRMED MACHINE");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().identity.proposal).toBeNull();
+  });
+
+  it("Codex #4120 F4: the proposal is persisted with the turn's evidence", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    await (await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    const rec = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(rec.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+
+  it("Codex #4120 F4: an idempotent replay re-emits the stored proposal and runs nothing", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-1",
+        question: "Find the manual for this Allen-Bradley SLC 5/03",
+        answerStatus: "answered",
+        answerText: "General help.",
+        enabledSourceDocIds: [],
+        evidence: [{ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+        model: null,
+        basis: null,
+      },
+    } as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(
+      chatReq({
+        message: "Find the manual for this Allen-Bradley SLC 5/03",
+        mode: "general",
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "identity_proposal")).toEqual({
+      kind: "identity_proposal",
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4120 F3: a notebook bound to an asset (no identity strings) never gets a proposal", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    domainMock.resolveBoundAsset.mockResolvedValueOnce({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      unsPath: "enterprise.site.area.line.cv_101",
+    } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
+  it("Codex #4120 F3: fail closed when the notebook could not be loaded", async () => {
+    domainMock.getNotebook.mockResolvedValue(null as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
+  it("control: a notebook already bound to a machine never gets a proposal", async () => {
+    domainMock.getNotebook.mockResolvedValue({ ...unbound, manufacturer: "Siemens", model: "TP700 Comfort" } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "how does the Allen-Bradley SLC 5/03 compare, conceptually", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+});
+
 describe("#4075 — a confirmed identity with no manual starts, and then reports, the official-manual search", () => {
   const confirmed = (extra: Record<string, unknown> = {}) => ({
     id: NB,
