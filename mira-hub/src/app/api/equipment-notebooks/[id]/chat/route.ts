@@ -102,6 +102,7 @@ import {
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -2401,11 +2402,13 @@ async function handleChatTurn(
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = withStepSafety(withAnswerLanguage(
+  // #4131: a label data identifier ("1P <order no.>") in this turn's photo
+  // context gets its standard meaning stated; otherwise byte-identical.
+  const systemPrompt = withLabelDataIdentifiers(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
       : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
- ));
+ )), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
