@@ -5,28 +5,55 @@ from answer_radar.human_readiness import DIMENSIONS, score
 
 
 SHA = "ae03a3877912c7c1242e18fdd84e0dea39df15ab"
-MANIFEST = {"version": 1, "cases": [{"id": "one", "surfaces": ["web"],
-             "repeats": 1, "critical": True, "latency_class": "answer_only",
-             "requires_source_review": True, "required_receipts": ["citation_open"]},
-            {"id": "two", "surfaces": ["hub"], "repeats": 1,
-             "critical": False, "latency_class": "answer_only",
-             "requires_source_review": True}]}
+MANIFEST = {
+    "version": 1,
+    "cases": [
+        {
+            "id": "one",
+            "surfaces": ["web"],
+            "repeats": 1,
+            "critical": True,
+            "latency_class": "answer_only",
+            "requires_source_review": True,
+            "required_receipts": ["citation_open"],
+        },
+        {
+            "id": "two",
+            "surfaces": ["hub"],
+            "repeats": 1,
+            "critical": False,
+            "latency_class": "answer_only",
+            "requires_source_review": True,
+        },
+    ],
+}
 
 
 def attempt(cid, surface):
-    return {"case_id": cid, "surface": surface, "rep": 0, "build_sha": SHA,
-            "trace_id": "trace", "turn_id": "turn", "rendered_answer": "Answer",
-            "turn_status": "answered", "hard_blockers": [],
-            "scores": {d: 2 for d in DIMENSIONS},
-            "score_reasons": {d: "Observed action and answer" for d in DIMENSIONS},
-            "action_receipts": {"citation_open": "screen recording at passage"},
-            "human_review": {"reviewer": "technician-1", "signed_at": "2026-09-29T01:00:00Z"},
-            "source_review": {"passage_bound": True,
-                              "independent_providers": ["anthropic", "openai"],
-                              "agree_pass": True, "answer_sha256": "a" * 64,
-                              "grade_answer_hashes": ["a" * 64, "a" * 64]},
-            "jev": {"skipped_reason": "disabled"},
-            "latency_ms": {"first_meaningful": 3000, "total": 5000}}
+    return {
+        "case_id": cid,
+        "surface": surface,
+        "rep": 0,
+        "build_sha": SHA,
+        "trace_id": "trace",
+        "turn_id": "turn",
+        "rendered_answer": "Answer",
+        "turn_status": "answered",
+        "hard_blockers": [],
+        "scores": {d: 2 for d in DIMENSIONS},
+        "score_reasons": {d: "Observed action and answer" for d in DIMENSIONS},
+        "action_receipts": {"citation_open": "screen recording at passage"},
+        "human_review": {"reviewer": "technician-1", "signed_at": "2026-09-29T01:00:00Z"},
+        "source_review": {
+            "passage_bound": True,
+            "independent_providers": ["anthropic", "openai"],
+            "agree_pass": True,
+            "answer_sha256": "a" * 64,
+            "grade_answer_hashes": ["a" * 64, "a" * 64],
+        },
+        "jev": {"skipped_reason": "disabled"},
+        "latency_ms": {"first_meaningful": 3000, "total": 5000},
+    }
 
 
 def good():

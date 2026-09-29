@@ -3,6 +3,7 @@
 The runner and reviewers supply observations. This module only validates and
 scores their signed records; Jev signals are diagnostic and cannot promote one.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,8 +43,7 @@ def score(manifest: dict, run: dict) -> dict:
     for case in cases:
         cid, surfaces, repeats = case["id"], case["surfaces"], case["repeats"]
         if case.get("fixture") and not (
-            isinstance(case.get("fixture_sha256"), str)
-            and HASH.fullmatch(case["fixture_sha256"])
+            isinstance(case.get("fixture_sha256"), str) and HASH.fullmatch(case["fixture_sha256"])
         ):
             reasons.append(f"{cid}: photo fixture hash not pinned")
         if not isinstance(repeats, int) or isinstance(repeats, bool) or repeats < 1:
@@ -121,10 +121,7 @@ def score(manifest: dict, run: dict) -> dict:
 
         latency = attempt.get("latency_ms") or {}
         first, total = latency.get("first_meaningful"), latency.get("total")
-        if (
-            type(first) is not int or type(total) is not int
-            or first < 0 or total < first
-        ):
+        if type(first) is not int or type(total) is not int or first < 0 or total < first:
             reasons.append(f"{label}: latency evidence missing/invalid")
         elif case.get("latency_class") == "answer_only":
             first_ms.append(first)
@@ -139,9 +136,18 @@ def score(manifest: dict, run: dict) -> dict:
         if not critical:
             noncritical_total += 1
             noncritical_good += good
-        rows.append({"case_id": key[0], "surface": key[1], "rep": key[2],
-                     "critical": critical, "scores": scores, "hard_blockers": blockers,
-                     "trace_id": attempt.get("trace_id"), "jev": attempt.get("jev")})
+        rows.append(
+            {
+                "case_id": key[0],
+                "surface": key[1],
+                "rep": key[2],
+                "critical": critical,
+                "scores": scores,
+                "hard_blockers": blockers,
+                "trace_id": attempt.get("trace_id"),
+                "jev": attempt.get("jev"),
+            }
+        )
 
     for key in expected.keys() - seen:
         reasons.append(f"{key[0]}/{key[1]}/{key[2]}: attempt missing")
@@ -156,12 +162,18 @@ def score(manifest: dict, run: dict) -> dict:
         reasons.append("answer-only median first meaningful response above 5 s or unmeasured")
     if p95_total is None or p95_total > 12000:
         reasons.append("answer-only p95 completion above 12 s or unmeasured")
-    return {"decision": "HOLD" if reasons else "GO", "build_sha": build,
-            "expected_attempts": len(expected), "observed_attempts": len(seen),
-            "hard_blockers": hard_blockers, "reasons": sorted(reasons),
-            "noncritical_full_quality_rate": quality,
-            "answer_only_median_first_ms": median_first,
-            "answer_only_p95_total_ms": p95_total, "rows": rows}
+    return {
+        "decision": "HOLD" if reasons else "GO",
+        "build_sha": build,
+        "expected_attempts": len(expected),
+        "observed_attempts": len(seen),
+        "hard_blockers": hard_blockers,
+        "reasons": sorted(reasons),
+        "noncritical_full_quality_rate": quality,
+        "answer_only_median_first_ms": median_first,
+        "answer_only_p95_total_ms": p95_total,
+        "rows": rows,
+    }
 
 
 def main() -> None:
@@ -171,8 +183,10 @@ def main() -> None:
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
     try:
-        report = score(json.loads(args.manifest.read_text(encoding="utf-8")),
-                       json.loads(args.run.read_text(encoding="utf-8")))
+        report = score(
+            json.loads(args.manifest.read_text(encoding="utf-8")),
+            json.loads(args.run.read_text(encoding="utf-8")),
+        )
     except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
         sys.stderr.write(f"human-readiness input error: {exc}\n")
         raise SystemExit(2) from None
