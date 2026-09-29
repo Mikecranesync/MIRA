@@ -401,3 +401,18 @@ describe("Codex #4118 r9 F14 — a scanned (file-only) manual is checked against
     expect(acquisitionDeclineText(r, "K", "SMC VQ1000")).toMatch(/saved in this notebook's Sources/);
   });
 });
+
+describe("Codex #4118 r10 F15 — a transient download failure is retryable; a guard rejection is final", () => {
+  it.each(["timeout", "network_error"])("%s → recorded as search_unavailable (retried after the backoff)", (reason) => {
+    const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", { status: "download_rejected", payload: { reason } });
+    expect(r.state).toBe("search_unavailable");
+    expect(r.download_reason).toBe(reason);
+  });
+  it.each(["not_pdf", "blocked_host", "host_not_allowed", "too_large", "http_error"])(
+    "control: %s stays download_rejected (final)",
+    (reason) => {
+      const r = recordFromOutcome("K", "2026-09-29T00:00:00Z", { status: "download_rejected", payload: { reason } });
+      expect(r.state).toBe("download_rejected");
+    },
+  );
+});

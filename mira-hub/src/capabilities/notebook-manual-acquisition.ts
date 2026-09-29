@@ -37,6 +37,9 @@ export const STALE_RUNNING_MINUTES = 10;
  */
 export const UNAVAILABLE_RETRY_MINUTES = 30;
 
+/** safe-download rejections that say nothing about the file — only that it could not be fetched right now. */
+const TRANSIENT_DOWNLOAD_REASONS = new Set(["timeout", "network_error"]);
+
 export type AcquisitionState = "running" | ManualAcquisitionOutcome["status"];
 
 export interface AcquisitionRecord {
@@ -57,6 +60,8 @@ export interface AcquisitionRecord {
   doc_id?: string | null;
   /** The acquired file — reconciled for file-only (scanned) outcomes (Codex #4118 r9 F14). */
   file_id?: string | null;
+  /** Why a download failed, when it did (safe-download's rejection reason). */
+  download_reason?: string | null;
   /** Set at read time: the acquired source was since removed or rejected by the technician. */
   source_removed?: boolean;
 }
@@ -162,6 +167,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     manual?: { matchState?: unknown; docId?: unknown; fileId?: unknown; indexed?: unknown; attached?: unknown } | null;
     oemRequestUrl?: unknown;
     warning?: unknown;
+    reason?: unknown;
   };
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
   // A source that was removed (or rejected) meanwhile is not "attached" — the
@@ -172,9 +178,14 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // retry reuses the finished document instead of reporting a phantom source.
   const indexingElsewhere =
     out.status === "candidate_review" && !attachedIndexed && /currently indexing/i.test(String(p.warning ?? ""));
+  // A download that failed for a TRANSIENT reason (the OEM site timed out or
+  // the network dropped) is retryable, like an unavailable search; every other
+  // rejection is a security/content guard and stays final (Codex #4118 r10 F15).
+  const downloadReason = out.status === "download_rejected" ? str(p.reason) : null;
+  const transientDownload = downloadReason !== null && TRANSIENT_DOWNLOAD_REASONS.has(downloadReason);
   return {
     key,
-    state: indexingElsewhere ? "running" : out.status,
+    state: indexingElsewhere ? "running" : transientDownload ? "search_unavailable" : out.status,
     started_at: startedAt,
     finished_at: indexingElsewhere ? null : new Date().toISOString(),
     candidate_host: str(p.candidate?.host),
@@ -184,6 +195,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     attached_indexed: attachedIndexed,
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
+    download_reason: downloadReason,
   };
 }
 
