@@ -284,3 +284,13 @@ describe("Codex #4120 r12", () => {
     expect(proposeIdentityFromText(text, CORPUS)).toEqual(want);
   });
 });
+
+describe("Codex #4120 r13", () => {
+  it.each(["Siemens S7-1200 reads MODBUS 40001", "Siemens S7-1200 reads ModBus 40001", "Siemens S7-1200 on PROFINET 2"])(
+    "F17: a technology word is not a machine in any case: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toEqual({ manufacturer: "Siemens", model: "S7-1200" }),
+  );
+  it("F17 control: an uppercase product family is still a second machine", () => {
+    expect(proposeIdentityFromText("Compare Allen-Bradley SLC 5/03 and SLC 5/04", CORPUS)).toBeNull();
+  });
+});

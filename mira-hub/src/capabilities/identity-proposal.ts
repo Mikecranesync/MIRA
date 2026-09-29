@@ -238,6 +238,9 @@ function modelMentions(message: string, chosenModel: string): string[] {
       ((chosenFamily !== null && upper === chosenFamily) ||
         (GENERIC_DEVICE_WORDS.has(upper) && /[/.\-]/.test(next)) ||
         (!GENERIC_TECH_WORDS.has(upper) && inferEquipmentType({ modelNumber: `${t} ${next}` }) !== "Other"));
+    // A technology word is never a family, in any case or spelling ("MODBUS",
+    // "ModBus", "modbus") — Codex #4120 r13 F17.
+    if (GENERIC_TECH_WORDS.has(upper)) continue;
     if (CAMEL_FAMILY_RE.test(t) || allCapsFamily || lowerFamily) {
       out.push(`${t} ${next}`);
       i++;
