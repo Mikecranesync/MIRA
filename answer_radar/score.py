@@ -195,18 +195,20 @@ def score(
             rec.failure_class = rec.grader_verdicts[0].failure_class
 
         result = evaluate(rec, safety_class=SafetyClass(q["safety_class"]))
-        if result.verified_correct and rec.citations:
-            # Graders are shown citation LABELS only, never the cited passages
-            # (the batch does not capture them), so a cited asset-specific claim
-            # cannot be checked against its source. Fail closed until passage
-            # capture ships (#4092 post-cap r8 F1).
+        if result.verified_correct:
+            # Graders are shown MIRA's answer and citation LABELS, never the source
+            # passages (no batch captures them yet), so no asset-specific claim
+            # can be checked against its source — whether it is cited in the
+            # structured list, inline in the answer text (#4092 post-cap r9 F1),
+            # or not at all. Fail closed: nothing verifies until #4097 shows the
+            # passages to the graders AND binds them in answer_identity; a
+            # passages field that is neither shown nor bound must not lift this.
             result = dataclasses.replace(
                 result,
                 verified_correct=False,
                 reasons=result.reasons
                 + [
-                    "graders saw citation labels, not the cited passages — "
-                    "cited claims cannot be verified yet (#4097)"
+                    "graders were not shown source passages — claims cannot be verified yet (#4097)"
                 ],
             )
         graded.append((rec, result))
