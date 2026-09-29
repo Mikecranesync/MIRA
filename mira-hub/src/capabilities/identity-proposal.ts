@@ -143,7 +143,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
     const rest = message.slice((m.index ?? 0) + m[0].length);
     const tokens = rest.trim().split(/\s+/).slice(0, 4).map(cleanToken);
     // "Siemens SN: PF525" names a serial, not a model — never parse past a label.
-    if (tokens[0] && LABEL_WORDS.has(tokens[0].toUpperCase())) continue;
+    if (tokens[0] && tokens[0] === tokens[0].toUpperCase() && LABEL_WORDS.has(tokens[0])) continue;
     // The existing parser first, scoped to THIS mention's window, so a model is
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
@@ -205,6 +205,24 @@ const LABEL_WORDS = new Set([
   "BATCH", "REV", "REVISION", "VER", "VERSION", "FW", "FIRMWARE", "MFG", "DATE", "QTY",
 ]);
 for (const w of LABEL_WORDS) GENERIC_TECH_WORDS.add(w);
+
+const LABEL_ALT = [...LABEL_WORDS].map((w) => w.replace(/\//g, "\\/")).join("|");
+/** An UPPERCASE label, then its value ("SN 123456", "REV B"). */
+const LABEL_VALUE_UPPER_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})(?:\\s*[:#.]\\s*|\\s+)[^\\s,;]+`, "g");
+/** A label in any case with an explicit separator ("sn: pf525", "Serial#123"). */
+const LABEL_VALUE_SEP_RE = new RegExp(`(?<![A-Za-z0-9])(?:${LABEL_ALT})\\s*[:#]\\s*[^\\s,;]+`, "gi");
+
+/**
+ * Blank every nameplate label and its VALUE before ANY extraction step — the
+ * parser, the manufacturer windows and the ambiguity scan all see the same
+ * label-free text, so a serial never becomes a model or a second machine
+ * (Codex #4120 r15–r17 F19). Lowercase prose words ("no power", "part of")
+ * are only treated as labels when followed by ":" or "#".
+ */
+function withoutLabelValues(message: string): string {
+  const blank = (m: string) => " ".repeat(m.length);
+  return message.replace(LABEL_VALUE_SEP_RE, blank).replace(LABEL_VALUE_UPPER_RE, blank);
+}
 /** A family word in any case, for the ambiguity scan only ("slc", "micrologix"). */
 const LOWER_FAMILY_RE = /^[A-Za-z]{2,14}$/;
 
@@ -231,8 +249,10 @@ function modelMentions(message: string, chosenModel: string): string[] {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const next = tokens[i + 1];
-    // A label and its VALUE are never a model ("SN: AB1234") — r16 F19.
-    if (LABEL_WORDS.has(t.toUpperCase())) {
+    // A label and its VALUE are never a model ("SN: AB1234") — r16 F19. Labels
+    // are blanked beforehand (withoutLabelValues); this catches an UPPERCASE
+    // label the pre-pass left (e.g. at end of text) — never lowercase prose.
+    if (t === t.toUpperCase() && LABEL_WORDS.has(t)) {
       i++;
       continue;
     }
@@ -316,6 +336,7 @@ export function proposeIdentityFromText(
   knownManufacturers: readonly string[],
 ): IdentityProposal | null {
   try {
+    message = withoutLabelValues(message);
     if (resolveModelFromObservationText(message).ambiguous) return null;
     const candidates = new Map<string, IdentityProposal>();
     for (const mention of manufacturerMentions(message, knownManufacturers)) {

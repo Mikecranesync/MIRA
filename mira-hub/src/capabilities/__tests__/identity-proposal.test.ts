@@ -336,3 +336,20 @@ describe("Codex #4120 r16", () => {
     expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 is down", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
   });
 });
+
+describe("Codex #4120 r17", () => {
+  it.each(["Siemens PLC SN: PF525 is on the label", "Siemens SN:PF525 is on the label", "Siemens serial# PF525 on the plate"])(
+    "F19: a serial value never becomes the model, wherever the label sits: %s",
+    (text) => expect(proposeIdentityFromText(text, CORPUS)).toBeNull(),
+  );
+  it("F19: a serial value is not a second machine", () => {
+    expect(proposeIdentityFromText("Allen-Bradley PF525 SN: PF753 is on the label", CORPUS)).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "525",
+    });
+  });
+  it("F19 control: lowercase prose words are not labels", () => {
+    expect(proposeIdentityFromText("Compare Siemens S7-1200 and no S7-1500", CORPUS)).toBeNull();
+    expect(proposeIdentityFromText("The Allen-Bradley SLC 5/03 has no power", CORPUS)).toEqual({ manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+});
