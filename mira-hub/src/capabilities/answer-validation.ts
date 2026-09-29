@@ -645,11 +645,75 @@ export function unsupportedExactRating(text: string): string | null {
  *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
 export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
 
+// #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
+// about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
+// the IEC 60751 definition of the sensor type, and was blocked 5/5 on staging
+// (731649c23).
+//
+// The exemption is a CLOSED TEMPLATE over a whole clause, never a span or a
+// value set (#4108 review rounds 1-2: value sets let unrelated numbers launder
+// invented ones; spans detached a value from its sensor and quantity, stripped
+// a range's endpoint or a negative sign). A clause is a definition only when
+// the entire clause reads "[a|the] PTnnn['s] [sensor|element|RTD] [has|is|reads]
+// [a] [nominal|base] [resistance|value] [of|is] [a] [nominal] R Ω at 0 °C",
+// with R equal to that clause's OWN designation (PT100 → 100 Ω, PT1000 →
+// 1 000 Ω). Those clauses are removed and the full rating grammar re-runs on
+// everything else, so a lead resistance, a limit, a range, a swapped value or
+// any other claim still blocks.
+const RTD_DEFINITION_CLAUSE_RE = new RegExp(
+  "^\\s*(?:(?:a|an|the)\\s+)?pt[-\\s]?(100|500|1000)(?:'s)?" +
+    "(?:\\s+(?:sensor|element|rtd))?(?:\\s+(?:has|is|reads))?(?:\\s+an?)?" +
+    "(?:\\s+(?:nominal|base))?(?:\\s+(?:resistance|value))?(?:\\s+(?:of|is))?" +
+    "(?:\\s+a)?(?:\\s+nominal)?" +
+    "\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c(?:\\s+nominal)?\\s*[.!]?\\s*$",
+  "i",
+);
+// Also the "The nominal resistance of a PT1000 is 1000 ohms at 0 °C" order.
+const RTD_DEFINITION_CLAUSE_RE_2 = new RegExp(
+  "^\\s*the\\s+(?:nominal|base)\\s+resistance\\s+of\\s+(?:(?:a|an|the)\\s+)?" +
+    "pt[-\\s]?(100|500|1000)\\s+is\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c\\s*[.!]?\\s*$",
+  "i",
+);
+
+function isRtdDefinitionClause(clause: string): boolean {
+  for (const re of [RTD_DEFINITION_CLAUSE_RE, RTD_DEFINITION_CLAUSE_RE_2]) {
+    const m = re.exec(clause);
+    if (m) {
+      const ohms = Number(m[2].replace(/,/g, "")) * (m[3] ? 1000 : 1);
+      return ohms === Number(m[1]);
+    }
+  }
+  return false;
+}
+
+/** The sentence with every whole-clause RTD definition blanked out, and every
+ *  other byte — including the separators — left exactly as written (#4108
+ *  review round 3: rebuilding with commas broke the rating grammar's own
+ *  "220 and 480 V" range syntax). Clauses are delimited by ", " / ";" / " and "
+ *  / " whereas " / " while " / " vs."; a thousands comma ("1,000") has no
+ *  following space, so it never splits a number. */
+function withoutRtdDefinitions(sentence: string): string {
+  // The capture group keeps each separator in the array at the odd indexes.
+  const parts = sentence.split(/(,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+)/i);
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isRtdDefinitionClause(parts[i])) {
+      parts[i] = "";
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : sentence;
+}
+
 export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
-    const m = EXACT_RATING_RE.exec(sentence);
+    // Report the claim that survives the exemption, not the exempt definition
+    // (#4108 review round 2 F3: gate_match must name what actually blocked).
+    const m = EXACT_RATING_RE.test(sentence) ? EXACT_RATING_RE.exec(withoutRtdDefinitions(sentence)) : null;
     if (m) {
       return {
         excerpt: m[0].slice(0, 160),

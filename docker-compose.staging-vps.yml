@@ -406,6 +406,10 @@ services:
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      # #4075: a technician-confirmed identity starts a background search for the
+      # official manual (discover -> download -> ingest -> applicability). Off
+      # unless set in Doppler stg; needs migration 100. Staging only for now.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
