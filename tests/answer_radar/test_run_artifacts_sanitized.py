@@ -54,3 +54,48 @@ def test_the_guard_catches_a_raw_id(tmp_path: Path, suffix: str):
     assert sanitize.raw_ids(sanitize.load(f)) == [TENANT]
     sanitize.sanitize_paths([tmp_path], {})
     assert sanitize.raw_ids(sanitize.load(f)) == []
+
+
+def _row(source_doc: str) -> dict:
+    return {
+        "question": {
+            "question_id": "S1",
+            "normalized_question": "q",
+            "manufacturer": "",
+            "model": "",
+        },
+        "evaluation": {"answer_text": "a", "citations": [], "source_documents": [source_doc]},
+        "hub": {"condition": "new_chat", "retrieval": {}},
+    }
+
+
+def test_a_rewrite_that_would_orphan_grades_is_refused(tmp_path: Path):
+    """#4100 review F1: a UUID in an identity-bound field (source_documents) must
+    not be rewritten after grading; nothing in the run is touched."""
+    batch = tmp_path / "batch.json"
+    batch.write_text(json.dumps([_row(TENANT)]))
+    other = tmp_path / "notes.jsonl"
+    other.write_text(json.dumps({"trace_id": TRACE}) + "\n")
+    before = (batch.read_text(), other.read_text())
+    with pytest.raises(SystemExit, match="graded answer identities"):
+        sanitize.sanitize_paths([tmp_path], {})
+    assert (batch.read_text(), other.read_text()) == before
+
+
+def test_a_grader_packet_with_raw_ids_is_refused(tmp_path: Path):
+    packet = tmp_path / "packet.json"
+    packet.write_text(
+        json.dumps({"S1__new_chat": {"answer_sha256": SHA256, "source_documents": [TENANT]}})
+    )
+    with pytest.raises(SystemExit, match="grader packet"):
+        sanitize.sanitize_paths([tmp_path], {})
+
+
+def test_ids_outside_the_identity_are_still_sanitized(tmp_path: Path):
+    """Control: a trace id in a batch row's notes does not affect its identity."""
+    row = _row("doc-without-id")
+    row["evaluation"]["notes"] = f"trace={TRACE}"
+    batch = tmp_path / "batch.json"
+    batch.write_text(json.dumps([row]))
+    assert sanitize.sanitize_paths([tmp_path], {}) == [batch]
+    assert sanitize.raw_ids(sanitize.load(batch)) == []

@@ -13,6 +13,9 @@ private file (default `.planning/answer-radar-id-map.json`, gitignored) so a tra
 still be found. `tests/answer_radar/test_run_artifacts_sanitized.py` fails any commit
 that forgets.
 
+Order matters: sanitize a run's batch BEFORE building its grader packet and grading
+it. A rewrite that would change a graded answer's identity is refused.
+
 Usage: python -m answer_radar.sanitize answer_radar/runs/<run-dir> [...]
 """
 
@@ -88,21 +91,58 @@ def sanitize_paths(paths: list[Path], seen: dict[str, str]) -> list[Path]:
     file (key order, escaping, indentation) is untouched and the diff shows only ids.
     Ids only ever occur inside JSON strings, so a text substitution cannot break syntax.
     """
-    changed = []
+    planned: list[tuple[Path, str]] = []
+    local: dict[str, str] = {}
+
+    def _swap(m: re.Match[str]) -> str:
+        local[m.group(0)] = pseudonym(m.group(0))
+        return local[m.group(0)]
+
     for root in paths:
         for f in artifact_files(root):
             text = f.read_text(encoding="utf-8")
             if not RAW_ID.search(text):
                 continue
+            new = RAW_ID.sub(_swap, text)
+            _refuse_if_grading_changes(f, text, new)
+            planned.append((f, new))
+    # Check every file before writing any: a refusal leaves the run untouched.
+    for f, new in planned:
+        f.write_text(new, encoding="utf-8")
+        load(f)  # still valid JSON / JSONL
+    seen.update(local)
+    return [f for f, _ in planned]
 
-            def _swap(m: re.Match[str]) -> str:
-                seen[m.group(0)] = pseudonym(m.group(0))
-                return seen[m.group(0)]
 
-            f.write_text(RAW_ID.sub(_swap, text), encoding="utf-8")
-            load(f)  # still valid JSON / JSONL
-            changed.append(f)
-    return changed
+def _refuse_if_grading_changes(path: Path, before: str, after: str) -> None:
+    """Sanitizing must never move what a grade is bound to (#4100 review F1).
+
+    A batch row's `score.answer_identity` hashes fields that can carry ids
+    (retrieved document ids in `source_documents`, citation text). If a grade was
+    made before sanitizing, rewriting those fields orphans it. So: a batch whose
+    identities would change, or a grader packet whose content would change, is
+    refused — sanitize the batch BEFORE building packets and grading.
+    """
+    from answer_radar.score import answer_identity
+
+    old = json.loads(before) if path.suffix == ".json" else None
+    if (
+        isinstance(old, list)
+        and old
+        and all(isinstance(r, dict) and "evaluation" in r for r in old)
+    ):
+        new = json.loads(after)
+        if [answer_identity(r) for r in old] != [answer_identity(r) for r in new]:
+            raise SystemExit(
+                f"{path}: sanitizing would change graded answer identities; "
+                "sanitize the batch before building grader packets and grading"
+            )
+    elif isinstance(old, dict) and any(
+        isinstance(v, dict) and "answer_sha256" in v for v in old.values()
+    ):
+        raise SystemExit(
+            f"{path}: a grader packet contains raw ids; rebuild it from the sanitized batch instead"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
