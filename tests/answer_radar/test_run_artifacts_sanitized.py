@@ -91,7 +91,7 @@ def test_a_rewrite_that_would_orphan_an_existing_grade_is_refused(tmp_path: Path
     other = tmp_path / "notes.jsonl"
     other.write_text(json.dumps({"trace_id": TRACE}) + "\n")
     before = (batch.read_text(), other.read_text())
-    with pytest.raises(SystemExit, match="already graded"):
+    with pytest.raises(SystemExit, match="already has grades"):
         sanitize.sanitize_paths([tmp_path], {})
     assert (batch.read_text(), other.read_text()) == before
 
@@ -104,7 +104,7 @@ def test_a_grader_packet_binding_the_old_identity_also_refuses(tmp_path: Path):
     (tmp_path / "packet.json").write_text(
         json.dumps({"S1__new_chat": {"answer_sha256": answer_identity(row)}})
     )
-    with pytest.raises(SystemExit, match="already graded"):
+    with pytest.raises(SystemExit, match="already has grades"):
         sanitize.sanitize_paths([tmp_path], {})
 
 
@@ -116,3 +116,33 @@ def test_ids_outside_the_identity_are_still_sanitized(tmp_path: Path):
     batch.write_text(json.dumps([row]))
     assert sanitize.sanitize_paths([tmp_path], {}) == [batch]
     assert sanitize.raw_ids(sanitize.load(batch)) == []
+
+
+def test_a_grade_bound_with_reference_notes_still_refuses(tmp_path: Path):
+    """#4100 F4: a packet built with reference notes binds a hash the batch row alone
+    does not reproduce. Any existing grade in the run refuses, whatever its hash."""
+    batch = tmp_path / "batch.json"
+    batch.write_text(json.dumps([_row(TENANT)]))
+    grades = tmp_path / "grades"
+    grades.mkdir()
+    (grades / "grade-A-S1.json").write_text(json.dumps({"answer_sha256": "f" * 64}))
+    before = batch.read_bytes()
+    with pytest.raises(SystemExit, match="already has grades"):
+        sanitize.sanitize_paths([tmp_path], {})
+    assert batch.read_bytes() == before
+
+
+@pytest.mark.parametrize("as_dir", [False, True])
+def test_a_standalone_packet_carrying_a_raw_id_is_never_rewritten(tmp_path: Path, as_dir: bool):
+    """#4100 F5: rewriting a packet would keep its answer_sha256 while changing the
+    evidence a grader sees. Refused whether the file or its directory is given."""
+    export = tmp_path / "export"
+    export.mkdir()
+    packet = export / "packet.json"
+    packet.write_text(
+        json.dumps({"S1__new_chat": {"answer_sha256": "a" * 64, "source_documents": [TENANT]}})
+    )
+    before = packet.read_bytes()
+    with pytest.raises(SystemExit, match="rebuild it from a sanitized batch"):
+        sanitize.sanitize_paths([export if as_dir else packet], {})
+    assert packet.read_bytes() == before

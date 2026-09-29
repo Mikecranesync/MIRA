@@ -136,31 +136,37 @@ def _bound_hashes(roots: list[Path]) -> set[str]:
 
 
 def _refuse_if_grading_changes(path: Path, before: str, after: str, roots: list[Path]) -> None:
-    """Sanitizing must never move what an EXISTING grade is bound to (#4100 F1/F3).
+    """Sanitizing must never move what a grade is, or will be, bound to (#4100).
 
-    A batch row's `score.answer_identity` hashes fields that can carry ids
-    (retrieved document ids in `source_documents`). A fresh, ungraded batch may
-    be sanitized freely — its identity is computed after. But if a grade or a
-    grader packet under the run already records an identity that the rewrite
-    would change, refuse: rewriting would orphan that grade.
+    Grades and grader packets bind an answer by `answer_sha256`, computed from the
+    batch row (plus reference notes, for packets built with them). Rather than
+    re-deriving that identity here, which is how F1, F3 and F4 each escaped, the
+    rule is structural:
+
+    - a file that itself records `answer_sha256` (a grade or a packet) is never
+      rewritten: its binding would silently point at different evidence (F5);
+    - a batch is never rewritten while any grade or packet exists in scope
+      (the paths given, plus the batch's own run directory): sanitize first,
+      then build packets and grade (F1/F4).
+
+    A fresh, ungraded batch is sanitized freely.
     """
-    from answer_radar.score import answer_identity
-
+    del after  # the decision depends only on what is already bound
+    if "answer_sha256" in before:
+        raise SystemExit(
+            f"{path}: a grade or grader packet carries a raw id; rebuild it from a "
+            "sanitized batch instead of rewriting it"
+        )
     old = json.loads(before) if path.suffix == ".json" else None
-    if not (
+    is_batch = (
         isinstance(old, list)
         and old
         and all(isinstance(r, dict) and "evaluation" in r for r in old)
-    ):
-        return
-    new = json.loads(after)
-    changed = {
-        answer_identity(o) for o, n in zip(old, new) if answer_identity(o) != answer_identity(n)
-    }
-    if changed & _bound_hashes([*roots, path.parent]):
+    )
+    if is_batch and _bound_hashes([*roots, path.parent]):
         raise SystemExit(
-            f"{path}: sanitizing would change an answer that is already graded; "
-            "sanitize the batch before building grader packets and grading"
+            f"{path}: this run already has grades or grader packets; sanitize the "
+            "batch before building grader packets and grading"
         )
 
 
