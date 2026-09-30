@@ -208,17 +208,36 @@ const OFF_THEN_MOVE_BY_HAND = new RegExp(
   "i",
 );
 
-// A sentence naming approved energy-isolating equipment describes a real
-// lockout, not an improvised one (#4114 review round 3: "the approved lockable
-// isolation valve as our lockout, with a personal padlock").
-const APPROVED_ISOLATION =
-  /\b(?:approved|lockable|padlock(?:ed|s)?|personal\s+(?:pad)?locks?|isolation\s+(?:valve|point|device)s?|energy[-\s]isolating|disconnect(?:s|\s+switch)?|breakers?)\b/i;
+// Approved energy-isolating equipment used as the lockout is a real lockout,
+// not an improvised one (#4114 review round 3: "the approved lockable isolation
+// valve as our lockout"). #4114 review F6: the exception belongs to the DEVICE
+// relied on, never to any approval word elsewhere in the sentence ("the red knob
+// as our lockout because the disconnect is broken", "a padlock on the stop
+// button"). So a device token is exempt only when the words directly describing
+// it name approved isolation equipment, and nothing negates that approval.
+const DEVICE_TOKEN = new RegExp("\\b" + IMPROVISED_DEVICE + "\\b", "gi");
+const APPROVED_MODIFIER = /\b(?:approved|lockable|isolation|isolating|energy[-\s]isolating)\b/i;
+const NEGATED_APPROVAL = /\b(?:not|non|un)[-\s]?(?:approved|lockable)\b|\bnon[-\s]/i;
+
+/** Blank out device tokens that are themselves approved isolation equipment. */
+function withoutApprovedDevices(sentence: string): string {
+  return sentence.replace(DEVICE_TOKEN, (device, offset: number) => {
+    // The describing words: up to four words right before the device, stopping
+    // at a preposition/article boundary that starts a different noun phrase.
+    const before = sentence.slice(Math.max(0, offset - 48), offset);
+    const words = before.split(/\s+/).filter(Boolean).slice(-4);
+    const cut = words.map((w) => w.toLowerCase()).lastIndexOf("on");
+    const describing = (cut >= 0 ? words.slice(cut + 1) : words).join(" ");
+    const approved = APPROVED_MODIFIER.test(describing) && !NEGATED_APPROVAL.test(describing);
+    return approved ? "equipment" : device;
+  });
+}
 
 export function detectImprovisedLockout(message: string): boolean {
   const msg = (message || "").toLowerCase();
   const usedAs = msg
     .split(/(?<=[.!?;])\s+/)
-    .some((sentence) => USED_AS_LOCKOUT.test(sentence) && !APPROVED_ISOLATION.test(sentence));
+    .some((sentence) => USED_AS_LOCKOUT.test(withoutApprovedDevices(sentence)));
   return usedAs || OFF_THEN_MOVE_BY_HAND.test(msg);
 }
 

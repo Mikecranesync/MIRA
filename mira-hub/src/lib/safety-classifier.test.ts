@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
+  detectImprovisedLockout,
   SAFETY_PHRASES_IMMEDIATE,
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
@@ -339,5 +340,24 @@ describe("#4114 review round 3: approved isolation valves are not improvised", (
     "Operators use the regulator as a lockout.",
   ])("an ordinary control valve or regulator is still flagged: %s", (q) => {
     expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+describe("#4114 review F6: the approved-equipment exception applies to the device used, not the sentence", () => {
+  it.each([
+    "We use the red knob as our lockout because the disconnect is broken.",
+    "We use the regulator as our lockout even though it is not approved.",
+    "We use a padlock on the stop button as our lockout.",
+    "We use a non-approved valve as our lockout.",
+  ])("an improvised device is flagged even with an approval word elsewhere: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(true);
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "We use the approved lockable isolation valve as our lockout, with a personal padlock.",
+    "We use the isolation valve as our lockout point and hang a padlock on it.",
+  ])("control: approved isolation equipment used as the lockout is still not improvised: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(false);
   });
 });

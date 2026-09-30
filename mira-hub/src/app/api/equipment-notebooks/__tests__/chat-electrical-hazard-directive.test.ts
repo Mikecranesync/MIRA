@@ -221,6 +221,12 @@ describe("#4114: an improvised lockout adds its directive to the prompt, never r
     expect(prompt).toMatch(/SAFETY FLAG: improvised lockout/);
   });
 
+  it("F6: an approval word elsewhere in the sentence does not drop the directive", async () => {
+    const msg = "We use the red knob as our lockout because the disconnect is broken. What position should I leave it in?";
+    await (await POST(chatReq({ message: msg, sourceDocIds: [DOC_A] }), params)).text();
+    expect(sentPrompt()).toMatch(/SAFETY FLAG: improvised lockout/);
+  });
+
   it("improvised lockout alone: the prompt carries its directive", async () => {
     const msg =
       "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
