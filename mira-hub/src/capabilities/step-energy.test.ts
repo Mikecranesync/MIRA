@@ -110,3 +110,32 @@ describe("#4146 Codex r2", () => {
   });
 });
 
+describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as the route calls it)", () => {
+  const check = (answerText: string) =>
+    validateAnswer({ answerText, question: "What should I check next?", general: true, served: true, refused: false, evidenceSufficient: false });
+
+  it("F2: bold formatting does not hide a lockout conflict", () => {
+    const v = check("With the machine **locked out**, press the **start** button.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+  });
+  it("F2: curly and straight apostrophes give the same result", () => {
+    const curly = check("With the lockout in place, don\u2019t press the start button.");
+    const straight = check("With the lockout in place, don't press the start button.");
+    expect(curly.ok).toBe(straight.ok);
+    expect(curly.ok).toBe(true);
+  });
+  it("F4: measuring to confirm absence of voltage is correct advice, not a flag", () => {
+    expect(check("With the machine locked out, measure the output voltage to confirm absence of voltage.").ok).toBe(true);
+  });
+  it("control: a live reading under lockout is still flagged, and the banner keeps the full answer", () => {
+    const answer = "With the machine locked out, measure the output voltage while the drive runs.";
+    const v = check(answer);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("hazard_warning");
+      expect(v.replacement.endsWith(answer)).toBe(true);
+    }
+  });
+});
+

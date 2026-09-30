@@ -989,7 +989,9 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
 
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
-    const step = stepEnergyContradiction(answerText);
+    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
+    // markdown emphasis and curly apostrophes must not change the result.
+    const step = stepEnergyContradiction(foldForDetection(answerText));
     return step ? stepEnergyWarning(step, answerText) : { ok: true };
   }
   return {

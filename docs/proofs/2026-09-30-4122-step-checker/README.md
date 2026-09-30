@@ -31,3 +31,13 @@
 ## Review round 1 (Codex + 3-lens adversarial workflow)
 - **Added:** "jog", "apply (main) voltage", "energize the … circuit", "bring it back up"; a restore in a step that states the lockout as its condition ("with the machine locked out, reconnect power"); isolation carried across sentences of one list item; prohibitions ("do not press start") are not instructions; a display/LED observation *before* isolating is not flagged; "voltage class/rating" is a spec, not a reading.
 - **Documented limitation, not fixed:** a *later* restore step with the lockout never written as removed ("Now restore power. Press Run"; "Apply main voltage again and measure"). A rule for it added 7 false positives on the labeled set, dropping precision to 0.83, below the bar, because correct answers often say "once power is restored". It was removed.
+
+## Review round 3 (Codex): the two confirmed defects only
+
+- **F2 fixed:** the checker now scans the same folded text as the other safety rules (`foldForDetection`). Bold markup no longer hides a lockout conflict, and curly and straight apostrophes give the same result.
+- **F4 fixed:** a measurement whose stated purpose is to confirm the circuit is dead ("measure the output voltage to confirm absence of voltage") is no longer read as live work. Only a stated "to confirm / verify / check / prove / ensure" purpose counts, so "…and confirming the bus is dead" (a prior step) still flags.
+- Labeled-set numbers are unchanged from round 2: the checker scores P 0.94 / R 0.74, and `validateAnswer` scores P 0.89 / R 0.77.
+- **Known gaps, deliberately unchanged in this slice (follow-up):**
+  - "With the machine locked out, reconnect power and then press the start button."
+  - "With the machine locked out, do not touch the wiring however press the start button."
+  Both are unflagged before and after this change, verified against the round-2 head. Fixing either means widening the wording patterns (continuing-lockout sequencing, and prohibitions ending at "however"), which is out of scope here.

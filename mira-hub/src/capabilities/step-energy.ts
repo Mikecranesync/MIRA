@@ -38,6 +38,10 @@ const OPERATE =
 
 /** Mechanical work scheduled for after power is back ("tighten only after the lockout is
  *  removed and power is restored") — the #4101 technician-flagged shape. */
+/** A measurement made TO prove the circuit is dead is a dead check, not live work. */
+const DEAD_PURPOSE =
+  // Only a stated PURPOSE ("to confirm …"); "…and confirming the bus is dead" is a prior step.
+  /\bto (?:confirm|verify|check|prove|ensure) (?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage (?:is )?present|(?:it|the \w+) (?:is|are) (?:dead|de-energized))\b/i;
 /** A prohibition ("do not press start", "never measure the voltage") is not an instruction. */
 // Ends at "but"/"then" so the instruction after it survives (Codex #4146 r2 F2);
 // "do not forget to …" is an instruction, not a prohibition.
@@ -102,7 +106,10 @@ export function stepEnergyContradiction(answerText: string): string | null {
     // A dead check ("confirm the bus is dead", "verify with a voltage tester") is
     // blanked out before looking for a live reading, so "confirm the bus is dead,
     // then measure the output" still counts and "verify it is de-energized" does not.
-    const needsPower = OPERATE.test(t) || LIVE_READING.test(t.replace(DEAD_CHECK, " "));
+    // Codex #4146 r3 F4: a reading whose stated purpose is a dead check ("measure the
+    // output voltage to confirm absence of voltage") is the correct LOTO verification.
+    const liveReading = !DEAD_PURPOSE.test(t) && LIVE_READING.test(t.replace(DEAD_CHECK, " "));
+    const needsPower = OPERATE.test(t) || liveReading;
     // Codex #4146 F3: isolation carries within one list item; in prose, only into a step
     // that moves or powers the machine ("Lock out first. Then reset the fault" is left alone).
     const sameItem = lineIso === s.line && (inList || MOTION.test(t));
