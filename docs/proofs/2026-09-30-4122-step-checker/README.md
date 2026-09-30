@@ -41,3 +41,4 @@
   - "With the machine locked out, reconnect power and then press the start button."
   - "With the machine locked out, do not touch the wiring however press the start button."
   Both are unflagged before and after this change, verified against the round-2 head. Fixing either means widening the wording patterns (continuing-lockout sequencing, and prohibitions ending at "however"), which is out of scope here.
+- **F5 (found in review round 4, a regression from the F4 fix): fixed.** The dead-check exemption originally switched off the live-reading check for the whole sentence. It now blanks only the clause it closes, so "…measure the input voltage to confirm absence of voltage, then measure the output frequency" still flags. The regression test fails on the unfixed source and passes on the fix. Labeled-set numbers are unchanged.

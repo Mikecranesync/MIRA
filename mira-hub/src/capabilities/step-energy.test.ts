@@ -128,6 +128,11 @@ describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as t
   it("F4: measuring to confirm absence of voltage is correct advice, not a flag", () => {
     expect(check("With the machine locked out, measure the output voltage to confirm absence of voltage.").ok).toBe(true);
   });
+  it("F5: the dead-check exemption covers only its own measurement, not a later live one", () => {
+    const v = check("With the machine locked out, measure the input voltage to confirm absence of voltage, then measure the output frequency.");
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+  });
   it("control: a live reading under lockout is still flagged, and the banner keeps the full answer", () => {
     const answer = "With the machine locked out, measure the output voltage while the drive runs.";
     const v = check(answer);
