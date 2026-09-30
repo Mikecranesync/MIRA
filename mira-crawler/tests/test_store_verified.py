@@ -109,3 +109,50 @@ def test_store_chunks_defaults_to_unverified(monkeypatch) -> None:
         is_private=False,
     )
     assert seen["verified"] is False
+
+
+def _stub_writes(monkeypatch, rows: list) -> list:
+    """Real store_chunks orchestration; only the DB and graph writes are stubbed."""
+    from ingest import kg_writer
+
+    calls: list = []
+    monkeypatch.setattr(store, "chunk_exists", lambda *a, **k: False)
+    monkeypatch.setattr(store, "insert_chunk", lambda **kw: rows.append(kw) or "e1")
+    monkeypatch.setattr(
+        kg_writer,
+        "register_equipment_and_manual",
+        lambda **kw: calls.append(kw) or ("eq1", "m1"),
+    )
+    monkeypatch.setattr(kg_writer, "link_chunk_to_equipment", lambda *a, **k: None)
+    monkeypatch.setattr(kg_writer, "register_fault_code", lambda **kw: calls.append(kw))
+    return calls
+
+
+def test_multi_model_manual_keeps_the_list_but_mints_no_combined_equipment(monkeypatch) -> None:
+    """#4141 Codex F1: retrieval metadata keeps every model; the graph gets none."""
+    rows: list = []
+    calls = _stub_writes(monkeypatch, rows)
+    stored = store.store_chunks(
+        [({"text": "Fault F0001 on the panel", "source_url": "u", "chunk_index": 0}, [0.1])],
+        tenant_id="t1",
+        manufacturer="Siemens",
+        model_number="TP700 Comfort, TP900 Comfort",
+        verified=True,
+        is_private=False,
+    )
+    assert stored == 1
+    assert rows[0]["model_number"] == "TP700 Comfort, TP900 Comfort"
+    assert calls == []
+
+
+def test_single_model_manual_still_registers_its_equipment(monkeypatch) -> None:
+    rows: list = []
+    calls = _stub_writes(monkeypatch, rows)
+    store.store_chunks(
+        [({"text": "text", "source_url": "u", "chunk_index": 0}, [0.1])],
+        tenant_id="t1",
+        manufacturer="AutomationDirect",
+        model_number="GS10",
+        is_private=False,
+    )
+    assert calls and calls[0]["model"] == "GS10"

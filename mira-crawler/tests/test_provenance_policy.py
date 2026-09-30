@@ -505,3 +505,17 @@ class TestEveryWriteRouteEnforcesThePolicy:
         assert "refusing a shared write" in src, (
             "it must FAIL CLOSED when the policy is unavailable, not publish"
         )
+
+
+def test_smc_catalogs_reach_the_shared_corpus():
+    """#4113 / #4115 review F1: an OEM catalog added to sources.yaml must also be
+    classified curated/shared here, or the write boundary forces it private and
+    customer retrieval never sees it (the unclassified fail-closed default)."""
+    from ingest.provenance import enforce_visibility
+
+    for url in (
+        "https://content2.smcetech.com/pdf/1900A.pdf",
+        "https://www.smcworld.com/catalog/New-products-en/mpv/22-E789-VQ-VV-FPG/data/22-E789-VQ-VV-FPG.pdf",
+    ):
+        allowed, is_private, reason = enforce_visibility(url, False)
+        assert allowed and not is_private, (url, reason)
