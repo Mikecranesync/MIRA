@@ -4,7 +4,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const compose = readFileSync(resolve(here, "../../../../../docker-compose.saas.yml"), "utf8");
+// Normalise CRLF before matching. serviceBlock() anchors on a newline before
+// the service name, which cannot match a Windows checkout where git has
+// materialised this file with CRLF -- the service IS present, the regex simply
+// never sees it. That made this suite pass in CI (Linux, LF) and fail on a
+// Windows dev machine with the misleading message "Service mira-hub not found
+// in docker-compose.saas.yml", which reads as a deployment defect rather than
+// a line-ending one.
+const compose = readFileSync(resolve(here, "../../../../../docker-compose.saas.yml"), "utf8")
+  .replace(/\r\n/g, "\n");
 
 function serviceBlock(serviceName: string) {
   const match = compose.match(new RegExp(`\\n  ${serviceName}:\\n[\\s\\S]*?(?=\\n  [a-zA-Z0-9_-]+:|\\nnetworks:)`));
