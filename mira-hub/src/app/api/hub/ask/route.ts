@@ -4,6 +4,7 @@ import pool from "@/lib/db";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
+  retrieveNodeChunks,
   buildGroundedContext,
   chunksToSources,
   type ManualChunk,
@@ -11,8 +12,12 @@ import {
 } from "@/lib/manual-rag";
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
-import { SAFETY_STOP, matchSafetyStop } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 import type { EvidenceBasis } from "@/lib/notebook-chat-types";
+import { askUserContent, confirmedSourceDocIds, preferOwnDocuments } from "@/capabilities/confirmed-sources";
 
 /** Per-minute allowance for one tenant, and separately for one client IP.
  *  Deliberately generous for a technician typing questions, and far below what
@@ -155,13 +160,10 @@ export async function POST(req: Request) {
   // for still answer; a hazard report never reaches a model that has been told
   // to answer rather than refuse. Same body shape as the other routes' stops:
   // the stop text as the answer, `X-Safety-Stop` naming the trigger.
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard adds a prompt directive and a banner above the answer;
+  // it never replaces the answer.
   const safetyTrigger = matchSafetyStop(question);
-  if (safetyTrigger) {
-    return NextResponse.json(
-      { answer: SAFETY_STOP, citations: [], provider: null, basis: null } as HubAskResponse,
-      { headers: { "X-Safety-Stop": safetyTrigger } },
-    );
-  }
 
   // Cost control BEFORE retrieval or inference. This endpoint is authenticated,
   // but authentication is not an allowance: one trial or compromised account
@@ -175,13 +177,17 @@ export async function POST(req: Request) {
     rateLimited("hub-ask-ip", await clientIpHash(), HUB_ASK_MAX_PER_MIN, 60_000)
   ) {
     return NextResponse.json(
-      { error: "You are asking faster than MIRA can answer. Try again in a minute." },
-      { status: 429 },
+      { error: withSafetyFlag("You are asking faster than MIRA can answer. Try again in a minute.", safetyTrigger) },
+      { status: 429, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const searchQuery = await englishSearchQuery(question, translateForSearch);
   let chunks: ManualChunk[] = [];
   let retrievalFailed = false;
+  let ownDocumentsFailed = false;
+  let ownDocumentsPartial = false;
   {
     // #2178 — the RAW owner pool (BYPASSRLS), NOT withTenantContext.
     //
@@ -206,10 +212,42 @@ export async function POST(req: Request) {
     // matching comment in `api/assets/[id]/chat/route.ts`.
     const client = await pool.connect();
     try {
-      chunks = await retrieveManualChunks(client, ctx.tenantId, question, {
+      const library = await retrieveManualChunks(client, ctx.tenantId, searchQuery, {
         manufacturer,
         topK: 6,
       });
+      // #3437 — the technician's OWN manuals. Under
+      // MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) the library read above keeps
+      // only `verified = true` rows, and a private upload is never verified, so
+      // this route answered from the OEM library alone while claiming to search
+      // "your manuals". A document the tenant CONFIRMED as a notebook source is
+      // admitted here, exactly as notebook chat admits it; unconfirmed uploads
+      // stay out. The doc set is the boundary (validatedDocScope), the tenant
+      // predicate stays in the SQL, and the node argument is unused in that mode.
+      let own: ManualChunk[] = [];
+      try {
+        const { docIds, truncated } = await confirmedSourceDocIds(client, ctx.tenantId, manufacturer);
+        if (truncated) {
+          console.warn(`[hub/ask] confirmed documents exceed ${docIds.length}; searching the most recent`);
+          ownDocumentsPartial = true;
+        }
+        if (docIds.length > 0) {
+          own = await retrieveNodeChunks(client, ctx.tenantId, searchQuery, {
+            nodeId: ctx.tenantId,
+            unsPath: null,
+            topK: 6,
+            docIds,
+            validatedDocScope: true,
+            approvedSourceDocIds: docIds,
+          });
+        }
+      } catch (err) {
+        // The library answer still stands, but the model must know the
+        // technician's own manuals were not searched (askUserContent).
+        console.warn("[hub/ask] confirmed-document retrieval failed:", err);
+        ownDocumentsFailed = true;
+      }
+      chunks = preferOwnDocuments(own, library, 6);
     } catch (err) {
       console.error("[hub/ask] retrieval failed:", err);
       // Continue and answer from general knowledge, but SAY the search was
@@ -226,14 +264,19 @@ export async function POST(req: Request) {
 
   const context = buildGroundedContext(chunks);
   const messages: CascadeMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: withStepSafety(withAnswerLanguage(
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      )),
+    },
     {
       role: "user",
-      content: context
-        ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
-        : retrievalFailed
-          ? `CONTEXT: (plant-document search was UNAVAILABLE for this question — the manuals were NOT searched; answer from general knowledge and say the document search was unavailable, not that the documents did not match)\n\n---\n\nUSER QUESTION:\n${question}`
-          : `CONTEXT: (no manual excerpt matched this question — answer from general knowledge)\n\n---\n\nUSER QUESTION:\n${question}`,
+      content: askUserContent(context, question, {
+        library: retrievalFailed,
+        ownDocuments: ownDocumentsFailed,
+        ownDocumentsPartial,
+      }),
     },
   ];
 
@@ -246,12 +289,12 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
+        answer: withSafetyFlag("Sorry — every model provider is unreachable right now. Try again in a minute.", safetyTrigger),
         citations: [],
         provider: null,
         basis: null,
       } as HubAskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -272,14 +315,18 @@ export async function POST(req: Request) {
   //    shipped every retrieved card. Keying on the MARKERS the answer actually
   //    used is phrasing-independent: no `[n]` resolving to a returned source
   //    means nothing was cited, whatever words were chosen.
-  const citations: ManualSource[] = selectCitations(chunks, result.content);
+  const answerText = normalizeCitationMarkers(result.content);
+  const citations: ManualSource[] = selectCitations(chunks, answerText);
 
   // L5 honesty badge: the basis is what the answer actually used, not what
   // was retrieved — chunks the model did not cite are a retrieval miss.
-  return NextResponse.json({
-    answer: result.content,
-    citations,
-    provider: result.provider,
-    basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
-  } as HubAskResponse);
+  return NextResponse.json(
+    {
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
+      citations,
+      provider: result.provider,
+      basis: citations.length > 0 ? "oem_documentation" : "general_reasoning",
+    } as HubAskResponse,
+    safetyTrigger ? { headers: { "X-Safety-Flag": safetyTrigger } } : undefined,
+  );
 }

@@ -1,0 +1,40 @@
+==================================================
+MIRA MCQ Benchmark Results
+==================================================
+Model:    gpt-5.5
+Date:     2026-09-28T21:50:31Z
+Total:    100  |  Correct: 96  |  Accuracy: 96.0%
+Errors:   0
+
+--- By Domain ---
+  CMMS, Work Orders & Maintenance Management    15/15  (100.0%)
+  Industrial Sensors, Instrumentation & Signals 10/10  (100.0%)
+  Motor Theory & Troubleshooting                12/15  ( 80.0%)
+  NFPA 70E Electrical Safety & Arc Flash        10/10  (100.0%)
+  PLC Ladder Logic & Structured Text            15/15  (100.0%)
+  Pneumatics & Hydraulics                       10/10  (100.0%)
+  Preventive & Predictive Maintenance (PM/PdM)  10/10  (100.0%)
+  VFD / Variable Frequency Drive Faults & Operation 14/15  ( 93.3%)
+
+--- By Difficulty ---
+  easy         18/18  (100.0%)
+  medium       46/48  ( 95.8%)
+  hard         32/34  ( 94.1%)
+
+--- By Type ---
+  scenario     47/49  ( 95.9%)
+  recall       40/41  ( 97.6%)
+  calculation   9/10  ( 90.0%)
+
+--- Missed Questions ---
+  Q3   [VFD / Variable Frequ/medium] Expected: A, Got: D
+  Q16  [Motor Theory & Troub/medium] Expected: D, Got: C
+  Q29  [Motor Theory & Troub/hard] Expected: B, Got: D
+  Q30  [Motor Theory & Troub/hard] Expected: B, Got: A
+
+--- Slowest Responses ---
+  Q30  6,126 ms
+  Q24  5,334 ms
+  Q45  4,392 ms
+  Q16  4,042 ms
+  Q29  4,027 ms

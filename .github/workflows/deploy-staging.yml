@@ -335,7 +335,7 @@ jobs:
           # is intentionally NOT here — staging runs no Slack bot (see the
           # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
           # deliberately omitted), so adding it would fail `compose build`.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram}"
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask}"
           read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
@@ -370,7 +370,12 @@ jobs:
           export NEXTAUTH_URL_INTERNAL="${NEXTAUTH_URL_INTERNAL:-http://${STAGING_HOST}:4101/api/auth}"
 
           echo "=== Build staging images (no-cache, fresh base) ==="
+          # #4103: the stg config carries OTEL_EXPORTER_OTLP_* for the runtime
+          # containers. BuildKit reads those too and exported every build step
+          # (moby.filesync ...) to Langfuse as its own trace. Builds don't need them.
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
+            env -u OTEL_EXPORTER_OTLP_ENDPOINT -u OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
+            -u OTEL_EXPORTER_OTLP_HEADERS -u OTEL_EXPORTER_OTLP_PROTOCOL \
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" build --no-cache --pull "${TARGET_LIST[@]}"
 
           echo "=== Bring up full staging stack ==="

@@ -206,18 +206,29 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).toBe(400);
   });
 
-  it("hard-stops on a physical-hazard phrase (safety stop)", async () => {
+  it("flags a physical-hazard phrase (banner as the first content frame) but still calls the provider — no more hard stop (owner decision 2026-09-27)", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"Get clear and call an electrician."}}]}\n\ndata: [DONE]\n\n',
+    );
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
     const res = await POST(
       makeReq(userMsg("I see melted insulation on this panel, what should I do?")),
       makeParams(VALID_UUID)
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
-    // Safety stop should emit SSE-formatted response
     let raw = "";
     const reader = res.body?.getReader();
     const dec = new TextDecoder();
@@ -229,12 +240,14 @@ describe("POST /api/assets/[id]/chat", () => {
       }
     }
 
-    // The safety stop is streamed word-by-word, so look for the component words
-    expect(raw).toContain("SAFETY");
-    expect(raw).toContain("STOP");
+    // The banner rides the FIRST content frame; the model's real answer
+    // still streams afterward — no terminal SAFETY_STOP text any more.
+    expect(raw).toContain("⚠️");
+    expect(raw).toContain("Get clear and call an electrician.");
+    expect(raw).not.toContain("SAFETY STOP");
     expect(raw).toContain("[DONE]");
-    // Safety stop should NOT call fetch (provider)
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The provider IS called now (drive-pack pre-check, then the LLM).
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   // ── Explicitly-attached documents (workspace_file_links) ──────────────────
@@ -824,6 +837,28 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).toBe(412);
     const body = await res.json();
     expect(body.gate).toBe("approved_context");
+  });
+
+  it("a flagged hazard question that hits the 412 still shows its safety banner (review of #4040)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(makeReq(userMsg("there is smoke coming from the drive")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(412);
+    expect(res.headers.get("X-Safety-Flag")).toBeTruthy();
+    const body = await res.json();
+    expect(body.gate).toBe("approved_context");
+    expect(String(body.reason)).toMatch(/^⚠️ \*\*Possible active incident/);
   });
 
   it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {

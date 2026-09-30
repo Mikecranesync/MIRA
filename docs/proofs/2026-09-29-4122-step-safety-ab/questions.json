@@ -1,0 +1,7 @@
+{"isolation": "After isolation and verifying absence of voltage, what should I check next?",
+ "general-vfd": "How does a VFD control motor speed?",
+ "service-only": "How do I recover this actuator firmware by USB, and what is its service password?",
+ "unknown-torque": "What exact torque should I set this panel's terminal screws to?",
+ "vfd-no-output": "My VFD shows a run command but the motor won't turn. What do I check?",
+ "contactor-chatter": "Why does the contactor chatter?",
+ "pt100": "What is a PT100 and what does its resistance mean?"}

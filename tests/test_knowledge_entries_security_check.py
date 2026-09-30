@@ -404,6 +404,32 @@ def test_classification_mismatch_still_wins():
     assert any("Classification mismatch" in e for e in errors), errors
 
 
+def test_a_line_shift_alone_does_not_break_the_approval():
+    """#4043: an unrelated edit above a read moves it from line 4 to line 9. The
+    query is byte-identical, so its approval (keyed by the old line) still covers
+    it — no 'not found in code', no failure."""
+    errors, code = check_reads([_read(9, SQL_A)], {"approved": {"svc.py:4": _entry(SQL_A)}})
+    assert code == 0, errors
+    assert errors == [], errors
+
+
+def test_a_shifted_read_whose_query_changed_still_fails_closed():
+    """Control for the above: the read moved AND its query changed. No approval's
+    hash matches, so the read is unapproved and the old key is stale."""
+    errors, code = check_reads([_read(9, SQL_B)], {"approved": {"svc.py:4": _entry(SQL_A)}})
+    assert code == 1, errors
+    assert any("svc.py:9 - TENANT-ONLY" in e for e in errors), errors
+    assert any("svc.py:4 - Allowlist entry not found" in e for e in errors), errors
+
+
+def test_a_hash_match_in_another_file_does_not_cover_the_read():
+    """The fallback is scoped to the read's own file."""
+    errors, code = check_reads(
+        [_read(9, SQL_A, file="other.py")], {"approved": {"svc.py:4": _entry(SQL_A)}}
+    )
+    assert code == 1, errors
+
+
 if __name__ == "__main__":
     tests = [
         test_hybrid_pattern_is_private_false_or_tenant,

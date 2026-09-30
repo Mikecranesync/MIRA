@@ -45,10 +45,16 @@ describe("#3979 — permit contents are administrative, live-work directions are
     "Get a permit and put on PPE; then probe the conductors while the panel is energized.",
     "Describe the safe work practices to be used when working on energized parts. Then probe the conductors while the panel is energized.",
     "Describe the safe work practices to be used when working on energized parts; then probe the conductors while the panel is energized.",
-  ])("keeps a live-work direction blocked despite permit language: %s", (answer) => {
+  ])("flags a live-work direction despite permit language, but still answers it: %s", (answer) => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+    // The direction is still DETECTED (same non-permit-masked outcome) but the
+    // candidate is served with a hazard banner above it, never replaced.
     const r = check(answer, "What has to be on an energized work permit?");
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.kind).toBe("unsafe_answer");
+    if (!r.ok) {
+      expect(r.kind).toBe("hazard_warning");
+      expect(r.replacement).toContain(answer);
+    }
   });
 
   it("the neighbouring permit requirements are NOT blocked — the defect is narrow", () => {

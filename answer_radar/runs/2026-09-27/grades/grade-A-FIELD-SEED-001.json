@@ -1,0 +1,23 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "grader_role": "verifier",
+  "correctness": 28,
+  "evidence": 14,
+  "safety": 20,
+  "actionability": 7,
+  "uncertainty": 5,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_diagnosis_unsupported_intermediate_step",
+  "factual_errors": [
+    {
+      "claim": "First check the converter's mode.",
+      "why_wrong": "No USR-N540-specific content was retrieved, and no configuration/mode setting lets a transparent RS-485-to-Ethernet converter handle DH-485's token-passing arbitration. Presenting this as the first step ahead of replacement can send a technician looking for a config fix that does not exist for this hardware class."
+    }
+  ],
+  "notes": "Excerpt 1 (Rockwell CompactLogix DH-485 comms) directly supports the core diagnosis and the 1761-NET-AIC recommendation — the citation is accurate and on-product. Excerpt 2 is an unrelated VFD parameter table, no support value. Not supported by any retrieved text: 'check the converter's mode' (no USR-N540 content retrieved); this also undersells that a transparent converter cannot be reconfigured into working — per excerpt 1, replacement is the definitive fix, not a conditional fallback. Missing from retrieval entirely, relying on the reference only (not independently verified here): DH-485 token-passing arbitration, the TX-EN open-collector control line, half-duplex turnaround timing, and the 0-5V RS-485 vs Ethernet voltage damage warning. No unsafe instruction is actually given. Correctness capped below 34 because the answer hedges the required hardware fix behind an ungrounded 'check mode' step instead of stating replacement as necessary.",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "regraded": "2026-09-27: re-graded on the complete retrieved passages (Codex #4062 F1); the first grade saw 400-character prefixes."
+}

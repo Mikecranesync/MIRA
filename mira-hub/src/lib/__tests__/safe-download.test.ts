@@ -272,7 +272,16 @@ describe("safeDownloadPdf — content validation", () => {
       allowedHosts: ALLOWED,
       maxBytes: 8192,
     });
-    expect(res).toEqual({ ok: false, reason: "http_error" });
+    expect(res).toEqual({ ok: false, reason: "http_error", status: 404 });
+  });
+
+  it("Codex #4118 r11 F15: a 503 carries its status so the caller can retry later", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("busy", { status: 503 })));
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
+      allowedHosts: ALLOWED,
+      maxBytes: 8192,
+    });
+    expect(res).toEqual({ ok: false, reason: "http_error", status: 503 });
   });
 
   it("returns network_error when fetch throws", async () => {

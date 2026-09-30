@@ -37,6 +37,7 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
@@ -45,6 +46,20 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import {
+  proposeIdentityFromText,
+  unconfirmedMachineDirective,
+  type IdentityProposal,
+  type NotebookIdentityProposalFrame,
+} from "@/capabilities/identity-proposal";
+import {
+  acquisitionEnabled,
+  acquisitionKey,
+  acquisitionDeclineText,
+  readAcquisition,
+  reconcileAcquisition,
+  startManualAcquisition,
+} from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
 import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
@@ -79,9 +94,18 @@ import {
 import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
+  hazardBanner,
   matchSafetyStop,
-  SAFETY_STOP,
+  safetyFlagDirective,
+  safetyFlagHeaders,
+  withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
+import { withPhotoProvenance } from "@/capabilities/photo-provenance";
+import { withRetailCodeNote } from "@/capabilities/retail-codes";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -171,9 +195,9 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
-import { asksForDocumentedValue } from "@/capabilities/documented-value-question";
+import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
+import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
-  SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
@@ -199,7 +223,7 @@ ANSWER SHAPE — a technician is standing at the machine and needs the answer fa
 - Do NOT open with background, generic safety boilerplate, or a restatement of the question.
 
 ENERGY STATE — this rule outranks brevity:
-- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus verified at 0 V, check continuity across terminals 07-08 [2]."
+- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
 - NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.
@@ -242,8 +266,8 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
 const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
 
 ANSWER SHAPE — the technician needs something they can act on:
-- Lead with the most likely cause or the first thing to check, in the FIRST sentence.
-- Then a short ordered list of checks, cheapest and safest first.
+- If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
+- If the question asks how something works, what something means, or what a term is, answer it as an explanation in a few sentences. Do NOT turn it into a procedure, and do not add checks, measurements, or lockout steps nobody asked for.
 - Ask a diagnostic question when one answer would genuinely change your advice. Ask at most one.
 - Keep it under about 150 words.
 
@@ -596,55 +620,6 @@ function visualEvidenceMarker(visualEvidence: VisualObservationEntry): NotebookE
   return { kind: "evidence", visualEvidence };
 }
 
-function safetyStopResponse(
-  trigger: string,
-  docIds: string[],
-  identityDisputed = false,
-  visualEntry: VisualObservationEntry | null = null,
-  traceInfo: { traceId: string | null; turnId: string } | null = null,
-): Response {
-  const enc = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      // Turn Flight Recorder correlation frame — FIRST, additive, only when a
-      // real trace id exists (see file header). Never before `identityDisputed`
-      // ordering matters, but nothing observes trace before that today, so it
-      // is safe to lead with.
-      if (traceInfo?.traceId) {
-        const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: traceInfo.traceId, turnId: traceInfo.turnId };
-        controller.enqueue(enc.encode(sse(traceFrame)));
-      }
-      if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
-      const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
-      controller.enqueue(enc.encode(sse(sources)));
-      // The warning must arrive before any content byte so a Stop, proxy cut,
-      // or network failure can never strand the technician with an unmarked
-      // partial hard-stop.
-      const safety: NotebookSafetyFrame = { kind: "safety", trigger };
-      controller.enqueue(enc.encode(sse(safety)));
-      if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
-      for (const word of SAFETY_STOP.split(" ")) {
-        const frame: NotebookContentFrame = { kind: "content", content: word + " " };
-        controller.enqueue(enc.encode(sse(frame)));
-      }
-      const status: NotebookStatusFrame = { kind: "status", status: "answered" };
-      controller.enqueue(enc.encode(sse(status)));
-      controller.enqueue(enc.encode("data: [DONE]\n\n"));
-      controller.close();
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-      // Observability parity with the asset- and node-chat routes.
-      "X-Safety-Stop": trigger,
-      ...(traceInfo?.traceId ? { "x-mira-trace-id": traceInfo.traceId } : {}),
-    },
-  });
-}
-
 const REPLAY_BASES = new Set<EvidenceBasis>([
   "general_reasoning",
   "identified_component",
@@ -675,6 +650,12 @@ function replayBasisLabel(basis: EvidenceBasis): string {
  *  A duplicate request never reaches retrieval/provider work. Safety is sent
  *  before content and repeated in the response header, so a second transport
  *  interruption remains fail-closed. */
+function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame {
+  if (typeof e !== "object" || e === null) return false;
+  const r = e as { kind?: unknown; manufacturer?: unknown; model?: unknown };
+  return r.kind === "identity_proposal" && typeof r.manufacturer === "string" && typeof r.model === "string";
+}
+
 function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
@@ -697,6 +678,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const identityDisputed = turn.evidence.some(
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
+  const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -750,6 +732,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           ? { kind: "status", status: "error", message: "No answer provider available." }
           : { kind: "status", status: "answered" };
       emit(status);
+      // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
+      if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -902,7 +886,9 @@ async function handleChatTurn(
   // "active" for it) — see the design doc's own caveat about this.
   const tracer = getTracer();
   const turnId = clientRequestId ?? crypto.randomUUID();
-  const rootSpan = tracer.startSpan("mira.turn");
+  // #4103: a root of its own, not a child of the framework request span, so
+  // the turn-only sampler keeps it (see capabilities/observability/turn-sampler).
+  const rootSpan = tracer.startSpan("mira.turn", { root: true });
   const rootCtx = trace.setSpan(context.active(), rootSpan);
   const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
   setSpanAttrs(
@@ -1011,17 +997,23 @@ async function handleChatTurn(
     serviceVersion: serviceVersion(),
     traceId: rootTraceId,
   });
+  // Stage spans also carry a monotonic start, so the durable packet's
+  // `timings_ms` is measured whether or not the span is sampled for export
+  // (#4103: an unsampled span has no start/end timestamps).
+  const stageStart = new WeakMap<Span, number>();
+  const startStage = (name: string): Span => {
+    const span = tracer.startSpan(name, undefined, rootCtx);
+    stageStart.set(span, performance.now());
+    return span;
+  };
   // End a stage span and copy its measured duration into the durable packet
-  // (`timings_ms`). The trace already carries exact start/end timestamps; this
-  // is the copy that survives telemetry retention. Never throws.
+  // (`timings_ms`), the copy that survives telemetry retention. Never throws.
   const endTimed = (span: Span, stage: keyof TurnEvidencePacket["timings_ms"]): void => {
     try {
-      const readable = span as unknown as { startTime?: [number, number]; endTime?: [number, number]; ended?: boolean };
       span.end();
-      if (readable.startTime && readable.endTime) {
-        const ms = Math.round(
-          (readable.endTime[0] - readable.startTime[0]) * 1000 + (readable.endTime[1] - readable.startTime[1]) / 1e6,
-        );
+      const started = stageStart.get(span);
+      if (started !== undefined) {
+        const ms = Math.round(performance.now() - started);
         if (ms >= 0) rec.timing(stage, ms);
       }
     } catch {
@@ -1143,7 +1135,7 @@ async function handleChatTurn(
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
-  // trigger keeps the terminal SAFETY_STOP exactly as before.
+  // trigger is a flag too since 2026-09-27 (banner above the answer, see below).
   // Own/replay the idempotency key before consulting mutable source approval
   // or membership. The key is bound to the full original request payload, so
   // a completed turn remains replayable even if a source is later detached;
@@ -1423,7 +1415,7 @@ async function handleChatTurn(
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
-  const identityResolveSpan = tracer.startSpan("identity.resolve", undefined, rootCtx);
+  const identityResolveSpan = startStage("identity.resolve");
   openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
@@ -1490,6 +1482,13 @@ async function handleChatTurn(
   const hazardEntries: SafetyNoticeEntry[] = electricalHazardDirective
     ? [{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]
     : [];
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // Every OTHER trigger (question gate or photo hazard) no longer stops the
+  // turn: its hazard-specific banner is written above the answer text, so it
+  // renders on every client and survives reload. It is not a structured
+  // safety_notice because today's web/mobile chips label every non-terminal
+  // notice "energized electrical work".
+  const flagBanner = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -1500,79 +1499,14 @@ async function handleChatTurn(
       ? { equipmentEntityId: boundAsset.entityId, assetUnsPath: boundAsset.unsPath }
       : { equipmentEntityId: null, assetUnsPath: null };
 
-  // The stop is persisted like any other turn so it survives the technician
-  // switching devices mid-incident — spec §10 requires the warning to be
-  // retained on resume, and a warning that lives only in a stream is not.
-  if (safetyTrigger && !electricalHazardDirective) {
-    lifecycleOutcome = "safety_stop";
-    const safetyEntry: SafetyNoticeEntry = { kind: "safety_notice", trigger: safetyTrigger };
-    const safetyStopEntry: SafetyStopEntry = { kind: "safety_stop", trigger: safetyTrigger };
-    const answerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-    rec.stage("answer_gate", {
-      invoked: true,
-      decision: "answered",
-      reason: `safety_stop:${safetyTrigger}`,
-      answer_chars: SAFETY_STOP.length,
-      refusal_phrase_matched: false,
-      evidence_phrase_matched: false,
-      safety_classification: "safety_stop",
-      evidence_sufficient: false,
-      ungrounded_unit_claim: false,
-    });
-    setSpanAttrs(
-      {
-        "mira.answer_gate.invoked": true,
-        "mira.answer_gate.decision": "answered",
-        "mira.answer_gate.reason": `safety_stop:${safetyTrigger}`,
-        "mira.answer_gate.answer_chars": SAFETY_STOP.length,
-        "mira.safety.classification": "safety_stop",
-      },
-      answerGateSpan,
-    );
-    answerGateSpan.end();
-    const persistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
-    const turnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
-      // 086: the owner is the authenticated technician (session), never the body.
-      ownerUserId: ctx.userId,
-      threadId,
-      clientRequestId,
-      claimToken: requestClaimToken,
-      question: message,
-      answerStatus: "answered",
-      answerText: SAFETY_STOP,
-      enabledSourceDocIds: docIds,
-      evidence: [safetyEntry, safetyStopEntry, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
-      model: null,
-      ...assetSnapshot,
-    }));
-    // No provider call on a hard stop — the "answer" is the fixed SAFETY_STOP
-    // text. TurnUsage built manually (null tokens/cost — nothing was billed),
-    // routeReason 'legacy_cascade' per design §4.
-    const safetyUsage: TurnUsage = {
-      provider: null,
-      model: null,
-      routeReason: "legacy_cascade",
-      inputTokens: null,
-      cachedInputTokens: null,
-      outputTokens: null,
-      costUsdEstimate: null,
-      status: "ok",
-      attempted: [],
-    };
-    await finishAndPersist(turnRowId, safetyUsage, {
-      answerText: SAFETY_STOP,
-      citationsPresent: false,
-      latencyMs: null,
-    });
-    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": turnRowId }, persistSpan);
-    persistSpan.end();
-    endRoot();
-    return safetyStopResponse(safetyTrigger, docIds, identityDisputed, visualEntry, { traceId: rootTraceId, turnId });
-  }
-  // Evaluated AFTER the safety stop, deliberately: a hazard report is never
-  // answered with "re-select the machine". The stop above persisted about no
-  // machine (state !== "resolved" → null snapshot), which is the honest record.
-  if (boundAsset.state === "unresolvable") {
+  // (2026-09-27) The terminal safety-stop branch that lived here is gone: a
+  // flagged turn continues to retrieval and generation like any other, and
+  // its safety_notice (hazardEntries above) is persisted with the answer so
+  // the banner survives reload and device switches (spec §10).
+  // A hazard report is never answered with "re-select the machine": a flagged
+  // turn skips this 422 and is answered (banner + general answer) about no
+  // machine in particular — the null snapshot below is the honest record.
+  if (boundAsset.state === "unresolvable" && !safetyTrigger) {
     // Fail closed. Quietly answering as if unbound is the downgrade
     // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
     // would keep showing the last stored machine name while answering about
@@ -1691,10 +1625,10 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Machine Memory could not be read just now. Try again in a moment.",
+          error: withSafetyFlag("Machine Memory could not be read just now. Try again in a moment.", safetyTrigger),
           code: "machine_history_read_failed",
         },
-        { status: 503 },
+        { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     const windowEmpty = machineEntry !== null && machineEntry.reason !== "unavailable";
@@ -1703,23 +1637,23 @@ async function handleChatTurn(
       endRoot();
       return NextResponse.json(
         {
-          error: "Nothing was recorded in this window. Widen the window or check the gateway.",
+          error: withSafetyFlag("Nothing was recorded in this window. Widen the window or check the gateway.", safetyTrigger),
           code: "machine_window_empty",
           coverage: machineCoverage,
         },
-        { status: 422 },
+        { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
       );
     }
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json(
       {
-        error: "Machine Memory history is not available for this machine, so there is nothing to replay.",
+        error: withSafetyFlag("Machine Memory history is not available for this machine, so there is nothing to replay.", safetyTrigger),
         code: "machine_history_unavailable",
         reason: machineUnavailableReason ?? "unavailable",
         coverage: machineCoverage,
       },
-      { status: 422 },
+      { status: 422, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -1745,8 +1679,9 @@ async function handleChatTurn(
     })(),
   ]);
 
-  const retrievalQuery = buildRetrievalQuery(message, history);
-  const retrievalSpan = tracer.startSpan("retrieval.execute", undefined, rootCtx);
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
+  const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
   //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
@@ -1818,11 +1753,46 @@ async function handleChatTurn(
     }
   })();
   const oemModel = oemIdentity.model;
+  // #4095 (owner decisions 2026-09-28/29) — "propose, then confirm". A general
+  // turn in an UNBOUND notebook that names a library manufacturer and a model
+  // gets an identity_proposal frame. It never binds, never scopes retrieval on
+  // this turn (retrieval above is already decided), and the answer is told the
+  // machine is unconfirmed so it cannot state that machine's specs or service
+  // procedures. Fail-open: any error means no proposal.
+  const identityProposal: IdentityProposal | null = await (async () => {
+    if (!general || notebookRetrieval || oemManufacturer !== null) return null;
+    // Only a notebook with NO identity at all: not bound to an asset, and loaded
+    // (fail closed when it could not be read) — Codex #4120 F3.
+    if (!nb || boundAsset.state !== "unbound") return null;
+    if (nb.manufacturer?.trim() || nb.model?.trim()) return null;
+    let client: PoolClient | null = null;
+    try {
+      client = await pool.connect();
+      return proposeIdentityFromText(message, await corpusManufacturers(client));
+    } catch (err) {
+      console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      try {
+        client?.release();
+      } catch {
+        /* already released */
+      }
+    }
+  })();
+  // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
+  // history reload deliver the same proposal the live stream did.
+  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
+    ? [{ kind: "identity_proposal", ...identityProposal }]
+    : [];
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
   const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
+  // the decline below must never say "I couldn't find it" when nothing ran.
+  let oemRetrievalFailed = false;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -1843,6 +1813,7 @@ async function handleChatTurn(
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
           rec.error("retrieval", "oem_query_failed");
+          oemRetrievalFailed = true;
           return [];
         } finally {
           try {
@@ -1898,7 +1869,17 @@ async function handleChatTurn(
       ? "model_extraction_failed"
       : oemIdentity.ambiguous
       ? "ambiguous_model_observation"
+      : oemRetrievalFailed
+      ? "oem_query_failed"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
+    const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
+      !oemRetrieval || chunks.length === 0
+        ? null
+        : chunks.some((c) => c.retrievalScope === "vendor_fallback")
+          ? "vendor_fallback"
+          : oemModel
+            ? "model"
+            : "manufacturer";
     rec.stage("retrieval", {
       strategy: retrievalStrategy,
       executed: retrievalExecuted,
@@ -1908,6 +1889,7 @@ async function handleChatTurn(
       oem_manufacturer_source: oemManufacturer?.source ?? null,
       oem_model: oemModel?.value ?? null,
       oem_model_source: oemModel?.source ?? null,
+      oem_scope: oemScope,
       zero_result_reason: zeroResultReason,
       // Server-recalled earlier-photo observations for this thread (never the
       // client history, which is text-only by construction).
@@ -1923,6 +1905,7 @@ async function handleChatTurn(
         "mira.retrieval.oem_manufacturer_source": oemManufacturer?.source ?? null,
         "mira.retrieval.oem_model": oemModel?.value ?? null,
         "mira.retrieval.oem_model_source": oemModel?.source ?? null,
+        "mira.retrieval.oem_scope": oemScope,
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
         "mira.visual.prior_file_ids": priorLookFileIds,
@@ -1972,20 +1955,127 @@ async function handleChatTurn(
   // general knowledge with no citation. That is exactly the "honest
   // refuse-to-cite" #3970 promised and never implemented. Conceptual questions
   // on the same notebook are not matched and keep the general lane.
-  const missingModelManual =
-    // A photo in this turn (or recalled from the conversation) is evidence of
-    // its own — a nameplate can answer "what voltage" — so it keeps the lane.
+  // Shared preconditions: a bound model, an OEM search (model scope, then the
+  // #4068 same-family fallback) that found nothing, and no other evidence — a
+  // photo in this turn (or recalled from the conversation) or a machine window
+  // is evidence of its own, so it keeps the lane.
+  const boundAndEmpty =
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
-    !visualEntry && priorLookRows.length === 0 && asksForDocumentedValue(message, oemModel.value)
-      ? `${oemManufacturer!.name} ${oemModel.value}`
+    !visualEntry && priorLookRows.length === 0;
+  const missingModelManual =
+    boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
+      ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
-  if (chunks.length === 0 && (!general || missingModelManual) && !groundedMachineEntry) {
+  // #4068 (owner decision 2026-09-27, "both"): a troubleshooting/procedure
+  // question about THIS machine with nothing citable declines honestly instead
+  // of an uncited general answer. Teaching questions never match.
+  const noEvidenceForMachine =
+    // A refused machine-evidence request (unconfirmed / mismatched asset) keeps
+    // its own honest path — the identity-dispute contract answers with neutral
+    // machine context, and this gate must not pre-empt it.
+    !missingModelManual && boundAndEmpty && !machineRequestRefused && asksAboutThisEquipment(message, oemModel!.value)
+      ? `${oemManufacturer!.name} ${oemModel!.value}`
+      : null;
+  // #4075 — the automatic official-manual search for a CONFIRMED identity. Only
+  // when the notebook's own bound model found nothing and this turn is about to
+  // decline for lack of a manual. The chat never runs the search inline: it
+  // starts it (the fallback for notebooks created before the create-time trigger)
+  // and reports the recorded state honestly. Identity is the notebook's own
+  // confirmed fields — never this message's free text.
+  let manualAcquisition: { state: string; started_this_turn: boolean; candidate_host: string | null } | null = null;
+  let acquisitionText: string | null = null;
+  if (
+    (missingModelManual || noEvidenceForMachine) &&
+    !oemRetrievalFailed &&
+    nb &&
+    oemManufacturer?.source === "notebook" &&
+    oemModel?.source === "notebook" &&
+    acquisitionEnabled()
+  ) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      let started = false;
+      // A matching "running" record also goes back through the atomic claim:
+      // its stale-window predicate recovers a search orphaned by a restart,
+      // and refuses (started=false) while a live search still holds it. A
+      // "search_unavailable" record does too — the claim retries it once its
+      // backoff has passed (Codex #4118 r7 F12).
+      // A retryable record is reconciled FIRST: a manual its attempt attached
+      // and the technician then removed is never re-fetched (Codex #4118 r14 F19).
+      if (acq && acq.key === key && acq.state === "search_unavailable") {
+        acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      }
+      if (
+        !acq ||
+        acq.key !== key ||
+        acq.state === "running" ||
+        (acq.state === "search_unavailable" && !acq.source_removed)
+      ) {
+        started = await startManualAcquisition({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId ?? null,
+          notebookId,
+          nodeId: nb.nodeId,
+          identity,
+        });
+        if (started) {
+          acq = {
+            key,
+            state: "running",
+            started_at: new Date().toISOString(),
+            finished_at: null,
+            candidate_host: null,
+            match_state: null,
+            oem_request_url: null,
+          };
+        }
+      }
+      if (!started) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      if (acq && acq.key === key) {
+        manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
+        acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
+      }
+    }
+  }
+  rec.stage("retrieval", { manual_acquisition: manualAcquisition });
+  // #4128 — a credential or firmware-recovery question about THIS equipment in
+  // a chat where nothing identifies the equipment: no sources, no notebook or
+  // photo identity, no proposal (a named machine keeps #4095's proposal path).
+  // Generic steps for an unknown device are guesses; the #4094 detector picks
+  // the kinds, and a teaching question never matches asksAboutThisEquipment.
+  const unidentifiedServiceText =
+    !notebookRetrieval && oemManufacturer === null && oemModel === null && identityProposal === null &&
+    !groundedMachineEntry && !machineRequestRefused && asksAboutThisEquipment(message, null)
+      ? unidentifiedServiceDecline(message)
+      : null;
+
+  // A flagged hazard turn is never swallowed by this abstain (owner decision
+  // 2026-09-27): with no documents it takes the general lane, so the tech gets
+  // the hazard banner and an answer instead of "couldn't find that".
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = missingModelManual
+    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+      ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : unidentifiedServiceText
+      ? unidentifiedServiceText
+      : (missingModelManual || noEvidenceForMachine) && declineKind(message)
+      ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
+      : acquisitionText
+      ? acquisitionText
+      : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
+      : noEvidenceForMachine
+        ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
         : null;
@@ -1994,7 +2084,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -2006,13 +2096,13 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": missingModelManual ? "identity_bound_no_manual" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
     );
     gateAnswerGateSpan.end();
-    const gatePersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+    const gatePersistSpan = startStage("turn.persist");
     const gateTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
@@ -2126,7 +2216,11 @@ async function handleChatTurn(
       // discriminator.
       await abandonRequestClaim();
       endRoot();
-      return NextResponse.json({ error: refusal.reason, code: "approved_context", ...refusal }, { status: 412 });
+      const flaggedReason = withSafetyFlag(refusal.reason, safetyTrigger);
+      return NextResponse.json(
+        { error: flaggedReason, code: "approved_context", ...refusal, reason: flaggedReason },
+        { status: 412, headers: safetyFlagHeaders(safetyTrigger) },
+      );
     }
   }
   const machineSection = machinePacket
@@ -2191,6 +2285,12 @@ async function handleChatTurn(
   rec.stage("identity", {
     manufacturer_present: Boolean(nb?.manufacturer),
     model_present: Boolean(nb?.model),
+    proposal: identityProposal
+      ? {
+          manufacturer: identityProposal.manufacturer,
+          model_sha256: createHash("sha256").update(identityProposal.model.toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex"),
+        }
+      : null,
   });
   setSpanAttrs(
     {
@@ -2221,8 +2321,20 @@ async function handleChatTurn(
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
-  const machineContext =
-    `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
+  // #4099: the block is emitted only when it states a fact — a known identity,
+  // a bound asset, loaded documents, or a disputed identity. On a blank chat it
+  // said only "an unspecified machine", "none" and a quick-start note that
+  // applies to no document, and that noise measurably broke answers: on
+  // gpt-oss-120b (Groq, the served model/params) the Q9 option letter
+  // contradicted its own correct explanation in 11 of 24 samples with the
+  // block vs 0 of 24 without; the ablation isolated the "Equipment: an
+  // unspecified machine" line. The general prompt already says no manual is
+  // loaded, so nothing is lost.
+  const machineHasFacts =
+    identityDisputed || Boolean(nb?.manufacturer || nb?.model) || boundAsset.state === "resolved" || srcs.length > 0;
+  const machineContext = !machineHasFacts
+    ? ""
+    : `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
@@ -2260,19 +2372,57 @@ async function handleChatTurn(
   // Machine evidence rides after the base prompt and BEFORE appendManualContext
   // — the exact order the asset chat route uses. With no machine evidence the
   // string is byte-identical to before.
+  // #4068: excerpts from the same-manufacturer fallback belong to a SIBLING
+  // model (each excerpt header names it). Say so, and never present a sibling
+  // model's value as this machine's own specification.
+  const fallbackSources = [
+    ...new Set(
+      chunks
+        .filter((c) => c.retrievalScope === "vendor_fallback")
+        .map((c) => [c.manufacturer, c.modelNumber].filter(Boolean).join(" "))
+        .filter(Boolean),
+    ),
+  ];
+  const relatedManualWarning =
+    oemModel && fallbackSources.length > 0
+      // Codex #4069 pass 11 F2: this text streams (gate off) before the answer's
+      // refusal status is known, so it states what was FOUND, never that the
+      // answer used it — true whether the model then answers or refuses.
+      ? `⚠️ No page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question. The closest match is a related manual (${fallbackSources.join(", ")}). ` +
+        `Anything taken from it may differ on your ${oemModel.value} — confirm them in your ${oemModel.value} manual before you act.`
+      : null;
+  const vendorFallbackDirective =
+    oemModel && chunks.some((c) => c.retrievalScope === "vendor_fallback")
+      ? `\n\nRELATED-MANUAL EXCERPTS — no page of the ${oemManufacturer?.name ?? ""} ${oemModel.value} manual matched this question; ` +
+        `these excerpts come from related ${oemManufacturer?.name ?? "same-manufacturer"} manuals named in each excerpt header. ` +
+        `Say that the source is a related manual when you cite it. Use them only for behaviour and protocols the models share. ` +
+        `Do NOT present a value from them (rating, parameter, address, setting) as the ${oemModel.value}'s own specification, and do NOT ` +
+        `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
+        `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
+      : "";
   const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
-    : basePrompt;
+    : safetyTrigger
+      ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
+      : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = docGrounded
-    ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective
-    : withVisual + machineContext;
+  // #4131: a label data identifier ("1P <order no.>") in this turn's photo
+  // context gets its standard meaning stated; otherwise byte-identical.
+  // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
+  // not-a-part-number; otherwise byte-identical.
+  // #4143: a photo in context gets the "quote the label text" note — inside the
+  // #4131/#4133 label notes, which stay last.
+  const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
+    docGrounded
+      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
+      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
+ )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -2289,7 +2439,7 @@ async function handleChatTurn(
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
   );
   {
-    const contextSpan = tracer.startSpan("context.assemble", undefined, rootCtx);
+    const contextSpan = startStage("context.assemble");
     // Same identity rule as retrieval.returned_doc_ids: doc id for notebook
     // chunks, source_url#page for shared-OEM chunks (which carry no doc id) —
     // so "what reached the model" is never empty when chunks did.
@@ -2399,6 +2549,9 @@ async function handleChatTurn(
       // accepted text is released through the same frame grammar. The client
       // keeps its existing "working" state until the first content frame.
       const gate = answerGateEnabled();
+      // #4068: with the gate off, content streams live — the related-manual
+      // warning goes out as the first content, before any model text.
+      let relatedWarningStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -2438,7 +2591,7 @@ async function handleChatTurn(
         // also land here — checking once at the top of the loop covers all of
         // them (e.g. Groq 429 arriving after the technician tapped Stop).
         if (clientAbort.signal.aborted) break cascade;
-        genSpan = tracer.startSpan(`chat ${provider.model}`, undefined, rootCtx);
+        genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
         genResponseId = null;
         const genAttemptStartedAt = Date.now();
@@ -2527,6 +2680,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (relatedManualWarning && !relatedWarningStreamed) {
+                        relatedWarningStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${relatedManualWarning}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       const frame: NotebookContentFrame = { kind: "content", content: norm };
                       controller.enqueue(enc.encode(sse(frame)));
                     }
@@ -2677,7 +2836,12 @@ async function handleChatTurn(
         // B2: under the gate no candidate byte was released to the client — an
         // unvalidated, undisplayed buffer is not a partial answer and must not
         // be stored (a Stop before validation never flushes unchecked text).
-        const partialText = gate ? null : partial.length ? partial : null;
+        // Codex #4069 pass 18 F2: gate off, the related-manual warning already
+        // streamed ahead of this text — the saved turn carries what the tech saw.
+        if (relatedWarningStreamed && relatedManualWarning && partial.length) {
+          partial = `${relatedManualWarning}\n\n${partial}`;
+        }
+        const partialText = gate ? null : partial.length ? (flagBanner ? `${flagBanner}\n\n${partial}` : partial) : null;
         const stoppedModel = activeProvider ? `${activeProvider.name}:${activeProvider.model}` : null;
         const stoppedAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
         rec.stage("answer_gate", {
@@ -2696,7 +2860,7 @@ async function handleChatTurn(
           stoppedAnswerGateSpan,
         );
         stoppedAnswerGateSpan.end();
-        const stoppedPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+        const stoppedPersistSpan = startStage("turn.persist");
         let stoppedTurnRowId: string | null = null;
         try {
           stoppedTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
@@ -2766,7 +2930,7 @@ async function handleChatTurn(
         endRoot();
         return;
       }
-      let answerText = responseBuffer.join("");
+      let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
       // Determine the honest status + which citations to ship. A refusal ships
       // ZERO citations (no irrelevant pages as proof) and is recorded as
@@ -2798,12 +2962,20 @@ async function handleChatTurn(
       // contract, exactly like a notebook-grounded one).
       const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      // #4098: which quantity word + unit the exact-rating rule matched —
+      // closed-vocabulary tokens, never text — so false refusals are
+      // diagnosable from the Turn Evidence Packet. Recorded gate on or off.
+      const gateMatch = !validation.ok && validation.match ? validation.match : null;
       if (!validation.ok) {
         console.error(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "energized_warning") {
+          if (validation.kind === "hazard_warning") {
+            // 2026-09-27: a step the gate flags stays in the answer, quoted in
+            // a warning above it — served as an ordinary answered turn.
+            answerText = validation.replacement;
+          } else if (validation.kind === "energized_warning") {
             // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
             // replacement is the candidate with a warning above it, served as
             // an ordinary answered turn — not a Safety STOP. The existing
@@ -2863,18 +3035,29 @@ async function handleChatTurn(
           selectedClass,
         });
         console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
+        // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
+        // withholds. "unsafe" puts a hazard banner above the answer; a judge
+        // that could not decide (timeout, provider blip) fails OPEN — a broken
+        // judge is not evidence of a dangerous answer.
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
-          console.error(`[notebook-chat] semantic REJECTED ${cls}: ${sv.reason ?? ""}`);
-          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
-          answerText = SAFETY_STOP;
+          console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
+          answerText = `${hazardBanner(cls)}\n\n${answerText}`;
         } else if (sv.verdict !== "safe") {
-          console.error(
-            `[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): withholding the candidate`,
-          );
-          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
-          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
         }
+      }
+
+      if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+
+      // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
+      // grounded on related-manual pages (the same-family fallback) may relay
+      // that manual's steps, but ALWAYS under a fixed, server-written warning —
+      // never left to the model's phrasing. Stacked below any hazard banner.
+      if (relatedManualWarning && served && !refused && answerText) {
+        answerText = flagBanner && answerText.startsWith(flagBanner)
+          ? `${flagBanner}\n\n${relatedManualWarning}${answerText.slice(flagBanner.length)}`
+          : `${relatedManualWarning}\n\n${answerText}`;
       }
 
       // The Jev shadow judgment (started before generation) is collected here,
@@ -2972,6 +3155,7 @@ async function handleChatTurn(
           jev_input_tokens: jev.input_tokens,
           citations_shipped: emittedCitations.length,
           evidence_followed: evidenceFollowed,
+          gate_match: gateMatch,
         });
         // SHADOW. Assemble the judgeable view of this turn while the text still
         // exists. The packet deliberately stores no question and no answer, so
@@ -3086,7 +3270,7 @@ async function handleChatTurn(
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
-      const finalPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+      const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
         finalTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
@@ -3106,9 +3290,10 @@ async function handleChatTurn(
                   { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
+                  ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -3218,6 +3403,12 @@ async function handleChatTurn(
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
+      // #4095 — the proposal rides next to the answer; the client offers
+      // "Use its manuals" / "Not this". Emitted whatever the answer status.
+      if (identityProposal) {
+        const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
+        controller.enqueue(enc.encode(sse(proposalFrame)));
+      }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]

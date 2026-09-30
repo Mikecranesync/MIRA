@@ -1,0 +1,79 @@
+[
+  {
+    "question": {
+      "question_id": "FIELD-SEED-004",
+      "normalized_question": "How do I connect a Mitsubishi FX5U PLC to a Baykon BX11-EN weighing indicator over Modbus/TCP? Which registers hold the weight value, and what do I need to get right about data format?",
+      "source_platform": "public-forum",
+      "rights": {
+        "rights_resolved": true,
+        "training_allowed": false,
+        "evaluation_allowed": true,
+        "public_export_allowed": false,
+        "cross_tenant_reuse_allowed": false,
+        "derivatives_retained": false
+      },
+      "license_class": "public-eval-only",
+      "split_assignment": "fresh",
+      "source_url": null,
+      "external_post_id": null,
+      "discovered_at": null,
+      "posted_at": null,
+      "public_author_handle": null,
+      "raw_text": null,
+      "manufacturer": "Mitsubishi",
+      "product_family": "MELSEC iQ-F",
+      "model": "FX5U",
+      "firmware_or_revision": "",
+      "equipment_type": "PLC",
+      "symptom": "integration \u2014 reading weight registers",
+      "error_code": "",
+      "protocol": "Modbus/TCP",
+      "intent_tags": [
+        "programming",
+        "parameter",
+        "protocol"
+      ],
+      "safety_class": "none",
+      "lead_score": 70,
+      "answerability_score": 72,
+      "lineage_key": "mitsubishi/fx5u/public-forum",
+      "dedupe_hash": "2eace69e3ccc4857333e4b3404b321ae4a3abf548271ff10ea656daeceee6ad6"
+    },
+    "frozen_snapshot": "answer_radar/runs/staging-2026-09-27/frozen/FIELD-SEED-004.frozen.json",
+    "evaluation": {
+      "question_id": "FIELD-SEED-004",
+      "mira_run_id": "hub-d85e5a4b3d10",
+      "mira_version": "0994b31a453c",
+      "prompt_version": "hub-chat:machine_selected",
+      "retrieval_version": "oem_corpus_bm25",
+      "answer_text": "I couldn't find that in the Mitsubishi FX5U manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again \u2014 I'll answer from it and show you the page.",
+      "answer_status": "abstained",
+      "citations": [],
+      "source_documents": [],
+      "retrieved_chunk_count": 0,
+      "best_evidence_tier": "none",
+      "total_answer_time_ms": 5009,
+      "time_to_first_answer_ms": 5009,
+      "grader_verdicts": [],
+      "human_adjudication": null,
+      "failure_class": null,
+      "notes": "condition=machine_selected turn_status=insufficient_evidence basis=None trace=anon-5f179a62ed1e7078",
+      "evaluated_at": "2026-09-27T21:14:46+00:00"
+    },
+    "hub": {
+      "condition": "machine_selected",
+      "notebook_id": "anon-b6dd21b8b4ccf713",
+      "trace_id": "anon-5f179a62ed1e7078",
+      "http": 200,
+      "turn_status": "insufficient_evidence",
+      "basis": null,
+      "retrieval": {
+        "strategy": "oem_corpus_bm25",
+        "executed": true,
+        "oem_corpus_searched": true,
+        "oem_manufacturer_source": "notebook",
+        "candidate_count": 0
+      }
+    }
+  }
+]

@@ -1,0 +1,42 @@
+==================================================
+MIRA MCQ Benchmark Results
+==================================================
+Model:    openai/gpt-oss-120b
+Date:     2026-09-28T09:29:52Z
+Total:    100  |  Correct: 94  |  Accuracy: 94.0%
+Errors:   0
+
+--- By Domain ---
+  CMMS, Work Orders & Maintenance Management    14/15  ( 93.3%)
+  Industrial Sensors, Instrumentation & Signals 10/10  (100.0%)
+  Motor Theory & Troubleshooting                12/15  ( 80.0%)
+  NFPA 70E Electrical Safety & Arc Flash        10/10  (100.0%)
+  PLC Ladder Logic & Structured Text            15/15  (100.0%)
+  Pneumatics & Hydraulics                        9/10  ( 90.0%)
+  Preventive & Predictive Maintenance (PM/PdM)   9/10  ( 90.0%)
+  VFD / Variable Frequency Drive Faults & Operation 15/15  (100.0%)
+
+--- By Difficulty ---
+  easy         18/18  (100.0%)
+  medium       43/48  ( 89.6%)
+  hard         33/34  ( 97.1%)
+
+--- By Type ---
+  scenario     47/49  ( 95.9%)
+  recall       38/41  ( 92.7%)
+  calculation   9/10  ( 90.0%)
+
+--- Missed Questions ---
+  Q16  [Motor Theory & Troub/medium] Expected: D, Got: C
+  Q17  [Motor Theory & Troub/medium] Expected: A, Got: D
+  Q29  [Motor Theory & Troub/hard] Expected: B, Got: D
+  Q61  [Preventive & Predict/medium] Expected: A, Got: B
+  Q70  [Pneumatics & Hydraul/medium] Expected: A, Got: C
+  Q89  [CMMS, Work Orders & /medium] Expected: B, Got: D
+
+--- Slowest Responses ---
+  Q29  1,318 ms
+  Q82  1,168 ms
+  Q60  807 ms
+  Q18  749 ms
+  Q9   707 ms

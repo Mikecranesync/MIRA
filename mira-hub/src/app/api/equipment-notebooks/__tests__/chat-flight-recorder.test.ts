@@ -12,8 +12,10 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { turnOnlySampler } from "@/capabilities/observability/turn-sampler";
 import { __testing__installInMemoryExporter } from "@/capabilities/observability/tracing";
 import type { TurnRecord } from "@/lib/inference/persist-usage";
 
@@ -106,6 +108,22 @@ const veMock = vi.hoisted(() => ({
   recordLookObservation: vi.fn(async () => ({})),
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
+
+// #4075 — the automatic manual search. The pure helpers (key, decline text) are
+// the real ones; only the flag, the notebook read and the background start are
+// seams. Off by default so every other test in this file is unaffected.
+const acqMock = vi.hoisted(() => ({
+  acquisitionEnabled: vi.fn(() => false),
+  readAcquisition: vi.fn(async () => null as unknown),
+  reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
+  startManualAcquisition: vi.fn(async () => false),
+}));
+vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
+  const actual = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+    "@/capabilities/notebook-manual-acquisition",
+  );
+  return { ...actual, ...acqMock };
+});
 
 import { POST } from "../[id]/chat/route";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -268,7 +286,7 @@ describe("recordTurn throwing still persists a packet", () => {
     domainMock.recordTurn.mockRejectedValueOnce(new Error("write unavailable"));
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance.")));
     const res = await POST(
-      chatReq({ message: "q", mode: "general", clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
+      chatReq({ message: "how does a VFD work", mode: "general", clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
       params,
     );
     // recordTurn failure with a clientRequestId calls controller.error(); the
@@ -347,6 +365,30 @@ describe("per-stage timings land in the durable packet", () => {
   });
 });
 
+
+describe("an unsampled turn still records its stage timings (#4107 review F2)", () => {
+  it("at turn sample ratio 0 nothing exports, yet the packet's stage durations are numbers", async () => {
+    const exporter = new InMemorySpanExporter();
+    const unsampled = new BasicTracerProvider({
+      sampler: turnOnlySampler(0),
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    }).getTracer("t");
+    const spy = vi.spyOn(trace, "getTracer").mockReturnValue(unsampled);
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream("General guidance here.", { prompt_tokens: 3, completion_tokens: 2 })));
+      const res = await POST(chatReq({ message: "how do VFDs work", mode: "general" }), params);
+      await res.text();
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      const [, , record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord];
+      expect(exporter.getFinishedSpans()).toHaveLength(0);
+      for (const k of ["identity", "retrieval", "context", "generation"] as const) {
+        expect(typeof record.packet.timings_ms[k], `timings_ms.${k}`).toBe("number");
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
 
 describe("retrieval routing is decided by evidence context, not by general mode alone (2026-09-22)", () => {
   const chunk = (docId: string | null, sourceUrl = "https://oem.example/tp700.pdf") => ({ docId, sourceUrl, title: "TP700 Comfort Operating Instructions", content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true });
@@ -480,14 +522,220 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(rec.answerText).toContain("won't guess");
   });
 
-  it("2e. #4004 control: identity-bound + empty retrieval + a CONCEPTUAL question still answers (general lane)", async () => {
+  it("2e. #4004/#4068 control: identity-bound + empty retrieval + a CONCEPTUAL question still answers (general lane)", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
-    const fetchMock = vi.fn(async () => providerStream("Check the power supply and the boot log first."));
+    const fetchMock = vi.fn(async () => providerStream("A resistive touch panel senses pressure between two layers."));
     vi.stubGlobal("fetch", fetchMock);
-    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    const fr = await frames(await POST(chatReq({ message: "how does a touch panel work", mode: "general" }), params));
     expect(fetchMock).toHaveBeenCalled();
     expect(fr.find((f) => f.kind === "status")?.status).toBe("answered");
+  });
+
+  it("2h. #4068 (owner decision 2026-09-27): identity-bound + nothing citable + a troubleshooting question → honest decline, no provider call", async () => {
+    // Before #4068 this turn answered from general reasoning with no citation
+    // (it was 2e's old fixture). The owner chose: widen to the same family,
+    // then decline honestly — never an uncited answer about THIS machine.
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Siemens TP700 Comfort manuals");
+    expect(String(status?.message)).toContain("won't guess");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.reason).toBe("identity_bound_no_evidence");
+  });
+
+  it("2h-i. 2026-09-28 Answer Radar seed 006: a passcode request declines toward the owner/OEM, not a manual upload", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "what is the service passcode for this hoist, what should I check", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+    expect(String(status?.message)).not.toContain("photograph the nameplate");
+  });
+
+  it("2h-i-b. Codex #4094 F1: a bare 'service PIN' request also declines toward the owner/OEM", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "What is the service PIN on my hoist, what should I check?", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+    expect(String(status?.message)).not.toContain("photograph the nameplate");
+  });
+
+  it("2h-i-c. Codex #4094 post-cap r3 F3: a numbered cable pin in the same sentence does not hide a login PIN", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Demag", model: "DC-Pro" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(
+        chatReq({ message: "What is the login PIN to unlock my PLC, and what does PIN 4 on its cable do?", mode: "general" }),
+        params,
+      ),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("Demag service");
+  });
+
+  it("2h-ii. 2026-09-28 Answer Radar seed 003: firmware recovery declines toward OEM service", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "AUMA", model: "AC 01.2" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "the actuator firmware got corrupted, what do I check first to recover it", mode: "general" }), params),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("AUMA service");
+  });
+
+  it("2j. Codex #4069 F1: a mixed teaching+troubleshooting question about this machine still declines", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "How does my drive work when it trips on F005, and what should I check first?", mode: "general" }), params),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("insufficient_evidence");
+  });
+
+  it("2k. Codex #4069 F4: a FAILED OEM query is never presented as 'couldn't find it' — retryable, honest", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockRejectedValueOnce(new Error("connection terminated") as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("couldn't reach the manual library");
+    expect(String(status?.message)).not.toContain("Upload");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.reason).toBe("identity_bound_retrieval_failed");
+    // Codex #4069 pass 9 F2: an outage is not recorded as a completed empty search.
+    expect(packetOf().retrieval.zero_result_reason).toBe("oem_query_failed");
+  });
+
+  it("2k2. Codex #4069 pass 9 F2: a COMPLETED empty OEM search still records no_matches", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValue([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    await frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.zero_result_reason).toBe("no_matches");
+  });
+
+  it("2l. #4068 owner decision ('allow with a warning'): related-manual answers carry a fixed server-written warning", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    const fetchMock = vi.fn(async () => providerStream("A related CompactLogix manual says DH-485 needs a 1761-NET-AIC [1]."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
+    expect(fetchMock).toHaveBeenCalled();
+    const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
+    expect(shown).toContain("confirm them in your SLC 5/03 manual before you act");
+    const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
+    expect(rec.answerText).toContain("The closest match is a related manual");
+    // Post-cap F3: a query miss is never presented as an absent manual.
+    expect(shown).not.toMatch(/manual was found|manual was not found|no .* manual exists/i);
+    const sent = JSON.stringify((fetchMock.mock.calls[0] as unknown[])[1]);
+    expect(sent).toContain("RELATED-MANUAL EXCERPTS");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.oem_scope).toBe("vendor_fallback");
+  });
+
+  it("2l2. Codex #4069 pass 11 F2: gate-off, a streamed related-manual note never claims a refusal used it", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I don't have documentation covering that, so I can't answer it.")));
+    const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
+    const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    expect(shown).not.toMatch(/this answer uses|answer uses a related/i);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+  });
+
+  it("2l3. Codex #4069 pass 18 F2: a stopped gate-off related-manual turn saves the warning the tech saw", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+    const enc2 = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc2.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "A related manual says " } }] })}\n\n`));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+    const res = await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let received = "";
+    while (!received.includes("A related manual says")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += dec.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string | null };
+    expect(received).toContain("The closest match is a related manual");
+    expect(rec.answerText?.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
+    expect(rec.answerText).toContain("A related manual says");
+  });
+
+  it("2m. #4068 related-manual warning with the answer gate ON (the production default)", async () => {
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    try {
+      domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream("A related CompactLogix manual says DH-485 needs a 1761-NET-AIC [1].")));
+      const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
+      const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+      expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
+    } finally {
+      process.env.NOTEBOOK_ANSWER_GATE = "0";
+    }
+  });
+
+  it("2n. Codex #4069 pass 5 F3: an unclassified model's decline never claims related manuals were searched", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "XR-9000" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    const fr = await frames(await POST(chatReq({ message: "it stopped communicating, what should I check first", mode: "general" }), params));
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("Allen-Bradley XR-9000 manuals");
+    expect(msg).not.toContain("related manuals");
+  });
+
+  it("2i. #4068: a hazard turn is never swallowed by the new decline (owner decision: flag, never block)", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("De-energize and apply lockout/tagout before opening the panel."));
+    vi.stubGlobal("fetch", fetchMock);
+    await (
+      await POST(chatReq({ message: "the panel keeps rebooting, I need to work on the live panel to check it, what should I check", mode: "general" }), params)
+    ).text();
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("2f. #4004 control: identity-bound WITH scoped chunks + documented-value question → grounded, not abstained", async () => {
@@ -498,6 +746,15 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     const fr = await frames(await POST(chatReq({ message: "what supply voltage does the TP700 Comfort need", mode: "general" }), params));
     expect(fetchMock).toHaveBeenCalled();
     expect(fr.find((f) => f.kind === "status")?.message ?? "").not.toContain("manual in the library");
+  });
+
+  it("2o. Codex #4069 pass 7 F3: a manufacturer-only notebook's OEM hits are recorded as manufacturer scope, never model scope", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Check the 24 V supply [1].")));
+    await (await POST(chatReq({ message: "why does the panel reboot", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.oem_scope).toBe("manufacturer");
   });
 
   it("2g. #4004 control: a manufacturer-only notebook (no model) keeps the pre-existing path — not identity-bound", async () => {
@@ -762,6 +1019,38 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     // The unsupported number never reached the wire; the honest fallback did.
     expect(text).not.toContain("+60");
     expect(text).toContain("won't guess");
+    // #4098: WHICH grammar terms fired is recorded — closed-vocabulary tokens,
+    // never answer text, so the packet's content ban still holds.
+    expect(p.answer_gate.gate_match).toEqual({ term: "operating", unit: "°c" });
+    expect(JSON.stringify(p)).not.toContain("+60");
+  });
+
+  it("5c. #4098 seed 002: a manual-location question that trips the gate gets a documentation next step", async () => {
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The SPC-100 supply voltage is 24 VDC and its manual is on the Festo site.")));
+    const raw = await (
+      await POST(chatReq({ message: "I need the manual and the WinPISA software for an obsolete Festo SPC-100-P-F. Where is the documentation?", mode: "general" }), params)
+    ).text();
+    // Content is released in ~120-char frames; join them before matching.
+    const text = framesOf(raw).filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.decision).toBe("blocked");
+    // The relevant next step is there (#4098); the fault step is labelled as
+    // conditional rather than presented as the answer (#4104 review).
+    expect(text).toContain("If you need the document itself");
+    expect(text).toContain("If this is about a fault or a stopped machine");
+  });
+
+  it("5d. #4098 control (#4104 F1): a tripping question keeps the fault-triage steps", async () => {
+    delete process.env.NOTEBOOK_ANSWER_GATE;
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The supply voltage is 480 VAC.")));
+    const raw = await (await POST(chatReq({ message: "my drive keeps tripping on overvoltage", mode: "general" }), params)).text();
+    const text = framesOf(raw).filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().answer_gate.decision).toBe("blocked");
+    expect(text).toContain("If this is about a fault or a stopped machine: confirm the exact code");
   });
 
   it("5b. with the emergency lever NOTEBOOK_ANSWER_GATE=0 the claim is served but still flagged in the packet", async () => {
@@ -885,3 +1174,385 @@ describe("Jev shadow sufficiency on the packet (MIRA_JEV_SHADOW)", () => {
     expect(record.packet.answer_gate).toMatchObject({ evidence_sufficient: true, jev_sufficient: null, jev_skipped_reason: "error" });
   });
 });
+
+describe("#4099: the MACHINE CONTEXT block is sent only when it states a fact", () => {
+  const nbOf = (extra: Record<string, unknown> = {}) => ({ id: NB, displayName: "General", manufacturer: null, model: null, ...extra });
+  async function systemPromptFor(message: string, notebook: Record<string, unknown>, docs: string[] = []): Promise<string> {
+    domainMock.getNotebook.mockResolvedValue(notebook as never);
+    // The suite default lists PF525.pdf as a loaded source; a blank chat has none.
+    domainMock.listSources.mockResolvedValue((docs.length ? [{ filename: "PF525.pdf", docId: DOC_A }] : []) as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: docs, nodeId: "n1" } as never);
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: unknown, init?: { body?: string }) => {
+        if (init?.body) bodies.push(JSON.parse(init.body));
+        return providerStream("B");
+      }),
+    );
+    await (await POST(chatReq({ message, mode: "general", sourceDocIds: docs }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    return bodies[0].messages.find((m) => m.role === "system")!.content;
+  }
+
+  it("a blank chat (no identity, no asset, no documents) sends no block", async () => {
+    // Measured on gpt-oss-120b with the served params: with this empty block the
+    // Q9 option letter contradicted its own worked answer in 7 of 16 samples;
+    // with it removed, 0 of 16.
+    const sys = await systemPromptFor("how does a VFD work", nbOf());
+    expect(sys).not.toContain("MACHINE CONTEXT");
+    expect(sys).not.toContain("an unspecified machine");
+    expect(sys).not.toContain('"General"');
+  });
+
+  it("a known manufacturer/model still sends the block", async () => {
+    const sys = await systemPromptFor("how does a VFD work", nbOf({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }));
+    expect(sys).toContain("MACHINE CONTEXT");
+    expect(sys).toContain("Allen-Bradley PowerFlex 525");
+  });
+
+  it("loaded documents still send the block", async () => {
+    const sys = await systemPromptFor("how does a VFD work", nbOf(), [DOC_A]);
+    expect(sys).toContain("MACHINE CONTEXT");
+    expect(sys).toContain("Loaded source documents: PF525.pdf");
+  });
+});
+
+describe("#4095 — a blank chat PROPOSES the named machine, never binds it", () => {
+  const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+  const unbound = { id: NB, displayName: "Unknown box", manufacturer: null, model: null };
+  const systemPromptOf = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body) as {
+      messages: { role: string; content: string }[];
+    };
+    return body.messages[0].content;
+  };
+
+  it("names a library manufacturer + model → identity_proposal frame, packet record, unconfirmed directive; retrieval unchanged", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    const fetchMock = vi.fn(async () => providerStream("A DH-485 link needs matching node addresses."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03 on DH-485", mode: "general" }), params),
+    );
+    const proposal = fr.find((f) => f.kind === "identity_proposal");
+    expect(proposal).toEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+    expect(systemPromptOf(fetchMock)).toContain("UNCONFIRMED MACHINE");
+    expect(systemPromptOf(fetchMock)).toContain("Allen-Bradley SLC 5/03");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    // Content-free packet: the model is a hash, never text (Codex #4120 r3 F5).
+    expect(p.identity.proposal).toEqual({
+      manufacturer: "Allen-Bradley",
+      model_sha256: "b217f051d1e3a5ff26ec33794df34402b690bc6dca1ff40cc4d34ffe191553a3",
+    });
+    expect(JSON.stringify(p)).not.toContain("SLC 5/03");
+    // The proposal alone never changes this turn's retrieval.
+    expect(p.retrieval.strategy).toBe("skipped_general_mode");
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(domainMock.getNotebook).toHaveBeenCalled();
+  });
+
+  it("control: a teaching question → no frame, no packet proposal, prompt unchanged", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    const fetchMock = vi.fn(async () => providerStream("A VFD varies frequency."));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: "how does a VFD work in general", mode: "general" }), params));
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+    expect(systemPromptOf(fetchMock)).not.toContain("UNCONFIRMED MACHINE");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().identity.proposal).toBeNull();
+  });
+
+  it("Codex #4120 F4: the proposal is persisted with the turn's evidence", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    await (await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    const rec = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(rec.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" });
+  });
+
+  it("Codex #4120 F4: an idempotent replay re-emits the stored proposal and runs nothing", async () => {
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-1",
+        question: "Find the manual for this Allen-Bradley SLC 5/03",
+        answerStatus: "answered",
+        answerText: "General help.",
+        enabledSourceDocIds: [],
+        evidence: [{ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "SLC 5/03" }],
+        model: null,
+        basis: null,
+      },
+    } as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(
+      chatReq({
+        message: "Find the manual for this Allen-Bradley SLC 5/03",
+        mode: "general",
+        clientRequestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+      params,
+    );
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+    const fr = await frames(res);
+    expect(fr.find((f) => f.kind === "identity_proposal")).toEqual({
+      kind: "identity_proposal",
+      manufacturer: "Allen-Bradley",
+      model: "SLC 5/03",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4120 F3: a notebook bound to an asset (no identity strings) never gets a proposal", async () => {
+    domainMock.getNotebook.mockResolvedValue(unbound as never);
+    domainMock.resolveBoundAsset.mockResolvedValueOnce({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      unsPath: "enterprise.site.area.line.cv_101",
+    } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
+  it("Codex #4120 F3: fail closed when the notebook could not be loaded", async () => {
+    domainMock.getNotebook.mockResolvedValue(null as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("ok")));
+    const fr = await frames(
+      await POST(chatReq({ message: "Find the manual for this Allen-Bradley SLC 5/03", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+
+  it("control: a notebook already bound to a machine never gets a proposal", async () => {
+    domainMock.getNotebook.mockResolvedValue({ ...unbound, manufacturer: "Siemens", model: "TP700 Comfort" } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    const fetchMock = vi.fn(async () => providerStream("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(
+      await POST(chatReq({ message: "how does the Allen-Bradley SLC 5/03 compare, conceptually", mode: "general" }), params),
+    );
+    expect(fr.some((f) => f.kind === "identity_proposal")).toBe(false);
+  });
+});
+
+describe("#4075 — a confirmed identity with no manual starts, and then reports, the official-manual search", () => {
+  const confirmed = (extra: Record<string, unknown> = {}) => ({
+    id: NB,
+    displayName: "SMC VQ1000-FPG-C6C6-D",
+    manufacturer: "Siemens",
+    model: "TP700 Comfort",
+    catalogNumber: null,
+    identityStatus: "user_confirmed",
+    nodeId: "n1",
+    ...extra,
+  });
+  const KEY = "SIEMENS|TP700COMFORT|";
+  const packetOf = () => (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+  const ask = async () => {
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+    vi.stubGlobal("fetch", vi.fn());
+    return frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first", mode: "general" }), params));
+  };
+
+  it("never searched → starts the search once, says it is looking, and records it in the packet", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue(null);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    const arg = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+      notebookId: string;
+      nodeId: string;
+      identity: { manufacturer: string; model: string; identityStatus: string };
+    };
+    expect(arg.notebookId).toBe(NB);
+    expect(arg.nodeId).toBe("n1");
+    expect(arg.identity).toMatchObject({ manufacturer: "Siemens", model: "TP700 Comfort", identityStatus: "user_confirmed" });
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: true, candidate_host: null });
+  });
+
+  it("an earlier search left a candidate → says so (with its host), turned off until checked, and does not search again", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "candidate_review",
+      started_at: "2026-09-29T07:00:00Z",
+      finished_at: "2026-09-29T07:00:40Z",
+      candidate_host: "www.smcworld.com",
+      match_state: "candidate",
+      oem_request_url: null,
+      attached_indexed: true,
+    });
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("possible manual");
+    expect(msg).toContain("www.smcworld.com");
+    expect(msg).toContain("isn't turned on");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toEqual({
+      state: "candidate_review",
+      started_this_turn: false,
+      candidate_host: "www.smcworld.com",
+    });
+  });
+
+  it("a search recorded for a DIFFERENT identity (the notebook was re-bound) is not reported; a new one starts", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: "SMC|VQ1000FPGC6C6D|",
+      state: "no_manual_found",
+      started_at: null,
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).not.toContain("couldn't find one");
+  });
+
+  it("Codex #4118 r8 F13: a finished record is reconciled first — a removed source is never reported as in Sources", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "complete",
+      started_at: null,
+      finished_at: null,
+      candidate_host: "www.smcworld.com",
+      match_state: "verified",
+      oem_request_url: null,
+      attached_indexed: true,
+      doc_id: "d1",
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.reconcileAcquisition.mockImplementationOnce(async () => ({ ...rec, attached_indexed: false, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("no longer in this notebook's Sources");
+    expect(msg).not.toContain("turn it on in Sources");
+  });
+
+  it("Codex #4118 r7 F12: a matching 'search_unavailable' record goes back through the claim (retried after its backoff)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+  });
+
+  it("Codex #4118 r14 F19: a retryable record whose manual the technician removed is NOT retried", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_unavailable",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: "d1",
+      linked: true,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    // Once for the pre-retry check, once for the reply text — never leaks.
+    acqMock.reconcileAcquisition
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }))
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("no longer in this notebook's Sources");
+  });
+
+  it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: "2026-09-29T06:00:00Z",
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: true });
+  });
+
+  it("control: a live 'running' claim refuses the restart and the turn still says it is looking", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue({
+      key: KEY,
+      state: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toMatchObject({ state: "running", started_this_turn: false });
+  });
+
+  it("control: feature off → the #4068 decline is unchanged and nothing is started", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(acqMock.readAcquisition).not.toHaveBeenCalled();
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("Siemens TP700 Comfort manuals");
+    expect(msg).toContain("won't guess");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(packetOf().retrieval.manual_acquisition).toBeNull();
+  });
+
+  it("control: an identity the technician did NOT confirm never starts a search", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.readAcquisition.mockResolvedValue(null);
+    domainMock.getNotebook.mockResolvedValue(confirmed({ identityStatus: "candidate" }) as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("won't guess");
+  });
+});
+

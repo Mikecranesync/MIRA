@@ -223,3 +223,28 @@ def test_failed_acceptance_runs_are_included_and_labelled(monkeypatch, tmp_path:
     assert "3362 input tokens" in md.replace(",", "")
     assert "1,200" not in md
     assert "run_conclusion" in (tmp_path / "r.csv").read_text()
+
+
+def test_unsampled_db_turns_are_not_collapsed(tmp_path: Path):
+    """#4107 F3: turns not sampled for export have no OTel trace id. Each distinct
+    turn must still count once, by its turn id or its decision_traces row."""
+    rows = []
+    for i, (jev, tokens) in enumerate([(0.9, 300), (0.2, 300), (None, None)]):
+        p = packet(
+            chunks=4,
+            decision="answered",
+            jev=jev,
+            tokens=tokens,
+            reason=None if jev is not None else "no_evidence",
+        )
+        p["ids"] = {"turn_id": f"turn-{i}"}
+        rows.append(mod.flatten(p, source="db", trace_id=None))
+    no_turn = packet(chunks=4, decision="answered", jev=0.8, tokens=300)
+    no_turn["ids"] = {}
+    for key in ("row-a", "row-b"):
+        r = mod.flatten(no_turn, source="db", trace_id=None)
+        r["row_id"] = f"db:{key}"
+        rows.append(r)
+    mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
+    assert (tmp_path / "r.csv").read_text().count("\n") == 6  # header + 5 distinct turns
+    assert "judged: 4" in (tmp_path / "r.md").read_text()

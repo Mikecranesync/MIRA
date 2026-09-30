@@ -82,6 +82,11 @@ origins:
     confirmed_by: "sources.yaml"
     reason: "present in sources.yaml — the pre-existing human curation gate"
     feeders: [foundational.DIRECT_TARGETS]
+  "content2.smcetech.com":
+    classification: curated
+    visibility: shared
+    confirmed_by: "sources.yaml"
+    reason: "present in sources.yaml — the pre-existing human curation gate (SMC double check block catalog, #4113)"
   "dl.mitsubishielectric.com":
     classification: curated
     visibility: shared
@@ -309,6 +314,11 @@ origins:
     confirmed_by: "Mike 2026-08-18 — approved: publicly-published OEM documentation, same character as the sources.yaml entries"
     reason: "publicly-published OEM documentation portal, configured in a crawler manifest but never added to sources.yaml"
     feeders: [foundational.APIFY_TARGETS]
+  "www.smcworld.com":
+    classification: curated
+    visibility: shared
+    confirmed_by: "sources.yaml"
+    reason: "present in sources.yaml — the pre-existing human curation gate (SMC double check block catalog, #4113)"
   "www.stle.org":
     classification: curated
     visibility: shared

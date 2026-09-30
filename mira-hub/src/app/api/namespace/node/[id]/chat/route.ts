@@ -32,7 +32,9 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
+import { withStepSafety } from "@/capabilities/answer-shape";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
@@ -257,29 +259,10 @@ export async function POST(
     return NextResponse.json({ error: "No user message" }, { status: 400 });
   }
 
-  // Safety gate — hard stop before touching LLM
-  const trigger = matchSafetyStop(lastUser.content);
-  if (trigger) {
-    const enc = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const words = SAFETY_STOP.split(" ");
-        for (const word of words) {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
-        }
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "X-Safety-Stop": trigger,
-      },
-    });
-  }
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard frames the answer (prompt directive + banner as the first
+  // content frame); it never replaces it.
+  const safetyFlag = matchSafetyStop(lastUser.content);
 
   // Canonical files (migration 075): documents attached to THIS node through
   // workspace_file_links. The link derivation IS the membership proof, so these
@@ -302,6 +285,10 @@ export async function POST(
   // Resolve node context (+ optional document) + scoped chunks in one
   // tenant-scoped (RLS) transaction. Node/doc misses are fatal (404); empty
   // retrieval is not — chat still answers ("no coverage").
+  // #3437 — documents a person linked to this node, or opened to chat with,
+  // are admitted: to retrieval, to the ask post-filter, and to the final
+  // approved-context count below. Unlinked drafts are not.
+  const admittedDocIds = new Set(docId ? [docId, ...linkedDocIds] : linkedDocIds);
   let nodeRow: { name: string; uns_path: string | null } | null = null;
   let docFilename: string | null = null;
   let docMissing = false;
@@ -335,10 +322,13 @@ export async function POST(
         if (!filename) return { row, chunks: [] as ManualChunk[], filename: null, missing: true };
       }
 
+      // A document the technician opened to chat with is their own upload
+      // (resolved above by tenant_id + doc_id): choosing it is the admission,
+      // or doc-scoped chat answered from nothing on prod (#3437).
       const chunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
         nodeId: id,
         unsPath: row.uns_path,
-        ...(docId ? { docId } : {}),
+        ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
       });
       let allChunks = chunks;
       if (linkedDocIds.length > 0) {
@@ -347,11 +337,19 @@ export async function POST(
           unsPath: row.uns_path,
           docIds: linkedDocIds,
           validatedDocScope: true,
+          // #3437 — a file a person linked to this node is admitted under the
+          // approval gate. Without this, prod retrieval kept only
+          // `verified = true` rows and every linked private upload vanished.
+          approvedSourceDocIds: linkedDocIds,
         });
         allChunks = mergeChunks(chunks, linkedChunks);
       }
+      // The ask gate keeps shared rows only when verified; a linked or opened
+      // file's private chunks are approved by that act (same rule as above).
       const approvedChunks = approvedAskEnforcementEnabled()
-        ? allChunks.filter((chunk) => chunk.verified === true)
+        ? allChunks.filter(
+            (chunk) => chunk.verified === true || (chunk.docId != null && admittedDocIds.has(chunk.docId)),
+          )
         : allChunks;
       return { row, chunks: approvedChunks, filename, missing: false };
     });
@@ -383,9 +381,16 @@ export async function POST(
           name: nodeRow.name,
           unsPath: nodeRow.uns_path,
         });
-  const systemPrompt = appendManualContext(baseSystemPrompt, nodeChunks);
+  const systemPrompt = withStepSafety(withAnswerLanguage(
+    appendManualContext(
+      safetyFlag ? `${baseSystemPrompt}\n\n${flagDirectiveFor(safetyFlag)}` : baseSystemPrompt,
+      nodeChunks,
+    ),
+  ));
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
-  const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
+  const approvedSourceCount = chunksToSources(
+    nodeChunks.filter((c) => c.verified === true || (c.docId != null && admittedDocIds.has(c.docId))),
+  ).length;
   const safetyLabel = nodeRow.name || id;
   const approvedSummary = {
     approvedSourceCount,
@@ -394,7 +399,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
@@ -419,6 +428,11 @@ export async function POST(
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      if (safetyFlag) {
+        const banner = `${hazardBanner(safetyFlag)}\n\n`;
+        responseBuffer.push(banner);
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: banner })}\n\n`));
+      }
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.
       if (nodeSources.length > 0) {

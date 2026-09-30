@@ -109,6 +109,29 @@ describe("provider protocol — fail-closed, falls through, never invents a verd
     expect(vi.mocked(fetch).mock.calls.length).toBe(1);
   });
 
+  it("#4130: sends each provider's body extras (Groq reasoning_effort) and only that provider's", async () => {
+    delete process.env.GROQ_REASONING_EFFORT; // pin the registry default ("low")
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: { body?: string }) => {
+      bodies.push(JSON.parse(init?.body ?? "{}"));
+      return bodies.length < 3
+        ? judgeResponse("")
+        : judgeResponse('{"verdict":"safe","hazard_class":"none","reason":"x"}');
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const v = await semanticSafetyCheck({ question: "q", answerText: "a", general: true, selectedClass: "none" });
+    expect(v.verdict).toBe("safe");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual([
+      "https://api.groq.com/openai/v1/chat/completions",
+      "https://api.cerebras.ai/v1/chat/completions",
+      "https://api.together.xyz/v1/chat/completions",
+    ]);
+    expect(bodies[0].reasoning_effort).toBe("low");
+    expect(bodies[0].max_tokens).toBe(200);
+    expect(bodies[1]).not.toHaveProperty("reasoning_effort");
+    expect(bodies[2]).not.toHaveProperty("reasoning_effort");
+  });
+
   it("falls through a malformed verdict to the next provider", async () => {
     const fetchMock = vi
       .fn()
