@@ -2,7 +2,7 @@
 
 **Status: PARTIALLY ACCEPTED — 2026-09-30.** Mike approved one narrow Serper use:
 an exact part/catalog number read from a user-submitted photo may be sent only
-after the technician explicitly asks MIRA to find its manual. This approval does
+after the technician confirms that exact string (owner decision 2026-09-30: confirmed search). This approval does
 not approve other Serper queries or settle the separate runtime vision egress.
 **Date:** 2026-08-16
 **Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
@@ -67,7 +67,10 @@ whether to expand the cloud-egress policy. That decision is this ADR.
 ## Limits of the 2026-09-30 part-number approval
 
 - Input is exactly one unambiguous part/catalog number from the photo observation.
-- The technician must explicitly request the manual lookup in the chat.
+- A request never searches by itself. MIRA first shows the exact string it would send; the
+  search runs only when the technician's next message is the exact confirmation of that same
+  string (one-time, candidate-bound). Cancellation, any other message, or a changed candidate
+  means no search.
 - Do not send the question, other notebook content, serial number, or personal data.
 - A manufacturer-unknown result is only a possible candidate. Do not call it OEM,
   download/import it, bind the notebook, or use it as answer evidence.

@@ -361,31 +361,100 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
   });
 
-  it("searches the exact part number when the technician explicitly asks for its manual", async () => {
-    manualDiscoveryMock.discoverManual.mockResolvedValueOnce({
-      serviceAvailable: true, found: true,
-      candidate: { url: "https://docs.example/manual.pdf", title: "Possible manual", host: "docs.example", score: 20, docType: "pdf", isDirectPdf: true, validated: true },
-      validated: true, isDirectPdf: true, oemHost: false, trustedDistributorHost: false,
-      reason: "candidate found", oemRequestUrl: null,
-    });
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const res = await POST(chatReq({ message: "Look up the PDF manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
-    const f = await frames(res);
+  // #4150 owner decision: a request only PROPOSES; the exact confirmation of the
+  // same candidate on the very next turn is what authorizes the search.
+  const PART = "Ni8U-S12-AP6";
+  const proposalTurn = (candidate = PART, ownerUserId: string | null = "u1") => [{
+    id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
+    answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate }], basis: null,
+    createdAt: "2026-09-30T00:00:00Z", ownerUserId, sharedLegacy: false,
+  }];
+  const found = {
+    serviceAvailable: true, found: true,
+    candidate: { url: "https://docs.example/manual.pdf", title: "Possible manual", host: "docs.example", score: 20, docType: "pdf", isDirectPdf: true, validated: true },
+    validated: true, isDirectPdf: true, oemHost: false, trustedDistributorHost: false,
+    reason: "candidate found", oemRequestUrl: null,
+  };
+  const ask = async (message: string) => {
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I can read the label.")));
+    const res = await POST(chatReq({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    return frames(res);
+  };
+
+  it("#4150: an explicit request proposes the exact string and does NOT search", async () => {
+    const f = await ask("Look up the PDF manual");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
     const status = f.find((x) => x.kind === "status");
-    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith({ catalogNumber: "Ni8U-S12-AP6" });
-    expect(status?.status).toBe("insufficient_evidence");
-    expect(String(status?.message)).toContain("I searched for a manual using the exact label text");
+    expect(String(status?.message)).toContain(`Search the web for "${PART}"`);
+    expect(String(status?.message)).toContain("I haven't searched");
+    const chips = f.find((x) => x.kind === "followups");
+    expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
+    const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART });
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
+    expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
+  });
+
+  it("#4150 positive control: the exact confirmation after the proposal searches ONLY that string", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    const f = await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith({ catalogNumber: PART });
+    const status = f.find((x) => x.kind === "status");
     expect(String(status?.message)).toContain("https://docs.example/manual.pdf");
     expect(String(status?.message)).toContain("I haven't added it as a source");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
-    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({
-      searched: true,
-      found: true,
-      candidate_host: "docs.example",
-    });
-    expect(JSON.stringify(firstRecordedPacket())).not.toContain("Ni8U-S12-AP6");
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "searched", searched: true, found: true });
+  });
+
+  it("#4150: a confirmation with no pending proposal does not search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce([] as never);
+    const f = await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain("I didn't search");
+  });
+
+  it("#4150: a confirmation for a different candidate does not search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    await ask('Search the web for "Ni8U-S12-AP8"');
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("#4150: a proposal for another candidate does not authorize this photo's candidate", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn("Ni8U-S12-AP8") as never);
+    await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("#4150: another technician's proposal never authorizes this one's search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(PART, "u2") as never);
+    await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("#4150: cancel after a proposal is acknowledged and never searches", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    const f = await ask("Don't search");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain("I won't search");
+  });
+
+  it.each([
+    "Look up the manual. Actually, cancel that.",
+    "Find the manual locally only.",
+    "I will look up the manual myself later.",
+  ])("#4150: a withdrawn or restricted request never searches: %s", async (message) => {
+    await ask(message);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("#4150: a proposal lookup failure fails closed", async () => {
+    domainMock.listTurns.mockRejectedValueOnce(new Error("db down"));
+    await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
   });
 });
 

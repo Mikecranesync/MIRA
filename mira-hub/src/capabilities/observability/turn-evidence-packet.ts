@@ -145,8 +145,10 @@ export type TurnEvidencePacketRetrieval = {
   } | null;
   /** Explicit manual search from a photo-read part number, without binding it. */
   photo_part_manual_lookup: {
+    /** #4150: a search runs only on an exact, candidate-bound confirmation. */
+    action: "proposed" | "searched" | "cancelled" | "mismatch";
     searched: boolean;
-    part_number_sha256: string;
+    part_number_sha256: string | null;
     found: boolean;
     candidate_host: string | null;
   } | null;

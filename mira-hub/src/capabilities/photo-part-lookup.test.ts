@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksPartCompatibility, explicitManualLookupRequest, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 
 describe("photo part lookup", () => {
   it("uses one label-shaped code as a lookup candidate without asserting what it is", () => {
@@ -122,3 +122,66 @@ describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => 
   });
 });
 
+
+describe("#4150 owner decision — search only after an exact, one-time confirmation", () => {
+  const CANDIDATE = "6ES7214-1AG40-0XB0";
+  const proposed = { kind: "part_search_proposal", candidate: CANDIDATE };
+
+  it.each(["AB-1234567 (S/N)", "S.N. AB-1234567", "S/N = AB-1234567", "Serial number is AB-1234567"])(
+    "reported serial form is never a candidate: %s",
+    (label) => expect(unambiguousPartNumber(label)).toBeNull(),
+  );
+
+  it("the confirmation text names the exact candidate and parses back to it", () => {
+    expect(partSearchConfirmation(CANDIDATE)).toBe(`Search the web for "${CANDIDATE}"`);
+    expect(confirmedPartSearchCandidate(partSearchConfirmation(CANDIDATE))).toBe(CANDIDATE);
+    expect(confirmedPartSearchCandidate("please look it up")).toBeNull();
+  });
+
+  it("a request only proposes; it never authorizes a search", () => {
+    expect(partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] }))
+      .toEqual({ action: "propose", candidate: CANDIDATE });
+  });
+
+  it.each([
+    "Look up the manual. Actually, cancel that.",
+    "Find the manual locally only.",
+    "Look up the manual tomorrow.",
+    "Do not look up the manual",
+  ])("a withdrawn, restricted or negated request does not even propose: %s", (message) => {
+    expect(partSearchDecision({ message, candidate: CANDIDATE, previousEvidence: [] }).action).toBe("none");
+  });
+
+  it("positive control: the exact confirmation after a matching proposal searches that string", () => {
+    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: [proposed] }))
+      .toEqual({ action: "search", candidate: CANDIDATE });
+  });
+
+  it("a confirmation with no pending proposal does not search", () => {
+    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: [] }).action)
+      .toBe("mismatch");
+  });
+
+  it("a confirmation for a different candidate does not search", () => {
+    const other = "6ES7214-1AG40-0XB1";
+    expect(partSearchDecision({ message: partSearchConfirmation(other), candidate: CANDIDATE, previousEvidence: [proposed] }).action)
+      .toBe("mismatch");
+  });
+
+  it("a changed photo candidate invalidates the earlier confirmation", () => {
+    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: "Ni8U-S12-AP6", previousEvidence: [proposed] }).action)
+      .toBe("mismatch");
+    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: null, previousEvidence: [proposed] }).action)
+      .toBe("mismatch");
+  });
+
+  it("cancel after a proposal is acknowledged and never searches", () => {
+    expect(partSearchDecision({ message: PART_SEARCH_CANCEL, candidate: CANDIDATE, previousEvidence: [proposed] }))
+      .toEqual({ action: "cancelled", candidate: CANDIDATE });
+  });
+
+  it("the confirmation must be exact: extra words are not a confirmation", () => {
+    expect(confirmedPartSearchCandidate(`${partSearchConfirmation(CANDIDATE)} and also the other one`)).toBeNull();
+    expect(confirmedPartSearchCandidate(`Don't ${partSearchConfirmation(CANDIDATE)}`)).toBeNull();
+  });
+});

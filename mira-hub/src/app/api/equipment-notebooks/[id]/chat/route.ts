@@ -106,9 +106,15 @@ import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers"
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
 import {
+  PART_SEARCH_CANCEL,
   asksPartCompatibility,
-  explicitManualLookupRequest,
+  confirmedPartSearchCandidate,
+  isPartSearchProposal,
+  partSearchConfirmation,
+  partSearchDecision,
   unambiguousPartNumber,
+  type PartSearchDecision,
+  type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -740,6 +746,15 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
+      // #4150 — a replayed search proposal offers the same exact confirmation.
+      const storedPartSearch = turn.evidence.find(isPartSearchProposal);
+      if (storedPartSearch) {
+        const chips: NotebookFollowupsFrame = {
+          kind: "followups",
+          suggestions: [partSearchConfirmation(storedPartSearch.candidate), PART_SEARCH_CANCEL],
+        };
+        controller.enqueue(enc.encode(sse(chips)));
+      }
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -1973,39 +1988,90 @@ async function handleChatTurn(
       ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
   // A label transcription is usable as a literal search key, not as confirmed
-  // identity. Search only when the technician explicitly asks for a manual;
-  // never bind the notebook or auto-import a manufacturer-unknown candidate.
+  // identity. #4150 owner decision: a request never searches. It can only
+  // propose the EXACT string MIRA would send; egress happens on the next turn,
+  // and only if that turn is the exact confirmation of that same string and the
+  // photo still yields it. Never bind the notebook or auto-import a candidate.
   const photoTextForPartLookup = (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
   const photoPartNumber = unambiguousPartNumber(photoTextForPartLookup);
-  const shouldSearchPhotoPartNumber =
-    chunks.length === 0 &&
-    general &&
-    oemManufacturer === null &&
-    explicitManualLookupRequest(message) &&
-    photoPartNumber !== null;
+  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null;
+  // The technician's own immediately preceding turn in this thread carries any
+  // pending proposal. Read only for a confirm/cancel message; fail closed.
+  let previousTurnEvidence: unknown[] = [];
+  const mayAnswerProposal =
+    confirmedPartSearchCandidate(message) !== null ||
+    message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase();
+  if (partSearchEligible && mayAnswerProposal) {
+    try {
+      const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
+      if (last && last.ownerUserId === ctx.userId) previousTurnEvidence = last.evidence;
+    } catch (err) {
+      console.error("[notebook-chat] part-search proposal lookup failed (no search):", err instanceof Error ? err.message : err);
+    }
+  }
+  const partSearch: PartSearchDecision = partSearchEligible
+    ? partSearchDecision({ message, candidate: photoPartNumber, previousEvidence: previousTurnEvidence })
+    : { action: "none" };
   let photoPartLookup: {
+    action: "proposed" | "searched" | "cancelled" | "mismatch";
     searched: boolean;
-    part_number: string;
+    part_number: string | null;
     found: boolean;
     candidate_host: string | null;
     message: string;
+    proposal: PartSearchProposalEntry | null;
   } | null = null;
-  if (shouldSearchPhotoPartNumber && photoPartNumber) {
-    const result = await discoverManual({ catalogNumber: photoPartNumber });
+  if (partSearch.action === "propose") {
+    const c = partSearch.candidate;
+    photoPartLookup = {
+      action: "proposed",
+      searched: false,
+      part_number: c,
+      found: false,
+      candidate_host: null,
+      message: `I can search the web for a manual using only the exact label text \"${c}\". Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
+      proposal: { kind: "part_search_proposal", candidate: c },
+    };
+  } else if (partSearch.action === "cancelled") {
+    photoPartLookup = {
+      action: "cancelled",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: `OK. I won't search the web for \"${partSearch.candidate}\".`,
+      proposal: null,
+    };
+  } else if (partSearch.action === "mismatch") {
+    photoPartLookup = {
+      action: "mismatch",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: "I didn't search. That confirmation doesn't match a search I offered for this photo in the previous message. Ask me to look up the manual and I'll show you exactly what would be sent first.",
+      proposal: null,
+    };
+  } else if (partSearch.action === "search") {
+    const confirmedPart = partSearch.candidate;
+    // Only the confirmed string leaves: no photo, chat or notebook text.
+    const result = await discoverManual({ catalogNumber: confirmedPart });
     const candidate = result.candidate;
     const manualUrl = candidate && /^https:\/\/[^\s"'<>]+$/.test(candidate.url) ? candidate.url : null;
     const manualHost = manualUrl ? new URL(manualUrl).hostname : null;
     const messageText = !result.serviceAvailable
-      ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${photoPartNumber}\". I have not confirmed what the code identifies.`
+      ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${confirmedPart}\". I have not confirmed what the code identifies.`
       : candidate && manualUrl && manualHost
-        ? `I searched for a manual using the exact label text \"${photoPartNumber}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
-        : `I searched for a manual using the exact label text \"${photoPartNumber}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
+        ? `I searched for a manual using the exact label text \"${confirmedPart}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
+        : `I searched for a manual using the exact label text \"${confirmedPart}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
     photoPartLookup = {
+      action: "searched",
       searched: true,
-      part_number: photoPartNumber,
+      part_number: confirmedPart,
       found: Boolean(candidate),
       candidate_host: manualHost,
       message: messageText,
+      proposal: null,
     };
   }
   const unverifiedPartCompatibility =
@@ -2097,8 +2163,11 @@ async function handleChatTurn(
     manual_acquisition: manualAcquisition,
     photo_part_manual_lookup: photoPartLookup
       ? {
+          action: photoPartLookup.action,
           searched: photoPartLookup.searched,
-          part_number_sha256: createHash("sha256").update(photoPartLookup.part_number).digest("hex"),
+          part_number_sha256: photoPartLookup.part_number
+            ? createHash("sha256").update(photoPartLookup.part_number).digest("hex")
+            : null,
           found: photoPartLookup.found,
           candidate_host: photoPartLookup.candidate_host,
         }
@@ -2178,7 +2247,12 @@ async function handleChatTurn(
       enabledSourceDocIds: docIds,
       // #3788: the verified photo is part of the record of this refusal, so a
       // history read renders the same card the live turn showed.
-      evidence: [...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+      evidence: [
+        ...disputeEntries,
+        ...(visualEntry ? [visualEntry] : []),
+        // #4150 — the pending proposal is what a confirmation is checked against.
+        ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),
+      ],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
@@ -2231,6 +2305,13 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
         controller.enqueue(enc.encode(sse(status)));
+        if (photoPartLookup?.proposal) {
+          const chips: NotebookFollowupsFrame = {
+            kind: "followups",
+            suggestions: [partSearchConfirmation(photoPartLookup.proposal.candidate), PART_SEARCH_CANCEL],
+          };
+          controller.enqueue(enc.encode(sse(chips)));
+        }
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
       },
