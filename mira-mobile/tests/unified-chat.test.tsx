@@ -227,7 +227,7 @@ describe("UnifiedChat", () => {
   // answered without it (no /look/ upload, no visualEvidence rider).
   it("uploads a HOME-stashed attachment for the question that thread was created with", async () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
-    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-home-9", observation: { capturedAt: "2026-09-16T00:00:00Z" } });
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-home-9", observation: { capturedAt: "2026-09-16T00:00:00Z" }, attachment: { linkId: "link-1", notebookId: "nb-1" }, observationPersisted: true });
 
     // Stash exactly as the HOME shell does before it opens the new notebook.
     const home = renderHook(() => useUnifiedAttachments(null));
@@ -299,7 +299,7 @@ describe("UnifiedChat", () => {
     nativePick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
     resources.lookAtPhoto
       .mockRejectedValueOnce(new Error("Network request failed"))
-      .mockResolvedValue({ fileId: "file-retry-1", observation: { capturedAt: "2026-09-17T00:00:00Z" } });
+      .mockResolvedValue({ fileId: "file-retry-1", observation: { capturedAt: "2026-09-17T00:00:00Z" }, attachment: { linkId: "link-1", notebookId: "nb-1" }, observationPersisted: true });
     const h = handlers();
     // A prior turn exists, so the shell supplies a turnId and SendError prefers
     // the host retry — the same condition the phone was in.
