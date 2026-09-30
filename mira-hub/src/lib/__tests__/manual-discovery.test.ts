@@ -32,6 +32,7 @@ const FOUND_BODY = {
 beforeEach(() => {
   delete process.env.MIRA_ASK_URL;
   delete process.env.ASK_API_KEY;
+  delete process.env.MANUAL_DISCOVERY_API_KEY;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -69,9 +70,9 @@ describe("discoverManual — happy path", () => {
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
   });
 
-  it("honors MIRA_ASK_URL and sends X-Mira-Key when ASK_API_KEY is set", async () => {
+  it("honors MIRA_ASK_URL and sends X-Mira-Key when MANUAL_DISCOVERY_API_KEY is set", async () => {
     process.env.MIRA_ASK_URL = "http://ask.internal:9000/";
-    process.env.ASK_API_KEY = "k123";
+    process.env.MANUAL_DISCOVERY_API_KEY = "k123";
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
@@ -82,9 +83,36 @@ describe("discoverManual — happy path", () => {
     expect(url).toBe("http://ask.internal:9000/manual-discovery/search");
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBe("k123");
   });
+
+  // #4160 S2: the endpoint has its own key. The shared ASK_API_KEY belongs to
+  // the kiosk-facing endpoints and must not leak to this one.
+  it("never sends the shared ASK_API_KEY to the discovery endpoint", async () => {
+    process.env.ASK_API_KEY = "shared-kiosk-key";
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await discoverManual(IDENTITY);
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
+  });
 });
 
 describe("discoverManual — honest degradation", () => {
+  it("reports 'search service unavailable' when the router refuses an unconfigured key (503)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "manual discovery is not configured" }), { status: 503 }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+
   it("reports 'search service unavailable' on a network failure and invents nothing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ETIMEDOUT")));
     const res = await discoverManual(IDENTITY);

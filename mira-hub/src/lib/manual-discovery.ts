@@ -11,7 +11,8 @@
  *
  * Call pattern mirrors the existing drive-pack pre-check in
  * src/app/api/assets/[id]/chat/route.ts: MIRA_ASK_URL default, optional
- * X-Mira-Key, AbortSignal.timeout, any failure falls through.
+ * X-Mira-Key (from MANUAL_DISCOVERY_API_KEY), AbortSignal.timeout, any failure
+ * falls through.
  */
 
 export interface DiscoveryIdentity {
@@ -116,7 +117,12 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
+        // The router's own key (#4160 S2) — not the shared ASK_API_KEY, which
+        // belongs to the kiosk-facing endpoints. Unset → the router answers
+        // 503, which lands below as "search service unavailable".
+        ...(process.env.MANUAL_DISCOVERY_API_KEY
+          ? { "X-Mira-Key": process.env.MANUAL_DISCOVERY_API_KEY }
+          : {}),
       },
       body: JSON.stringify({
         manufacturer,

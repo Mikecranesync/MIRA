@@ -16,8 +16,13 @@ Route: POST /manual-discovery/search
   did NOT pass the PDF HEAD/magic-byte check — the caller MUST NOT auto-import
   it (human review only). Only ``validated=True`` candidates are safe to treat
   as a confirmed OEM manual link.
-- Optional shared-secret auth via X-Mira-Key header (gate read at request
-  time, mirrors ask_api/drive_pack.py so tests can monkeypatch it).
+- REQUIRED shared-secret auth via X-Mira-Key, checked against its own key,
+  ``MANUAL_DISCOVERY_API_KEY`` (read at request time so tests can
+  monkeypatch it). Fails closed: with no key configured the endpoint answers
+  503 and never searches, because every call spends paid provider queries
+  (#4160 S2, PRD R13). It deliberately does NOT reuse ``ASK_API_KEY``: the
+  Ignition kiosk posts an empty X-Mira-Key to /ask, so switching the shared
+  key on would break the kiosk.
 - Bounded by an overall timeout (``MANUAL_DISCOVERY_TIMEOUT``, default 20s) so
   a slow/unavailable Serper backend can't hang the caller.
 
@@ -27,6 +32,7 @@ import time).
 """
 
 import asyncio
+import hmac
 import logging
 import os
 
@@ -105,6 +111,21 @@ def is_trusted_distributor_host(host: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in (t[0] for t in TRUSTED_DOMAINS))
 
 
+def _require_discovery_key(x_mira_key: str | None) -> None:
+    """Fail-closed shared-secret gate for the paid search endpoint.
+
+    503 when the server has no key (an unconfigured deployment must not be an
+    open, paid search), 401 when the caller's key is missing or wrong. Uses a
+    constant-time comparison.
+    """
+    key = os.environ.get("MANUAL_DISCOVERY_API_KEY", "").strip()
+    if not key:
+        logger.warning("manual-discovery refused: MANUAL_DISCOVERY_API_KEY is not configured")
+        raise HTTPException(status_code=503, detail="manual discovery is not configured")
+    if not hmac.compare_digest((x_mira_key or "").encode(), key.encode()):
+        raise HTTPException(status_code=401, detail="invalid or missing X-Mira-Key")
+
+
 @router.post("/manual-discovery/search")
 async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = Header(None)):
     """Discover an official OEM PDF manual for (manufacturer, model).
@@ -115,19 +136,15 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     search_manual() in place of `req.model`. `manufacturer` is always passed
     as `make`.
 
-    Auth (optional): read ASK_API_KEY from environment at request time.
-    If set and X-Mira-Key header doesn't match, return 401.
-    If not set, allow all requests.
+    Auth (required): see ``_require_discovery_key`` — 503 when
+    MANUAL_DISCOVERY_API_KEY is unset, 401 on a missing or wrong X-Mira-Key.
 
     Error handling: any exception (including a missing SERPER_API_KEY
     RuntimeError) or a timeout is caught, logged, and answered with
     reason="search_unavailable". Never 500 — the caller must always be able
     to fall through gracefully.
     """
-    # Optional shared-secret gate, read at request time (allows test monkeypatching).
-    key = os.environ.get("ASK_API_KEY", "")
-    if key and x_mira_key != key:
-        raise HTTPException(status_code=401, detail="invalid or missing X-Mira-Key")
+    _require_discovery_key(x_mira_key)
 
     manufacturer = req.manufacturer.strip()
     model = req.model.strip()
