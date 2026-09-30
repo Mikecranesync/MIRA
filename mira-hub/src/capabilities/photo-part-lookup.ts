@@ -18,16 +18,20 @@ export function unambiguousPartNumber(photoText: string): string | null {
   const serials = new Set<string>();
   for (const m of text.matchAll(SERIAL_LABEL)) {
     const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
-    const code = after.match(/[A-Z0-9][A-Z0-9./-]{3,}/i);
-    if (code) serials.add(trimCode(code[0]).toUpperCase());
+    // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
+    const code = after.match(/^\s*(?:[:#=(\[]|is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
+    if (code) serials.add(trimCode(code[1]).toUpperCase());
     // A suffix label marks the code just before it: "AB-1234567 (S/N)".
     const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
     const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i);
     if (prior) serials.add(trimCode(prior[1]).toUpperCase());
   }
   const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
-  // With a serial on the label, only an explicitly labelled part number is safe.
-  const unlabelled = serials.size ? [] : [...text.matchAll(PART_CODE)].map((m) => trimCode(m[0]));
+  // Any serial label on the photo means only an explicitly labelled part number
+  // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
+  // "AB-1234567 serial number") — #4150 review r4 F1.
+  const serialLabelPresent = serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text);
+  const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)].map((m) => trimCode(m[0]));
   const found = [...unlabelled, ...labelled]
     .filter((code) => !serials.has(code.toUpperCase()))
     .filter((code) => !/^X00[A-Z0-9]{7}$/i.test(code))

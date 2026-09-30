@@ -185,3 +185,17 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
     expect(confirmedPartSearchCandidate(`Don't ${partSearchConfirmation(CANDIDATE)}`)).toBeNull();
   });
 });
+
+describe("#4150 review r4 F1 — any serial label disables unlabelled extraction", () => {
+  it.each(["AB-1234567 S/N", "AB-1234567 serial number", "AB-1234567 SN", "AB-1234567 — Serial"])(
+    "an unbracketed suffix serial label never yields a candidate: %s",
+    (label) => {
+      expect(unambiguousPartNumber(label)).toBeNull();
+      expect(partSearchDecision({ message: "Look up the PDF manual", candidate: unambiguousPartNumber(label), previousEvidence: [] }).action).toBe("none");
+    },
+  );
+
+  it("control: an explicitly labelled part number next to a suffix serial is still proposed", () => {
+    expect(unambiguousPartNumber("AB-1234567 S/N. P/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
+  });
+});
