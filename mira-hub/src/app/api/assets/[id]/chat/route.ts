@@ -20,7 +20,9 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { withAnswerLanguage } from "@/capabilities/answer-language";
+import { withStepSafety } from "@/capabilities/answer-shape";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -287,29 +289,10 @@ export async function POST(
     // Fall through to let the handler proceed with graceful degradation.
   }
 
-  // Safety gate — hard stop before touching LLM
-  const trigger = matchSafetyStop(lastUser.content);
-  if (trigger) {
-    const enc = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const words = SAFETY_STOP.split(" ");
-        for (const word of words) {
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: word + " " })}\n\n`));
-        }
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "X-Safety-Stop": trigger,
-      },
-    });
-  }
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard frames the answer (prompt directive + banner as the first
+  // content frame); it never replaces it.
+  const safetyFlag = matchSafetyStop(lastUser.content);
 
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
   // without them.
@@ -381,11 +364,13 @@ export async function POST(
       // carrying the node_id they were ingested under, which is the whole bug.
       //
       // NOTE: the `verified === true` filter above is deliberately NOT applied
-      // here. retrieveNodeChunks already runs the sanctioned approvalFilterSql()
-      // seam internally (same as notebook chat). These are the tenant's OWN
-      // private uploads, which are never `verified` in the shared-corpus sense —
-      // filtering on it would drop every attached document and silently undo
-      // this lane. Attachment by a human IS the approval here.
+      // here. These are the tenant's OWN private uploads, which are never
+      // `verified` in the shared-corpus sense — filtering on it would drop
+      // every attached document and silently undo this lane. Attachment by a
+      // human IS the approval here, and it has to be SAID to retrieval: under
+      // MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) retrieveNodeChunks admits a
+      // private chunk only when its doc is in `approvedSourceDocIds`. Without
+      // it every attached manual was filtered out on prod (#3437).
       if (attachedDocIds.length > 0) {
         try {
           const attached = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
@@ -393,6 +378,7 @@ export async function POST(
             unsPath: null,
             docIds: attachedDocIds,
             validatedDocScope: true,
+            approvedSourceDocIds: attachedDocIds,
           });
           // Attached documents are preferred over generic manufacturer results
           // (a filed manual beats a string match), de-duped so one document
@@ -520,7 +506,8 @@ export async function POST(
         const askEnc = new TextEncoder();
         const askStream = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
+            const framed = safetyFlag ? `${hazardBanner(safetyFlag)}\n\n${replyText}` : replyText;
+            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: framed })}\n\n`));
             controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
             controller.close();
           },
@@ -568,9 +555,20 @@ export async function POST(
     machinePacket?.active_conditions.find((c) => c.next_check)?.next_check ?? null;
   const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
-  const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
+  const systemPrompt = withStepSafety(withAnswerLanguage(
+    appendManualContext(
+      safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag)}` : withMachineMemory,
+      manualChunks,
+    ),
+  ));
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
-  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
+  // #3437 — a chunk of a document a person attached to this asset is approved
+  // context by that act, exactly as retrieval admitted it; counting only the
+  // shared-corpus `verified` flag turned an admitted manual into a 412.
+  const attachedSet = new Set(attachedDocIds);
+  const approvedSourceCount = chunksToSources(
+    manualChunks.filter((c) => c.verified === true || (c.docId != null && attachedSet.has(c.docId))),
+  ).length;
   const approvedSummary = {
     approvedSourceCount,
     verifiedRelationshipCount,
@@ -580,7 +578,11 @@ export async function POST(
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
-    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+    const refusal = buildApprovedContextRefusal(approvedSummary);
+    return NextResponse.json(
+      { ...refusal, reason: withSafetyFlag(refusal.reason, safetyFlag) },
+      { status: 412, headers: safetyFlagHeaders(safetyFlag) },
+    );
   }
 
   // H4 parity (#2542) — soft KB-gap admission in the DEFAULT (non-enforced)
@@ -627,6 +629,11 @@ export async function POST(
       // Emit the trace id up-front (before any [DONE]) so the client can later
       // open "Why MIRA Thinks This". The row itself is written at stream end.
       controller.enqueue(enc.encode(`data: ${JSON.stringify({ traceId })}\n\n`));
+      if (safetyFlag) {
+        const banner = `${hazardBanner(safetyFlag)}\n\n`;
+        responseBuffer.push(banner);
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: banner })}\n\n`));
+      }
 
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.

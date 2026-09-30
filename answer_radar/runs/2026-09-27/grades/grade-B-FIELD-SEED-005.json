@@ -1,0 +1,31 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "grader_role": "adversary",
+  "correctness": 0,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 1,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "wrong_product_citation",
+  "factual_errors": [
+    {
+      "claim": "\"[Source: Rockwell Automation PowerFlex 70]\"",
+      "why_wrong": "PowerFlex 70 is an unrelated Allen-Bradley AC drive; the question concerns a ProSoft PLX32 Modbus gateway and a Yokogawa CENTUM DCS. Nothing in the retrieved excerpts or the question involves a PowerFlex 70 — this is a wrong-product citation."
+    },
+    {
+      "claim": "Fault/alarm-code intake template ('F001, AL-14, OC', 'trips on start', etc.) presented as the needed next step",
+      "why_wrong": "This is a VFD-fault diagnostic template, irrelevant to an intermittent Modbus-gateway communication problem; it does not engage with the actual described symptom (ModScan succeeds while the gateway fails)."
+    },
+    {
+      "claim": "\"I haven't established which machine you're working on\"",
+      "why_wrong": "The question explicitly names ProSoft PLX32 and Yokogawa CENTUM DCS."
+    }
+  ],
+  "notes": "None of the three retrieved excerpts concern a ProSoft PLX32 gateway or Yokogawa CENTUM DCS — they are VFD Modbus comm-timeout/wiring chunks and an Allen-Bradley PowerFlex 'Comm Loss Action' parameter, so there is nothing in evidence to ground any answer; the poor retrieval is itself a real system failure. MIRA's answer compounds this: it ignores the fully-specified scenario and instead emits a generic VFD-fault-code intake template with the citation '[Source: Rockwell Automation PowerFlex 70]' — a wrong-product citation with zero connection to a gateway/DCS comms problem. The accompanying 'I haven't established which machine' note is false since the equipment was clearly named. No diagnostic content (connection-pool limits, TCP keep-alive/idle timeouts, ModScan's persistent-connection behavior) is present at all. This is a near-total non-answer with an actively misleading citation.",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "regraded": "2026-09-27: re-graded on the complete retrieved passages (Codex #4062 F1); the first grade saw 400-character prefixes."
+}

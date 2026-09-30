@@ -64,7 +64,12 @@ def captured(monkeypatch) -> dict:
         is_private=False,
     ):
         box.update(
-            {"tenant_id": tenant_id, "verified": verified, "is_private": is_private}
+            {
+                "tenant_id": tenant_id,
+                "verified": verified,
+                "is_private": is_private,
+                "model_number": model_number,
+            }
         )
         return len(valid)
 
@@ -151,3 +156,42 @@ def test_oem_trusted_is_class_scoped() -> None:
     assert CurriculumCrawler.oem_trusted is False
     assert CSVCrawler.oem_trusted is False
     assert ManufacturerCrawler.oem_trusted is True
+
+
+def test_manufacturer_crawl_stores_the_sources_yaml_model(tmp_path, captured) -> None:
+    """#4141: model-bound retrieval filters on model_number; an empty one hides the manual."""
+    crawler = ManufacturerCrawler(_make_config(tmp_path))
+    entry = {**_entry(), "model_number": "TP700 Comfort, TP900 Comfort"}
+    crawler.process("https://example.com/comfort.pdf", b"%PDF-1.4", entry)
+
+    assert captured["model_number"] == "TP700 Comfort, TP900 Comfort"
+
+
+def test_entry_without_a_model_still_stores_empty(tmp_path, captured) -> None:
+    crawler = ManufacturerCrawler(_make_config(tmp_path))
+    crawler.process("https://example.com/gs20m.pdf", b"%PDF-1.4", _entry())
+
+    assert captured["model_number"] == ""
+
+
+def test_sources_yaml_model_reaches_the_crawl_entry(tmp_path) -> None:
+    """#4141: a direct sources.yaml entry carries its model_number into process()."""
+    config = _make_config(tmp_path)
+    config.sources_file.write_text(
+        yaml.dump(
+            {
+                "tiers": {
+                    "3_manufacturer": {
+                        "siemens_comfort": {
+                            "url": "https://example.com/comfort.pdf",
+                            "manufacturer": "Siemens",
+                            "model_number": "TP700 Comfort",
+                            "crawl_pattern": "direct",
+                        }
+                    }
+                }
+            }
+        )
+    )
+    urls = ManufacturerCrawler(config).discover_urls()
+    assert [u["model_number"] for u in urls] == ["TP700 Comfort"]

@@ -10,6 +10,7 @@ from shared.guardrails import (
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
+    detect_energized_electrical_hazard_intent,
     detect_emotional_state,
     detect_expertise_level,
     detect_session_followup,
@@ -550,3 +551,22 @@ class TestStripMentions:
 
     def test_no_mention_passthrough(self):
         assert strip_mentions("check the VFD") == "check the VFD"
+
+
+class TestEnergizedHazardWordBoundary:
+    """Parity with safety-classifier.ts: phrases must start at a word boundary."""
+
+    def test_modbus_parameter_read_is_not_energized_work(self):
+        msg = "how do i read a parameter from a gs11 drive using a micro820 over modbus rtu?"
+        assert detect_energized_electrical_hazard_intent(msg) is False
+
+    def test_standalone_words_still_trigger(self):
+        assert detect_energized_electrical_hazard_intent("can i check the bus with a meter while it's live?")
+        assert detect_energized_electrical_hazard_intent("480v busbar: i'll probe it while running.")
+        for msg in (
+            "480v bus is hot, grabbing my voltmeter now.",
+            "clampmeter on the 480v feeder while it's running",
+            "ammeter reading on the mcc bucket",
+            "3ph480v feeder, measure it while live",
+        ):
+            assert detect_energized_electrical_hazard_intent(msg), msg

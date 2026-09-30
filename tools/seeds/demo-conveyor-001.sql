@@ -40,7 +40,7 @@
 --        -v tenant_id="'mike-garage-demo'" \
 --        -f tools/seeds/demo-conveyor-001.sql
 --
--- Idempotent: each chunk uses WHERE NOT EXISTS guarded on
+-- Idempotent (v2 reconciles; see the note after BEGIN). Keyed on
 --   (tenant_id, source_url, source_page). Re-running is safe — no
 --   duplicate rows, no errors.
 --
@@ -57,10 +57,18 @@
 
 BEGIN;
 
+-- v2 (2026-09-27): rows are staged in seed_rows, then reconciled into
+-- knowledge_entries: a missing row is inserted; an existing row whose content
+-- or metadata differs is updated in place, and its embedding is cleared when
+-- the content changed (the old vector describes the old text — re-run
+-- tools/backfill_knowledge_embeddings.py). v1 was insert-only, so a corrected
+-- chunk could never reach an environment that already had the old one (#4031).
+CREATE TEMP TABLE seed_rows (LIKE knowledge_entries INCLUDING DEFAULTS) ON COMMIT DROP;
+
 -- ---------------------------------------------------------------------------
 -- Component template: VFD-001 (AutomationDirect GS10)
 -- ---------------------------------------------------------------------------
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -79,57 +87,47 @@ Role           : Conveyor drive on Mike's garage demo (2026-05-16).
 Criticality    : Demo-critical — single VFD on the conveyor.
 Comm role      : Modbus RTU slave on the RS-485 trunk shared with PLC-001.
 
-RS-485 / MODBUS RTU COMMUNICATION PARAMETERS (must all be set before the
-drive will accept Modbus run/freq commands):
+RS-485 / MODBUS RTU COMMUNICATION PARAMETERS (bench-verified; source
+plc/GS10_Integration_Guide.md and device-profiles/gs10.yaml):
 
-  P00.20 = 5    Frequency command source = RS-485 (Modbus RTU).
-                Default 0 (keypad) — if left at default, writes to
-                register 0x2000 are silently ignored. **#1 failure mode.**
-  P00.21 = 5    Run command source = RS-485 (Modbus RTU).
-                Default 0 (keypad) — if left at default, writes to
-                register 0x2001 are silently ignored. **#1 failure mode.**
-  P09.00 = N    Modbus slave ID (1..254). Must match the Micro820
+  P00.21 = 2    Run command source = RS-485 Modbus (0 = keypad,
+                1 = terminals). Left at 0, run/stop writes to 0x2000
+                are ignored and the keypad still commands the drive.
+                **#1 failure mode.**
+  P00.20        Frequency command source (default 0 = keypad). The rig
+                writes speed to 0x2001; if speed writes are ignored,
+                check P00.20.
+  P09.00 = 1    Modbus slave address (1..254). Must match the Micro820
                 MSG_MODBUS Slave field exactly.
-  P09.01 = 2    Baud rate = 19200 bps. (Encoding: 0=4800, 1=9600,
-                2=19200, 3=38400, 4=57600, 5=115200 — confirm against
-                the manual revision printed on the drive label.)
-  P09.04 = 4    Modbus framing = RTU 8-E-1 (8 data, Even parity, 1 stop).
-                (Encoding: 0=ASCII 7-N-2, 1=ASCII 7-E-1, 2=ASCII 7-O-1,
-                3=RTU 8-N-2, 4=RTU 8-E-1, 5=RTU 8-O-1, 6=RTU 8-N-1.)
+  P09.01 = 96   Baud rate, value = baud / 100 (96 = 9600).
+  P09.04 = 13   Frame = RTU 8 data, No parity, 2 stop (8N2).
+                (12 = 8N1, 14 = 8E1, 15 = 8O1, 17 = 8O2.)
+  P09.03 = 5.0  Comm timeout (s). Silence longer trips CE10 (code 58).
 
-Power-cycle the GS10 after changing any P00.20 / P00.21 / P09.xx —
-they are read at boot.
+Power-cycle the GS10 after changing P09.xx — the port is set up at boot.
 
-MODBUS REGISTER MAP — WRITE (master → slave, FC 0x06 / 0x10):
-  0x2000  Frequency Reference        0.01 Hz / count (6000 = 60.00 Hz)
-                                     Requires P00.20=5.
-  0x2001  Run/Stop Command Word
-            bits 0..1 = 00 stop, 10 run, 01 jog
-            bits 4..5 = direction (00 fwd, 10 rev)
-            bit  12   = external fault trigger
-            bit  13   = fault reset (pulse 1→0)
-                                     Requires P00.21=5.
+MODBUS REGISTER MAP — WRITE (master → slave, FC 06):
+  0x2000 (8192)  Control command, bit field: 18 = RUN forward,
+                 20 = RUN reverse, 1 = STOP.
+  0x2001 (8193)  Frequency setpoint, Hz x 10 (600 = 60.0 Hz).
+  0x2002 (8194)  Control code 2: write 0x0002 (bit 1) = fault reset.
 
-MODBUS REGISTER MAP — READ (FC 0x03 / 0x04):
-  0x2100  Drive Status Word
-            bits 0..1 = run state (00 stop, 01 decel, 10 standby, 11 run)
-            bit  7    = fault active
-            bit  8    = freq reached
-            bit  12   = at command speed
-  0x2102  Output Frequency           0.01 Hz / count
-  0x2103  Output Current             0.1  A  / count
-  0x2104  DC Bus Voltage             1    V  / count
-  0x2105  Output Voltage             0.1  V  / count
-  0x2108  Heatsink Temperature       1    °C / count
-  0x2200  Fault Code (current)       0 = no fault (manual ch.6 for codes)
+MODBUS REGISTER MAP — READ (FC 03):
+  0x2100 (8448)  Status monitor 1: low byte = fault code, high byte =
+                 warning. 0 = no fault.
+  0x2101 (8449)  Status monitor 2: operation status bits.
+  0x2102 (8450)  Frequency command, Hz x 10.
+  0x2103 (8451)  Output frequency, Hz x 10.
+  0x2104 (8452)  Output current, A x 10.
+  0x2105 (8453)  DC bus voltage, V.
+  0x2106 (8454)  Output voltage, V.
 
 FAILURE MODES — ranked by first-time-integration frequency:
-  1. **P00.20 / P00.21 not set to 5 (RS-485).** Reads work, writes
-     silently ignored, keypad still commands drive. Fix: set both = 5,
-     cycle power.
+  1. **P00.21 not set to 2 (RS-485).** Reads work, run/stop writes
+     silently ignored, keypad still commands drive. Fix: P00.21 = 2.
   2. Baud / parity mismatch. MSG_MODBUS .ErrorID 0x0001..0x0010
-     (framing/parity reject). Fix: align CCW serial port (19200, 8-E-1)
-     with P09.01=2 and P09.04=4.
+     (framing/parity reject). Fix: align CCW serial port (9600, 8N2)
+     with P09.01=96 and P09.04=13.
   3. Missing 120 Ω termination at far end of trunk. Intermittent
      ErrorID 0x0100..0x0200 (timeout). Fix: 120 Ω across D+/D- at GS10
      end; enable Micro820 internal termination at PLC end.
@@ -145,9 +143,9 @@ FAILURE MODES — ranked by first-time-integration frequency:
 
 DIAGNOSTIC STEPS — keyed to Micro820 MSG_MODBUS .ErrorID bands:
   .ErrorID 0x0001..0x0010  (protocol / framing)
-     → CCW serial port = 19200, 8 data, Even, 1 stop, RTU Master?
-     → GS10 P09.04 = 4 (RTU 8-E-1)?
-     → GS10 P09.01 = 2 (19200)?
+     → CCW serial port = 9600, 8 data, No parity, 2 stop, RTU Master?
+     → GS10 P09.04 = 13 (RTU 8N2)?
+     → GS10 P09.01 = 96 (9600)?
   .ErrorID 0x0100..0x0200  (timeout / wiring)
      → D+/D- idle ~2.5 V, ~200 mV swing on traffic?
      → P09.00 == MSG_MODBUS Slave field?
@@ -155,8 +153,8 @@ DIAGNOSTIC STEPS — keyed to Micro820 MSG_MODBUS .ErrorID bands:
      → Swap D+/D- as the cheapest polarity test.
   .ErrorID > 0x0200        (Modbus exception from slave)
      → Register address valid per the map above?
-     → If write to 0x2000 / 0x2001 rejected: re-verify P00.20=5,
-       P00.21=5.
+     → Map: 0x2000 command, 0x2001 frequency, 0x2002 fault reset.
+       If run/stop is ignored: re-verify P00.21=2.
 
 SAFETY NOTES:
   - RS-485 cable MUST be separated from VFD output (U/T1, V/T2, W/T3)
@@ -184,21 +182,22 @@ $content$,
         'transport', 'rs485',
         'comm_role', 'slave',
         'required_drive_params', jsonb_build_object(
-            'P00.20', 5,
-            'P00.21', 5,
-            'P09.01', 2,
-            'P09.04', 4
+            'P00.21', 2,
+            'P09.00', 1,
+            'P09.01', 96,
+            'P09.04', 13
         ),
         'register_anchors', jsonb_build_object(
-            'freq_ref',    '0x2000',
-            'run_cmd',     '0x2001',
-            'status_word', '0x2100',
-            'output_freq', '0x2102',
-            'output_amps', '0x2103',
-            'dc_bus_v',    '0x2104',
-            'fault_code',  '0x2200'
+            'control_cmd', '0x2000',
+            'freq_ref',    '0x2001',
+            'fault_reset', '0x2002',
+            'fault_code',  '0x2100',
+            'status_word', '0x2101',
+            'output_freq', '0x2103',
+            'output_amps', '0x2104',
+            'dc_bus_v',    '0x2105'
         ),
-        'top_failure_mode', 'P00.20/P00.21 not set to RS-485',
+        'top_failure_mode', 'P00.21 not set to RS-485 (2)',
         'errorid_bands', jsonb_build_object(
             '0x0001..0x0010', 'protocol/framing — parity/stop/data/mode/CRC',
             '0x0100..0x0200', 'timeout/wiring — open/polarity/termination/slave_id/SGND',
@@ -211,12 +210,12 @@ $content$,
             'separate_conduit_from_VFD_power'
         ),
         'seed_source', 'tools/seeds/demo-conveyor-001.sql',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'component_template', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/demo-conveyor-001/VFD-001'
        AND source_page = 0
@@ -225,7 +224,7 @@ WHERE NOT EXISTS (
 -- ---------------------------------------------------------------------------
 -- Component template: PLC-001 (Allen-Bradley Micro820, Modbus RTU master)
 -- ---------------------------------------------------------------------------
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -249,10 +248,10 @@ CCW (CONNECTED COMPONENTS WORKBENCH) SERIAL PORT CONFIG:
                           → Properties.
 
     Driver            : Modbus RTU Master
-    Baud rate         : 19200
+    Baud rate         : 9600
     Data bits         : 8
-    Parity            : Even
-    Stop bits         : 1
+    Parity            : None
+    Stop bits         : 2
     Media             : RS-485
     Response timeout  : 1000 ms (raise to 2000 ms while debugging
                         on a noisy plant)
@@ -282,17 +281,16 @@ RS-485 / Modbus RTU fault you will see at startup:
   > 0x0200           MODBUS EXCEPTION — slave rejected the request
                      (illegal function/address/value). Comms is OK.
                      Check: register address matches GS10 map. For
-                     write rejection on 0x2000/0x2001 specifically:
-                     re-verify GS10 P00.20=5 and P00.21=5.
+                     run/stop ignored: re-verify GS10 P00.21=2.
 
 CANONICAL POLL EXAMPLE — read 4 live telemetry registers:
   MSG_MODBUS
     Slave         = P09.00 value (from GS10 keypad)
     Function      = 0x03 (Read Holding Registers)
-    Starting addr = 0x2102 (output freq)
-    Quantity      = 4      (freq, current, dc bus, output volt)
+    Starting addr = 8451 (0x2103, output freq)
+    Quantity      = 4      (output freq, current, dc bus, output volt)
     Local addr    = HoldingReg[100]  (lands in HR100..HR103)
-  Retarget to 0x2200 on a 1 Hz cadence for fault polling.
+  Poll 8448 (0x2100) on a 1 Hz cadence for faults: low byte = fault code.
 
 SAFETY NOTES:
   - Download programs to the Micro820 with the panel disconnect
@@ -318,10 +316,10 @@ $content$,
         'comm_role', 'master',
         'ccw_config', jsonb_build_object(
             'driver', 'Modbus RTU Master',
-            'baud', 19200,
+            'baud', 9600,
             'data_bits', 8,
-            'parity', 'Even',
-            'stop_bits', 1,
+            'parity', 'None',
+            'stop_bits', 2,
             'media', 'RS-485',
             'response_timeout_ms', 1000,
             'retries', 3
@@ -333,12 +331,12 @@ $content$,
             '>0x0200',        'modbus_exception'
         ),
         'seed_source', 'tools/seeds/demo-conveyor-001.sql',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'component_template', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/demo-conveyor-001/PLC-001'
        AND source_page = 0
@@ -347,7 +345,7 @@ WHERE NOT EXISTS (
 -- ---------------------------------------------------------------------------
 -- Relationship proposal: PLC-001 (Serial Port Ch.2) WIRED_TO VFD-001 (RS-485)
 -- ---------------------------------------------------------------------------
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -411,12 +409,12 @@ $content$,
         'physical_separation_mm', 300,
         'status', 'proposal',
         'seed_source', 'tools/seeds/demo-conveyor-001.sql',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'relationship_proposal', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/demo-conveyor-001/REL/PLC-001-WIRED_TO-VFD-001'
        AND source_page = 0
@@ -425,7 +423,7 @@ WHERE NOT EXISTS (
 -- ---------------------------------------------------------------------------
 -- Relationship proposal: VFD-001 COMMUNICATES_VIA Modbus RTU
 -- ---------------------------------------------------------------------------
-INSERT INTO knowledge_entries (
+INSERT INTO seed_rows (
     id, tenant_id, source_type, manufacturer, model_number, equipment_type,
     content, source_url, source_page, metadata,
     is_private, verified, chunk_type, created_at
@@ -440,31 +438,31 @@ SELECT
 $content$
 RELATIONSHIP PROPOSAL — VFD-001 COMMUNICATES_VIA Modbus RTU.
 
-Description   : "Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity"
+Description   : "Modbus RTU, Slave ID per P09.00, 9600 baud, 8N2"
 
 Bus spec:
   Protocol           : Modbus RTU
   Transport          : RS-485 (2-wire D+/D- + signal common)
-  Baud               : 19200 bps
-  Framing            : 8 data bits, Even parity, 1 stop bit  (RTU 8-E-1)
+  Baud               : 9600 bps
+  Framing            : 8 data bits, No parity, 2 stop bits  (RTU 8N2)
   Slave ID source    : GS10 keypad parameter P09.00 (1..254 — set per
                        multi-drop topology, default 1)
 
 Required GS10 parameters (must all be set for the bus to function):
-  P00.20 = 5  (frequency command source = RS-485)
-  P00.21 = 5  (run command source = RS-485)
-  P09.01 = 2  (19200 baud)
-  P09.04 = 4  (RTU 8-E-1)
+  P00.21 = 2   (run command source = RS-485)
+  P09.01 = 96  (9600 baud)
+  P09.04 = 13  (RTU 8N2)
   (See VFD-001 component template for encoding details.)
 
 Register anchors most often used by the diagnostic engine:
-  Run / Stop command  → 0x2001
-  Frequency reference → 0x2000
-  Drive status word   → 0x2100
-  Output frequency    → 0x2102
-  Output current      → 0x2103
-  DC bus voltage      → 0x2104
-  Fault code (current)→ 0x2200
+  Control command     → 0x2000 (18 fwd run, 20 rev run, 1 stop)
+  Frequency setpoint  → 0x2001 (Hz x 10)
+  Fault reset         → 0x2002 (write 0x0002)
+  Fault code (current)→ 0x2100 low byte
+  Status monitor 2    → 0x2101
+  Output frequency    → 0x2103
+  Output current      → 0x2104
+  DC bus voltage      → 0x2105
 
 Status         : proposal (auto-generated by demo seed; verify P09.00
                  on the keypad before commissioning).
@@ -474,41 +472,68 @@ $content$,
     jsonb_build_object(
         'relation_type', 'COMMUNICATES_VIA',
         'source_entity', 'VFD-001',
-        'description', 'Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity',
+        'description', 'Modbus RTU, Slave ID per P09.00, 9600 baud, 8N2',
         'protocol', 'Modbus RTU',
         'transport', 'RS-485',
-        'baud', 19200,
+        'baud', 9600,
         'data_bits', 8,
-        'parity', 'Even',
-        'stop_bits', 1,
-        'framing', 'RTU 8-E-1',
+        'parity', 'None',
+        'stop_bits', 2,
+        'framing', 'RTU 8N2',
         'slave_id_source', 'GS10 parameter P09.00',
         'required_drive_params', jsonb_build_object(
-            'P00.20', 5,
-            'P00.21', 5,
-            'P09.01', 2,
-            'P09.04', 4
+            'P00.21', 2,
+            'P09.01', 96,
+            'P09.04', 13
         ),
         'register_anchors', jsonb_build_object(
-            'run_command', '0x2001',
-            'freq_ref',    '0x2000',
-            'status_word', '0x2100',
-            'output_freq', '0x2102',
-            'output_amps', '0x2103',
-            'dc_bus_v',    '0x2104',
-            'fault_code',  '0x2200'
+            'control_cmd', '0x2000',
+            'freq_ref',    '0x2001',
+            'fault_reset', '0x2002',
+            'fault_code',  '0x2100',
+            'status_word', '0x2101',
+            'output_freq', '0x2103',
+            'output_amps', '0x2104',
+            'dc_bus_v',    '0x2105'
         ),
         'status', 'proposal',
         'seed_source', 'tools/seeds/demo-conveyor-001.sql',
-        'seed_version', '1',
-        'seed_date', '2026-05-15'
+        'seed_version', '2',
+        'seed_date', '2026-09-27'
     ),
     false, true, 'relationship_proposal', now()
 WHERE NOT EXISTS (
-    SELECT 1 FROM knowledge_entries
+    SELECT 1 FROM seed_rows
      WHERE tenant_id = :tenant_id
        AND source_url = 'mira://seeds/demo-conveyor-001/REL/VFD-001-COMMUNICATES_VIA-ModbusRTU'
        AND source_page = 0
+);
+
+-- Reconcile staged rows into knowledge_entries (see header note).
+UPDATE knowledge_entries k
+   SET content  = s.content,
+       metadata = s.metadata,
+       embedding = CASE WHEN k.content IS DISTINCT FROM s.content THEN NULL ELSE k.embedding END
+  FROM seed_rows s
+ WHERE k.tenant_id = s.tenant_id
+   AND k.source_url = s.source_url
+   AND k.source_page = s.source_page
+   AND (k.content, k.metadata) IS DISTINCT FROM (s.content, s.metadata);
+
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+       content, source_url, source_page, metadata,
+       is_private, verified, chunk_type, created_at
+  FROM seed_rows s
+ WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries k
+     WHERE k.tenant_id = s.tenant_id
+       AND k.source_url = s.source_url
+       AND k.source_page = s.source_page
 );
 
 COMMIT;
@@ -554,7 +579,7 @@ COMMIT;
 -- VALUES (:tenant_id::uuid, 'comm_bus', 'BUS-RS485-001',
 --         'RS-485 Modbus RTU trunk (PLC-001 Ch.2 ↔ VFD-001)',
 --         '{"protocol":"Modbus RTU","transport":"RS-485",
---           "baud":19200,"framing":"RTU 8-E-1"}'::jsonb)
+--           "baud":9600,"framing":"RTU 8N2"}'::jsonb)
 -- ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
 --
 -- INSERT INTO kg_relationships
@@ -569,7 +594,7 @@ COMMIT;
 -- INSERT INTO kg_relationships
 --        (tenant_id, source_id, target_id, relationship_type, properties)
 -- SELECT :tenant_id::uuid, vfd.id, bus.id, 'COMMUNICATES_VIA',
---        '{"description":"Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity",
+--        '{"description":"Modbus RTU, Slave ID per P09.00, 9600 baud, 8N2",
 --          "status":"proposal"}'::jsonb
 --   FROM kg_entities vfd, kg_entities bus
 --  WHERE vfd.tenant_id = :tenant_id::uuid AND vfd.entity_id = 'VFD-001'

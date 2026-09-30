@@ -165,3 +165,20 @@ CI: `.github/workflows/jev-shadow-report.yml` (manual dispatch + daily), artifac
 condition are in the decision log
 (`docs/architecture/observability/2026-09-22-retrieval-acceptance-decision-log.md`).
 Jev is never authoritative here; promotion is Mike's explicit decision.
+
+## 11. Keeping Langfuse volume down (the free-plan lever, #4103)
+
+Only traces **rooted at `mira.turn`** are exported. Health checks, page loads, pool
+connects and deploy-time BuildKit steps are not traced. Before this change they made
+up the entire ingestion (0 of the newest 1,000 traces were turns) and tripped the
+plan's usage threshold.
+
+| Variable (Doppler `factorylm/stg`) | Default | Effect |
+|---|---|---|
+| `MIRA_OTEL_TURN_SAMPLE_RATIO` | `1` | Fraction of turns exported (0..1). About `0.25` fits the free plan at current staging traffic. |
+| `MIRA_OTEL_AUTO_INSTRUMENT` | `0` | `1` brings back automatic HTTP/fetch/pg spans, and every non-turn trace with them. Debugging only. |
+
+A turn left out by sampling is still recorded in full on `decision_traces` (the Turn
+Evidence Packet), because that write does not depend on the sampler; its root span is
+non-recording, so the route records no trace id for it.
+Changing either variable needs a Hub redeploy (`deploy-staging.yml`, `services=mira-hub`).

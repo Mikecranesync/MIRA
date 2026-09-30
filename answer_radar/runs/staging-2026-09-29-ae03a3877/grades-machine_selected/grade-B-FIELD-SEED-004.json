@@ -1,0 +1,30 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "condition": "machine_selected",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "answer_sha256": "0d8e6897b041400da9b32d22e001581af2a97644fad3910e7133ed76c15e05f1",
+  "correctness": 28,
+  "evidence": 12,
+  "safety": 20,
+  "actionability": 5,
+  "uncertainty": 8,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "wrong_document_requested",
+  "factual_errors": [
+    {
+      "claim": "The needed answer was not found in the Mitsubishi FX5U manual pages, so the technician should upload the manual/page or photograph the nameplate.",
+      "why_wrong": "The weight-register map and data-format details are primarily in the Baykon BX11-EN/BX11 Modbus documentation, not the Mitsubishi FX5U manual. The FX5U documentation is needed for the PLC-side Modbus/TCP client setup, but it will not contain the BX11-EN weight register addresses.",
+      "severity": "major"
+    },
+    {
+      "claim": "A photograph of the nameplate is a useful next step for answering which Modbus registers hold the weight value and what data format is required.",
+      "why_wrong": "A nameplate can confirm model identity but will not provide the BX11-EN Modbus register map, word order, or data-format configuration. The correct next evidence request would be the Baykon BX11-EN technical/Modbus manual or register map, plus the relevant FX5U Ethernet/Modbus setup documentation if PLC-side setup is also needed.",
+      "severity": "major"
+    }
+  ],
+  "notes": "The answer is a safe abstention and does not hallucinate register values, but it does not answer the technician's core questions: the BX11-EN weight registers or the required data/word-order handling. It also frames the missing source mainly as a Mitsubishi FX5U manual/nameplate issue, when the register map is a Baykon-side document. Actionability is limited because the technician is not told to obtain the Baykon BX11-EN Modbus/register documentation specifically."
+}

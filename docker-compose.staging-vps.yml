@@ -335,6 +335,9 @@ services:
       # staging/prod; fallback below is the founder's tenant where the
       # seeded OEM corpus currently lives.
       - QUICKSTART_TENANT_ID=${QUICKSTART_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
+      # Manual discovery (nameplate confirm → official OEM manual) — stg-mira-ask.
+      - MIRA_ASK_URL=http://stg-mira-ask:8011
+      - ASK_API_KEY=${ASK_API_KEY:-}
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://127.0.0.1:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -399,10 +402,18 @@ services:
       - OTEL_TRACES_SAMPLER=${OTEL_TRACES_SAMPLER:-}
       - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-}
       - MIRA_OTEL_CAPTURE_CONTENT=${MIRA_OTEL_CAPTURE_CONTENT:-0}
+      # #4103: only mira.turn-rooted traces are exported. Lower the ratio (e.g.
+      # 0.25) to cut Langfuse volume; set AUTO_INSTRUMENT=1 only while debugging.
+      - MIRA_OTEL_TURN_SAMPLE_RATIO=${MIRA_OTEL_TURN_SAMPLE_RATIO:-1}
+      - MIRA_OTEL_AUTO_INSTRUMENT=${MIRA_OTEL_AUTO_INSTRUMENT:-0}
       - MIRA_TURN_ANOMALY_CHECKS=${MIRA_TURN_ANOMALY_CHECKS:-1}
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      # #4075: a technician-confirmed identity starts a background search for the
+      # official manual (discover -> download -> ingest -> applicability). Off
+      # unless set in Doppler stg; needs migration 100. Staging only for now.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
@@ -590,6 +601,61 @@ services:
           "-c",
           "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py' && python -c \"import printsense, pytesseract; from shared.workers.vision_worker import ocr_lane_report; assert ocr_lane_report()['verdict'] == 'ok'\"",
         ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─── mira-ask — manual discovery + Ask API (staging) ───────────────────────
+  # Mirrors saas.yml's mira-ask, scoped to what the Hub calls: POST
+  # /manual-discovery/search (Serper-backed OEM manual search). staging-net
+  # only — no host publish; the Hub reaches it at http://stg-mira-ask:8011.
+  mira-ask:
+    build:
+      context: ./mira-bots
+      dockerfile: ask_api/Dockerfile
+    container_name: stg-mira-ask
+    command: uvicorn ask_api.app:app --host 0.0.0.0 --port 8011
+    environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
+      - MIRA_ENFORCE_APPROVED_RETRIEVAL=${MIRA_ENFORCE_APPROVED_RETRIEVAL:-false}
+      - OPENWEBUI_BASE_URL=disabled://staging
+      - OPENWEBUI_API_KEY=
+      - KNOWLEDGE_COLLECTION_ID=
+      - INGEST_SERVICE_URL=disabled://staging
+      - MCP_BASE_URL=http://stg-mira-mcp:8001
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=openai/gpt-oss-120b
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - ASK_API_KEY=${ASK_API_KEY:-}
+      - MIRA_UNS_GATE_ENABLED=0
+      - MIRA_PROCESS_TIMEOUT=90
+      - MIRA_DIRECT_ANSWER_MODE=1
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - MANUAL_SEARCH_TIMEOUT=${MANUAL_SEARCH_TIMEOUT:-15}
+      - MANUAL_HEAD_TIMEOUT=${MANUAL_HEAD_TIMEOUT:-8}
+      - MANUAL_DISCOVERY_TIMEOUT=${MANUAL_DISCOVERY_TIMEOUT:-50}
+      - MANUAL_JUDGE_ENABLED=${MANUAL_JUDGE_ENABLED:-0}
+      - MIRA_MANUAL_SENSE_WEB_ENABLED=${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}
+      - NAMEPLATE_DETECT_ENABLED=${NAMEPLATE_DETECT_ENABLED:-0}
+      - PHOTO_OCR_ENABLED=${PHOTO_OCR_ENABLED:-0}
+    volumes:
+      - /opt/mira-staging/data:/mira-db
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 1536m
+    cpus: 1
+    memswap_limit: 1536m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

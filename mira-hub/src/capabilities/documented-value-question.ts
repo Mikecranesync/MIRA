@@ -14,9 +14,14 @@
  * it never makes an answer less guarded than it was.
  */
 
+import { faultCodeTokens } from "./answer-validation";
+
 // A documentation-only quantity or artifact of THIS equipment.
 const DOCUMENTED_VALUE =
-  /\b(?:(?:supply|input|output|operating|rated|nominal|control|coil)\s+(?:voltage|current|power|frequency)|voltage|amperage|amps?\b|current\s+(?:rating|draw)|power\s+(?:rating|consumption|supply)|(?:operating|ambient|storage)\s+temperature|temperature\s+range|rating|ratings|spec(?:s|ification|ifications)?|datasheet|data\s+sheet|dimensions?|weight|torque|pressure\s+rating|ip\s?\d{2}\b|ip\s+rating|enclosure\s+rating|part\s+number|catalog\s+number|wiring|pin\s?out|terminal\s+(?:assignment|layout|designation)s?|parameter|default\s+setting|factory\s+setting)\b/i;
+  /\b(?:(?:supply|input|output|operating|rated|nominal|control|coil)\s+(?:voltage|current|power|frequency)|voltage|amperage|amps?\b|current\s+(?:rating|draw)|power\s+(?:rating|consumption|supply)|(?:operating|ambient|storage)\s+temperature|temperature\s+range|rating|ratings|spec(?:s|ification|ifications)?|datasheet|data\s+sheet|dimensions?|weight|torque|pressure\s+rating|ip\s?\d{2}\b|ip\s+rating|enclosure\s+rating|part\s+number|catalog\s+number|wiring|pin\s?out|terminal\s+(?:assignment|layout|designation)s?|parameter|default\s+setting|factory\s+setting|(?:carrier|switching|pwm)\s+frequency|(?:max(?:imum)?|min(?:imum)?|base)\s+frequency|(?:accel(?:eration)?|decel(?:eration)?|ramp)\s+time|(?:fuse|breaker|wire|cable|conductor)\s+(?:size|sizing|gauge|rating))\b/i;
+// #4015: drive-tuning quantities (carrier frequency, ramp times, fuse/wire
+// sizing) are model-documented too — "what carrier frequency should this drive
+// not exceed" fell through to an uncited general answer.
 // Fault/error/alarm CODE meanings are deliberately NOT matched: the answer
 // floor's code-meaning rule (E10, answer-validation.ts) already replaces an
 // invented code meaning with its own controlled fallback on every notebook.
@@ -34,9 +39,13 @@ const ASKS_FOR_VALUE =
 //    "… mean", "used for", "in general", "what a/an …", "explain what/how".
 //  - A WEAK frame ("what is voltage?") is conceptual only when nothing binds it.
 const STRONG_DEFINITIONAL =
-  /\b(?:what\s+an?\b|difference\s+between|means?\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
+  /\b(?:what\s+an?\b|difference\s+between|means?\b|stands?\s+for\b|used\s+for\b|in\s+general\b|explain\s+(?:what|how)\b)/i;
 const WEAK_DEFINITIONAL =
   /\bwhat(?:'s|\s+is|\s+are|\s+does)\s+(?!(?:the|this|its|it|my|your|that|these|those)\b)/i;
+// #4068 pass 10: strong binding words name this machine outright; weak ones
+// (pronouns) may refer back to a generic subject in the same question.
+const STRONG_BINDING = /\b(?:this|my|your|our|these|those)\b|\b(?:on|for|of)\s+the\b/i;
+const WEAK_BINDING = /\b(?:it|its|that)\b/i;
 const BINDING =
   /\b(?:this|its|it|my|your|our|that|these|those)\b|\b(?:on|for|of)\s+the\b/i;
 
@@ -57,4 +66,171 @@ export function asksForDocumentedValue(question: string, boundModel?: string | n
   const bound = BINDING.test(q) || namesModel(q, boundModel);
   if (WEAK_DEFINITIONAL.test(q) && !bound) return false;
   return DOCUMENTED_VALUE.test(q) && ASKS_FOR_VALUE.test(q);
+}
+
+// #4068 — "how does <anything> work" is teaching, bound or not: declining it
+// with "upload the manual" is the over-block the #4010 review rejected.
+const HOW_IT_WORKS = /\bhow\s+(?:does|do)\b[^?.!]{0,60}?\bwork(?:s|ing)?\b/i;
+
+// "why does a VFD trip…", "why do VFDs…", "when would an encoder…" — a question
+// about a CLASS of equipment (indefinite article or bare plural), not this one.
+// Only teaching when nothing binds it to the notebook's machine.
+const GENERIC_CLASS_WHY =
+  /\b(?:why|when|how\s+often)\s+(?:does|do|would|can|might|will|is|are)\s+(?:an?\s+[\w-]+|[\w-]+s)\b/i;
+
+// Codex #4069 pass 7 F2: an unbound question about "a VFD" / "an encoder" is
+// about a CLASS of equipment ("what should I check when a VFD trips?"), not
+// this machine — teaching. Contextual shorthand without an article ("it trips
+// every morning", "the drive trips") is unaffected.
+// Pass 8: only "a/an" + an EQUIPMENT noun is a class subject — "after a power
+// outage" or "for a minute" says nothing about which equipment is meant.
+const EQUIPMENT_NOUN =
+  "(?:vfds?|drives?|inverters?|plcs?|controllers?|hmis?|panels?|motors?|servos?|encoders?|sensors?|prox(?:imity)?|photo-?eyes?|relays?|contactors?|breakers?|pumps?|compressors?|valves?|actuators?|hoists?|conveyors?|gearboxe?s?|transformers?|robots?|switch(?:es)?|modules?|converters?|gateways?)";
+const GENERIC_CLASS_SUBJECT = new RegExp(`\\ban?\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}\\b`, "i");
+
+// Symptoms: a problem is happening on real equipment ("it stopped
+// communicating", "the drive trips every morning") — enough on their own.
+const SYMPTOM =
+  /\b(?:trips?|tripp(?:ed|ing)|faults?|faulted|faulting|errors?|alarms?|stopped|stops|stopping|randomly|intermittent(?:ly)?|stuck|won'?t|will\s+not|doesn'?t|does\s+not|not\s+(?:working|communicating|responding|starting)|lost|loses|overheat(?:s|ed|ing)?|reboot(?:s|ed|ing)?|restart(?:s|ed|ing)?|over-?temp(?:erature)?|smok(?:e|es|ing)|burn(?:s|ed|ing|t)?|check\s+first|should\s+I\s+check)\b/i;
+// Procedure words: "wire", "install", "configure"… — a generic "how do I wire
+// a VFD?" is teaching, so these count only when bound to THIS machine
+// (Codex #4069 pass 6 F3).
+const PROCEDURE_VERBS =
+  /\b(?:recover|reset|replace|replaced|swap(?:ped)?|install|configure|set\s+up|connect|wire|troubleshoot|pass\s?code|password|unlock|register|registers|firmware|bootloader)\b/i;
+const TROUBLESHOOTING = new RegExp(`${SYMPTOM.source}|${PROCEDURE_VERBS.source}`, "i");
+
+// "what does fault code X mean", "what does F005 mean on my drive".
+const CODE_MEANING = /\bwhat\s+(?:does|do|is)\b[^?.!]{0,60}?\bmean(?:s|ing)?\b/i;
+// Pass 14: "what is X" teaches only as a short, whole-question concept
+// definition ("What is a VFD?", "what is DH-485") — never a diagnostic frame
+// ("what is wrong with…", "what's going on with…", "what is the problem…").
+const CONCEPT_DEFINITION =
+  /^\s*what(?:'s|\s+is|\s+are)\s+(?:an?\s+)?(?!(?:wrong|going|happening|causing|making|up|the|this|its|it|my|your|that|these|those)\b)[\w/.+-]+(?:\s+[\w/.+-]+){0,3}\s*\??\s*$/i;
+// "what does the/this/that/it …" — the thing meant is on a machine, not a term.
+const MACHINE_STATE_MEANING = /\bwhat\s+(?:does|do)\s+(?:the|this|that|it|my|our)\b/i;
+// Pass 16: the fault code must be what the "what does … mean" clause asks
+// about, and a code-shaped MODEL name (TP700, GS10, PLX32) is not a fault code.
+function codeInMeaningClause(q: string, boundModel?: string | null): boolean {
+  const clause = q.match(CODE_MEANING)?.[0] ?? "";
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const model = norm(boundModel ?? "");
+  return faultCodeTokens(clause).some((t) => !(model && model.includes(norm(t))));
+}
+
+// The words a pure "what does <code> mean [on my <machine>]" question may hold.
+const CODE_MEANING_ALLOWED = new RegExp(
+  `\\b(?:what|does|do|is|means?|meaning|the|a|an|my|this|our|your|that|on|in|for|of|from|fault|error|alarm|code|number|${EQUIPMENT_NOUN})\\b`,
+  "gi",
+);
+function onlyCodeMeaningWords(q: string, boundModel?: string | null): boolean {
+  let t = q.toLowerCase();
+  // Exactly ONE code — the one asked about — may be removed. Any other
+  // code-shaped token not in the bound model's name is another machine's model
+  // ("… mean on my GS10?" in a PowerFlex notebook) and stays, so it declines
+  // (pass 22).
+  const norm = (x: string) => x.replace(/[^a-z0-9]/g, "");
+  const model = norm((boundModel ?? "").toLowerCase());
+  const codes = [...new Set(faultCodeTokens(t).filter((c) => !(model && model.includes(norm(c)))))];
+  if (codes.length !== 1) return false;
+  t = t.split(codes[0]).join(" ");
+  for (const w of (boundModel ?? "").toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w) t = t.replace(new RegExp(`\\b${w}\\b`, "g"), " ");
+  }
+  return t.replace(CODE_MEANING_ALLOWED, " ").replace(/[^a-z0-9]+/g, "") === "";
+}
+
+// The whole question is "how does this/my <machine> work?" — the machine
+// itself, not a feature or procedure of it.
+const WHOLE_MACHINE_HOW_IT_WORKS =
+  /^\s*how\s+(?:does|do)\s+(?:this|my|our|the|that)\s+(?:[\w-]+\s+){0,2}work(?:s)?\s*\??\s*$/i;
+const EXPLICIT_GENERAL = /\b(?:in\s+general|generally)\b/i;
+// "the drive", "the conveyor's" — a definite equipment noun is this plant's unit.
+const DEFINITE_EQUIPMENT = new RegExp(`\\bthe\\s+(?:[\\w-]+\\s+)?${EQUIPMENT_NOUN}(?:'s)?\\b`, "i");
+// A question that marks itself as general knowledge, not this machine.
+const GENERAL_MARKER = /\b(?:in\s+general|generally|difference\s+between|used\s+for|explain)\b/i;
+// A condition on the machine's state ("when it overheats", "if the fan is
+// blocked", "after the swap") — never part of a pure concept question.
+const CONDITION_CLAUSE = /\b(?:when|whenever|while|if|after|once|since)\s+(?:it|the|my|this|our|its|we|i)\b/i;
+// …and asks what to DO about it.
+const PROCEDURE_ASK = /\b(?:check|fix|reset|recover|clear|repair|replace|troubleshoot|resolve|get\s+rid)\b/i;
+
+// Acknowledgements are not questions — never decline "thanks".
+const ACKNOWLEDGEMENT = /^(?:thanks?|thank\s+you|ty|ok(?:ay)?|got\s+it|cool|great|perfect|nice|understood)\b[\s,.!]*(?:got\s+it|thanks?)?[\s.!]*$/i;
+
+/**
+ * #4068 — should a machine-bound notebook with NOTHING citable decline this
+ * question honestly instead of giving an uncited general answer?
+ *
+ * OWNER DECISION 2026-09-27 (Mike, after ten review passes each found new
+ * phrasings misclassified in both directions): **lean to declining.** Decline
+ * unless the question is on a short, high-confidence teaching list — how does
+ * X work, what is X / what does X mean, the difference between, explain, used
+ * for, in general — or is a pure fault-code-meaning question (E10, #4004).
+ * Occasionally declining a general question is the accepted residual; an
+ * uncited answer about this machine is not.
+ */
+export function asksAboutThisEquipment(question: string, boundModel?: string | null): boolean {
+  const q = question.trim();
+  if (!q || ACKNOWLEDGEMENT.test(q)) return false;
+  // Pass 10 F1: "it"/"its"/"that" refer back to the nearest subject — in "why
+  // does a VFD trip when it overheats" that is "a VFD", not the notebook's
+  // machine. They bind only when no generic class subject is named.
+  const genericSubject = GENERIC_CLASS_WHY.test(q) || GENERIC_CLASS_SUBJECT.test(q);
+  const bound =
+    STRONG_BINDING.test(q) ||
+    namesModel(q, boundModel) ||
+    (WEAK_BINDING.test(q) && !genericSubject);
+  // A pure "what does code X mean" stays with the answer floor's code-meaning
+  // rule (E10, answer-validation.ts), exactly as #4004 leaves it — unless it
+  // also asks what to DO, or another clause describes a symptom (pass 10 F2;
+  // the code-meaning clause itself is excluded, since "fault code" contains
+  // the symptom word "fault").
+  // Pass 11 F1: only a PURE meaning question qualifies — any second clause
+  // ("…, and why is it overheating?", "…? how do I stop it") ends the exception.
+  // Pass 15: only a question about an actual fault CODE qualifies — "what does
+  // the flashing red light mean on my drive" is a machine-state question E10
+  // does not cover, so it takes the bound-machine decline like any other.
+  // A meaning question about a STATE of this machine ("what does the flashing
+  // light mean on my drive", "what does it mean when the drive beeps") is a
+  // problem to work; "what does PNP mean" (a term) still teaches.
+  const askedCode = codeInMeaningClause(q, boundModel);
+  if (CODE_MEANING.test(q) && !askedCode && (bound || MACHINE_STATE_MEANING.test(q))) {
+    return true;
+  }
+  if (CODE_MEANING.test(q) && askedCode && !PROCEDURE_ASK.test(q)) {
+    // Passes 19–21: a pure code-meaning question is an ALLOWLIST, not a symptom
+    // blacklist — every symptom phrasing Codex found ("when it trips", "with
+    // repeated faults", "with no output") was a new word. Only the code, the
+    // word naming it, a location on this machine, and "mean" may appear;
+    // anything else declines (owner decision: lean to declining).
+    return !onlyCodeMeaningWords(q, boundModel);
+  }
+  // Codex #4069 F1: teaching phrasing wrapped around a problem on THIS machine
+  // ("how does my drive work when it trips on F005?") is troubleshooting.
+  if (bound && (TROUBLESHOOTING.test(q) || PROCEDURE_ASK.test(q))) return true;
+  // Pass 24 F1: a "why" about THIS machine is a diagnosis, whatever the symptom
+  // word ("Explain why it keeps rebooting") — the class, not another word list.
+  if (bound && /\bwhy\b/i.test(q) && !EXPLICIT_GENERAL.test(q)) return true;
+  // Pass 13: a described symptom ("what is causing the drive to trip every
+  // morning?") is a problem to work, bound or not — unless the question marks
+  // itself as general ("in general", "generally", "difference between", …).
+  // Lean to declining (owner decision): the class, not one phrasing.
+  // Pass 18: only an EXPLICIT generality ("in general", "generally") outranks a
+  // described symptom — "Explain why the drive trips" is still the drive's problem.
+  if (SYMPTOM.test(q) && !EXPLICIT_GENERAL.test(q)) return true;
+  // Pass 12: "how does my drive work WHEN IT OVERHEATS" is a condition on this
+  // machine, not a concept question. Bound + a condition clause is never teaching.
+  const conditional = bound && CONDITION_CLAUSE.test(q);
+  // Pass 17: an EXPLICIT tie to this machine (my/this/our/on the…, or the model
+  // name) outranks the general markers — "Explain the wiring diagram for my
+  // TP700" is a documentation request about this machine, not a lesson. Only a
+  // pure "how does this drive work?" stays teaching when explicitly tied.
+  const explicitlyThisMachine =
+    STRONG_BINDING.test(q) || namesModel(q, boundModel) || DEFINITE_EQUIPMENT.test(q);
+  const teaching =
+    !conditional &&
+    ((explicitlyThisMachine ? WHOLE_MACHINE_HOW_IT_WORKS.test(q) : HOW_IT_WORKS.test(q)) ||
+      (!explicitlyThisMachine &&
+        (STRONG_DEFINITIONAL.test(q) || GENERAL_MARKER.test(q) || (!bound && CONCEPT_DEFINITION.test(q)))));
+  return !teaching;
 }

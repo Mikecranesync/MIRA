@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
-import { inferEquipmentType } from "@/lib/equipment-type";
-import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
+import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
   expandIndustrialQuery,
   rerankChunks,
@@ -55,6 +55,12 @@ export interface ManualChunk {
   chunkIndex?: number | null;
   title: string;
   rank: number;
+  /**
+   * #4068 — set only on hits from the same-manufacturer fallback: the bound
+   * model had no manual pages, so these come from a sibling model of the same
+   * equipment family. The route records it and labels the source honestly.
+   */
+  retrievalScope?: "vendor_fallback";
   verified?: boolean;
 }
 
@@ -416,9 +422,15 @@ export async function retrieveManualChunks(
   if (resolvedCaller?.ambiguous) return [];
   // Only known tokens are shortened. Unknown caller models retain their exact,
   // narrower value; a conflicting identity never widens to vendor BM25.
+  // #4031 — a question that names two different models ("wire RS-485 between a
+  // Micro820 and a GS10") is about both; scoping to whichever pattern matched
+  // first filtered the other device's manual out and the answer refused. Only
+  // the query-extracted path widens; an identity-bound caller still refuses above.
   const model = callerModel
     ? resolvedCaller?.model ?? callerModel
-    : extractModelNumber(q); // #2178 — null for most queries
+    : resolveModelFromObservationText(q).ambiguous
+      ? null
+      : extractModelNumber(q); // #2178 — null for most queries
   const identityBound = callerModel !== null;
 
   // Walk the scopes most-specific-first, stopping at the first non-empty result.
@@ -454,17 +466,77 @@ export async function retrieveManualChunks(
     });
   };
 
+  // #4069 F1: an identity-bound model scope searches every spelling in the
+  // manufacturer's alias group — an "Allen-Bradley" notebook's own SLC 5/03
+  // pages may be stored as "Rockwell Automation". Model and tenant predicates
+  // are unchanged; other scopes keep their single-name query.
+  const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
+    const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
+    if (names.length === 0) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    // Pass 25 F1: every identity-bound hit — one needle or several — must come
+    // from the bound vendor group ("%sew%" also matches "Sewon"). Fetch a wider
+    // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
+    const merged: ManualChunk[] = [];
+    for (const name of names) {
+      merged.push(
+        ...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model, false, null, true)),
+      );
+    }
+    // Pass 24 F2: a substring needle only narrows the search; admission needs
+    // the stored maker to be in the vendor group as a whole word.
+    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank))
+      .filter((c) => manufacturerInGroup(c.manufacturer, s.mfr))
+      .slice(0, topK);
+  };
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
-      const hits = rejectWrongFamily(
-        await runBm25Query(client, tenantId, text, topK, s.mfr, s.model),
-      );
+      const hits = rejectWrongFamily(await scopeQuery(text, s));
       if (hits.length > 0) return hits;
     }
     return [];
   };
 
-  const main = await firstNonEmpty(q);
+  // #4068 (owner decision 2026-09-27, "both"): an identity-bound model with no
+  // manual pages of its own may fall back to the SAME manufacturer — but only
+  // within the SAME, classified equipment family, judged strictly on each hit's
+  // own model/title/URL (no manufacturer default, and "Other" never passes).
+  // That keeps #3966 closed: a TP700 HMI still never reaches a SINAMICS V20
+  // (VFD) chunk, and an unclassified bound model gets no fallback at all. Hits
+  // are marked so the route can record the widened scope and cite the sibling
+  // model under its real name. If this is empty too, the route's honest
+  // decline (Gate G) handles the turn.
+  const familyFallbackAllowed = identityBound && !!model && !!mfr && !!assetType && assetType !== "Other";
+  const familyFallback = async (text: string): Promise<ManualChunk[]> => {
+    if (!familyFallbackAllowed) return [];
+    // The family filter runs AFTER SQL ranking, so fetch a wider window than
+    // topK: otherwise a manufacturer's higher-ranked other-family pages fill
+    // the LIMIT and hide a matching-family page ranked just below them.
+    // The family predicate runs IN SQL, before LIMIT, so other-family rows
+    // never fill the window; the exact JS family check below still applies.
+    const familyTerms = familySqlTerms(assetType!);
+    if (familyTerms.length === 0) return [];
+    const window = topK * FAMILY_FALLBACK_WINDOW;
+    // Codex #4069 F2: the corpus stores one vendor under several names
+    // ("Allen-Bradley" / "Rockwell Automation"); search every spelling in the
+    // alias group, then merge by rank.
+    const names = manufacturerSearchNames(mfr);
+    const vendorHits: ManualChunk[] = [];
+    for (const name of names.length ? names : [mfr]) {
+      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true)));
+    }
+    return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
+      .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
+      .filter(
+        (c) =>
+          inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
+          assetType,
+      )
+      .slice(0, topK)
+      .map((c) => ({ ...c, retrievalScope: "vendor_fallback" as const }));
+  };
+
+  let main = await firstNonEmpty(q);
+  if (main.length === 0) main = await familyFallback(q);
 
   const codes = extractFaultCodes(q);
   if (codes.length === 0) return main;
@@ -472,8 +544,18 @@ export async function retrieveManualChunks(
   // Code pass: query on the code(s) alone (the terse form that reliably surfaces
   // the documenting chunk), down the SAME scope cascade — so a fault-code lookup
   // for a named model stays scoped to that model's manual (#2178), not the
-  // vendor's nearest sibling.
-  const codeHits = await firstNonEmpty(codes.join(" "));
+  // vendor's nearest sibling. When the model has no pages, the terse code query
+  // gets the same family fallback as the verbose one (#4068).
+  let codeHits = await firstNonEmpty(codes.join(" "));
+  // Post-cap F1: never let a sibling model's fault-code page join (let alone
+  // outrank) the bound model's own pages — the code fallback runs only when
+  // the main pass found nothing of the bound model's.
+  const mainIsOwnModel = main.length > 0 && main.every((c) => c.retrievalScope !== "vendor_fallback");
+  // Pass 6 F2: the bound model's own fault-code page beats sibling pages from
+  // the verbose fallback — return own-model evidence alone, so the answer's
+  // sources, warning and prompt describe each page accurately.
+  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel) return codeHits.slice(0, topK);
+  if (codeHits.length === 0 && !mainIsOwnModel) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 
   return dedupeChunks([...codeHits, ...main]).slice(0, topK);
@@ -490,8 +572,35 @@ export const QUICKSTART_REFUSAL_MARK =
 /** True when an answer is the quickstart cite-or-refuse refusal. */
 export function isRefusalAnswer(answer: string | null | undefined): boolean {
   if (!answer) return false;
-  return answer.toLowerCase().includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
+  // Models emit either apostrophe; "don’t" (U+2019) shipped citation cards
+  // under a refusal on staging 2026-09-27 (#4032).
+  const normalized = answer.replace(/[\u2018\u2019]/g, "'").toLowerCase();
+  return normalized.includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
+
+/** #4068 — the same-family fallback ranks topK × this many vendor rows before filtering by family. */
+// Codex #4069 F3: wide enough that another family's higher-ranked pages cannot
+// plausibly exhaust it (120 rows per vendor name at topK 6). A matching page
+// ranked below that depth is not retrieved — accepted: at that depth BM25
+// relevance is noise, and the turn then declines honestly instead of guessing.
+export const FAMILY_FALLBACK_WINDOW = 20;
+
+/** Below this ts_rank_cd an AND hit is noise, not evidence (#4035: 0.0004 vs a real hit's ~1). */
+export const WEAK_AND_RANK = 0.01;
+
+/**
+ * True when the precise AND pass found nothing worth keeping: no rows, or every
+ * row's rank is below WEAK_AND_RANK. A row with no numeric rank is not judged weak.
+ */
+export function isWeakAndResult(rows: Array<Record<string, unknown>>): boolean {
+  return rows.every((r) => {
+    const rank = Number(r.rank);
+    return Number.isFinite(rank) && rank < WEAK_AND_RANK;
+  });
+}
+
+const rowKey = (r: Record<string, unknown>): string =>
+  `${r.source_url ?? ""}|${r.source_page ?? ""}|${r.content ?? ""}`;
 
 async function runBm25Query(
   client: PoolClient,
@@ -500,11 +609,31 @@ async function runBm25Query(
   topK: number,
   manufacturer: string | null,
   model: string | null = null,
+  /** #4069 F3: union the OR pass even when AND is strong — for callers that
+   *  post-filter (the family fallback), whose strong AND rows may all be
+   *  discarded afterwards. */
+  alwaysOr = false,
+  /** #4069: the exact family predicate (familySqlTerms) applied to
+   *  model/title/URL BEFORE the LIMIT, so other-family rows — including ones
+   *  that merely MENTION the family — cannot fill the window. */
+  familyTerms: Array<{ match: string; unless: string | null }> | null = null,
+  /** Codex #4069 pass 26: match the maker as a WHOLE WORD in SQL ("sew" admits
+   *  "SEW-EURODRIVE GmbH", never "Sewon"), so every AND/OR/weak-result step
+   *  sees only the bound vendor group — a post-filter cannot restore an OR
+   *  pass a wrong maker's strong AND hit suppressed. */
+  makerWholeWord = false,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
-  if (manufacturer) {
-    params.push(`%${manufacturer}%`);
+  if (manufacturer && makerWholeWord) {
+    const literal = manufacturer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    params.push(`(^|[^[:alnum:]])${literal}($|[^[:alnum:]])`);
+    mfrClause = `AND manufacturer ~* $${params.length}`;
+  } else if (manufacturer) {
+    // Codex #4069: a stored manufacturer is DATA, never a LIKE pattern —
+    // escape %, _ and \\ (Postgres LIKE's default escape) so "%" cannot
+    // widen the same-manufacturer boundary to every vendor.
+    params.push(`%${manufacturer.replace(/[\\%_]/g, "\\$&")}%`);
     mfrClause = `AND manufacturer ILIKE $${params.length}`;
   }
   // #2178/#3966 — numeric legacy tokens remain substrings ("525" matches
@@ -530,6 +659,18 @@ async function runBm25Query(
       params.push(`(^|[^[:alnum:]])${token}($|[^[:alnum:]])`);
       modelClause = `AND model_number ~* $${params.length}`;
     }
+  }
+  let familyClause = "";
+  if (familyTerms && familyTerms.length > 0) {
+    const hay = `(coalesce(model_number, '') || ' ' || coalesce(metadata->>'title', '') || ' ' || coalesce(source_url, ''))`;
+    const ors = familyTerms.map((t) => {
+      params.push(t.match);
+      const m = `${hay} ~* $${params.length}`;
+      if (!t.unless) return `(${m})`;
+      params.push(t.unless);
+      return `(${m} AND ${hay} !~* $${params.length})`;
+    });
+    familyClause = `AND (${ors.join(" OR ")})`;
   }
   params.push(topK);
   const limitParam = `$${params.length}`;
@@ -560,6 +701,7 @@ async function runBm25Query(
           ${approvalFilterSql()}
           ${mfrClause}
           ${modelClause}
+          ${familyClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
         LIMIT ${limitParam}`,
@@ -569,8 +711,17 @@ async function runBm25Query(
   };
 
   let rows = await run(AND_TSQUERY);
-  if (rows.length === 0) {
-    rows = await run(OR_TSQUERY);
+  if (alwaysOr || isWeakAndResult(rows)) {
+    // #4035 — an AND match can be technically non-empty but useless: one chunk at
+    // ts_rank_cd ~0.0004 (stemming mismatch, e.g. "configure"→"configur" vs a
+    // chunk's "CONFIG"). That used to satisfy the scope and suppress the OR pass,
+    // so the answer refused. Union with OR in the SAME scope; strongest first.
+    const seen = new Set(rows.map(rowKey));
+    const extra = (await run(OR_TSQUERY)).filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
+    rows = [...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    // Post-cap F2: a post-filtering caller (alwaysOr) filters BEFORE limiting,
+    // so strong AND rows it will discard cannot crowd its OR rows out here.
+    if (!alwaysOr) rows = rows.slice(0, topK);
   }
 
   return rows.map((r: Record<string, unknown>) => ({

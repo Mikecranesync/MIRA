@@ -151,13 +151,15 @@ class _FakeProv:
         self.vision_model = vision_model
 
 
-def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path):
+def _cascade():
+    # Cerebras archived 2026-09-29 — the live cascade is Groq → Together.
+    return [_FakeProv("groq"), _FakeProv("together", vision_model="MiniMaxAI/MiniMax-M3")]
+
+
+def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path, providers=None):
     fake_router = types.ModuleType("shared.inference.router")
-    fake_router._build_providers = lambda: [
-        _FakeProv("groq"),
-        _FakeProv("cerebras"),
-        _FakeProv("together", vision_model="MiniMaxAI/MiniMax-M3"),
-    ]
+    built = _cascade() if providers is None else providers
+    fake_router._build_providers = lambda: built
     monkeypatch.setitem(sys.modules, "shared.inference.router", fake_router)
     monkeypatch.setattr(phc, "_probe", lambda *a: (True, 5, ""))
     monkeypatch.setattr(
@@ -184,5 +186,21 @@ def test_main_text_up_vision_down_exits_one(monkeypatch, tmp_path, capsys) -> No
     code, gh = _run_main(monkeypatch, vision_ok=False, tmp_path=tmp_path)
     assert code == 1
     assert "vision_down_count=1" in gh and "vision_down_providers=together" in gh
-    assert "up_count=3" in gh  # text coverage was fine — the page is vision-specific
+    assert "up_count=2" in gh  # text coverage was fine — the page is vision-specific
     assert "NOT fully up for PrintSense" not in capsys.readouterr().out or True
+
+
+def test_archived_cerebras_absent_is_healthy(monkeypatch, tmp_path) -> None:
+    """Cerebras is archived (no key → not built): its absence must not page."""
+    code, gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path)
+    assert "cerebras" not in phc.EXPECTED
+    assert code == 0
+    assert "up_count=2" in gh
+
+
+@pytest.mark.parametrize("missing", ["groq", "together"])
+def test_missing_expected_provider_still_pages(monkeypatch, tmp_path, missing) -> None:
+    """Control: a provider that IS expected and has no key is still DOWN (exit 1)."""
+    providers = [p for p in _cascade() if p.name != missing]
+    code, _gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path, providers=providers)
+    assert code == 1

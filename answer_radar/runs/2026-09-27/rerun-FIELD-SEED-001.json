@@ -1,0 +1,23 @@
+{
+  "question_id": "FIELD-SEED-001",
+  "mira_run_id": "ar-985295d9e304",
+  "mira_version": "772dc2927",
+  "prompt_version": "active.yaml@unreadable",
+  "retrieval_version": "neon-bm25",
+  "answer_text": "The USR\u2011N540 is transparent and lacks DH\u2011485 protocol handling, so the SLC\u202f5/03 cannot communicate. First check the converter\u2019s mode or use a 1761\u2011NET\u2011AIC. [Source: Rockwell Automation CompactLogix \u2014 Communication]",
+  "answer_status": "answered",
+  "citations": [],
+  "source_documents": [
+    "However, with a CompactLogix controller, we recommend that you use NetLinx\nnetworks, such as EtherNet/IP, ControlNet, or DeviceNet, because excessive\ntraffic on a DH-485 network may make it impractical to connect to a controller\nwith RSLogix5000 programming software.\nIMPORTANT If your application uses connections to DH-485 networks, select built-in serial\nports.\nThe DH-485 protocol uses RS-485 half-duplex as its physical interface. RS-485\nis a definition of electrical characteristics, not a protocol. You can configure the\nCompactLogix controller\u2019s RS-232 port to act as a DH-485 interface. By using a\n1761-NET-AIC converter and the appropriate RS-232 cable (1756-CP3 or\n1747-CP3), a CompactLogix controller can send and receive data on a DH-485\nnetwork.\nFigure 9 - CompactLogix DH-485 Communication Overview\nCompactLogix Controller\n1747-CP3 Cable\nor\n1761-CBL-AC00 Cable\n(port 1)\nConnection from CompactLogix\n1761-CBL-AP00 Cable Controller to Port 1 or Port 2\nor\n1761-CBL-PM02 Cable\n1747-CP3 Cable\n1761-NET-AIC+ or\nConverter 1761-CBL-AC00 Cable\n1747-AIC Converter\nDH-485 Network\nSLC 5/03 Controller\nOn the DH-485 network, the CompactLogix controller can send and receive\nmessages to and from other controllers.\nIMPORTANT A DH-485 network consists of multiple cable segments. Limit the total length\nof all the segments to 1219 m (4000ft).\nFor the controller to operate on a DH-485 network, you need a 1761-NET-AIC\ninterface converter for each controller you want to put on the DH-485 network.\nYou can have two controllers for each 1761-NET-AIC converter, but you need a\ndifferent cable for each controller.\n72 Rockwell Automation Publication 1769-UM011I-EN-P - February 2013",
+    "3, Network Input 7 = Network Input 15. 3, Network Input 6 = Network Input 14. 3, Network Input 5 = Network Input 13. 3, Network Input 4 = Network Input 12. 3, Network Input 3 = Network Input 11. 3, Network Input 2 = Network Input 10. 3, Network Input 1 = Network Input 9. 3, Network Input 0 = Network Input 8. 4, Network Input 7 = Status Parameter A (low). 4, Network Input 6 = Status Parameter A (low). 4, Network Input 5 = Status Parameter A (low). 4, Network Input 4 = Status Parameter A (low). 4, Network Input 3 = Status Parameter A (low). 4, Network Input 2 = Status Parameter A (low). 4, Network Input 1 = Status Parameter A (low). 4, Network Input 0 = Status Parameter A (low). 5, Network Input 7 = Status Parameter A (high). 5, Network Input 6 = Status Parameter A (high). 5, Network Input 5 = Status Parameter A (high). 5, Network Input 4 = Status Parameter A (high). 5, Network Input 3 = Status Parameter A (high). 5, Network Input 2 = Status Parameter A (high). 5, Network Input 1 = Status Parameter A (high). 5, Network Input 0 = Status Parameter A (high). 6, Network Input 7 = Status Parameter B (low). 6, Network Input 6 = Status Parameter B (low). 6, Network Input 5 = Status Parameter B (low). 6, Network Input 4 = Status Parameter B (low). 6, Network Input 3 = Status Parameter B (low). 6, Network Input 2 = Status Parameter B (low). 6, Network Input 1 = Status Parameter B (low). 6, Network Input 0 = Status Parameter B (low). 7, Network Input 7 = Status Parameter B (high). 7, Network Input 6 = Status Parameter B (high). 7, Network Input 5 = Status Parameter B (high). 7, Network Input 4 = Status Parameter B (high). 7, Network Input 3 = Status Parameter B (high). 7, Network Input 2 = Status Parameter B (high). 7, Network Input 1 = Status Parameter B (high). 7, Network Input 0 = Status Parameter B (high)"
+  ],
+  "retrieved_chunk_count": 2,
+  "best_evidence_tier": "trusted_independent",
+  "total_answer_time_ms": 19229,
+  "time_to_first_answer_ms": 19229,
+  "grader_verdicts": [],
+  "human_adjudication": null,
+  "failure_class": null,
+  "notes": "",
+  "evaluated_at": "2026-09-27T20:20:23+00:00"
+}

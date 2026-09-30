@@ -229,12 +229,19 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-): ChatBody & { threadId: string | null; mode?: "general" } {
+  rider?: { visualEvidence?: { fileId: string; capturedAt: string } },
+): ChatBody & { threadId: string | null; mode?: "general"; visualEvidence?: { fileId: string; capturedAt: string } } {
   const base = buildChatBody(question, [...docIds], history);
+  const visual = rider?.visualEvidence;
   return {
     ...base,
     threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
+    // A zero-source turn is served ONLY in general mode — including a photo
+    // turn: the chat route lets a visual claim past the early no-sources check
+    // just to verify it, then refuses a non-general zero-source turn (422
+    // no_sources_selected — caught by the live /v3 photo proof, #4024).
     ...(docIds.length === 0 ? { mode: "general" as const } : {}),
+    ...(visual ? { visualEvidence: visual } : {}),
   };
 }
 

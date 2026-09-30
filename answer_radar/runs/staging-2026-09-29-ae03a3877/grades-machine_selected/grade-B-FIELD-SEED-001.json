@@ -1,0 +1,40 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "machine_selected",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "answer_sha256": "cf66923b8ad77151db9e3c1cba2e6d73957a9e60d7808454fb53aa6ed8a60716",
+  "correctness": 30,
+  "evidence": 4,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 7,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "The closest support is a related CompactLogix/ControlLogix manual citation for the DH-485/SLC 5/03 issue.",
+      "why_wrong": "The cited document is not the SLC 5/03/DH-485 interface documentation and does not substantiate the key asset-specific conclusion about replacing a protocol-aware SLC 5/03 DH-485 interface with a USR-N540.",
+      "severity": "major"
+    },
+    {
+      "claim": "The PLC stops communicating because the USR-N540 passes raw RS-485 data that the controller cannot interpret.",
+      "why_wrong": "This is directionally correct but incomplete. The important DH-485 incompatibilities include protocol/token-passing arbitration, half-duplex turnaround behavior, and the DH-485 TX-EN control signaling requirements; the answer reduces the failure to generic raw-data/protocol interpretation.",
+      "severity": "major"
+    },
+    {
+      "claim": "First check the RS-485 wiring/termination and verify the converter is configured or capable of DH-485.",
+      "why_wrong": "The first check should be whether the replacement device is actually a DH-485 protocol-aware interface; a transparent RS-485-to-Ethernet converter is not a valid substitute. Leading with wiring/termination can send the technician into low-value troubleshooting instead of restoring/replacing with a proper DH-485 interface such as the original interface or an equivalent DH-485-aware device.",
+      "severity": "major"
+    },
+    {
+      "claim": "No warning is needed about DH-485 RJ45/RS-485 electrical compatibility.",
+      "why_wrong": "The answer omits an important equipment-protection check: DH-485/RJ45 ports are not standard Ethernet ports, and pinout/voltage/interface mismatch can damage equipment. This should be explicitly checked before reconnecting anything.",
+      "severity": "major"
+    }
+  ],
+  "notes": "The answer identifies the broad root cause: a transparent RS-485/Ethernet converter does not replace a DH-485 protocol-aware interface. However, it is weakly supported by a non-SLC related manual, omits key DH-485 architectural reasons, does not clearly state the definitive corrective action, and gives the wrong emphasis for the first check by putting wiring ahead of protocol-aware interface compatibility."
+}

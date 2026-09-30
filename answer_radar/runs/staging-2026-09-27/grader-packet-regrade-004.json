@@ -1,0 +1,70 @@
+{
+  "FIELD-SEED-004__machine_selected": {
+    "seed_id": "FIELD-SEED-004",
+    "condition": "machine_selected",
+    "condition_meaning": "chat bound to the named manufacturer+model (user-confirmed)",
+    "question": "How do I connect a Mitsubishi FX5U PLC to a Baykon BX11-EN weighing indicator over Modbus/TCP? Which registers hold the weight value, and what do I need to get right about data format?",
+    "manufacturer": "Mitsubishi",
+    "model": "FX5U",
+    "mira_answer": "I couldn't find that in the Mitsubishi FX5U manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again \u2014 I'll answer from it and show you the page.",
+    "server_turn_status": "insufficient_evidence",
+    "answer_basis": null,
+    "manual_search": {
+      "strategy": "oem_corpus_bm25",
+      "executed": true,
+      "oem_corpus_searched": true,
+      "oem_manufacturer_source": "notebook",
+      "candidate_count": 0
+    },
+    "citations": [],
+    "reference_reconstructed_from_09_05_grades": [
+      {
+        "grader": "A",
+        "factual_errors_found_on_09_05": [
+          {
+            "claim": "MIRA provides complete guidance on 'which registers hold the weight value'",
+            "why_wrong": "Step 5 cuts off mid-sentence at 'Locate the weight register map' without providing actual register addresses (40003 for net, 40004 for tare, 40006-40007 for gross). The question is left unanswered.",
+            "severity": "critical"
+          },
+          {
+            "claim": "MIRA provides complete guidance on data format requirements",
+            "why_wrong": "The answer does not address word order (big-endian vs little-endian) configuration requirement. BX11-EN supports both formats; they must match the FX5U setting. MIRA provides no guidance on this critical requirement.",
+            "severity": "critical"
+          },
+          {
+            "claim": "MIRA provides complete Modbus/TCP integration procedure",
+            "why_wrong": "Missing: firmware version (FX5U v1.040+), ladder logic instructions (SP.SMCINIT, SP.SMCMPL), Modbus function code (FC3), BX11-EN default IP (192.168.16.250), diagnostic registers (SD2100, SD2101). These are essential for implementation, not optional.",
+            "severity": "major"
+          },
+          {
+            "claim": "MIRA does not explicitly state role differentiation",
+            "why_wrong": "FX5U is CLIENT only; BX11-EN is SERVER. While implied in Step 4, not explicitly stated as a critical design principle per the ground truth.",
+            "severity": "major"
+          }
+        ],
+        "notes_09_05": "MIRA's answer is incomplete and cuts off mid-procedure at Step 5. Steps 1-4 are generic verification steps (correct but applicable to any Modbus/TCP setup). Zero retrieved chunks; no authoritative source grounding. The answer fails to deliver on 2 of 3 specific technical questions: (1) register addresses\u2014UNANSWERED; (2) data format requirements\u2014UNANSWERED. The KB-gap statement masks that this information is publicly available in authoritative manuals (Baykon BX11 v1.9, Mitsubishi FX5U). Technician cannot complete integration without external reference. FAIL: total 60 < 85; correctness 27 < 34."
+      },
+      {
+        "grader": "B",
+        "factual_errors_found_on_09_05": [
+          {
+            "claim": "In the Baykon BX11-EN manual (look for...) [answer truncated]",
+            "why_wrong": "Step 5 is cut off mid-sentence. MIRA never provides the register map or data format guidance\u2014the exact core of the technician's question. The answer should state: weight registers are 40003 (net), 40004 (tare), 40006\u201340007 (gross); data format requires word-order matching (High-Low vs Low-High endianness).",
+            "severity": "critical"
+          },
+          {
+            "claim": "Unit ID (Slave ID): usually 1... Port: 502 (standard)... Mode: TCP Server (default)",
+            "why_wrong": "MIRA states these facts without any source, then admits at the end 'I don't have specific documentation indexed for this.' Ground truth cites Baykon BX11 Technical Manual v1.9 for all three. MIRA should either cite sources or preface with 'I'm inferring from general Modbus/TCP principles' \u2014 it does neither, then backtracks.",
+            "severity": "major"
+          },
+          {
+            "claim": "Set the BX11-EN IP (e.g., 192.168.0.20) via its front-panel menu \u2192 Network \u2192 TCP/IP",
+            "why_wrong": "Ground truth documents BX11-EN default IP as 192.168.16.250, configurable via EtherX PC software or on-device parameters. MIRA omits the documented default, omits EtherX software, and presents a generic example without grounding. Should read: 'BX11-EN default is 192.168.16.250; configure via EtherX software or on-device parameters.'",
+            "severity": "major"
+          }
+        ],
+        "notes_09_05": "MIRA's answer is TRUNCATED and UNGROUNDED. It correctly identifies general Modbus/TCP setup (hardware, IP config, connectivity test) but fails on the technical payload.\\n\\nCRITICAL OMISSIONS (ground truth marks each critical):\\n\u2022 FX5U is TCP CLIENT; BX11-EN is TCP SERVER \u2014 never stated\\n\u2022 Register addresses (40003, 40004, 40006\u201340007) \u2014 not provided\\n\u2022 Data format compatibility (word order: big-endian vs little-endian) \u2014 not mentioned\\n\u2022 Firmware requirement (v1.040+) \u2014 not mentioned\\n\u2022 Ladder logic instructions (SP.SMCINIT, SP.SMCMPL) \u2014 not mentioned\\n\u2022 Modbus function code (FC3) \u2014 not mentioned\\n\u2022 Diagnostic registers (SD2100, SD2101) \u2014 not mentioned\\n\u2022 BX11-EN default IP (192.168.16.250) and EtherX software option \u2014 omitted\\n\\nEVIDENCE FAILURE: Ground truth has 8 authoritative sources (Mitsubishi FX5U manual, Baykon BX11 manual, Industrial Monitor Direct guides). MIRA cites zero sources for 12+ technical claims, then admits 'I don't have specific documentation indexed for this' \u2014 but this admission comes AFTER confident ungrounded claims.\\n\\nACTIONABILITY: Technician gets networking set up but does NOT learn how to actually read the weight values in ladder logic, which registers to read, how to handle word-order mismatches, firmware version checks, or EtherX configuration.\\n\\nPASS GATE FAILURES:\\n\u2022 Correctness 25/40 (< 34 minimum) \u2014 FAIL\\n\u2022 Critical unsupported claims: YES \u2014 FAIL\\n\u2022 Total 57/100 (< 85 minimum) \u2014 FAIL\\n\\nThe answer fails three mandatory gates. The truncation at step 5 is the core failure; it's where MIRA should answer 'which registers hold the weight value, and what do I need to get right about data format?' but instead stops after 'look for...'.\""
+      }
+    ]
+  }
+}

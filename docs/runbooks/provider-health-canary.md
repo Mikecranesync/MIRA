@@ -3,6 +3,8 @@
 **What:** a scheduled probe that checks every LLM cascade provider
 (Groq → Cerebras → Together) **independently** and pages when coverage degrades.
 
+> **2026-09-29: Cerebras archived.** HTTP 402 (quota) on every call since 2026-09-07. The key was moved to `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd and removed from GitHub Actions secrets; the canary now expects Groq + Together only. To restore: rename the Doppler key back, re-add the GitHub secret, and add `"cerebras"` to `EXPECTED` in `tools/provider_health_check.py`.
+
 **Why it exists:** the cascade is resilient by design — if one provider dies the
 next answers. That resilience also *hides* a dead provider. Two real incidents
 went unnoticed for a while because Groq kept answering:

@@ -1,0 +1,45 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "condition": "new_chat",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "answer_sha256": "401589951e82c4ddf96d756c683ecdd0720b418919cffec8ee0c7dd3158d1898",
+  "correctness": 20,
+  "evidence": 2,
+  "safety": 20,
+  "actionability": 3,
+  "uncertainty": 7,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_answer",
+  "factual_errors": [
+    {
+      "claim": "Configure the read request to use the block of registers that the indicator\u2019s manual says contain the weight, typically a consecutive set of 2-4 registers.",
+      "why_wrong": "This does not answer the user\u2019s direct question asking which registers hold the weight value. The expected Baykon BX11-EN register information includes specific weight registers such as 40003 for net, 40004 for tare, and 40006-40007 for gross, rather than a generic reference to the manual.",
+      "severity": "critical"
+    },
+    {
+      "claim": "The indicator usually outputs weight as a 32-bit signed integer or a 32-bit floating-point value.",
+      "why_wrong": "This is an uncited, asset-specific data-format statement and does not give the required BX11-EN format details. The critical implementation issue is matching the BX11-EN Modbus data/word order setting with the FX5U interpretation.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Big-endian is common, but check the device\u2019s spec.",
+      "why_wrong": "This is too generic for the specific BX11-EN integration. The technician needs explicit guidance that the word order/data format must be configured consistently between the BX11-EN and FX5U; the answer provides no confirmed BX11-EN setting or register-order requirement.",
+      "severity": "major"
+    },
+    {
+      "claim": "Add a 'TCP Client' or 'Modbus TCP Master' block in the FX5U ladder program.",
+      "why_wrong": "The answer gives only a generic programming direction and omits FX5U-specific implementation requirements such as the relevant socket/Modbus instructions and firmware/version considerations noted in the reference findings.",
+      "severity": "major"
+    },
+    {
+      "claim": "Map the received value to a PLC variable and scale it if the indicator provides a raw count.",
+      "why_wrong": "This is generic and unsupported for the BX11-EN. It may mislead the technician into applying arbitrary scaling instead of using the documented BX11-EN weight representation and decimal/data-format settings.",
+      "severity": "minor"
+    }
+  ],
+  "notes": "The answer is safe and contains some generally correct Modbus/TCP concepts: same subnet, server/client concept, port 502, and FC3 for holding registers. However, it fails the core request: it does not provide the BX11-EN weight registers and does not state the required data-format/word-order handling in a usable, asset-specific way. It cites no manuals or sources despite making equipment-specific claims. The technician would still need to find the Baykon manual and Mitsubishi implementation details before completing the job."
+}

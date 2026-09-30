@@ -228,18 +228,28 @@ describe("POST /api/hub/ask — L0 unbound generative Ask (ChatGPT-first lock)",
   });
 });
 
-describe("POST /api/hub/ask — safety hard-stop gates the general path (security-boundaries.md)", () => {
-  it("a hazard report stops before the rate limiter, retrieval and the provider — same shape as the sibling chat routes", async () => {
+describe("POST /api/hub/ask — safety flag frames the general path, it never blocks it (security-boundaries.md, owner decision 2026-09-27)", () => {
+  it("a hazard report is DETECTED (X-Safety-Flag header, flag directive in the system prompt) but still answers — the rate limiter, retrieval and the provider all still run", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+    // Detection is unchanged (same trigger the classifier always matched on
+    // this phrase); what changed is the RESPONSE — a banner above the model's
+    // real answer, never a substitute for it, and never a short-circuit that
+    // skips the rate limiter/retrieval/provider the sibling routes still run.
+    cascade.cascadeComplete.mockResolvedValue({ content: "Isolate and verify zero energy first, then…", provider: "groq" });
     const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
     expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBeTruthy();
+    const flagTrigger = res.headers.get("X-Safety-Flag");
+    expect(flagTrigger).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
     const body = await res.json();
-    expect(body.answer).toContain("SAFETY STOP");
-    expect(body.citations).toEqual([]);
-    expect(body.basis).toBeNull();
-    expect(limiter.rateLimited).not.toHaveBeenCalled();
-    expect(rag.retrieveManualChunks).not.toHaveBeenCalled();
-    expect(cascade.cascadeComplete).not.toHaveBeenCalled();
+    expect(body.answer).toContain("⚠️");
+    expect(body.answer).toContain("Isolate and verify zero energy first, then…");
+    expect(limiter.rateLimited).toHaveBeenCalled();
+    expect(rag.retrieveManualChunks).toHaveBeenCalled();
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain(`SAFETY FLAG: ${flagTrigger}`);
   });
 
   it("an educational safety question still answers (the classifier's carve-out): 'what is LOTO' is a question, not a hazard report", async () => {

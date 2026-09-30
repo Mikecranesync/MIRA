@@ -149,7 +149,7 @@ def rows_from_db() -> list[dict[str, Any]]:
     # Text columns (user_question, recommendation) are deliberately NOT selected.
     cur.execute(
         """
-        SELECT otel_trace_id, ts, platform, git_sha, evidence_packet
+        SELECT trace_id, otel_trace_id, ts, platform, git_sha, evidence_packet
           FROM decision_traces
          WHERE environment = 'staging'
            AND evidence_packet IS NOT NULL
@@ -159,8 +159,9 @@ def rows_from_db() -> list[dict[str, Any]]:
         """
     )
     out = []
-    for trace_id, ts, platform, git_sha, packet in cur.fetchall():
+    for row_key, trace_id, ts, platform, git_sha, packet in cur.fetchall():
         row = flatten(packet, source="db", ts=ts.isoformat() if ts else None, trace_id=trace_id)
+        row["row_id"] = f"db:{row_key}"
         row["platform"] = platform
         row["git_sha"] = row.get("git_sha") or git_sha
         out.append(row)
@@ -226,7 +227,14 @@ def report(
     seen: set[str] = set()
     uniq = []
     for r in rows:
-        k = r.get("trace_id") or f"{r['source']}:{r.get('scenario')}"
+        # A turn not sampled for export has no OTel trace id (#4107 F3); fall back
+        # to its durable turn id, then the decision_traces row, never one shared key.
+        k = (
+            r.get("trace_id")
+            or (r.get("turn_id") and f"turn:{r['turn_id']}")
+            or r.get("row_id")
+            or f"{r['source']}:{r.get('scenario')}"
+        )
         if k in seen:
             continue
         seen.add(k)

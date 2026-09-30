@@ -19,6 +19,8 @@ import {
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
   detectEnergizedElectricalHazardIntent,
+  safetyFlagHeaders,
+  withSafetyFlag,
   LETHAL_VOLTAGE_CONTEXT,
   ENERGIZED_WORK_INTENT,
 } from "./safety-classifier";
@@ -157,6 +159,32 @@ describe("detectEnergizedElectricalHazardIntent", () => {
     expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
   });
 
+  it("a Modbus parameter read is not energized work (word boundary, benchmark Q01)", () => {
+    // "modbus" contains "bus" and "parameter" contains "meter"; substring matching
+    // hard-stopped this ordinary question on the public quickstart.
+    const msg = "How do I read a parameter from a GS11 drive using a Micro820 over Modbus RTU?";
+    expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
+    expect(matchSafetyStop(msg)).toBeNull();
+  });
+
+  it("the standalone words still trigger (control for the word-boundary rule)", () => {
+    expect(
+      detectEnergizedElectricalHazardIntent("Can I check the bus with a meter while it's live?"),
+    ).toBe(true);
+    expect(
+      detectEnergizedElectricalHazardIntent("480V busbar: I'll probe it while running."),
+    ).toBe(true);
+     // Review of #4036: compound meter names and glued voltages must still count.
+    for (const msg of [
+      "480V bus is hot, grabbing my voltmeter now.",
+      "clampmeter on the 480V feeder while it's running",
+      "ammeter reading on the MCC bucket",
+      "3ph480v feeder, measure it while live",
+    ]) {
+      expect(detectEnergizedElectricalHazardIntent(msg), msg).toBe(true);
+    }
+  });
+
   it("transformer/DC bus mention without hazard intent does NOT trigger", () => {
     const msg = "The DC bus capacitors look discolored but no active faults.";
     expect(detectEnergizedElectricalHazardIntent(msg)).toBe(false);
@@ -188,5 +216,14 @@ describe("matchSafetyStop with energized-electrical hazard-intent", () => {
   it("benign electrical questions return null or other phrase, not the sentinel", () => {
     expect(matchSafetyStop("480V supply dropping voltage")).toBeNull();
     expect(matchSafetyStop("my drive won't start")).toBeNull();
+  });
+});
+
+describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn shows the banner)", () => {
+  it("prefixes the hazard banner only when there is a trigger", () => {
+    expect(withSafetyFlag("Try again in a minute.", "smoke coming")).toMatch(/^⚠️ \*\*Possible active incident.*\n\nTry again in a minute\.$/s);
+    expect(withSafetyFlag("Try again in a minute.", null)).toBe("Try again in a minute.");
+    expect(safetyFlagHeaders("smoke coming")).toEqual({ "X-Safety-Flag": "smoke coming" });
+    expect(safetyFlagHeaders(null)).toBeUndefined();
   });
 });
