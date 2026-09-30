@@ -15,8 +15,8 @@
 | detector | TP | FP | FN | precision | recall |
 |---|---|---|---|---|---|
 | `validateAnswer` on main (before) | 9 | 3 | 53 | 0.75 | 0.15 |
-| `stepEnergyContradiction` alone | 47 | 3 | 15 | **0.94** | **0.76** |
-| `validateAnswer` with the check wired in | 49 | 6 | 13 | 0.89 | 0.79 |
+| `stepEnergyContradiction` alone (after review r1) | 45 | 3 | 17 | **0.94** | **0.73** |
+| `validateAnswer` with the check wired in (after review r1) | 48 | 6 | 14 | 0.89 | 0.77 |
 
 - **Pass bar:** precision ≥ 0.85 and recall ≥ 0.60, fixed before tuning and gated in CI.
 - **Tuning:** five iterations maximum, fixed in advance. All five were used; the change after each is recorded in the PR.
@@ -27,3 +27,7 @@
 - **Remaining false positives (3):** "check the control-power supply (e.g., 24 VDC…) for … wiring" and "confirm with a test-lead on the supply terminals". Those are inspections phrased like readings.
 
 **Limits:** the labels come from Claude-family judges; the technician review confirmed the two staging cases. This is a floor under the prompt rule, not a replacement for it. #4111 (open, Foreman-held) adds a separate live-measurement-after-lockout rule; the two are independent.
+
+## Review round 1 (Codex + 3-lens adversarial workflow)
+- **Added:** "jog", "apply (main) voltage", "energize the … circuit", "bring it back up"; a restore in a step that states the lockout as its condition ("with the machine locked out, reconnect power"); isolation carried across sentences of one list item; prohibitions ("do not press start") are not instructions; a display/LED observation *before* isolating is not flagged; "voltage class/rating" is a spec, not a reading.
+- **Documented limitation, not fixed:** a *later* restore step with the lockout never written as removed ("Now restore power. Press Run"; "Apply main voltage again and measure"). A rule for it added 7 false positives on the labeled set, dropping precision to 0.83, below the bar, because correct answers often say "once power is restored". It was removed.

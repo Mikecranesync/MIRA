@@ -54,3 +54,43 @@ describe("#4122 validateAnswer — banner above the full answer, never withheld"
     expect(v.ok).toBe(true);
   });
 });
+
+// Known limitation (documented on #4146): a LATER restore step with the lockout never
+// written as removed ("Now restore power. Press Run", "Apply main voltage again and
+// measure") is read as the transition out of isolation. Flagging it cost precision on
+// the labeled set (correct answers often say "once power is restored"), so it is not.
+describe("#4146 review r1 — paraphrases the safety lens found (must flag)", () => {
+  it.each([
+    ["jog under lockout", "Place the selector in the LOCKOUT position. Jog the motor by pressing start and listen for smooth rotation."],
+    ["energize the circuit while locked out", "With the circuit locked out, energize the control circuit and watch the contactor pull in."],
+  ])("%s", (_name, text) => {
+    expect(stepEnergyContradiction(text)).not.toBeNull();
+  });
+});
+
+describe("#4146 review r1 — safe answers the false-positive lens found (must not flag)", () => {
+  it.each([
+    ["display noted before isolating", "Before you isolate the drive, check what the display is showing. After you've noted the display state and any fault codes, proceed to lock out and tag out the power source."],
+    ["LEDs noted before isolating", "Observe the indicator LEDs on the front. Once you've noted the LED pattern, then proceed with lockout/tagout procedures."],
+    ["fuse replacement under lockout", "With the drive locked out, check the input fuse for continuity.\nIf the fuse is blown, replace it with an identical rating and verify from the nameplate that you have the right amperage and voltage class."],
+    ["correct later restore by a qualified person", "1. Lock out the drive and verify absence of voltage.\n2. Inspect and tighten the terminals.\n3. A qualified person then removes the lockout and restores power under the site's energized-work procedure, and you jog the motor to confirm rotation."],
+  ])("%s", (_name, text) => {
+    expect(stepEnergyContradiction(text)).toBeNull();
+  });
+});
+
+describe("#4146 Codex r1", () => {
+  it("F1: a restore instructed while the lockout is stated in the same step is flagged", () => {
+    expect(stepEnergyContradiction("With the machine locked out, reconnect power and press the start button.")).not.toBeNull();
+  });
+  it.each([
+    ["do not press start", "With the lockout in place, do not press the start button."],
+    ["never measure", "With the machine locked out, never measure the output voltage."],
+  ])("F2: a prohibition is not an instruction (%s)", (_n, text) => {
+    expect(stepEnergyContradiction(text)).toBeNull();
+  });
+  it("F3: isolation carries to the next sentence of the same list item", () => {
+    expect(stepEnergyContradiction("1. With the drive locked out, inspect the wiring. Measure the output voltage.")).not.toBeNull();
+  });
+});
+
