@@ -85,7 +85,8 @@ async def fetch_pdf_bytes(url: str, max_bytes: int = MAX_BYTES) -> bytes | None:
         async with httpx.AsyncClient(
             timeout=FETCH_TIMEOUT,
             follow_redirects=False,
-            transport=_search._transport_for_tests,
+            transport=_search._probe_transport(),
+            trust_env=False,  # never route an untrusted fetch through an env proxy
             headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
         ) as client:
             current = url

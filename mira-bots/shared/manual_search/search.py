@@ -49,11 +49,13 @@ import logging
 import os
 import re
 import socket
+import ssl
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
+import httpcore
 import httpx
 
 logger = logging.getLogger("mira.manual_search")
@@ -479,9 +481,9 @@ async def _serper_post(query: str, num: int) -> list[dict]:
 # http(s) only, every hop's hostname must resolve EXCLUSIVELY to public
 # addresses (private / loopback / link-local / reserved / multicast / v4-mapped
 # all rejected), redirects are followed MANUALLY with each hop re-validated,
-# and reads are streamed with a hard byte cap. Residual risk, same as the Hub
-# side: DNS rebinding between the resolve and the connect — no allowlist can
-# exist for open-web discovery, so this is documented rather than closed.
+# and reads are streamed with a hard byte cap. DNS rebinding between the check
+# and the connect is closed by _PinnedNetworkBackend below (#4160 S3a): the
+# connection dials the address that passed the check, never a second lookup.
 
 _MAX_REDIRECT_HOPS = 5
 _PROBE_READ_CAP = 512
@@ -546,6 +548,79 @@ def _url_is_probeable(url: str) -> bool:
 _transport_for_tests: httpx.AsyncBaseTransport | None = None
 
 
+# ── DNS resolve-and-pin (Manual-First PRD R6, #4160 S3a) ─────────────────────
+#
+# _url_is_probeable resolves the name and checks it, but the socket layer used
+# to resolve it AGAIN at connect time — a rebinding host could answer "public"
+# to the check and "10.0.0.5" to the connect. This backend closes that window:
+# it resolves once, refuses the connection if ANY answer is non-public, and
+# dials the checked address. httpcore still passes the URL hostname as the TLS
+# server_hostname, so SNI and certificate/hostname verification are unchanged.
+# Every redirect hop and every retry opens its connection through here.
+
+
+def _inner_network_backend() -> httpcore.AsyncNetworkBackend:
+    """The real socket layer (test seam: tests swap in a recorder)."""
+    return httpcore.AnyIOBackend()
+
+
+def _resolve_public(host: str, port: int) -> str:
+    """Sync (DNS-blocking) — call via asyncio.to_thread. Returns one checked
+    public address for `host`, or raises ConnectError if resolution fails or
+    any answer is non-public."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise httpcore.ConnectError(f"manual-search dns failed for {host[:80]}") from e
+    addrs = [str(info[4][0]).split("%")[0] for info in infos]
+    if not addrs:
+        raise httpcore.ConnectError(f"manual-search dns empty for {host[:80]}")
+    for a in addrs:
+        try:
+            public = _ip_is_public(ipaddress.ip_address(a))
+        except ValueError:
+            public = False
+        if not public:
+            raise httpcore.ConnectError(
+                f"manual-search connect blocked: {host[:80]} -> non-public address"
+            )
+    return addrs[0]
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self) -> None:
+        self._inner = _inner_network_backend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        ip = await asyncio.to_thread(_resolve_public, host, port)
+        return await self._inner.connect_tcp(
+            ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options
+        )
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("manual-search never connects to unix sockets")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
+def _probe_transport() -> httpx.AsyncBaseTransport:
+    """Transport for every probe/fetch of an untrusted URL: the pinned backend
+    with TLS verification on. The test seam, when set, wins."""
+    if _transport_for_tests is not None:
+        return _transport_for_tests
+    transport = httpx.AsyncHTTPTransport()
+    # httpx does not expose httpcore's network_backend; rebuild its pool with
+    # the pinned backend. tests/test_manual_search_dns_pin.py asserts this
+    # wiring so an httpx upgrade that moves `_pool` fails loudly instead of
+    # silently resolving through the default backend again.
+    transport._pool = httpcore.AsyncConnectionPool(
+        ssl_context=ssl.create_default_context(),
+        network_backend=_PinnedNetworkBackend(),
+    )
+    return transport
+
+
 async def _guarded_probe(
     client: httpx.AsyncClient, method: str, url: str, headers: dict | None = None
 ) -> httpx.Response | None:
@@ -583,7 +658,8 @@ async def validate_pdf(url: str) -> bool:
         async with httpx.AsyncClient(
             timeout=HEAD_TIMEOUT,
             follow_redirects=False,
-            transport=_transport_for_tests,
+            transport=_probe_transport(),
+            trust_env=False,  # never route an untrusted probe through an env proxy
             headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
         ) as client:
             try:
