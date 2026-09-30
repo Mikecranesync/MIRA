@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MIRA pre-commit hook — shellcheck + gitleaks + rg debug-artifact scan on staged files
+# MIRA pre-commit hook — lifecycle, shellcheck, secret, debug, and scope gates
 # Installed via: git config core.hooksPath .githooks
 
 set -euo pipefail
@@ -11,6 +11,9 @@ WARNINGS=0
 # reached on paths where the resolving branch never ran.
 SHELLCHECK_BIN=""
 RG_BIN=""
+PY_BIN=""
+PY_CMD=()
+STAGED_PATHS=()
 
 red()    { printf '\033[0;31m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
@@ -35,6 +38,10 @@ fi
 # Staged files
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
 STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+STAGED_ALL=$(git diff --cached --name-only --no-renames --diff-filter=ACMRD || true)
+while IFS= read -r staged_path; do
+  [ -n "$staged_path" ] && STAGED_PATHS+=("$staged_path")
+done <<< "$STAGED_ALL"
 
 # ------------------------------------------------------------------
 # Tool resolution: PROBE, don't assume.
@@ -61,7 +68,52 @@ resolve_tool() {
 }
 
 # ------------------------------------------------------------------
-# 1. shellcheck on staged .sh files
+# 1. Guarded UI lifecycle — BLOCK locally before an agent can send new
+#    product work through a frozen presentation route. The helper imports the
+#    same registry-backed classifier as CI; there is no second path list here.
+#    Fail closed if Python or the policy helper cannot run.
+# ------------------------------------------------------------------
+if [ -n "$STAGED_ALL" ]; then
+  bold "Checking staged paths against the UI lifecycle policy..."
+
+  # python3/python may be Windows App Execution Alias stubs. Probe first;
+  # `py -3` is the working launcher there.
+  PY_BIN=$(resolve_tool --version python3 python || true)
+  if [ -n "$PY_BIN" ]; then
+    PY_CMD=("$PY_BIN")
+  elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
+    PY_CMD=(py -3)
+  fi
+
+  if [ ${#PY_CMD[@]} -eq 0 ]; then
+    red "  🔴 No working Python found — UI lifecycle policy could not run"
+    red "  → Commit blocked because this check fails closed. Install Python 3 and retry."
+    FAIL=$((FAIL + 1))
+  elif GUARD_OUTPUT=$("${PY_CMD[@]}" tools/guard-check.py --files "${STAGED_PATHS[@]}" 2>&1); then
+    green "  ✓ No guarded legacy UI paths staged"
+    PASS=$((PASS + 1))
+  else
+    GUARD_RC=$?
+    printf '%s\n' "$GUARD_OUTPUT" | sed 's/^/    /' || true
+    if [ "$GUARD_RC" -eq 1 ]; then
+      red "  🔴 Guarded legacy UI route staged. Stop before commit."
+      red "  → Put presentation/capability work in the canonical shell or adapters:"
+      red "    packages/factorylm-{theme,interaction,ui}/**"
+      red "    apps/factorylm-ui-lab/**"
+      red "    mira-{web,hub,mobile}/src/factorylm-ui/**"
+      red "    mira-mobile/src/unified/** (when extending the existing mobile adapter)"
+      red "  → Automation must not bypass this check or apply legacy-ui-exception."
+      red "    If this is truly P0/security/rollback/controlled-cutover work, stop and"
+      red "    ask a human maintainer to authorize the audited exception workflow."
+    else
+      red "  🔴 UI lifecycle policy errored (exit $GUARD_RC); commit blocked fail-closed."
+    fi
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ------------------------------------------------------------------
+# 2. shellcheck on staged .sh files
 # ------------------------------------------------------------------
 if [ -n "$STAGED_SH" ]; then
   bold "Checking shell scripts..."
@@ -98,7 +150,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 2. gitleaks — secrets scan on staged changes (mirrors CI)
+# 3. gitleaks — secrets scan on staged changes (mirrors CI)
 # ------------------------------------------------------------------
 bold "Scanning staged changes for secrets (gitleaks)..."
 GITLEAKS_BIN=$(resolve_tool version gitleaks || true)
@@ -117,7 +169,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 3. ripgrep — leftover debug artifacts in staged .py files
+# 4. ripgrep — leftover debug artifacts in staged .py files
 # ------------------------------------------------------------------
 if [ -n "$STAGED_PY" ]; then
   bold "Scanning Python files for debug artifacts..."
@@ -167,7 +219,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 4. Spec staleness — warn (never block) when API code outpaces docs.
+# 5. Spec staleness — warn (never block) when API code outpaces docs.
 #    Spec: docs/specs/enforcement-layer-spec.md §4.4
 # ------------------------------------------------------------------
 STAGED_API=$(git diff --cached --name-only --diff-filter=ACM | grep '^mira-hub/src/app/api/' || true)
@@ -233,7 +285,7 @@ if [ -n "$STAGED_API" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 5. actionlint — GitHub Actions workflow validation on staged workflow
+# 6. actionlint — GitHub Actions workflow validation on staged workflow
 #    files. Catches the duplicate-key / schema / expression errors that
 #    GitHub rejects at parse time (e.g. the duplicate `concurrency:` key
 #    that broke compose-mem-lint.yml — #1725 — failing in 0s with no logs).
@@ -267,7 +319,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 6. Agent-symbol fabrication check — warn (never block locally) when a
+# 7. Agent-symbol fabrication check — warn (never block locally) when a
 #    newly staged first-party import references a name that can't be found
 #    anywhere in the repo (the "ConnectorService" class of agent fabrication;
 #    see CLAUDE.md "Verify Subagent Output"). Warn-only here so a concurrent
@@ -279,17 +331,6 @@ fi
 # ------------------------------------------------------------------
 if [ -n "$STAGED_PY" ]; then
   bold "Checking newly imported symbols for fabrication..."
-  # python3/python are App Execution Alias stubs on Windows that resolve via
-  # `command -v` and then exit 49 with a Microsoft Store nag, so probe with
-  # `-c ''`. `py -3` is the working launcher there; python3 wins first on
-  # macOS/Linux, so behaviour off Windows is unchanged.
-  PY_BIN=$(resolve_tool --version python3 python || true)
-  PY_CMD=()
-  if [ -n "$PY_BIN" ]; then
-    PY_CMD=("$PY_BIN")
-  elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
-    PY_CMD=(py -3)
-  fi
   if [ ${#PY_CMD[@]} -eq 0 ]; then
     yellow "  no working python found — symbol check SKIPPED, not passed"
     WARNINGS=$((WARNINGS + 1))
@@ -303,12 +344,11 @@ if [ -n "$STAGED_PY" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 7. Scope guard — warn (never block) when a commit looks like it swept in
+# 8. Scope guard — warn (never block) when a commit looks like it swept in
 #    foreign WIP / out-of-scope files. Mirrors .claude/rules/session-discipline.md
 #    §3 ("stage only files your change touched"). Warn-only by design: a broad
 #    commit is sometimes correct, so this nudges, it does not block.
 # ------------------------------------------------------------------
-STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACM || true)
 if [ -n "$STAGED_ALL" ]; then
   bold "Checking commit scope..."
 
@@ -384,7 +424,7 @@ yellow "  Warnings: $WARNINGS"
 if [ $FAIL -gt 0 ]; then
   red ""
   red "Commit blocked — fix the above issues before committing."
-  red "To bypass (not recommended): git commit --no-verify"
+  red "Automation must not bypass repository checks with git commit --no-verify."
   exit 1
 fi
 
