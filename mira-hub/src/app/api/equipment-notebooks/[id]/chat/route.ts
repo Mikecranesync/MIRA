@@ -70,6 +70,7 @@ import {
   productionRouteDetected,
   anomalyChecksEnabled,
 } from "@/capabilities/observability/config";
+import { recordTurnContent, scrubContent } from "@/capabilities/observability/content-capture";
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
@@ -574,25 +575,6 @@ function sse(obj: unknown): string {
 }
 
 /**
- * Turn Flight Recorder content capture (design §3/§8) — used ONLY behind
- * `MIRA_OTEL_CAPTURE_CONTENT=1` (captureContentEnabled()) to set
- * `gen_ai.input.messages`/`gen_ai.output.messages`. Mirrors the shapes
- * `InferenceRouter.sanitize_context()` (security-boundaries.md) already
- * redacts — a small local helper rather than a new lib module, since this is
- * the ONE call site. NOTE: `tracing.ts`'s `MAX_STRING_LEN=512` clamps every
- * span attribute value regardless of this function's own 4096 truncation, so
- * the 4 KB budget the design describes is not actually reachable today —
- * reported as a cross-lane note, not fixed here (I1 owns tracing.ts).
- */
-function scrubGenAiContent(text: string): string {
-  return text
-    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "[IP]")
-    .replace(/\b[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}\b/g, "[MAC]")
-    .replace(/\b(?:S\/N|SN|serial)[:\s]+([A-Za-z0-9]{6,})/gi, (m, tok: string) => m.slice(0, m.length - tok.length) + "[SN]")
-    .slice(0, 4096);
-}
-
-/**
  * The streamed safety hard-stop. Same frame grammar as every other notebook
  * turn — `sources` (empty) → `content`… → `safety` → `status` → `[DONE]` — so a
  * client that knows nothing about safety still renders it as an ordinary,
@@ -905,6 +887,7 @@ async function handleChatTurn(
     },
     rootSpan,
   );
+  recordTurnContent(rootSpan, { question: message });
   let rootEnded = false;
   // Child spans that may still be open when an early exit path ends the root
   // (identity.resolve stays open until the notebook row is loaded). endRoot()
@@ -2102,6 +2085,7 @@ async function handleChatTurn(
       gateAnswerGateSpan,
     );
     gateAnswerGateSpan.end();
+    recordTurnContent(rootSpan, { answer: abstainAnswerText });
     const gatePersistSpan = startStage("turn.persist");
     const gateTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
@@ -2778,14 +2762,16 @@ async function handleChatTurn(
               genSpan,
             );
             // MIRA_OTEL_CAPTURE_CONTENT=1 only (design §3/§8), scrubbed +
-            // truncated — see scrubGenAiContent's header for the
-            // MAX_STRING_LEN=512 clamp caveat (tracing.ts, I1's module).
+            // truncated — content keys get CONTENT_MAX_LEN, not the
+            // 512 clamp (tracing.ts CONTENT_ATTRIBUTE_KEYS).
             if (captureContentEnabled()) {
               setSpanAttrs(
                 {
-                  "gen_ai.input.messages": scrubGenAiContent(JSON.stringify(messages)),
+                  "gen_ai.input.messages": scrubContent(
+                    JSON.stringify(messages.filter((m) => m.role !== "system")),
+                  ),
                   ...(genOutcome === "served"
-                    ? { "gen_ai.output.messages": scrubGenAiContent(JSON.stringify(responseBuffer.join(""))) }
+                    ? { "gen_ai.output.messages": scrubContent(JSON.stringify(responseBuffer.join(""))) }
                     : {}),
                 },
                 genSpan,
@@ -2859,6 +2845,7 @@ async function handleChatTurn(
           { "mira.answer_gate.invoked": true, "mira.answer_gate.decision": "error", "mira.answer_gate.reason": "client_stop" },
           stoppedAnswerGateSpan,
         );
+        recordTurnContent(rootSpan, { answer: partialText });
         stoppedAnswerGateSpan.end();
         const stoppedPersistSpan = startStage("turn.persist");
         let stoppedTurnRowId: string | null = null;
@@ -3208,6 +3195,7 @@ async function handleChatTurn(
           },
           finalAnswerGateSpan,
         );
+        recordTurnContent(rootSpan, { answer: served ? answerText : null });
         finalAnswerGateSpan.end();
       }
 
