@@ -402,10 +402,18 @@ services:
       - OTEL_TRACES_SAMPLER=${OTEL_TRACES_SAMPLER:-}
       - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-}
       - MIRA_OTEL_CAPTURE_CONTENT=${MIRA_OTEL_CAPTURE_CONTENT:-0}
+      # #4103: only mira.turn-rooted traces are exported. Lower the ratio (e.g.
+      # 0.25) to cut Langfuse volume; set AUTO_INSTRUMENT=1 only while debugging.
+      - MIRA_OTEL_TURN_SAMPLE_RATIO=${MIRA_OTEL_TURN_SAMPLE_RATIO:-1}
+      - MIRA_OTEL_AUTO_INSTRUMENT=${MIRA_OTEL_AUTO_INSTRUMENT:-0}
       - MIRA_TURN_ANOMALY_CHECKS=${MIRA_TURN_ANOMALY_CHECKS:-1}
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      # #4075: a technician-confirmed identity starts a background search for the
+      # official manual (discover -> download -> ingest -> applicability). Off
+      # unless set in Doppler stg; needs migration 100. Staging only for now.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
