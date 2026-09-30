@@ -5,6 +5,7 @@
 ## Method
 - **Model:** Groq `openai/gpt-oss-120b`, called exactly as the notebook chat route calls it (`temperature 0.3`, `max_tokens 800`, `reasoning_effort low`). Free tier; no paid inference.
 - **System prompt:** captured from the real route composition in a general (no manual) turn, through the route test seams. Arm A is that prompt with the note removed; arm B is the full prompt. That is the only difference between arms (asserted in `ab.py`).
+- **Prompt capture:** `prompts.json` holds the exact system prompts the route produced at this PR's head, captured through the route test seams (the `systemPromptFor` harness in `mira-hub/src/capabilities/__tests__/photo-provenance.route.test.ts`, with the two observations below). `ab.py` builds arm A by removing the note block and asserts that is the only difference.
 - **User message:** built exactly as `buildManualUserContent` does with a photo observation and no chunks.
 - **Observations:** transcribed from the two fixture photos. The fixture text does not appear in the note.
 - **Reps:** 2 cases × 2 arms × 5 reps = 20 calls.
