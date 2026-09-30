@@ -94,3 +94,19 @@ describe("#4146 Codex r1", () => {
   });
 });
 
+describe("#4146 Codex r2", () => {
+  it.each([
+    ["F1: a continuing lockout is not ended by 'then'", "With the lockout still in place, reconnect power and then press the start button."],
+    ["F2: an instruction after 'but' survives the prohibition", "With the machine locked out, do not touch the wiring but press the start button."],
+    ["F2: 'do not forget to' is an instruction, not a prohibition", "With the machine locked out, do not forget to press the start button."],
+  ])("%s", (_n, text) => {
+    expect(stepEnergyContradiction(text)).not.toBeNull();
+  });
+  it("F3: a prohibition of mechanical work after restore is correct advice, not a flag", () => {
+    expect(stepEnergyContradiction("Do not tighten the terminals after power is restored.")).toBeNull();
+  });
+  it("control: an isolated measurement then a written restore stays unflagged", () => {
+    expect(stepEnergyContradiction("With the circuit isolated and locked out, measure resistance across the terminals, then restore power.")).toBeNull();
+  });
+});
+

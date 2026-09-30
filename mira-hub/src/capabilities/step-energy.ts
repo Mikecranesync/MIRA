@@ -39,7 +39,9 @@ const OPERATE =
 /** Mechanical work scheduled for after power is back ("tighten only after the lockout is
  *  removed and power is restored") — the #4101 technician-flagged shape. */
 /** A prohibition ("do not press start", "never measure the voltage") is not an instruction. */
-const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b[^,;.]*/gi;
+// Ends at "but"/"then" so the instruction after it survives (Codex #4146 r2 F2);
+// "do not forget to …" is an instruction, not a prohibition.
+const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
 /** Isolation stated as a CONDITION of the step ("with the machine locked out, …") — as
  *  opposed to a sequence ("lock out, remove the drive, restore power"). */
 const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
@@ -76,9 +78,10 @@ export function stepEnergyContradiction(answerText: string): string | null {
   let lineIso = -1; // isolation stated earlier in this same line / list item
   for (const s of steps(answerText)) {
     const raw = s.text;
-    if (MECHANICAL_AFTER_RESTORE.test(raw)) return raw;
     // Codex #4146 F2: a prohibited action is not an instruction to do it.
     const t = raw.replace(PROHIBITION, " ");
+    // r2 F3: "Do not tighten … after power is restored" is the correct caution.
+    if (MECHANICAL_AFTER_RESTORE.test(t)) return raw;
     const inList = s.list;
     if (!inList && listScope && !ISOLATED.test(t)) listScope = false;
     const still = STILL_ISOLATED.test(t);
@@ -88,7 +91,9 @@ export function stepEnergyContradiction(answerText: string): string | null {
       // Codex #4146 F1: a restore in a step that states the lockout as its condition
       // ("with the machine locked out, reconnect power") is the contradiction itself.
       // A sequence ("…isolated and locked out, then restore power") is not simultaneous.
-      if (!removed && (still || STATE_ISOLATED.test(t)) && !/\b(?:then|after|afterwards|once|next|finally)\b/i.test(t)) return raw;
+      // r2 F1: a lockout stated as CONTINUING ("still in place") is never ended by "then";
+      // a lockout stated as a condition followed by a sequence is ("…locked out, then restore").
+      if (!removed && (still || (STATE_ISOLATED.test(t) && !/\b(?:then|after|afterwards|once|next|finally)\b/i.test(t)))) return raw;
       // Otherwise it is the transition out of isolation: it closes every scope.
       scopeOpen = false; listScope = false; lineIso = -1;
       continue;

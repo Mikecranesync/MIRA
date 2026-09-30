@@ -15,8 +15,8 @@
 | detector | TP | FP | FN | precision | recall |
 |---|---|---|---|---|---|
 | `validateAnswer` on main (before) | 9 | 3 | 53 | 0.75 | 0.15 |
-| `stepEnergyContradiction` alone (after review r1) | 45 | 3 | 17 | **0.94** | **0.73** |
-| `validateAnswer` with the check wired in (after review r1) | 48 | 6 | 14 | 0.89 | 0.77 |
+| `stepEnergyContradiction` alone (after review r2) | 46 | 3 | 16 | **0.94** | **0.74** |
+| `validateAnswer` with the check wired in (after review r2) | 48 | 6 | 14 | 0.89 | 0.77 |
 
 - **Pass bar:** precision ≥ 0.85 and recall ≥ 0.60, fixed before tuning and gated in CI.
 - **Tuning:** five iterations maximum, fixed in advance. All five were used; the change after each is recorded in the PR.
