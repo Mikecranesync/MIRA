@@ -76,7 +76,45 @@ def load_hub_client():
             except urllib.error.HTTPError as e:
                 return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
 
+        def stream(self, method, path, body=None, headers=None):
+            """Like `_req`, reading the SSE stream as it arrives (#4101).
+
+            Also returns `first_ms`: elapsed until the first frame a technician
+            can read — a `content` frame, or a status frame carrying a message
+            (a decline renders that message) — and `total_ms` to end of stream.
+            `first_ms` is None when no readable frame ever arrived.
+            """
+            h = {"Cookie": self.cookie, **(headers or {})}
+            req = urllib.request.Request(self.base + path, data=body, method=method, headers=h)
+            t0 = time.monotonic()
+            first_ms = None
+            chunks: list[bytes] = []
+            try:
+                with _NO_REDIRECT_OPENER.open(req, timeout=self.timeout) as r:
+                    status, hdrs = r.status, {k.lower(): v for k, v in r.headers.items()}
+                    for line in iter(r.readline, b""):
+                        chunks.append(line)
+                        if first_ms is None and _readable_frame(line):
+                            first_ms = int((time.monotonic() - t0) * 1000)
+            except urllib.error.HTTPError as e:
+                status, hdrs = e.code, {k.lower(): v for k, v in e.headers.items()}
+                chunks.append(e.read())
+            return status, hdrs, b"".join(chunks), first_ms, int((time.monotonic() - t0) * 1000)
+
     return RadarHub
+
+
+def _readable_frame(line: bytes) -> bool:
+    """A frame whose text the technician sees: content, or a status message."""
+    if not line.startswith(b"data: {"):
+        return False
+    try:
+        f = json.loads(line[6:])
+    except json.JSONDecodeError:
+        return False
+    return (f.get("kind") == "content" and bool(f.get("content"))) or (
+        f.get("kind") == "status" and bool(f.get("message"))
+    )
 
 
 def assert_staging(base: str) -> None:
