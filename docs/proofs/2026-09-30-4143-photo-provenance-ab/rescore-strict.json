@@ -1,0 +1,22 @@
+{
+ "tp700/A": {
+  "n": 5,
+  "explicit_label_attribution": 0,
+  "wrong_device_type_first_line": 5
+ },
+ "tp700/B": {
+  "n": 5,
+  "explicit_label_attribution": 5,
+  "wrong_device_type_first_line": 2
+ },
+ "bearing/A": {
+  "n": 5,
+  "explicit_label_attribution": 4,
+  "says_32906X": 5
+ },
+ "bearing/B": {
+  "n": 5,
+  "explicit_label_attribution": 1,
+  "says_32906X": 5
+ }
+}

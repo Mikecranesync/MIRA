@@ -28,10 +28,7 @@ import {
 import { uploadSourceWarningCopy } from "../lib/resource-copy";
 import { PDF_MIME, capturePhoto, pickDocument, pickPhoto } from "../lib/native-pick";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "./attachment-handoff";
-
-/** Shared with the legacy surface so both say the same thing (see #3837). */
-const PHOTO_ANALYSIS_UNAVAILABLE =
-  "The photo was saved, but MIRA couldn't analyze it. Try another photo before asking about it.";
+import { lookRefusal } from "./look-gate";
 
 /** The rider shape the notebook's send path already accepts for Sensor. */
 export interface VisualEvidenceRider {
@@ -187,20 +184,13 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
       let rider: VisualEvidenceRider | undefined;
       if (photo) {
         const look = await lookAtPhoto(notebookId, photo.file, crypto.randomUUID(), question, threadId);
-        if (!look.fileId) {
-          // Never send a photo question without the photo: that would answer
-          // from nothing while looking like it answered from the picture.
+        // Never send a photo question without the photo: that would answer
+        // from nothing while looking like it answered from the picture. See
+        // lookRefusal for each way the photo can fail to reach the answer.
+        const refusal = lookRefusal(look);
+        if (refusal) {
           retain();
-          return { question, failure: "The photo didn't upload — try again." };
-        }
-        if (!look.observation) {
-          // Parked but never read. The server returns the saved file with a
-          // null observation when vision fails (502) or is unconfigured (503),
-          // so this is an ordinary outage, not an exception. Asking anyway
-          // would answer from nothing about a picture nothing has read — the
-          // same failure the fileId check above prevents, one step later.
-          retain();
-          return { question, failure: PHOTO_ANALYSIS_UNAVAILABLE };
+          return { question, failure: refusal };
         }
         rider = {
           visualEvidence: {

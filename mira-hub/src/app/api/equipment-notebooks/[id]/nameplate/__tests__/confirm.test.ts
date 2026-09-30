@@ -74,6 +74,7 @@ vi.mock("@/lib/visual-evidence-context", () => ({
 }));
 
 import { POST } from "../confirm/route";
+import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -491,6 +492,205 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(JSON.stringify(ev)).not.toMatch(/X-Mira-Key|ASK_API_KEY|api[_-]?key/i);
   });
 
+  // #4075 / Codex #4118 F3 — a background search passes a FENCED promoter. When
+  // it refuses (the notebook's identity changed mid-search), the manual must be
+  // left a disabled candidate — never enabled for the corrected machine.
+  const acquireInput = {
+    tenantId: TENANT_ID,
+    userId: "u1",
+    notebookId: NOTEBOOK_ID,
+    nodeId: "node-1",
+    identity: { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" },
+  };
+  const provingText = () =>
+    vi.mocked(withTenantContext).mockResolvedValue([
+      { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
+    ]);
+
+  it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    // Exactly one attempt (the promotion) — no demotion afterwards.
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect((writeSourceState.mock.calls[0] as unknown[])[3]).toMatchObject({
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: expect.objectContaining({ decisionMethod: "catalog_number_exact" }),
+    });
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
+  });
+
+  it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const attach = vi.fn(async () => false);
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach });
+    expect(attach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, expect.any(String), MANUAL_DOC_ID, expect.any(Array), expect.anything());
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, attachSkipped: true });
+  });
+
+
+  it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const accepted = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
+    expect(accepted.status).toBe("complete");
+    expect(accepted.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: true });
+    vi.mocked(setSourceState).mockClear();
+    const byDefault = await acquireManualForIdentity(acquireInput);
+    expect(byDefault.status).toBe("complete");
+    expect(vi.mocked(setSourceState).mock.calls.at(-1)![3]).toMatchObject({ matchState: "verified", enabledByDefault: true });
+  });
+
+  it("Codex #4118 F8: a technician's decision the writer declined is reported as it stands, never as enabled", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const rejected = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "rejected", enabledByDefault: false })),
+    });
+    expect(rejected.status).toBe("candidate_review");
+    expect(rejected.payload.manual).toMatchObject({ matchState: "rejected", enabledByDefault: false, attached: false });
+    const disabled = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: false })),
+    });
+    expect(disabled.status).toBe("candidate_review");
+    expect(disabled.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: false, attached: true });
+    const confirmed = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "user_confirmed", enabledByDefault: true })),
+    });
+    expect(confirmed.status).toBe("complete");
+  });
+
+  it("Codex #4118 F9: a source removed before the write is not reported as added", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const gone = await acquireManualForIdentity({ ...acquireInput, writeSourceState: vi.fn(async () => null) });
+    expect(gone.status).toBe("candidate_review");
+    expect(gone.payload.manual).toMatchObject({ attached: false, enabledByDefault: false });
+    expect(String(gone.payload.message)).toMatch(/not among this notebook's sources/);
+    // The default (route) writer: a zero-row update is also "not attached".
+    vi.mocked(setSourceState).mockResolvedValueOnce(false);
+    const routeGone = await acquireManualForIdentity(acquireInput);
+    expect(routeGone.status).toBe("candidate_review");
+    expect(routeGone.payload.manual).toMatchObject({ attached: false });
+  });
+
+  it("Codex #4118 r13 F17: a failed chunk read is retryable — no verdict, no source write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(withTenantContext).mockRejectedValueOnce(new Error("connection terminated unexpectedly"));
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.retryable).toBe(true);
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, matchState: "candidate", enabledByDefault: false });
+  });
+
+  it("Codex #4118 r13 F17: a writer that throws is retryable, never 'not added'", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.manual).not.toMatchObject({ attached: false });
+  });
+
+  it("Codex #4118 r13 F17 control: a successful read + write is not marked retryable", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
+    expect(out.status).toBe("complete");
+    expect(out.payload.retryable).toBeUndefined();
+  });
+
+  it("Codex #4118 r14 F18: an attach gate that throws is retryable and attaches nothing", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      attach: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.linked).toBe(false);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r14 F19: a manual the technician removed is never attached again", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "removed" as const) });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r15 F19: 'resume' assesses the existing source without re-attaching", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "resume" as const) });
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe("complete");
+  });
+
+  it("Codex #4118 r15 F19: a source gone at write time is reported as removed by the technician", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => null),
+      attach: vi.fn(async () => "resume" as const),
+    });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(out.payload.linked).toBe(false);
+  });
+
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
@@ -529,6 +729,18 @@ describe("scanned manuals are stored, viewable, and never a chat source", () => 
     expect(attachArgs[2][0]).toMatchObject({ role: "manual" });
     expect(attachArgs[2][0].matchState).toBeUndefined();
     expect(setSourceState).not.toHaveBeenCalled();
+    expect(body.ingestFailed).toBe(false);
+  });
+
+  it("Codex #4118 r12 F16: a NON-scan ingest failure is flagged retryable (ingestFailed), a scan is not", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(ingestPdfToNode).mockRejectedValue(new Error("connection terminated unexpectedly"));
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("candidate_review");
+    expect(body.ingestFailed).toBe(true);
+    expect(body.manual).toMatchObject({ docId: null, indexed: false });
   });
 });
 

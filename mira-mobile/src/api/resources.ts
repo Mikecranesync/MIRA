@@ -1053,6 +1053,10 @@ export interface LookResult {
   message: string | null;
   /** Opaque capture-quality assessment (blur/glare hint) — preserved verbatim. */
   quality: unknown | null;
+  /** True only when the server confirms it saved the observation. A chat turn
+   *  that re-sends this photo grounds on the SAVED observation, and /look's
+   *  save is fail-open, so an unsaved one must not ride a question (#4082). */
+  observationPersisted: boolean;
 }
 
 /**
@@ -1102,6 +1106,7 @@ export async function lookAtPhoto(
           }
         : null,
     quality: d.quality ?? null,
+    observationPersisted: d.observationPersisted === true,
     reason: typeof d.reason === "string" ? d.reason : null,
     message: typeof d.message === "string" ? d.message : null,
   };

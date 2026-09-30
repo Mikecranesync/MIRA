@@ -1,0 +1,45 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "condition": "new_chat",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "answer_sha256": "fbd7a620c141e3c4533828729aa8424493044e3624005f905cc51ba5be58b3c9",
+  "correctness": 8,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 3,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_diagnosis",
+  "factual_errors": [
+    {
+      "claim": "The most likely cause is a communication-settings mismatch or generic timing issue.",
+      "why_wrong": "For the described symptom, the key known failure mechanism is PLX32 Modbus TCP connection/session handling, especially connection-table exhaustion and idle TCP timeout behavior. A settings mismatch is unlikely if ModScan can successfully poll the same registers during the failure.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Verify baud rate, parity, data bits, stop bits, and RTU vs ASCII as a primary diagnostic step.",
+      "why_wrong": "The relevant PLX32/CENTUM/ModScan symptom is characteristic of Modbus TCP/socket behavior, not serial framing. This step is likely irrelevant and delays diagnosis of TCP connection limits, keepalive, NAT/firewall, or Layer 3 timeout behavior.",
+      "severity": "major"
+    },
+    {
+      "claim": "An incorrect slave address can make the gateway ignore replies that ModScan still receives because it retries.",
+      "why_wrong": "If ModScan can poll the same registers successfully during the event, address mapping is not the primary explanation. The stated retry explanation does not address the known diagnostic distinction: ModScan may bypass the failing connection/session pool or maintain a different persistent TCP path.",
+      "severity": "critical"
+    },
+    {
+      "claim": "Physical layer noise, grounding, or cable termination is a likely cause to inspect.",
+      "why_wrong": "While always possible in general, this does not explain why ModScan can communicate successfully with the same registers during the failure. The answer omits the more specific and probable connection-table/idle-timeout mechanism.",
+      "severity": "major"
+    },
+    {
+      "claim": "DCS logs for illegal function or frame errors will reveal whether the DCS is rejecting frames from the gateway but accepting generic polls.",
+      "why_wrong": "The known failure mode is not primarily illegal Modbus functions or rejected frames; it is TCP connection/session exhaustion or dropped idle sessions. This diagnostic focus may send the technician to the wrong logs and away from checking active sockets, TCP resets, keepalive, and gateway connection limits.",
+      "severity": "major"
+    }
+  ],
+  "notes": "The answer is generic Modbus troubleshooting and does not identify the central PLX32/Yokogawa symptom pattern: TCP connection/session exhaustion and network idle-timeout behavior where ModScan can still work because it uses a different direct/persistent connection path. It provides no citations or asset-specific support. Safety is acceptable, but the diagnosis is incomplete and likely to waste troubleshooting time."
+}
