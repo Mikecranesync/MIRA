@@ -33,10 +33,11 @@ Public surface:
 from __future__ import annotations
 
 from .crawler_bridge import record_manual_discovery, upsert_manual_cache
-from .search import search_manual, validate_pdf
+from .search import provider_query_budget, search_manual, validate_pdf
 
 __all__ = [
     "search_manual",
+    "provider_query_budget",
     "validate_pdf",
     "record_manual_discovery",
     "upsert_manual_cache",

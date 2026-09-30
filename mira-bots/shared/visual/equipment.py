@@ -508,13 +508,19 @@ async def _discover_and_queue_oem_manual(manufacturer: str, model: str) -> None:
     never blocks the local-KB result on network/DB availability.
     """
     try:
-        from ..manual_search import record_manual_discovery, search_manual  # noqa: PLC0415
+        from ..manual_search import (  # noqa: PLC0415
+            provider_query_budget,
+            record_manual_discovery,
+            search_manual,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.info("manual_sense web rung: manual_search unavailable: %s", exc)
         return
 
     try:
-        candidate = await search_manual(manufacturer, model)
+        # Every provider query is counted and capped (Manual-First PRD R13).
+        with provider_query_budget():
+            candidate = await search_manual(manufacturer, model)
     except Exception as exc:  # noqa: BLE001
         logger.info("manual_sense web rung: search failed for %s %s: %s", manufacturer, model, exc)
         return
