@@ -361,3 +361,15 @@ describe("#4114 review F6: the approved-equipment exception applies to the devic
     expect(detectImprovisedLockout(q)).toBe(false);
   });
 });
+
+describe("#4114 review F6 (round 2): only an isolation valve is exempt, and only by its own name", () => {
+  it.each([
+    "We use the lockable stop button as our lockout.",
+    "We use the lockable regulator knob as our lockout.",
+    "Instead of isolation we use the knob as our lockout.",
+    "We use the approved lockable control valve as our lockout.",
+  ])("an improvised control is flagged whatever words sit near it: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(true);
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});

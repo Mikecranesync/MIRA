@@ -210,27 +210,16 @@ const OFF_THEN_MOVE_BY_HAND = new RegExp(
 
 // Approved energy-isolating equipment used as the lockout is a real lockout,
 // not an improvised one (#4114 review round 3: "the approved lockable isolation
-// valve as our lockout"). #4114 review F6: the exception belongs to the DEVICE
-// relied on, never to any approval word elsewhere in the sentence ("the red knob
-// as our lockout because the disconnect is broken", "a padlock on the stop
-// button"). So a device token is exempt only when the words directly describing
-// it name approved isolation equipment, and nothing negates that approval.
-const DEVICE_TOKEN = new RegExp("\\b" + IMPROVISED_DEVICE + "\\b", "gi");
-const APPROVED_MODIFIER = /\b(?:approved|lockable|isolation|isolating|energy[-\s]isolating)\b/i;
-const NEGATED_APPROVAL = /\b(?:not|non|un)[-\s]?(?:approved|lockable)\b|\bnon[-\s]/i;
+// valve as our lockout"). #4114 review F6: the exception belongs to the DEVICE,
+// never to approval words elsewhere, and a lockable button, knob or regulator is
+// still not an energy-isolating device. Of the improvised-device list only a
+// valve can be one, so the ONLY exemption is a valve named as an isolation valve
+// by the word directly before it ("isolation valve", "energy-isolating valve").
+const ISOLATION_VALVE = /\b(?:isolation|isolating)\s+valve\b/gi;
 
-/** Blank out device tokens that are themselves approved isolation equipment. */
+/** Blank out isolation valves; every other device token stays as written. */
 function withoutApprovedDevices(sentence: string): string {
-  return sentence.replace(DEVICE_TOKEN, (device, offset: number) => {
-    // The describing words: up to four words right before the device, stopping
-    // at a preposition/article boundary that starts a different noun phrase.
-    const before = sentence.slice(Math.max(0, offset - 48), offset);
-    const words = before.split(/\s+/).filter(Boolean).slice(-4);
-    const cut = words.map((w) => w.toLowerCase()).lastIndexOf("on");
-    const describing = (cut >= 0 ? words.slice(cut + 1) : words).join(" ");
-    const approved = APPROVED_MODIFIER.test(describing) && !NEGATED_APPROVAL.test(describing);
-    return approved ? "equipment" : device;
-  });
+  return sentence.replace(ISOLATION_VALVE, "isolation equipment");
 }
 
 export function detectImprovisedLockout(message: string): boolean {
