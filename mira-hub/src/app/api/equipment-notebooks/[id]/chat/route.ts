@@ -2013,7 +2013,7 @@ async function handleChatTurn(
     asksPartCompatibility(message) &&
     photoPartNumber !== null;
   const photoPartCompatibilityText = unverifiedPartCompatibility
-    ? `I can't verify whether those parts are interchangeable from this photo. The label appears to read \"${photoPartNumber}\", but that is an unconfirmed transcription; I won't guess what its suffix means or say an M12 is a substitute without a source that confirms compatibility. Ask me to look up the manual for \"${photoPartNumber}\" and I can search for a candidate.`
+    ? `I can't verify whether those parts are interchangeable from this photo. The label appears to read \"${photoPartNumber}\", but that is an unconfirmed transcription; I won't guess what the code means or say another part is a substitute without a source that confirms compatibility. Ask me to look up the manual for \"${photoPartNumber}\" and I can search for a candidate.`
     : null;
   // #4068 (owner decision 2026-09-27, "both"): a troubleshooting/procedure
   // question about THIS machine with nothing citable declines honestly instead

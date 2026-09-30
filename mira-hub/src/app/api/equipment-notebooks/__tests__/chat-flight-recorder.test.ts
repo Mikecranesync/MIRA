@@ -300,7 +300,14 @@ describe("visualEvidence with no stored LOOK observation", () => {
 });
 
 describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
+  // These overrides are persistent (mockResolvedValue) and vi.clearAllMocks() does not
+  // reset implementations, so without a restore the "Ni8U-S12-AP6" photo leaks into
+  // every later test in this file and diverts OEM-retrieval tests into the part lookup.
+  const saved: Array<[{ getMockImplementation: () => unknown; mockImplementation: (f: never) => unknown }, unknown]> = [];
   beforeEach(() => {
+    for (const m of [domainMock.getNotebook, filesMock.photoLinkedToTarget, veMock.loadVisualEvidenceForPhoto, ragMock.retrieveManualChunks]) {
+      saved.push([m as never, (m as unknown as { getMockImplementation: () => unknown }).getMockImplementation()]);
+    }
     domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
     filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-09-30T00:00:00.000Z" });
     veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
@@ -308,6 +315,12 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+  });
+  afterEach(() => {
+    for (const [m, impl] of saved.splice(0)) {
+      (m as unknown as { mockReset: () => void }).mockReset();
+      if (impl) m.mockImplementation(impl as never);
+    }
   });
 
   it("does not answer a compatibility question by decoding an unconfirmed part number", async () => {
@@ -324,6 +337,21 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     const packet = firstRecordedPacket();
     expect(packet.retrieval.photo_part_manual_lookup).toBeNull();
     expect(JSON.stringify(packet)).not.toContain("Ni8U-S12-AP6");
+  });
+
+  it("the unverified-compatibility reply is generic — it names only the part the photo shows (#4148 review)", async () => {
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o2", sessionId: "s2", text: "Label appears to read P/N 6ES7214-1AG40-0XB0",
+      obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+    } as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "Is this a drop-in replacement for a 6ES7214-1BG40?", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    const status = (await frames(res)).find((x) => x.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("6ES7214-1AG40-0XB0");
+    expect(String(status?.message)).not.toMatch(/\bM12\b|\bS12\b/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("searches the exact part number when the technician explicitly asks for its manual", async () => {
