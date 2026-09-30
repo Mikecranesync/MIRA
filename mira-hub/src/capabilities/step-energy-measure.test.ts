@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { validateAnswer } from "./answer-validation";
+import { stepEnergyContradiction } from "./step-energy";
 import { loadLabeledSet, score } from "./step-energy-labeled-set";
 
 const rows = loadLabeledSet();
@@ -30,9 +31,16 @@ describe("#4122 step-energy scorer", () => {
     expect(score(rows, () => false).recall).toBe(0);
   });
 
-  it("baseline: what today's validateAnswer flags (recorded, not gated)", () => {
+  it("validateAnswer as wired (recorded, not gated)", () => {
     const s = score(rows, (r) => flagged(r.answer, r.question));
     console.log("BASELINE validateAnswer", JSON.stringify(s));
     expect(s.tp + s.fp + s.fn + s.tn).toBe(140);
+  });
+
+  it("gate: stepEnergyContradiction holds precision >= 0.85 and recall >= 0.60 on the labeled set", () => {
+    const s = score(rows, (r) => stepEnergyContradiction(r.answer) !== null);
+    console.log("STEP-ENERGY", JSON.stringify(s));
+    expect(s.precision).toBeGreaterThanOrEqual(0.85);
+    expect(s.recall).toBeGreaterThanOrEqual(0.6);
   });
 });
