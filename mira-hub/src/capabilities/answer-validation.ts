@@ -28,6 +28,7 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
+import { stepEnergyContradiction } from "./step-energy";
 
 export type AnswerValidation =
   | { ok: true }
@@ -645,11 +646,75 @@ export function unsupportedExactRating(text: string): string | null {
  *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
 export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
 
+// #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
+// about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
+// the IEC 60751 definition of the sensor type, and was blocked 5/5 on staging
+// (731649c23).
+//
+// The exemption is a CLOSED TEMPLATE over a whole clause, never a span or a
+// value set (#4108 review rounds 1-2: value sets let unrelated numbers launder
+// invented ones; spans detached a value from its sensor and quantity, stripped
+// a range's endpoint or a negative sign). A clause is a definition only when
+// the entire clause reads "[a|the] PTnnn['s] [sensor|element|RTD] [has|is|reads]
+// [a] [nominal|base] [resistance|value] [of|is] [a] [nominal] R Ω at 0 °C",
+// with R equal to that clause's OWN designation (PT100 → 100 Ω, PT1000 →
+// 1 000 Ω). Those clauses are removed and the full rating grammar re-runs on
+// everything else, so a lead resistance, a limit, a range, a swapped value or
+// any other claim still blocks.
+const RTD_DEFINITION_CLAUSE_RE = new RegExp(
+  "^\\s*(?:(?:a|an|the)\\s+)?pt[-\\s]?(100|500|1000)(?:'s)?" +
+    "(?:\\s+(?:sensor|element|rtd))?(?:\\s+(?:has|is|reads))?(?:\\s+an?)?" +
+    "(?:\\s+(?:nominal|base))?(?:\\s+(?:resistance|value))?(?:\\s+(?:of|is))?" +
+    "(?:\\s+a)?(?:\\s+nominal)?" +
+    "\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c(?:\\s+nominal)?\\s*[.!]?\\s*$",
+  "i",
+);
+// Also the "The nominal resistance of a PT1000 is 1000 ohms at 0 °C" order.
+const RTD_DEFINITION_CLAUSE_RE_2 = new RegExp(
+  "^\\s*the\\s+(?:nominal|base)\\s+resistance\\s+of\\s+(?:(?:a|an|the)\\s+)?" +
+    "pt[-\\s]?(100|500|1000)\\s+is\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c\\s*[.!]?\\s*$",
+  "i",
+);
+
+function isRtdDefinitionClause(clause: string): boolean {
+  for (const re of [RTD_DEFINITION_CLAUSE_RE, RTD_DEFINITION_CLAUSE_RE_2]) {
+    const m = re.exec(clause);
+    if (m) {
+      const ohms = Number(m[2].replace(/,/g, "")) * (m[3] ? 1000 : 1);
+      return ohms === Number(m[1]);
+    }
+  }
+  return false;
+}
+
+/** The sentence with every whole-clause RTD definition blanked out, and every
+ *  other byte — including the separators — left exactly as written (#4108
+ *  review round 3: rebuilding with commas broke the rating grammar's own
+ *  "220 and 480 V" range syntax). Clauses are delimited by ", " / ";" / " and "
+ *  / " whereas " / " while " / " vs."; a thousands comma ("1,000") has no
+ *  following space, so it never splits a number. */
+function withoutRtdDefinitions(sentence: string): string {
+  // The capture group keeps each separator in the array at the odd indexes.
+  const parts = sentence.split(/(,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+)/i);
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isRtdDefinitionClause(parts[i])) {
+      parts[i] = "";
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : sentence;
+}
+
 export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
-    const m = EXACT_RATING_RE.exec(sentence);
+    // Report the claim that survives the exemption, not the exempt definition
+    // (#4108 review round 2 F3: gate_match must name what actually blocked).
+    const m = EXACT_RATING_RE.test(sentence) ? EXACT_RATING_RE.exec(withoutRtdDefinitions(sentence)) : null;
     if (m) {
       return {
         excerpt: m[0].slice(0, 160),
@@ -909,8 +974,95 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
   };
 }
 
+// #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
+// volts. 2. Measure the actual line voltage at the drive's input terminals."
+// After a lockout, a live supply reading at a physical contact point implies a
+// restore that is never written, so the explicit restore-to-measure rule never
+// fired and the answer was served with no energized-work banner (2 of 5 turns).
+//
+// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
+// withholds the answer, so a miss costs more than an extra warning. Each
+// bolted-on exemption (display reading, dead check, splitting on "and") opened
+// a new bypass. The rule therefore fires on a positive shape and keeps only
+// two exemptions, both clause-scoped:
+//   fire   = after an affirmative lockout, a clause with a measure verb, a live
+//            supply quantity, and a physical CONTACT point;
+//   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
+//            clause is a prohibition of the measurement.
+// A display-only reading has no contact point, so it never fires; a resistance
+// or continuity check sharing the clause does not exempt a live-voltage
+// reading; "not dead" is not a dead check.
+const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const LIVE_SUPPLY_QUANTITY =
+  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
+const CONTACT_POINT =
+  /\b(?:terminals?|conductors?|phases?|legs?|lugs?|busbars?|bus\s+bars?|test\s+leads?|leads?|wires?|feeder|L1|L2|L3|line[-\s]to[-\s]line)\b/i;
+// Affirmative verification that voltage is ABSENT. "not dead"/"not zero" is
+// the opposite claim and never matches.
+const VERIFIES_ABSENCE =
+  /\b(?:verify|confirm|check|test)\w*\b(?:(?!\bnot\b)[^.!?\n]){0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+(?:any\s+)?voltage|no\s+voltage)\b/i;
+const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+// An explicit instrument is physical contact (review round 3 F3).
+const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
+const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
+
+function liveMeasurementAfterLockout(text: string): string | null {
+  let isolated = false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+      // #4111 review round 3: "then" starts a separate action, so an exemption
+      // in one step cannot cover the next. "and" is NOT split, so a shared
+      // prohibition ("do not probe and measure …") keeps governing its verbs.
+      for (let step of clause.split(/\bthen\b/i)) {
+        if (!step.trim()) continue;
+        // Only an affirmative restore ends isolation; "do not restore" does not.
+        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+          isolated = false;
+          continue;
+        }
+        // A lockout isolates, and the rest of the SAME step is still checked
+        // ("lock out the drive and measure …", review round 3 F1).
+        const lock = LOCKOUT_STEP.exec(step);
+        if (lock && !LOCKOUT_PROHIBITION.test(step)) {
+          isolated = true;
+          step = step.slice(lock.index + lock[0].length);
+        }
+        if (!isolated) continue;
+        if (
+          MEASURE_VERB.test(step) &&
+          LIVE_SUPPLY_QUANTITY.test(step) &&
+          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+          !VERIFIES_ABSENCE.test(step) &&
+          !MEASURE_PROHIBITION.test(step)
+        ) {
+          return step.trim();
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** #4122: a step that is both locked out and powered stays in the answer, quoted in
+ *  a warning above it (owner decision 2026-09-27: flags never withhold). */
+function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
+  const quoted = step.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation: "hazard-warning:step-energy-contradiction",
+    detail: quoted,
+    replacement: `⚠️ **Lockout conflict in a step below:** “${quoted}”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\n${answerText}`,
+  };
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
-  if (!restore) return { ok: true };
+  if (!restore) {
+    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
+    // markdown emphasis and curly apostrophes must not change the result.
+    const step = stepEnergyContradiction(foldForDetection(answerText));
+    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+  }
   return {
     ok: false,
     kind: "energized_warning",
@@ -1001,7 +1153,7 @@ export function validateAnswer(opts: {
   // Detection stays unconditional and runs before A2 for the same reason as
   // before: the same sentence usually satisfies A2's `energized` relation, and
   // letting A2 stop it would silently re-impose the withhold.
-  const restore = restoreEnergyToMeasure(scanText);
+  const restore = restoreEnergyToMeasure(scanText) ?? liveMeasurementAfterLockout(scanText);
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.

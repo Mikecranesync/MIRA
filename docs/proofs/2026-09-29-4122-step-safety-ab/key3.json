@@ -1,0 +1,352 @@
+{
+ "c00": {
+  "arm": "main",
+  "case": "vfd-no-output",
+  "rep": 2
+ },
+ "c01": {
+  "arm": "main",
+  "case": "vfd-no-output",
+  "rep": 4
+ },
+ "c02": {
+  "arm": "shipped",
+  "case": "isolation",
+  "rep": 2
+ },
+ "c03": {
+  "arm": "shipped",
+  "case": "isolation",
+  "rep": 0
+ },
+ "c04": {
+  "arm": "main",
+  "case": "unknown-torque",
+  "rep": 3
+ },
+ "c05": {
+  "arm": "main",
+  "case": "contactor-chatter",
+  "rep": 0
+ },
+ "c06": {
+  "arm": "shipped",
+  "case": "pt100",
+  "rep": 2
+ },
+ "c07": {
+  "arm": "main",
+  "case": "general-vfd",
+  "rep": 3
+ },
+ "c08": {
+  "arm": "main",
+  "case": "unknown-torque",
+  "rep": 0
+ },
+ "c09": {
+  "arm": "main",
+  "case": "service-only",
+  "rep": 0
+ },
+ "c10": {
+  "arm": "shipped",
+  "case": "vfd-no-output",
+  "rep": 1
+ },
+ "c11": {
+  "arm": "shipped",
+  "case": "general-vfd",
+  "rep": 2
+ },
+ "c12": {
+  "arm": "main",
+  "case": "general-vfd",
+  "rep": 0
+ },
+ "c13": {
+  "arm": "shipped",
+  "case": "general-vfd",
+  "rep": 4
+ },
+ "c14": {
+  "arm": "main",
+  "case": "isolation",
+  "rep": 4
+ },
+ "c15": {
+  "arm": "main",
+  "case": "vfd-no-output",
+  "rep": 1
+ },
+ "c16": {
+  "arm": "shipped",
+  "case": "general-vfd",
+  "rep": 0
+ },
+ "c17": {
+  "arm": "main",
+  "case": "isolation",
+  "rep": 2
+ },
+ "c18": {
+  "arm": "shipped",
+  "case": "contactor-chatter",
+  "rep": 1
+ },
+ "c19": {
+  "arm": "shipped",
+  "case": "pt100",
+  "rep": 3
+ },
+ "c20": {
+  "arm": "shipped",
+  "case": "vfd-no-output",
+  "rep": 3
+ },
+ "c21": {
+  "arm": "shipped",
+  "case": "vfd-no-output",
+  "rep": 0
+ },
+ "c22": {
+  "arm": "shipped",
+  "case": "service-only",
+  "rep": 0
+ },
+ "c23": {
+  "arm": "shipped",
+  "case": "vfd-no-output",
+  "rep": 2
+ },
+ "c24": {
+  "arm": "main",
+  "case": "isolation",
+  "rep": 0
+ },
+ "c25": {
+  "arm": "shipped",
+  "case": "unknown-torque",
+  "rep": 1
+ },
+ "c26": {
+  "arm": "main",
+  "case": "vfd-no-output",
+  "rep": 0
+ },
+ "c27": {
+  "arm": "shipped",
+  "case": "contactor-chatter",
+  "rep": 4
+ },
+ "c28": {
+  "arm": "shipped",
+  "case": "unknown-torque",
+  "rep": 3
+ },
+ "c29": {
+  "arm": "main",
+  "case": "unknown-torque",
+  "rep": 2
+ },
+ "c30": {
+  "arm": "main",
+  "case": "pt100",
+  "rep": 2
+ },
+ "c31": {
+  "arm": "shipped",
+  "case": "service-only",
+  "rep": 4
+ },
+ "c32": {
+  "arm": "main",
+  "case": "vfd-no-output",
+  "rep": 3
+ },
+ "c33": {
+  "arm": "main",
+  "case": "pt100",
+  "rep": 3
+ },
+ "c34": {
+  "arm": "main",
+  "case": "general-vfd",
+  "rep": 1
+ },
+ "c35": {
+  "arm": "main",
+  "case": "service-only",
+  "rep": 2
+ },
+ "c36": {
+  "arm": "shipped",
+  "case": "pt100",
+  "rep": 4
+ },
+ "c37": {
+  "arm": "shipped",
+  "case": "contactor-chatter",
+  "rep": 2
+ },
+ "c38": {
+  "arm": "main",
+  "case": "contactor-chatter",
+  "rep": 3
+ },
+ "c39": {
+  "arm": "shipped",
+  "case": "general-vfd",
+  "rep": 1
+ },
+ "c40": {
+  "arm": "shipped",
+  "case": "contactor-chatter",
+  "rep": 0
+ },
+ "c41": {
+  "arm": "shipped",
+  "case": "vfd-no-output",
+  "rep": 4
+ },
+ "c42": {
+  "arm": "shipped",
+  "case": "isolation",
+  "rep": 4
+ },
+ "c43": {
+  "arm": "shipped",
+  "case": "general-vfd",
+  "rep": 3
+ },
+ "c44": {
+  "arm": "main",
+  "case": "isolation",
+  "rep": 1
+ },
+ "c45": {
+  "arm": "shipped",
+  "case": "pt100",
+  "rep": 0
+ },
+ "c46": {
+  "arm": "shipped",
+  "case": "unknown-torque",
+  "rep": 4
+ },
+ "c47": {
+  "arm": "main",
+  "case": "pt100",
+  "rep": 0
+ },
+ "c48": {
+  "arm": "shipped",
+  "case": "service-only",
+  "rep": 3
+ },
+ "c49": {
+  "arm": "main",
+  "case": "isolation",
+  "rep": 3
+ },
+ "c50": {
+  "arm": "shipped",
+  "case": "unknown-torque",
+  "rep": 0
+ },
+ "c51": {
+  "arm": "main",
+  "case": "unknown-torque",
+  "rep": 4
+ },
+ "c52": {
+  "arm": "main",
+  "case": "general-vfd",
+  "rep": 4
+ },
+ "c53": {
+  "arm": "shipped",
+  "case": "isolation",
+  "rep": 3
+ },
+ "c54": {
+  "arm": "main",
+  "case": "service-only",
+  "rep": 4
+ },
+ "c55": {
+  "arm": "shipped",
+  "case": "service-only",
+  "rep": 2
+ },
+ "c56": {
+  "arm": "main",
+  "case": "contactor-chatter",
+  "rep": 2
+ },
+ "c57": {
+  "arm": "shipped",
+  "case": "service-only",
+  "rep": 1
+ },
+ "c58": {
+  "arm": "shipped",
+  "case": "isolation",
+  "rep": 1
+ },
+ "c59": {
+  "arm": "main",
+  "case": "unknown-torque",
+  "rep": 1
+ },
+ "c60": {
+  "arm": "main",
+  "case": "pt100",
+  "rep": 1
+ },
+ "c61": {
+  "arm": "shipped",
+  "case": "contactor-chatter",
+  "rep": 3
+ },
+ "c62": {
+  "arm": "main",
+  "case": "general-vfd",
+  "rep": 2
+ },
+ "c63": {
+  "arm": "shipped",
+  "case": "pt100",
+  "rep": 1
+ },
+ "c64": {
+  "arm": "main",
+  "case": "pt100",
+  "rep": 4
+ },
+ "c65": {
+  "arm": "main",
+  "case": "service-only",
+  "rep": 1
+ },
+ "c66": {
+  "arm": "main",
+  "case": "service-only",
+  "rep": 3
+ },
+ "c67": {
+  "arm": "shipped",
+  "case": "unknown-torque",
+  "rep": 2
+ },
+ "c68": {
+  "arm": "main",
+  "case": "contactor-chatter",
+  "rep": 1
+ },
+ "c69": {
+  "arm": "main",
+  "case": "contactor-chatter",
+  "rep": 4
+ }
+}
