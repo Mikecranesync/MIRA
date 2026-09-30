@@ -1,12 +1,19 @@
 // Vitest coverage for src/lib/safe-download.ts — the SSRF + size + content
-// gates on an UNTRUSTED remote URL.
+// gates on an UNTRUSTED remote URL, INCLUDING the connect-time DNS
+// resolve-and-pin that closes the rebinding residual (PRD R6, #4160).
 //
 // Run: cd mira-hub && npx vitest run src/lib/__tests__/safe-download.test.ts
 //
-// No network: global.fetch is stubbed per test. The oversized-body case uses a
-// pull-counting ReadableStream so we can prove the body is aborted mid-stream
-// rather than buffered and measured afterwards.
+// No network, no real DNS, no real TLS socket: `__setResolverForTests` stubs
+// what a hostname resolves to, and `__setTransportForTests` stubs what
+// `https.request` would hand back — including the exact options (lookup,
+// servername, rejectUnauthorized) the module would have used for a real
+// socket, so tests can assert on the pin without opening one. The oversized-
+// body case uses a pull-counting Readable so we can prove the body is
+// destroyed mid-stream rather than buffered and measured afterwards.
 
+import type { RequestOptions } from "node:https";
+import { Readable } from "node:stream";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   safeDownloadPdf,
@@ -14,18 +21,46 @@ import {
   isBlockedHost,
   hostAllowed,
   safePdfFilename,
+  __setResolverForTests,
+  __setTransportForTests,
+  type TransportResponse,
 } from "@/lib/safe-download";
 
 const OEM = "literature.rockwellautomation.com";
 const ALLOWED = ["rockwellautomation.com"];
+/** A harmless public IPv4 (example.com) — never actually dialed; the transport is always stubbed. */
+const PUBLIC_IP = "93.184.216.34";
 
-function pdfResponse(body: string | Uint8Array, type = "application/pdf"): Response {
-  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
-  return new Response(bytes as unknown as BodyInit, { status: 200, headers: { "content-type": type } });
+function pdfBody(bytes: string | Uint8Array): Readable {
+  const buf = typeof bytes === "string" ? Buffer.from(bytes) : Buffer.from(bytes);
+  return Readable.from([buf]);
 }
 
-function redirect(to: string, status = 302): Response {
-  return new Response(null, { status, headers: { location: to } });
+function pdfResponse(body: string | Uint8Array, type = "application/pdf"): TransportResponse {
+  return { statusCode: 200, headers: { "content-type": type }, body: pdfBody(body) };
+}
+
+function redirectResponse(to: string, status = 302): TransportResponse {
+  return { statusCode: status, headers: { location: to }, body: Readable.from([]) };
+}
+
+function errorResponse(status: number, text = "nope"): TransportResponse {
+  return { statusCode: status, headers: {}, body: pdfBody(text) };
+}
+
+/** Any hostname resolves to one public, non-blocked IPv4 address. */
+function pinPublic(): void {
+  __setResolverForTests(async () => [{ address: PUBLIC_IP, family: 4 }]);
+}
+
+/** Every hostname resolves to exactly these records. */
+function pinRecords(records: { address: string; family: number }[]): void {
+  __setResolverForTests(async () => records);
+}
+
+/** Different DNS answers per hostname — e.g. hop 1 clean, hop 2 private. */
+function pinByHost(map: Record<string, { address: string; family: number }[]>): void {
+  __setResolverForTests(async (hostname: string) => map[hostname] ?? [{ address: PUBLIC_IP, family: 4 }]);
 }
 
 beforeEach(() => {
@@ -33,7 +68,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
+  __setResolverForTests(null);
+  __setTransportForTests(null);
 });
 
 describe("isPublicHttpsUrl", () => {
@@ -152,14 +188,14 @@ describe("safeDownloadPdf — SSRF gates", () => {
 
   for (const host of ["localhost", "127.0.0.1", "10.1.2.3", "192.168.0.9", "169.254.169.254", "[::1]", "[::ffff:127.0.0.1]"]) {
     it(`rejects the private/loopback host ${host}`, async () => {
-      const fetchSpy = vi.fn();
-      vi.stubGlobal("fetch", fetchSpy);
+      const transportSpy = vi.fn();
+      __setTransportForTests(transportSpy);
       const res = await safeDownloadPdf(`https://${host}/a.pdf`, {
         allowedHosts: [host.replace(/[[\]]/g, "")],
         maxBytes: 1024,
       });
       expect(res).toEqual({ ok: false, reason: "blocked_host" });
-      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(transportSpy).not.toHaveBeenCalled();
     });
   }
 
@@ -173,22 +209,22 @@ describe("safeDownloadPdf — SSRF gates", () => {
 });
 
 describe("safeDownloadPdf — redirects are revalidated", () => {
-  it("rejects a redirect from an allowed host to a private IP", async () => {
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValueOnce(redirect("https://169.254.169.254/latest/meta-data"));
-    vi.stubGlobal("fetch", fetchSpy);
+  it("rejects a redirect from an allowed host to a literal private IP", async () => {
+    pinPublic();
+    const transportSpy = vi.fn().mockResolvedValueOnce(redirectResponse("https://169.254.169.254/latest/meta-data"));
+    __setTransportForTests(transportSpy);
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 4096,
     });
     expect(res).toEqual({ ok: false, reason: "blocked_host" });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(transportSpy).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a redirect to a host outside the allowlist", async () => {
-    const fetchSpy = vi.fn().mockResolvedValueOnce(redirect("https://evil.example.com/a.pdf"));
-    vi.stubGlobal("fetch", fetchSpy);
+    pinPublic();
+    const transportSpy = vi.fn().mockResolvedValueOnce(redirectResponse("https://evil.example.com/a.pdf"));
+    __setTransportForTests(transportSpy);
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 4096,
@@ -197,25 +233,27 @@ describe("safeDownloadPdf — redirects are revalidated", () => {
   });
 
   it("rejects when the redirect limit is exceeded", async () => {
-    const fetchSpy = vi.fn().mockImplementation(async (u: string) => {
-      const n = Number(new URL(u).pathname.replace(/\D/g, "") || "0");
-      return redirect(`https://${OEM}/${n + 1}.pdf`);
+    pinPublic();
+    const transportSpy = vi.fn().mockImplementation(async (_options: RequestOptions, url: URL) => {
+      const n = Number(url.pathname.replace(/\D/g, "") || "0");
+      return redirectResponse(`https://${OEM}/${n + 1}.pdf`);
     });
-    vi.stubGlobal("fetch", fetchSpy);
+    __setTransportForTests(transportSpy);
     const res = await safeDownloadPdf(`https://${OEM}/0.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 4096,
     });
     expect(res).toEqual({ ok: false, reason: "too_many_redirects" });
-    expect(fetchSpy).toHaveBeenCalledTimes(4); // initial + 3 hops
+    expect(transportSpy).toHaveBeenCalledTimes(4); // initial + 3 hops
   });
 
   it("follows an allowed same-domain redirect and returns the final URL", async () => {
-    const fetchSpy = vi
+    pinPublic();
+    const transportSpy = vi
       .fn()
-      .mockResolvedValueOnce(redirect("https://rockwellautomation.com/final.pdf"))
+      .mockResolvedValueOnce(redirectResponse("https://rockwellautomation.com/final.pdf"))
       .mockResolvedValueOnce(pdfResponse("%PDF-1.7\nreal manual bytes"));
-    vi.stubGlobal("fetch", fetchSpy);
+    __setTransportForTests(transportSpy);
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 4096,
@@ -229,10 +267,97 @@ describe("safeDownloadPdf — redirects are revalidated", () => {
   });
 });
 
+describe("safeDownloadPdf — DNS resolve-and-pin (connect-time rebinding guard, #4160 S3b)", () => {
+  it("rejects an allowlisted host whose resolver returns a private address, and never makes a request", async () => {
+    pinRecords([{ address: "10.0.0.5", family: 4 }]);
+    const transportSpy = vi.fn();
+    __setTransportForTests(transportSpy);
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, { allowedHosts: ALLOWED, maxBytes: 4096 });
+    expect(res).toEqual({ ok: false, reason: "blocked_address" });
+    expect(transportSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects when ANY resolved address is private, even if another is public (mixed)", async () => {
+    pinRecords([
+      { address: "8.8.8.8", family: 4 },
+      { address: "127.0.0.1", family: 4 },
+    ]);
+    const transportSpy = vi.fn();
+    __setTransportForTests(transportSpy);
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, { allowedHosts: ALLOWED, maxBytes: 4096 });
+    expect(res).toEqual({ ok: false, reason: "blocked_address" });
+    expect(transportSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["::ffff:169.254.169.254", 6],
+    ["100.68.1.2", 4],
+  ])("rejects the resolved address %s", async (address, family) => {
+    pinRecords([{ address, family }]);
+    const transportSpy = vi.fn();
+    __setTransportForTests(transportSpy);
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, { allowedHosts: ALLOWED, maxBytes: 4096 });
+    expect(res).toEqual({ ok: false, reason: "blocked_address" });
+    expect(transportSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a redirect to an allowed host whose DNS resolves private (blocked_address on hop 2)", async () => {
+    const hosts = ["oem-a.example.com", "oem-b.example.com"];
+    pinByHost({ "oem-b.example.com": [{ address: "10.0.0.9", family: 4 }] });
+    const transportSpy = vi.fn().mockResolvedValueOnce(redirectResponse("https://oem-b.example.com/manual.pdf"));
+    __setTransportForTests(transportSpy);
+    const res = await safeDownloadPdf("https://oem-a.example.com/a.pdf", {
+      allowedHosts: hosts,
+      maxBytes: 4096,
+    });
+    expect(res).toEqual({ ok: false, reason: "blocked_address" });
+    // Hop 1 made a request (it was clean); hop 2 was rejected before any
+    // socket/transport call was made for it.
+    expect(transportSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("connects the socket to exactly the address the check approved", async () => {
+    pinRecords([{ address: "203.0.113.7", family: 4 }]);
+    let capturedAddress: string | undefined;
+    let capturedFamily: number | undefined;
+    __setTransportForTests(async (options) => {
+      await new Promise<void>((resolve) => {
+        options.lookup!(OEM, {} as never, (_err, address, family) => {
+          capturedAddress = address as string;
+          capturedFamily = family;
+          resolve();
+        });
+      });
+      return pdfResponse("%PDF-1.7 body");
+    });
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, { allowedHosts: ALLOWED, maxBytes: 4096 });
+    expect(res.ok).toBe(true);
+    expect(capturedAddress).toBe("203.0.113.7");
+    expect(capturedFamily).toBe(4);
+  });
+
+  it("never disables TLS verification and keeps servername/hostname as the URL hostname", async () => {
+    pinPublic();
+    let seenOptions: RequestOptions | undefined;
+    __setTransportForTests(async (options) => {
+      seenOptions = options;
+      return pdfResponse("%PDF-1.7 body");
+    });
+    const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, { allowedHosts: ALLOWED, maxBytes: 4096 });
+    expect(res.ok).toBe(true);
+    expect(seenOptions?.rejectUnauthorized).not.toBe(false);
+    expect(seenOptions?.servername).toBe(OEM);
+    expect(seenOptions?.hostname).toBe(OEM);
+  });
+});
+
 describe("safeDownloadPdf — content validation", () => {
+  beforeEach(() => {
+    pinPublic();
+  });
+
   it("rejects an HTML landing page served as application/pdf", async () => {
-    vi.stubGlobal(
-      "fetch",
+    __setTransportForTests(
       vi.fn().mockResolvedValue(pdfResponse("<!doctype html><html>Sign in to download</html>")),
     );
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
@@ -243,8 +368,7 @@ describe("safeDownloadPdf — content validation", () => {
   });
 
   it("rejects a wrong Content-Type even when the bytes are a PDF", async () => {
-    vi.stubGlobal(
-      "fetch",
+    __setTransportForTests(
       vi.fn().mockResolvedValue(pdfResponse("%PDF-1.7 ok", "text/html; charset=utf-8")),
     );
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
@@ -255,8 +379,7 @@ describe("safeDownloadPdf — content validation", () => {
   });
 
   it("accepts application/pdf with a charset parameter", async () => {
-    vi.stubGlobal(
-      "fetch",
+    __setTransportForTests(
       vi.fn().mockResolvedValue(pdfResponse("%PDF-1.4 body", "application/pdf; charset=binary")),
     );
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
@@ -267,7 +390,7 @@ describe("safeDownloadPdf — content validation", () => {
   });
 
   it("rejects a non-2xx response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 404 })));
+    __setTransportForTests(vi.fn().mockResolvedValue(errorResponse(404)));
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 8192,
@@ -276,7 +399,7 @@ describe("safeDownloadPdf — content validation", () => {
   });
 
   it("Codex #4118 r11 F15: a 503 carries its status so the caller can retry later", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("busy", { status: 503 })));
+    __setTransportForTests(vi.fn().mockResolvedValue(errorResponse(503, "busy")));
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 8192,
@@ -284,8 +407,8 @@ describe("safeDownloadPdf — content validation", () => {
     expect(res).toEqual({ ok: false, reason: "http_error", status: 503 });
   });
 
-  it("returns network_error when fetch throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+  it("returns network_error when the transport throws", async () => {
+    __setTransportForTests(vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 8192,
@@ -295,33 +418,44 @@ describe("safeDownloadPdf — content validation", () => {
 });
 
 describe("safeDownloadPdf — maxBytes is enforced WHILE streaming", () => {
-  it("aborts an oversized body mid-stream instead of buffering it", async () => {
+  beforeEach(() => {
+    pinPublic();
+  });
+
+  it("destroys an oversized body mid-stream instead of buffering it", async () => {
     const CHUNK = 1024;
     const TOTAL_CHUNKS = 500; // 512 KB if fully read
     let pulls = 0;
-    let cancelled = false;
-    const stream = new ReadableStream<Uint8Array>({
-      pull(controller) {
+    let destroyed = false;
+
+    class CountingStream extends Readable {
+      constructor() {
+        super({ highWaterMark: CHUNK });
+      }
+      _read() {
         if (pulls === 0) {
-          const head = new Uint8Array(CHUNK);
-          head.set(new TextEncoder().encode("%PDF-1.7"));
-          controller.enqueue(head);
+          const head = Buffer.alloc(CHUNK);
+          head.write("%PDF-1.7");
+          this.push(head);
         } else if (pulls < TOTAL_CHUNKS) {
-          controller.enqueue(new Uint8Array(CHUNK));
+          this.push(Buffer.alloc(CHUNK));
         } else {
-          controller.close();
+          this.push(null);
         }
         pulls++;
-      },
-      cancel() {
-        cancelled = true;
-      },
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(stream, { status: 200, headers: { "content-type": "application/pdf" } }),
-      ),
+      }
+      _destroy(err: Error | null, callback: (error?: Error | null) => void) {
+        destroyed = true;
+        callback(err);
+      }
+    }
+
+    __setTransportForTests(
+      vi.fn().mockResolvedValue({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf" },
+        body: new CountingStream(),
+      }),
     );
 
     const res = await safeDownloadPdf(`https://${OEM}/big.pdf`, {
@@ -332,20 +466,18 @@ describe("safeDownloadPdf — maxBytes is enforced WHILE streaming", () => {
     // Proof it stopped early: a buffer-then-measure implementation would have
     // pulled all 500 chunks.
     expect(pulls).toBeLessThan(12);
-    expect(cancelled).toBe(true);
+    expect(destroyed).toBe(true);
   });
 
   it("refuses before reading when Content-Length already exceeds the cap", async () => {
-    const body = new Uint8Array(64);
-    body.set(new TextEncoder().encode("%PDF-1.7"));
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(body, {
-          status: 200,
-          headers: { "content-type": "application/pdf", "content-length": "99999999" },
-        }),
-      ),
+    const body = Buffer.alloc(64);
+    body.write("%PDF-1.7");
+    __setTransportForTests(
+      vi.fn().mockResolvedValue({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf", "content-length": "99999999" },
+        body: Readable.from([body]),
+      }),
     );
     const res = await safeDownloadPdf(`https://${OEM}/big.pdf`, {
       allowedHosts: ALLOWED,
@@ -355,9 +487,9 @@ describe("safeDownloadPdf — maxBytes is enforced WHILE streaming", () => {
   });
 
   it("accepts a body exactly at the cap", async () => {
-    const bytes = new Uint8Array(32);
-    bytes.set(new TextEncoder().encode("%PDF-1.7"));
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(pdfResponse(bytes)));
+    const bytes = Buffer.alloc(32);
+    bytes.write("%PDF-1.7");
+    __setTransportForTests(vi.fn().mockResolvedValue(pdfResponse(bytes)));
     const res = await safeDownloadPdf(`https://${OEM}/a.pdf`, {
       allowedHosts: ALLOWED,
       maxBytes: 32,
