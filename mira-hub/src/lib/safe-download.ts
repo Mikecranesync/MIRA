@@ -296,9 +296,9 @@ function defaultLookupAll(hostname: string): Promise<dns.LookupAddress[]> {
   });
 }
 
+/** Every address the check approved, in DNS order (never empty). */
 interface Pin {
-  address: string;
-  family: 4 | 6;
+  addresses: Array<{ address: string; family: 4 | 6 }>;
 }
 
 type PinResult = { ok: true; pin: Pin } | { ok: false; reason: "blocked_address" | "network_error" };
@@ -306,8 +306,9 @@ type PinResult = { ok: true; pin: Pin } | { ok: false; reason: "blocked_address"
 /**
  * Resolve `hostname` to every address it advertises and reject if ANY of them
  * is loopback/private/link-local/CGNAT/metadata — reusing `isBlockedHost`
- * (the one classifier) rather than a second one for raw addresses. The first
- * clean address is returned as the pin the socket must connect to.
+ * (the one classifier) rather than a second one for raw addresses. EVERY
+ * checked address is kept, so the socket can fall back from a dead first
+ * address (e.g. a broken IPv6 route) without a second, unchecked lookup.
  */
 async function resolveAndPin(hostname: string): Promise<PinResult> {
   const resolver = resolverOverride ?? defaultLookupAll;
@@ -325,21 +326,35 @@ async function resolveAndPin(hostname: string): Promise<PinResult> {
       return { ok: false, reason: "blocked_address" };
     }
   }
-  const first = records[0];
-  return { ok: true, pin: { address: first.address, family: first.family === 6 ? 6 : 4 } };
+  return {
+    ok: true,
+    pin: {
+      addresses: records.map((r) => ({ address: r.address, family: r.family === 6 ? 6 : 4 })),
+    },
+  };
 }
 
 /**
  * A connect-time `lookup` hook (the shape `https.request`/`http.request`
  * accept) that ignores whatever the socket layer would otherwise resolve and
- * always hands back the ONE address `resolveAndPin` already checked. This is
- * what makes the connection go to the checked address instead of whatever a
+ * only ever hands back addresses `resolveAndPin` already checked. This is
+ * what makes the connection go to a checked address instead of whatever a
  * second, independent resolution might return.
+ *
+ * Node >= 20 dials with `autoSelectFamily`, which calls this hook with
+ * `{ all: true }` and REQUIRES an array — answering with a single pair there
+ * fails every real connection. With the full list, Node's happy-eyeballs
+ * fallback walks the checked addresses in DNS order.
  */
 function makePinnedLookup(pin: Pin): LookupFunction {
-  return (_hostname, _options, callback) => {
-    callback(null, pin.address, pin.family);
-  };
+  return ((_hostname: string, options: { all?: boolean }, callback: (...args: unknown[]) => void) => {
+    if (options && options.all) {
+      callback(null, pin.addresses.map((a) => ({ address: a.address, family: a.family })));
+      return;
+    }
+    const first = pin.addresses[0];
+    callback(null, first.address, first.family);
+  }) as unknown as LookupFunction;
 }
 
 // ── Transport (real https.request, injectable in tests) ────────────────────

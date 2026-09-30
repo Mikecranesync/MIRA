@@ -511,3 +511,63 @@ describe("safeDownloadPdf — logging discipline", () => {
     expect(logged).not.toContain("SUPERSECRET");
   });
 });
+
+// Node >= 20 dials with autoSelectFamily, which calls the lookup hook with
+// { all: true } and REQUIRES an array back. A hook that always answers with a
+// single (address, family) pair makes every real download fail with
+// network_error — invisible to transport-stubbed tests, caught live on
+// 2026-09-30. The hook must also hand over EVERY checked address so a dead
+// first address (broken IPv6 route) can fall back without a second lookup.
+describe("safeDownloadPdf — pinned lookup hook contract", () => {
+  async function captureLookup(records: { address: string; family: number }[]) {
+    pinRecords(records);
+    let captured: RequestOptions["lookup"] | undefined;
+    __setTransportForTests(async (options) => {
+      captured = options.lookup;
+      return pdfResponse("%PDF-1.7 ok");
+    });
+    const r = await safeDownloadPdf(`https://${OEM}/m.pdf`, { allowedHosts: ALLOWED, maxBytes: 1000 });
+    expect(r.ok).toBe(true);
+    expect(captured).toBeTypeOf("function");
+    return captured as unknown as (
+      h: string,
+      o: { all?: boolean; family?: number },
+      cb: (err: Error | null, a: unknown, f?: number) => void,
+    ) => void;
+  }
+
+  const V6 = "2606:2800:220:1:248:1893:25c8:1946";
+
+  it("answers { all: true } with an array of every checked address, in DNS order", async () => {
+    const lookup = await captureLookup([
+      { address: V6, family: 6 },
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+    const got = await new Promise<unknown>((res, rej) =>
+      lookup(OEM, { all: true }, (err, a) => (err ? rej(err) : res(a))),
+    );
+    expect(got).toEqual([
+      { address: V6, family: 6 },
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+  });
+
+  it("answers a single-address lookup with the first checked address and its family", async () => {
+    const lookup = await captureLookup([
+      { address: PUBLIC_IP, family: 4 },
+      { address: V6, family: 6 },
+    ]);
+    const got = await new Promise<[unknown, number | undefined]>((res, rej) =>
+      lookup(OEM, {}, (err, a, f) => (err ? rej(err) : res([a, f]))),
+    );
+    expect(got).toEqual([PUBLIC_IP, 4]);
+  });
+
+  it("never hands the socket an address that was not checked (ignores the hostname it is asked for)", async () => {
+    const lookup = await captureLookup([{ address: PUBLIC_IP, family: 4 }]);
+    const got = await new Promise<unknown>((res, rej) =>
+      lookup("evil.internal", { all: true }, (err, a) => (err ? rej(err) : res(a))),
+    );
+    expect(got).toEqual([{ address: PUBLIC_IP, family: 4 }]);
+  });
+});
