@@ -15,6 +15,7 @@
  */
 
 import Stripe from "stripe";
+import { hubUrl } from "../capabilities/hub-origin.js";
 
 let _stripe: Stripe | null = null;
 
@@ -112,7 +113,7 @@ export async function createDirectCheckoutSession(): Promise<string> {
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
     customer: customer.id,
-    success_url: "https://app.factorylm.com/feed/?checkout=success",
+    success_url: hubUrl("/feed/?checkout=success"),
     cancel_url: `${base}/pricing?checkout=cancelled`,
     allow_promotion_codes: true,
   });

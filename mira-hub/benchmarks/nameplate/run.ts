@@ -64,7 +64,7 @@ function loadFixtures(): LoadedFixture[] {
 // measure whether rotation/downscale is worth declaring it. Nothing in
 // src/lib/nameplate depends on it.
 
-type SharpModule = typeof import("sharp");
+type SharpModule = typeof import("sharp").default;
 let sharpMod: SharpModule | null | undefined;
 
 async function getSharp(): Promise<SharpModule | null> {

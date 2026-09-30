@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- #3732: the session cookie jar lives in plain SharedPreferences
+         (Capacitor Preferences, `flm.cookiejar.v1`). No app data is worth a
+         credential off-device: backups are off, and the extraction rules
+         exclude the stores anyway should allowBackup ever be flipped.
+         Pinned by tests/android-secret-hygiene.test.ts. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -22,24 +29,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Custom-scheme deep link: factorylm://m/<TAG> (works unverified) -->
+            <!-- Custom-scheme deep link: factorylm[staging]://m/<TAG> (works unverified) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="factorylm" android:host="m" />
+                <data android:scheme="${customScheme}" android:host="m" />
             </intent-filter>
 
-            <!-- App Link: https://app.factorylm.com/m/<TAG>. autoVerify requires
-                 /.well-known/assetlinks.json on the prod origin (Phase-4 server
-                 task); until then Android offers the app in the chooser. -->
+            <!-- App Link: https://app[-staging].factorylm.com/m/<TAG>. autoVerify requires
+                 /.well-known/assetlinks.json on the origin (Phase-4 server task);
+                 until then Android offers the app in the chooser. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="app.factorylm.com"
+                    android:host="${deepLinkHost}"
                     android:pathPrefix="/m/" />
             </intent-filter>
 

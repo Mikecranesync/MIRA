@@ -233,6 +233,13 @@ _ENERGIZED_WORK_INTENT = frozenset(
         "while active",
         "clamp meter",  # Clamp meters MUST be used de-energized per NFPA 70E
         "multimeter",
+        "voltmeter",
+        "ammeter",
+        "wattmeter",
+        "ohmmeter",
+        "megohmmeter",
+        "clampmeter",
+        "fluke",
         "meter",  # General measurement (but careful: "meter reading")
         "measure",  # "measure while live", "need to measure"
         "measure voltage",
@@ -250,6 +257,13 @@ _ENERGIZED_WORK_INTENT = frozenset(
 )
 
 
+def _starts_at_word(msg: str, phrase: str) -> bool:
+    # A phrase that starts with a digit ("480v") may follow letters ("3ph480v");
+    # only a preceding digit ("1480v") makes it a different number.
+    blocker = r"(?<![0-9])" if phrase[:1].isdigit() else r"(?<![a-z0-9])"
+    return re.search(blocker + re.escape(phrase), msg) is not None
+
+
 def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """Detect intent to work on energized high-voltage equipment.
 
@@ -265,8 +279,10 @@ def detect_energized_electrical_hazard_intent(message: str) -> bool:
     """
     msg = message.lower().strip()
 
-    has_voltage_context = any(phrase in msg for phrase in _LETHAL_VOLTAGE_CONTEXT)
-    has_energized_intent = any(phrase in msg for phrase in _ENERGIZED_WORK_INTENT)
+    # A phrase must start at a word boundary: plain substring matching read
+    # "modbus" as "bus" and "parameter" as "meter" (parity with safety-classifier.ts).
+    has_voltage_context = any(_starts_at_word(msg, p) for p in _LETHAL_VOLTAGE_CONTEXT)
+    has_energized_intent = any(_starts_at_word(msg, p) for p in _ENERGIZED_WORK_INTENT)
 
     return has_voltage_context and has_energized_intent
 
@@ -1035,6 +1051,38 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(pattern.search(msg_lower) for pattern in SESSION_FOLLOWUP_PATTERNS)
 
 
+# #4015 item 4 — a back-reference to MIRA's own earlier words ("you said…")
+# arriving when MIRA has said NOTHING in this conversation. detect_session_followup
+# stands down on IDLE / no session context, so without this the LLM router picked
+# a lane and, about half the time, invented a FIX_STEP for a wiring check nobody
+# gave (staging-gate run 36257246461: context=1, confirmed by a second draw).
+# Deliberately narrow: only "you <said|mentioned|told me|suggested|recommended>",
+# so "they told me…" / "the manual said…" keep their normal routing.
+_ORPHAN_BACK_REFERENCE_RE = re.compile(
+    r"\byou\s+(?:just\s+|already\s+)?(?:said|mentioned|told\s+me|suggested|recommended)\b"
+)
+
+ORPHAN_BACK_REFERENCE_REPLY = (
+    "I don't see an earlier message from me in this conversation, so I'm not sure "
+    "what I'm supposed to have said. Which machine are you on, and what is it doing? "
+    "If you paste what you were told, I'll pick it up from there."
+)
+
+
+def is_orphan_back_reference(message: str, history: list | None) -> bool:
+    """True when the technician quotes MIRA back but MIRA has not spoken yet.
+
+    Stands down when any assistant turn exists (the session-followup lane owns
+    that) and when a cross-session ``[MIRA MEMORY …]`` block is injected (the
+    reference may be to a prior session the memory carries).
+    """
+    if not message or "[MIRA MEMORY" in message:
+        return False
+    if any(isinstance(h, dict) and h.get("role") == "assistant" for h in (history or [])):
+        return False
+    return bool(_ORPHAN_BACK_REFERENCE_RE.search(message.lower()))
+
+
 _SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
 
 
@@ -1412,3 +1460,61 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
     if asset_identified:
         result = f"{asset_identified} \u2014 {result}"
     return result
+
+
+# OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+# A safety-classified turn is answered; this one-to-two-line banner is shown
+# ABOVE the answer. Mirrors hazardBanner() in mira-hub/src/lib/safety-classifier.ts.
+_HAZARD_BANNER_CLASSES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"smoke|fire|burning|burn mark|melted|exploded|shocked|arcing|arc flashing|arc-flashing"
+        ),
+        "\u26a0\ufe0f Possible active incident. If anything is smoking, arcing or burning, or someone was shocked: "
+        "get clear, isolate power from a safe distance and call for help first. The steps below are for once "
+        "the scene is safe.",
+    ),
+    (
+        re.compile(r"live|energized|exposed wire|480|600v|arc flash"),
+        "\u26a0\ufe0f Energized electrical work. Qualified person, arc-flash PPE and an energized-work permit "
+        "(NFPA 70E). De-energize and verify zero energy whenever the task allows.",
+    ),
+    (
+        re.compile(r"lockout|tagout|loto|cut (the )?power|disconnect|isolat|safe to work"),
+        "\u26a0\ufe0f Isolation. Lock and tag every energy source (electrical, pneumatic, hydraulic, gravity) "
+        "and verify zero energy before hands-on work.",
+    ),
+    (
+        re.compile(r"confined"),
+        "\u26a0\ufe0f Confined space. Entry permit, atmosphere test and an attendant before entry.",
+    ),
+    (
+        re.compile(r"pressure|hydraulic|pneumatic|bleed"),
+        "\u26a0\ufe0f Stored pressure. Bleed and block hydraulic/pneumatic energy and verify zero pressure first.",
+    ),
+    (
+        re.compile(r"chemical|ammonia|chlorine|acid|caustic"),
+        "\u26a0\ufe0f Chemical hazard. Check the SDS and wear the PPE it lists.",
+    ),
+    (
+        re.compile(r"fall|height|ladder"),
+        "\u26a0\ufe0f Working at height. Fall protection and a stable platform.",
+    ),
+    (
+        re.compile(r"rotating|guard|moving|conveyor|pinch|entangle"),
+        "\u26a0\ufe0f Moving machinery. Lock out motion and block gravity-loaded parts before reaching in.",
+    ),
+    (
+        re.compile(r"hot work|weld|torch|grind"),
+        "\u26a0\ufe0f Hot work. Hot-work permit and a fire watch.",
+    ),
+)
+
+
+def hazard_banner(message: str) -> str:
+    """One-to-two-line hazard banner shown above the answer on a flagged turn."""
+    msg = (message or "").lower()
+    for pattern, banner in _HAZARD_BANNER_CLASSES:
+        if pattern.search(msg):
+            return banner
+    return "\u26a0\ufe0f Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work."

@@ -7,8 +7,11 @@
 # gigabytes, and slow on the VPS. Everything below is excluded from EVERY
 # root-context build; none of those builds COPY any of these paths.
 #
-# NOTE: this does NOT affect the mira-hub image (its build context is ./mira-hub,
-# governed by mira-hub/.dockerignore, if any).
+# NOTE: since Hub mount PR 1 (#3839) the mira-hub image ALSO builds with the repo
+# root as its context (docker-compose.*.yml: context: ., dockerfile:
+# mira-hub/Dockerfile) so ../packages/factorylm-* can compile into the Hub bundle —
+# so this file governs the Hub build context too. The Hub Dockerfile COPYs only
+# mira-hub/ and packages/factorylm-*; nothing excluded below is needed by it.
 
 # Version control + CI
 .git

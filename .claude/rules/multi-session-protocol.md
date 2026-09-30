@@ -109,10 +109,14 @@ The mechanized lane — `scripts/adversarial-review.sh`,
 `scripts/adversarial-review-loop.sh`, `scripts/adversarial-review-ledger.mjs`,
 and `docs/adversarial-review-workflow.md` — is **committed on the default
 branch and mandatory as-committed there** (merged via PR #3279,
-`6fe5fff84658`). Run it from the branch under review after rebasing onto
-current `main`; never casually copy, fork, or reimplement it in another PR,
-and never source it from a mutable branch name — a moved branch can silently
-swap the reviewer out from under you. If those paths are ever absent, broken,
+`6fe5fff84658`). Capture the PR's current base SHA and load
+`scripts/adversarial-review-trusted.sh` from that immutable base object; never
+execute the candidate's runner, renderer, prompt, policy, or instruction
+files. The launcher uses a neutral detached base checkout and treats the
+candidate only as immutable git-object/diff evidence. Never casually copy,
+fork, or reimplement the producer in another PR, and never source it from a
+mutable branch name — a moved branch can silently swap the reviewer out from
+under you. If those paths are ever absent, broken,
 or unauthorized at the HEAD you are working from, that is the
 missing-tooling case: **fail closed** per the invariant below — do not
 resurrect old pins or ad-hoc copies.

@@ -153,14 +153,17 @@ describe("general mode — §1.1 the technician with nothing configured", () => 
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
   });
 
-  it("still hard-stops on safety, before any provider call", async () => {
+  it("still flags safety (banner above the answer), but no longer hard-stops or skips the provider (owner decision 2026-09-27)", async () => {
     const res = await POST(
       req({ message: "there is smoke from the drive panel, what do I check", mode: "general" }),
       params,
     );
     const f = await frames(res);
-    expect(f.find((x) => x.kind === "safety")).toBeTruthy();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "safety")).toBeUndefined();
+    expect(fetch).toHaveBeenCalled();
+    const content = f.filter((x) => x.kind === "content").map((x) => String(x.content ?? "")).join("");
+    expect(content).toContain("⚠️");
+    expect(content).toContain("Check the DC bus first.");
   });
 
   it("proves the notebook is the caller's before spending a provider call", async () => {
@@ -207,6 +210,9 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     ragMock.retrieveNodeChunks.mockResolvedValue([
       { docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." },
     ]);
+    // The documentation badge is earned by a shipped citation (2026-09-22: a
+    // grounded answer that cites nothing must not imply the manual backed it).
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is DC bus undervoltage [1]."), { status: 200 })));
     await (await POST(req({ message: "what is F004" }), params)).text();
     expect(nbMock.recordTurn).toHaveBeenCalledWith(
       expect.any(String),

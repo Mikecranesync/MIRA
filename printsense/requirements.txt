@@ -7,7 +7,7 @@
 #             which stays No-Anthropic). MIT-licensed. Activated at runtime by
 #             ANTHROPIC_API_KEY + PRINT_VISION_PROVIDER=anthropic (Doppler).
 #             Imported lazily; tests mock it, so CI does not require it.
-pydantic>=2.0
+pydantic>=2.0,<2.12  # <2.12: 2.12+ breaks the RAG worker structured-output model build (unable to infer type for attribute "description"); see engine.py:5686
 anthropic>=0.116.0
 # Print-image preprocessing (auto-rotate + resolution-budget resize). Both are
 # lazy-imported in printsense/preprocess.py and fully defensive, so the package

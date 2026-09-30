@@ -1,20 +1,29 @@
 /**
  * PlatformAdapter for the unified shell inside the Capacitor app.
  *
- * Every capability routes to the screen's EXISTING flows (LOOK photo path,
- * two-step PDF source upload, citation sheet) — the shell never fetches,
- * uploads, or persists. Photo/file return `null` because those flows own the
- * attachment end to end (they upload and ask); the shell therefore shows no
- * "pending" chip for them, which is the honest state.
+ * Attachment capabilities RETURN the attachment they captured, so the shell's
+ * composer can show a pending chip and the user decides when to send — the
+ * ChatGPT-shaped flow. They used to return `null` unconditionally because the
+ * screen's flows uploaded AND asked in one motion, which left the technician no
+ * chance to type the question that goes with the photo.
+ *
+ * The screen still owns every byte: these handlers call the screen's existing
+ * upload doors (LOOK for photos, the namespace files endpoint for documents),
+ * so there is still exactly one upload path and the shell never fetches,
+ * uploads, or persists anything itself.
  */
 import { Share } from "@capacitor/share";
-import type { PlatformAdapter } from "@factorylm/interaction";
+import type { Attachment, PlatformAdapter } from "@factorylm/interaction";
+
+/** What a screen's attach handler resolves to: the captured attachment, or
+ *  `null` when the user backed out of the native picker or it failed. */
+export type AttachResult = Attachment | null;
 
 export interface UnifiedAdapterHandlers {
-  readonly onAttachPhoto: () => void;
-  readonly onAttachFile: () => void;
+  readonly onAttachPhoto: () => Promise<AttachResult> | AttachResult;
+  readonly onAttachFile: () => Promise<AttachResult> | AttachResult;
   /** Capture photo from native camera (not gallery). */
-  readonly onAttachCamera: () => void;
+  readonly onAttachCamera: () => Promise<AttachResult> | AttachResult;
   /** Present when the notebook is not yet bound and the app can scan a machine QR. */
   readonly onScanMachine?: () => Promise<string | null> | string | null;
   /** Text to share for an artifact id (handoff/report) — the screen owns the content. */
@@ -23,18 +32,9 @@ export interface UnifiedAdapterHandlers {
 
 export function createCapacitorAdapter(handlers: UnifiedAdapterHandlers): PlatformAdapter {
   return {
-    attachPhoto: async () => {
-      handlers.onAttachPhoto();
-      return null;
-    },
-    attachFile: async () => {
-      handlers.onAttachFile();
-      return null;
-    },
-    attachCamera: async () => {
-      handlers.onAttachCamera();
-      return null;
-    },
+    attachPhoto: async () => (await handlers.onAttachPhoto()) ?? null,
+    attachFile: async () => (await handlers.onAttachFile()) ?? null,
+    attachCamera: async () => (await handlers.onAttachCamera()) ?? null,
     scanMachine: async () => (handlers.onScanMachine ? await handlers.onScanMachine() : null),
     shareArtifact: async (artifactId) => {
       const text = handlers.shareText?.(artifactId) ?? null;

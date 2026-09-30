@@ -53,7 +53,8 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
     const text = draft.trim();
     if (text && hooks?.onSend) {
       try {
-        hooks.onSend(text);
+        // Text-only: a retry/resend of a body the composer already released.
+        hooks.onSend(text, []);
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
       } catch (err) {

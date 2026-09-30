@@ -182,3 +182,56 @@ export function captureNameplatePhoto(): Promise<File | null> {
 export function pickPdf(): Promise<File | null> {
   return pickOne(() => FilePicker.pickFiles({ types: [PDF_MIME], limit: 1 }), "document.pdf", PDF_MIME);
 }
+
+const DOCUMENT_EXT_MIME: Record<string, string> = {
+  pdf: PDF_MIME,
+  txt: "text/plain",
+  csv: "text/csv",
+  md: "text/markdown",
+  rtf: "application/rtf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+/**
+ * The same octet-stream lie `pickPdf` forces around, generalized. Android hands
+ * back a missing or `application/octet-stream` mime for documents often enough
+ * that trusting it would file a real manual as an opaque blob. So: derive from
+ * the extension first (the filename is what the user actually chose), trust a
+ * declared non-octet-stream mime second, and only then admit octet-stream.
+ *
+ * Deriving BEFORE trusting the declared type is deliberate and is the opposite
+ * of `imageMimeOf`'s order: there, a declared `image/*` is already specific
+ * enough to beat a guess. Here the declared value is usually the generic one,
+ * and a `.pdf` that arrives as octet-stream must still reach the indexer.
+ */
+function documentMimeOf(picked: PickedFile): string {
+  const name = (picked.name ?? "").trim().toLowerCase();
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1) : "";
+  const byExtension = DOCUMENT_EXT_MIME[ext];
+  if (byExtension) return byExtension;
+  const declared = (picked.mimeType ?? "").toLowerCase().split(";")[0].trim();
+  if (declared && declared !== "application/octet-stream") return declared;
+  return "application/octet-stream";
+}
+
+/**
+ * ANY document, from the phone's own document picker (no type filter), for the
+ * composer's "File" action.
+ *
+ * `pickPdf` stays as it is and keeps its own door: a PDF picked there becomes a
+ * CITABLE SOURCE, which is a grounding decision. This one is a message
+ * attachment, and the server decides what it can do with it — the upload
+ * endpoint already answers with `indexed` plus a `warning`, and
+ * `FileCapability` already distinguishes indexable / viewable / stored. So a
+ * .docx attaches honestly as "stored, not searchable" instead of being refused
+ * by the picker or, worse, implied to be readable.
+ */
+export function pickDocument(): Promise<File | null> {
+  return pickOne(() => FilePicker.pickFiles({ limit: 1 }), "document", documentMimeOf);
+}

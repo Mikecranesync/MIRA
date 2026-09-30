@@ -1,0 +1,90 @@
+/**
+ * #3876 — the public stranger route flags a safety-keyword match with a
+ * hazard banner above the answer, exactly as the asset, node, notebook and
+ * hub/ask chat routes do (security-boundaries.md). It no longer hard-stops
+ * (OWNER DECISION 2026-09-27, Mike: "no answer blocking, just safety
+ * flags") — retrieval and the provider still run, and the flag directive
+ * rides the prompt via `X-Safety-Flag` (not `X-Safety-Stop`). The
+ * classifier's educational carve-out keeps the questions this route exists
+ * for answering.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ManualChunk } from "@/lib/manual-rag";
+
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers({ "x-forwarded-for": "203.0.113.9" })) }));
+
+const tenant = vi.hoisted(() => ({
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => Promise<unknown>) => fn({})),
+}));
+vi.mock("@/lib/tenant-context", () => tenant);
+
+const cascade = vi.hoisted(() => ({ cascadeComplete: vi.fn() }));
+vi.mock("@/lib/llm/cascade", () => cascade);
+
+const rag = vi.hoisted(() => ({ retrieveManualChunks: vi.fn(async () => [] as ManualChunk[]) }));
+vi.mock("@/lib/manual-rag", async (importActual) => ({
+  ...(await importActual<typeof import("@/lib/manual-rag")>()),
+  retrieveManualChunks: rag.retrieveManualChunks,
+}));
+
+import { POST } from "@/app/api/quickstart/ask/route";
+
+function req(body: unknown): Request {
+  return new Request("http://test/api/quickstart/ask/", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+beforeEach(() => {
+  process.env.NEON_DATABASE_URL = "postgres://test";
+  process.env.QUICKSTART_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+  vi.clearAllMocks();
+  rag.retrieveManualChunks.mockResolvedValue([]);
+  cascade.cascadeComplete.mockResolvedValue({ content: "answer", provider: "groq" });
+});
+
+describe("POST /api/quickstart/ask — safety hard-stop (#3876)", () => {
+  it("a hazard report is flagged (X-Safety-Flag header, banner above the answer) but retrieval and the provider still run", async () => {
+    cascade.cascadeComplete.mockResolvedValue({ content: "Isolate and verify zero energy first, then…", provider: "groq" });
+    const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    const flagTrigger = res.headers.get("X-Safety-Flag");
+    expect(flagTrigger).toBeTruthy();
+    const body = await res.json();
+    expect(body.answer).toContain("⚠️");
+    expect(body.answer).toContain("Isolate and verify zero energy first, then…");
+    expect(body.answer).not.toContain("SAFETY STOP");
+    expect(rag.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain(`SAFETY FLAG: ${flagTrigger}`);
+  });
+
+  it("an educational safety question still answers (classifier carve-out): 'What is LOTO and when is it required'", async () => {
+    cascade.cascadeComplete.mockResolvedValue({ content: "Lockout/tagout is…", provider: "groq" });
+    const res = await POST(req({ question: "What is LOTO and when is it required" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    expect((await res.json()).answer).toBe("Lockout/tagout is…");
+  });
+
+  it("the ordinary stranger question is unchanged: retrieval then provider", async () => {
+    const res = await POST(req({ question: "What does fault F004 mean on a PowerFlex 525" }));
+    expect(res.status).toBe(200);
+    expect(rag.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("a flagged question whose providers are all down still shows its banner (review of #4040)", async () => {
+    cascade.cascadeComplete.mockResolvedValue(null);
+    const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("X-Safety-Flag")).toBeTruthy();
+    expect((await res.json()).answer).toMatch(/^⚠️/);
+  });
+});

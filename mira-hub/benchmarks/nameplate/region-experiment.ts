@@ -71,7 +71,7 @@ const FIXTURE_ID = "orientalmotor_dgm200r";
 // sharp is missing; this file must NOT, because a silent skip would print a
 // table of identical rows and read as "cropping doesn't help".
 
-type SharpModule = typeof import("sharp");
+type SharpModule = typeof import("sharp").default;
 let sharpMod: SharpModule | null | undefined;
 
 async function getSharp(): Promise<SharpModule> {

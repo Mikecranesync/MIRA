@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -53,6 +54,13 @@ _UNS_GATE_MARKERS = (
     "what equipment are you",
     "can you confirm",
 )
+
+#: The engine's "still working" placeholder, sent when a turn outlives its budget.
+_TIMEOUT_MARKERS = ("this is taking longer than usual",)
+
+#: Italic parenthetical notes the engine appends (`_(Note: …)_`). They annotate the reply;
+#: they never ask the technician a question.
+_NOTE_RE = re.compile(r"_\(note:.*?\)_", re.S)
 
 #: Phrases indicating MIRA declined to guess and asked for specific missing information.
 #: PRS §7 treats this as potentially CORRECT.
@@ -121,7 +129,16 @@ def classify_answer(reply: str, http_status: int) -> AnswerStatus:
         return AnswerStatus.ERROR
 
     low = reply.lower()
-    if any(m in low for m in _UNS_GATE_MARKERS):
+    # The engine's slow-turn placeholder is not an answer (2026-09-27: seed 001 timed out
+    # and was scored as `answered`).
+    if any(m in low for m in _TIMEOUT_MARKERS):
+        return AnswerStatus.ERROR
+    # The citation-removal footnote ("_(Note: I removed a citation because I haven't
+    # established which machine…)_") says "which machine" without asking the technician
+    # anything; matching it filed three real replies as UNS-gate turns on 2026-09-27 and
+    # dropped them from the denominator. Gate markers are matched on the reply without it.
+    gate_text = _NOTE_RE.sub("", low)
+    if any(m in gate_text for m in _UNS_GATE_MARKERS):
         return AnswerStatus.UNS_GATE
     if any(m in low for m in _SAFETY_REFUSAL_MARKERS) and any(
         m in low for m in ("cannot provide", "can't provide", "contact the manufacturer")
@@ -166,12 +183,25 @@ def prompt_version() -> str:
     `EvaluationRecord` false: two runs months apart would carry the same "version" while the
     prompt underneath had been rewritten. The hash changes when the prompt does.
     """
-    path = REPO_ROOT / "prompts" / "diagnose" / "active.yaml"
+    # Codex #4062 rounds 3–4: identify the system prompt the engine actually SELECTS
+    # for the turn (direct-answer mode, active.yaml, or the built-in fallback), hashed
+    # from its text. If that cannot be determined the run fails rather than stamping
+    # a version that may describe a different prompt.
     try:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
-    except OSError:
-        return "active.yaml@unreadable"
-    return f"active.yaml@{digest}"
+        _import_local_pipeline()  # puts mira-bots/ on sys.path, as the run itself does
+        from shared.workers import rag_worker  # noqa: PLC0415
+
+        text = rag_worker._active_system_prompt()
+        if rag_worker._direct_answer_mode():
+            mode = "direct-answer"
+        elif rag_worker._yaml_system_prompt():
+            mode = "active.yaml"
+        else:
+            mode = "gsd-builtin"
+    except Exception as exc:  # noqa: BLE001 - any failure means the version is unknowable
+        raise RuntimeError(f"cannot record the prompt version: {exc}") from exc
+    digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    return f"{mode}@{digest}"
 
 
 async def run_question(

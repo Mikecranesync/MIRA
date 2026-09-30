@@ -43,12 +43,24 @@ export type ObservationPart = {
   entry: VisualObservationEntry;
 };
 
-/** Safety hard-stop notice from a live `safety` frame or persisted
- *  `{kind:"safety_notice"}` evidence marker (ADR-0038 item 3). */
+/** Safety notice from a live `safety` frame, an evidence-frame `hazardEntries`
+ *  directive, or a persisted `{kind:"safety_notice"}` evidence marker
+ *  (ADR-0038 item 3). Two shapes share this part, split by `terminal`
+ *  (mirrors mira-hub's `safetyNoticePart` / `isTerminalSafetyNotice`, #3841):
+ *    - `terminal: true`  — a hard stop (LOTO/arc-flash refusal): the reply is
+ *      an isolation instruction, NOT an answer; success chrome is suppressed.
+ *    - `terminal: false` — the energized-electrical DIRECTIVE: the turn IS
+ *      answered, framed by an NFPA 70E warning; the answer, citations, basis
+ *      and follow-ups are preserved and the banner is a warning, not a stop. */
 export type SafetyNoticePart = {
   type: "safety_notice";
   /** Matched trigger phrase — observability only, never rendered. */
   trigger: string | null;
+  /** Terminal hard stop (true) vs non-terminal directive (false). Drives both
+   *  chrome suppression (in `turns-to-parts`) and the banner variant (in the
+   *  renderer). Absent on older projections → treat as terminal (safe default,
+   *  preserves pre-#3893 behavior). */
+  terminal?: boolean;
 };
 
 /** Evidentiary basis badge for the turn (evidence ladder, spec §1.3). */

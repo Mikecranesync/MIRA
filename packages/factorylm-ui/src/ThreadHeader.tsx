@@ -7,8 +7,16 @@ interface ThreadHeaderProps {
   readonly dispatch: Dispatch<ShellAction>;
 }
 
+/** The product mark shown above the thread title on phones. */
+const BRAND = "FactoryLM";
+
 export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
   const canInspect = state.profile.enterpriseInspector && state.inspector !== undefined;
+  // Both HOME hosts title the composer-home thread with the product name. The
+  // mark is the product and the heading is the thread; when they are the same
+  // word the phone header read "FactoryLM / FactoryLM", so the mark yields to
+  // the heading and the name appears once.
+  const showBrandMark = state.thread.title.trim() !== BRAND;
 
   return <header className="fl-shell__header">
     <button
@@ -22,7 +30,7 @@ export function ThreadHeader({ state, dispatch }: ThreadHeaderProps) {
     <div className="fl-shell__header-title">
       {/* The product mark, not the surface profile: `profile.kind` is lab metadata and
           never belongs in the technician's viewport. */}
-      <p className="fl-shell__brand-mark">FactoryLM</p>
+      {showBrandMark ? <p className="fl-shell__brand-mark">{BRAND}</p> : null}
       <h1>{state.thread.title}</h1>
     </div>
     {canInspect ? <button

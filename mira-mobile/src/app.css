@@ -554,6 +554,14 @@ textarea {
   background: var(--fl-fault-bg); color: var(--fl-ink);
   font-size: var(--fl-fs); line-height: 1.45;
 }
+/* Energized-work DIRECTIVE (#3893): a warning, not a stop. Amber (= warning,
+   per the industrial palette) and the muted surface background — never the red
+   fault treatment — because this turn IS an answer framed by the directive, so
+   it must read as caution beside a real answer, not as a refusal. */
+.safety-notice-directive {
+  border-left-color: var(--fl-amber);
+  background: var(--fl-surface);
+}
 /* Citation chips inside ChatV2 flow as inline pills. The global
    `button { width: 100% }` touch-target rule would otherwise stretch each one
    to a full-width block — correct for a form button, wrong for a citation.

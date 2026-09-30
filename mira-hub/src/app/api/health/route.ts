@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 
+import {
+  environmentName,
+  captureContentEnabled,
+  telemetryEnabled,
+} from "@/capabilities/observability/config";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -34,11 +40,21 @@ export function GET() {
     );
   }
 
+  // Turn Flight Recorder (docs/architecture/observability/2026-09-22-turn-flight-recorder.md §6).
+  // Never the endpoint or headers — those may carry a Doppler-managed auth value.
+  const telemetry = {
+    tracing: telemetryEnabled() ? ("enabled" as const) : ("disabled" as const),
+    exporter: telemetryEnabled() ? ("otlp-http" as const) : null,
+    environment: environmentName(),
+    contentCapture: captureContentEnabled(),
+  };
+
   return NextResponse.json({
     status: "ok",
     service: "mira-hub",
     ...identity,
     approvedRetrievalEnforced,
+    telemetry,
     ts: Date.now(),
   });
 }

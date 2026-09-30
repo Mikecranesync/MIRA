@@ -123,7 +123,10 @@ beforeEach(() => {
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   ragMock.retrieveNodeChunks.mockResolvedValue(groundedChunks as never);
 });
-afterEach(() => {
+afterEach(async () => {
+  // Usage persistence is deliberately scheduled after the response closes.
+  // Drain that task before the next test clears/reprograms the shared mock.
+  await new Promise((resolve) => setTimeout(resolve, 20));
   process.env = { ...ENV };
 });
 
@@ -353,6 +356,7 @@ describe("telemetry persistence through the real route", () => {
     const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
     const streamed = f.find((x) => x.kind === "usage")!;
 
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1);
     const [scope, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
       Record<string, unknown>,
@@ -370,17 +374,17 @@ describe("telemetry persistence through the real route", () => {
 
   it("persists AFTER the stream closed — telemetry never delays the answer", async () => {
     let closedAt = 0;
+    let observedClosedAt = 0;
     persistMock.persistTurnUsage.mockImplementation(async () => {
-      // if this ran before the body resolved, closedAt would still be 0
-      expect(closedAt).toBeGreaterThan(0);
+      observedClosedAt = closedAt;
       return { persisted: true, traceId: "t" } as never;
     });
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("x [1]", { prompt_tokens: 1, completion_tokens: 1 })));
     const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
     await res.text();
     closedAt = Date.now();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(persistMock.persistTurnUsage).toHaveBeenCalled();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalled());
+    expect(observedClosedAt).toBeGreaterThan(0);
   });
 
   it("a ledger failure does NOT break an otherwise valid cited answer", async () => {
@@ -401,18 +405,31 @@ describe("telemetry persistence through the real route", () => {
     const res = await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params);
     const f = await frames(res);
     expect(f.find((x) => x.kind === "status")?.status).toBe("answered");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
   });
 
-  it("does NOT persist when the seam is off (legacy path writes no spend rows)", async () => {
+  it("seam off: the ledger row is still written (flight recorder) but carries UNKNOWN spend, and no usage frame is streamed", async () => {
     delete process.env.MIRA_CANONICAL_SEAM;
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("answer [1]")));
-    await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
-    expect(persistMock.persistTurnUsage).not.toHaveBeenCalled();
+    const f = await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    // Wire contract unchanged: the canonical `usage` frame is seam-only.
+    expect(f.find((x) => x.kind === "usage")).toBeUndefined();
+    // Design §4: every completed turn persists a packet, seam on or off.
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const [, usage, record] = persistMock.persistTurnUsage.mock.calls[0] as unknown as Parameters<
+      typeof import("@/lib/inference/persist-usage").persistTurnUsage
+    >;
+    expect(usage.routeReason).toBe("legacy_cascade");
+    expect(usage.inputTokens).toBeNull();
+    expect(usage.outputTokens).toBeNull();
+    expect(usage.costUsdEstimate).toBeNull();
+    expect(record?.packet?.answer_gate?.decision).toBe("answered");
   });
 
   it("persists an exhausted turn too — a failed turn is still a turn", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
     await frames(await POST(chatReq({ message: "q", sourceDocIds: [DOC_A] }), params));
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const [, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
       unknown,
       Record<string, unknown>,

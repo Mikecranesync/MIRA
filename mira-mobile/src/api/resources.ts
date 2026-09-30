@@ -312,6 +312,13 @@ export async function openAssetNotebook(
 export interface NotebookAssetBinding {
   /** kg_entities.entity_id — the asset UUID as text. */
   entityId: string;
+  /** The bound asset's CURRENT identity, resolved live server-side (Slice 0):
+   *  `name` = the machine's display name ("Discharge Conveyor"), `assetTag` =
+   *  its sticker/search handle ("CV-101"). Null when the server has no bound
+   *  asset row to resolve — callers fall back to the notebook's own fields.
+   *  These override the notebook's frozen display_name in the machine label. */
+  name: string | null;
+  assetTag: string | null;
   selectedVia: AssetSelectionMethod | null;
   confirmedBy: string | null;
   confirmedAt: string | null;
@@ -373,6 +380,8 @@ export function toNotebook(d: Record<string, unknown>): Notebook {
       a && a.entityId
         ? {
             entityId: String(a.entityId),
+            name: a.name != null ? String(a.name) : null,
+            assetTag: a.assetTag != null ? String(a.assetTag) : null,
             selectedVia: a.selectedVia != null ? (String(a.selectedVia) as AssetSelectionMethod) : null,
             confirmedBy: a.confirmedBy != null ? String(a.confirmedBy) : null,
             confirmedAt: a.confirmedAt != null ? String(a.confirmedAt) : null,
@@ -959,6 +968,16 @@ export const EMPTY_COMPONENT_IDENTITY: ComponentIdentity = {
   rpm: "",
 };
 
+/** One persisted VisualSession observation for THIS capture (Slice 2). The
+ *  `field`/`value` let the client confirm ONLY the exact readings it is still
+ *  affirming — a field the technician edited no longer matches `value`, so its
+ *  id is dropped and the pre-edit reading is never stamped confirmed. */
+export interface PersistedVisualObservation {
+  observationId: string;
+  field: string;
+  value: string;
+}
+
 export interface RecognizeComponentResult {
   fileId: string;
   candidate: Partial<ComponentIdentity>;
@@ -967,6 +986,11 @@ export interface RecognizeComponentResult {
   rawObservation: unknown;
   confidence: number | null;
   attachment: { linkId: string; notebookId: string } | null;
+  /** The persisted observation ids for this capture (empty when the notebook is
+   *  unbound or nothing was recorded). Carried to confirm to promote the exact
+   *  approved subset. */
+  visualObservations: PersistedVisualObservation[];
+  visualSessionId: string | null;
 }
 
 /** Nameplate photo of a COMPONENT inside this notebook's machine. The photo is
@@ -992,6 +1016,16 @@ export async function recognizeComponentNameplate(
     attachment: att
       ? { linkId: String(att.linkId ?? ""), notebookId: String(att.notebookId ?? "") }
       : null,
+    visualObservations: Array.isArray(d.visualObservations)
+      ? (d.visualObservations as Record<string, unknown>[])
+          .filter((o) => o && typeof o.observationId === "string")
+          .map((o) => ({
+            observationId: String(o.observationId),
+            field: String(o.field ?? ""),
+            value: String(o.value ?? ""),
+          }))
+      : [],
+    visualSessionId: d.visualSessionId != null ? String(d.visualSessionId) : null,
   };
 }
 
@@ -1019,6 +1053,10 @@ export interface LookResult {
   message: string | null;
   /** Opaque capture-quality assessment (blur/glare hint) — preserved verbatim. */
   quality: unknown | null;
+  /** True only when the server confirms it saved the observation. A chat turn
+   *  that re-sends this photo grounds on the SAVED observation, and /look's
+   *  save is fail-open, so an unsaved one must not ride a question (#4082). */
+  observationPersisted: boolean;
 }
 
 /**
@@ -1033,10 +1071,12 @@ export async function lookAtPhoto(
   image: File,
   clientKey: string,
   question?: string | null,
+  threadId?: string | null,
 ): Promise<LookResult> {
   const fd = new FormData();
   fd.append("image", image);
   fd.append("clientKey", clientKey);
+  if (threadId) fd.append("threadId", threadId);
   if (question?.trim()) fd.append("question", question.trim());
   // §4.1: the server parks + links the photo BEFORE vision, and a provider
   // failure (502) or an unconfigured recognizer (503) still returns that
@@ -1066,6 +1106,7 @@ export async function lookAtPhoto(
           }
         : null,
     quality: d.quality ?? null,
+    observationPersisted: d.observationPersisted === true,
     reason: typeof d.reason === "string" ? d.reason : null,
     message: typeof d.message === "string" ? d.message : null,
   };
@@ -1117,6 +1158,20 @@ export interface ConfirmComponentResult {
   discoveryReason?: string | null;
   /** The manufacturer's own manual-request page (validated by the server). */
   oemRequestUrl?: string | null;
+  /** Slice 2: how many persisted visual observations this confirm promoted to
+   *  technician-confirmed (0 unless the client sent unchanged observation ids
+   *  for a bound-asset capture). */
+  visualPromotedCount?: number;
+  /** Slice 3: how many vision readings this confirm superseded with a
+   *  technician-provided replacement. */
+  visualCorrectedCount?: number;
+  /** Slice 3 (Codex F1): corrections the server REFUSED because their value
+   *  contradicted the identity confirmed in the same request. */
+  visualCorrectionMismatches?: { observationId: string; field: string }[];
+  /** Slice 3 (Codex round 2 F1): true when corrections were submitted and the
+   *  server could not apply them (transient DB error, supersede race). The
+   *  confirm itself still succeeded; the technician's edits did not land. */
+  visualCorrectionFailed?: boolean;
 }
 
 /** TRUE only when the server's own payload proves a citable notebook source
@@ -1137,6 +1192,20 @@ export interface ConfirmComponentBody {
   confidence?: number | null;
   /** Ask the server to go find the official manual for this component. */
   discover?: boolean;
+  /** Slice 2: the EXACT persisted visual observation ids the technician is
+   *  confirming (only the readings whose value is unchanged). The server
+   *  promotes only these, scoped to the bound asset + this photo. */
+  observationIds?: string[];
+  /** Slice 3: the readings the technician EDITED — exact observation id plus
+   *  the value they read instead. The server supersedes the vision reading
+   *  and records a technician-provided replacement on the same photo. */
+  corrections?: VisualCorrection[];
+}
+
+/** One correction: replace THIS observation's value with what the technician read. */
+export interface VisualCorrection {
+  observationId: string;
+  value: string;
 }
 
 /** Confirm the COMPONENT identity read from the nameplate. This never touches
@@ -1181,6 +1250,17 @@ export async function confirmComponentNameplate(
     applicability: d.applicability ?? null,
     message: d.message != null ? String(d.message) : null,
     warning: d.warning != null ? String(d.warning) : null,
+    visualPromotedCount: typeof d.visualPromotedCount === "number" ? d.visualPromotedCount : 0,
+    visualCorrectedCount: typeof d.visualCorrectedCount === "number" ? d.visualCorrectedCount : 0,
+    visualCorrectionMismatches: Array.isArray(d.visualCorrectionMismatches)
+      ? (d.visualCorrectionMismatches as unknown[]).flatMap((m) => {
+          const o = m as { observationId?: unknown; field?: unknown } | null;
+          return o && typeof o.observationId === "string" && typeof o.field === "string"
+            ? [{ observationId: o.observationId, field: o.field }]
+            : [];
+        })
+      : [],
+    visualCorrectionFailed: d.visualCorrectionFailed === true,
   };
 }
 
@@ -1321,6 +1401,8 @@ export async function askNotebook(
     mode?: "general";
     /** Recent thread for multi-turn memory (CONV-3) — server-sanitized. */
     history?: ChatHistoryTurn[];
+    /** Stable across Retry; scopes server-side turn-write idempotency. */
+    clientRequestId?: string;
     /** STRM-1: called with the turn-so-far after every completed frame, so
      *  the transcript can paint tokens as they arrive. The resolved value is
      *  the SAME object the last update produced (one parser, one truth). */
@@ -1348,15 +1430,28 @@ export async function askNotebook(
         ...(opts.threadId ? { threadId: opts.threadId } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
         ...(opts.history?.length ? { history: opts.history } : {}),
+        ...(opts.clientRequestId ? { clientRequestId: opts.clientRequestId } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
+      },
+      onResponseHeaders: (headers) => {
+        const safetyTrigger = headers.get("X-Safety-Stop");
+        if (safetyTrigger === null) return;
+        parser.push(`data: ${JSON.stringify({ kind: "safety", trigger: safetyTrigger })}\n\n`);
+        opts.onUpdate?.(parser.turn());
       },
       onChunk: (chunk) => {
         const before = parser.turn();
         const partial = parser.push(chunk);
-        // Text growth, or the identity-dispute marker landing (086 §3 — it
-        // precedes content on the wire and must show at once).
-        if (partial.answer !== before.answer || partial.identityDisputed !== before.identityDisputed) {
+        // Text growth, or an authoritative marker landing before content. Both
+        // identity dispute and Safety STOP must reach screen state immediately;
+        // otherwise a transport failure before the first content byte can erase
+        // a warning the server has already committed.
+        if (
+          partial.answer !== before.answer ||
+          partial.identityDisputed !== before.identityDisputed ||
+          partial.safetyTrigger !== before.safetyTrigger
+        ) {
           opts.onUpdate?.(partial);
         }
       },

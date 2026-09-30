@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { act } from "react";
-import { FIXTURE_IDS, getFixture, type ContextSnapshot } from "@factorylm/interaction";
+import { FIXTURE_IDS, getFixture, type ContextSnapshot, type InteractionPart } from "@factorylm/interaction";
 import { contextDiffers } from "../parts";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
@@ -54,6 +54,39 @@ describe("conversation parts", () => {
     expect(view.container.textContent).not.toMatch(/verified finding/i);
     expect(turn.textContent).not.toMatch(/completed/i);
     expect(turn.querySelector('[data-part-type="followups"]')).toBeNull();
+  });
+
+  it("hides safety triggers and uses note semantics for advisory warnings on every surface", () => {
+    for (const surface of ["public", "web", "mobile", "hub"] as const) {
+      for (const severity of ["stop", "warning"] as const) {
+        const view = render({ fixture: "safety-stop", surface });
+        const base = getFixture("safety-stop").thread;
+        const notice = Object.freeze({ severity, message: "Follow the site safety procedure.", trigger: "internal-hazard-code" });
+        const parts: InteractionPart[] = [{ type: "safety_notice", notice }];
+        view.dispatch({ type: "hydrate", data: { thread: { ...base, turns: [{ ...base.turns[0], parts }] } } });
+        const card = view.container.querySelector('[data-part-type="safety_notice"]');
+        expect(card?.getAttribute("role")).toBe(severity === "stop" ? "alert" : "note");
+        expect(card?.textContent).toContain(notice.message);
+        expect(card?.textContent).not.toContain(notice.trigger);
+        expect(notice.trigger).toBe("internal-hazard-code");
+      }
+    }
+  });
+
+  it("preserves trace data without rendering a debug box on any surface", () => {
+    for (const surface of ["public", "web", "mobile", "hub"] as const) {
+      for (const traceId of ["trace-support-id", null]) {
+        const view = render({ fixture: "grounded-answer", surface });
+        const base = getFixture("grounded-answer").thread;
+        const raw = Object.freeze({ kind: "trace", traceId, turnId: "turn-support-id" });
+        const parts: InteractionPart[] = [{ type: "unknown", raw }, { type: "text", text: "Useful answer." }];
+        view.dispatch({ type: "hydrate", data: { thread: { ...base, turns: [{ ...base.turns[0], parts }] } } });
+        expect(view.container.textContent).toContain("Useful answer.");
+        expect(view.container.querySelector('[data-part-type="unknown"]')).toBeNull();
+        expect(view.container.textContent).not.toContain("turn-support-id");
+        expect(parts[0]).toEqual({ type: "unknown", raw });
+      }
+    }
   });
 
   it("labels live and recorded evidence distinctly", () => {

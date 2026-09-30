@@ -1,0 +1,25 @@
+{
+  "seed_id": "FIELD-SEED-005",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "answer_sha256": "fbd7a620c141e3c4533828729aa8424493044e3624005f905cc51ba5be58b3c9",
+  "correctness": 15,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 5,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "incomplete_diagnosis",
+  "factual_errors": [
+    {
+      "claim": "'The most likely cause is a mismatch in communication settings or a timing-related issue that only affects the PLC-gateway driver'",
+      "why_wrong": "The documented dominant failure mode for PLX32 gateways in this scenario is connection-table exhaustion (a hard 4-8 simultaneous connection limit) compounded by intermediate-device idle-TCP timeouts (~300-350s), which is exactly why a lean, persistent-connection tool like ModScan keeps working while the gateway drops. The answer never raises connection-pool exhaustion and frames a different, less-likely cause as most probable.",
+      "severity": "major"
+    }
+  ],
+  "notes": "Lists plausible generic causes (baud/parity mismatch, slave address, timeout/retry, EMI, DCS logs) and a reasonable diagnostic checklist, but misses the documented primary root cause (gateway connection-pool exhaustion) entirely and never explains the key diagnostic signal (why ModScan succeeds when the gateway fails). Presents an unranked, moderately-confident 'most likely cause' that isn't the actual one. No fabricated specifics, just an incomplete/misdirected diagnosis. Zero grounding."
+}

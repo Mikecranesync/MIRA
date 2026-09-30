@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
+import { familySqlTerms, inferEquipmentType } from "../equipment-type";
 import {
   appendManualContext,
   boundBm25Query,
@@ -8,11 +9,14 @@ import {
   chunksToSources,
   extractFaultCodes,
   extractModelNumber,
+  modelFromObservationText,
+  resolveModelFromObservationText,
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
   buildDocScopedSystemPrompt,
   type ManualChunk,
+  FAMILY_FALLBACK_WINDOW,
 } from "../manual-rag";
 
 afterEach(() => {
@@ -44,6 +48,20 @@ const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveManualChunks", () => {
+  it("does not scope a two-model question to one of the models (#4031)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "How do I wire RS-485 between a Micro820 and a GS10 VFD?");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).not.toMatch(/AND model_number (ILIKE|~\*)/);
+  });
+
+  it("still scopes a single-model question to that model (#2178 control)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "How do I wire RS-485 to a GS10 VFD?");
+    expect(calls[0].sql).toMatch(/AND model_number ~\*/);
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])GS10($|[^[:alnum:]])");
+  });
+
   it("returns empty for empty query without touching DB", async () => {
     const { client, calls } = makeClient([]);
     const out = await retrieveManualChunks(client, "tenant-1", "   ");
@@ -113,6 +131,28 @@ describe("retrieveManualChunks", () => {
     expect(out).toHaveLength(1);
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).not.toContain("replace(");
+  });
+
+  it("widens to OR in the same scope when the only AND hit is near-zero rank (#4035)", async () => {
+    // Staging Q06: AND in the Micro820 scope returned one row at ts_rank_cd 0.0004;
+    // OR in that same scope holds the chunk that actually answers (rank 1.7).
+    const weak = row({ content: "MSG_MODBUS ErrorID table", source_page: 2, rank: 0.0004 });
+    const strong = row({ content: "PLC-001 CCW serial port config", source_page: 0, rank: 1.7 });
+    const { client, calls } = makeClient([[weak], [strong, weak]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "configure Modbus on the Micro820 in CCW");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(calls[1].sql).toBe(calls[0].sql.replace(
+      /plainto_tsquery\('english', \$2\)/g,
+      "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))",
+    )); // same scope clauses, only the tsquery differs
+    expect(out.map((c) => c.content)).toEqual(["PLC-001 CCW serial port config", "MSG_MODBUS ErrorID table"]);
+  });
+
+  it("does NOT widen when an AND hit has a real rank (#4035 control)", async () => {
+    const { client, calls } = makeClient([[row({ rank: 0.05 })]]);
+    await retrieveManualChunks(client, "tenant-1", "configure Modbus on the Micro820 in CCW");
+    expect(calls).toHaveLength(1);
   });
 
   it("skips manufacturer filter entirely when none provided", async () => {
@@ -190,6 +230,214 @@ describe("retrieveManualChunks model scoping (#2178)", () => {
   });
 });
 
+describe("extractModelNumber / modelFromObservationText (#3966 HMI+V20)", () => {
+  it("recognizes TP###, 6AV catalog, Comfort, and SINAMICS V20 family tokens", () => {
+    expect(extractModelNumber("Siemens TP700 Comfort panel")).toBe("TP700");
+    expect(extractModelNumber("nameplate TP 1200 Comfort")).toBe("TP1200");
+    expect(extractModelNumber("6AV2124-0GC01-0AX0")).toMatch(/^6AV2124/);
+    expect(extractModelNumber("SINAMICS V20 operating instructions")).toMatch(/V20|SINAMICSV20/);
+    expect(extractModelNumber("a Comfort HMI on the line")).toBe("COMFORT");
+  });
+
+  it("modelFromObservationText mirrors extractModelNumber for LOOK text", () => {
+    const look =
+      "SIEMENS TP700 Comfort 1P 6AV2124-0GC01-0AX0 24VDC — no drive language";
+    expect(modelFromObservationText(look)).toBe("TP700");
+  });
+
+  it("resolves one TP700 nameplate with Comfort and its 6AV order number", () => {
+    expect(resolveModelFromObservationText("SIEMENS TP700 Comfort 1P 6AV2124-0GC01-0AX0"))
+      .toEqual({ model: "TP700", ambiguous: false });
+  });
+
+  it("marks conflicting TP700 and V20 models in one observation ambiguous", () => {
+    expect(resolveModelFromObservationText("Siemens TP700 Comfort panel beside SINAMICS V20 drive"))
+      .toEqual({ model: null, ambiguous: true });
+  });
+
+  it("marks two distinct TP panel models in one observation ambiguous", () => {
+    expect(resolveModelFromObservationText("Siemens TP700 and TP1200 panels"))
+      .toEqual({ model: null, ambiguous: true });
+  });
+
+  it("resolves the SINAMICS V20 family to the corpus-compatible V20 token", () => {
+    expect(resolveModelFromObservationText("Siemens SINAMICS V20 drive"))
+      .toEqual({ model: "V20", ambiguous: false });
+  });
+});
+
+describe("retrieveManualChunks identity-bound family scope (#3966)", () => {
+  const v20 = () =>
+    row({
+      manufacturer: "Siemens",
+      model_number: "SINAMICS V20",
+      title: "SINAMICS V20 Operating Instructions",
+      source_url: "https://oem.example/v20_operating_instructions_complete_en-US.pdf",
+      content: "Isolate the drive and verify DC bus is at 0 V. Read parameter r0949.",
+    });
+  const tp700 = () =>
+    row({
+      manufacturer: "Siemens",
+      model_number: "TP700 Comfort",
+      title: "TP700 Comfort Operating Instructions",
+      source_url: "https://oem.example/tp700_comfort.pdf",
+      content: "Rated 24 VDC, 0.85 A max. Check the 24 V supply if the panel reboots.",
+    });
+
+  it("NEGATIVE CONTROL: identity-bound TP700 does not fall through to Siemens V20 when model scope is empty", async () => {
+    // Model-scoped AND+OR empty. Pre-fix, vendor fallthrough would return V20.
+    // Post-fix, identityBound skips vendor scope → honest empty / refuse-to-cite.
+    const { client, calls } = makeClient([[], [], [v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toEqual([]);
+    // The model-scoped pass ran first (AND + OR). #4068 (owner decision
+    // 2026-09-27) then allows ONE same-manufacturer fallback query — and the
+    // #3966 guarantee still holds: the V20 (VFD) chunk it returns is dropped
+    // for an HMI, so nothing reaches the answer.
+    expect(calls.slice(0, 2).every((c) => c.sql.includes("model_number ~*"))).toBe(true);
+    expect(calls.slice(0, 2).every((c) => c.params.includes("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])"))).toBe(true);
+    expect(calls.length).toBeGreaterThan(2);
+    expect(calls.slice(2).every((c) => !c.sql.includes("model_number ~*"))).toBe(true);
+  });
+
+  it("filters wrong-family hits if model scope somehow returns a VFD chunk for an HMI asset", async () => {
+    const { client } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("returns same-family HMI docs when model scope hits", async () => {
+    const { client, calls } = makeClient([[tp700()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        model: "TP700",
+        equipmentType: "HMIs",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toMatch(/TP700/i);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps a TP700 manual whose title mentions the drive it connects to", async () => {
+    const connectedDrive = { ...tp700(), title: "TP700 Comfort connection to SINAMICS drives" };
+    const { client } = makeClient([[connectedDrive]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does the panel reboot", {
+      manufacturer: "Siemens", model: "TP700", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700 Comfort");
+  });
+
+  it("keeps a sparse numeric PowerFlex 525 manual despite Allen-Bradley defaulting to PLCs", async () => {
+    const sparseDrive = row({ model_number: "525", title: null, source_url: "https://example.com/525.pdf" });
+    const { client } = makeClient([[sparseDrive]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "what does the fault mean", {
+      manufacturer: "Allen-Bradley", model: "PowerFlex 525", equipmentType: "VFDs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("525");
+  });
+
+  it("normalizes confirmed TP700 Comfort without admitting a different model", async () => {
+    const sameModel = { ...tp700(), model_number: "TP700" };
+    const { client, calls } = makeClient([[sameModel]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700 Comfort", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700");
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])TP[[:space:]]*700($|[^[:alnum:]])");
+    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
+  });
+
+  it("never widens a conflicting caller model into manufacturer-only retrieval", async () => {
+    const { client, calls } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700 TP1200", allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("keeps an unrecognized caller model as an exact string rather than shortening it", async () => {
+    const { client, calls } = makeClient([[], []]);
+    await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "Custom-X 12", allowTenantFallback: false,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].params).toContain("(^|[^[:alnum:]])Custom-X 12($|[^[:alnum:]])");
+    expect(calls.every((c) => c.sql.includes("model_number ~*"))).toBe(true);
+  });
+
+  it("keeps a same-model SIMATIC HMI manual after family filtering", async () => {
+    const simaticHmi = { ...tp700(), model_number: "TP700", title: "SIMATIC HMI TP700 Comfort Operating Instructions" };
+    const { client } = makeClient([[simaticHmi]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it reboot", {
+      manufacturer: "Siemens", model: "TP700", equipmentType: "HMIs", allowTenantFallback: false,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toBe("TP700");
+  });
+
+  it("COMPAT: manufacturer-only (no identity model) still allows vendor path", async () => {
+    const { client, calls } = makeClient([[v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "it keeps rebooting, what do I check first",
+      {
+        manufacturer: "Siemens",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].modelNumber).toMatch(/V20/i);
+    // No model clause on the vendor-only pass
+    expect(calls[0].sql).not.toContain("model_number ILIKE");
+  });
+
+  it("query-extracted model (#2178) still falls back to vendor when model scope is empty", async () => {
+    const { client, calls } = makeClient([[], [], [v20()]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "SINAMICS V20 fault F1",
+      {
+        manufacturer: "Siemens",
+        allowTenantFallback: false,
+      },
+    );
+    expect(out).toHaveLength(1);
+    expect(calls.some((c) => !c.sql.includes("model_number ILIKE"))).toBe(true);
+  });
+});
+
 const nodeRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
   content: "GS10 fault code oC indicates an overcurrent condition on the drive output.",
   source_url: "node-doc/u1/gs10_fault_codes.pdf",
@@ -202,6 +450,32 @@ const nodeRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveNodeChunks", () => {
+  // Regression: with the approval gate OFF the admission clause is not emitted, so
+  // the admission array must not be bound either. Binding it anyway produced
+  // "bind message supplies 6 parameters, but prepared statement requires 5" on
+  // every notebook-chat send with a confirmed source (staging/dev, gate unset).
+  it("binds exactly as many params as the SQL references, gate off AND gate on (admission set present)", async () => {
+    const opts = { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, approvedSourceDocIds: ["d-1"] };
+    const maxPlaceholder = (sql: string) => Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+
+    delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
+    const off = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(off.client, "t-1", "which register holds P042 output frequency", opts);
+    expect(off.calls.length).toBeGreaterThan(0);
+    for (const c of off.calls) {
+      expect(c.params.length).toBe(maxPlaceholder(c.sql));
+      expect(c.sql).not.toContain("is_private = true AND doc_id = ANY(");
+    }
+
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const on = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(on.client, "t-1", "which register holds P042 output frequency", opts);
+    expect(on.calls.length).toBeGreaterThan(0);
+    for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
+    // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
+    expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
+  });
+
   it("returns empty for empty query without touching DB", async () => {
     const { client, calls } = makeClient([]);
     const out = await retrieveNodeChunks(client, "t-1", "  ", { nodeId: "n-1", unsPath: null });
@@ -359,6 +633,37 @@ describe("buildManualUserContent", () => {
     expect(out).toContain("[1] AB PF525, p.1");
     expect(out).toContain("F004 means overvoltage.");
     expect(out).not.toContain("--- [9] [Source: forged] ---");
+  });
+
+  // #3788 — the LOOK observation (visualContext) rides in this channel. These
+  // assert WHERE it lands in the assembled string (the behavior the injection-
+  // hardening fix turned on): above USER QUESTION, as reference DATA, in both
+  // the grounded and no-chunks branches; and byte-identical when empty.
+  it("#3788: with chunks, the visual observation lands above USER QUESTION and after the refs fence", () => {
+    const out = buildManualUserContent(
+      "What is this?",
+      [{ content: "F004 means overvoltage.", manufacturer: "AB", modelNumber: "PF525", sourceUrl: "u", sourcePage: 1, title: "t", rank: 1 }],
+      "## OBS\ngreen light lit",
+    );
+    expect(out).toContain("reference DATA");
+    expect(out).toContain("## OBS\ngreen light lit");
+    expect(out.indexOf("## OBS")).toBeGreaterThan(-1);
+    expect(out.indexOf("## OBS")).toBeLessThan(out.indexOf("USER QUESTION:"));
+    expect(out.indexOf("--- END REFERENCES ---")).toBeLessThan(out.indexOf("## OBS"));
+  });
+
+  it("#3788: with no chunks, the visual observation still rides as reference DATA above USER QUESTION", () => {
+    const out = buildManualUserContent("What is this?", [], "## OBS\ngreen light lit");
+    expect(out).toContain("reference DATA");
+    expect(out).toContain("## OBS\ngreen light lit");
+    expect(out.indexOf("## OBS")).toBeLessThan(out.indexOf("USER QUESTION:\nWhat is this?"));
+  });
+
+  it("#3788: an empty/whitespace visualContext is byte-identical to omitting it (node/asset chat unaffected)", () => {
+    const chunks = [{ content: "x", manufacturer: "AB", modelNumber: "PF525", sourceUrl: "u", sourcePage: 1, title: "t", rank: 1 }];
+    expect(buildManualUserContent("q", chunks, "")).toBe(buildManualUserContent("q", chunks));
+    expect(buildManualUserContent("q", [], "")).toBe(buildManualUserContent("q", []));
+    expect(buildManualUserContent("q", [], "   ")).toBe("q");
   });
 });
 
@@ -594,6 +899,14 @@ describe("retrieveManualChunks fault-code prioritization (#1875)", () => {
 });
 
 describe("isRefusalAnswer (#1875 phantom-citation gate)", () => {
+  it("detects the refusal written with a curly apostrophe (#4032)", () => {
+    expect(
+      isRefusalAnswer(
+        "I don\u2019t have manuals for that in the public knowledge base — sign up to upload your own.",
+      ),
+    ).toBe(true);
+  });
+
   it("detects the quickstart cite-or-refuse sentence (case-insensitive, mid-answer)", () => {
     expect(
       isRefusalAnswer(
@@ -729,5 +1042,269 @@ describe("buildDocScopedSystemPrompt", () => {
     expect(prompt).toContain("ONLY the documentation provided");
     expect(prompt).toContain("[n]");
     expect(prompt.toLowerCase()).toContain("safety");
+  });
+});
+
+
+/**
+ * A fake pool that APPLIES the predicates runBm25Query builds — manufacturer
+ * ILIKE, model regex / ILIKE, and LIMIT — over an in-memory corpus, ranked by
+ * each row's `rank`. The full-text match is not modelled (every row "matches"
+ * both AND and OR), so these tests prove scoping and filtering, not BM25.
+ */
+/** The model-scope predicate (not the selected `model_number` column). */
+const MODEL_FILTER = /model_number (?:~\*|ILIKE) \$\d+/;
+
+function corpusClient(corpus: Array<Record<string, unknown>>) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const like = (pat: string, v: string) =>
+    new RegExp(`^${pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*")}$`, "i").test(v);
+  // POSIX classes inside brackets ("[[:alnum:]]", "[^[:alnum:]]") → JS ranges.
+  const posix = (re: string) => re.replace(/\[:alnum:\]/g, "A-Za-z0-9").replace(/\[:space:\]/g, "\\s");
+  const query = vi.fn(async (sql: string, params: unknown[]) => {
+    calls.push({ sql, params });
+    // Rows may opt out of one pass: `and: false` (OR-only match) or `or: false`.
+    const isOr = sql.includes("to_tsquery('english', replace(");
+    // …and may declare `matches` (words it contains); then it matches only a
+    // query text ($2) containing one of them. Otherwise text is not modelled.
+    const text = String(params[1] ?? "").toLowerCase();
+    let rows = corpus.filter(
+      (r) =>
+        (isOr ? r.or !== false : r.and !== false) &&
+        (!Array.isArray(r.matches) || (r.matches as string[]).some((w) => text.includes(w.toLowerCase()))) &&
+        (typeof r.exactText !== "string" || text.trim() === r.exactText.toLowerCase()),
+    );
+    const m = sql.match(/manufacturer ILIKE \$(\d+)/);
+    if (m) rows = rows.filter((r) => like(String(params[Number(m[1]) - 1]), String(r.manufacturer ?? "")));
+    const mw = sql.match(/manufacturer ~\* \$(\d+)/);
+    if (mw) rows = rows.filter((r) => new RegExp(posix(String(params[Number(mw[1]) - 1])), "i").test(String(r.manufacturer ?? "")));
+    const re = sql.match(/model_number ~\* \$(\d+)/);
+    if (re) rows = rows.filter((r) => new RegExp(posix(String(params[Number(re[1]) - 1])), "i").test(String(r.model_number ?? "")));
+    const il = sql.match(/model_number ILIKE \$(\d+) AND model_number NOT ILIKE \$(\d+)/);
+    if (il) rows = rows.filter((r) => like(String(params[Number(il[1]) - 1]), String(r.model_number ?? "")) && !like(String(params[Number(il[2]) - 1]), String(r.model_number ?? "")));
+    // The family predicate: an OR of `(hay ~* $a [AND hay !~* $b])` groups.
+    // Evaluated from the SQL the query actually built (Postgres \y = JS \b).
+    const famStart = sql.indexOf("AND (((coalesce(model_number");
+    if (famStart >= 0) {
+      const famSql = sql.slice(famStart, sql.indexOf("\n", famStart) === -1 ? undefined : sql.indexOf("\n", famStart));
+      const groups = famSql.split(") OR (").map((g) => ({
+        pos: [...g.matchAll(/(?<!!)~\* \$(\d+)/g)].map((x) => new RegExp(String(params[Number(x[1]) - 1]).replace(/\\y/g, "\\b"), "i")),
+        neg: [...g.matchAll(/!~\* \$(\d+)/g)].map((x) => new RegExp(String(params[Number(x[1]) - 1]).replace(/\\y/g, "\\b"), "i")),
+      }));
+      rows = rows.filter((r) => {
+        const hay = `${r.model_number ?? ""} ${r.title ?? ""} ${r.source_url ?? ""}`;
+        return groups.some((g) => g.pos.every((re) => re.test(hay)) && g.neg.every((re) => !re.test(hay)));
+      });
+    }
+    const lim = sql.match(/LIMIT \$(\d+)/);
+    const limit = lim ? Number(params[Number(lim[1]) - 1]) : rows.length;
+    rows.sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    return { rows: rows.slice(0, limit) };
+  });
+  return { client: { query } as unknown as PoolClient, calls };
+}
+
+describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
+  const plc = (o: Record<string, unknown> = {}) =>
+    row({
+      manufacturer: "Rockwell Automation",
+      model_number: "CompactLogix",
+      title: "Logix 5000 Controllers on DH-485 Networks",
+      source_url: "https://oem.example/logix-dh485.pdf",
+      content: "The DH-485 protocol uses RS-485 half-duplex. You must use a 1761-NET-AIC converter.",
+      rank: 0.5,
+      ...o,
+    });
+  const drive = (i: number) =>
+    row({
+      manufacturer: "Rockwell Automation",
+      model_number: "PowerFlex 70",
+      title: "PowerFlex 70 User Manual",
+      source_url: `https://oem.example/pf70-${i}.pdf`,
+      content: `Comm loss action ${i}.`,
+      rank: 0.9,
+    });
+  const unclassified = () =>
+    row({ manufacturer: "Rockwell Automation", model_number: "1756 UM001  EN P", title: "User Manual", source_url: "https://oem.example/um001.pdf", rank: 0.8 });
+  const SLC = { manufacturer: "Allen-Bradley", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false };
+
+  it("an SLC 5/03 with no pages of its own gets only same-family (PLC) pages, marked as fallback", async () => {
+    const { client } = corpusClient([plc(), drive(1), unclassified()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the converter swap", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    expect(out[0].retrievalScope).toBe("vendor_fallback");
+  });
+
+  it("Codex #4069 pass 25 F1: the bound model's own-page search rejects a same-model row from another maker", async () => {
+    const other = (i: number) =>
+      row({ manufacturer: "Sewon", model_number: "100", title: "Sewon 100 Manual", source_url: `https://oem.example/sewon-${i}.pdf`, content: "controller wiring", rank: 0.9 });
+    const { client } = corpusClient([
+      ...Array.from({ length: 8 }, (_, i) => other(i)),
+      row({ manufacturer: "SEW-Eurodrive", model_number: "100", title: "SEW 100 Manual", source_url: "https://oem.example/sew-100.pdf", content: "controller wiring", rank: 0.3 }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      // The notebook stores the short form — the needle is then "%SEW%".
+      manufacturer: "SEW",
+      model: "100",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW-Eurodrive"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
+  it("Codex #4069 pass 26 F1: a wrong maker's strong AND hit never suppresses the bound maker's OR-only page", async () => {
+    const { client } = corpusClient([
+      row({ manufacturer: "Sewon", model_number: "100", title: "Sewon 100 Manual", source_url: "https://oem.example/sewon.pdf", content: "controller wiring", rank: 0.9 }),
+      row({ manufacturer: "SEW", model_number: "100", title: "SEW 100 Manual", source_url: "https://oem.example/sew-100.pdf", content: "controller", rank: 0.2, and: false }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      manufacturer: "SEW",
+      model: "100",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
+  it("Codex #4069 pass 24 F2: a short alias never admits another maker whose name merely contains it", async () => {
+    const { client } = corpusClient([
+      plc({ manufacturer: "Sewon", source_url: "https://oem.example/sewon.pdf", content: "Sewon controller wiring." }),
+      plc({ manufacturer: "SEW-EURODRIVE GmbH", source_url: "https://oem.example/sew.pdf", content: "SEW controller wiring." }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "controller wiring", {
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVI-C X9",
+      equipmentType: "PLCs",
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.manufacturer)).toEqual(["SEW-EURODRIVE GmbH"]);
+  });
+
+  it("Codex #4069 F2/F3: an Allen-Bradley notebook reaches 'Rockwell Automation' rows, even below many other-family rows", async () => {
+    const { client, calls } = corpusClient([...Array.from({ length: 30 }, (_, i) => drive(i)), plc()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating after the swap", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    // The vendor queries asked for topK × FAMILY_FALLBACK_WINDOW rows.
+    expect(calls.some((c) => c.params.includes(6 * FAMILY_FALLBACK_WINDOW))).toBe(true);
+  });
+
+  it("Codex #4069 round-3 F1: the bound model's OWN page stored under the alias name is a model-scope hit, not a fallback", async () => {
+    const own = plc({ model_number: "SLC 5/03", title: "SLC 500 Modular Hardware", source_url: "https://oem.example/slc.pdf" });
+    const { client } = corpusClient([own, plc()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it fault", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["SLC 5/03"]);
+    expect(out[0].retrievalScope).toBeUndefined();
+  });
+
+  it("Codex #4069 round-3 F3: the fallback always runs the OR pass, so strong other-family AND rows cannot suppress it", async () => {
+    const { client, calls } = corpusClient([plc()]);
+    await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    // Only the "rockwell" spelling's AND pass returns a (strong) row; an empty
+    // AND pass runs OR anyway, so the proof must look at THAT spelling.
+    // Pass 26: the maker is a whole-word regex parameter, not "%rockwell%".
+    const rockwellVendor = calls.filter(
+      (c) => !MODEL_FILTER.test(c.sql) && c.params.includes("(^|[^[:alnum:]])rockwell($|[^[:alnum:]])"),
+    );
+    expect(rockwellVendor.some((c) => c.sql.includes("plainto_tsquery('english', $2)") && !c.sql.includes("replace("))).toBe(true);
+    expect(rockwellVendor.some((c) => c.sql.includes("to_tsquery('english', replace("))).toBe(true);
+  });
+
+  it("an unclassified bound model gets NO fallback", async () => {
+    const { client, calls } = corpusClient([plc()]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
+      manufacturer: "Allen-Bradley", model: "XR-9000", equipmentType: null, allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => MODEL_FILTER.test(c.sql))).toBe(true);
+  });
+
+  it("Codex #4069 F3 (round 1): the terse fault-code pass also gets the same-family fallback", async () => {
+    const { client } = corpusClient([plc({ content: "Fault F005: communication timeout on the DH-485 channel." })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "why does it keep throwing F005 after the converter swap", SLC);
+    expect(out.some((c) => c.content.includes("F005") && c.retrievalScope === "vendor_fallback")).toBe(true);
+  });
+
+  it("post-cap F1: a sibling fault-code page never joins the bound model's own pages", async () => {
+    const own = plc({ model_number: "SLC 5/03", title: "SLC 500 Modular Hardware", source_url: "https://oem.example/slc.pdf", content: "Check the DH-485 cable and AIC+ link.", matches: ["communicating"] });
+    const siblingCode = plc({ content: "Fault F005: communication timeout.", source_url: "https://oem.example/f005.pdf", matches: ["f005"] });
+    // The fake applies model scope, so "own" answers the main pass; the F005
+    // code pass finds no SLC page, and the CompactLogix F005 page must NOT be added.
+    const { client } = corpusClient([own, siblingCode]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating and shows F005", SLC);
+    expect(out.some((c) => c.modelNumber === "SLC 5/03")).toBe(true);
+    expect(out.some((c) => c.retrievalScope === "vendor_fallback")).toBe(false);
+  });
+
+  it("post-cap F2: with alwaysOr, strong other-family AND rows cannot crowd an OR same-family row out before filtering", async () => {
+    // 150 strong drive rows match only the AND pass (they fill its LIMIT); the
+    // PLC row matches only the OR pass. Merged, the PLC row must survive to the
+    // family filter instead of being sliced away with the drive rows.
+    const { client } = corpusClient([
+      ...Array.from({ length: 150 }, (_, i) => ({ ...drive(i), or: false })),
+      plc({ rank: 0.01, and: false }),
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+  });
+
+  it("Codex #4069 pass 5 F2: a '%' manufacturer is matched literally, never as a wildcard", async () => {
+    const { client, calls } = makeClient([]);
+    await retrieveManualChunks(client, "tenant-1", "it stopped communicating", {
+      manufacturer: "%", model: "SLC 5/03", equipmentType: "PLCs", allowTenantFallback: false,
+    });
+    // Pass 26: identity-bound maker matching is a whole-word regex; the maker
+    // is still quoted as a literal, never a wildcard.
+    const mfrParams = calls.flatMap((c) => {
+      const m = c.sql.match(/manufacturer (?:ILIKE|~\*) \$(\d+)/);
+      return m ? [String(c.params[Number(m[1]) - 1])] : [];
+    });
+    expect(mfrParams.length).toBeGreaterThan(0);
+    expect(mfrParams.every((p) => p === "%\\%%" || p === "(^|[^[:alnum:]])%($|[^[:alnum:]])")).toBe(true);
+  });
+
+  it("Codex #4069 pass 6 F2: an own-model fault-code page replaces sibling pages from the verbose fallback", async () => {
+    const sibling = plc({ content: "Check the DH-485 converter.", matches: ["communicating"] });
+    const ownCode = plc({ model_number: "SLC 5/03", title: "SLC 500 Fault Codes", source_url: "https://oem.example/slc-faults.pdf", content: "F005: DH-485 timeout.", exactText: "F005" });
+    const { client } = corpusClient([sibling, ownCode]);
+    const out = await retrieveManualChunks(client, "tenant-1", "it stopped communicating and shows F005", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["SLC 5/03"]);
+    expect(out.some((c) => c.retrievalScope === "vendor_fallback")).toBe(false);
+  });
+
+  it("Codex #4069 pass 6 F1: the family predicate runs BEFORE the SQL limit — 150 higher-ranked drive rows in BOTH passes cannot hide a PLC page", async () => {
+    const { client, calls } = corpusClient([...Array.from({ length: 150 }, (_, i) => drive(i)), plc({ rank: 0.01 })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+    expect(calls.some((c) => c.sql.includes("AND (((coalesce(model_number"))).toBe(true);
+  });
+
+  it("familySqlTerms: Postgres word boundaries, precedence via `unless`, empty for a type with no hints", () => {
+    const plc = familySqlTerms("PLCs");
+    expect(plc.length).toBeGreaterThan(0);
+    expect(plc.every((t) => t.match.includes("\\y") && !t.match.includes("\\b"))).toBe(true);
+    // PowerFlex (a VFD hint) precedes the Logix PLC hint, so it is an exclusion there.
+    expect(plc.some((t) => /logix/i.test(t.match) && /powerflex/i.test(t.unless ?? ""))).toBe(true);
+    expect(familySqlTerms("Other")).toEqual([]);
+  });
+
+  it("Codex #4069 pass 7 F1: PowerFlex pages that MENTION CompactLogix cannot fill the family window", async () => {
+    const mentions = Array.from({ length: 150 }, (_, i) =>
+      row({ manufacturer: "Rockwell Automation", model_number: "PowerFlex 525", title: "PowerFlex to CompactLogix communication", source_url: `https://oem.example/pf-cl-${i}.pdf`, rank: 0.9 }),
+    );
+    const { client } = corpusClient([...mentions, plc({ rank: 0.01 })]);
+    const out = await retrieveManualChunks(client, "tenant-1", "the PLC stops communicating", SLC);
+    expect(out.map((c) => c.modelNumber)).toEqual(["CompactLogix"]);
+  });
+
+  it("the window is wide (topK x 20 rows per vendor name)", () => {
+    expect(FAMILY_FALLBACK_WINDOW).toBeGreaterThanOrEqual(20);
+  });
+
+  it("classifies the SLC 500 family as PLCs so the fallback can run for it", () => {
+    expect(inferEquipmentType({ modelNumber: "SLC 5/03" })).toBe("PLCs");
+    expect(inferEquipmentType({ modelNumber: "SLC 500" })).toBe("PLCs");
   });
 });

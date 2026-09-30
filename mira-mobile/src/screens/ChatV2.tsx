@@ -171,11 +171,16 @@ const BasisPart: DataMessagePartComponent = ({ data }) => {
   return caption ? <div className="evidence-basis-machine">{caption}</div> : null;
 };
 
-/** Safety hard-stop. The turn is a safety notice, not a troubleshooting
- *  answer, and must never be presentable as an ordinary reply. The banner
- *  itself is shared with the classic screen (screens/SafetyNotice.tsx) so the
- *  two surfaces cannot drift apart — see FLEET-003. */
-const SafetyNoticePart: DataMessagePartComponent = () => <SafetyNotice />;
+/** Safety notice. A terminal hard stop is not a troubleshooting answer and is
+ *  never presentable as an ordinary reply; the non-terminal energized directive
+ *  (#3893) IS an answer framed by a warning, so it renders the warning variant
+ *  while the surrounding chrome stays. `terminal` is carried on the part (set in
+ *  turns-to-parts, defaulted true in runtime); the banner itself is shared with
+ *  the classic screen (screens/SafetyNotice.tsx) so the two surfaces cannot
+ *  drift apart — see FLEET-003. */
+const SafetyNoticePart: DataMessagePartComponent = ({ data }) => (
+  <SafetyNotice terminal={(data as unknown as { terminal?: boolean }).terminal !== false} />
+);
 
 /** 086 §3: withheld machine attribution, explained (shared notice, see
  *  IdentityDisputeNotice.tsx). Before this registration the persisted entry

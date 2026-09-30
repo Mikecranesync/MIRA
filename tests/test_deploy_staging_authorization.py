@@ -1,8 +1,8 @@
 """Security contract for the staging deployment workflow.
 
-The staging host is co-tenanted with production, so a manual dispatch must
-authorize an immutable ``main`` commit before the protected environment or its
-SSH credential can be reached.  These tests exercise the authorization shell
+Staging runs on a separate host resolved from repository variables (#3909), and
+a manual dispatch must authorize an immutable ``main`` commit before the
+protected environment or its SSH credential can be reached.  These tests exercise the authorization shell
 against controlled GitHub metadata and separately verify the workflow job
 boundary that keeps credentials behind that authorization.
 """
@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -42,8 +44,7 @@ def _run_authorizer(
     event_name: str = "workflow_dispatch",
     controller_ref: str = "refs/heads/main",
     controller_sha: str = _MAIN_SHA,
-    target_ref: str = "refs/heads/main",
-    target_sha: str = _MAIN_SHA,
+    approved_rc_sha: str = _MAIN_SHA,
     services: str = "mira-hub mira-pipeline",
     reset_volumes: str = "false",
 ) -> subprocess.CompletedProcess[str]:
@@ -57,12 +58,16 @@ def _run_authorizer(
     gh = bin_dir / "gh"
     gh.write_text(
         "#!/bin/sh\n"
+        f'VALID_SHA="{_MAIN_SHA}"\n'
         'test "$#" -eq 4 || exit 90\n'
         'test "$1" = api || exit 91\n'
-        'test "$2" = repos/Mikecranesync/MIRA/git/ref/heads/main || exit 92\n'
         'test "$3" = --jq || exit 93\n'
-        'test "$4" = .object.sha || exit 94\n'
-        "printf '%s\\n' \"$REMOTE_MAIN_SHA\"\n",
+        'test "$4" = .sha || exit 94\n'
+        'if [ "$2" = "repos/Mikecranesync/MIRA/commits/$VALID_SHA" ]; then\n'
+        '  printf "%s\\n" "$VALID_SHA"\n'
+        "else\n"
+        "  exit 22\n"
+        "fi\n",
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -77,9 +82,7 @@ def _run_authorizer(
             "GITHUB_SHA": controller_sha,
             "GITHUB_REPOSITORY": "Mikecranesync/MIRA",
             "GITHUB_OUTPUT": str(output_path),
-            "REMOTE_MAIN_SHA": _MAIN_SHA,
-            "TARGET_REF_INPUT": target_ref,
-            "TARGET_SHA_INPUT": target_sha,
+            "APPROVED_RC_SHA": approved_rc_sha,
             "SERVICES_INPUT": services,
             "RESET_VOLUMES_INPUT": reset_volumes,
         }
@@ -95,33 +98,26 @@ def _run_authorizer(
 
 
 def test_staging_deploy_exposes_only_manual_exact_main_inputs():
-    """A push trigger or a caller-selected ref would bypass exact-main review."""
+    """A push trigger or a caller-selected SHA would bypass approval review."""
     workflow = _workflow()
     triggers = _triggers(workflow)
 
     assert set(triggers) == {"workflow_dispatch"}
     inputs = triggers["workflow_dispatch"]["inputs"]
-    assert inputs["target_ref"] == {
-        "description": "Exact Git ref to deploy (main only)",
-        "required": True,
-        "type": "choice",
-        "options": ["refs/heads/main"],
-    }
-    assert inputs["target_sha"]["required"] is True
-    assert inputs["target_sha"]["type"] == "string"
+    assert inputs["approved_rc_sha"]["required"] is True
+    assert inputs["approved_rc_sha"]["type"] == "string"
+    assert "target_ref" not in inputs
+    assert "target_sha" not in inputs
     assert workflow["permissions"] == {"contents": "read"}
 
 
-def test_authorizer_accepts_current_main_and_emits_only_validated_values(tmp_path):
+def test_authorizer_accepts_approved_rc_sha_and_emits_only_validated_values(tmp_path):
     """The happy path must bind every downstream value to validated metadata."""
     result = _run_authorizer(tmp_path, reset_volumes="true")
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "github-output").read_text(encoding="utf-8") == (
-        "target_ref=refs/heads/main\n"
-        f"target_sha={_MAIN_SHA}\n"
-        "services=mira-hub mira-pipeline\n"
-        "reset_volumes=true\n"
+        f"approved_rc_sha={_MAIN_SHA}\nservices=mira-hub mira-pipeline\nreset_volumes=true\n"
     )
 
 
@@ -130,10 +126,10 @@ def test_authorizer_accepts_current_main_and_emits_only_validated_values(tmp_pat
     [
         ({"event_name": "push"}, "non-manual invocation"),
         ({"controller_ref": "refs/heads/release/test"}, "non-main controller"),
-        ({"controller_sha": "b" * 40}, "stale controller checkout"),
-        ({"target_ref": "refs/heads/release/test"}, "non-main target ref"),
-        ({"target_sha": "A" * 40}, "non-lowercase target SHA"),
-        ({"target_sha": "b" * 40}, "target other than current main"),
+        ({"approved_rc_sha": "A" * 40}, "non-lowercase target SHA"),
+        ({"approved_rc_sha": "b" * 40}, "SHA not present in the repository"),
+        ({"approved_rc_sha": "a" * 39}, "39-char SHA"),
+        ({"approved_rc_sha": ""}, "empty approved_rc_sha"),
         ({"services": "mira-hub; id"}, "shell metacharacter in services"),
         ({"services": "unknown-service"}, "service outside the allowlist"),
         ({"services": "mira-hub mira-hub"}, "duplicate service"),
@@ -161,14 +157,13 @@ def test_authorization_job_is_secret_free_and_owns_downstream_values():
     assert "secrets." not in serialized
     assert "vars." not in serialized
     assert authorize["outputs"] == {
-        "target_ref": "${{ steps.authorize.outputs.target_ref }}",
-        "target_sha": "${{ steps.authorize.outputs.target_sha }}",
-        "services": "${{ steps.authorize.outputs.services }}",
-        "reset_volumes": "${{ steps.authorize.outputs.reset_volumes }}",
+        "approved_rc_sha": "${{ steps.validate.outputs.approved_rc_sha }}",
+        "services": "${{ steps.validate.outputs.services }}",
+        "reset_volumes": "${{ steps.validate.outputs.reset_volumes }}",
     }
 
 
-def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
+def test_deploy_job_reauthorizes_source_immediately_before_ssh_key_access():
     """A stale rerun must fail before the protected SSH key is materialized."""
     workflow = _workflow()
     deploy = workflow["jobs"]["deploy"]
@@ -176,21 +171,26 @@ def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
     assert deploy["needs"] == "authorize-target"
     assert deploy["environment"] == "staging-deploy"
     steps = deploy["steps"]
-    revalidate_index = next(
+    head_check_index = next(
         index
         for index, step in enumerate(steps)
-        if step.get("name") == "Revalidate current main and deploy user"
+        if step.get("name") == "Require HEAD == approved_rc_sha"
+    )
+    revalidate_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Revalidate deploy user"
     )
     credential_index = next(
         index for index, step in enumerate(steps) if step.get("name") == "Set up SSH"
     )
-    assert credential_index == revalidate_index + 1
+    assert head_check_index < credential_index
+    assert revalidate_index < credential_index
+
+    head_check = steps[head_check_index]
+    assert "$(git rev-parse HEAD)" in head_check["run"]
+    assert "$APPROVED_RC_SHA" in head_check["run"]
 
     revalidate = steps[revalidate_index]
     revalidate_text = json.dumps(revalidate)
-    assert "git/ref/heads/main" in revalidate_text
-    assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in revalidate["run"]
-    assert '"$AUTHORIZED_TARGET_SHA" = "$CURRENT_MAIN_SHA"' in revalidate["run"]
     assert revalidate["env"]["DEPLOY_USER"] == "${{ vars.STAGING_DEPLOY_USER }}"
     assert revalidate["id"] == "revalidate"
     assert "deploy_user=%s\\n" in revalidate["run"]
@@ -198,8 +198,62 @@ def test_deploy_job_reauthorizes_main_immediately_before_ssh_key_access():
     assert "secrets." not in revalidate_text
 
     credential = steps[credential_index]
-    assert credential["env"] == {"STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}"}
+    assert credential["env"] == {
+        "STAGING_DEPLOY_SSH_KEY": "${{ secrets.STAGING_DEPLOY_SSH_KEY }}",
+        "STAGING_HOST": "${{ steps.staging_host.outputs.staging_host }}",
+        "STAGING_HOST_KEY": "${{ steps.staging_host.outputs.staging_host_key }}",
+    }
     assert "VPS_SSH_KEY" not in json.dumps(deploy)
+
+
+def test_staging_host_resolves_from_repository_variables_with_pinned_key():
+    """No literal host anywhere; the target and its host key come from validated
+    repository variables, and any pinned production host is refused (#3909)."""
+    text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "165.245.138.91" not in text
+    assert "40.160.141.61" not in text
+    for pinned in (_ROOT / "deployment" / "known_hosts.factorylm-prod").read_text().splitlines():
+        if pinned and not pinned.startswith("#"):
+            assert pinned.split()[0] not in text
+
+    deploy = _workflow()["jobs"]["deploy"]
+    steps = deploy["steps"]
+    resolve_index = next(
+        i for i, st in enumerate(steps) if st.get("name") == "Resolve staging host"
+    )
+    credential_index = next(i for i, st in enumerate(steps) if st.get("name") == "Set up SSH")
+    assert resolve_index < credential_index
+    resolve = steps[resolve_index]
+    assert resolve["id"] == "staging_host"
+    assert resolve["env"] == {
+        "STAGING_HOST": "${{ vars.STAGING_HOST }}",
+        "STAGING_HOST_KEY": "${{ vars.STAGING_HOST_KEY }}",
+    }
+    # Co-hosted staging (#3930): the production host is allowed and its committed
+    # pin is reused; any other host needs STAGING_HOST_KEY. Never keyscanned.
+    assert "deployment/known_hosts.factorylm-prod" in resolve["run"]
+    assert "co-hosted staging, key reused" in resolve["run"]
+    assert "staging must run on a separate host" not in resolve["run"]
+    assert "ssh-ed25519" in resolve["run"]
+    assert "staging_host_key=%s\\n" in resolve["run"]
+    fp_guard = resolve["run"].index("does not parse as an SSH public key")
+    assert "exit 1" in resolve["run"][fp_guard : fp_guard + 120]
+    assert "staging_host=%s\\n" in resolve["run"]
+
+    ssh_setup = steps[credential_index]["run"]
+    assert (
+        steps[credential_index]["env"]["STAGING_HOST_KEY"]
+        == "${{ steps.staging_host.outputs.staging_host_key }}"
+    )
+    assert '"$STAGING_HOST" "$STAGING_HOST_KEY"' in ssh_setup
+    assert "ssh-keyscan" not in ssh_setup
+
+    deploy_step = _step(deploy, "Deploy exact authorized staging source")
+    assert deploy_step["env"]["STAGING_HOST"] == "${{ steps.staging_host.outputs.staging_host }}"
+    script = deploy_step["run"]
+    assert "printf 'STAGING_HOST=%q\\n'" in script
+    assert '"$STAGING_HOST" \\\n' in script  # the ssh target
+    assert "StrictHostKeyChecking=yes" in script
 
 
 def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
@@ -209,22 +263,22 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
     checkout = next(step for step in deploy["steps"] if "uses" in step)
     assert checkout["uses"] == ("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803")
     assert checkout["with"] == {
-        "ref": "${{ needs.authorize-target.outputs.target_sha }}",
+        "ref": "${{ needs.authorize-target.outputs.approved_rc_sha }}",
         "persist-credentials": False,
     }
 
     deploy_step = _step(deploy, "Deploy exact authorized staging source")
     assert deploy_step["env"] == {
-        "TARGET_REF": "${{ needs.authorize-target.outputs.target_ref }}",
-        "TARGET_SHA": "${{ needs.authorize-target.outputs.target_sha }}",
+        "APPROVED_RC_SHA": "${{ needs.authorize-target.outputs.approved_rc_sha }}",
         "SERVICES": "${{ needs.authorize-target.outputs.services }}",
         "RESET_VOLUMES": "${{ needs.authorize-target.outputs.reset_volumes }}",
         "DEPLOY_USER": "${{ steps.revalidate.outputs.deploy_user }}",
+        "STAGING_HOST": "${{ steps.staging_host.outputs.staging_host }}",
     }
     script = deploy_step["run"]
-    assert 'git fetch --no-tags origin "$TARGET_REF"' in script
-    assert '"$FETCHED_SHA" = "$TARGET_SHA"' in script
-    assert 'git reset --hard "$TARGET_SHA"' in script
+    assert 'git fetch --no-tags origin "$APPROVED_RC_SHA"' in script
+    assert '"$FETCHED_SHA" = "$APPROVED_RC_SHA"' in script
+    assert 'git reset --hard "$APPROVED_RC_SHA"' in script
     assert "git diff --quiet" in script
     assert "git diff --cached --quiet" in script
     assert "git ls-files --others --exclude-standard" in script
@@ -234,24 +288,218 @@ def test_deploy_uses_only_authorized_outputs_and_resets_to_the_exact_fetch():
     assert "ssh-keyscan" not in script
     assert "${{ inputs." not in script
     assert "${{ github.event.inputs." not in script
-    assert "printf 'TARGET_SHA=%q\\n'" in script
+    assert "printf 'APPROVED_RC_SHA=%q\\n'" in script
 
     for job in workflow["jobs"].values():
         for step in job.get("steps", []):
             assert "${{ inputs." not in step.get("run", "")
 
 
-def test_staging_health_and_production_co_tenant_guards_fail_the_job():
-    """A red staging service or missing prod container cannot be log-only success."""
-    workflow = _workflow()
-    script = _step(workflow["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+SAFEGUARD_MARKERS = (
+    "staging path resolves into /opt/mira",
+    "staging deploy identity can read factorylm/prd",
+    "points at the production database endpoint",
+    "names the production Neon endpoint",
+    "is not stg-/staging- prefixed",
+    "already exists under compose project",
+    "publishes a port on 0.0.0.0",
+    "is held by",
+    "non-staging containers changed during the staging deploy",
+)
 
+
+def _deploy_script() -> str:
+    return _step(_workflow()["jobs"]["deploy"], "Deploy exact authorized staging source")["run"]
+
+
+def test_staging_health_and_cohost_safeguards_fail_the_job():
+    """Co-hosted staging (#3930): a red staging service, or any of the seven
+    co-host safeguards, is a STOP — never log-only success."""
+    script = _deploy_script()
     assert '|| echo "FAIL"' not in script
     for port_path in (
         "127.0.0.1:4101/api/health",
+        "127.0.0.1:4200/api/health",
         "127.0.0.1:4099/health",
-        "127.0.0.1:4088/",
     ):
         assert port_path in script
-    low_count_guard = script.index("Production container count looks too low")
-    assert "exit 1" in script[low_count_guard : low_count_guard + 220]
+    # Atlas CMMS answers 403 at "/" by design (Spring Security), so its probe
+    # accepts any HTTP answer and still STOPs on none — the first co-hosted run
+    # (35650758639) died on `curl -sf` exit 22 with every container healthy.
+    atlas = script.index("stg-atlas-api (4088)")
+    atlas_block = script[atlas : atlas + 700]
+    assert "2??|3??|401|403" in atlas_block
+    assert "did not answer HTTP" in atlas_block
+    assert "exit 1" in atlas_block
+    assert 'curl -sf -o /dev/null -w "HTTP %{http_code}\\n" http://127.0.0.1:4088/' not in script
+    # The separate-host rule is retired (owner decision, #3930).
+    assert "production-named containers present on the staging host" not in script
+    assert "/opt/mira (production checkout) exists on the staging host" not in script
+    for marker in SAFEGUARD_MARKERS:
+        guard = script.index(marker)
+        assert "exit 1" in script[guard : guard + 260], marker
+
+
+def test_safeguard4_inspects_every_object_type_and_refuses_an_empty_plan():
+    """Safeguard 4 must read the compose-project label where each object type
+    keeps it (.Config.Labels on containers, .Labels on networks/volumes) and
+    must not pass vacuously on an empty plan. The generic `docker inspect`
+    template errored on networks, so a `staging-net` owned by the retired
+    mira-preview project went undetected (runs 35650758639, 35653888285)."""
+    script = _deploy_script()
+    s4 = script.index("(4) names:")
+    block = script[s4 : s4 + 2200]
+    assert (
+        'docker container inspect "$name" --format \'{{index .Config.Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert (
+        'docker network inspect "$name" --format \'{{index .Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert (
+        'docker volume inspect "$name" --format \'{{index .Labels "com.docker.compose.project"}}\''
+        in block
+    )
+    assert 'docker inspect "$name" --format' not in block
+    assert '[ -n "$PLANNED" ] ||' in block
+    assert "could not render the staging compose plan" in block
+    # A failed `docker container inspect` emits an empty line before exiting 1,
+    # so the chained lookup yielded "\nfactorylm-staging" and STOPped a clean
+    # host (run 35660962231). The owner must be whitespace-stripped before the
+    # comparison, and the comparison must follow the strip.
+    strip = block.index("owner=\"$(printf '%s' \"$owner\" | tr -d '[:space:]')\"")
+    assert strip < block.index('[ "$owner" != "$PROJECT" ]')
+
+
+def test_cohost_safeguards_run_before_any_mutation():
+    """Path/Doppler/DB identity are checked before the checkout touches disk;
+    name/port collisions before any docker mutation; production is snapshotted
+    first and compared last (Codex #3921 P1 ordering, carried over)."""
+    script = _deploy_script()
+    first_git = min(script.index(m) for m in ("git clone", "git reset --hard"))
+    first_docker = min(
+        script.index(m)
+        for m in ("docker rm -f", "compose build", 'compose -p "$PROJECT" -f "$COMPOSE_FILE" up')
+    )
+    for marker in (
+        "staging path resolves into /opt/mira",
+        "can read factorylm/prd",
+        "production database endpoint",
+    ):
+        assert script.index(marker) < first_git, marker
+    assert script.index("PROD_BEFORE=") < first_git
+    # A restart keeps id/name/creation time; only the start time changes (IR round 1).
+    assert "{{.State.StartedAt}}" in script
+    assert 'PROD_AFTER="$(prod_snapshot)"' in script and 'PROD_BEFORE="$(prod_snapshot)"' in script
+    for marker in (
+        "is not stg-/staging- prefixed",
+        "already exists under compose project",
+        "publishes a port on 0.0.0.0",
+        "is held by",
+    ):
+        assert first_git < script.index(marker) < first_docker, marker
+    assert script.index("non-staging containers changed") > first_docker
+
+
+def test_every_compose_call_is_project_scoped_and_nothing_prunes():
+    """Safeguard 7: staging may only ever address its own compose project, and no
+    step may run a host-wide docker cleanup or a bare production-shaped command."""
+    workflow_text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    script = _deploy_script()
+    compose_calls = [
+        line
+        for line in script.splitlines()
+        if "docker compose" in line and not line.strip().startswith("#")
+    ]
+    assert compose_calls, "no compose calls found"
+    for line in compose_calls:
+        assert '-p "$PROJECT"' in line and '-f "$COMPOSE_FILE"' in line, line
+    assert "PROJECT=factorylm-staging" in script
+    for forbidden in (
+        "prune",
+        "docker rm -f mira-",
+        "docker stop mira",
+        "docker restart",
+        "cd /opt/mira\n",
+        'cd "/opt/mira"',
+        "-C /opt/mira ",
+        "/opt/mira/docker-compose",
+        "docker-compose.saas.yml",
+    ):
+        assert forbidden not in workflow_text, forbidden
+    # The only `docker rm` is the stg-* scoped pre-clean.
+    for line in script.splitlines():
+        if "docker rm" in line:
+            assert '"stg-${svc}"' in line, line
+
+
+def test_staging_compose_is_namespaced_and_loopback_only():
+    """The compose file itself carries the operational isolation: its own project
+    name, stg-* containers/volumes, a staging network, loopback host ports, a
+    memory cap on every service, and staging web wired to the STAGING hub."""
+    compose = yaml.safe_load((_ROOT / "docker-compose.staging-vps.yml").read_text(encoding="utf-8"))
+    assert compose["name"] == "factorylm-staging"
+    for svc_name, svc in compose["services"].items():
+        assert svc.get("container_name", "").startswith("stg-"), svc_name
+        assert "mem_limit" in svc, svc_name
+        for port in svc.get("ports", []):
+            assert str(port).startswith("127.0.0.1:"), (svc_name, port)
+        for mount in svc.get("volumes", []):
+            src = str(mount).split(":", 1)[0]
+            assert src != "/opt/mira" and not src.startswith("/opt/mira/"), (svc_name, mount)
+    assert all(v.startswith("stg-") for v in (compose.get("volumes") or {})), compose.get("volumes")
+    assert set(compose.get("networks") or {}) == {"staging-net"} or "staging-net" in (
+        compose.get("networks") or {}
+    )
+    web_env = "\n".join(compose["services"]["mira-web"]["environment"])
+    assert "PLG_HUB_URL=${PLG_HUB_URL:-https://app-staging.factorylm.com}" in web_env
+    assert "app.factorylm.com" not in web_env
+    hub_env = "\n".join(compose["services"]["mira-hub"]["environment"])
+    assert "NEXTAUTH_URL=${NEXTAUTH_URL:-https://app-staging.factorylm.com/api/auth}" in hub_env
+
+
+def test_nginx_workflow_brackets_certbot_and_refuses_production_hostnames():
+    """Safeguard 6 lives in deploy-nginx-stg.yml: a conf naming a production
+    hostname is refused; the non-staging site snapshot is compared after the
+    reload AND after certbot's in-place rewrite; an unreadable site fails."""
+    wf = yaml.safe_load(
+        (_ROOT / ".github" / "workflows" / "deploy-nginx-stg.yml").read_text(encoding="utf-8")
+    )
+    job = wf["jobs"]["deploy-nginx"]
+    refuse = _step(job, "Refuse a conf that names a production hostname")["run"]
+    assert "factorylm\\.com" in refuse and "exit 1" in refuse
+    # The refusal must be a whole-hostname match: the real staging conf passes,
+    # a conf naming any production hostname is caught (run 35651928676 refused
+    # the staging conf itself because `\b` matched inside `staging.factorylm.com`).
+    pattern = re.search(
+        r"grep -nE '([^']+)' deployment/nginx-staging-factorylm\.conf", refuse
+    ).group(1)
+
+    def _refused(text: str) -> bool:
+        with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as fh:
+            fh.write(text)
+        try:
+            return subprocess.run(["grep", "-qE", pattern, fh.name], check=False).returncode == 0
+        finally:
+            Path(fh.name).unlink()
+
+    staging_conf = (_ROOT / "deployment" / "nginx-staging-factorylm.conf").read_text(
+        encoding="utf-8"
+    )
+    assert not _refused(staging_conf)
+    for bad in (
+        "server_name app.factorylm.com;",
+        "server_name factorylm.com www.factorylm.com;",
+        "server_name staging.factorylm.com updates.factorylm.com;",
+        "    server_name   app.factorylm.com ;",
+    ):
+        assert _refused(bad), bad
+    remote = _step(job, "Enable + test + reload nginx, then certbot if DNS points here")["run"]
+    assert "return 1" in remote  # unreadable site → explicit failure
+    first_check = remote.index("check_prod_sites\n")
+    certbot = remote.index("certbot --nginx")
+    assert first_check < certbot < remote.rindex("check_prod_sites")
+    assert 'PROD_BEFORE="$(site_hashes)" || exit 1' in remote
+    assert "165.245.138.91" not in json.dumps(wf)
+    assert "vars.STAGING_HOST" in json.dumps(wf)

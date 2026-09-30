@@ -76,6 +76,14 @@ export function CopyIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" {...STROKE} /><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9A1.5 1.5 0 0 0 4 10.5h1.5" {...STROKE} /></svg>;
 }
 
+export function SpeakerIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z" {...STROKE} /><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9" {...STROKE} /></svg>;
+}
+
+export function RecordFixIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M10.5 2.2a3 3 0 0 0-3.6 3.9L2.5 10.5a1.4 1.4 0 0 0 2 2l4.4-4.4a3 3 0 0 0 3.9-3.6l-1.9 1.9-1.6-.3-.3-1.6z" {...STROKE} /></svg>;
+}
+
 export function RegenerateIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" {...STROKE} /><path d="M13.5 2v3.5H10" {...STROKE} /></svg>;
 }

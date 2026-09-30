@@ -1,0 +1,27 @@
+{
+ "traceId": "14ba2cb381c7377ae8c9e6fb2b9a1085",
+ "projectId": "cmmxymjnc032zad07j35swt3h",
+ "environment": "staging",
+ "observationCount": 55,
+ "domainSpans": [
+  {
+   "type": "SPAN",
+   "name": "mira.turn",
+   "latency_s": 8.039,
+   "startTime": "2026-09-22T02:59:19.123Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "attachment.persist",
+   "latency_s": 1.417,
+   "startTime": "2026-09-22T02:59:19.125Z"
+  },
+  {
+   "type": "GENERATION",
+   "name": "chat MiniMaxAI/MiniMax-M3",
+   "latency_s": 6.168,
+   "startTime": "2026-09-22T02:59:20.542Z"
+  }
+ ],
+ "htmlPath": "/project/cmmxymjnc032zad07j35swt3h/traces/14ba2cb381c7377ae8c9e6fb2b9a1085"
+}

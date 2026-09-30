@@ -20,7 +20,7 @@ The three environments below are not aspirational — they are how every code ch
 
 | | **DEV** | **STAGING** | **PRODUCTION** |
 |---|---|---|---|
-| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (`165.245.138.91`) |
+| **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (OVH `40.160.141.61`) |
 | **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) · **`docker-compose.staging-vps.yml`** (the deployed VPS stack, project `mira-staging`) | `docker-compose.saas.yml` |
 | **Doppler config** | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
 | **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) — `br-small-term-ahtkz61d` | main branch — `br-lively-bread-ahoa86se` |
@@ -35,7 +35,7 @@ The three environments below are not aspirational — they are how every code ch
 - **prod-guard** — `tools/hooks/prod-guard.sh` is registered as a `PreToolUse(Bash)` hook in `.claude/settings.json`. It blocks SSH to `*.factorylm.com` / `factorylm-prod`, `docker restart|stop|down|kill` of prod services, `nginx -s reload`, `systemctl restart|stop|reload mira-*|nginx|atlas-*`, `kubectl apply|delete|rollout`, and prod-targeted `scp`/`rsync`. Override: `MIRA_ALLOW_PROD=1` (human-only, per-shell).
 - **smoke test** — `.github/workflows/smoke-test.yml` runs on PR and on push to main. Pings `factorylm.com` + `app.factorylm.com`. Path-filtered (skips docs/wiki/markdown/.claude).
 - **staging gate** — `.github/workflows/staging-gate.yml` (PR #1386, active since 2026-05-18). Instantiates Supervisor in-process against the NeonDB staging branch, runs the question bank in `tools/staging_questions.yaml` through the Groq→Cerebras→Gemini judge cascade, grades replies on the 5-dimension rubric in `docs/specs/mira-answer-quality-standard.md`. No path filter — runs on every PR to main. `deploy-vps.yml` refuses to deploy any commit whose Staging Gate run was not `completed:success`.
-- **deploy-vps** — `.github/workflows/deploy-vps.yml` listens for `workflow_run: ["Smoke Test"] conclusion: success` on `main` and additionally verifies the Staging Gate run on the PR head SHA before deploying. Hotfix bypass via `workflow_dispatch` with `skip_staging_gate=true` (honor-system; record the reason in a PR/issue). Concurrency-locked (no parallel deploys).
+- **deploy-vps** — `.github/workflows/deploy-vps.yml` accepts `workflow_dispatch` with `approved_rc_sha` (required, 40-hex commit), `approved_release_tag` (optional, resolves from sha), and `services` (optional). No bypass inputs. Verifies the Staging Gate ran on the PR head SHA and a deployed-staging receipt exists for the approved SHA before deploying. Concurrency-locked (no parallel deploys).
 - **NeonDB staging branch** — `br-small-term-ahtkz61d` ("staging"), zero-copy fork of `br-lively-bread-ahoa86se` ("production") under project `divine-heart-77277150`. Endpoint `ep-polished-hall-ahcqtcxe-pooler`. URL stored as `NEON_STG_DATABASE_URL` secret on the `staging` GitHub environment.
 - **apply-migrations** — `.github/workflows/apply-migrations.yml` runs Hub migrations against prod NeonDB. Manual dispatch, `dry-run` mode default, `production` environment gate for audit + approval.
 

@@ -12,6 +12,10 @@ import {
   type ManualSource,
 } from "@/lib/manual-rag";
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
+import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
+import { englishSearchQuery } from "@/capabilities/answer-language";
+import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { translateForSearch } from "@/capabilities/translate-for-search";
 
 export const dynamic = "force-dynamic";
 
@@ -65,13 +69,20 @@ const SYSTEM_PROMPT = [
   "their plant context.",
   "",
   "Rules:",
-  "- Cite-or-refuse. If the context block has no supporting chunk for the",
-  "  user's question, say so plainly: 'I don't have manuals for that in",
-  "  the public knowledge base — sign up to upload your own and I can",
-  "  help.' Do NOT invent fault codes, part numbers, torque specs, or",
-  "  manual references.",
-  "- When you do cite, use [n] markers matching the numbered chunks in the",
-  "  CONTEXT block.",
+  "- ALWAYS answer. A technician with a down machine needs help now; a",
+  "  refusal sends them to a generic chatbot that will not show its source.",
+  "- Two kinds of statement, never mixed up:",
+  "  1. From a manual: anything the CONTEXT block supports. Cite it with",
+  "     [n] markers matching the numbered chunks. Only the plain [n] form.",
+  "  2. General guidance: anything the CONTEXT does not cover. Put it",
+  "     under the heading 'General guidance (not from a manual):' and give",
+  "     practical, standard industrial-maintenance advice.",
+  "- Never state a specific parameter number, register address, terminal",
+  "  number, torque/voltage/current value, part number or fault-code meaning",
+  "  unless a CONTEXT chunk you cite says it. For those, say which manual",
+  "  section to check instead (e.g. 'the drive manual's parameter list').",
+  "- Answer in the language the technician wrote in. Keep manual titles,",
+  "  parameter names and citations as they are.",
   "- Keep answers tight — 4-8 short bullets max. A maintenance tech is",
   "  reading this on a phone in a noisy plant.",
   "- Lead with the most likely cause + a specific corrective step. Then",
@@ -86,8 +97,8 @@ const SYSTEM_PROMPT = [
  * Public, no-auth answer endpoint for the Twilio-moment landing page.
  * Runs BM25 against `knowledge_entries` (manufacturer-scoped if provided),
  * builds a grounded context, and runs the standard Groq → Cerebras →
- * Gemini cascade. The system prompt enforces cite-or-refuse — there is
- * no plant context, so any answer not backed by a chunk must be a refusal.
+ * Gemini cascade. The system prompt separates cited manual facts ([n]) from
+ * labeled general guidance; it answers instead of refusing (2026-09-27).
  *
  * Body: { manufacturer?: string; question: string }
  * Returns: { answer, citations: [{ index, title, url, page }], provider }
@@ -130,11 +141,24 @@ export async function POST(req: Request) {
   }
   const manufacturer = (body.manufacturer ?? "").trim() || null;
 
+  // SAFETY HARD-STOP — before retrieval and before any provider call, as every
+  // other chat route gates (asset, node, notebook, hub/ask). The IP rate limit
+  // above necessarily runs first: the question is not known until the body is
+  // parsed. The classifier carries the educational carve-out ("what is LOTO?"
+  // is a question, not a hazard report), so the stranger questions this route
+  // exists for still answer. Same stop shape as the sibling routes (#3876).
+  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+  // A matched hazard adds a prompt directive and a banner above the answer;
+  // it never replaces the answer.
+  const safetyTrigger = matchSafetyStop(question);
+
+  // Non-English questions search the English corpus in English (answered in their own language).
+  const searchQuery = await englishSearchQuery(question, translateForSearch);
   // Pull the top-K chunks.
   let chunks: ManualChunk[] = [];
   try {
     chunks = await withTenantContext(quickstartTenantId(), async (client) =>
-      retrieveManualChunks(client, quickstartTenantId(), question, {
+      retrieveManualChunks(client, quickstartTenantId(), searchQuery, {
         manufacturer,
         topK: 6,
       }),
@@ -158,7 +182,12 @@ export async function POST(req: Request) {
     : `(no manuals indexed for this question yet)\n\nUSER QUESTION:\n${question}`;
 
   const messages: CascadeMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: withStepSafety(
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+      ),
+    },
     { role: "user", content: userMsg },
   ];
 
@@ -171,12 +200,14 @@ export async function POST(req: Request) {
   if (!result) {
     return NextResponse.json(
       {
-        answer:
+        answer: withSafetyFlag(
           "Sorry — every model provider is unreachable right now. Try again in a minute.",
+          safetyTrigger,
+        ),
         citations: [],
         provider: null,
       } as AskResponse,
-      { status: 503 },
+      { status: 503, headers: safetyFlagHeaders(safetyTrigger) },
     );
   }
 
@@ -184,7 +215,14 @@ export async function POST(req: Request) {
   // answer that says "I don't have manuals for that" would otherwise ship with
   // up-to-6 citation cards — the contradiction reported in PR #1875. When the
   // model refuses, it cited nothing, so the citation list is a lie. (#1875)
-  const citations: ManualSource[] = isRefusalAnswer(result.content)
+  // Model citation hygiene (#4032): some providers emit their own tool-citation
+  // markers ("【1†L3-L4】"); normalize them to the [n] form the page renders.
+  const answerText = normalizeCitationMarkers(result.content);
+  // Ship only the sources the answer actually cited: a general-guidance answer
+  // must not arrive with six unrelated source cards (the #1875 contradiction,
+  // generalized now that the route answers instead of refusing).
+  const cited = new Set([...answerText.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
+  const citations: ManualSource[] = isRefusalAnswer(answerText)
     ? []
     : chunks.map((c, i) => ({
         index: i + 1,
@@ -194,11 +232,14 @@ export async function POST(req: Request) {
         // (legacy ingest mis-stamp) so we never show an impossible page like p.1254.
         page: displayPage(c),
         verified: c.verified === true,
-      }));
+      })).filter((s) => cited.has(s.index));
 
-  return NextResponse.json({
-    answer: result.content,
-    citations,
-    provider: result.provider,
-  } as AskResponse);
+  return NextResponse.json(
+    {
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
+      citations,
+      provider: result.provider,
+    } as AskResponse,
+    safetyTrigger ? { headers: { "X-Safety-Flag": safetyTrigger } } : undefined,
+  );
 }

@@ -81,6 +81,7 @@ describe("POST /api/hub/ask — provider exhaustion (M5)", () => {
       answer: "Sorry — every model provider is unreachable right now. Try again in a minute.",
       citations: [],
       provider: null,
+      basis: null,
     });
   });
 });
@@ -157,3 +158,124 @@ describe("POST /api/hub/ask — the surrounding contract the adapter relies on",
     expect(rag.retrieveManualChunks).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * L0 — the unbound generative Ask (ChatGPT-first lock, wiki/architecture/
+ * chatgpt-first-maintenance-genie.md §2.2 evidence rules, §3 L0/L5):
+ * "Unbound → may answer from model prior; must label general_reasoning" and
+ * "retrieval miss → still may answer generally and say plant docs didn't match
+ * — do NOT only emit sources-miss copy". Observed live on /v3 (2026-09-19):
+ * "What is a VFD…" → "I'm sorry — I don't have any relevant manual excerpts…
+ * upload a VFD manual". These pin the prompt the route sends and the basis it
+ * reports, so the shell's General / Manual p.N badge is driven by the server.
+ */
+describe("POST /api/hub/ask — L0 unbound generative Ask (ChatGPT-first lock)", () => {
+  const GENERAL = "What is a VFD and when would I use one on a conveyor";
+
+  function sentMessages(): { system: string; user: string } {
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+    return { system, user };
+  }
+
+  it("with no retrieved chunks, instructs the model to ANSWER from general knowledge, not to refuse", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "A VFD varies motor speed…", provider: "groq" });
+    const body = await (await POST(req({ question: GENERAL }))).json();
+    const { system, user } = sentMessages();
+    // The positive rule, as a full sentence — not a fragment a negation could also match.
+    expect(system).toMatch(/Answer it from your general maintenance and\s+industrial-equipment knowledge whenever the CONTEXT has no excerpt/);
+    expect(system).toMatch(/never a refusal/i);
+    expect(system).not.toMatch(/never answer (?:it )?from/i);
+    expect(system).not.toMatch(/cite-or-refuse/i);
+    expect(system).not.toMatch(/say so plainly and suggest uploading/i);
+    // The empty-context user message says "no excerpt matched", not "no manuals indexed".
+    expect(user).toMatch(/no manual excerpt matched this question — answer from general knowledge/);
+    expect(user).not.toMatch(/no manuals indexed/);
+    expect(user).toContain(GENERAL);
+    expect(body.basis).toBe("general_reasoning");
+    expect(body.citations).toEqual([]);
+  });
+
+  it("still forbids inventing machine-specific facts (fault codes, part numbers, specs, manual refs)", async () => {
+    await POST(req({ question: GENERAL }));
+    const { system } = sentMessages();
+    expect(system).toMatch(/fault codes/i);
+    expect(system).toMatch(/part numbers/i);
+    expect(system).toMatch(/do not invent|never invent/i);
+  });
+
+  it("with chunks that the answer cites, reports basis oem_documentation — a value in the shared EvidenceBasis vocabulary, so the shell badges it Manual, never General", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk({})]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "Clear it via P037 [1].", provider: "groq" });
+    const body = await (await POST(req({ question: QUESTION }))).json();
+    expect(body.basis).toBe("oem_documentation");
+    expect(body.citations).toHaveLength(1);
+    // The shell adapter downgrades any value outside the vocabulary to general_reasoning.
+    const { basisKind } = await import("@/factorylm-ui/to-interaction");
+    expect(basisKind(body.basis)).toBe("oem_documentation");
+  });
+
+  it("with chunks the answer does not cite (retrieval miss), reports basis general_reasoning and tells the model to say the docs did not match", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk({})]);
+    cascade.cascadeComplete.mockResolvedValue({ content: "Generally, a VFD…", provider: "groq" });
+    const body = await (await POST(req({ question: GENERAL }))).json();
+    const { system } = sentMessages();
+    expect(system).toMatch(/did not match|didn't match|does not support/i);
+    expect(body.basis).toBe("general_reasoning");
+    expect(body.citations).toEqual([]);
+  });
+});
+
+describe("POST /api/hub/ask — safety flag frames the general path, it never blocks it (security-boundaries.md, owner decision 2026-09-27)", () => {
+  it("a hazard report is DETECTED (X-Safety-Flag header, flag directive in the system prompt) but still answers — the rate limiter, retrieval and the provider all still run", async () => {
+    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
+    // Detection is unchanged (same trigger the classifier always matched on
+    // this phrase); what changed is the RESPONSE — a banner above the model's
+    // real answer, never a substitute for it, and never a short-circuit that
+    // skips the rate limiter/retrieval/provider the sibling routes still run.
+    cascade.cascadeComplete.mockResolvedValue({ content: "Isolate and verify zero energy first, then…", provider: "groq" });
+    const res = await POST(req({ question: "Is it safe to work on this live panel with the cover off?" }));
+    expect(res.status).toBe(200);
+    const flagTrigger = res.headers.get("X-Safety-Flag");
+    expect(flagTrigger).toBeTruthy();
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    const body = await res.json();
+    expect(body.answer).toContain("⚠️");
+    expect(body.answer).toContain("Isolate and verify zero energy first, then…");
+    expect(limiter.rateLimited).toHaveBeenCalled();
+    expect(rag.retrieveManualChunks).toHaveBeenCalled();
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain(`SAFETY FLAG: ${flagTrigger}`);
+  });
+
+  it("an educational safety question still answers (the classifier's carve-out): 'what is LOTO' is a question, not a hazard report", async () => {
+    cascade.cascadeComplete.mockResolvedValue({ content: "Lockout/tagout is…", provider: "groq" });
+    const res = await POST(req({ question: "What is LOTO and when is it required" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBeNull();
+    expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
+    expect((await res.json()).basis).toBe("general_reasoning");
+  });
+});
+
+describe("POST /api/hub/ask — a retrieval outage is reported as unavailable, never as 'your documents did not match' (F3)", () => {
+  it("tells the model the search was unavailable, and still answers uncited", async () => {
+    rag.retrieveManualChunks.mockRejectedValue(new Error("neon down"));
+    cascade.cascadeComplete.mockResolvedValue({ content: "Generally, a VFD…", provider: "groq" });
+    const res = await POST(req({ question: "What is a VFD and when would I use one on a conveyor" }));
+    expect(res.status).toBe(200);
+    const [messages] = cascade.cascadeComplete.mock.calls[0] as [Array<{ role: string; content: string }>];
+    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+    expect(user).toMatch(/search was UNAVAILABLE/);
+    expect(user).toMatch(/NOT searched/);
+    expect(user).not.toMatch(/no manual excerpt matched/);
+    const body = await res.json();
+    expect(body.citations).toEqual([]);
+    expect(body.basis).toBe("general_reasoning");
+  });
+});
+

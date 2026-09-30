@@ -215,7 +215,7 @@ const DIMENSIONS = [
     prompt:
       `Read-only review of EXACT commit ${headSha} for ${mission}, issue #${issue}. Verify the legacy runtime ` +
       `remains reachable and rollback-capable per ${CHARTER} §8 gates (nothing at this commit deletes or breaks ` +
-      `a guarded legacy presentation path without an audited legacy-ui-exception). Name unverified claims. ` +
+      `a guarded legacy presentation path without a substantive ## Lifecycle guard rationale plus the newest owner-account exact-head/exact-body GREEN review). Name unverified claims. ` +
       `Return verdict GREEN/PARTIAL/BLOCKED and reviewedSha (the exact commit SHA you reviewed).`,
   },
 ]

@@ -28,19 +28,28 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
-import { SAFETY_STOP } from "@/lib/safety-classifier";
+import { stepEnergyContradiction } from "./step-energy";
 
 export type AnswerValidation =
   | { ok: true }
   | {
       ok: false;
-      kind: "unsafe_answer" | "unsupported_specificity";
+      /** `energized_warning` (#3984, Mike 2026-09-26) and `hazard_warning`
+       *  (Mike 2026-09-27, "no answer blocking, just safety flags") are NOT
+       *  withholds: the replacement is the candidate itself with a warning
+       *  above it, and the caller serves it as an ordinary answered turn.
+       *  `unsupported_specificity` is an accuracy rule, not a safety one, and
+       *  still replaces. */
+      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning" | "hazard_warning";
       /** Machine-readable id, e.g. `unsafe-answer:permits-energized`. */
       violation: string;
       /** Bounded excerpt of the matched text, for server logs only. */
       detail: string;
       /** Full deterministic replacement served instead of the candidate. */
       replacement: string;
+      /** Closed-vocabulary facts about the match (never answer text), safe to
+       *  record on the Turn Evidence Packet (#4098). */
+      match?: { term: string; unit: string };
     };
 
 /* ------------------------------------------------------------------------ *
@@ -53,7 +62,7 @@ export type AnswerValidation =
 // Negations are excluded by lookbehind or by requiring the affirmative form
 // contiguously. Tested against both directions in answer-validation.test.ts.
 const HAZARD_ACTIONS =
-  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?)";
+  "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?|clamp(?:ing|ed|s)?(?![-\\s]?meter))";
 const ENERGIZED_STATE = "(?:energized|live|hot|powered(?:\\s+on)?|running)";
 // Iteration-3: "when"/"whilst"/"during" work as energized connectors exactly
 // like "while"/"with" ("Reset the fault WHEN the machine is energized").
@@ -251,8 +260,27 @@ const HAZARD_ACTION_ANY_SRC =
 const HAZARD_ACTION_ANY = new RegExp("\\b" + HAZARD_ACTION_ANY_SRC + "\\b", "i");
 // `(?<![\w-])energized` keeps "de-energized"/"re-energized" out — a hyphen
 // before the state word means isolation prose, not an energized instruction.
+// #3973: a TRAILING hyphen is the mirror case. "an energized-work permit" and
+// "a live-work permit" are safety vocabulary — naming the control, not
+// instructing the hazard — and both sit next to `work`, a hazard action. The
+// `(?![-\w])` guards keep the compound nouns out while "while it is energized"
+// and "on the live conductors" still match. An unhyphenated "live work permit"
+// is a known residual.
+// #3973: the link set above is all TEMPORAL ("while/when/during it is live").
+// A contact preposition carries the same instruction spatially — "repeat the
+// clamp measurement ON THE LIVE CONDUCTORS" — and shipped to a technician on
+// 2026-09-23 because no relation matched it. There is no legitimate reading of
+// an instruction to act on a named live conductor, so this is unconditional,
+// not scoped to a hazard category. It joins ENERGIZED_RELATION_SRC rather than
+// standing alone so BOUND_PROHIBITION exempts the CORRECT sentence
+// ("never measure on live conductors") by the same grammar.
+const ENERGIZED_CONTACT_SRC =
+  "(?:on|onto|across|at)\\s+(?:the\\s+|a\\s+|each\\s+|all\\s+(?:the\\s+)?)?" +
+  "\\b(?:live|energi[sz]ed|hot|powered)\\b\\s+" +
+  "(?:conductor|bus(?:bar)?|terminal|part|circuit|wire|phase|cable|lead|connection|equipment)s?";
 const ENERGIZED_RELATION_SRC =
-  ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized|\\blive\\b|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)";
+  "(?:" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}?(?:(?<![\\w-])energized(?![-\\w])|\\blive\\b(?![-\\w])|\\bhot\\b|\\bpowered(?:\\s+on)?\\b|\\brunning\\b)" +
+  "|" + ENERGIZED_CONTACT_SRC + ")";
 const ENERGIZED_RELATION = new RegExp("\\b" + ENERGIZED_RELATION_SRC, "i");
 const NO_ISOLATION_RELATION = new RegExp("\\b" + NO_ISOLATION, "i");
 // 2026-09-14 coverage audit: the same coupling logic extends to other
@@ -300,7 +328,15 @@ const BOUND_PROHIBITION = new RegExp(
     "|\\b" + NEG_HEAD_SRC + "\\s+(?:" + ENERGIZED_RELATION_SRC + "|" + PRESSURIZED_RELATION_SRC + "|" + MOTION_PROXIMITY_SRC + "|" + NO_ISOLATION + ")" +
     "|\\b" + HAZARD_ACTION_ANY_SRC +
     "\\b[^.!?\\n]{0,60}?\\b(?:is|are|would\\s+be|remains)\\s+(?:strictly\\s+|extremely\\s+|very\\s+)?(?:dangerous|hazardous|unsafe|prohibited|forbidden|banned|illegal|not\\s+(?:allowed|permitted|safe|acceptable|recommended|advisable)|never\\s+(?:safe|allowed|permitted|acceptable)|against\\s)" +
-    "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b",
+    "|\\b(?:with|use|exercise)\\s+(?:extreme\\s+)?caution\\b|\\bunder\\s+no\\s+circumstances\\b" +
+    // #3973 (5): CLASSIFYING the task is not instructing it. "this is energized
+    // work under NFPA 70E", "that counts as live work" name the control regime
+    // — the sentence a correct refusal uses. Without this the generic relation
+    // reads the copular complement as an energized instruction (the bare word
+    // `work` is a hazard action), and replaces a correct answer with a hard
+    // stop. Only the copular/classificatory form is exempted; an imperative
+    // ("do the work while energized") has no linking verb and still rejects.
+    "|\\b(?:is|are|becomes|remains|counts\\s+as|considered|qualifies\\s+as)\\s+(?:an?\\s+)?(?:energi[sz]ed|live)[-\\s]work\\b",
   "i",
 );
 
@@ -309,6 +345,12 @@ const BOUND_PROHIBITION = new RegExp(
 // splitter (comma/semicolon/colon/dash + contrastive conjunctions), so both
 // exemptions scope identically.
 const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|\bthough\b/i;
+
+// #3979: a permit's required CONTENT can describe safe practices for work on
+// energized parts without instructing a technician to do that work. Match the
+// complete administrative sentence (optionally a list item), never the word
+// "permit" alone: an appended live-work direction must still reach A2.
+const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(?:energized[-\s]work\s+)?permit\s+(?:must|should|shall)\s+)?(?:describe|document|state|list|include)(?:\s+a\s+description\s+of)?\s+(?:the\s+)?safe\s+work\s+practices\s+(?:to\s+be\s+used\s+when|for)\s+work(?:ing)?\s+on\s+energized\s+parts\.?$/i;
 
 /** Returns the offending sentence, or null. DETECTION is sentence-scoped —
  *  splitting an instruction across punctuation ("While the machine is
@@ -320,6 +362,7 @@ const CLAUSE_BOUNDARY = /[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b|\balthough\b|
  *  hesitate: …") never exempts. Detection only, never rewriting. */
 function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
     const relId = rel?.id ?? (NO_ISOLATION_RELATION.test(sentence) ? "energized" : null);
@@ -343,6 +386,184 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
     return { relId, sentence };
   }
   return null;
+}
+
+/* ------------------------------------------------------------------------ *
+ * A4. Energized-electrical category: restoring power in order to measure    *
+ * ------------------------------------------------------------------------ */
+
+// #3973. The route already CLASSIFIES this turn (`matchSafetyStop` returns
+// ENERGIZED_ELECTRICAL_HAZARD on LETHAL_VOLTAGE_CONTEXT ∧ ENERGIZED_WORK_INTENT)
+// and, until this rule, did exactly two things with that knowledge: append an
+// advisory paragraph to the system prompt, and put a banner on the evidence
+// frame. Neither constrains the answer. On 2026-09-23 a Pixel received, twice,
+// a procedure that isolates correctly and THEN restores power to take the
+// reading. The deterministic floor returned ok; the semantic judge returned
+// `{"verdict":"safe","reason":"instructs isolation and verification before
+// measurement"}` — it weighed the opening and not the last step.
+//
+// "Re-energize" is NOT hazardous on its own — "only after
+// the work is complete may the feeder be re-energized" is the correct sentence
+// and must survive. What is prohibited is restoring energy IN ORDER TO
+// measure. That coupling is what the narrow MEASURE_ACTION set below encodes.
+const RESTORE_ENERGY_SRC =
+  "(?:re[-\\s]?energi[sz]\\w*|restore\\s+(?:the\\s+)?power|" +
+  "power\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up)|" +
+  "(?:turn|switch|bring|put)\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up))";
+const RESTORE_ENERGY = new RegExp("\\b" + RESTORE_ENERGY_SRC, "i");
+// A narrower action set than HAZARD_ACTIONS on purpose: "work", "replace" and
+// "service" all appear in the legitimate restore-power sentence.
+const MEASURE_ACTION_SRC =
+  "(?:(?:attach|connect)\\s+(?:the\\s+)?test\\s+leads?\\b|measur\\w+|clamp(?:ing|ed|s)?(?![-\\s]?meter)|probe|probing|reading|\\bread\\b|" +
+  "record\\s+(?:the\\s+|each\\s+)?(?:current|phase|amp\\w*|reading|voltage)|" +
+  "check\\s+(?:the\\s+|each\\s+)?(?:current|amp\\w*|voltage|phase)|" +
+  "take\\s+(?:the\\s+|a\\s+)?(?:reading|measurement))";
+
+// The hazard is a physical electrical measurement after power is restored,
+// not a process reading or a value read from an installed external display.
+const ELECTRICAL_MEASUREMENT_CONTEXT = /\b(?:current|amps?|amperes?|voltage|phases?|legs?|conductors?|terminals?|busbars?|feeders?|panels?|circuits?|ammeter|clamp[-\s]?meter|multimeter)\b/i;
+const CONTACT_MEASUREMENT = /\b(?:clamp(?:ing|ed|s)?\s+(?:each\s+|the\s+|a\s+)?(?:phase|conductor|wire|cable)|prob(?:e|ing)\b|(?:with|using)\s+(?:a\s+|the\s+)?(?:clamp[-\s]?meter|multimeter)|(?:on|across|around|at)\s+(?:each\s+|the\s+|a\s+|live\s+|exposed\s+){0,3}(?:phases?|conductors?|terminals?|busbars?|wires?|lugs?|test\s+leads?)|from\s+(?:the\s+|an?\s+|each\s+|exposed\s+|live\s+|phase\s+){0,3}(?:lugs?|terminals?|conductors?|wires?|busbars?)|(?:with|using)\s+(?:the\s+|an?\s+)?test\s+leads?(?!\s+(?:still\s+)?(?:disconnected|removed|unplugged|not\s+connected)\b))\b/i;
+const EXTERNAL_READING = /\b(?:from|off|on|via)\s+(?:the\s+|an?\s+|installed\s+|external\s+|remote\s+|phone\s+|laptop\s+|tablet\s+|computer\s+|power\s+|VFD\s+|thermostat\s+|HMI\s+|monitor\s+){0,5}(?:display|screen|gauge|HMI|monitor|metering|laptop|phone|tablet|computer)\b/i;
+const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|remote|phone|laptop|tablet|computer|power|VFD|thermostat|HMI|monitor)\s+){0,5}(?:display|screen|gauge|HMI|monitor|metering|laptop|phone|tablet|computer)\s+to\s*$/i;
+const MEASURE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + MEASURE_ACTION_SRC, "i");
+const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
+
+/** Carry an affirmative restoration across prose/list steps. Prohibitions
+ * apply only to their own clause; a safe opening cannot excuse a later
+ * instruction. An explicit isolate/lockout/verify step ends that interval.
+ * Retain original answer text elsewhere: this scans detection-only text. */
+function restoreEnergyToMeasure(text: string): string | null {
+  let restored: string | null = null;
+  let electrical = false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    // A completed affirmative isolation step ends the energized interval at
+    // its verification, not at the end of the sentence. Keep scanning suffixes
+    // such as "then re-energize" and never let a negated shutdown reset state.
+    const isolation = /^\s*(?:\d+[.)]\s*)?(?:de[-\s]?energi[sz]e\b|isolate\b|shut\s+(?:it\s+|the\s+\w+\s+)?down\b|switch\s+(?:it\s+|the\s+\w+\s+)?off\b)[^.!?]*?\block[-\s]?out\b[^.!?]*?\b(?:verify|confirm)\s+(?:zero\s+voltage|(?:the\s+)?absence\s+of\s+voltage)\b/i.exec(sentence);
+    const resetAt = isolation && !REASSURANCE_AFFIRMATION.test(isolation[0])
+      && !/\b(?:not|never|skip|omit|optional|without|don't|no\s+need)\b/i.test(isolation[0])
+      && !/^\s+(?:(?:is|was|remains)\s+)?(?:optional|unnecessary|not\s+(?:needed|required)|only\s+if|if|unless|when)\b/i.test(sentence.slice(isolation[0].length))
+      ? isolation[0].length : null;
+    const segments = resetAt === null ? [sentence] : [sentence.slice(0, resetAt), sentence.slice(resetAt)];
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      if (segmentIndex === 1) {
+        restored = null;
+        electrical = false;
+      }
+      let frontedSource = "";
+      for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
+        const restorations = [...clause.matchAll(new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"))];
+        const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
+        if (actions.length === 0 && restorations.length === 0 && EXTERNAL_READING.test(clause)) {
+          frontedSource = clause;
+          continue;
+        }
+        // Polarity is local to each action. An earlier "do not restore" must
+        // never erase a later affirmative restoration in the same clause.
+        const events = [
+          ...restorations.map((match) => ({ match, kind: "restore" as const, at: match.index! })),
+          ...actions.map((match) => ({ match, kind: "measure" as const, at: match.index! })),
+        ].sort((a, b) => a.at - b.at);
+        const ordered = events.map((event, i) => ({
+          ...event,
+          prohibited: false,
+          context: clause.slice(i ? events[i - 1].at + events[i - 1].match[0].length : 0, events[i + 1]?.at),
+        }));
+        for (let i = 0; i < ordered.length; i++) {
+          const event = ordered[i];
+          const prefix = clause.slice(i ? events[i - 1].at + events[i - 1].match[0].length : 0, events[i].at);
+          // "Do not A or B" shares a prohibition; "do not A then B" does not.
+          const coordinated = i > 0 && ordered[i - 1].prohibited && /\b(?:or|and)\s*$/i.test(prefix);
+          event.prohibited = !REASSURANCE_AFFIRMATION.test(event.context)
+            && (coordinated || RESTORE_PROHIBITION.test(event.context) || MEASURE_PROHIBITION.test(event.context) || BOUND_PROHIBITION.test(event.context));
+        }
+        for (const event of ordered) {
+          if (event.kind !== "restore") continue;
+          const following = actions.findIndex((action) => action.index! > event.at);
+          if (following < 0) continue;
+          const reading = actions[following];
+          const readingText = clause.slice(reading.index, actions[following + 1]?.index);
+          const between = clause.slice(event.at + event.match[0].length, reading.index);
+          if (/\bafter\b/i.test(between)
+            && /\b(?:isolated|de[-\s]?energized|locked\s+out)\b/i.test(readingText)
+            && !/\b(?:not|never|without)\b/i.test(readingText)) {
+            // Restoration occurs after the isolated reading, before a later one.
+            event.at = (actions[following + 1]?.index ?? clause.length) - 0.5;
+          }
+        }
+        ordered.sort((a, b) => a.at - b.at);
+        for (const event of ordered) {
+          if (event.prohibited) continue;
+          if (event.kind === "restore") {
+            restored = sentence;
+            electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
+            continue;
+          }
+          const index = actions.indexOf(event.match);
+          const readingBody = clause.slice(event.match.index, actions[index + 1]?.index);
+          const carriedSource = index === 0 ? frontedSource : "";
+          const action = (index === 0 ? carriedSource + " " + clause.slice(0, event.match.index) : "") + readingBody;
+          frontedSource = "";
+          if (!restored) continue;
+          const readingPrefix = clause.slice(index ? actions[index - 1].index! + actions[index - 1][0].length : 0, event.match.index);
+          // The first stated source owns the reading. A later display used
+          // for comparison must not exempt an earlier unknown/physical source.
+          const source = /\b(?:from|off|on|via)\b/i.exec(readingBody);
+          const externalSource = EXTERNAL_READING.exec(readingBody);
+          const readsDisplay = source
+            ? externalSource?.index === source.index
+            : EXTERNAL_READING_INTRO.test(readingPrefix)
+              || (index === 0 && EXTERNAL_READING.test(carriedSource + " " + readingPrefix));
+          // A single verb can name two reading sources. Both must be external;
+          // "from the display and at exposed test points" is still live work.
+          const coordinatedSources = [...readingBody.matchAll(/\b(?:and|or)\s+((?:from|off|on|via|at|across|around)\b)/gi)];
+          const allSourcesExternal = coordinatedSources.every((match) => {
+            const sourceStart = match.index! + match[0].length - match[1].length;
+            // Time and operating conditions do not identify another source.
+            // Inspect the clause tail because the next verb has its own event.
+            const tail = clause.slice(event.match.index! + sourceStart);
+            if (/^(?:at the same time\b|on completion\b|at (?:full|no|partial|rated) load\b|at (?:idle|startup)\b|at the (?:end|start)\s+(?:note|check|record|close|review|inspect)\b)/i.test(tail)) return true;
+            return EXTERNAL_READING.exec(readingBody.slice(sourceStart))?.index === 0;
+          });
+          if (!CONTACT_MEASUREMENT.test(action) && readsDisplay && allSourcesExternal) continue;
+          if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
+            return restored === sentence ? sentence : `${restored}\n${sentence}`;
+          }
+        }
+
+      }
+    }
+  }
+  return null;
+}
+
+/** #3984: blank (length-preserving) every clause that is purely a live
+ *  electrical MEASUREMENT — a measure action in an electrical context with no
+ *  other hazard action and no pressurized/motion relation. Used only after A4
+ *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
+ *  warns about, while every other hazard clause is still scanned.
+ *  Decided, not inherited: a live measurement that also says "without
+ *  de-energizing" (A2's no-isolation form) is masked too — it is the same
+ *  energized-measurement category the owner put in the warn lane (#3984), and
+ *  explicit "lockout isn't needed" affirmations are A1, which reads unmasked.
+ *  A masked prohibited measurement ("never probe the live terminals, and …")
+ *  no longer shields a sibling hazard clause: the prohibition only ever bound
+ *  the probing, so the sibling is judged on its own (pinned in the wire test). */
+function maskLiveMeasurementClauses(text: string): string {
+  const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
+  const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");
+  return text.replace(/[^.!?\n]+/g, (sentence) =>
+    sentence
+      .split(new RegExp(`(${CLAUSE_BOUNDARY.source})`, "i"))
+      .map((clause) => {
+        if (!new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(clause)) return clause;
+        if (!ELECTRICAL_MEASUREMENT_CONTEXT.test(clause) && !CONTACT_MEASUREMENT.test(clause)) return clause;
+        if (HAZARD_ACTION_ANY.test(clause.replace(measure, " "))) return clause;
+        if (otherRelations.some((r) => r.re.test(clause))) return clause;
+        return clause.replace(/[^\s]/g, " ");
+      })
+      .join(""),
+  );
 }
 
 /* ------------------------------------------------------------------------ *
@@ -382,11 +603,143 @@ const FABRICATED_DOC_PATTERNS: readonly { readonly id: string; readonly re: RegE
 const EXACT_SETTING_RE =
   /(?:^|[.!?:;]\s+|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|now\s+|next\s+|first\s+)?(?:set|adjust|torque|tighten|calibrate|dial)\b[^.!?\n]{0,60}?\bto\s+\d[\d.,]*\s*(?:bar|psi|kpa|mpa|n·?m|nm|ft[-·\s]?lbs?|volts?|amps?|hz|rpm|°\s?[cf]|celsius|fahrenheit|mm|degrees)\b|\bshould\s+be\s+(?:set|adjusted|torqued|calibrated)\s+to\s+\d[\d.,]*\s*\w/im;
 
+// 2026-09-22 staging traces (952036aa…, 8906786b…, ae30230b…): the general
+// lane stated this machine's exact RATINGS as fact with nothing behind them —
+// "operating range is –20 °C to +60 °C", "width 2.5 in", "IP65 front face,
+// 0…+50 °C" — and the answer gate recorded evidence_sufficient=false while
+// still serving. EXACT_SETTING_RE only catches the imperative shape ("set …
+// to N units"). This catches the DECLARATIVE shape: an equipment quantity
+// asserted with an exact unit-bearing value (or range). It applies only when
+// the turn has NO evidence (no chunks, no machine packet, no photo
+// observation) — with a photo in context the nameplate is the evidence.
+// Hedged / generic phrasing ("typically", "often", "many", "for example",
+// "industrial HMIs generally") is not an assertion about this machine and is
+// left alone; the user's own numbers ("it says 480V on the label") are not
+// rated-claims either.
+const UNIT =
+  "(?:v(?:olts?|dc|ac)?|a(?:mps?|mperes?)?|hz|rpm|bar|psi|k?pa|mpa|n[·.]?m|ft[-·\\s]?lbs?|°\\s?[cf]|celsius|fahrenheit|mm|cm|in(?:ch(?:es)?)?|kw|hp|ma|kv|ohms?|ω)";
+const NUM = "[-–+]?\\d[\\d.,]*";
+const RANGE = `${NUM}\\s*(?:°\\s?[cf]\\s*)?(?:to|[-–…]|and)\\s*${NUM}`;
+const QTY =
+  "(?:rated|rating|ratings|range|maximum|minimum|max|min|nominal|operating|supply|input|output|limit|limits|spec|specification|tolerance|clearance|torque|pressure|voltage|current|speed|temperature|frequency|power|capacity|width|height|length|depth|weight|diameter|thickness|gap|setting|setpoint)";
+const HEDGE =
+  /\b(?:typically|usually|often|generally|commonly|normally|for example|e\.g\.|such as|many|most|some|industrial|standard|common|might|may|could|would|should|approximately|around|about|roughly|likely)\b/i;
+// Capture groups name WHICH quantity word and unit matched — closed-vocabulary
+// tokens of this grammar, never answer text (#4098: the Turn Evidence Packet
+// may carry these, so a false refusal can be diagnosed from staging turns).
+// Groups: 1 quantity word, 2 unit (quantity-first); 3 unit, 4 rating word
+// (value-first). Adding groups does not change what matches.
+const EXACT_RATING_RE = new RegExp(
+  `\\b(${QTY})\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*(${UNIT})\\b|\\b(?:${RANGE}|${NUM})\\s*(${UNIT})\\b[^.!?\\n]{0,40}?\\b(rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
+  "i",
+);
+
+/** A sentence-level scan: the rating claim must live in a sentence that is not
+ *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
+ *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
+export function unsupportedExactRating(text: string): string | null {
+  return exactRatingMatch(text)?.excerpt ?? null;
+}
+
+/** Which part of the exact-rating grammar fired. `term` and `unit` are tokens
+ *  of this file's closed vocabulary (lower-cased), safe for the text-free
+ *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
+export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
+
+// #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
+// about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
+// the IEC 60751 definition of the sensor type, and was blocked 5/5 on staging
+// (731649c23).
+//
+// The exemption is a CLOSED TEMPLATE over a whole clause, never a span or a
+// value set (#4108 review rounds 1-2: value sets let unrelated numbers launder
+// invented ones; spans detached a value from its sensor and quantity, stripped
+// a range's endpoint or a negative sign). A clause is a definition only when
+// the entire clause reads "[a|the] PTnnn['s] [sensor|element|RTD] [has|is|reads]
+// [a] [nominal|base] [resistance|value] [of|is] [a] [nominal] R Ω at 0 °C",
+// with R equal to that clause's OWN designation (PT100 → 100 Ω, PT1000 →
+// 1 000 Ω). Those clauses are removed and the full rating grammar re-runs on
+// everything else, so a lead resistance, a limit, a range, a swapped value or
+// any other claim still blocks.
+const RTD_DEFINITION_CLAUSE_RE = new RegExp(
+  "^\\s*(?:(?:a|an|the)\\s+)?pt[-\\s]?(100|500|1000)(?:'s)?" +
+    "(?:\\s+(?:sensor|element|rtd))?(?:\\s+(?:has|is|reads))?(?:\\s+an?)?" +
+    "(?:\\s+(?:nominal|base))?(?:\\s+(?:resistance|value))?(?:\\s+(?:of|is))?" +
+    "(?:\\s+a)?(?:\\s+nominal)?" +
+    "\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c(?:\\s+nominal)?\\s*[.!]?\\s*$",
+  "i",
+);
+// Also the "The nominal resistance of a PT1000 is 1000 ohms at 0 °C" order.
+const RTD_DEFINITION_CLAUSE_RE_2 = new RegExp(
+  "^\\s*the\\s+(?:nominal|base)\\s+resistance\\s+of\\s+(?:(?:a|an|the)\\s+)?" +
+    "pt[-\\s]?(100|500|1000)\\s+is\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c\\s*[.!]?\\s*$",
+  "i",
+);
+
+function isRtdDefinitionClause(clause: string): boolean {
+  for (const re of [RTD_DEFINITION_CLAUSE_RE, RTD_DEFINITION_CLAUSE_RE_2]) {
+    const m = re.exec(clause);
+    if (m) {
+      const ohms = Number(m[2].replace(/,/g, "")) * (m[3] ? 1000 : 1);
+      return ohms === Number(m[1]);
+    }
+  }
+  return false;
+}
+
+/** The sentence with every whole-clause RTD definition blanked out, and every
+ *  other byte — including the separators — left exactly as written (#4108
+ *  review round 3: rebuilding with commas broke the rating grammar's own
+ *  "220 and 480 V" range syntax). Clauses are delimited by ", " / ";" / " and "
+ *  / " whereas " / " while " / " vs."; a thousands comma ("1,000") has no
+ *  following space, so it never splits a number. */
+function withoutRtdDefinitions(sentence: string): string {
+  // The capture group keeps each separator in the array at the odd indexes.
+  const parts = sentence.split(/(,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+)/i);
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isRtdDefinitionClause(parts[i])) {
+      parts[i] = "";
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : sentence;
+}
+
+export function exactRatingMatch(text: string): ExactRatingMatch | null {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!sentence.trim()) continue;
+    if (HEDGE.test(sentence)) continue;
+    // Report the claim that survives the exemption, not the exempt definition
+    // (#4108 review round 2 F3: gate_match must name what actually blocked).
+    const m = EXACT_RATING_RE.test(sentence) ? EXACT_RATING_RE.exec(withoutRtdDefinitions(sentence)) : null;
+    if (m) {
+      return {
+        excerpt: m[0].slice(0, 160),
+        term: (m[1] ?? m[4] ?? "").toLowerCase(),
+        unit: (m[2] ?? m[3] ?? "").toLowerCase().replace(/\s+/g, ""),
+      };
+    }
+  }
+  return null;
+}
+
 // Fault-code-shaped token: letter prefix, optional separator, 2+ digits,
 // optional suffix — Q-447-Delta, ZX-9987, F0000000, E-12. Deliberately does
 // NOT match bare numbers, voltages (480V), thread sizes (M8), or model names
 // without a digit run (S7-1500's "S7" has a single digit).
+/** Longest token still treated as a fault code. Real ones are <20 chars. */
+const MAX_FAULT_CODE_LEN = 128;
+
 const FAULT_CODE_TOKEN = /\b[A-Za-z]{1,4}[-_]?\d{2,8}(?:[-_][A-Za-z0-9]+)?\b/g;
+
+/** The fault-code-shaped tokens in the text — E10's one definition, shared so
+ *  other classifiers agree with it (#4069 passes 15–16). */
+export function faultCodeTokens(text: string): string[] {
+  return text.match(new RegExp(FAULT_CODE_TOKEN.source, "g")) ?? [];
+}
 
 // A sentence that quotes-without-defining ("I can't verify what Q-447 means")
 // is honest and allowed.
@@ -394,6 +747,127 @@ const NON_VERIFICATION =
   /\b(?:cannot|can'?t|unable\s+to|not\s+(?:able\s+to\s+)?(?:verify|confirm)|couldn'?t|unverified|don'?t\s+have|do\s+not\s+have|no\s+documentation|not\s+documented|isn'?t\s+documented|won'?t\s+guess|not\s+something\s+I\s+can)\b/i;
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
+
+
+/* ------------------------------------------------------------------------ *
+ * Detection-only canonicalization                                           *
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Hyphen-equivalent codepoints folded to ASCII `-`. NOT en/em dash.
+ *
+ * Membership is decided by Unicode decomposition, not by how a glyph looks:
+ *   U+2010 HYPHEN, U+2012 FIGURE DASH, U+2212 MINUS SIGN  — hyphen/minus forms
+ *   U+2011 NON-BREAKING HYPHEN  — <noBreak> U+2010        (the observed bypass)
+ *   U+FE63 SMALL HYPHEN-MINUS   — <small>   U+002D
+ *   U+FF0D FULLWIDTH HYPHEN-MINUS — <wide>  U+002D
+ *
+ * U+FE58 SMALL EM DASH is deliberately ABSENT. It was in this set until an
+ * independent review checked its decomposition: `<small> U+2014`. It is an EM
+ * DASH form, and folding it would have quietly contradicted the en/em-dash
+ * exclusion three lines below — the precise class of interaction this file
+ * exists to prevent. Judge a codepoint by `unicodedata.decomposition()`, never
+ * by the shape of the glyph.
+ */
+const HYPHEN_EQUIV_CHARS = "\\u2010\\u2011\\u2012\\u2212\\uFE63\\uFF0D";
+const HYPHEN_EQUIV = new RegExp(`[${HYPHEN_EQUIV_CHARS}]`, "g");
+const APOSTROPHE_EQUIV_CHARS = "\\u2018\\u2019\\u02BC";
+const APOSTROPHE_EQUIV = new RegExp(`[${APOSTROPHE_EQUIV_CHARS}]`, "g");
+
+/**
+ * Every Unicode SPACE SEPARATOR (category `Zs`) folded to ASCII " ".
+ *
+ * Chosen by Unicode category rather than by listing the ones we happened to
+ * see: U+00A0, U+1680, the U+2000–U+200A block, U+202F, U+205F, U+3000. The
+ * earlier hand-picked set (U+00A0, U+2007, U+202F) missed the entire
+ * U+2000–U+200A block, and an exploratory fuzz over model-realistic variants
+ * is what surfaced it.
+ */
+const UNICODE_SPACE_CHARS = "\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000";
+const UNICODE_SPACE = new RegExp(`[${UNICODE_SPACE_CHARS}]`, "g");
+
+/**
+ * ALL invisible FORMAT characters (Unicode general category `Cf`) — removed
+ * outright, because they are not part of the logical text at all.
+ *
+ * This is a CATEGORY, deliberately, and it is the second time that lesson has
+ * had to be learned in this file. The first version listed six codepoints that
+ * had actually been observed. An independent review then demonstrated a live
+ * bypass of A1, A2 and A4 through eleven more — U+200E/U+200F and the
+ * U+202A–U+202E and U+2066–U+2069 bidi controls — which are ordinary output
+ * for a mixed-script model, and gpt-oss-120b, the model that caused #3973, is
+ * one. A hand-picked list of invisible characters is the same mistake as a
+ * hand-picked list of hyphens; only the category closes the class.
+ *
+ * U+00AD SOFT HYPHEN is in here by virtue of being `Cf`, and that is correct:
+ * a soft hyphen is a LINE-BREAK HINT, not a hyphen. Folding it to "-" would
+ * corrupt every word it appears inside ("ener\u00ADgized" -> "ener-gized"),
+ * whereas removing it restores the word the model meant. The hazard grammars
+ * already tolerate an absent hyphen ("re[-\s]?energi"), so stripping catches
+ * "re\u00ADenergize" without inventing a hyphen anywhere.
+ *
+ * Safe to apply wholesale because this copy is never rendered: ZWJ emoji
+ * sequences, Arabic number signs and language tags all lose nothing that a
+ * SAFETY regex should have been matching on.
+ */
+const ZERO_WIDTH = /\p{Cf}/gu;
+
+/**
+ * Fold a string into the ASCII shape every rule in this file is written
+ * against. **Detection only** — the returned string is never displayed,
+ * persisted, or sent to a model. See `validateAnswer` for why en/em dash are
+ * excluded.
+ */
+function foldForDetection(s: string): string {
+  return s
+    .replace(/[*`]/g, "")
+    .replace(HYPHEN_EQUIV, "-")
+    .replace(APOSTROPHE_EQUIV, "'")
+    .replace(UNICODE_SPACE, " ")
+    .replace(ZERO_WIDTH, "");
+}
+
+/**
+ * Recover how a folded token was ACTUALLY spelled in the original text.
+ *
+ * Every user-visible string this module produces must come from the original
+ * answer, never from the folded copy — otherwise the fold would silently
+ * rewrite what the technician reads (a model that writes "Q\u2011447\u2011Delta"
+ * must not be quoted back as "Q-447-Delta"). Only `specificityFallback` embeds
+ * a matched token in visible text, so only that path needs this.
+ *
+ * Falls back to the folded token when the original cannot be located, which is
+ * safe: the fallback text stays accurate, it just loses the exotic spelling.
+ */
+function originalSpelling(token: string, raw: string): string {
+  const zw = "[\\u200B\\u200C\\u200D\\uFEFF]*";
+  const body = Array.from(token)
+    .map((ch) => {
+      // These classes are the INVERSE of the fold sets above and must track
+      // them. They were hand-duplicated once and immediately drifted: this
+      // hyphen class still carried U+FE58 after it was removed from
+      // HYPHEN_EQUIV for decomposing to EM DASH, and the space class was still
+      // the pre-widening trio. Derived from one source now.
+      if (ch === "-") return `[-${HYPHEN_EQUIV_CHARS}]`;
+      if (ch === "'") return `['${APOSTROPHE_EQUIV_CHARS}]`;
+      if (ch === " ") return `[ ${UNICODE_SPACE_CHARS}]`;
+      return escapeRe(ch);
+    })
+    .join(zw);
+  // A degenerate model output (a repetition loop) can produce a fault-code-
+  // shaped token thousands of characters long, and this builds one regex
+  // alternative per character: past ~40k the engine throws "regular expression
+  // too large". That threw out of validateAnswer and errored the whole stream.
+  // It failed CLOSED — no hazardous content shipped — but the documented
+  // contract here is "falls back to the folded token", and it did not fall
+  // back, it crashed. Now it does what it says.
+  try {
+    const m = new RegExp(zw + body, "i").exec(raw);
+    return m ? m[0] : token;
+  } catch {
+    return token;
+  }
+}
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -427,6 +901,15 @@ function codeMeaningViolation(
     for (const clause of clauses) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
+        // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
+        // a repetition loop yields a "fault code" thousands of characters long.
+        // Every regex built from it below scales with its length, and past a
+        // few thousand the engine throws "regular expression too large" —
+        // which escaped validateAnswer and errored the whole SSE stream. It
+        // failed CLOSED (nothing hazardous shipped) but it denied service on a
+        // plausible degenerate output. No real fault code is anywhere near
+        // this long; anything that is, is not a code worth defining.
+        if (tok.length > MAX_FAULT_CODE_LEN) continue;
         if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
@@ -451,19 +934,142 @@ function codeMeaningViolation(
 
 /** Deterministic replacement for a specificity rejection — honest about the
  *  gap, still useful, funnels to upload (#3787 two-lane design, guardrails
- *  2–4). Never interpolates model output beyond the technician-shaped code. */
+ *  2–4). Never interpolates model output beyond the technician-shaped code.
+ *
+ *  #4098 / #4104 review: the old copy offered only fault-triage steps, so a
+ *  request for a manual or software got "confirm the exact code on the
+ *  display" (Answer Radar seed 002). Choosing the copy by classifying the
+ *  question failed in both directions under review ("keeps tripping" lost
+ *  triage; "I lost the manual" gained it). So nothing is classified: the
+ *  fallback offers both next steps, each labelled with when it applies.
+ *  Copy only — what is withheld is unchanged. */
 export function specificityFallback(code: string | null): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
   return `${head}
 
-What I can tell you honestly:
-- Confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly.
-- With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- Note whether the problem returns immediately on restart or only under load — that separates a latched trip from an active condition.
+What you can do next:
+- If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
+- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
+}
+
+/** #3984: the permitted response for an energized restore-to-measure answer is
+ *  the answer itself, with this warning above it. Short on purpose — the
+ *  technician keeps troubleshooting; this is a caution, not a stop. */
+export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
+
+/** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
+ *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
+function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
+  const step = detail.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation,
+    detail,
+    replacement: `⚠️ **Safety flag on a step below:** “${step}”. Do not do that on energized, pressurized or moving equipment — isolate it and verify zero energy first.\n\n${answerText}`,
+  };
+}
+
+// #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
+// volts. 2. Measure the actual line voltage at the drive's input terminals."
+// After a lockout, a live supply reading at a physical contact point implies a
+// restore that is never written, so the explicit restore-to-measure rule never
+// fired and the answer was served with no energized-work banner (2 of 5 turns).
+//
+// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
+// withholds the answer, so a miss costs more than an extra warning. Each
+// bolted-on exemption (display reading, dead check, splitting on "and") opened
+// a new bypass. The rule therefore fires on a positive shape and keeps only
+// two exemptions, both clause-scoped:
+//   fire   = after an affirmative lockout, a clause with a measure verb, a live
+//            supply quantity, and a physical CONTACT point;
+//   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
+//            clause is a prohibition of the measurement.
+// A display-only reading has no contact point, so it never fires; a resistance
+// or continuity check sharing the clause does not exempt a live-voltage
+// reading; "not dead" is not a dead check.
+const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const LIVE_SUPPLY_QUANTITY =
+  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
+const CONTACT_POINT =
+  /\b(?:terminals?|conductors?|phases?|legs?|lugs?|busbars?|bus\s+bars?|test\s+leads?|leads?|wires?|feeder|L1|L2|L3|line[-\s]to[-\s]line)\b/i;
+// Affirmative verification that voltage is ABSENT. "not dead"/"not zero" is
+// the opposite claim and never matches.
+const VERIFIES_ABSENCE =
+  /\b(?:verify|confirm|check|test)\w*\b(?:(?!\bnot\b)[^.!?\n]){0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+(?:any\s+)?voltage|no\s+voltage)\b/i;
+const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+// An explicit instrument is physical contact (review round 3 F3).
+const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
+const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
+
+function liveMeasurementAfterLockout(text: string): string | null {
+  let isolated = false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+      // #4111 review round 3: "then" starts a separate action, so an exemption
+      // in one step cannot cover the next. "and" is NOT split, so a shared
+      // prohibition ("do not probe and measure …") keeps governing its verbs.
+      for (let step of clause.split(/\bthen\b/i)) {
+        if (!step.trim()) continue;
+        // Only an affirmative restore ends isolation; "do not restore" does not.
+        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+          isolated = false;
+          continue;
+        }
+        // A lockout isolates, and the rest of the SAME step is still checked
+        // ("lock out the drive and measure …", review round 3 F1).
+        const lock = LOCKOUT_STEP.exec(step);
+        if (lock && !LOCKOUT_PROHIBITION.test(step)) {
+          isolated = true;
+          step = step.slice(lock.index + lock[0].length);
+        }
+        if (!isolated) continue;
+        if (
+          MEASURE_VERB.test(step) &&
+          LIVE_SUPPLY_QUANTITY.test(step) &&
+          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+          !VERIFIES_ABSENCE.test(step) &&
+          !MEASURE_PROHIBITION.test(step)
+        ) {
+          return step.trim();
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** #4122: a step that is both locked out and powered stays in the answer, quoted in
+ *  a warning above it (owner decision 2026-09-27: flags never withhold). */
+function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
+  const quoted = step.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation: "hazard-warning:step-energy-contradiction",
+    detail: quoted,
+    replacement: `⚠️ **Lockout conflict in a step below:** “${quoted}”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\n${answerText}`,
+  };
+}
+
+function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
+  if (!restore) {
+    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
+    // markdown emphasis and curly apostrophes must not change the result.
+    const step = stepEnergyContradiction(foldForDetection(answerText));
+    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+  }
+  return {
+    ok: false,
+    kind: "energized_warning",
+    violation: "energized-warning:energized-procedure",
+    detail: restore.slice(0, 160),
+    replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
+  };
 }
 
 /* ------------------------------------------------------------------------ *
@@ -476,8 +1082,13 @@ export function validateAnswer(opts: {
   general: boolean;
   served: boolean;
   refused: boolean;
+  /** Does anything back this turn — retrieved chunks, a machine packet, or a
+   *  photo observation (current or prior) in context? Defaults to true so
+   *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
+  evidenceSufficient?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
+  const evidenceSufficient = opts.evidenceSufficient ?? true;
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -485,51 +1096,89 @@ export function validateAnswer(opts: {
   // Asterisks and backticks appear in no fault-code token and no safety
   // phrase; underscores are left alone (they occur inside real tokens).
   // Detection-only — the displayed/persisted text is never this copy.
-  const scanText = answerText.replace(/[*`]/g, "");
+  //
+  // R3 (#3973, found on live staging 2026-09-24): the same normalization has
+  // to fold Unicode dashes and spaces to ASCII, because EVERY hyphen-sensitive
+  // rule in this file is written against the ASCII "-". Groq's
+  // openai/gpt-oss-120b routinely emits U+2011 NON-BREAKING HYPHEN, and the
+  // staging leak that motivated this line was a complete restore-power-to-
+  // measure procedure that A4 catches verbatim once the hyphen is ASCII and
+  // misses entirely as "Re\u2011energize". The mirror risk — `(?<![\w-])energized`
+  // exists to keep the SAFE "de-energized" out of the hazard grammars, and
+  // U+2011 is in neither `\w` nor `-` — was measured and did NOT reproduce;
+  // it is pinned as a control in answer-validation-unicode-hyphen.test.ts so
+  // it cannot appear later. The ASCII assumption is file-wide rather than A4's,
+  // which is why this folds here instead of widening one regex.
+  //
+  // The fold is deliberately HYPHENS ONLY. U+2013 EN DASH and U+2014 EM DASH
+  // are load-bearing in this file and must NOT be folded: CLAUSE_BOUNDARY
+  // splits on them, NUM/RANGE parse "0–600 A" through them, and three
+  // HAZARD_AFFIRMATIONS anchor a sentence start on `[—–]`. Folding those to
+  // "-" would silently rewrite A2's clause scoping and B's numeric grammar.
+  // The observed bypass was U+2011; en dash appeared in the leaked answer only
+  // as a list separator and was never load-bearing for the match.
+  const scanText = foldForDetection(answerText);
+  // The QUESTION is an input to detection too. `codeMeaningViolation` decides
+  // whether a fault code was "asked about" by matching tokens from the
+  // question; if the answer is folded and the question is not, the two stop
+  // agreeing and a code spelled with U+2011 on BOTH sides escapes the rule
+  // entirely. Measured, not assumed — see answer-validation-unicode-hyphen.
+  const scanQuestion = foldForDetection(question);
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
+  // Mask only complete administrative sentences, preserving every separator.
+  // A1 uses whitespace inside phrases ("lockout is\nnot required"), so scanning
+  // each sentence/line independently would weaken its existing coverage.
+  const affirmationScanText = scanText.split(/((?<=[.!?])\s+)/)
+    .map((part) => PERMIT_PRACTICES_DESCRIPTION.test(part.trim())
+      ? part.replace(/[^\r\n.!?]/g, " ") : part)
+    .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
-    const m = p.re.exec(scanText);
-    if (m) {
-      return {
-        ok: false,
-        kind: "unsafe_answer",
-        violation: `unsafe-answer:${p.id}`,
-        detail: m[0].slice(0, 160),
-        replacement: SAFETY_STOP,
-      };
-    }
+    const m = p.re.exec(affirmationScanText);
+    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
   }
+
+  // A4 (#3973 → #3984): restoring power in order to take a reading.
+  //
+  // OWNER DECISION 2026-09-26 (Mike, #3984): this category WARNS and lets the
+  // technician keep troubleshooting — it no longer withholds the answer. The
+  // detector below is unchanged; only the response changed. Rationale from the
+  // owner: an energized state gets a clear warning, then MIRA moves on; the
+  // withhold path turned every restore-then-measure answer into a dead end and
+  // was on track to become another prolonged safety mission (#3982 over-block,
+  // #3984 under-block). Every OTHER hazard rule (A1, A2's non-energized
+  // relations, A3) still replaces the answer with the Safety STOP.
+  //
+  // Detection stays unconditional and runs before A2 for the same reason as
+  // before: the same sentence usually satisfies A2's `energized` relation, and
+  // letting A2 stop it would silently re-impose the withhold.
+  const restore = restoreEnergyToMeasure(scanText) ?? liveMeasurementAfterLockout(scanText);
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
-  const hazard = clauseHazardViolation(scanText);
+  // #3984 + #4005 review: when A4 has already turned this answer into a
+  // warning, blank ONLY the clauses that are themselves live electrical
+  // measurements, then run A2 unchanged over the rest. Exempting A2's whole
+  // `energized` relation was wrong twice over: it is first-match (so it hid a
+  // later motion step), and it also covers "while the conveyor is running"
+  // (so it hid mechanical hazards in the SAME sentence). Any other hazard
+  // clause — reaching into moving machinery, bleeding a pressurized line,
+  // resetting a fault while energized — is still scanned and still STOPS.
+  const hazard = clauseHazardViolation(
+    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+  );
   if (hazard) {
-    return {
-      ok: false,
-      kind: "unsafe_answer",
-      violation: `unsafe-answer:clause-hazard-${hazard.relId}`,
-      detail: hazard.sentence.slice(0, 160),
-      replacement: SAFETY_STOP,
-    };
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
-  if (rig) {
-    return {
-      ok: false,
-      kind: "unsafe_answer",
-      violation: "unsafe-answer:rigging-overload",
-      detail: rig,
-      replacement: SAFETY_STOP,
-    };
-  }
+  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
-  if (!general || refused) return { ok: true };
+  if (!general || refused) return energizedWarningOr(restore, answerText);
 
   for (const p of FABRICATED_DOC_PATTERNS) {
     const m = p.re.exec(scanText);
@@ -555,18 +1204,35 @@ export function validateAnswer(opts: {
     };
   }
 
-  const cm = codeMeaningViolation(scanText, question);
+  if (!evidenceSufficient) {
+    const er = exactRatingMatch(scanText);
+    if (er) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:exact-rating",
+        detail: er.excerpt,
+        replacement: specificityFallback(null),
+        match: { term: er.term, unit: er.unit },
+      };
+    }
+  }
+
+  const cm = codeMeaningViolation(scanText, scanQuestion);
   if (cm) {
     return {
       ok: false,
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:code-meaning-asserted",
       detail: cm.excerpt,
-      replacement: specificityFallback(cm.code),
+      // The ONLY visible string in this module built from a matched token, so
+      // it is the one place the fold could leak into what a technician reads.
+      // Quote the code as the model actually spelled it.
+      replacement: specificityFallback(originalSpelling(cm.code, answerText)),
     };
   }
 
-  return { ok: true };
+  return energizedWarningOr(restore, answerText);
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the

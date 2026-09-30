@@ -10,11 +10,12 @@
  *
  * INVARIANT (PRD §10.8 / spike criterion 6): a live turn and its rehydrated
  * persisted row must project to the same semantic parts. `comparableProjection`
- * is that projection; the parity tests pin it. Safety identity rides in the
- * persisted `evidence[]` as `{kind:"safety_notice"}` (ADR-0038 item 3), so a
- * reload cannot turn a hard stop into ordinary answer chrome.
+ * is that projection; the parity tests pin it. Terminal safety identity rides
+ * as `{kind:"safety_stop"}` beside display data `{kind:"safety_notice"}`;
+ * a non-terminal directive carries only the notice.
  */
 import {
+  ENERGIZED_ELECTRICAL_HAZARD,
   isTruncatedTurn,
   normalizeCitations,
   type ChatCitation,
@@ -38,6 +39,7 @@ export function unknownEvidenceEntries(evidence: unknown[] | undefined): unknown
       r.kind !== "machine_evidence" &&
       r.kind !== "visual_observation" &&
       r.kind !== "safety_notice" &&
+      r.kind !== "safety_stop" &&
       r.kind !== "identity_dispute"
     );
   });
@@ -53,14 +55,12 @@ export function hasIdentityDispute(evidence: unknown[] | undefined): boolean {
 }
 
 /**
- * First persisted safety marker, or null when there is none.
+ * First persisted safety display entry, or null when there is none.
  *
- * FAIL SAFE, NOT OPEN (FLEET-003a). `kind` is the identity; `trigger` is
- * observability only and is never rendered (see contract.ts). This previously
- * also required `typeof trigger === "string"` and returned null otherwise — so a
- * row that explicitly said `kind:"safety_notice"` was discarded over a cosmetic
- * field, and the turn reloaded as an ORDINARY ANSWER. That is the exact
- * invariant FLEET-003 exists to protect, failing in the wrong direction.
+ * The trigger is observability-only and never rendered (see contract.ts), so a
+ * malformed trigger degrades to an empty string. Terminal classification is
+ * deliberately separate in `terminalSafetyNotice`: a safety notice can also
+ * describe the non-terminal energized-electrical directive.
  *
  * It also made the two paths DISAGREE: the live parser is permissive
  * (`String(frame.trigger ?? "")` in lib/sse.ts), so the same malformed safety
@@ -85,6 +85,68 @@ export function safetyNoticeEntry(
   return null;
 }
 
+function safetyStopTrigger(evidence: unknown[] | undefined): string | null | undefined {
+  if (!Array.isArray(evidence)) return undefined;
+  const marker = evidence.find(
+    (value) =>
+      typeof value === "object" &&
+      value !== null &&
+      (value as Record<string, unknown>).kind === "safety_stop",
+  ) as Record<string, unknown> | undefined;
+  if (!marker) return undefined;
+  return typeof marker.trigger === "string" ? marker.trigger : null;
+}
+
+/** A terminal persisted stop, distinct from a non-terminal safety directive. */
+export function terminalSafetyNotice(
+  turn: Pick<NotebookServerTurn, "answerStatus" | "basis" | "evidence">,
+): { kind: "safety_notice"; trigger: string } | null {
+  const stopTrigger = safetyStopTrigger(turn.evidence);
+  const notices = Array.isArray(turn.evidence)
+    ? turn.evidence
+        .filter(
+          (value) =>
+            typeof value === "object" &&
+            value !== null &&
+            (value as Record<string, unknown>).kind === "safety_notice",
+        )
+        .map((value) => {
+          const row = value as Record<string, unknown>;
+          return {
+            kind: "safety_notice" as const,
+            trigger: typeof row.trigger === "string" ? row.trigger : "",
+          };
+        })
+    : [];
+  const notice = stopTrigger !== undefined
+    ? (notices.find((entry) => entry.trigger === stopTrigger) ?? notices.at(-1) ?? null)
+    : (notices.at(-1) ?? null);
+  if (!notice) return null;
+  // Compatibility for hard stops written before `safety_stop` existed. An
+  // ordinary electrical directive is answered with a non-null evidence basis.
+  return stopTrigger !== undefined || (turn.answerStatus === "answered" && turn.basis == null)
+    ? notice
+    : null;
+}
+
+/** The NON-terminal energized-electrical directive persisted on the row, if any
+ *  (#3893). Distinct from `terminalSafetyNotice`: the directive is an ANSWERED
+ *  turn framed by an NFPA 70E warning, persisted as `{kind:"safety_notice",
+ *  trigger:ENERGIZED_ELECTRICAL_HAZARD}` with NO `safety_stop` entry and a
+ *  non-null basis — so `terminalSafetyNotice` returns null for it, and without
+ *  this reader the directive was dropped on reload (the hydration half of the
+ *  same gap #3893 fixes on the live wire). Gated on `terminalSafetyNotice`
+ *  being null so a hard stop always wins the turn; returns the trigger (always
+ *  ENERGIZED_ELECTRICAL_HAZARD) or null. */
+export function directiveSafetyNotice(
+  turn: Pick<NotebookServerTurn, "answerStatus" | "basis" | "evidence">,
+): string | null {
+  if (terminalSafetyNotice(turn) !== null) return null;
+  return safetyNoticeEntry(turn.evidence)?.trigger === ENERGIZED_ELECTRICAL_HAZARD
+    ? ENERGIZED_ELECTRICAL_HAZARD
+    : null;
+}
+
 function userMessage(id: string, text: string): AdapterMessage {
   return {
     id,
@@ -104,6 +166,7 @@ function assistantParts(opts: {
   basisLabel?: string | null;
   followups?: string[];
   safetyTrigger?: string;
+  safetyDirective?: string;
   identityDisputed?: boolean;
   unknown?: unknown[];
   error?: "stopped" | "provider_failure";
@@ -116,10 +179,19 @@ function assistantParts(opts: {
   // renderer means ChatV2 and the classic screen cannot drift apart, and the
   // live turn and its rehydrated row suppress identically — which is what
   // `comparableProjection` then pins.
+  //
+  // The energized-electrical DIRECTIVE (#3841/#3893) is the ONE exception: it
+  // is an ANSWERED turn framed by an NFPA 70E warning, so it emits a
+  // NON-terminal safety_notice AND keeps every piece of success chrome. It is
+  // deliberately NOT folded into `safety` — that gate stays terminal-only, so
+  // the `!safety` chrome blocks below run unchanged for a directive turn.
   const safety = opts.safetyTrigger !== undefined;
+  const directive = !safety && opts.safetyDirective !== undefined;
   const citations = safety ? [] : opts.citations;
   if (safety) {
-    parts.push({ type: "safety_notice", trigger: opts.safetyTrigger || null });
+    parts.push({ type: "safety_notice", trigger: opts.safetyTrigger || null, terminal: true });
+  } else if (directive) {
+    parts.push({ type: "safety_notice", trigger: opts.safetyDirective || null, terminal: false });
   }
   parts.push({
     type: "text",
@@ -149,7 +221,12 @@ function assistantParts(opts: {
 export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
   return rows.flatMap((t): AdapterMessage[] => {
     const user = userMessage(`${t.id}-q`, t.question);
-    const safetyNotice = safetyNoticeEntry(t.evidence);
+    const safetyNotice = terminalSafetyNotice(t);
+    // #3893: non-terminal energized directive persisted on the row — reloads as
+    // a warning-with-answer, matching the live wire and the criterion-6 parity
+    // contract (`comparableProjection.safetyNotice`).
+    const safetyDirective = directiveSafetyNotice(t) ?? undefined;
+    const visualEvidence = visualObservationEntries(t.evidence ?? []);
     if (isStoppedTurn(t)) {
       return [
         user,
@@ -186,12 +263,13 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
         id: `${t.id}-a`,
         role: "assistant",
         parts: assistantParts({
-          text: answerBody(t.answerText, t.answerStatus),
+          text: answerBody(t.answerText, t.answerStatus, null, visualEvidence.length > 0),
           citations: normalizeCitations(t.evidence),
           machine: machineEvidenceEntries(t.evidence ?? []),
-          visual: visualObservationEntries(t.evidence ?? []),
+          visual: visualEvidence,
           basis: t.basis,
           safetyTrigger: safetyNotice?.trigger,
+          safetyDirective,
           identityDisputed: hasIdentityDispute(t.evidence),
           unknown: unknownEvidenceEntries(t.evidence),
           ...(failed ? { error: "provider_failure" as const } : {}),
@@ -214,6 +292,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
   // that never finished. Treated exactly like a stopped turn: partial text,
   // no citations, no basis, no follow-ups (PRD §10.9 / §7.6).
   if (isTruncatedTurn(a)) {
+    const safetyTerminal = a.safetyTrigger !== undefined;
     return [
       user,
       {
@@ -231,9 +310,11 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
           // exactly the misread this slice exists to prevent.
           safetyTrigger: a.safetyTrigger,
           identityDisputed: a.identityDisputed === true,
-          error: "provider_failure",
+          ...(safetyTerminal ? {} : { error: "provider_failure" as const }),
         }),
-        lifecycle: "failed",
+        // Once the authoritative safety marker arrived, the warning itself is
+        // terminal and non-retryable even if the transport tail was lost.
+        lifecycle: safetyTerminal ? "completed" : "failed",
         status: a.status || null,
       },
     ];
@@ -267,7 +348,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
       id: `live-${idx}-a`,
       role: "assistant",
       parts: assistantParts({
-        text: answerBody(a.answer, a.status),
+        text: answerBody(a.answer, a.status, a.statusMessage, (a.visualEvidence?.length ?? 0) > 0),
         citations: a.citations,
         machine: a.machineEvidence ?? [],
         visual: a.visualEvidence ?? [],
@@ -275,6 +356,10 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
         basisLabel: a.evidenceLabel || null,
         followups: a.status === "answered" ? a.followups : undefined,
         safetyTrigger: a.safetyTrigger,
+        // #3893: the non-terminal energized directive rides the completed
+        // (answered) live turn only — a truncated/stopped turn above is not an
+        // answer, so its framing warning is moot and stays out of that branch.
+        safetyDirective: a.safetyDirective,
         identityDisputed: a.identityDisputed === true,
         unknown: a.unknownFrames,
         ...(failed ? { error: "provider_failure" as const } : {}),
@@ -297,13 +382,18 @@ export function pendingMessages(q: string, a: ChatTurn): AdapterMessage[] {
       parts: [
         // "DURING the live response" is part of the invariant, not just after
         // it. The parser surfaces `safetyTrigger` the moment the frame lands
-        // (lib/sse.ts `turn()`), and the wire order is content* → safety →
-        // status — so there IS a window, however brief, where the refusal text
-        // is on screen and the turn has not completed. It must not read as an
-        // ordinary answer in that window either.
+        // (lib/sse.ts `turn()`), and a hard-stop safety marker now precedes its
+        // first content byte. The warning must render in that pre-content window
+        // too, never briefly as an ordinary answer.
         ...(a.safetyTrigger !== undefined
-          ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null }]
-          : []),
+          ? [{ type: "safety_notice" as const, trigger: a.safetyTrigger || null, terminal: true }]
+          : a.safetyDirective !== undefined
+            ? // #3893: the directive frame lands late (after content, on the
+              // evidence frame), so it usually surfaces just as the turn
+              // completes — but render it non-terminally the moment it arrives,
+              // never as a stop.
+              [{ type: "safety_notice" as const, trigger: a.safetyDirective || null, terminal: false }]
+            : []),
         { type: "text" as const, text: a.answer, knownCitationIds: [] },
         // 086 §3: the marker frame is the FIRST thing on a disputed wire, so
         // the in-flight turn can — and must — say it before any content.

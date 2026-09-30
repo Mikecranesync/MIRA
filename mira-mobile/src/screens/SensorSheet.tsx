@@ -43,7 +43,6 @@ import {
   REPLAY_NO_MACHINE,
   hhmmss,
   lookErrorCopy,
-  lookQuestion,
   visualCardTitle,
   lastObservationTitle,
   LOOK_DEFAULT_QUESTION,
@@ -63,12 +62,9 @@ export interface SensorAskEvidence {
 /** The last LOOK of THIS SESSION, held by the notebook screen so closing the
  *  sheet without asking doesn't throw the observation away.
  *
- *  Known v0 limit (documented, not hidden): the observation TEXT is memory
- *  only — it is conversation context, not a stored row, so it does not survive
- *  leaving the notebook or restarting the app. The PHOTO is persisted (parked
- *  + linked, role "photo") and stays in the notebook's files either way.
- *  Persisting the text needs a store, and a Sensor store is forbidden in v0
- *  (contract §2.3/§2.4). */
+ *  This card is an in-memory preview. The server separately retains the
+ *  scoped observation in its existing VisualSession ledger for later questions;
+ *  it does not turn the photo into an answered chat message. */
 export interface RememberedLook {
   result: LookResult;
   /** Resolved once, when the look happened — so a restored card shows the
@@ -78,6 +74,7 @@ export interface RememberedLook {
 
 export function SensorSheet({
   notebook,
+  threadId,
   onClose,
   onChanged,
   onAsk,
@@ -89,6 +86,7 @@ export function SensorSheet({
   initialReadState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
+  threadId?: string | null;
   onClose: () => void;
   /** The notebook changed (a photo was parked and linked; a machine was
    *  bound) — the caller re-reads it. */
@@ -159,6 +157,7 @@ export function SensorSheet({
           </div>
           {current.id === "look" && (
             <LookPanel
+              threadId={threadId}
               notebookId={notebookId}
               onChanged={onChanged}
               onAsk={onAsk}
@@ -205,12 +204,14 @@ type LookState =
 
 function LookPanel({
   notebookId,
+  threadId,
   onChanged,
   onAsk,
   lastLook,
   onLook,
 }: {
   notebookId: string;
+  threadId?: string | null;
   onChanged: () => void;
   onAsk: (question: string, evidence?: SensorAskEvidence) => void;
   lastLook: RememberedLook | null;
@@ -233,7 +234,7 @@ function LookPanel({
     const clientKey = crypto.randomUUID();
     setState({ name: "looking", photo });
     try {
-      const result = await lookAtPhoto(notebookId, photo, clientKey);
+      const result = await lookAtPhoto(notebookId, photo, clientKey, undefined, threadId);
       // The photo is a linked source now (role "photo") whatever vision said.
       onChanged();
       const capturedAt = result.observation?.capturedAt ?? new Date().toISOString();
@@ -301,12 +302,15 @@ function LookPanel({
             style={{ marginTop: 10 }}
             onClick={() => {
               const { capturedAt } = state;
+              // Send the technician's question ALONE. The vision observation is
+              // never prefixed onto it: the server classifies this string as
+              // operator-authored input (matchSafetyStop), so a healthy-machine
+              // observation such as "No visible damage, burn marks, or corrosion"
+              // used to trip a false SAFETY STOP (#3852). The structured rider
+              // below carries the photo; the server re-derives the visual
+              // context from it. Same shape as the unified path (#3845).
               onAsk(
-                lookQuestion(
-                  state.result.observation?.text ?? "(no description available)",
-                  capturedAt,
-                  question,
-                ),
+                question.trim() || LOOK_DEFAULT_QUESTION,
                 // S5 D3: the parked photo rides as {fileId, capturedAt} so the
                 // server can verify the link and persist the visual entry.
                 state.result.fileId
@@ -396,6 +400,7 @@ function ReadPanel({
   initialState,
 }: {
   notebook: Pick<Notebook, "id" | "displayName" | "asset">;
+  threadId?: string | null;
   onChanged: () => void;
   onOpenNotebook: (notebookId: string) => void;
   onUploadInstead: () => void;

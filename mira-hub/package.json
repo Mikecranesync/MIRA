@@ -1,6 +1,6 @@
 {
   "name": "mira-hub",
-  "version": "2.34.0",
+  "version": "2.35.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -24,7 +24,19 @@
     "health-score:worker": "bun run scripts/health-score-worker.ts"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.17",
     "@node-saml/node-saml": "^5.0.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.222.0",
+    "@opentelemetry/instrumentation-http": "0.222.0",
+    "@opentelemetry/instrumentation-pg": "0.74.0",
+    "@opentelemetry/instrumentation-undici": "0.32.0",
+    "@opentelemetry/resources": "2.11.0",
+    "@opentelemetry/sdk-node": "0.222.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0",
+    "@opentelemetry/sdk-trace-node": "2.11.0",
+    "@opentelemetry/semantic-conventions": "1.43.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -59,7 +71,7 @@
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.8.0",
     "mdast-util-find-and-replace": "^3.0.2",
-    "next": "16.2.4",
+    "next": "16.3.5",
     "next-auth": "^4.24.14",
     "next-intl": "^4.9.1",
     "openid-client": "^6.6.0",
@@ -91,9 +103,13 @@
     "@types/xml2js": "^0.4.14",
     "@vitest/expect": "^3.2.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.4",
+    "tar": ">=7.5.22"
   }
 }

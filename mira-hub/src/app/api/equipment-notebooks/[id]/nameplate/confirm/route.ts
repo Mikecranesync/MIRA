@@ -24,31 +24,24 @@
  * Business outcomes are HTTP 200 with a `status` the mobile client maps
  * directly; only auth and request-shape failures use 4xx.
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
 import {
   getNotebook,
   attachSource,
-  setSourceState,
   findVisibleOriginSource,
   markNameplateDocVerified,
   supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
-import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
-import { ingestTextToNode, ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
-import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
-import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
-import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { getFile, parkOrReuseFile, linkFileToUpload, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
+import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
+import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
+import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Manuals are big; 80 MB is generous for an OEM PDF and still bounded. */
-const MAX_MANUAL_BYTES = 80 * 1024 * 1024;
-const DOWNLOAD_TIMEOUT_MS = 30_000;
-/** Identity evidence lives near the front of a manual — bound the scan. */
-const APPLICABILITY_CHUNK_LIMIT = 80;
 
 export type ConfirmStatus =
   | "complete"
@@ -87,6 +80,60 @@ const IDENTITY_LABELS: Record<IdentityField, string> = {
   frequency: "Frequency",
   rpm: "RPM",
 };
+
+/** Upper bound on visual observation ids / corrections per confirm. A plate has
+ *  about ten readings plus a few compliance marks; anything past this is not a
+ *  technician confirming a nameplate. Rejected explicitly, never truncated. */
+const MAX_VISUAL_ENTRIES = 50;
+
+/** Distinct string entries, first occurrence wins, non-strings dropped. */
+function uniqueStrings(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string" || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+/** Distinct `{observationId, value}` corrections (by observation id, first wins), malformed entries dropped. */
+function uniqueCorrections(raw: unknown): { observationId: string; value: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: { observationId: string; value: string }[] = [];
+  for (const c of raw as unknown[]) {
+    const o = c as { observationId?: unknown; value?: unknown } | null;
+    if (!o || typeof o.observationId !== "string" || typeof o.value !== "string" || seen.has(o.observationId)) continue;
+    seen.add(o.observationId);
+    out.push({ observationId: o.observationId, value: o.value });
+  }
+  return out;
+}
+
+/** Canonical digest of WHAT a confirmation asserts: the photo, the sanitized
+ *  identity (sorted keys), the promoted ids (sorted) and the corrections (sorted
+ *  by id). Two requests with the same client key and the same digest are one
+ *  logical confirmation; a different digest is an edited retry. */
+function confirmPayloadSha256(p: {
+  fileId: string;
+  identity: Identity;
+  observationIds: readonly string[];
+  corrections: readonly { observationId: string; value: string }[];
+}): string {
+  const identity = Object.fromEntries(
+    (Object.keys(p.identity) as IdentityField[]).sort().map((k) => [k, p.identity[k]]),
+  );
+  const canonical = JSON.stringify({
+    fileId: p.fileId,
+    identity,
+    observationIds: [...p.observationIds].sort(),
+    corrections: [...p.corrections].sort((a, b) => a.observationId.localeCompare(b.observationId)),
+  });
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
 
 function readIdentity(raw: unknown): Identity {
   const o = (raw ?? {}) as Record<string, unknown>;
@@ -141,36 +188,6 @@ function buildNameplateText(opts: {
   return lines.join("\n");
 }
 
-/**
- * The chunks of ONE document, for the applicability check. A plain read of the
- * document's own materialized text — not a retrieval query, and not link SQL.
- */
-async function chunksForDoc(
-  tenantId: string,
-  docId: string,
-): Promise<Array<{ content: string; page: number | null }>> {
-  try {
-    return await withTenantContext(tenantId, async (c) => {
-      const r = await c.query<{ content: string; source_page: number | null }>(
-        `SELECT content, source_page
-           FROM knowledge_entries
-          WHERE tenant_id = $1 AND doc_id = $2::uuid
-          ORDER BY (metadata->>'chunk_index')::int NULLS LAST
-          LIMIT $3`,
-        [tenantId, docId, APPLICABILITY_CHUNK_LIMIT],
-      );
-      return r.rows.map((row) => ({
-        content: row.content ?? "",
-        page: row.source_page === null ? null : Number(row.source_page),
-      }));
-    });
-  } catch {
-    // A read failure must not turn into a false "verified" — no chunks means
-    // no evidence means the manual stays a candidate.
-    return [];
-  }
-}
-
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
@@ -221,6 +238,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? body.clientKey
       : null;
 
+  // ── Slice 2/3 inputs are validated HERE, before any side effect (Codex F4/F5).
+  // The client's partition helper keeps promote/correct disjoint, but a client
+  // helper is not a server invariant: the same id in both arrays would promote
+  // the pre-edit reading and then skip its correction, leaving the misread
+  // verified beside the corrected nameplate. Reject overlap outright. Bound and
+  // de-duplicate both lists at the boundary: a plate has ~10 readings, and each
+  // correction is a locked query inside one transaction.
+  const submittedObservationIds = uniqueStrings(body.observationIds);
+  const submittedCorrections = uniqueCorrections(body.corrections);
+  if (submittedObservationIds.length > MAX_VISUAL_ENTRIES || submittedCorrections.length > MAX_VISUAL_ENTRIES) {
+    return NextResponse.json({ error: "too_many_visual_entries", max: MAX_VISUAL_ENTRIES }, { status: 400 });
+  }
+  const correctionTargets = new Set(submittedCorrections.map((c) => c.observationId));
+  const overlap = submittedObservationIds.filter((id) => correctionTargets.has(id));
+  if (overlap.length > 0) {
+    return NextResponse.json({ error: "observation_in_both_sets", observationIds: overlap }, { status: 400 });
+  }
+  // The logical confirmation is (client key, WHAT was confirmed). Same key with
+  // a different identity or a different correction set is an EDITED retry, not
+  // a replay: it must mint a new derived document (the prior one is superseded
+  // below) rather than reuse the stale text beside the new corrections (Codex F2).
+  const confirmPayloadHash = confirmPayloadSha256({ fileId, identity, observationIds: submittedObservationIds, corrections: submittedCorrections });
+
   // ── (b) Materialize the confirmed nameplate as a citable source ────────────
   const text = buildNameplateText({
     notebookName: notebook.displayName,
@@ -240,17 +280,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let nameplateDocId: string | null = null;
   let nameplateChunks = 0;
   let nameplateIngestFailed = false;
-  // Same clientKey + an existing visible derived doc for this photo = a replay
-  // of the SAME logical confirmation. Reuse the existing doc verbatim — no
-  // re-park, no re-ingest, no new reading.
+  // Same clientKey + the SAME confirmed payload + an existing visible derived
+  // doc for this photo = a replay of the SAME logical confirmation. Reuse the
+  // existing doc verbatim — no re-park, no re-ingest, no new reading. A matching
+  // key with a different payload is an edited retry and falls through to
+  // materialize (Codex F2); a legacy row without a stored payload hash never
+  // counts as a replay (byte-level dedup still reuses identical text).
   const existingOrigin = await findVisibleOriginSource(ctx.tenantId, notebookId, fileId).catch(
     () => null,
   );
+  const priorConfirm = (existingOrigin?.matchEvidence ?? null) as
+    | { confirm_client_key?: unknown; confirm_payload_sha256?: unknown }
+    | null;
   const replayOfSameConfirm = Boolean(
     clientKey &&
       existingOrigin &&
-      (existingOrigin.matchEvidence as { confirm_client_key?: unknown } | null)
-        ?.confirm_client_key === clientKey,
+      priorConfirm?.confirm_client_key === clientKey &&
+      priorConfirm?.confirm_payload_sha256 === confirmPayloadHash,
   );
   if (replayOfSameConfirm) {
     nameplateDocId = existingOrigin!.docId;
@@ -319,8 +365,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // becomes "source details". Re-confirming (idempotent replay) heals
         // pre-084 rows via the upsert's set-if-provided semantics.
         originFileId: fileId,
-        // 085: audit trail — which logical confirmation produced this reading.
-        matchEvidence: clientKey ? { confirm_client_key: clientKey } : undefined,
+        // 085: audit trail — which logical confirmation produced this reading,
+        // and WHAT it confirmed (Codex F2: the key alone cannot tell a replay
+        // from an edited retry).
+        matchEvidence: clientKey ? { confirm_client_key: clientKey, confirm_payload_sha256: confirmPayloadHash } : undefined,
       });
       // attachSource reports failure by RETURN VALUE, not throw. Without the
       // source row the doc is not citable in this notebook — fail closed.
@@ -379,6 +427,91 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   nameplateIngestFailed = nameplateDocId === null;
 
+  // ── Slice 2: promote ONLY the exact visual observations the technician approved.
+  // Orthogonal to the nameplate-text ingest above — this flips the persisted
+  // VisualSession candidate readings (migration 063) whose ids the client
+  // EXPLICITLY sends to review_state='confirmed', scoped by canonical identity to
+  // the notebook's SERVER-bound asset and THIS photo. It never promotes a sibling
+  // the client did not send, an older/newer capture, or another asset — the guards
+  // live in promoteVisualObservations. The backend trusts the submitted id SET and
+  // derives nothing from `identity`: a field the technician EDITED is confirmed
+  // only if the client chose to send its id (a corrected reading's pre-edit value
+  // must never be auto-stamped). Confirm has no dispute channel (it resolves the
+  // binding via getNotebook, not resolveBoundAsset), so the reachable asset failure
+  // is unbound/foreign — caught by isUuidKey(boundEntityId) + the asset_id subquery.
+  // Fail-safe: any error promotes nothing (never broadens); the count is surfaced
+  // so a lost promotion is observable, not silent.
+  // (`submittedObservationIds` was validated, de-duplicated, bounded and checked
+  // for overlap with the corrections BEFORE the nameplate was materialized.)
+  let visualPromotedIds: string[] = [];
+  if (submittedObservationIds.length > 0) {
+    try {
+      const promoted = await promoteVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        observationIds: submittedObservationIds,
+      });
+      visualPromotedIds = promoted.promotedIds;
+    } catch (err) {
+      console.warn(
+        `[nameplate-confirm] visual promotion failed notebook=${notebookId} photo=${fileId} ` +
+          `code=${(err as { code?: string }).code ?? "?"}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // ── Slice 3: apply the technician's CORRECTIONS to exact visual observations.
+  // The client partitions this capture's readings into unchanged (→ observationIds,
+  // promoted above) and edited-with-a-value (→ corrections). Each correction
+  // inserts a technician-provided replacement on the same photo and supersedes
+  // the vision reading (evidence_state='SUPERSEDED', superseded_by=<new>), so the
+  // stale value stops participating in chat context while the trail is kept —
+  // correction never destroys evidence, it changes which observation is active.
+  // Same scoping as promotion (exact id ∧ tenant ∧ bound asset ∧ this photo ∧ live
+  // candidate); the server derives NO correction from `identity`. It does use the
+  // confirmed identity as a CONSTRAINT (Codex F1): a correction whose stored field
+  // is an identity field must agree with the value confirmed in this very request,
+  // or the one confirm would mint two contradictory technician-verified facts.
+  // Mismatches are skipped by the lib and reported below. Fail-safe like above.
+  // (`submittedCorrections` was validated, de-duplicated, bounded and checked for
+  // overlap with the promoted ids BEFORE the nameplate was materialized.)
+  let visualCorrected: { supersededId: string; replacementId: string }[] = [];
+  let visualCorrectionMismatches: { observationId: string; field: string }[] = [];
+  // Codex round 2 F1: the confirm stays fail-safe (the nameplate document is the
+  // primary deliverable), but a swallowed correction error must not read as
+  // success to the client. This flag says "you asked for corrections and the
+  // server could not apply them" so the client can offer a retry instead of
+  // reporting complete while the misread stays active.
+  let visualCorrectionFailed = false;
+  if (submittedCorrections.length > 0) {
+    try {
+      const res = await correctVisualObservations({
+        tenantId: ctx.tenantId,
+        boundEntityId: notebook.asset?.entityId ?? null,
+        fileId,
+        corrections: submittedCorrections,
+        correctedBy: ctx.userId ?? null,
+        expected: identity,
+      });
+      visualCorrected = res.corrected;
+      visualCorrectionMismatches = res.mismatched;
+      if (visualCorrectionMismatches.length > 0) {
+        console.warn(
+          `[nameplate-confirm] ${visualCorrectionMismatches.length} correction(s) contradicted the confirmed identity ` +
+            `notebook=${notebookId} photo=${fileId} fields=${visualCorrectionMismatches.map((m) => m.field).join(",")}`,
+        );
+      }
+    } catch (err) {
+      visualCorrectionFailed = true;
+      console.warn(
+        `[nameplate-confirm] visual correction failed notebook=${notebookId} photo=${fileId}: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+
   // (c) The notebook's own identity is NOT patched here. See the header.
 
   const nameplate = {
@@ -401,6 +534,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status,
       notebookId,
       nameplate,
+      // Slice 2: how many persisted visual observations this confirm promoted to
+      // technician-confirmed. 0 when the client sent none, the notebook is unbound
+      // or foreign, the ids were invalid, or they were not live candidates of this
+      // asset's capture — never a silent broadening.
+      visualPromotedCount: visualPromotedIds.length,
+      // Slice 3: how many vision readings were superseded by a technician-provided
+      // replacement on this photo. Same fail-safe semantics as the count above.
+      visualCorrectedCount: visualCorrected.length,
+      // Codex F1: corrections REFUSED because their value contradicted the identity
+      // confirmed by this same request. Explicit, never silently dropped — the client
+      // can show the technician which field disagreed with itself.
+      visualCorrectionMismatches,
+      // Codex round 2 F1: true when corrections were submitted and the server
+      // could not apply them (transient DB error, supersede race). The client
+      // must treat this as "edits not saved, retry", never as complete.
+      visualCorrectionFailed,
       manual: null,
       candidate: null,
       applicability: null,
@@ -427,319 +576,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       discovery: { requested: false },
     });
   }
-  if (!identity.manufacturer || !(identity.model || identity.catalogNumber)) {
-    return respond("manufacturer_model_required", {
-      message:
-        "Add a manufacturer and a model (or catalog number) so MIRA can look for the official manual.",
-    });
-  }
-
-  const discovery = await discoverManual({
-    manufacturer: identity.manufacturer,
-    model: identity.model,
-    catalogNumber: identity.catalogNumber,
-  });
-  if (!discovery.serviceAvailable) {
-    return respond("search_unavailable", { message: discovery.reason });
-  }
-  if (!discovery.found || !discovery.candidate) {
-    return respond("no_manual_found", {
-      message: discovery.reason,
-      oemRequestUrl: discovery.oemRequestUrl,
-    });
-  }
-
-  const candidate = discovery.candidate;
-  const candidateView = {
-    url: candidate.url,
-    title: candidate.title,
-    host: candidate.host,
-    isDirectPdf: discovery.isDirectPdf,
-    validated: discovery.validated,
-    oemHost: discovery.oemHost,
-  };
-
-  // Auto-import ONLY a validated, direct-PDF, OEM-hosted result.
-  const autoImport = discovery.validated && discovery.isDirectPdf && discovery.oemHost;
-
-  // #3400 — let the hardened download, not the search service's flag, decide
-  // whether the bytes are retrievable.
-  //
-  // `validated` means only that the discovery service's own HEAD/Range probe
-  // confirmed a PDF. Measured on the reported Siemens candidate: oem_host=true,
-  // is_direct_pdf=true, validated=FALSE — while the URL serves a real 1.79 MB
-  // %PDF-1.6. The probe failing is a statement about the probe, not about the
-  // document. The old gate returned candidate_review before safeDownloadPdf ever
-  // ran, so the technician got a primary button that could never do anything.
-  //
-  // The relaxation is deliberately narrow, and every condition is load-bearing:
-  //   - isDirectPdf   : we are not fetching a landing page hoping for a PDF.
-  //   - oemHost       : the service's own strict manufacturer-domain check.
-  //   - independently : re-derived from OUR OEM table. "Discovery said so" is
-  //                     explicitly not sufficient trust on its own, and
-  //                     allowedHostsForCandidate cannot serve here because it
-  //                     trusts the candidate host by construction.
-  // A candidate failing ANY of these keeps the old review path. safeDownloadPdf
-  // is unchanged and remains the only fetcher, with every SSRF, redirect,
-  // size, MIME and magic-byte guard intact.
-  const independentlyOemHosted = isOemDocumentationHost(identity.manufacturer, candidate.host);
-  const probeUnvalidated =
-    !discovery.validated && discovery.isDirectPdf && discovery.oemHost && independentlyOemHosted;
-
-  if (!autoImport && !probeUnvalidated) {
-    return respond("candidate_review", {
-      // What discovery actually found out about this file (2026-08-26: the
-      // judge reads the PDF and says e.g. "Read the PDF: a lever-hoist
-      // brochure, no end-truck model"). The technician decides with that.
-      discoveryReason: discovery.reason,
-      oemRequestUrl: discovery.oemRequestUrl,
-      candidate: candidateView,
-      message:
-        "MIRA found a possible manual but could not confirm it is the official document. Review it before adding.",
-    });
-  }
-
-  // A download that succeeds proves the bytes are retrievable and are a real
-  // PDF from a host we independently attribute to this manufacturer. It proves
-  // NOTHING about whether this is the right document, so an unvalidated
-  // candidate can never auto-enable — a human confirms it. See the
-  // applicability block below.
-  const requiresUserConfirmation = probeUnvalidated;
-
-  const download = await safeDownloadPdf(candidate.url, {
-    allowedHosts: allowedHostsForCandidate(identity, candidate),
-    maxBytes: MAX_MANUAL_BYTES,
-    timeoutMs: DOWNLOAD_TIMEOUT_MS,
-  });
-  if (!download.ok) {
-    return respond("download_rejected", {
-      candidate: candidateView,
-      message: `MIRA would not download that file (${download.reason}). Nothing was added to this notebook.`,
-      reason: download.reason,
-    });
-  }
-
-  const manualFilename = safePdfFilename(download.finalUrl);
-  const manualParked = await parkOrReuseFile({
+  const acquired = await acquireManualForIdentity({
     tenantId: ctx.tenantId,
-    filename: manualFilename,
-    mimeType: "application/pdf",
-    sizeBytes: download.buffer.length,
-    buffer: download.buffer,
-    createdBy: ctx.userId ?? null,
+    userId: ctx.userId ?? null,
+    notebookId,
     nodeId: notebook.nodeId,
-    source: "manual_discovery",
+    identity,
   });
-
-  // Exact-byte dedup: the tenant already has these bytes parsed. REUSE the
-  // document — never re-parse, never re-chunk (materialized-evidence rule 1).
-  let manualDocId: string | null = manualParked.uploadId;
-  let manualChunks = 0;
-  let scannedPdf = false;
-  let manualClaimToken: string | null = null;
-  let reused = manualParked.reused && manualParked.uploadId !== null;
-
-  if (!reused && manualDocId === null) {
-    // Atomic ingestion claim (Codex P1, 2026-08-16): a concurrent identical
-    // confirm may have parked the same bytes moments ago and still be
-    // ingesting (upload_id lands only at the end). Exactly one request may
-    // ingest; a loser either reuses the finished document or reports an
-    // explicit in-progress partial — it never double-ingests.
-    const claim = await claimIngest(ctx.tenantId, manualParked.fileId);
-    if (claim.claimed) manualClaimToken = claim.claimToken;
-    if (!claim.claimed) {
-      if (claim.reason === "already_ingested" && claim.uploadId) {
-        manualDocId = claim.uploadId;
-        reused = true;
-      } else {
-        return respond("candidate_review", {
-          candidate: candidateView,
-          manual: {
-            fileId: manualParked.fileId,
-            docId: null,
-            filename: manualFilename,
-            discoveryUrl: candidate.url,
-            finalUrl: download.finalUrl,
-            matchState: null,
-            enabledByDefault: false,
-            chunkCount: 0,
-            indexed: false,
-          },
-          warning:
-            "another request is currently indexing this exact document — retry in a moment to attach it",
-        });
-      }
-    }
-  }
-
-  if (!reused && manualDocId === null) {
-    try {
-      const ing = await ingestPdfToNode({
-        tenantId: ctx.tenantId,
-        nodeId: notebook.nodeId,
-        unsPath: null,
-        filename: manualFilename,
-        mimeType: "application/pdf",
-        sizeBytes: download.buffer.length,
-        buffer: download.buffer,
-      });
-      manualChunks = ing.chunkCount;
-      // Token-fenced finalize (see nameplate section): if the claim was stolen
-      // mid-ingest, our document is orphaned and must not be reported attached.
-      const won = manualClaimToken
-        ? await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId, manualClaimToken)
-        : await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
-      manualDocId = won ? ing.uploadId : null;
-      // Fence lost → our doc duplicates the winner's chunk set; remove it.
-      if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ing.uploadId);
-    } catch (err) {
-      if (manualClaimToken) {
-        await releaseIngestClaim(ctx.tenantId, manualParked.fileId, manualClaimToken).catch(() => {});
-      }
-      // A scanned/image-only PDF is a property of the FILE. Keep the bytes
-      // (viewable + downloadable), attach the FILE to the notebook so it shows
-      // in Files — but with no indexed doc there is no source row, so it can
-      // never enter chat. That is the honest outcome, not a silent success.
-      scannedPdf =
-        err instanceof NoExtractableTextError || /no extractable text/i.test((err as Error).message);
-      manualDocId = null;
-      await attachFileToTargets(
-        ctx.tenantId,
-        manualParked.fileId,
-        [
-          {
-            targetType: "equipment_notebook",
-            targetId: notebookId,
-            role: "manual",
-            displayLabel: manualFilename,
-          },
-        ],
-        { createdBy: ctx.userId ?? null },
-      );
-      return respond(scannedPdf ? "no_extractable_text" : "candidate_review", {
-        candidate: candidateView,
-        manual: {
-          fileId: manualParked.fileId,
-          docId: null,
-          filename: manualFilename,
-          discoveryUrl: candidate.url,
-          finalUrl: download.finalUrl,
-          matchState: null,
-          enabledByDefault: false,
-          chunkCount: 0,
-          indexed: false,
-        },
-        warning: scannedPdf
-          ? "That manual is a scanned image with no readable text. It is saved and viewable in this notebook, but MIRA cannot cite it in chat."
-          : "MIRA saved the file but could not read it. It is viewable in this notebook, but not searchable in chat.",
-        message: scannedPdf
-          ? "Manual saved as a viewable file only — no extractable text."
-          : "Manual saved as a viewable file only.",
-      });
-    }
-  }
-
-  // Attach the manual as a CANDIDATE first (enabled_by_default=false is the
-  // upsert's own rule for candidate state) — it cannot enter chat until the
-  // evidence check below promotes it.
-  const baseEvidence = {
-    discoveryUrl: candidate.url,
-    finalUrl: download.finalUrl,
-    discoveryTitle: candidate.title,
-    discoveryHost: candidate.host,
-    oemHost: discovery.oemHost,
-    // #3400 provenance: whether the SEARCH SERVICE validated the candidate, and
-    // whether WE could independently attribute the host to this manufacturer.
-    // A consumer must never read a successful download as "official".
-    discoveryValidated: discovery.validated,
-    independentlyOemHosted,
-    awaitingUserConfirmation: requiresUserConfirmation,
-    confirmedIdentity: identity,
-    reusedExistingDocument: reused,
-  };
-  await attachFileToTargets(
-    ctx.tenantId,
-    manualParked.fileId,
-    [
-      {
-        targetType: "equipment_notebook",
-        targetId: notebookId,
-        role: "manual",
-        displayLabel: manualFilename,
-        matchState: "candidate",
-        matchEvidence: { ...baseEvidence, decisionMethod: "pending_applicability_check" },
-      },
-    ],
-    { createdBy: ctx.userId ?? null },
-  );
-
-  // Judge applicability from THIS document's own chunks — never from the
-  // search-result title or the URL.
-  let verdict: ApplicabilityVerdict | null = null;
-  let enabled = false;
-  let matchState: "candidate" | "verified" = "candidate";
-  if (manualDocId) {
-    const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
-    verdict = assessApplicability({
-      identity: {
-        manufacturer: identity.manufacturer,
-        model: identity.model,
-        catalogNumber: identity.catalogNumber,
-      },
-      chunks,
-      oemHost: discovery.oemHost,
-    });
-    if (verdict.state === "verified" && !requiresUserConfirmation) {
-      matchState = "verified";
-      enabled = true;
-      await setSourceState(ctx.tenantId, notebookId, manualDocId, {
-        matchState: "verified",
-        enabledByDefault: true,
-        matchEvidence: {
-          ...baseEvidence,
-          decisionMethod: verdict.method,
-          matchedTokens: verdict.matchedTokens,
-          evidencePages: verdict.evidencePages,
-          applicabilityConfidence: verdict.confidence,
-          reason: verdict.reason,
-        },
-      });
-    } else {
-      await setSourceState(ctx.tenantId, notebookId, manualDocId, {
-        matchState: "candidate",
-        enabledByDefault: false,
-        matchEvidence: {
-          ...baseEvidence,
-          decisionMethod: verdict.method,
-          matchedTokens: verdict.matchedTokens,
-          evidencePages: verdict.evidencePages,
-          applicabilityConfidence: verdict.confidence,
-          reason: verdict.reason,
-        },
-      });
-    }
-  }
-
-  return respond(matchState === "verified" ? "complete" : "candidate_review", {
-    candidate: candidateView,
-    manual: {
-      fileId: manualParked.fileId,
-      docId: manualDocId,
-      filename: manualFilename,
-      discoveryUrl: candidate.url,
-      finalUrl: download.finalUrl,
-      matchState,
-      enabledByDefault: enabled,
-      chunkCount: manualChunks,
-      indexed: manualDocId !== null,
-      reused,
-    },
-    applicability: verdict,
-    message:
-      matchState === "verified"
-        ? `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
-        : `Manual saved but left off until you confirm it — ${
-            verdict?.reason ?? "its text does not prove it covers this component"
-          }.`,
-  });
+  return respond(acquired.status, acquired.payload);
 }

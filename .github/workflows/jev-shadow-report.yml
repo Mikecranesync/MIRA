@@ -1,0 +1,75 @@
+name: Jev shadow report (staging)
+
+# Evidence collector for the Jev shadow experiment (#3949): compares the
+# shadow relevance judgment (`answer_gate.jev_sufficient`) against MIRA's
+# presence-based `evidence_sufficient` over real staging turns, categorises
+# every disagreement, and uploads a markdown + CSV report. Read-only. Staging
+# only — the collector refuses the DB unless DOPPLER_CONFIG=stg. Never touches
+# production. Jev stays shadow: nothing here changes a gate.
+#
+# Sources: the last N successful retrieval-acceptance artifacts (acceptance
+# turns are swept from the DB with their stranger tenant, so the artifact is
+# the only durable copy) + staging `decision_traces` (real usage, all tenants;
+# text columns are never selected).
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many recent successful acceptance runs to include"
+        required: false
+        default: "10"
+        type: string
+  schedule:
+    - cron: "17 6 * * *" # daily; cheap, read-only
+
+permissions:
+  contents: read
+  actions: read # gh run download of this repo's artifacts
+
+concurrency:
+  group: jev-shadow-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Collect + categorise Jev vs evidence_sufficient
+    runs-on: ubuntu-latest
+    environment: staging # DOPPLER_TOKEN scoped to factorylm/stg
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet "psycopg2-binary>=2.9,<3"
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Collect and report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          # No pipe around the gate: GitHub's bash has no pipefail, so a piped
+          # `| tee` would hide the collector's exit code.
+          set +e
+          doppler run --project factorylm --config stg -- \
+            python3 tools/qa/jev_shadow_report.py \
+              --runs "${{ inputs.runs || '10' }}" --db --out jev-shadow-report \
+            > jev-shadow-report.log 2>&1
+          rc=$?
+          cat jev-shadow-report.log
+          # rc=1 means a config defect (disabled/no_key on staging) or an
+          # invariant violation (Jev called with zero chunks). That is a
+          # finding: the run goes red and the report is still uploaded.
+          exit $rc
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jev-shadow-report-${{ github.run_id }}
+          path: |
+            jev-shadow-report.md
+            jev-shadow-report.csv
+            jev-shadow-report.log
+          retention-days: 90

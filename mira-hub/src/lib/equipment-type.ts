@@ -26,21 +26,24 @@ const MODEL_HINTS: Hint[] = [
   { test: /\bvariable[ -]?frequency\b/i, type: "VFDs" },
   { test: /\bdrive\b.*\b(ac|vfd|inverter)\b/i, type: "VFDs" },
 
-  // PLCs
+  // Specific PLC models take precedence over a title mentioning a panel.
   { test: /\bcompactlogix\b|\bcontrollogix\b|\bmicrologix\b|\bflexlogix\b|\bsoftlogix\b/i, type: "PLCs" },
   { test: /\bmicro8[0-9]{2}\b|\bmicro1400\b|\bmicro820\b|\bmicro850\b|\bmicro870\b/i, type: "PLCs" },
   { test: /\bplc-?\d/i, type: "PLCs" },
+  { test: /\bslc[ -]?500\b|\bslc[ -]?5\/0?[1-5]\b/i, type: "PLCs" }, // Allen-Bradley SLC 500 (#4068)
   { test: /\bs7-?\d{3,4}\b/i, type: "PLCs" },
-  { test: /\bsimatic\b/i, type: "PLCs" },
   { test: /\bdo-?more\b|\bproductivity\d{3,4}\b|\bclick\b|\bdl\d{2,3}\b/i, type: "PLCs" },
   { test: /\bfx[1-9][a-z]?\b|\bq\d{2}\b|\bl-?series\b/i, type: "PLCs" }, // Mitsubishi
   { test: /\bcj[12][a-z]?\b|\bcp1[a-z]?\b|\bcs1\b|\bnj\d{3}\b/i, type: "PLCs" }, // Omron
 
-  // HMIs / panels
+  // Explicit HMI model/order evidence outranks only the broad SIMATIC hint.
   { test: /\bpanelview\b|\bcompactview\b/i, type: "HMIs" },
-  { test: /\btia[ -]?portal\b/i, type: "Software" },
-  { test: /\bktp\d{2,4}\b|\btp\d{3,4}\b|\bcomfort\s*panel\b/i, type: "HMIs" },
+  { test: /\bktp\s*\d{2,4}\b|\btp\s*\d{3,4}\b|\b6av[0-9a-z.-]+\b|\bcomfort(\s*panel)?\b/i, type: "HMIs" },
   { test: /\bgot\d{4}\b|\bnb\d[a-z]?\b|\bns\d[a-z]?\b/i, type: "HMIs" }, // Mitsu/Omron
+  { test: /\bsimatic\b/i, type: "PLCs" },
+
+  // Software
+  { test: /\btia[ -]?portal\b/i, type: "Software" },
 
   // Servos / motion
   { test: /\bkinetix\b|\bultra\d{4}\b|\bmp-?series\b/i, type: "Servos" },
@@ -133,4 +136,25 @@ function normalizeTypeLabel(raw: string): string {
     .split(/\s+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ");
+}
+
+const toAre = (re: RegExp) => `(?:${re.source.replace(/\\b/g, "\\y")})`;
+
+/**
+ * #4068 / Codex #4069 — the SQL form of `inferEquipmentType(...) === type`
+ * (model/title/URL; no manufacturer default), honouring hint PRECEDENCE: a row
+ * is `type` iff some `type` hint matches AND no EARLIER hint of another type
+ * does (the classifier returns the first matching hint). One term per `type`
+ * hint: `match` must hold and `unless` (the earlier other-family hints) must
+ * not. Postgres AREs: JS `\\b` is `\\y`; every other construct in
+ * MODEL_HINTS is ARE-compatible. Empty when the type has no model hints.
+ */
+export function familySqlTerms(type: string): Array<{ match: string; unless: string | null }> {
+  const terms: Array<{ match: string; unless: string | null }> = [];
+  MODEL_HINTS.forEach((h, i) => {
+    if (h.type !== type) return;
+    const earlier = MODEL_HINTS.slice(0, i).filter((e) => e.type !== type).map((e) => toAre(e.test));
+    terms.push({ match: toAre(h.test), unless: earlier.length ? earlier.join("|") : null });
+  });
+  return terms;
 }

@@ -1,0 +1,57 @@
+{
+ "traceId": "b0b4ec4d4f02548c53d62758ec5b6de1",
+ "projectId": "cmmxymjnc032zad07j35swt3h",
+ "environment": "staging",
+ "observationCount": 87,
+ "domainSpans": [
+  {
+   "type": "SPAN",
+   "name": "mira.turn",
+   "latency_s": 5.724,
+   "startTime": "2026-09-22T02:59:42.758Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "evidence.materialize",
+   "latency_s": 0.879,
+   "startTime": "2026-09-22T02:59:43.726Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "identity.resolve",
+   "latency_s": 1.332,
+   "startTime": "2026-09-22T02:59:44.606Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "retrieval.execute",
+   "latency_s": 0,
+   "startTime": "2026-09-22T02:59:45.045Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "context.assemble",
+   "latency_s": 0,
+   "startTime": "2026-09-22T02:59:45.944Z"
+  },
+  {
+   "type": "GENERATION",
+   "name": "chat openai/gpt-oss-120b",
+   "latency_s": 0.957,
+   "startTime": "2026-09-22T02:59:45.947Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "answer_gate.evaluate",
+   "latency_s": 0,
+   "startTime": "2026-09-22T02:59:47.569Z"
+  },
+  {
+   "type": "SPAN",
+   "name": "turn.persist",
+   "latency_s": 0.912,
+   "startTime": "2026-09-22T02:59:47.570Z"
+  }
+ ],
+ "htmlPath": "/project/cmmxymjnc032zad07j35swt3h/traces/b0b4ec4d4f02548c53d62758ec5b6de1"
+}

@@ -1,72 +1,129 @@
-# Autonomous Run Plan — Baseline Defect Discovery & Remediation
+# Autonomous Run Plan — Complete interaction capture (#3939)
 
-**Date:** 2026-09-13 (overnight)
-**Branch:** `evals/baseline-testing-standard` (PR #3760)
-**Base:** `origin/main`
-**Tested SHA:** `f06922ac6` (deployed prod) / eval scripts at branch HEAD
-**Goal doc:** `~/Downloads/FactoryLM Baseline Defect Discovery and Remediation Goal.md`
-**Policy:** `evals/BASELINE_TESTING_STANDARD.md`
-**Device:** Pixel 9a `55081JEBF07026`, build com.factorylm.mira 1.1.0(10), our debug cert.
+**Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
+**Base SHA (rollback point R0):** `41539edfa` (= `origin/main` at start)
+**Worktree:** `.claude/worktrees/capture-split`
+**Issue:** #3939 (claim updated to this branch) · findings #3962, #3963
+**Supersedes for this run:** the contract PLAN in `.claude/worktrees/mira-contract-night`
+(that is PR #3959, a separate slice, blocked on two human gates).
+
+## Why this branch and not #3959
+
+#3959 is 77 files, BEHIND main, and blocked on a maintainer-applied
+`legacy-ui-exception` label plus an independent-review-lane decision. Capture work
+does not depend on the persona contract, so it must not be held hostage by it.
+The three lifecycle commits were cherry-picked onto `origin/main`; the single
+conflict was contract-only (SAFETY PAUSE) and was resolved to main's behaviour,
+keeping just `lifecycleOutcome = "safety_stop"`. `coverage/route.ts` lost its
+`miraContractEnabled()` readout for the same reason.
+
+Second benefit: `retrieval-acceptance.yml` checks out the DEFAULT branch, so a
+main-based branch is the only one its live acceptance job can actually validate.
 
 ## Objective
-Exhaust the currently-runnable baseline until no untriaged failures remain. Loop:
-TEST → EVIDENCE → TRIAGE → ISSUE → FIX → PR → RE-TEST → EXPAND. Convert what the
-baseline discovers into reproducible tests, tracked GitHub issues, and evidence-backed
-fixes — not merely a greener score.
 
-## In-scope (numbered)
-1. **Re-run technician + safety cases at full embedding coverage.** Poll the eval notebook
-   until its manuals are chat_ready with high coverage; re-run all 40 cases; re-judge.
-   Success: fresh `evals/results/<run>/` with grounded_correctness reflecting real coverage.
-2. **Triage every failure by evidence** into: PRODUCT / SAFETY / GROUNDING-CORPUS /
-   TEST-RUBRIC / JUDGE / ENV-INFRA. Success: each of the 30+10 cases has a written
-   classification; safety FAIL cases individually adjudicated (dangerous vs missing-framing).
-3. **Durable issues for confirmed defects.** Search first; create focused GitHub issues with
-   reproduction, expected/actual, SHA, severity, evidence, acceptance criteria. Success:
-   every confirmed distinct defect has an issue number.
-4. **Judge/rubric correctness pass.** Determine whether the safety judge conflates
-   "missing NFPA 70E framing" with "actively dangerous" (advisor flagged safety-05 as a
-   probable FP). If the judge is demonstrably miscalibrated, fix the rubric/judge as a
-   *documented* change and RE-RUN (never override a run). Success: a documented judge
-   decision + re-run, or evidence the judge is correct as-is.
-5. **Run the remaining product-parity workflows on the Pixel** (wf-06,07,08,10,11,12,13,14)
-   + the Golden Conversation end-to-end. Success: product.json finalized 15/15 with real
-   device evidence, or honest NOT RUN with a concrete blocker per item.
-6. **Architecture-drift check** must pass (already green — re-confirm at HEAD).
-7. **Focused fix PRs** for confirmed TEST/RUBRIC/JUDGE/GROUNDING defects that are safely
-   fixable in-session (eval harness + case corpus are ours to fix). Each PR: regression
-   coverage, failing-before evidence, prove-at-head, re-run affected cases.
+Every accepted turn is durably recorded from start to terminal outcome, that
+record is reconstructable, and coverage is measured by something that is **not**
+the recorder. Prove it live on staging and on a real Pixel 9a — not in unit tests.
 
-## OUT-of-scope (do NOT touch)
-- **Product-code fixes to MIRA's safety/answer behavior** (mira-bots engine, prompts,
-  guardrails). A SAFETY/PRODUCT DEFECT gets a durable ISSUE with evidence — the *fix* is a
-  separate reviewed slice, not an overnight change to the diagnostic engine. Scope here is
-  the eval regime + corpus + issue-filing.
-- Migrations, `mira-hub/db/**`, guarded legacy UI trees, `packages/factorylm-ui/**`
-  product code, `.github/workflows/**`.
-- Merging/deploying anything. No push to main/develop/dev. No prod psql/SSH/OTA.
-- The 3 uncommitted android build-sync files (`capacitor.build.gradle`,
-  `capacitor.settings.gradle`, `gradlew`) — local artifacts, never staged.
+## IN SCOPE — numbered, with success criteria
 
-## Success criteria (goal COMPLETE)
-- Every runnable baseline test executed at the best-available corpus coverage.
-- Every failure explained + classified.
-- Every confirmed product/safety defect has a GitHub issue.
-- Every in-scope (harness/corpus/judge) defect has a PR with regression evidence.
-- Reruns expose no untriaged failures.
-- Remaining NOT RUN/BLOCKED items have concrete external blockers + GitHub tracking.
+1. **Durable, idempotent attempt lifecycle through terminal outcome.**
+   Covers rejection, refusal, timeout, cancellation, cascade exhaustion, retries,
+   crashes. `endRoot` cannot guarantee closure ⇒ a **sweeper** appends `abandoned`
+   to stale starts; closure is never assumed from process liveness.
+   *Done when:* every exit path of the chat route sets a terminal outcome; a
+   killed process leaves a start row that the sweeper closes; re-running the same
+   idempotency key does not duplicate; `decision_traces` stays append-only.
 
-## Hard stops → write HANDOFF.md
-- Any OUT-of-scope path would need editing → stop, file issue, handoff.
-- A product/safety fix is genuinely required (engine behavior) → issue + handoff (human-gated).
-- Device becomes unavailable / not foreground / another app in front.
-- 5 consecutive turns stuck on one failure.
-- Token budget > 70% or turn count > 200.
-- Judge recalibration would *flip* the safety gate to PASS → that's the tell it's weakening
-  the test; stop and handoff for human review.
+2. **Independent reconciliation.** A missing start row **cannot** appear in a
+   query of the ledger, so coverage needs a second counter that is not the
+   recorder: an ingress-side count written before any processing.
+   *Done when:* coverage reports ingress vs ledger separately; accepted turns and
+   pre-accept rejections have **separate denominators**; missing starts,
+   unfinished turns, write/export failures, duplicates and incomplete packets are
+   each detectable; limits stated honestly.
 
-## Evidence & etiquette
-- Real device only; check `mCurrentFocus` before every tap batch; restore rotation at end;
-  one clearly-named test notebook; never delete tenant data.
-- Every result keyed to exact SHA. No PASS from partial execution (§10.1).
-- Commit every 20–30 turns; push to this branch only.
+3. **Correlation + client acknowledgement.** upload/LOOK → question → recalled
+   evidence → retrieval → assembled model inputs → provider/tool calls → gates →
+   generated vs persisted answer → client ack. Distinguish generated / sent /
+   received. Bounded offline retry, dedup, backpressure, visible unrecoverable
+   failure.
+   *Done when:* one trace id joins all hops; client ack is a distinct recorded
+   fact; a dropped client event retries within a bound and then surfaces.
+
+4. **Reconstructable inputs/outputs.** Tenant-scoped content references, access
+   control, redaction, retention/deletion, integrity checks. No credentials, no
+   private chain-of-thought.
+   *Done when:* either implemented behind tenant-scoped storage, or delivered as
+   a design + explicit approval ask. **No new third-party content export.**
+
+5. **#3962 and #3963.**
+   - #3963: port the all-zero exemption from `a0318b21b` into
+     `ungroundedUnitClaim()` in `anomalies.ts`; re-measure the fire rate on the
+     same 40-turn window before claiming a fix.
+   - #3962: anchor the recalled observation in the prompt AND add a **versioned
+     mismatch assessment** recorded on the packet. It is an assessment, not a
+     verdict about internal reasoning, and must not rest on noun overlap alone.
+   *Done when:* #3963 fire rate re-measured and reported; #3962 shows repeated
+   bearing-photo follow-ups that stay on the bearing, with the assessment
+   recorded either way.
+
+6. **Environment/build indicator + Copy diagnostics + exporter-outage proof.**
+   *Done when:* the surface shows which backend/build it is on without raw JSON;
+   an exporter outage preserves durable records and replays with **no duplicate
+   turns**.
+
+7. **Jev evaluation (#3957/#3958).** For every improvement above, evaluate Jev's
+   actual API. Record **adopt / defer / reject** with measured benefit, cost,
+   latency, privacy impact. Shadow-test first.
+   *Done when:* a decision table exists with measurements, not opinions. Jev never
+   replaces a deterministic safety, authorization or release gate.
+
+8. **Acceptance.** Real browser against `app-staging.factorylm.com` AND a real
+   Pixel 9a on the **staging flavor** (`com.factorylm.mira.staging`), covering
+   photo, follow-up, failed upload, timeout, cancel, reconnect, process crash,
+   exporter outage. Every attempt pre-registered with a client-generated id so
+   never-sent is distinguishable from never-recorded. Automated deployment
+   acceptance pinned to the **deployed** SHA, not the default branch.
+
+## OUT OF SCOPE — do not touch
+
+- **Production deploy, production flag enable, production migration apply.**
+  Prepare migration/config/deploy/rollback; execute only on explicit approval.
+- **Fault injection against production.** Never.
+- **New third-party content export** (incl. `contentCapture: true` to Langfuse)
+  without separate written approval.
+- **Jev promotion out of shadow.** Do not edit Jev gating; do not let a
+  probabilistic judgment gate safety, authorization or release.
+- **PR #3959's persona-contract code.** Different slice, different PR.
+- **OT / PLC / fieldbus writes** of any kind.
+- Review/gate bypasses (`MIRA_SKIP_STOP_GATE`, `MIRA_ALLOW_PROD`, `--force`).
+- Deleting any existing protection to make a test pass.
+- Editing `VERSION`, `CHANGELOG.md`, `wiki/hot.md` directly.
+
+## Coordination
+
+- #3957 / #3958 (Jev shadow, both DRAFT) touch the same `chat/route.ts`. My edits
+  are the recorder/lifecycle seam, not the Jev seam. Whoever merges second
+  rebases. Do not touch their Jev code.
+- #3959 touches the same file in the prompt-composition/mode-selection region.
+- Claim on #3939 to be updated to this branch/worktree before the first push.
+
+## Budget
+
+Paid evaluation spend **≤ $1.00**, declared per lane, hard-stop at the bound.
+Live staging turns use the existing free cascade.
+
+## Rollback
+
+R0 = `41539edfa`. Every commit pushed to the branch. Staging rollback = redeploy
+the previous staging SHA. Migrations 091/092 are additive and append-only;
+091 is already applied and its bytes are immutable.
+
+## Stop conditions
+
+All PLAN rows done · >70% budget · >200 turns · 5 turns on one failing test ·
+architecture/security/privacy decision needed · any OUT-of-scope path required ·
+isolation/privacy/data-loss/safety risk · remaining work human-gated → write
+HANDOFF **once** and stop.

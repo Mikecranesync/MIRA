@@ -101,6 +101,10 @@ const LIVE_ANSWERED = parseChatSse(
  *  sets `status: "stopped"` explicitly. It ALSO has no `status` frame — which
  *  is exactly why the predicate must separate the two. */
 const LIVE_STOPPED: ChatTurn = { ...LIVE_TRUNCATED, status: "stopped", citations: [] };
+const LIVE_SAFETY_TRUNCATED = parseChatSse(
+  frame({ kind: "safety", trigger: "smoke coming" }) +
+    frame({ kind: "content", content: "SAFETY STOP. Isolate the machine." }),
+);
 
 const detail = (turns: unknown[] = []) => ({
   notebook: { id: "nb1", displayName: "CV-101", manufacturer: null, model: null },
@@ -208,6 +212,30 @@ describe.each(SURFACES)("ADR-0038 rule 6 — unexpected truncation — %s", (_na
     await screen.findByText(/incomplete/i);
 
     expect(screen.queryByText(/^Stopped$/)).toBeNull();
+  });
+
+  it("offers exact-body Retry and reuses the same client request id", async () => {
+    resolveWith(LIVE_TRUNCATED);
+    mount(available);
+    await ask("trip point?");
+
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    const firstId = askNotebook.mock.calls[0][3].clientRequestId;
+    await act(async () => fireEvent.click(retry));
+    await waitFor(() => expect(askNotebook).toHaveBeenCalledTimes(2));
+    expect(askNotebook.mock.calls[1][3].clientRequestId).toBe(firstId);
+  });
+});
+
+describe.each(SURFACES)("ADR-0038 safety terminal — %s", (_name, available) => {
+  it("keeps the warning but never invites or offers Retry", async () => {
+    resolveWith(LIVE_SAFETY_TRUNCATED);
+    mount(available);
+    await ask("the panel is smoking");
+
+    expect(await screen.findByTestId("safety-notice")).toBeTruthy();
+    expect(screen.queryByText(/Ask again to retry/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Answer "does this PR need the `legacy-ui-exception` label?" in seconds.
+"""Answer "does this PR touch a lifecycle-gated path?" in seconds.
 
 WHY THIS EXISTS
 ---------------
@@ -59,8 +59,9 @@ def guarded(policy, paths: list[str]) -> list[str]:
         p
         for p in paths
         if not evaluate(
-            [ChangedFile(path=p, status="modified")], [], "", policy,
-            exception_approval_valid=False,
+            [ChangedFile(path=p, status="modified")],
+            pr_body="",
+            policy=policy,
         ).allowed
     ]
 
@@ -96,13 +97,13 @@ def main() -> int:
         files = pr_files(number)
         hits = guarded(policy, files)
         blocked += bool(hits)
-        print(f"#{number}  needs-label={bool(hits)}  guarded {len(hits)}/{len(files)}")
+        print(f"#{number}  lifecycle-gated={bool(hits)}  guarded {len(hits)}/{len(files)}")
         for h in hits:
             print(f"    {h}")
     if args.files:
         hits = guarded(policy, args.files)
         blocked += bool(hits)
-        print(f"files  needs-label={bool(hits)}  guarded {len(hits)}/{len(args.files)}")
+        print(f"files  lifecycle-gated={bool(hits)}  guarded {len(hits)}/{len(args.files)}")
         for h in hits:
             print(f"    {h}")
     return 1 if blocked else 0

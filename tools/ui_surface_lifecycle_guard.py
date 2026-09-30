@@ -2,40 +2,45 @@
 """FactoryLM Unified UI Cutover — legacy presentation lifecycle guard.
 
 FACTORYLM-UNIFIED-UI-CUTOVER-001. Charter:
-docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Legacy exception
-policy" + §3.1 "Trusted enforcement boundary". Governance plan:
-docs/superpowers/plans/2026-09-06-factorylm-unified-ui-cutover-governance.md
-Task 2.
+docs/architecture/convergence/UNIFIED_UI_CUTOVER.md §3 "Lifecycle guard
+rationale and exact-snapshot review" + §3.1 "Trusted enforcement boundary".
+Governance plan: docs/superpowers/plans/
+2026-09-06-factorylm-unified-ui-cutover-governance.md Task 2.
 
 Fails closed by default on ANY addition, modification, deletion, rename-in,
 or rename-out of a guarded legacy presentation path (from
 docs/architecture/convergence/REGISTRY.yaml) or a hardcoded CONTROL_PATTERNS
-control-plane file — unless the PR carries the `legacy-ui-exception` label, a
-single substantive `## Legacy UI exception` PR-body section (Reason /
-Canonical replacement impact / Rollback), and a fresh user label event bound
-to the current PR head/body snapshot.
+control-plane file — unless the PR carries a single substantive
+`## Lifecycle guard rationale` PR-body section (Reason / Canonical replacement
+impact / Rollback) AND a `[CODEX-ADVERSARIAL-REVIEW]` comment
+  (the repository's existing Codex review ledger, `scripts/adversarial-review.sh`)
+  whose `reviewed_sha` and `reviewed_body_sha256` bind it to the current PR
+  head/body snapshot and whose `status` is `GREEN`.
+  The Codex contract treats any expansion of frozen legacy presentation as
+  a finding, so a GREEN at the exact head is the independent classification
+  that the touch is migration / removal / adapter work. Any head movement
+  or body edit makes it stale; a fresh review restores it.
 
 This module does no network access and reads no GitHub token — it is pure
 policy + text analysis, designed to run from the TRUSTED BASE revision of the
 repository (see `.github/workflows/ui-lifecycle-guard.yml`), fed only
-metadata (changed files plus one current PR snapshot containing labels, body,
-and head) fetched by a separate token-bearing step. See CLI `main()` at the
+metadata (changed files plus one current PR snapshot containing body and head)
+fetched by a separate token-bearing step. See CLI `main()` at the
 bottom.
 
     python3 tools/ui_surface_lifecycle_guard.py --base <sha> --head <sha>
     python3 tools/ui_surface_lifecycle_guard.py \\
         --changes-json-file changed-files.jsonl \\
         --expected-change-count-file expected-change-count.txt \\
-        --labels-file labels.txt \\
         --pr-body-file pr-body.md \\
-        --event-json-file "$GITHUB_EVENT_PATH" \\
         --current-pull-json-file current-pull.json \\
-        --approver-permission-json-file approver-permission.json
+        --review-comments-json-file review-comments.jsonl
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -63,6 +68,9 @@ DEFAULT_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
 # quietly loosened in the same PR that would benefit from the loosening.
 # ---------------------------------------------------------------------------
 CONTROL_PATTERNS: tuple[str, ...] = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/**",
     "conftest.py",
     "docs/architecture/convergence/REGISTRY.yaml",
     "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
@@ -79,6 +87,7 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "tox.ini",
     "usercustomize.py",
     "tests/test_ui_surface_lifecycle_guard.py",
+    "tests/test_adversarial_review_scripts.py",
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/rules/factorylm-unified-ui-cutover.md",
@@ -89,6 +98,16 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     ".github/scripts/resolve_release_tag.sh",
     ".github/pull_request_template.md",
     "requirements/ui-lifecycle-guard.txt",
+    "scripts/adversarial-review.sh",
+    "scripts/adversarial-review-loop.sh",
+    "scripts/adversarial-review-lock.sh",
+    "scripts/adversarial-review-ledger.mjs",
+    "scripts/adversarial-review-render.mjs",
+    "scripts/adversarial-review-schema.json",
+    "scripts/adversarial-review-prompt.md",
+    "scripts/adversarial-review-remediation-prompt.md",
+    "scripts/adversarial-review-trusted.sh",
+    "docs/adversarial-review-workflow.md",
     "tools/hooks/prod-guard.sh",
     "tools/ota_handset_evidence.py",
 )
@@ -572,7 +591,6 @@ _MOBILE_PRESERVED_CHAT_ADAPTER_PATHS: frozenset[str] = frozenset(
 MAX_EXPECTED_CHANGE_COUNT = 3000
 
 _TERMINAL_GLOB = "/**"
-_LEGACY_LABEL = "legacy-ui-exception"
 _FIELD_LABELS: tuple[str, ...] = (
     "Reason:",
     "Canonical replacement impact:",
@@ -610,6 +628,28 @@ _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+# The Codex review ledger's comment envelope, byte-for-byte the shape
+# `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
+# does not match from the first character is not an attestation — it cannot
+# be a stale one, a forged one, or a partial one; it is simply ignored.
+_CODEX_REVIEW_MARKER = "[CODEX-ADVERSARIAL-REVIEW]"
+_CODEX_REVIEW_RE = re.compile(
+    r"^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\n"
+    r"reviewed_sha: (?P<sha>[0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: (?P<body_sha256>[0-9a-f]{64})\r?\n"
+    r"base_sha: [^\r\n]+\r?\n"
+    r"status: (?P<status>GREEN|ISSUES_FOUND)\r?\n"
+    r"review_iteration: (?P<iteration>[0-9]+)\r?\n"
+    r"(?:post_cap_human_authorized: true\r?\n)?"
+    r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?"
+    r"\r?\n"
+    r"BLOCKER: (?P<blocker>[0-9]+)\r?\n"
+    r"HIGH: (?P<high>[0-9]+)\r?\n"
+    r"MEDIUM: (?P<medium>[0-9]+)\r?\n"
+    r"LOW: (?P<low>[0-9]+)\r?\n"
+    r"FALSE_POSITIVE: [0-9]+\r?\n"
+    r"```(?:\r?\n|$)"
+)
 
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
@@ -686,11 +726,19 @@ class GuardResult:
 
 
 @dataclass(frozen=True)
-class ExceptionApproval:
-    """Fresh GitHub label attestation bound to one PR head and body snapshot."""
+class CodexAttestation:
+    """Latest Codex adversarial-review verdict, bound to one exact PR snapshot.
+
+    `valid` is True only when the newest well-formed ledger comment for the
+    CURRENT head and body reports `GREEN`. The reviewed identifiers describe
+    the newest well-formed ledger comment of any status, or are both None when
+    no ledger comment exists.
+    """
 
     valid: bool
-    approver: Optional[str]
+    reviewed_sha: Optional[str]
+    reviewed_body_sha256: Optional[str]
+    status: Optional[str]
     reason: str
 
 
@@ -1329,148 +1377,145 @@ def _load_json_object(path: Path, *, description: str) -> dict:
     return value
 
 
-def load_exception_approval(
-    event_path: Path,
-    current_pull_path: Path,
-    approver_permission_path: Path,
-) -> ExceptionApproval:
-    """Validate a fresh label act against the current PR snapshot.
-
-    The persistent label is not approval by itself. The only accepted
-    attestation is the `pull_request_target:labeled` event that applied
-    `legacy-ui-exception`, performed by a GitHub User, whose event-time head
-    SHA and PR body still match a separately fetched current pull request, and
-    whose separately fetched repository role is `maintain` or whose legacy
-    base permission is `admin`. GitHub maps Maintain to legacy `write`, so both
-    `permission` and `role_name` are checked.
-    Any later push or body edit causes the next workflow run to fail until an
-    authorized user removes/reapplies the label after reviewing the new state.
-    """
-    event = _load_json_object(event_path, description="GitHub event")
-    current = _load_json_object(current_pull_path, description="current pull request")
-    permission_record = _load_json_object(
-        approver_permission_path, description="approver repository permission"
-    )
-
-    event_pr = event.get("pull_request")
-    event_label = event.get("label")
-    sender = event.get("sender")
-
-    # A run that is not a `labeled` ACT carries no attestation to validate.
-    #
-    # That is the ordinary case for every `synchronize`/push run — GitHub only
-    # populates `event.label` on a `labeled` event — and it is NOT malformed
-    # metadata. The strict object check below was reached unconditionally
-    # (the caller passes `--event-json-file` on every invocation), so every
-    # push to every PR raised `exception approval metadata is missing required
-    # GitHub objects` and failed the guard for a reason unrelated to the PR's
-    # contents. Observed on PR #3682 at 2eb3701e, whose diff touches no
-    # guarded path at all.
-    #
-    # Returning a NON-approval here is strictly fail-closed: `valid=False`
-    # means no exception was granted, so `evaluate()` still blocks any PR that
-    # touches a guarded path (see the `exception_approval_valid` branch). It
-    # only stops the guard from erroring when no exception was ever claimed.
-    #
-    # Tamper detection is unchanged: once the event IS a `labeled` act, every
-    # object below is still required — INCLUDING `label` itself — and a missing
-    # or malformed one still raises rather than degrading to a silent
-    # non-approval. The condition deliberately tests only `action`: a genuine
-    # `labeled` act carrying a malformed `label` is malformed metadata, and must
-    # reach the strict object check below so the message says so. Folding
-    # `isinstance(event_label, dict)` in here would have reported "no
-    # attestation on this run" for a tampered label — the same class of
-    # misdirection this fix removes.
-    if event.get("action") != "labeled":
-        return ExceptionApproval(
-            valid=False,
-            approver=None,
-            reason="no GitHub label-event attestation on this run",
-        )
-
+def _current_head_body_digest_and_owner(current: dict) -> tuple[str, str, str]:
+    """Return the exact current head, body digest, and repository owner."""
     current_head = current.get("head")
     current_base = current.get("base")
-    current_labels = current.get("labels")
-    permission_user = permission_record.get("user")
-    if (
-        not all(
-            isinstance(value, dict)
-            for value in (event_pr, event_label, sender, current_head, current_base)
-        )
-        or not isinstance(current_labels, list)
-        or not isinstance(permission_user, dict)
-    ):
-        raise GuardPolicyError("exception approval metadata is missing required GitHub objects")
-
-    event_head = event_pr.get("head")
-    current_base_repo = current_base.get("repo")
-    event_repo = event.get("repository")
-    if not all(isinstance(value, dict) for value in (event_head, current_base_repo, event_repo)):
-        raise GuardPolicyError("exception approval metadata is missing head/repository objects")
-
-    event_sha = event_head.get("sha")
+    if not isinstance(current_head, dict) or not isinstance(current_base, dict):
+        raise GuardPolicyError("current pull request snapshot is missing head/base objects")
     current_sha = current_head.get("sha")
-    if not isinstance(event_sha, str) or not _FULL_SHA_RE.fullmatch(event_sha):
-        raise GuardPolicyError("exception approval event head SHA is missing or malformed")
     if not isinstance(current_sha, str) or not _FULL_SHA_RE.fullmatch(current_sha):
         raise GuardPolicyError("current pull request head SHA is missing or malformed")
-
-    event_body = event_pr.get("body")
-    current_body = current.get("body")
-    if event_body is not None and not isinstance(event_body, str):
-        raise GuardPolicyError("exception approval event PR body is not text or null")
-    if current_body is not None and not isinstance(current_body, str):
+    if "body" not in current:
+        raise GuardPolicyError("current pull request body is missing")
+    current_body = current["body"]
+    if current_body is None:
+        current_body = ""
+    elif not isinstance(current_body, str):
         raise GuardPolicyError("current pull request body is not text or null")
+    current_body_sha256 = hashlib.sha256(current_body.encode("utf-8")).hexdigest()
+    base_repo = current_base.get("repo")
+    owner = base_repo.get("owner") if isinstance(base_repo, dict) else None
+    owner_login = owner.get("login") if isinstance(owner, dict) else None
+    if not isinstance(owner_login, str) or not owner_login:
+        raise GuardPolicyError("current pull request base repository owner login is missing")
+    return current_sha, current_body_sha256, owner_login
 
-    label_names: set[str] = set()
-    for item in current_labels:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise GuardPolicyError("current pull request labels contain a malformed item")
-        label_names.add(item["name"])
 
-    approver = sender.get("login") if isinstance(sender.get("login"), str) else None
-    permission_login = (
-        permission_user.get("login") if isinstance(permission_user.get("login"), str) else None
-    )
-    permission = permission_record.get("permission")
-    role_name = permission_record.get("role_name")
-    has_maintainer_authority = permission == "admin" or (
-        permission == "write" and role_name == "maintain"
-    )
-    checks = (
-        (event.get("action") == "labeled", "workflow event is not a label application"),
-        (event_label.get("name") == _LEGACY_LABEL, "workflow event applied a different label"),
-        (_LEGACY_LABEL in label_names, "exception label is no longer present"),
-        (sender.get("type") == "User" and bool(approver), "label actor is not a GitHub User"),
-        (permission_login == approver, "permission record actor mismatches label actor"),
-        (
-            has_maintainer_authority,
-            "label actor does not have repository maintain or admin permission",
-        ),
-        (event.get("number") == current.get("number"), "pull request number changed"),
-        (event_pr.get("number") == current.get("number"), "event pull request number mismatches"),
-        (
-            event_repo.get("full_name") == current_base_repo.get("full_name"),
-            "repository identity mismatches",
-        ),
-        (event_sha == current_sha, "pull request head changed after approval"),
-        ((event_body or "") == (current_body or ""), "pull request body changed after approval"),
-    )
-    failures = [reason for passed, reason in checks if not passed]
-    if failures:
-        return ExceptionApproval(valid=False, approver=approver, reason="; ".join(failures))
-    return ExceptionApproval(
+def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> CodexAttestation:
+    """Read the Codex review ledger from the PR's issue comments (JSON lines of
+    `{id, body, user: {login, type}}`) and bind it to the current head/body.
+
+    Trust model — the same one `scripts/adversarial-review-ledger.mjs` uses:
+    only a comment posted by the repository owner account (the account the
+    review lane runs under; `user.type` must be `User`) whose body matches
+    the ledger envelope from its first character counts. Malformed, forged,
+    bot-authored, or foreign-account comments are ignored — they can neither
+    mint nor revoke a GREEN. Among counting comments the newest (highest
+    numeric id) decides: the attestation is valid only when that comment's
+    `reviewed_sha` and `reviewed_body_sha256` match the current snapshot AND
+    its status is `GREEN`. A newer `ISSUES_FOUND` record withdraws an older
+    GREEN. A GREEN at any other head or body is stale by definition.
+    """
+    current = _load_json_object(current_pull_path, description="current pull request")
+    current_sha, current_body_sha256, owner_login = _current_head_body_digest_and_owner(current)
+
+    try:
+        text = Path(comments_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise GuardPolicyError(f"cannot read review comments file {comments_path}: {exc}") from exc
+
+    newest_id = -1
+    newest: Optional[tuple[str, str, str]] = None
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise GuardPolicyError(
+                f"review comments line {line_number} is not valid JSON: {exc}"
+            ) from exc
+        if not isinstance(record, dict):
+            raise GuardPolicyError(f"review comments line {line_number} is not an object")
+        comment_id = record.get("id")
+        body = record.get("body")
+        user = record.get("user")
+        if not isinstance(comment_id, int) or isinstance(comment_id, bool):
+            raise GuardPolicyError(f"review comments line {line_number} lacks a numeric id")
+        if not isinstance(body, str) or not isinstance(user, dict):
+            continue
+        if user.get("type") != "User" or user.get("login") != owner_login:
+            continue
+        match = _CODEX_REVIEW_RE.match(body)
+        if match is None:
+            continue
+        if match.group("status") == "GREEN" and any(
+            int(match.group(name)) != 0 for name in ("blocker", "high", "medium", "low")
+        ):
+            continue
+        if comment_id > newest_id:
+            newest_id = comment_id
+            newest = (
+                match.group("sha"),
+                match.group("body_sha256"),
+                match.group("status"),
+            )
+
+    if newest is None:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=None,
+            reviewed_body_sha256=None,
+            status=None,
+            reason=f"no {_CODEX_REVIEW_MARKER} ledger comment on this pull request",
+        )
+    reviewed_sha, reviewed_body_sha256, status = newest
+    if reviewed_sha != current_sha:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
+            status=status,
+            reason=(
+                f"newest {_CODEX_REVIEW_MARKER} reviewed {reviewed_sha} ({status}) "
+                f"but the pull request head is {current_sha}"
+            ),
+        )
+    if reviewed_body_sha256 != current_body_sha256:
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
+            status=status,
+            reason=(
+                f"review body stale: newest {_CODEX_REVIEW_MARKER} reviewed "
+                f"{reviewed_body_sha256} ({status}) but the pull request body is "
+                f"{current_body_sha256}"
+            ),
+        )
+    if status != "GREEN":
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
+            status=status,
+            reason=f"newest {_CODEX_REVIEW_MARKER} at the current head/body reports {status}",
+        )
+    return CodexAttestation(
         valid=True,
-        approver=approver,
+        reviewed_sha=reviewed_sha,
+        reviewed_body_sha256=reviewed_body_sha256,
+        status=status,
         reason=(
-            "fresh label event matches the current pull request head/body and "
-            "the actor has repository maintainer authority"
+            f"{_CODEX_REVIEW_MARKER} GREEN bound to the current head {current_sha} "
+            f"and body {current_body_sha256}"
         ),
     )
 
 
 # ---------------------------------------------------------------------------
-# Exception PR-body parsing — consume rendered CommonMark token structure plus
+# Lifecycle-rationale PR-body parsing — consume rendered CommonMark structure plus
 # GitHub's table/strikethrough rules, not source-looking regex approximations.
 # Only a real top-level H2 can open the section; fenced/indented code, unsafe
 # HTML, lists, blockquotes, tables, and struck text cannot smuggle a heading or
@@ -1564,9 +1609,9 @@ def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
     source = pr_body or ""
     tokens = _GITHUB_MARKDOWN.parse(source)
     if _has_unsafe_html(tokens):
-        return [], "body:unsafe or non-comment HTML invalidates Legacy UI exception"
+        return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
     if _has_renderer_specific_markup(source):
-        return [], "body:renderer-specific markup invalidates Legacy UI exception"
+        return [], "body:renderer-specific markup invalidates Lifecycle guard rationale"
     sections: list[str] = []
     current: Optional[list[str]] = None
     top_level_paragraph = False
@@ -1588,7 +1633,7 @@ def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
                 and token.markup == "##"
                 and inline is not None
                 and inline.type == "inline"
-                and inline.content == "Legacy UI exception"
+                and inline.content == "Lifecycle guard rationale"
             ):
                 current = []
             top_level_paragraph = False
@@ -1701,16 +1746,16 @@ def _is_substantive(value: Optional[str]) -> bool:
     return True
 
 
-def _exception_missing_fields(pr_body: str) -> list[str]:
+def _rationale_missing_fields(pr_body: str) -> list[str]:
     """Return the list of problems with the PR body's exception section —
     empty means exactly one live section with all three fields substantive."""
     sections, invalid_reason = _find_exception_sections(pr_body)
     if invalid_reason is not None:
         return [invalid_reason]
     if len(sections) == 0:
-        return ["body:## Legacy UI exception section"]
+        return ["body:## Lifecycle guard rationale section"]
     if len(sections) > 1:
-        return ["body:duplicate ## Legacy UI exception sections"]
+        return ["body:duplicate ## Lifecycle guard rationale sections"]
     body = sections[0]
     missing = []
     for label in _FIELD_LABELS:
@@ -1773,16 +1818,18 @@ def _tree_evidence_requires_exception(change: ChangedFile) -> bool:
 
 def evaluate(
     changes: Iterable[ChangedFile],
-    labels: "set[str] | frozenset[str]",
     pr_body: str,
     policy: GuardPolicy,
     *,
-    exception_approval_valid: bool = False,
+    codex_attestation: Optional[CodexAttestation] = None,
 ) -> GuardResult:
-    """Require an audited exception for any guarded or control-plane touch.
+    """Require an exact-snapshot independent review for every guarded touch.
 
     For a rename, both `previous_path` and `path` are checked — a rename-out
     of a guarded tree and a rename-in to a guarded tree are both violations.
+
+    A guarded touch passes only with a substantive lifecycle rationale and a
+    strict-v2 Codex ledger GREEN bound to the current head and body.
     """
     touched: list[str] = []
     seen: set[str] = set()
@@ -1807,47 +1854,66 @@ def evaluate(
             message="No guarded legacy or control-plane paths touched.",
         )
 
-    missing: list[str] = []
-    if _LEGACY_LABEL not in set(labels):
-        missing.append(f"label:{_LEGACY_LABEL}")
-    missing.extend(_exception_missing_fields(pr_body))
-    if not missing and not exception_approval_valid:
-        missing.append("approval:fresh legacy-ui-exception label bound to current head/body")
+    body_missing = _rationale_missing_fields(pr_body)
+    review_valid = codex_attestation is not None and codex_attestation.valid
 
-    if missing:
+    if not body_missing and review_valid:
         return GuardResult(
-            allowed=False,
+            allowed=True,
             guarded_paths=tuple(touched),
-            missing_fields=tuple(missing),
+            missing_fields=(),
             message=(
-                "Guarded legacy presentation or control-plane path(s) touched without "
-                f"an audited `{_LEGACY_LABEL}` exception. Touched: "
+                "INDEPENDENT REVIEW: "
+                + codex_attestation.reason  # type: ignore[union-attr]
+                + " satisfies the lifecycle gate for: "
                 + ", ".join(touched)
-                + ". Missing: "
-                + ", ".join(missing)
             ),
         )
+
+    missing = list(body_missing)
+    if not review_valid:
+        missing.append("review:exact-head and exact-body Codex GREEN")
+
+    if review_valid and body_missing:
+        headline = (
+            "RATIONALE DEFECT (the exact-head and exact-body Codex GREEN is current, "
+            "but the Lifecycle guard rationale is missing or invalid; correct the rationale "
+            "and rerun review because editing the body invalidates this GREEN)"
+        )
+    elif codex_attestation is not None and codex_attestation.reviewed_sha is not None:
+        if codex_attestation.status == "ISSUES_FOUND":
+            headline = (
+                f"INDEPENDENT REVIEW FOUND ISSUES ({codex_attestation.reason}; "
+                "remediate and re-review)"
+            )
+        else:
+            headline = (
+                f"REVIEW STALE ({codex_attestation.reason}; rerun "
+                "scripts/adversarial-review.sh against the current head and body)"
+            )
+    else:
+        headline = (
+            "INDEPENDENT REVIEW REQUIRED (guarded path touched; require an exact-head "
+            "and exact-body Codex GREEN from scripts/adversarial-review.sh)"
+        )
     return GuardResult(
-        allowed=True,
+        allowed=False,
         guarded_paths=tuple(touched),
-        missing_fields=(),
-        message="Audited legacy-ui-exception approved for: " + ", ".join(touched),
+        missing_fields=tuple(missing),
+        message=(
+            headline
+            + ". Guarded legacy presentation or control-plane path(s) touched without "
+            "all required rationale and review evidence. Touched: "
+            + ", ".join(touched)
+            + ". Missing: "
+            + ", ".join(missing)
+        ),
     )
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-def _read_labels(path: Optional[Path]) -> set[str]:
-    if path is None:
-        return set()
-    try:
-        text = Path(path).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise GuardPolicyError(f"cannot read labels file {path}: {exc}") from exc
-    return {line.strip() for line in text.splitlines() if line.strip()}
-
-
 def _read_pr_body(path: Optional[Path]) -> str:
     if path is None:
         return ""
@@ -1865,25 +1931,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=ROOT / DEFAULT_REGISTRY_REL,
         help="Path to REGISTRY.yaml (defaults to the repo's canonical location).",
     )
-    p.add_argument("--labels-file", type=Path, default=None, help="Newline-delimited label names.")
     p.add_argument("--pr-body-file", type=Path, default=None, help="Raw PR body text.")
-    p.add_argument(
-        "--event-json-file",
-        type=Path,
-        default=None,
-        help="Raw pull_request_target event JSON used to bind a fresh exception label.",
-    )
     p.add_argument(
         "--current-pull-json-file",
         type=Path,
         default=None,
-        help="Current GitHub pull-request JSON compared with the label event snapshot.",
+        help="Current GitHub pull-request JSON used for exact review binding.",
     )
     p.add_argument(
-        "--approver-permission-json-file",
+        "--review-comments-json-file",
         type=Path,
         default=None,
-        help="Current GitHub repository-permission JSON for the label-event actor.",
+        help=(
+            "Issue-comment JSON-lines ({id, body, user: {login, type}}) holding the "
+            "Codex review ledger; requires --current-pull-json-file."
+        ),
     )
     p.add_argument(
         "--changes-json-file",
@@ -1955,17 +2017,10 @@ def main(argv: Optional[list] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    approval_files = (
-        args.event_json_file,
-        args.current_pull_json_file,
-        args.approver_permission_json_file,
-    )
-    if any(path is not None for path in approval_files) and not all(
-        path is not None for path in approval_files
-    ):
+    if args.review_comments_json_file is not None and args.current_pull_json_file is None:
         print(
-            "error: --event-json-file, --current-pull-json-file, and "
-            "--approver-permission-json-file must be provided together",
+            "error: --review-comments-json-file requires --current-pull-json-file "
+            "(the ledger is bound to the current head)",
             file=sys.stderr,
         )
         return 2
@@ -1982,20 +2037,11 @@ def main(argv: Optional[list] = None) -> int:
             )
         else:
             changes = changed_files_between(Path.cwd(), args.base, args.head)
-        labels = _read_labels(args.labels_file)
         pr_body = _read_pr_body(args.pr_body_file)
-        approval = (
-            load_exception_approval(
-                args.event_json_file,
-                args.current_pull_json_file,
-                args.approver_permission_json_file,
-            )
-            if args.event_json_file is not None
-            else ExceptionApproval(
-                valid=False,
-                approver=None,
-                reason="no GitHub label-event attestation was supplied",
-            )
+        codex = (
+            load_codex_attestation(args.review_comments_json_file, args.current_pull_json_file)
+            if args.review_comments_json_file is not None
+            else None
         )
     except GuardPolicyError as exc:
         print(f"::error::{exc}", file=sys.stderr)
@@ -2003,10 +2049,9 @@ def main(argv: Optional[list] = None) -> int:
 
     result = evaluate(
         changes,
-        labels,
         pr_body,
         policy,
-        exception_approval_valid=approval.valid,
+        codex_attestation=codex,
     )
     if not result.allowed:
         for touched_path in result.guarded_paths:

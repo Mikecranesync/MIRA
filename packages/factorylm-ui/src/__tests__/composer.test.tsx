@@ -149,6 +149,25 @@ describe("universal composer", () => {
     expect(after?.textContent).toMatch(/not the active machine/i);
   });
 
+  it("lets the technician remove a pending attachment before sending", async () => {
+    const adapter = fakeAdapter({
+      photo: { id: "file-new-photo", name: "terminal-block.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+    });
+    const view = render({ surface: "mobile", fixture: "machine-ask", adapter });
+    view.click(view.buttonNamed("Add attachment") ?? new Error("Add attachment is required") as never);
+    view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+    await view.flush();
+    expect(view.container.querySelector('[aria-label="Pending attachments"]')).not.toBeNull();
+
+    // Picking is a two-step commit; backing out of the pick must be possible
+    // BEFORE send, because nothing has been uploaded yet.
+    const remove = view.buttonNamed("Remove terminal-block.jpg");
+    if (!remove) throw new Error("a pending attachment must offer a remove control");
+    view.click(remove);
+    await view.flush();
+    expect(view.container.querySelector('[aria-label="Pending attachments"]')).toBeNull();
+  });
+
   it("does not carry pending attachments into a newly loaded thread", async () => {
     const adapter = fakeAdapter({
       photo: { id: "file-new-photo", name: "terminal-block.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },

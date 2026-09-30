@@ -496,7 +496,10 @@ describe("approved-context gate — machine evidence only (D3)", () => {
   it("document-only turns never reach the gate: enforcement on, no machineEvidence, general mode still answers", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
-    const res = await POST(req({ message: "drive trips", mode: "general" }), params);
+    // A conceptual question: #4068 declines a machine-specific one ("drive
+    // trips") on a model-bound notebook with nothing citable; this test is
+    // about the approved-context gate, not that decision.
+    const res = await POST(req({ message: "how does a VFD work", mode: "general" }), params);
     expect(res.status).toBe(200);
     expect((await frames(res)).find((f) => f.kind === "evidence")!.basis).toBe("general_reasoning");
   });

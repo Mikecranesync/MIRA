@@ -10,6 +10,7 @@ import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
 import { AnswerMarkdown } from "./notebook-markdown";
 import {
+  answerContentFor,
   basisLabel,
   buildChatBody,
   growTextarea,
@@ -17,8 +18,11 @@ import {
   isEnterToSend,
   machineReplayCaption,
   postNotebookChat,
+  retainedSafetyStreamFailure,
   restoreComposer,
   stoppedTurn,
+  stoppedTurnFromAbort,
+  turnFromIncompleteStream,
   visualObservationCaption,
   type ChatBody,
 } from "./notebook-chat-utils";
@@ -67,6 +71,10 @@ export type ChatTurn = {
   /** Safety hard-stop marker: present when the turn was a LOTO/arc-flash
    *  refusal — suppresses all ordinary-answer affordances. */
   safetyNotice?: SafetyNoticeEntry;
+  /** #3841: the energized-electrical hazard DIRECTIVE that framed a completed
+   *  answer. A warning, not a stop: the answer, its citations, basis and
+   *  follow-ups all stay. Same value live (evidence frame) and hydrated. */
+  hazardNotice?: SafetyNoticeEntry;
 };
 
 /** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
@@ -138,6 +146,18 @@ export function Bubble({
           Safety stop — isolate the machine before proceeding
         </div>
       )}
+      {!turn.safetyNotice && turn.hazardNotice && (
+        <div
+          className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold"
+          style={{ background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}
+          data-testid="hazard-directive-banner"
+          role="status"
+          aria-label="Energized electrical work"
+        >
+          <AlertTriangle size={16} aria-hidden />
+          Energized electrical work — de-energize, lock out, and verify absence of voltage before any hands-on step
+        </div>
+      )}
       <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
         <AnswerMarkdown content={turn.content} citations={cites} onCite={onCite} />
       </div>
@@ -148,7 +168,9 @@ export function Bubble({
       )}
       {turn.truncated && (
         <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }} data-testid="truncated-caption">
-          Incomplete — the connection ended before the answer finished. Ask again to retry.
+          {turn.safetyNotice
+            ? "Safety stop retained — isolate the machine before proceeding."
+            : "Incomplete — the connection ended before the answer finished. Ask again to retry."}
         </p>
       )}
       {turn.status === "insufficient_evidence" && (
@@ -286,8 +308,13 @@ export function Bubble({
  *  one basis label ("General guidance", amber, no citations). With sources the
  *  body is byte-identical to buildChatBody — Retry re-posts either as-is. */
 export type SendBody = ChatBody & { mode?: "general" };
-export function chatBodyFor(message: string, enabledDocIds: string[], turns: ChatTurn[]): SendBody {
-  const body = buildChatBody(message, enabledDocIds, turns);
+export function chatBodyFor(
+  message: string,
+  enabledDocIds: string[],
+  turns: ChatTurn[],
+  clientRequestId = crypto.randomUUID(),
+): SendBody {
+  const body = buildChatBody(message, enabledDocIds, turns, clientRequestId);
   return enabledDocIds.length === 0 ? { ...body, mode: "general" } : body;
 }
 
@@ -306,7 +333,12 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // CMPS-2: the exact body of the last failed send. Retry re-posts it as-is.
-  const [failed, setFailed] = useState<SendBody | null>(null);
+  const [failed, setFailed] = useState<{
+    body: SendBody;
+    /** A clean truncation stays visible until Retry, then this optimistic pair
+     *  is replaced by the exact-body replay rather than duplicated. */
+    replaceTurnIds?: readonly [string, string];
+  } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Stop generation (STRM-2) — same pattern as AssetChat / NodeChat.
@@ -351,12 +383,23 @@ export function NotebookChat({
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
 
     try {
-      const { content, citations, status, basis, followups, machineEvidence, visualEvidence, safetyNotice, sawStatus } = await postNotebookChat(
+      const { content, citations, status, statusMessage, basis, followups, machineEvidence, visualEvidence, safetyNotice, hazardNotice, sawStatus } = await postNotebookChat(
         `${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`,
         body,
         controller.signal,
-        (partial, cites) => {
-          setTurns((prev) => prev.map((x) => (x.id === aId ? { ...x, content: partial, citations: cites } : x)));
+        (partial, cites, liveSafetyNotice) => {
+          setTurns((prev) =>
+            prev.map((x) =>
+              x.id === aId
+                ? {
+                    ...x,
+                    content: partial,
+                    citations: cites,
+                    ...(liveSafetyNotice ? { safetyNotice: liveSafetyNotice } : {}),
+                  }
+                : x,
+            ),
+          );
         },
       );
       // ADR-0038 rule 6: no terminal `status` frame arrived, so the stream was
@@ -370,17 +413,13 @@ export function NotebookChat({
         setTurns((prev) =>
           prev.map((x) =>
             x.id === aId
-              ? {
-                  ...stoppedTurn(x, content, "truncated"),
-                  // A `safety` frame that DID arrive is a determination the
-                  // server actually made and sent. Suppressing a LOTO/arc-flash
-                  // warning because the tail was lost is the unsafe direction,
-                  // so it is the one marker that survives a truncation.
-                  ...(safetyNotice ? { safetyNotice } : {}),
-                }
+              ? turnFromIncompleteStream(x, { content, safetyNotice }, controller.signal.aborted)
               : x,
           ),
         );
+        if (!controller.signal.aborted && !safetyNotice) {
+          setFailed({ body, replaceTurnIds: [userTurn.id, aId] });
+        }
         return;
       }
       setTurns((prev) =>
@@ -388,23 +427,22 @@ export function NotebookChat({
           x.id === aId
             ? {
                 ...x,
-                content:
-                  content ||
-                  (status === "insufficient_evidence"
-                    ? "I couldn't find that in the selected sources."
-                    : "No answer provider was available."),
+                content: answerContentFor(content, status, statusMessage, visualEvidence),
                 citations,
                 status,
                 // Only a served answer carries a basis claim — mirrors what
                 // the server persists (084).
                 basis: status === "answered" ? basis : null,
                 ...(status === "answered" && machineEvidence ? { machineEvidence: [machineEvidence] } : {}),
-                ...(status === "answered" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
+                ...(status !== "error" && visualEvidence ? { visualEvidence: [visualEvidence] } : {}),
                 followups,
                 // Safety marker rides on answered turns — the server emits
                 // status:"answered" even for a hard-stop. Store it so the
                 // live and reloaded views are byte-semantically identical.
                 ...(safetyNotice ? { safetyNotice } : {}),
+                // #3841: the directive is a warning on an answered turn; only a
+                // served answer carries it, mirroring what the server persists.
+                ...(status === "answered" && hazardNotice ? { hazardNotice } : {}),
               }
             : x,
         ),
@@ -412,16 +450,30 @@ export function NotebookChat({
     } catch (err) {
       if (isAbortError(err)) {
         // Stopped by the technician: keep the partial text, mark it as not an
-        // answer (STRM-2). No retry, no provider call.
-        const partial = (err as { partial?: string }).partial ?? "";
-        setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurn(x, partial) : x)));
+        // answer (STRM-2). Preserve an authoritative safety frame if it already
+        // arrived; no other evidence survives. No retry, no provider call.
+        setTurns((prev) => prev.map((x) => (x.id === aId ? stoppedTurnFromAbort(x, err) : x)));
       } else {
+        const retained = retainedSafetyStreamFailure(err);
+        if (retained) {
+          // A validated Safety STOP is terminal and the server may already
+          // have persisted it. Keep it visible, but never offer Retry: reposting
+          // the same question could duplicate that durable safety exchange.
+          setTurns((prev) =>
+            prev.map((x) =>
+              x.id === aId
+                ? { ...stoppedTurn(x, retained.partial, "truncated"), safetyNotice: retained.safetyNotice }
+                : x,
+            ),
+          );
+          return;
+        }
         // Failure keeps the question (CMPS-2): roll back the optimistic
         // exchange, put the text back in the composer, offer Retry with the
         // identical body. Nothing is fabricated in the transcript.
         setTurns((prev) => prev.filter((x) => x.id !== aId && x.id !== userTurn.id));
         setInput((cur) => restoreComposer(cur, body.message));
-        setFailed(body);
+        setFailed({ body });
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -442,8 +494,12 @@ export function NotebookChat({
 
   const retry = useCallback(() => {
     if (!failed || busy) return;
-    setInput((cur) => (cur === failed.message ? "" : cur));
-    void post(failed);
+    if (failed.replaceTurnIds) {
+      const stale = new Set(failed.replaceTurnIds);
+      setTurns((prev) => prev.filter((turn) => !stale.has(turn.id)));
+    }
+    setInput((cur) => (cur === failed.body.message ? "" : cur));
+    void post(failed.body);
   }, [failed, busy, post]);
 
   const send = useCallback(() => sendText(input), [sendText, input]);
@@ -501,7 +557,11 @@ export function NotebookChat({
         )}
         {failed && !busy && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "var(--foreground-muted)" }} data-testid="send-failed">
-            <span>Couldn&apos;t send — your question is still in the box.</span>
+            <span>
+              {failed.replaceTurnIds
+                ? "The answer was interrupted — retry the same request."
+                : "Couldn’t send — your question is still in the box."}
+            </span>
             <button
               type="button"
               onClick={retry}

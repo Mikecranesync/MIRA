@@ -1,4 +1,6 @@
-import type { ConversionIntent,
+import type {
+  Attachment,
+  ConversionIntent,
   ProjectNode,
   ContextSnapshot,
   InteractionPart,
@@ -13,8 +15,15 @@ import { useState, type Dispatch, type ReactNode } from "react";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
-  /** The host's real send path; the shell clears its draft after calling it. */
-  readonly onSend?: (text: string) => void;
+  /**
+   * The host's real send path; the shell clears its draft after calling it.
+   *
+   * `attachments` carries whatever the composer is holding for this thread, in
+   * capture order, and is empty when there is none. It is REQUIRED rather than
+   * optional so a host cannot silently drop a technician's evidence by writing
+   * a one-argument handler and never noticing.
+   */
+  readonly onSend?: (text: string, attachments: readonly Attachment[]) => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**
@@ -62,6 +71,24 @@ export interface HostHooks {
    * renders the control only when this is provided.
    */
   readonly onFeedback?: (turnId: string, direction: "up" | "down") => void;
+  /**
+   * Read the answer aloud (hands-busy technicians). The host owns the speech
+   * engine and passes this only where the platform can speak; a second press on
+   * the same answer stops it. See `answer-actions.ts`.
+   */
+  readonly onReadAloud?: (turnId: string) => void;
+  /**
+   * Record what fixed the machine, filed under the question this answer
+   * replied to. The host collects the fix and persists it; the next answer on
+   * this machine is grounded on it. Rendered only when provided.
+   */
+  readonly onRecordFix?: (turnId: string) => void;
+  /**
+   * Whether this answer can be recorded against. The server files a fix under
+   * the machine the answer was served for, so an answer with no saved server
+   * turn yet offers no button. Absent means every answered turn qualifies.
+   */
+  readonly canRecordFix?: (turnId: string) => boolean;
   /**
    * Open the host's real machine scanner. This keeps the shell's Scan affordance
    * routed through the existing native scanner instead of a reducer-only mock.
@@ -316,12 +343,11 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "safety_notice": {
       const { notice } = part;
-      return <div className="fl-part fl-safety" role="alert" data-part-type="safety_notice" data-severity={notice.severity}>
+      return <div className="fl-part fl-safety" role={notice.severity === "stop" ? "alert" : "note"} data-part-type="safety_notice" data-severity={notice.severity}>
         <span className="fl-safety__glyph" aria-hidden="true">⚠</span>
         <div>
           <p className="fl-safety__title">{notice.severity === "stop" ? "Stop" : "Warning"}</p>
           <p>{notice.message}</p>
-          {notice.trigger ? <p className="fl-card__meta">Trigger: {notice.trigger}</p> : null}
         </div>
       </div>;
     }
@@ -439,11 +465,18 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
         binding, so no machine history was used and nothing here is stated as machine-specific fact.
       </p>;
 
-    case "unknown":
+    case "unknown": {
+      // NotebookTraceFrame is transport metadata, preserved on the part for
+      // support. It is not an answer or a technician-facing disclosure.
+      const raw = part.raw;
+      if (typeof raw === "object" && raw !== null && "kind" in raw && raw.kind === "trace"
+        && "turnId" in raw && typeof raw.turnId === "string"
+        && "traceId" in raw && (raw.traceId === null || typeof raw.traceId === "string")) return null;
       return <details className="fl-part fl-unknown" data-part-type="unknown">
         <summary>Unrecognized part (preserved for inspection)</summary>
         <pre>{JSON.stringify(part.raw, null, 2)}</pre>
       </details>;
+    }
 
     default:
       return assertNever(part);

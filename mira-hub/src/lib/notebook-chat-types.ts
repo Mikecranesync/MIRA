@@ -131,7 +131,7 @@ export type EvidenceBasis =
  * keeps the universal door from quietly becoming a way to launder model
  * reasoning as an OEM citation (spec §1.3, §1.4).
  */
-export type NotebookEvidenceFrame = {
+export type NotebookBasisEvidenceFrame = {
   kind: "evidence";
   basis: EvidenceBasis;
   /** One short sentence the UI may render verbatim as a badge/caption. */
@@ -143,22 +143,47 @@ export type NotebookEvidenceFrame = {
   /** Sensor LOOK (S5 D3 cross-lane contract): the verified phone photo this
    *  turn was asked with. Additive, same discipline as `machineEvidence`. */
   visualEvidence?: VisualObservationEntry;
+  /** Energized-electrical hazard directive (#3841): non-terminal safety notice
+   *  entries for the directive that guides the answer (no standalone safety
+   *  frame is emitted, only this entry on the evidence frame). Additive, same
+   *  discipline as machine/visual evidence. */
+  hazardEntries?: SafetyNoticeEntry[];
   /** 086 §3: the client asked about a DIFFERENT asset than this notebook's
    *  confirmed binding, so the identity was treated as unconfirmed for this
    *  turn (no machine evidence, no asset snapshot, no machine-specific facts).
    *  Additive; older clients ignore it.
    *
-   *  CONTRACT EXCEPTION — the marker-only frame. On a disputed turn the route
-   *  ALSO emits `{kind:"evidence", identityDisputed:true}` as the FIRST frame,
-   *  with NO `basis`/`label` (route.ts `IDENTITY_DISPUTE_FRAME`), so that a
-   *  Stop mid-answer has already seen the dispute and a live safety stop /
-   *  abstention projects the same basis (none) as its persisted row. Readers
-   *  must therefore treat `basis`/`label` as absent on an evidence frame that
-   *  carries `identityDisputed` and no `basis`; the answered path's final,
-   *  full evidence frame still follows. This is the only case in which more
-   *  than one evidence frame is emitted per turn. */
+   *  A disputed answered turn repeats the marker here after the early marker
+   *  frame; readers therefore keep the turn unconfirmed throughout. */
   identityDisputed?: boolean;
 };
+
+/**
+ * Marker-only evidence frames carry verified turn context without asserting
+ * that context grounded an answer. They intentionally have no `basis` or
+ * `label`: identity disputes are emitted before content, while verified photo
+ * markers ride abstentions and safety stops so live and persisted turns keep
+ * the same attachment record.
+ */
+export type NotebookEvidenceMarkerFrame =
+  | {
+      kind: "evidence";
+      basis?: never;
+      label?: never;
+      machineEvidence?: never;
+      identityDisputed: true;
+      visualEvidence?: never;
+    }
+  | {
+      kind: "evidence";
+      basis?: never;
+      label?: never;
+      machineEvidence?: never;
+      identityDisputed?: never;
+      visualEvidence: VisualObservationEntry;
+    };
+
+export type NotebookEvidenceFrame = NotebookBasisEvidenceFrame | NotebookEvidenceMarkerFrame;
 
 /**
  * Persisted record that a turn's asset identity was DISPUTED (086 §3): rides
@@ -278,12 +303,30 @@ export type SafetyNoticeEntry = {
   trigger: string;
 };
 
+/** Durable discriminator for a terminal Safety STOP. `safety_notice` is also
+ * used by non-terminal safety directives, so idempotent replay must not infer
+ * a hard stop from that display marker alone. Persist both entries for a stop:
+ * existing clients render `safety_notice`; the server owns `safety_stop`. */
+export type SafetyStopEntry = {
+  kind: "safety_stop";
+  trigger: string;
+};
+
 /** Type guard: an `evidence[]` entry that is a safety-stop marker. */
 export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
   return (
     typeof e === "object" &&
     e !== null &&
     (e as { kind?: unknown }).kind === "safety_notice" &&
+    typeof (e as { trigger?: unknown }).trigger === "string"
+  );
+}
+
+export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "safety_stop" &&
     typeof (e as { trigger?: unknown }).trigger === "string"
   );
 }
@@ -295,13 +338,24 @@ export type NotebookChatFrame =
   | NotebookSafetyFrame
   | NotebookUsageFrame
   | NotebookEvidenceFrame
-  | NotebookFollowupsFrame;
+  | NotebookFollowupsFrame
+  | NotebookTraceFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the
  *  client may send verbatim as the next user turn. Additive: clients that
  *  don't know the kind ignore it. */
 export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] };
+
+/**
+ * Turn Flight Recorder correlation (design §2). Emitted FIRST, before any
+ * other frame, ONLY when tracing produced a real trace id — an unconditional
+ * frame would change the wire order of every existing pinned-order test
+ * (chat-safety-stop.test.ts, chat-stop-persist.test.ts,
+ * visual-evidence-abstain.test.ts). Additive: existing clients ignore unknown
+ * kinds (mira-mobile's parseFrame if/else-if chain).
+ */
+export type NotebookTraceFrame = { kind: "trace"; traceId: string | null; turnId: string };
 
 const FRAME_KINDS = new Set([
   "sources",
@@ -311,6 +365,7 @@ const FRAME_KINDS = new Set([
   "usage",
   "evidence",
   "followups",
+  "trace",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {
