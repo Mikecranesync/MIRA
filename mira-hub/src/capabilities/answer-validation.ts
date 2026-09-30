@@ -28,6 +28,7 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
+import { stepEnergyContradiction } from "./step-energy";
 
 export type AnswerValidation =
   | { ok: true }
@@ -973,8 +974,26 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
   };
 }
 
+/** #4122: a step that is both locked out and powered stays in the answer, quoted in
+ *  a warning above it (owner decision 2026-09-27: flags never withhold). */
+function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
+  const quoted = step.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation: "hazard-warning:step-energy-contradiction",
+    detail: quoted,
+    replacement: `⚠️ **Lockout conflict in a step below:** “${quoted}”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\n${answerText}`,
+  };
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
-  if (!restore) return { ok: true };
+  if (!restore) {
+    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
+    // markdown emphasis and curly apostrophes must not change the result.
+    const step = stepEnergyContradiction(foldForDetection(answerText));
+    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+  }
   return {
     ok: false,
     kind: "energized_warning",
