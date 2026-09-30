@@ -1,0 +1,24 @@
+{
+  "seed_id": "FIELD-SEED-004",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "correctness": 20,
+  "evidence": 10,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 7,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": true,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "\"Most BX11-EN units place the current weight in holding registers 40001-40002 (address 0 and 1 in zero-based Modbus addressing).\"",
+      "why_wrong": "Presented as a general/typical fact about the BX11-EN, but this is not the documented BX11-EN register layout (weight-related registers are documented at different offsets in the Baykon technical manual). It is explicitly hedged with 'check the indicator's manual to confirm,' which meaningfully reduces the risk of it being taken as final, but a specific number stated as 'most units' can still be trusted at face value by a technician who doesn't follow up.",
+      "severity": "major"
+    }
+  ],
+  "notes": "This answer is not truncated the way an earlier reviewed version reportedly was -- it runs to completion and ends with a clarifying question about integer vs. float format. It correctly identifies the general shape of the problem (network reachability, Modbus TCP client config on the FX5U side, 32-bit value spanning two holding registers, byte-order/endianness as something to verify, scaling by a resolution factor) and, importantly, explicitly tells the technician to confirm the register numbers and format against the indicator's own manual rather than asserting them as settled fact -- reasonably good uncertainty handling for a general_reasoning answer with no manual search executed. It never explicitly states that the FX5U is the Modbus TCP client and the BX11-EN is the server (implied but not said), and it doesn't mention firmware-version prerequisites or the specific ladder instructions needed on the FX5U side. Because the core numeric answer to 'which registers hold the weight value' is likely wrong even though hedged, and 'what to get right about data format' is answered in generic terms rather than the indicator's actual documented options, this stays a FAIL on correctness and evidence."
+}
