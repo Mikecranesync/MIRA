@@ -354,6 +354,13 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("#4150 F2: 'Do not look up the manual' never reaches manual search", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("I can read the label.")));
+    const res = await POST(chatReq({ message: "Do not look up the manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    await frames(res);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
   it("searches the exact part number when the technician explicitly asks for its manual", async () => {
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce({
       serviceAvailable: true, found: true,

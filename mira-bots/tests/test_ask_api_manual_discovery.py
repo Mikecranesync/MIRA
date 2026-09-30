@@ -259,6 +259,25 @@ class TestManualDiscoverySearchAuth:
 class TestManualDiscoverySearchErrorHandling:
     """Graceful error handling — never 500."""
 
+    def test_every_serper_pass_failing_is_search_unavailable_not_a_miss(self, monkeypatch):
+        # #4150 F3: through the REAL search_manual, all passes failing must
+        # surface as search_unavailable, never as an honest "no_result" miss.
+        import shared.manual_search.search as search_mod
+
+        async def failing_serper(query, num=10):
+            raise RuntimeError("serper down")
+
+        monkeypatch.setattr(search_mod, "_serper_search", failing_serper)
+        client = _client()
+        resp = client.post(
+            "/manual-discovery/search",
+            json={"manufacturer": "", "catalog_number": "6ES7214-1AG40-0XB0"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["found"] is False
+        assert body["reason"] == "search_unavailable"
+
     def test_search_manual_exception_returns_200_search_unavailable(self, monkeypatch):
         async def fake_search_manual(make, model):
             raise RuntimeError("SERPER_API_KEY is not configured")

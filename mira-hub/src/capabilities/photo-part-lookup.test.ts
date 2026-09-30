@@ -40,3 +40,46 @@ describe("photo part lookup", () => {
     expect(asksPartCompatibility("What does S12 mean?")).toBe(false);
   });
 });
+
+describe("#4150 Codex r1 — egress and parsing defects", () => {
+  it.each([
+    'Serial: "AB-1234567"',
+    'S/N: "AB-1234567"',
+    "SN: AB-1234567",
+    "SN AB-1234567",
+    "Serial No. 'AB-1234567'",
+  ])("F1: a serial-only label, however quoted, yields no search key: %s", (label) => {
+    expect(unambiguousPartNumber(label)).toBeNull();
+  });
+
+  it("F1: a quoted serial does not hide a separate part number", () => {
+    expect(unambiguousPartNumber('P/N Ni8U-S12-AP6; Serial: "AB-1234567"')).toBe("Ni8U-S12-AP6");
+  });
+
+  it.each([
+    "Do not look up the manual",
+    "Don't search for the manual yet",
+    "Before you search for the manual, tell me what you can read",
+    "I could not find the manual. What is visible in this photo?",
+    "Never download the PDF",
+  ])("F2: a negated, deferred or descriptive mention is not a lookup request: %s", (q) => {
+    expect(explicitManualLookupRequest(q)).toBe(false);
+  });
+
+  it.each(["Look up the PDF manual", "Can you find the datasheet?", "Please search for the manual", "Find me the manual for this"])(
+    "F2 control: an affirmative request still counts: %s",
+    (q) => expect(explicitManualLookupRequest(q)).toBe(true),
+  );
+
+  it("F4: a sentence-ending period is prose, not part of the part number", () => {
+    expect(unambiguousPartNumber("P/N 6AV2124-0GC01-0AX0.")).toBe("6AV2124-0GC01-0AX0");
+  });
+
+  it("F4: a quoted contiguous part number is still read", () => {
+    expect(unambiguousPartNumber('P/N "6AV21240GC010AX0"')).toBe("6AV21240GC010AX0");
+  });
+
+  it("F4 control: two genuinely different codes are still refused", () => {
+    expect(unambiguousPartNumber("P/N 6AV2124-0GC01-0AX0. Alt 6AV2124-0GC01-0AX1.")).toBeNull();
+  });
+});

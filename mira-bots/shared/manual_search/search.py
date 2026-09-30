@@ -592,6 +592,14 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
     return out
 
 
+class ManualSearchUnavailable(RuntimeError):
+    """Every search pass failed: the search could not run (#4150 F3).
+
+    Distinct from ``None`` (the search ran and found nothing), so a caller can
+    tell a technician "I couldn't search" instead of "there is no manual".
+    """
+
+
 async def search_manual(make: str, model: str) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
@@ -607,23 +615,29 @@ async def search_manual(make: str, model: str) -> dict | None:
         return None
 
     candidates: list[dict] = []
+    attempts = 0
+    failures = 0
 
     # Pass 1: site-scoped PDF — highest precision.
     oem_domains = _oem_domains_for(make)
     if oem_domains:
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
+        attempts += 1
         try:
             candidates.extend(_collect(await _serper_search(q1), make, model))
         except Exception:
+            failures += 1
             logger.exception("Serper q1 (site-scoped) failed")
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
             q2 = f"{make} {variant} manual filetype:pdf"
+            attempts += 1
             try:
                 found = _collect(await _serper_search(q2), make, model)
             except Exception:
+                failures += 1
                 logger.exception("Serper q2 (filetype:pdf) failed")
                 continue
             if i:
@@ -636,12 +650,16 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Pass 3: widest fallback — accept landing pages too if nothing above.
     if not candidates:
         q3 = f"{make} {model} manual pdf"
+        attempts += 1
         try:
             candidates.extend(_collect(await _serper_search(q3), make, model))
         except Exception:
+            failures += 1
             logger.exception("Serper q3 (wide) failed")
 
     if not candidates:
+        if attempts and failures == attempts:
+            raise ManualSearchUnavailable(f"all {attempts} search passes failed")
         return None
 
     # Dedupe on URL while preserving order, then sort by score desc.

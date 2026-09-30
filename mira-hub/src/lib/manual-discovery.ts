@@ -134,6 +134,9 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   }
 
   const body = (raw ?? {}) as Record<string, unknown>;
+  // The router answers HTTP 200 with reason "search_unavailable" on its own
+  // timeout or search failure: that is "could not look", never "found nothing" (#4150 F3).
+  if (body.reason === "search_unavailable") return unavailable();
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
   if (body.found !== true || !url) {

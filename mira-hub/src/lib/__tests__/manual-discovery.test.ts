@@ -108,6 +108,19 @@ describe("discoverManual — honest degradation", () => {
     expect(res.candidate).toBeNull();
   });
 
+  it("#4150 F3: an HTTP-200 search_unavailable is 'could not look', not 'found nothing'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "search_unavailable" }), { status: 200 }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+
   it("distinguishes 'found nothing' from 'could not look'", async () => {
     vi.stubGlobal(
       "fetch",

@@ -129,12 +129,28 @@ def _organic(url: str, title: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_search_returns_none_when_serper_key_unset(monkeypatch):
+async def test_search_raises_unavailable_when_every_pass_fails(monkeypatch):
+    # #4150 F3: every Serper pass failing (no key, outage) is "could not search",
+    # never "searched and found nothing" -- the caller must be able to say so.
     monkeypatch.setattr(search_mod, "SERPER_API_KEY", "")
     with patch.object(search_mod, "_serper_search", AsyncMock(side_effect=RuntimeError)):
-        result = await search_mod.search_manual("Rockwell Automation", "750")
-    # All three passes raise (no key) -> no candidates -> None
-    assert result is None
+        with pytest.raises(search_mod.ManualSearchUnavailable):
+            await search_mod.search_manual("Rockwell Automation", "750")
+
+
+@pytest.mark.asyncio
+async def test_search_returns_none_when_a_pass_succeeds_empty():
+    # Control: one pass fails, another completes with no results -> an honest miss.
+    calls = {"n": 0}
+
+    async def flaky(query, num=10):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient")
+        return []
+
+    with patch.object(search_mod, "_serper_search", flaky):
+        assert await search_mod.search_manual("Rockwell Automation", "750") is None
 
 
 @pytest.mark.asyncio
