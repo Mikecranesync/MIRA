@@ -108,10 +108,15 @@ export function stepEnergyContradiction(answerText: string): string | null {
     // then measure the output" still counts and "verify it is de-energized" does not.
     // Codex #4146 r3 F4: a reading whose stated purpose is a dead check ("measure the
     // output voltage to confirm absence of voltage") is the correct LOTO verification.
-    // Codex #4146 F5: blank only the comma/semicolon clause that states the dead-check
-    // purpose, so a later live reading in the same step still counts. Split, not a
-    // leading-wildcard regex: that one was quadratic on long unpunctuated text.
-    const withoutDeadPurpose = t.split(/([,;])/).map((c) => (DEAD_PURPOSE.test(c) ? " " : c)).join("");
+    // Codex #4146 F5: blank only the measurement that states the dead-check purpose, so
+    // another reading in the same step still counts. Pieces end at a comma/semicolon or
+    // before the next measurement verb ("…and then measure the frequency"); "to confirm"
+    // stays with its measurement. Split, not a leading-wildcard regex: that one was
+    // quadratic on long unpunctuated text.
+    const withoutDeadPurpose = t
+      .split(/([,;])|(?<!\bto )(?=\b(?:measure|check|read|verify|confirm|test)\w*\b)/i)
+      .map((c) => (c && DEAD_PURPOSE.test(c) ? " " : (c ?? "")))
+      .join("");
     const liveReading = LIVE_READING.test(withoutDeadPurpose.replace(DEAD_CHECK, " "));
     const needsPower = OPERATE.test(t) || liveReading;
     // Codex #4146 F3: isolation carries within one list item; in prose, only into a step

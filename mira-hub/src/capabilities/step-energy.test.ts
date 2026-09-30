@@ -133,6 +133,19 @@ describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as t
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
   });
+  it("F5 r5: a live reading joined by 'and then' is still flagged, in either order", () => {
+    for (const a of [
+      "With the machine locked out, measure the input voltage to confirm absence of voltage and then measure the output frequency.",
+      "With the machine locked out, measure the output frequency and then measure the input voltage to confirm absence of voltage.",
+    ]) {
+      const v = check(a);
+      expect(v.ok, a).toBe(false);
+      if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+    }
+  });
+  it("F5 r5 control: one dead-check measurement across two points is still accepted", () => {
+    expect(check("With the machine locked out, measure the voltage between L1 and L2 to confirm absence of voltage.").ok).toBe(true);
+  });
   it("control: a live reading under lockout is still flagged, and the banner keeps the full answer", () => {
     const answer = "With the machine locked out, measure the output voltage while the drive runs.";
     const v = check(answer);
