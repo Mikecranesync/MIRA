@@ -57,6 +57,7 @@ describe("lookAtPhoto request shape", () => {
         attachment: { linkId: "l-1", notebookId: "nb-1" },
         observation: { text: "Green LED lit, contactor coil energized.", capturedAt: "2026-08-28T14:21:09Z", provenance: "phone_photo" },
         quality: { blur: 0.1 },
+        observationPersisted: true,
       },
     });
     const file = new File([new Uint8Array([1, 2, 3])], "look.jpg", { type: "image/jpeg" });
@@ -74,9 +75,21 @@ describe("lookAtPhoto request shape", () => {
       attachment: { linkId: "l-1", notebookId: "nb-1" },
       observation: { text: "Green LED lit, contactor coil energized.", capturedAt: "2026-08-28T14:21:09Z", provenance: "phone_photo" },
       quality: { blur: 0.1 },
+      observationPersisted: true,
       reason: null,
       message: null,
     });
+  });
+
+  it("#4082: observationPersisted is true only when the server says so", async () => {
+    for (const [wire, decoded] of [[true, true], [false, false], [undefined, false], ["true", false]] as const) {
+      uploadMultipart.mockResolvedValue({
+        status: 200,
+        data: { fileId: "f-1", attachment: { linkId: "l-1", notebookId: "nb-1" }, observation: null, observationPersisted: wire },
+      });
+      const file = new File([new Uint8Array([1])], "look.jpg", { type: "image/jpeg" });
+      expect((await lookAtPhoto("nb-1", file, "k")).observationPersisted).toBe(decoded);
+    }
   });
 
   it("§4.1: a provider failure (502) STILL returns the parked file — observation null, server reason kept", async () => {

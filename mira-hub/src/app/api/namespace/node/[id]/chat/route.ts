@@ -285,6 +285,10 @@ export async function POST(
   // Resolve node context (+ optional document) + scoped chunks in one
   // tenant-scoped (RLS) transaction. Node/doc misses are fatal (404); empty
   // retrieval is not — chat still answers ("no coverage").
+  // #3437 — documents a person linked to this node, or opened to chat with,
+  // are admitted: to retrieval, to the ask post-filter, and to the final
+  // approved-context count below. Unlinked drafts are not.
+  const admittedDocIds = new Set(docId ? [docId, ...linkedDocIds] : linkedDocIds);
   let nodeRow: { name: string; uns_path: string | null } | null = null;
   let docFilename: string | null = null;
   let docMissing = false;
@@ -318,10 +322,13 @@ export async function POST(
         if (!filename) return { row, chunks: [] as ManualChunk[], filename: null, missing: true };
       }
 
+      // A document the technician opened to chat with is their own upload
+      // (resolved above by tenant_id + doc_id): choosing it is the admission,
+      // or doc-scoped chat answered from nothing on prod (#3437).
       const chunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
         nodeId: id,
         unsPath: row.uns_path,
-        ...(docId ? { docId } : {}),
+        ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
       });
       let allChunks = chunks;
       if (linkedDocIds.length > 0) {
@@ -330,11 +337,19 @@ export async function POST(
           unsPath: row.uns_path,
           docIds: linkedDocIds,
           validatedDocScope: true,
+          // #3437 — a file a person linked to this node is admitted under the
+          // approval gate. Without this, prod retrieval kept only
+          // `verified = true` rows and every linked private upload vanished.
+          approvedSourceDocIds: linkedDocIds,
         });
         allChunks = mergeChunks(chunks, linkedChunks);
       }
+      // The ask gate keeps shared rows only when verified; a linked or opened
+      // file's private chunks are approved by that act (same rule as above).
       const approvedChunks = approvedAskEnforcementEnabled()
-        ? allChunks.filter((chunk) => chunk.verified === true)
+        ? allChunks.filter(
+            (chunk) => chunk.verified === true || (chunk.docId != null && admittedDocIds.has(chunk.docId)),
+          )
         : allChunks;
       return { row, chunks: approvedChunks, filename, missing: false };
     });
@@ -373,7 +388,9 @@ export async function POST(
     ),
   ));
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
-  const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
+  const approvedSourceCount = chunksToSources(
+    nodeChunks.filter((c) => c.verified === true || (c.docId != null && admittedDocIds.has(c.docId))),
+  ).length;
   const safetyLabel = nodeRow.name || id;
   const approvedSummary = {
     approvedSourceCount,

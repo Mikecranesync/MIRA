@@ -96,6 +96,14 @@ export type TurnEvidencePacketIdentity = {
   model_present: boolean;
   order_number_present: boolean;
   unresolved_reason: string | null;
+  /**
+   * #4095 — a machine PROPOSED from the technician's free text in an unbound
+   * notebook (never bound, never used for retrieval on this turn). Null when
+   * none was proposed. The packet is content-free: the manufacturer is a
+   * library vendor name; the model is recorded ONLY as a sha256 of its
+   * normalized form, never as text (Codex #4120 r3 F5).
+   */
+  proposal: { manufacturer: string; model_sha256: string } | null;
 };
 
 export type TurnEvidencePacketRetrieval = {
@@ -124,6 +132,17 @@ export type TurnEvidencePacketRetrieval = {
   zero_result_reason: string | null;
   /** §3 span attr `mira.retrieval.prior_visual_observations_considered`. */
   prior_visual_observations_considered: number;
+  /**
+   * #4075 — the automatic official-manual search for this notebook's confirmed
+   * identity, as the chat saw it on this turn: its recorded state ("running" or
+   * the pipeline's outcome status) and whether THIS turn started it. Null when
+   * no search applies (feature off, identity not confirmed, or sources answered).
+   */
+  manual_acquisition: {
+    state: string;
+    started_this_turn: boolean;
+    candidate_host: string | null;
+  } | null;
 };
 
 export type TurnEvidencePacketContext = {
@@ -181,6 +200,10 @@ export type TurnEvidencePacketAnswerGate = {
    * evidence-consistency.ts. null when the turn had no observation in context.
    */
   evidence_followed: EvidenceFollowedAssessment | null;
+  /** #4098: when the exact-rating rule matched, WHICH quantity word and unit
+   *  fired (e.g. {term:"nominal", unit:"ω"}). Tokens of the rule's closed
+   *  vocabulary, never answer text; null when that rule did not fire. */
+  gate_match: { term: string; unit: string } | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -317,6 +340,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       model_present: false,
       order_number_present: false,
       unresolved_reason: null,
+      proposal: null,
     },
     retrieval: {
       strategy: null,
@@ -330,6 +354,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       oem_scope: null,
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
+      manual_acquisition: null,
     },
     context: {
       evidence_doc_ids: [],
@@ -365,6 +390,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_input_tokens: null,
       citations_shipped: 0,
       evidence_followed: null,
+      gate_match: null,
     },
     persistence: {
       turn_row_id: null,
