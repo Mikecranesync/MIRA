@@ -83,3 +83,42 @@ describe("#4150 Codex r1 — egress and parsing defects", () => {
     expect(unambiguousPartNumber("P/N 6AV2124-0GC01-0AX0. Alt 6AV2124-0GC01-0AX1.")).toBeNull();
   });
 });
+
+describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => {
+  it.each([
+    "S/N = AB-1234567",
+    "Serial number (AB-1234567)",
+    "Serial number is AB-1234567",
+    "SERIAL NO: AB-1234567",
+    "Serial: AB-1234567 Mfg 2021",
+  ])("F1: any serial-field format yields no search key: %s", (label) => {
+    expect(unambiguousPartNumber(label)).toBeNull();
+  });
+
+  it("F1: with a serial present, only an explicitly labelled part number is accepted", () => {
+    expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+    expect(unambiguousPartNumber("Serial number is AB-1234567. Ni8U-S12-AP6")).toBeNull();
+  });
+
+  it.each([
+    "I will look up the manual myself later.",
+    "Look up the manual? No, just read the label.",
+    'The label says "find the manual online". What is visible?',
+    "Can you explain how to search for the manual without doing it?",
+    "I can't find the manual, can you look it up?",
+  ])("F2: not an affirmative request to MIRA: %s", (q) => {
+    expect(explicitManualLookupRequest(q)).toBe(false);
+  });
+
+  it.each([
+    "Look up the PDF manual",
+    "Can you find the datasheet?",
+    "Please search for the manual",
+    "Find me the manual for this",
+    "Could you please download the PDF manual?",
+    "What is this part? Look up the manual.",
+  ])("F2 control: an affirmative request addressed to MIRA still counts: %s", (q) => {
+    expect(explicitManualLookupRequest(q)).toBe(true);
+  });
+});
+
