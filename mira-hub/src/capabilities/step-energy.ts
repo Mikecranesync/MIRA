@@ -41,8 +41,7 @@ const OPERATE =
 /** A measurement made TO prove the circuit is dead is a dead check, not live work. */
 const DEAD_PURPOSE =
   // Only a stated PURPOSE ("to confirm …"); "…and confirming the bus is dead" is a prior step.
-  // Blanks only the clause it closes, so a later live reading in the same step still counts (Codex #4146 F5).
-  /[^,;.\n]*?\bto (?:confirm|verify|check|prove|ensure) (?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage (?:is )?present|(?:it|the \w+) (?:is|are) (?:dead|de-energized))\b/gi;
+  /\bto (?:confirm|verify|check|prove|ensure) (?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage (?:is )?present|(?:it|the \w+) (?:is|are) (?:dead|de-energized))\b/i;
 /** A prohibition ("do not press start", "never measure the voltage") is not an instruction. */
 // Ends at "but"/"then" so the instruction after it survives (Codex #4146 r2 F2);
 // "do not forget to …" is an instruction, not a prohibition.
@@ -109,7 +108,11 @@ export function stepEnergyContradiction(answerText: string): string | null {
     // then measure the output" still counts and "verify it is de-energized" does not.
     // Codex #4146 r3 F4: a reading whose stated purpose is a dead check ("measure the
     // output voltage to confirm absence of voltage") is the correct LOTO verification.
-    const liveReading = LIVE_READING.test(t.replace(DEAD_PURPOSE, " ").replace(DEAD_CHECK, " "));
+    // Codex #4146 F5: blank only the comma/semicolon clause that states the dead-check
+    // purpose, so a later live reading in the same step still counts. Split, not a
+    // leading-wildcard regex: that one was quadratic on long unpunctuated text.
+    const withoutDeadPurpose = t.split(/([,;])/).map((c) => (DEAD_PURPOSE.test(c) ? " " : c)).join("");
+    const liveReading = LIVE_READING.test(withoutDeadPurpose.replace(DEAD_CHECK, " "));
     const needsPower = OPERATE.test(t) || liveReading;
     // Codex #4146 F3: isolation carries within one list item; in prose, only into a step
     // that moves or powers the machine ("Lock out first. Then reset the fault" is left alone).
