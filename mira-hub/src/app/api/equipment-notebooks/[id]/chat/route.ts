@@ -103,6 +103,7 @@ import {
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
+import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -2415,11 +2416,13 @@ async function handleChatTurn(
   // context gets its standard meaning stated; otherwise byte-identical.
   // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
   // not-a-part-number; otherwise byte-identical.
-  const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withStepSafety(withAnswerLanguage(
+  // #4143: a photo in context gets the "quote the label text" note — inside the
+  // #4131/#4133 label notes, which stay last.
+  const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
       : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
- )), lookContext), lookContext);
+ )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
