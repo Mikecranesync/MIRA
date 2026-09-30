@@ -564,15 +564,15 @@ def _inner_network_backend() -> httpcore.AsyncNetworkBackend:
     return httpcore.AnyIOBackend()
 
 
-def _resolve_public(host: str, port: int) -> str:
-    """Sync (DNS-blocking) — call via asyncio.to_thread. Returns one checked
-    public address for `host`, or raises ConnectError if resolution fails or
-    any answer is non-public."""
+def _resolve_public(host: str, port: int) -> list[str]:
+    """Sync (DNS-blocking) — call via asyncio.to_thread. Returns every checked
+    public address for `host` (answer order, de-duplicated), or raises
+    ConnectError if resolution fails or ANY answer is non-public."""
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError as e:
         raise httpcore.ConnectError(f"manual-search dns failed for {host[:80]}") from e
-    addrs = [str(info[4][0]).split("%")[0] for info in infos]
+    addrs = list(dict.fromkeys(str(info[4][0]).split("%")[0] for info in infos))
     if not addrs:
         raise httpcore.ConnectError(f"manual-search dns empty for {host[:80]}")
     for a in addrs:
@@ -584,7 +584,7 @@ def _resolve_public(host: str, port: int) -> str:
             raise httpcore.ConnectError(
                 f"manual-search connect blocked: {host[:80]} -> non-public address"
             )
-    return addrs[0]
+    return addrs
 
 
 class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
@@ -592,10 +592,38 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
         self._inner = _inner_network_backend()
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        ip = await asyncio.to_thread(_resolve_public, host, port)
-        return await self._inner.connect_tcp(
-            ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options
-        )
+        # One deadline covers resolution AND dialing, as AnyIOBackend's own
+        # fail_after did before pinning (#4163 Codex F2). Every checked address
+        # is tried in answer order, so a dead first address (e.g. a broken IPv6
+        # route) falls back to the next without re-resolving (#4163 Codex F1).
+        loop = asyncio.get_running_loop()
+        deadline = None if timeout is None else loop.time() + timeout
+
+        def remaining() -> float | None:
+            return None if deadline is None else deadline - loop.time()
+
+        try:
+            addrs = await asyncio.wait_for(
+                asyncio.to_thread(_resolve_public, host, port), remaining()
+            )
+        except TimeoutError as e:
+            raise httpcore.ConnectTimeout(f"manual-search dns timed out for {host[:80]}") from e
+        last: Exception | None = None
+        for ip in addrs:
+            left = remaining()
+            if left is not None and left <= 0:
+                raise httpcore.ConnectTimeout(f"manual-search connect timed out for {host[:80]}")
+            try:
+                return await self._inner.connect_tcp(
+                    ip,
+                    port,
+                    timeout=left,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout, OSError) as e:
+                last = e
+        raise httpcore.ConnectError(f"manual-search could not connect to {host[:80]}") from last
 
     async def connect_unix_socket(self, path, timeout=None, socket_options=None):
         raise httpcore.ConnectError("manual-search never connects to unix sockets")

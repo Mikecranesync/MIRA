@@ -175,11 +175,62 @@ class TestRebindingEndToEnd:
     async def test_validate_pdf_dials_only_checked_public_ip(self, monkeypatch, recorder, pin_spy):
         _resolver(monkeypatch, [PUBLIC])
         await s.validate_pdf("https://literature.example.com/manual.pdf")
-        assert pin_spy and all(ip == PUBLIC for _, ip in pin_spy)
+        assert pin_spy and all(ips == [PUBLIC] for _, ips in pin_spy)
         assert recorder.dials and {ip for ip, _ in recorder.dials} == {PUBLIC}
 
     async def test_judge_fetch_dials_only_checked_public_ip(self, monkeypatch, recorder, pin_spy):
         _resolver(monkeypatch, [PUBLIC])
         await judge.fetch_pdf_bytes("https://literature.example.com/manual.pdf")
-        assert pin_spy and all(ip == PUBLIC for _, ip in pin_spy)
+        assert pin_spy and all(ips == [PUBLIC] for _, ips in pin_spy)
         assert recorder.dials and {ip for ip, _ in recorder.dials} == {PUBLIC}
+
+
+class _FlakyFirstBackend(_RecordingBackend):
+    """First dial fails (e.g. broken IPv6 route), later dials succeed."""
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        self.dials.append((host, port))
+        if len(self.dials) == 1:
+            raise httpcore.ConnectError("first address unreachable")
+        return "stream-ok"
+
+
+class TestCodexR1Findings:
+    """#4163 Codex r1: F1 (fallback across checked addresses), F2 (timeout bounds DNS)."""
+
+    async def test_falls_back_to_the_next_checked_address(self, monkeypatch):
+        rec = _FlakyFirstBackend()
+        monkeypatch.setattr(s, "_inner_network_backend", lambda: rec)
+        v6 = "2606:2800:220:1:248:1893:25c8:1946"
+        _resolver(monkeypatch, [v6, PUBLIC])
+        stream = await s._PinnedNetworkBackend().connect_tcp(
+            "literature.example.com", 443, timeout=5
+        )
+        assert stream == "stream-ok"
+        assert [ip for ip, _ in rec.dials] == [v6, PUBLIC]
+
+    async def test_all_addresses_failing_raises_connect_error(self, monkeypatch, recorder):
+        _resolver(monkeypatch, [PUBLIC, "93.184.216.35"])
+        with pytest.raises(httpcore.ConnectError):
+            await s._PinnedNetworkBackend().connect_tcp("literature.example.com", 443, timeout=5)
+        assert [ip for ip, _ in recorder.dials] == [PUBLIC, "93.184.216.35"]
+
+    async def test_any_private_answer_still_blocks_before_any_dial(self, monkeypatch, recorder):
+        _resolver(monkeypatch, [PUBLIC, "93.184.216.35", "10.0.0.5"])
+        with pytest.raises(httpcore.ConnectError, match="blocked"):
+            await s._PinnedNetworkBackend().connect_tcp("literature.example.com", 443, timeout=5)
+        assert recorder.dials == []
+
+    async def test_timeout_bounds_the_connect_time_resolution(self, monkeypatch, recorder):
+        import time
+
+        def slow(host, port, *a, **k):
+            time.sleep(0.3)
+            return _addrinfo(PUBLIC)
+
+        monkeypatch.setattr(s.socket, "getaddrinfo", slow)
+        t0 = time.monotonic()
+        with pytest.raises(httpcore.ConnectTimeout):
+            await s._PinnedNetworkBackend().connect_tcp("slow.example.com", 443, timeout=0.05)
+        assert time.monotonic() - t0 < 0.25
+        assert recorder.dials == []
