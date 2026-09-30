@@ -42,12 +42,16 @@ rather than guess.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import ipaddress
 import json
 import logging
 import os
 import re
 import socket
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -232,7 +236,9 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 # Manufacturer -> the OEM's own "request an owner's manual" form. Offered when
 # discovery cannot find or validate a manual (2026-08-26, Harrington UMS3-0335:
 # every copy of the Series 3 manual is bot-walled or JS-rendered; the OEM's
-# door is this form). Always re-probed before it is offered — never a dead link.
+# door is this form). A curated, static link: the technician's own browser
+# opens it. The server never fetches it (Manual-First PRD R7, Codex G1 —
+# the old live probe read an uncapped body before any search admission).
 OEM_MANUAL_REQUEST: dict[str, str] = {
     "harrington": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
@@ -241,22 +247,12 @@ OEM_MANUAL_REQUEST: dict[str, str] = {
 
 
 async def oem_request_link(make: str) -> str | None:
-    """The OEM's manual-request page for `make`, only if it answers 200 right
-    now (SSRF-guarded probe, redirects re-validated). None otherwise."""
-    url = OEM_MANUAL_REQUEST.get(_norm(make))
-    if not url:
-        return None
-    try:
-        async with httpx.AsyncClient(
-            timeout=HEAD_TIMEOUT,
-            follow_redirects=False,
-            transport=_transport_for_tests,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
-        ) as client:
-            r = await _guarded_probe(client, "GET", url)
-            return url if r is not None and r.status_code == 200 else None
-    except httpx.HTTPError:
-        return None
+    """The OEM's curated manual-request page for `make`, or None.
+
+    No network I/O: the link comes only from OEM_MANUAL_REQUEST, never from
+    search results, and is opened by the technician's browser. Kept async so
+    existing awaiting callers are unchanged."""
+    return OEM_MANUAL_REQUEST.get(_norm(make))
 
 
 def _norm(s: str) -> str:
@@ -401,9 +397,71 @@ def _clean_title(title: str) -> str:
     return t.strip(" -|")
 
 
+# ── Provider-query budget (Manual-First PRD R13, Codex G2) ───────────────────
+#
+# One search_manual() call can send pass 1, one pass-2 query per model variant
+# (up to 4), and pass 3 — six paid provider queries. Caps and the dollar
+# budget must count those queries, not operations. A caller opens a budget
+# around its search_manual() call; every query checks and spends it here, at
+# the single place a query leaves this process. A query past the ceiling is
+# not sent and reads as "no results" to the caller.
+_DEFAULT_MAX_PROVIDER_QUERIES = 4
+
+
+def max_provider_queries() -> int:
+    """Per-call ceiling on provider queries (MANUAL_SEARCH_MAX_PROVIDER_QUERIES)."""
+    try:
+        n = int(os.environ.get("MANUAL_SEARCH_MAX_PROVIDER_QUERIES", ""))
+    except ValueError:
+        return _DEFAULT_MAX_PROVIDER_QUERIES
+    return n if n >= 1 else _DEFAULT_MAX_PROVIDER_QUERIES
+
+
+@dataclass
+class ProviderQueryBudget:
+    limit: int
+    used: int = 0
+    refused: int = 0
+
+
+_provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
+    "manual_search_provider_budget", default=None
+)
+
+
+@contextmanager
+def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBudget]:
+    """Scope one search_manual() call to at most `limit` provider queries.
+
+    The budget object is mutable, so tasks spawned inside the block (e.g.
+    asyncio.wait_for) spend the same budget; read `.used` after the call."""
+    budget = ProviderQueryBudget(limit=limit or max_provider_queries())
+    token = _provider_budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _provider_budget.reset(token)
+
+
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
     if not SERPER_API_KEY:
         raise RuntimeError("SERPER_API_KEY is not configured")
+    budget = _provider_budget.get()
+    if budget is not None:
+        if budget.used >= budget.limit:
+            budget.refused += 1
+            logger.info(
+                "MANUAL_SEARCH_PROVIDER_CEILING limit=%d refused_query=%s",
+                budget.limit,
+                query[:120],
+            )
+            return []
+        budget.used += 1
+    return await _serper_post(query, num)
+
+
+async def _serper_post(query: str, num: int) -> list[dict]:
+    """The one paid provider request. Only _serper_search calls it."""
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
     body = {"q": query, "num": num}
     async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT) as client:

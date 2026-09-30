@@ -353,9 +353,9 @@ async def test_batches_keep_reading_past_four_rejected_garbage_candidates(wired,
     monkeypatch.setattr(
         search_mod,
         "_score",
-        lambda url, title, make, model: 40
-        if "nj.gov" in url
-        else (30 if "aceindustries" in url else 20),
+        lambda url, title, make, model: (
+            40 if "nj.gov" in url else (30 if "aceindustries" in url else 20)
+        ),
     )
 
     r = await search_mod.search_manual("Harrington", "UMS3-0335")
@@ -494,37 +494,14 @@ async def test_all_relevant_rejected_returns_top_rejection_not_unread_stranger(w
 # ── OEM request-form fallback (decision C, 2026-08-26) ───────────────────────
 
 
-async def test_oem_request_link_only_when_the_page_answers_200(monkeypatch):
-    import httpx
-
-    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: True)
-    calls = []
-
-    def handler(request):
-        calls.append(str(request.url))
-        return httpx.Response(200 if "harringtonhoists" in str(request.url) else 404)
-
-    monkeypatch.setattr(search_mod, "_transport_for_tests", httpx.MockTransport(handler))
+async def test_oem_request_link_is_a_curated_link_not_a_fetch():
+    """Decision C's request-form fallback survives, but as a static curated
+    link the technician opens (Manual-First R7, Codex G1). The live probe is
+    covered as removed in test_manual_search_egress.py."""
     assert await search_mod.oem_request_link("Harrington Hoists and Cranes") == (
         "https://www.harringtonhoists.com/owners-manual-request"
     )
     assert await search_mod.oem_request_link("Siemens") is None  # no form on file
-    assert calls == ["https://www.harringtonhoists.com/owners-manual-request"]
-
-
-async def test_oem_request_link_dead_page_is_not_offered(monkeypatch):
-    import httpx
-
-    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: True)
-    monkeypatch.setattr(
-        search_mod, "_transport_for_tests", httpx.MockTransport(lambda r: httpx.Response(404))
-    )
-    assert await search_mod.oem_request_link("Harrington") is None
-
-
-async def test_oem_request_link_respects_ssrf_guard(monkeypatch):
-    monkeypatch.setattr(search_mod, "_url_is_probeable", lambda u: False)
-    assert await search_mod.oem_request_link("Harrington") is None
 
 
 # ── review findings 2026-08-26 ───────────────────────────────────────────────

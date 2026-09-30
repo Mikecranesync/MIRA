@@ -36,6 +36,7 @@ from shared.manual_search.search import (
     OEM_DOMAINS,
     TRUSTED_DOMAINS,
     oem_request_link,
+    provider_query_budget,
     search_manual,
 )
 
@@ -150,9 +151,19 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
     try:
-        candidate = await asyncio.wait_for(
-            search_manual(manufacturer, search_identifier), timeout=timeout_s
-        )
+        # Every provider query this call sends is counted and capped (PRD R13).
+        with provider_query_budget() as budget:
+            try:
+                candidate = await asyncio.wait_for(
+                    search_manual(manufacturer, search_identifier), timeout=timeout_s
+                )
+            finally:
+                logger.info(
+                    "MANUAL_DISCOVERY_PROVIDER_QUERIES used=%d refused=%d limit=%d",
+                    budget.used,
+                    budget.refused,
+                    budget.limit,
+                )
     except TimeoutError:
         logger.error(
             "MANUAL_DISCOVERY_TIMEOUT manufacturer=%s model=%s timeout_s=%s",
