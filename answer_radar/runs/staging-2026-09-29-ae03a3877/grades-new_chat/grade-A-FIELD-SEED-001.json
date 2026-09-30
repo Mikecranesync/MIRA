@@ -1,0 +1,30 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "answer_sha256": "b125a405840417748658301bde723786d401066ae34a1208b9ce3c814b8f5145",
+  "correctness": 25,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 5,
+  "uncertainty": 4,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "Framing DH-485 incompatibility as a config/wiring problem to troubleshoot rather than the definitive fix",
+      "why_wrong": "DH-485 requires token-passing arbitration and a TX-EN control line a transparent converter structurally cannot provide; no amount of baud/parity/termination checking will fix it. The correct answer is to reinstall the protocol-aware interface or an equivalent (1747-AIC, 1761-NET-AIC), not to keep tuning the transparent converter.",
+      "severity": "major"
+    },
+    {
+      "claim": "No mention of voltage mismatch risk",
+      "why_wrong": "DH-485 RJ45 uses 0-5V RS-485 levels, not Ethernet voltages; connecting standard Ethernet gear to that port risks damaging the network card or processor. This is an equipment-damage hazard the answer never raises.",
+      "severity": "critical"
+    }
+  ],
+  "notes": "Core diagnosis (transparent converter can't speak DH-485) is directionally right, but zero manual grounding (general_reasoning, no citations) and the specific troubleshooting steps are presented with unwarranted confidence. Buries the actual fix (replace with protocol-aware interface) as a conditional rather than stating it. Omits the voltage-damage warning entirely. Fails correctness and evidence thresholds."
+}

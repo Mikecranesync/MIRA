@@ -55,13 +55,13 @@
     "grader_verdicts": [],
     "human_adjudication": null,
     "failure_class": null,
-    "notes": "condition=machine_selected turn_status=insufficient_evidence basis=None trace=751cdab35c98c40f435a3cd548698eaf",
+    "notes": "condition=machine_selected turn_status=insufficient_evidence basis=None trace=anon-5f179a62ed1e7078",
     "evaluated_at": "2026-09-27T21:14:46+00:00"
   },
   "hub": {
     "condition": "machine_selected",
-    "notebook_id": "023b7adb-07a2-4c45-9388-a77bd19791ec",
-    "trace_id": "751cdab35c98c40f435a3cd548698eaf",
+    "notebook_id": "anon-b6dd21b8b4ccf713",
+    "trace_id": "anon-5f179a62ed1e7078",
     "http": 200,
     "turn_status": "insufficient_evidence",
     "basis": null,
