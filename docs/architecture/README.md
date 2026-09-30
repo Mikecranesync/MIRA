@@ -2,6 +2,8 @@
 
 Static reference for how MIRA is built. For *flows* (how a feature executes) see [../workflows/](../workflows/); for *procedures* see [../runbooks/](../runbooks/); for *doctrine* see [../THEORY_OF_OPERATIONS.md](../THEORY_OF_OPERATIONS.md).
 
+**🗺️ Start here:** [CODEBASE_FLOWCHART.md](CODEBASE_FLOWCHART.md) — baseline flowchart of the whole codebase (2026-09-29).
+
 ## Reference set (comprehensive, 2026-06-07)
 
 | Doc | Answers |

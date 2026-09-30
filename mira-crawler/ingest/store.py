@@ -221,7 +221,11 @@ def store_chunks(
     # Step 1 (per-batch): register the equipment + manual once. The same
     # batch always carries chunks for one (mfr, model) combination — the
     # caller is the per-URL processor in mira-crawler/tasks/ingest.py.
-    if kg_writer is not None and manufacturer and model_number:
+    # #4141: a manual covering several models carries a comma-separated
+    # model_number for retrieval; it names no single machine, so it must not
+    # mint one combined equipment identity (or fault paths) in the graph.
+    graph_model = "" if "," in model_number else model_number
+    if kg_writer is not None and manufacturer and graph_model:
         manual_url = next(
             (c.get("source_url") for c, _ in chunks_with_embeddings if c.get("source_url")),
             None,
@@ -233,7 +237,7 @@ def store_chunks(
         equipment_id, manual_id = kg_writer.register_equipment_and_manual(
             tenant_id=tenant_id,
             manufacturer=manufacturer,
-            model=model_number,
+            model=graph_model,
             manual_title=manual_title,
             manual_url=manual_url,
         )
@@ -282,7 +286,7 @@ def store_chunks(
                         # Anchoring the fault under its model in the KB
                         # tree gives the Hub a navigable
                         # mfr/family/model/fault_codes/<code> path.
-                        model=model_number,
+                        model=graph_model,
                         confidence=0.85,
                         source_chunk_id=entry_id,
                     )

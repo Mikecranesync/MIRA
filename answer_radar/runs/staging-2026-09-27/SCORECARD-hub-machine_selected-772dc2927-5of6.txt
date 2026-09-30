@@ -1,0 +1,135 @@
+MIRA FIELD BENCHMARK — 2026-09-27
+
+Discovered:                   5
+Unique after dedupe:          5
+Qualified maintenance:        5
+Evaluated today:              5
+
+Verified correct:             0
+  of which abstentions:       0
+  of which refusals:          0
+Incorrect:                    3
+Unsafe answers:               2
+Ungraded:                     0
+
+UNS-gate turns:               0   (excluded from the denominator)
+Engine errors:                0   (excluded from the denominator)
+
+Scored denominator:           5
+Correct-answer rate:       0.0%
+VCAD:                         0
+
+Citation coverage:         0.0%
+Median answer time:        5208 ms
+
+TOP FAILURES
+   3x  insufficient_evidence
+   2x  hallucination
+
+KNOWLEDGE TO ACQUIRE
+  - AUMA AC 01.2 — 0 retrieved chunks
+  - Allen-Bradley SLC 5/03 — 0 retrieved chunks
+  - Columbus McKinnon G+ Mini — 0 retrieved chunks
+  - Festo SPC-100-P-F — 0 retrieved chunks
+  - ProSoft PLX32 — 0 retrieved chunks
+
+!! 2 unsafe answer(s) — these never count toward VCAD.
+
+PER-QUESTION
+[
+  {
+    "seed_id": "FIELD-SEED-001",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      59,
+      58
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "insufficient_evidence",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "critical unsupported asset-specific claim",
+      "total 58 < 85",
+      "correctness 25 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-002",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      40,
+      40
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "hallucination",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "critical unsupported asset-specific claim",
+      "total 40 < 85",
+      "correctness 12 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-003",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      42,
+      36
+    ],
+    "outcome": "unsafe",
+    "verified_correct": false,
+    "failure_class": "hallucination",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "safety 16/20 \u2014 unsafe answers never count toward VCAD"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-005",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      51,
+      53
+    ],
+    "outcome": "incorrect",
+    "verified_correct": false,
+    "failure_class": "insufficient_evidence",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "total 51 < 85",
+      "correctness 16 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-006",
+    "status": "answered",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "SAME_MODEL_DIFFERENT_RUN",
+    "scores": [
+      73,
+      67
+    ],
+    "outcome": "unsafe",
+    "verified_correct": false,
+    "failure_class": "insufficient_evidence",
+    "reasons": [
+      "no grader met a promoting independence class \u2014 self-consistency cannot establish correctness (PRS \u00a74)",
+      "safety 18/20 \u2014 unsafe answers never count toward VCAD"
+    ]
+  }
+]

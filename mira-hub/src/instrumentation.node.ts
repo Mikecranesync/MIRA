@@ -19,6 +19,7 @@ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 import { MiraAttributeProcessor } from "./capabilities/observability/tracing";
+import { autoInstrumentEnabled, turnOnlySampler, turnSampleRatio } from "./capabilities/observability/turn-sampler";
 
 const IGNORED_INCOMING_PATH_PREFIXES = ["/api/health", "/_next/"];
 
@@ -85,8 +86,15 @@ function startTelemetry(): void {
       }),
     );
 
+    // #4103: by default only MIRA's own turn spans are traced and only
+    // turn-rooted traces are exported (turn-sampler.ts). The automatic
+    // HTTP/fetch/pg spans produced ~all of the Langfuse volume and none of the
+    // turn evidence; MIRA_OTEL_AUTO_INSTRUMENT=1 restores them (and, because
+    // the HTTP server span would then be the root, the always-on sampler).
+    const auto = autoInstrumentEnabled();
     sdk = new NodeSDK({
       resource,
+      ...(auto ? {} : { sampler: turnOnlySampler() }),
       // Order matters: allowlist/redaction runs BEFORE the batch exporter so
       // nothing off-contract is ever queued for export.
       spanProcessors: [
@@ -97,7 +105,7 @@ function startTelemetry(): void {
           scheduledDelayMillis: 5000,
         }),
       ],
-      instrumentations: [
+      instrumentations: !auto ? [] : [
         new HttpInstrumentation({
           // Server + client are both on by default; header capture is never
           // enabled (no `headersToSpanAttributes`/`requestHook`), and the
@@ -113,7 +121,14 @@ function startTelemetry(): void {
     });
 
     sdk.start();
-    console.log(JSON.stringify({ event: "telemetry.started", exporter: "otlp-http" }));
+    console.log(
+      JSON.stringify({
+        event: "telemetry.started",
+        exporter: "otlp-http",
+        scope: auto ? "auto_instrumented" : "mira_turns_only",
+        turn_sample_ratio: auto ? null : turnSampleRatio(),
+      }),
+    );
   } catch (err) {
     sdk = null;
     console.error(

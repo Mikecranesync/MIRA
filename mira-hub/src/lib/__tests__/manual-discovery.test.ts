@@ -195,6 +195,16 @@ describe("isOemDocumentationHost", () => {
     expect(isOemDocumentationHost("SIEMENS", "literature.rockwellautomation.com")).toBe(false);
   });
 
+  it("accepts SMC regional documentation hosts and rejects lookalikes", async () => {
+    const { isOemDocumentationHost } = await import("../manual-discovery");
+    // 2026-09-29 staging probe: the real VQ(C)1000 manual is on static.smc.eu.
+    expect(isOemDocumentationHost("SMC", "static.smc.eu")).toBe(true);
+    expect(isOemDocumentationHost("SMC", "content2.smcetech.com")).toBe(true);
+    expect(isOemDocumentationHost("SMC Corporation", "www.smcworld.com")).toBe(true);
+    expect(isOemDocumentationHost("SMC", "notsmc.eu")).toBe(false);
+    expect(isOemDocumentationHost("SMC", "smc.eu.attacker.net")).toBe(false);
+  });
+
   it("rejects when the manufacturer is unknown to the table", async () => {
     const { isOemDocumentationHost } = await import("../manual-discovery");
     expect(isOemDocumentationHost("Nobody Inc", "nobody.com")).toBe(false);

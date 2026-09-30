@@ -29,6 +29,7 @@ on a phone. Earlier framing (generic "copilot", whole-plant "signal difference e
   - [Troubleshooting](docs/product/troubleshooting.md)
 
 ### 👩‍💻 I'm a developer or operator
+- **🗺️ Start here — [Codebase flowchart](docs/architecture/CODEBASE_FLOWCHART.md)** (system map, chat-turn paths, ingest, ship flow)
 - **Developer documentation:** [docs/developer/](docs/developer/)
   - [Architecture overview](docs/developer/architecture.md)
   - [Local setup](docs/developer/local-setup.md)

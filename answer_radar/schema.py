@@ -275,7 +275,13 @@ class EvaluationRecord:
     answer_status: AnswerStatus = AnswerStatus.ERROR
     citations: list[str] = field(default_factory=list)
     source_documents: list[str] = field(default_factory=list)
-    retrieved_chunk_count: int = 0
+    #: #4097 — the passage behind each shipped citation, exactly as the technician
+    #: sees it on the citation card: {"citation_id", "source_title", "page", "quote"}.
+    #: `quote` is the Hub's EvidenceCitation.quote (a ~240-char window of the cited
+    #: chunk), so graders judge the claim against the same text the tech can open.
+    cited_passages: list[dict[str, Any]] = field(default_factory=list)
+    # None = unknown (the run's diagnostics were unavailable), never 0.
+    retrieved_chunk_count: int | None = 0
     best_evidence_tier: EvidenceTier = EvidenceTier.NONE
 
     total_answer_time_ms: int = 0

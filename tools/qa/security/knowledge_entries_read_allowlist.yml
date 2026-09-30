@@ -348,10 +348,10 @@ approved:
       FROM knowledge_entries
              WHERE ${where.join(" AND ")}
              GROUP BY source_url
-  "mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/confirm/route.ts:212":
+  "mira-hub/src/capabilities/manual-acquisition.ts:112":
     approved_classification: TENANT-ONLY
-    query_sha256: "f72b5d871fc782743203dec1b8745e520c3ae095193ec06db47fd4f01ecb2804"
-    reason: "chunksForDoc: the nameplate confirm route's applicability assessor reads ONLY the caller's own uploaded document's chunks by (tenant_id, doc_id) under withTenantContext RLS, ordered by chunk_index, to prove the discovered manual actually covers the recognized component. Pure-tenant is the security property: it must never read another tenant's doc, and shared OEM rows are not confirm targets (no per-tenant doc_id flow reaches them). Same doctrine as retrieveNodeChunks above; a read failure degrades to zero chunks, never a false verified."
+    query_sha256: "b9cd5919d2433cbc64fa32f99515bb3c476081e62f6541b2e70e300e99dca43e"
+    reason: "chunksForDoc (moved verbatim from the nameplate confirm route to the shared manual-acquisition capability, #4118 — same query, same callers plus the background notebook search): the applicability assessor reads ONLY the caller's own uploaded document's chunks by (tenant_id, doc_id) under withTenantContext RLS, ordered by chunk_index, to prove the discovered manual actually covers the recognized component. Pure-tenant is the security property: it must never read another tenant's doc, and shared OEM rows are not confirm targets (no per-tenant doc_id flow reaches them). Same doctrine as retrieveNodeChunks above; a read failure returns null (retried later — Codex #4118 r13), never a false verified."
     query_snippet: |
       FROM knowledge_entries
           WHERE tenant_id = $1 AND doc_id = $2::uuid

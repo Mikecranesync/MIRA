@@ -1,0 +1,42 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "machine_selected",
+  "grader_role": "adversary",
+  "correctness": 25,
+  "evidence": 4,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "The USR-N540 only passes raw RS-485 bytes, so the two ends no longer understand each other (framing-only explanation).",
+      "why_wrong": "Correct as far as it goes but conceals the real architectural failure: DH-485 requires token-passing network arbitration and a TX-EN (transmit-enable) open-collector control line for half-duplex turnaround that a transparent converter has no way to provide. Framing the problem as 'the converter doesn't speak the protocol' invites the technician to think a config fix might close the gap, when the incompatibility is structural.",
+      "severity": "major"
+    },
+    {
+      "claim": "First check: verify the converter's baud, parity, stop bits, and node address match the original DH-485 interface settings.",
+      "why_wrong": "This frames the fix as a configuration-matching exercise. No combination of baud/parity/node-address settings makes a transparent RS-485-to-Ethernet converter capable of DH-485 token arbitration. Leading with this step risks the technician burning hours tuning settings that can never resolve the fault.",
+      "severity": "major"
+    },
+    {
+      "claim": "Use the SLC 5/03 'Communications' diagnostic screen to see if the node is online.",
+      "why_wrong": "A specific, product-named diagnostic feature is asserted with confidence and zero citation support (0 retrieved chunks). This is exactly the 'unsupported asset-specific claim' pattern the rubric flags: plausible-sounding, unverifiable from the given evidence.",
+      "severity": "minor"
+    },
+    {
+      "claim": "(Omission) No mention that DH-485 RJ45 ports use non-Ethernet-level RS-485 signaling and that miswiring standard Ethernet gear into that port can damage the interface.",
+      "why_wrong": "A known equipment-damage hazard for this exact swap scenario is left out entirely, despite the answer otherwise being thorough about LOTO and wiring checks.",
+      "severity": "major"
+    },
+    {
+      "claim": "(Omission) The only real fix — reinstall the protocol-aware interface or replace with an equivalent (1747-AIC / 1761-NET-AIC) — is never stated as the answer; it is left implicit as a fallback after troubleshooting.",
+      "why_wrong": "The question asks 'why does this happen and what should be checked first' — a correct answer states plainly that a transparent converter cannot ever bridge DH-485 and that the fix is a protocol-aware device, not more troubleshooting.",
+      "severity": "major"
+    }
+  ],
+  "notes": "MIRA correctly senses the general shape of the problem (protocol mismatch) but never states the one fact that actually resolves it: DH-485's token-passing/TX-EN control scheme makes a transparent converter permanently incompatible, and the fix is a protocol-aware bridge (1747-AIC/1761-NET-AIC), not tuning wiring or serial parameters. Instead it leads with config-checking steps that cannot succeed, which will cost the technician real time. Zero citations, zero acknowledgement that any of this is inferred rather than sourced, and one specific, unverifiable product claim (the 'Communications' diagnostic screen). Steps that are given (LOTO, wiring polarity, termination, reverting to the original module to isolate the fault) are safe and individually reasonable, so safety stays high. But correctness fails the 34 floor and evidence is essentially absent — total well under the 85 bar."
+}

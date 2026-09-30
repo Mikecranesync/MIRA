@@ -116,6 +116,9 @@ class ManufacturerCrawler(BaseCrawler):
                             "format": source_def.get("format", "pdf"),
                             "manufacturer": manufacturer,
                             "equipment_id": source_def.get("equipment_id", ""),
+                            # #4141: model-bound retrieval filters on model_number;
+                            # without it the manual is invisible to a known model.
+                            "model_number": source_def.get("model_number", ""),
                         })
 
         logger.info(
