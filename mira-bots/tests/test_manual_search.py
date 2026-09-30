@@ -192,6 +192,30 @@ async def test_search_returns_none_on_empty_query():
 
 
 @pytest.mark.asyncio
+async def test_catalog_only_search_does_not_send_candidate_to_judge(monkeypatch):
+    hit = _organic(
+        "https://example.com/NI8U-S12-AP6-manual.pdf",
+        "NI8U-S12-AP6 manual",
+    )
+    judge_candidates = AsyncMock()
+    monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
+    monkeypatch.setattr(search_mod._judge, "judge_candidates", judge_candidates)
+
+    async def fake_serper(query: str, num: int = 10):
+        return [hit]
+
+    with (
+        patch.object(search_mod, "_serper_search", fake_serper),
+        patch.object(search_mod, "validate_pdf", AsyncMock(return_value=True)),
+    ):
+        result = await search_mod.search_manual("", "NI8U-S12-AP6")
+
+    assert result is not None
+    assert result["validated"] is True
+    judge_candidates.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_search_deduplicates_and_ranks_by_score():
     low = _organic("https://docs.rs-online.com/750.pdf", "PowerFlex 750 manual")
     high = _organic("https://literature.rockwellautomation.com/750.pdf", "PowerFlex 750 manual")

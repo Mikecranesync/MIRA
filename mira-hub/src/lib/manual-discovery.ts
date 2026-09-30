@@ -105,8 +105,8 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   const manufacturer = str(identity.manufacturer);
   const model = str(identity.model);
   const catalogNumber = str(identity.catalogNumber);
-  if (!manufacturer || !(model || catalogNumber)) {
-    return notFound("manufacturer and model are required to search for a manual");
+  if (!(model || catalogNumber)) {
+    return notFound("a model or part number is required to search for a manual");
   }
 
   const base = (process.env.MIRA_ASK_URL ?? DEFAULT_ASK_URL).replace(/\/+$/, "");
@@ -119,8 +119,8 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
         ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
       },
       body: JSON.stringify({
-        manufacturer,
-        model: model ?? catalogNumber,
+        ...(manufacturer ? { manufacturer } : {}),
+        ...(model ? { model } : {}),
         ...(catalogNumber ? { catalog_number: catalogNumber } : {}),
       }),
       signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),

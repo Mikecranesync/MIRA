@@ -662,7 +662,11 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Any judge failure leaves the legacy HEAD-validate path below untouched.
     judged_any = False
     rejected_out: list[dict] = []
-    if _judge.judge_enabled():
+    # A catalog-only query may be based on text read from a user photo. Keep
+    # that narrowly scoped lookup from sending candidate PDF text to the LLM
+    # judge; the result remains an unconfirmed search candidate.
+    use_judge = bool(make) and _judge.judge_enabled()
+    if use_judge:
         ranked = await _judge.judge_candidates(make, model, deduped)
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
@@ -722,7 +726,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     for c in deduped[:5]:
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
-            if _judge.judge_enabled():
+            if use_judge:
                 # The judge is on but this candidate was never READ (fetch
                 # blocked / too big / no text / model output unparseable).
                 # Canary run 1 (2026-08-26): the only real GS10 hit came back
@@ -745,7 +749,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     # caller can hold it for human review. Never promote an unvalidated
     # candidate to a trusted manual link.
     deduped[0]["validated"] = False
-    if _judge.judge_enabled():
+    if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
         deduped[0].setdefault(
             "reason_detail", "Could not read the candidate PDF — review before use."

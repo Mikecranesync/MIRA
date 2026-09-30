@@ -1,7 +1,9 @@
-# ADR-0036 — Hub nameplate vision + manual-discovery egress: a policy decision REQUIRED before this ships
+# ADR-0036 — Hub nameplate vision + manual-discovery egress policy
 
-**Status: PROPOSED — NOT accepted. Blocks merge of the nameplate→manual arc until the
-owner decides.** This ADR does not, by itself, authorize anything.
+**Status: PARTIALLY ACCEPTED — 2026-09-30.** Mike approved one narrow Serper use:
+an exact part/catalog number read from a user-submitted photo may be sent only
+after the technician explicitly asks MIRA to find its manual. This approval does
+not approve other Serper queries or settle the separate runtime vision egress.
 **Date:** 2026-08-16
 **Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
 bypassing the governed inference router/sanitizer; Serper lacks a documented production
@@ -26,7 +28,9 @@ plus the narrow governed Together exception … for the FactoryLM AI **paid-trai
 workstream only." Under that text:
 - Hub nameplate vision on Together is **outside** the existing Together carve-out (it is
   runtime recognition, not paid training).
-- **Serper is not permitted at all.**
+- **Serper is permitted only for the explicit, exact part-number manual lookup
+  described in the limits below.** The broader manufacturer/model discovery decision
+  remains unsettled.
 
 So this arc **cannot be made compliant by code changes**. It needs the owner to decide
 whether to expand the cloud-egress policy. That decision is this ADR.
@@ -60,14 +64,23 @@ whether to expand the cloud-egress policy. That decision is this ADR.
   (`safe-download.ts`) and mitigated the same way (allowlist on the actual download).
 - Credentials Doppler-managed; provider error text credential-scrubbed (PRD §20).
 
-## Until this ADR is accepted
+## Limits of the 2026-09-30 part-number approval
+
+- Input is exactly one unambiguous part/catalog number from the photo observation.
+- The technician must explicitly request the manual lookup in the chat.
+- Do not send the question, other notebook content, serial number, or personal data.
+- A manufacturer-unknown result is only a possible candidate. Do not call it OEM,
+  download/import it, bind the notebook, or use it as answer evidence.
+- Search failure and search miss remain distinct; never invent a URL.
+
+## Until the remaining decisions are accepted
 
 - The nameplate detector ships DARK (`NAMEPLATE_DETECT_ENABLED=0`).
-- The Hub vision + Serper paths exist in code but this ADR records that enabling them in
-  production is **blocked on the owner's policy decision**, not on any further engineering.
+- Broad manufacturer/model Serper discovery and runtime vision egress remain **blocked on the owner's
+  policy decision**, not on further engineering. The 2026-09-30 part-only explicit-search path is the sole
+  exception and remains discovery-only.
 
 ## Consequences
 
-If accepted with an explicit `AGENTS.md`/PRD amendment: one documented place explains why
-these two egresses exist and their hard scope limits. If declined: option (B)/(D) is the
-engineering follow-up. Either way, no self-approval — the amendment is an owner action.
+The accepted narrow exception and the remaining owner decisions are recorded here and reflected in
+`AGENTS.md` §2 and the visual-technician PRD. Broader options (B)/(D) remain follow-up decisions.

@@ -105,6 +105,11 @@ import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
+import {
+  asksPartCompatibility,
+  explicitManualLookupRequest,
+  unambiguousPartNumber,
+} from "@/capabilities/photo-part-lookup";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -164,6 +169,7 @@ import {
   type VisualEvidenceRow,
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
+import { discoverManual } from "@/lib/manual-discovery";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -272,7 +278,7 @@ ANSWER SHAPE — the technician needs something they can act on:
 - Keep it under about 150 words.
 
 HONESTY:
-- You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Say what it typically is and that it must be verified against the unit's own manual.
+- You have NO manual for this machine. Never decode a part number, model suffix, connector code, or product-family string from pattern-matching. Do not state compatibility or interchangeability as fact without a source that explicitly supports it. Say plainly that it is unverified and ask to search the exact label text or check the manufacturer's documentation.
 - If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
@@ -1966,6 +1972,49 @@ async function handleChatTurn(
     boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
       ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
+  // A label transcription is usable as a literal search key, not as confirmed
+  // identity. Search only when the technician explicitly asks for a manual;
+  // never bind the notebook or auto-import a manufacturer-unknown candidate.
+  const photoTextForPartLookup = (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
+  const photoPartNumber = unambiguousPartNumber(photoTextForPartLookup);
+  const shouldSearchPhotoPartNumber =
+    chunks.length === 0 &&
+    general &&
+    oemManufacturer === null &&
+    explicitManualLookupRequest(message) &&
+    photoPartNumber !== null;
+  let photoPartLookup: {
+    searched: boolean;
+    part_number: string;
+    found: boolean;
+    candidate_host: string | null;
+    message: string;
+  } | null = null;
+  if (shouldSearchPhotoPartNumber && photoPartNumber) {
+    const result = await discoverManual({ catalogNumber: photoPartNumber });
+    const candidate = result.candidate;
+    const manualUrl = candidate && /^https:\/\/[^\s"'<>]+$/.test(candidate.url) ? candidate.url : null;
+    const manualHost = manualUrl ? new URL(manualUrl).hostname : null;
+    const messageText = !result.serviceAvailable
+      ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${photoPartNumber}\". I have not confirmed what the code identifies.`
+      : candidate && manualUrl && manualHost
+        ? `I searched for a manual using the exact label text \"${photoPartNumber}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
+        : `I searched for a manual using the exact label text \"${photoPartNumber}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
+    photoPartLookup = {
+      searched: true,
+      part_number: photoPartNumber,
+      found: Boolean(candidate),
+      candidate_host: manualHost,
+      message: messageText,
+    };
+  }
+  const unverifiedPartCompatibility =
+    chunks.length === 0 &&
+    asksPartCompatibility(message) &&
+    photoPartNumber !== null;
+  const photoPartCompatibilityText = unverifiedPartCompatibility
+    ? `I can't verify whether those parts are interchangeable from this photo. The label appears to read \"${photoPartNumber}\", but that is an unconfirmed transcription; I won't guess what its suffix means or say an M12 is a substitute without a source that confirms compatibility. Ask me to look up the manual for \"${photoPartNumber}\" and I can search for a candidate.`
+    : null;
   // #4068 (owner decision 2026-09-27, "both"): a troubleshooting/procedure
   // question about THIS machine with nothing citable declines honestly instead
   // of an uncited general answer. Teaching questions never match.
@@ -2044,7 +2093,17 @@ async function handleChatTurn(
       }
     }
   }
-  rec.stage("retrieval", { manual_acquisition: manualAcquisition });
+  rec.stage("retrieval", {
+    manual_acquisition: manualAcquisition,
+    photo_part_manual_lookup: photoPartLookup
+      ? {
+          searched: photoPartLookup.searched,
+          part_number_sha256: createHash("sha256").update(photoPartLookup.part_number).digest("hex"),
+          found: photoPartLookup.found,
+          candidate_host: photoPartLookup.candidate_host,
+        }
+      : null,
+  });
   // #4128 — a credential or firmware-recovery question about THIS equipment in
   // a chat where nothing identifies the equipment: no sources, no notebook or
   // photo identity, no proposal (a named machine keeps #4095's proposal path).
@@ -2059,7 +2118,7 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -2068,6 +2127,10 @@ async function handleChatTurn(
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
       : unidentifiedServiceText
       ? unidentifiedServiceText
+      : photoPartLookup
+      ? photoPartLookup.message
+      : photoPartCompatibilityText
+      ? photoPartCompatibilityText
       : (missingModelManual || noEvidenceForMachine) && declineKind(message)
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText

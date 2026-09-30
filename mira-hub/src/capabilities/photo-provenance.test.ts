@@ -10,8 +10,9 @@ describe("#4143 withPhotoProvenance", () => {
     expect(withPhotoProvenance("SYS", "  \n ")).toBe("SYS");
   });
   it("asks for a verbatim quote and forbids an inferred device type", () => {
-    expect(PHOTO_PROVENANCE_NOTE).toMatch(/quoting the exact text you read/);
-    expect(PHOTO_PROVENANCE_NOTE).toMatch(/Name the device type .* only if the label or the photo observation names it/);
+    expect(PHOTO_PROVENANCE_NOTE).toMatch(/quoting the exact text/);
+    expect(PHOTO_PROVENANCE_NOTE).toMatch(/only when it is explicitly printed on the label or confirmed by a cited source/);
+    expect(PHOTO_PROVENANCE_NOTE).toMatch(/Never claim two part numbers are compatible without a cited source/);
   });
   it("teaches no real product and no voltage number (would leak into answers / read as a rating)", () => {
     expect(PHOTO_PROVENANCE_NOTE).not.toMatch(/TP700|6AV2|MG17|32906|SIEMENS/i);

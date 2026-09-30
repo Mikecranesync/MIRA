@@ -15,7 +15,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only.
+2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only. The Hub may send an exact, user-requested label part/catalog number to the existing Serper-backed manual-discovery service; never send chat text, notebook content, or PII. Such a part-only search is discovery only: it cannot confirm device identity, mark a result OEM, import a PDF, or ground an answer.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Codex API call.
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.

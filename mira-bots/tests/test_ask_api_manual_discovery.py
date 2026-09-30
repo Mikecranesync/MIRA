@@ -49,6 +49,27 @@ _UNVALIDATED_CANDIDATE = {
 class TestManualDiscoverySearchBasic:
     """Core discovery functionality."""
 
+    def test_part_number_only_search_does_not_claim_an_oem(self, monkeypatch):
+        received = {}
+
+        async def fake_search_manual(make, model):
+            received["make"] = make
+            received["model"] = model
+            return dict(_UNVALIDATED_CANDIDATE)
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+        client = _client()
+        resp = client.post(
+            "/manual-discovery/search",
+            json={"model": "NI8U-S12-AP6"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert received == {"make": "", "model": "NI8U-S12-AP6"}
+        assert body["found"] is True
+        assert body["oem_host"] is False
+        assert body["oem_request_url"] is None
+
     def test_validated_oem_result(self, monkeypatch):
         """A validated OEM candidate reports found/validated/is_direct_pdf/oem_host all True."""
 
@@ -127,10 +148,11 @@ class TestManualDiscoverySearchBasic:
 class TestManualDiscoverySearchValidation:
     """Request validation."""
 
-    def test_missing_required_fields_returns_422(self):
+    def test_missing_model_and_catalog_is_honest_invalid_query(self):
         client = _client()
         resp = client.post("/manual-discovery/search", json={"manufacturer": "Rockwell"})
-        assert resp.status_code == 422
+        assert resp.status_code == 200
+        assert resp.json()["reason"] == "invalid_query"
 
     def test_oversized_field_returns_422(self):
         client = _client()
@@ -140,32 +162,46 @@ class TestManualDiscoverySearchValidation:
         )
         assert resp.status_code == 422
 
-    def test_blank_manufacturer_returns_422_or_invalid_query(self):
-        client = _client()
-        resp = client.post(
-            "/manual-discovery/search",
-            json={"manufacturer": "", "model": "525"},
-        )
-        # Pydantic min_length=1 rejects the empty string at the schema layer.
-        assert resp.status_code == 422
-
-    def test_whitespace_only_manufacturer_returns_invalid_query(self, monkeypatch):
-        """Whitespace-only strings pass Pydantic's min_length but are blank after
-        strip() — the handler must catch this itself and refuse to search."""
+    def test_blank_manufacturer_is_allowed_for_part_lookup(self, monkeypatch):
+        received = {}
 
         async def fake_search_manual(make, model):
-            raise AssertionError("search_manual must not be called for a blank query")
+            received["make"] = make
+            received["model"] = model
+            return None
+
+        client = _client()
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+        resp = client.post(
+            "/manual-discovery/search",
+            json={"manufacturer": "", "model": "NI8U-S12-AP6"},
+        )
+        assert resp.status_code == 200
+        assert received == {"make": "", "model": "NI8U-S12-AP6"}
+
+    def test_whitespace_only_manufacturer_can_still_use_part_number(self, monkeypatch):
+        """A blank maker is safe for a part-only search; it never qualifies an OEM."""
+        called = []
+
+        async def fake_search_manual(make, model):
+            called.append((make, model))
+            return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
         client = _client()
         resp = client.post(
             "/manual-discovery/search",
-            json={"manufacturer": "   ", "model": "525"},
+            json={"manufacturer": "   ", "model": "NI8U-S12-AP6"},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["found"] is False
-        assert body["reason"] == "invalid_query"
+        assert called == [("", "NI8U-S12-AP6")]
+
+    def test_missing_model_and_catalog_number_is_rejected(self):
+        resp = _client().post("/manual-discovery/search", json={"manufacturer": "Rockwell"})
+        assert resp.status_code == 200
+        assert resp.json()["reason"] == "invalid_query"
 
 
 class TestManualDiscoverySearchAuth:

@@ -143,6 +143,13 @@ export type TurnEvidencePacketRetrieval = {
     started_this_turn: boolean;
     candidate_host: string | null;
   } | null;
+  /** Explicit manual search from a photo-read part number, without binding it. */
+  photo_part_manual_lookup: {
+    searched: boolean;
+    part_number_sha256: string;
+    found: boolean;
+    candidate_host: string | null;
+  } | null;
 };
 
 export type TurnEvidencePacketContext = {
@@ -355,6 +362,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
       manual_acquisition: null,
+      photo_part_manual_lookup: null,
     },
     context: {
       evidence_doc_ids: [],

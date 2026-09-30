@@ -2,8 +2,9 @@
 
 This module exposes the existing, product-agnostic real-time manual searcher
 (``shared.manual_search.search.search_manual``) over HTTP so the Hub can
-discover an official OEM PDF manual for a (manufacturer, model[, catalog
-number]) triple. It does NOT reimplement any search/scoring/validation logic
+discover a manual for a (manufacturer, model[, catalog number]) tuple, or run
+a part-number-only search when the manufacturer is unknown. It does NOT
+reimplement any search/scoring/validation logic
 — all of that lives in ``shared/manual_search/search.py`` (Serper multi-pass
 search, OEM domain scoring, deny-list filtering, HEAD/magic-byte PDF
 validation). This router is a thin HTTP adapter over that one function.
@@ -50,15 +51,15 @@ class ManualSearchRequest(BaseModel):
     """Request model for the manual-discovery search endpoint.
 
     Fields:
-    - manufacturer: the equipment manufacturer/vendor name (required)
-    - model: the model number/name (required)
+    - manufacturer: the equipment manufacturer/vendor name (optional for a part-only search)
+    - model: the model number/name (optional when catalog_number is present)
     - catalog_number: an explicit catalog/part number (optional; preferred
       over `model` as the search identifier when present — see the priority
       comment on the route handler)
     """
 
-    manufacturer: str = Field(..., min_length=1, max_length=_MAX_FIELD_LEN)
-    model: str = Field(..., min_length=1, max_length=_MAX_FIELD_LEN)
+    manufacturer: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
+    model: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
     catalog_number: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
 
 
@@ -106,13 +107,14 @@ def is_trusted_distributor_host(host: str) -> bool:
 
 @router.post("/manual-discovery/search")
 async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = Header(None)):
-    """Discover an official OEM PDF manual for (manufacturer, model).
+    """Discover a manual candidate for a manufacturer/model or a part number.
 
     Query priority: a supplied `catalog_number` is a stronger identifier than
     a generic `model` string (it disambiguates variants a bare model number
     can't), so when present it is passed as the `model` argument to
     search_manual() in place of `req.model`. `manufacturer` is always passed
-    as `make`.
+    as `make`. A blank manufacturer triggers a part-only search; in that case
+    the result is not identified as an OEM and no OEM request page is offered.
 
     Auth (optional): read ASK_API_KEY from environment at request time.
     If set and X-Mira-Key header doesn't match, return 401.
@@ -128,10 +130,10 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     if key and x_mira_key != key:
         raise HTTPException(status_code=401, detail="invalid or missing X-Mira-Key")
 
-    manufacturer = req.manufacturer.strip()
-    model = req.model.strip()
+    manufacturer = (req.manufacturer or "").strip()
+    model = (req.model or "").strip()
     catalog_number = (req.catalog_number or "").strip()
-    if not manufacturer or not model:
+    if not (model or catalog_number):
         result = _NO_RESULT.copy()
         result["reason"] = "invalid_query"
         return result
@@ -141,7 +143,11 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     # The OEM's own manual-request page (validated live) — offered with any
     # non-success so the technician always has an official next step.
     try:
-        oem_request_url = await asyncio.wait_for(oem_request_link(manufacturer), timeout=10)
+        oem_request_url = (
+            await asyncio.wait_for(oem_request_link(manufacturer), timeout=10)
+            if manufacturer
+            else None
+        )
     except Exception:  # noqa: BLE001
         oem_request_url = None
 

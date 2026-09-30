@@ -109,6 +109,9 @@ const veMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
+const manualDiscoveryMock = vi.hoisted(() => ({ discoverManual: vi.fn() }));
+vi.mock("@/lib/manual-discovery", () => manualDiscoveryMock);
+
 // #4075 — the automatic manual search. The pure helpers (key, decline text) are
 // the real ones; only the flag, the notebook read and the background start are
 // seams. Off by default so every other test in this file is unaffected.
@@ -151,6 +154,10 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
     });
 }
 
+function firstRecordedPacket() {
+  return (persistMock.persistTurnUsage.mock.calls[0] as unknown as [unknown, unknown, TurnRecord])[2].packet;
+}
+
 /** A provider SSE stream: deltas, then the include_usage final chunk. */
 function providerStream(text: string, usage?: Record<string, unknown>): Response {
   const chunks = [
@@ -186,6 +193,17 @@ beforeEach(() => {
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
   domainMock.recordTurn.mockResolvedValue(ROW_ID);
   ragMock.retrieveNodeChunks.mockResolvedValue([] as never);
+  manualDiscoveryMock.discoverManual.mockResolvedValue({
+    serviceAvailable: false,
+    found: false,
+    candidate: null,
+    validated: false,
+    isDirectPdf: false,
+    oemHost: false,
+    trustedDistributorHost: false,
+    reason: "search service unavailable",
+    oemRequestUrl: null,
+  });
 });
 afterEach(async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -278,6 +296,61 @@ describe("visualEvidence with no stored LOOK observation", () => {
     // VISUAL_EVIDENCE_DROPPED does NOT (observation_available is false and
     // prior_turn_observation_count is 0 — nothing was ever "dropped").
     expect(codes).toEqual(["EQUIPMENT_ANSWER_WITH_NO_EVIDENCE", "PHOTO_WITH_NO_OBSERVATIONS"]);
+  });
+});
+
+describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
+  beforeEach(() => {
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-09-30T00:00:00.000Z" });
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o1", sessionId: "s1", text: "Label appears to read Ni8U-S12-AP6; wiring 1BN+ 3BU- 4BK",
+      obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+    } as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([] as never);
+  });
+
+  it("does not answer a compatibility question by decoding an unconfirmed part number", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "Can I use my M12 instead of this S12?", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    const f = await frames(res);
+    const status = f.find((x) => x.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("I can't verify whether those parts are interchangeable");
+    expect(String(status?.message)).toContain("Ni8U-S12-AP6");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const packet = firstRecordedPacket();
+    expect(packet.retrieval.photo_part_manual_lookup).toBeNull();
+    expect(JSON.stringify(packet)).not.toContain("Ni8U-S12-AP6");
+  });
+
+  it("searches the exact part number when the technician explicitly asks for its manual", async () => {
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce({
+      serviceAvailable: true, found: true,
+      candidate: { url: "https://docs.example/manual.pdf", title: "Possible manual", host: "docs.example", score: 20, docType: "pdf", isDirectPdf: true, validated: true },
+      validated: true, isDirectPdf: true, oemHost: false, trustedDistributorHost: false,
+      reason: "candidate found", oemRequestUrl: null,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await POST(chatReq({ message: "Look up the PDF manual", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    const f = await frames(res);
+    const status = f.find((x) => x.kind === "status");
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith({ catalogNumber: "Ni8U-S12-AP6" });
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("I searched for a manual using the exact label text");
+    expect(String(status?.message)).toContain("https://docs.example/manual.pdf");
+    expect(String(status?.message)).toContain("I haven't added it as a source");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({
+      searched: true,
+      found: true,
+      candidate_host: "docs.example",
+    });
+    expect(JSON.stringify(firstRecordedPacket())).not.toContain("Ni8U-S12-AP6");
   });
 });
 
@@ -1555,4 +1628,3 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("won't guess");
   });
 });
-

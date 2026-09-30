@@ -188,7 +188,8 @@ routing hint to the Hub (reuse `hub-handoff.ts` pattern); (2) verify on-device A
 6. **Every answer is basis-labeled** (general/identified/oem/workspace/history/live); never present
    reasoning as an OEM doc.
 7. **Public demo egresses nothing, stores no anonymous private photo, writes nothing, reads no customer
-   data.** External egress (ADR-0036) is owner-gated and ships dark until decided.
+   data.** The only approved external lookup is a technician-requested manual search for one exact,
+   unambiguous photo-read part/catalog number, within ADR-0036's limits. Other external egress remains gated.
 8. **Extend, don't fork.** Notebook = a per-machine `InteractionThread`; reuse the typed parts, the
    VisualSession ledger, `evidence_from_visual_session`, and the `publicDemo` profile.
 
@@ -216,9 +217,12 @@ Six technician-facing states, **computed** from existing vocabularies (not a new
 
 ### 6.4 Failure behavior
 Bad photo→NEEDS_CONTEXT+ask clearer. No confirmed identity→general help only; ask to confirm before
-asset-specific claims. Contradiction→CONFLICTING, block promotion, request disambiguating evidence. Live
+asset-specific claims. A part-code compatibility question without a cited source gets an explicit
+unverified answer, not a decoded suffix or compatibility claim. An explicit manual request may search the
+exact photo-read code; an unknown-manufacturer result stays a possible candidate and is not imported or
+used to answer. Contradiction→CONFLICTING, block promotion, request disambiguating evidence. Live
 unavailable→say so, never render stale as live. Context-contract violation→fail-closed on the prompt
-block, fail-open on the turn (never block the answer). Egress dark→degrade to ingested-corpus-only.
+block, fail-open on the turn (never block the answer). Unapproved egress→degrade to ingested-corpus-only.
 
 ### 6.5 Privacy boundaries
 Per-tenant photos private (tenant scoping; `knowledge_entries.is_private`). Public demo: sanitized CV-101
@@ -288,11 +292,11 @@ cutover charter; none touch guarded legacy trees except PR-3 (with the exception
   `namespace_direct_uploads` under the new tenant (needs the `?prefill_question=` + funnel events).
 
 ## 11. Owner decisions & unresolved risks
-1. **⚠ External egress (ADR-0036) — TOP RISK, blocks the nameplate→manual arc.** Nameplate vision:
-   (A) approve a named runtime exception + amend `AGENTS.md §2`/PRD §4, or (B) route via the governed
-   inference boundary (needs a serial-`[SN]` sanitizer carve-out). Manual discovery: (C) approve Serper
-   for identity-strings-only, or (D) drop external, rely on ingested OEM corpus. Ships **dark** until you
-   decide.
+1. **⚠ External egress (ADR-0036).** The 2026-09-30 owner decision permits only a Serper-backed
+   manual search using one exact photo-read part/catalog number, after the technician explicitly asks.
+   The result is an unverified candidate and cannot be imported or used as answer evidence. Broader
+   manufacturer/model discovery remains undecided (C/D). Runtime nameplate vision egress remains
+   undecided (A/B); this fix adds no new vision provider or vision egress.
 2. **Public-demo chat fork** — (a) watch-assemble-then-convert (no pre-signup chat), or (b) scoped
    rate-limited anonymous demo-chat. #3828 is the trigger event; also gates the "ask + cite pre-signup"
    clause of the direction.
@@ -419,13 +423,11 @@ it is the foundation every later slice (fan-out, /m routing, public demo, live) 
 - **Not materialized (ADR-0029):** VisualSession has no `dataset_version_id`/recall-before-recompute; a
   re-submitted identical photo re-runs vision. (Not verified this session: `printsense/cas.py`,
   `materialized_evidence/schema.py` — close before committing exact field names.)
-- **⚠ EGRESS = OWNER GATE (ADR-0036, PROPOSED/NOT accepted, blocks the nameplate→manual merge).** Nameplate
-  vision (`mira-hub/src/lib/nameplate/index.ts`, Together MiniMax) + Serper manual-discovery
-  (`mira-ask /manual-discovery/search`) are OUTSIDE `AGENTS.md:18 §2` cloud policy; ship **dark**
-  (`NAMEPLATE_DETECT_ENABLED=0`). Owner must pick: nameplate (A) new named exception + amend AGENTS.md/PRD§4,
-  or (B) route via `inference/router.py` (whose `sanitize_context()` masks serials `[SN]` — conflicts with
-  reading serials, needs a vision carve-out); manual-discovery (C) approve Serper for identity-strings-only,
-  or (D) drop external, rely on ingested OEM corpus. **No public-demo egress rule exists — public demo must
+- **⚠ EGRESS = OWNER GATE (ADR-0036, partially accepted 2026-09-30).** Runtime nameplate
+  vision (`mira-hub/src/lib/nameplate/index.ts`, Together MiniMax) remains dark until decision A/B.
+  Broader manufacturer/model Serper discovery remains undecided (C/D). The only approved Serper path is an
+  exact photo-read part/catalog number after an explicit manual-search request; its result is a possible
+  candidate, never trusted or ingested. **No public-demo egress rule exists — public demo must
   egress nothing.** → §11 Owner Decisions, top risk.
 
 ## Public demo (agent 5) — origin/main + open PRs #3815/#3828
