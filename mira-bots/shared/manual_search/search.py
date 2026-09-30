@@ -159,7 +159,11 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "baldor": ("baldor.com", "abb.com"),
     "weg": ("weg.net",),
     "festo": ("festo.com",),
-    "smc": ("smcusa.com",),
+    # SMC publishes manuals on regional first-party hosts. Verified 2026-09-29:
+    # discovery found the VQ(C)1000 instruction manual at static.smc.eu, but
+    # with only smcusa.com listed it scored as non-OEM and stopped at review.
+    "smc": ("smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"),
+    "smc corporation": ("smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"),
     "ifm": ("ifm.com",),
     "balluff": ("balluff.com",),
     # Hoists / cranes (2026-08-26, UMS3-0335 end-truck case): the OEM hosts its
@@ -196,6 +200,11 @@ DENY_HOSTS: frozenset[str] = frozenset(
         "kupdf.net",
         "pdf4pro.com",
         "vdocuments.net",
+        # Preprint servers are never equipment documentation (2026-09-29: an
+        # MG17 gearbox search returned a bioRxiv tissue-imaging paper).
+        "biorxiv.org",
+        "medrxiv.org",
+        "arxiv.org",
     }
 )
 

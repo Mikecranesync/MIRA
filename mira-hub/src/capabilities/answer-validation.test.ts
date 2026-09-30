@@ -855,3 +855,156 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
     expect(v.ok).toBe(true);
   });
 });
+
+
+describe("#4110: a live supply measurement after lockout gets the energized-work banner", () => {
+  const Q3 =
+    "A 460V VFD shows 420V output voltage at full speed. What should the technician check first? A) Input voltage B) Carrier frequency C) Current limit D) Motor nameplate";
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: Q3, general: true, served: true, refused: false, evidenceSufficient: false });
+
+  // Real served answers, staging 134eec706 (traces d52829a4…, 217b1e71…).
+  it.each([
+    "A\n\nFirst check the **input voltage to the drive** – a low input can cause reduced output voltage.\n\n1. De-energize, lockout/tagout the VFD input supply and verify zero volts with a meter.\n2. Measure the actual line voltage at the drive's input terminals; compare to the nameplate (≈460 V).\n3. If the input is within spec, then proceed to verify the drive's output voltage under load.",
+    "A\n\nFirst check the **input voltage to the drive** – a low input will reduce the DC bus and thus the output voltage.\n\n1. De-energize, lockout/tagout the VFD and verify zero voltage at the input terminals.\n2. Measure the actual line voltage at the drive's input terminals with a qualified-person procedure.\n3. If the input is within the drive's rated range, then proceed to check the DC bus voltage.",
+  ])("the implied restore is warned, and the answer is kept: %#", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a.split("\n")[0]); // the full answer is still served
+    }
+  });
+
+  it.each([
+    // dead checks while locked out
+    "1. Lock out and tag out the drive and verify zero voltage.\n2. Measure the motor winding resistance phase to phase.",
+    "1. De-energize, lock out and verify zero volts.\n2. Verify the absence of voltage at the input terminals before touching them.",
+    "1. Lock out the feeder and verify it is dead.\n2. Check continuity of the input fuses.",
+    // a live reading with no lockout at all is not this rule's shape
+    "Read the input voltage from the drive's display (parameter d0.12).",
+  ])("no banner for a dead check or no lockout: %#", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});
+
+
+describe("#4111 review: the implied-restore rule follows steps and actions, not sentences", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LIVE = "Measure the actual line voltage at the input terminals.";
+
+  it.each([
+    // F1: lockout and verification in separate sentences / steps
+    `Lock out the drive. Verify zero volts. ${LIVE}`,
+    `1. Lock out and tag out the drive.\n2. Verify zero volts with a meter.\n3. ${LIVE}`,
+    `Lock out the drive and verify zero volts. ${LIVE}`,
+    // a lockout without a written verification still makes the live reading implied
+    `Lock out the drive. ${LIVE}`,
+    // F2: a dead check beside the live measurement, both orders
+    "Lock out the drive and verify zero volts. Measure the actual line voltage at the input terminals, then check winding resistance.",
+    "Lock out the drive and verify zero volts. Check winding resistance and measure the actual line voltage at the input terminals.",
+    "Lock out the drive and verify zero volts. Check fuse continuity, then measure the supply voltage at the terminals.",
+    // F3: a PROHIBITED restoration does not end the locked-out state
+    `Lock out the drive and verify zero volts. Do not restore power yet. ${LIVE}`,
+    `Lock out the drive and verify zero volts. Never re-energize without a permit. ${LIVE}`,
+    // F4: a prohibition or display reading does not hide a later physical one
+    `Lock out the drive and verify zero volts. Do not measure the input on the display. ${LIVE}`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    // F4 controls: prohibited physical reading, installed-display reading
+    "Lock out the drive and verify zero volts. Do not measure the actual line voltage at the input terminals.",
+    "Lock out the drive and verify zero volts. Read the actual line voltage from the remote display.",
+    // dead-only procedures
+    "Lock out the drive and verify zero volts. Check winding resistance, then check fuse continuity.",
+    // a prohibited lockout is not an isolation step
+    "Do not lock out the drive yet. Read the actual line voltage from the drive display.",
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});
+
+
+describe("#4111 review round 2: positive shape, clause-scoped exemptions", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LOCK = "Lock out the drive and verify zero volts.";
+
+  it.each([
+    // F1: a display comparison never exempts a physical terminal measurement
+    `${LOCK} Measure the actual line voltage at the input terminals for comparison with the value on the remote display.`,
+    // F2: a shared verb across coordinated objects, both orders
+    `${LOCK} Measure winding resistance and actual line voltage at the input terminals.`,
+    `${LOCK} Measure the actual line voltage at the input terminals and winding resistance.`,
+    // F2: a prohibited action followed by a separate affirmative measurement
+    `${LOCK} Do not open the cover; measure the actual line voltage at the input terminals.`,
+    // F3: a negated dead state is not a dead check
+    `${LOCK} Measure the actual line voltage at the input terminals to confirm the supply is not dead.`,
+    `${LOCK} Measure the supply voltage at the terminals to confirm it is not zero.`,
+    // dead check sharing a clause without a comma
+    `${LOCK} Check fuse continuity then measure the supply voltage at the terminals.`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    // display-only readings, fronted and trailing source
+    `${LOCK} From the remote display, read the actual line voltage.`,
+    `${LOCK} Read the actual line voltage from the remote display.`,
+    // coordinated prohibition shares its verb
+    `${LOCK} Do not probe and measure the actual line voltage at the input terminals.`,
+    // explicit absence-of-voltage verification and resistance-only checks
+    `${LOCK} Verify the absence of voltage at the input terminals before touching them.`,
+    `${LOCK} Check winding resistance at the motor terminals.`,
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});
+
+
+describe("#4111 review round 3: steps in order, per-step exemptions, instruments", () => {
+  const run = (answerText: string) =>
+    validateAnswer({ answerText, question: "what should I check first", general: true, served: true, refused: false, evidenceSufficient: false });
+  const LOCK = "Lock out the drive and verify zero volts.";
+
+  it.each([
+    // F1: lockout and measurement in one clause
+    "Lock out the drive and then measure the actual line voltage at the input terminals.",
+    "Lock out the drive then measure the actual line voltage at the input terminals.",
+    "Lock out the drive, verify zero volts and then measure the actual line voltage at the input terminals.",
+    // F2: an exemption in one step never covers the next
+    `${LOCK} Verify zero volts and then measure the actual line voltage at the input terminals.`,
+    `${LOCK} Do not measure resistance then measure the actual line voltage at the input terminals.`,
+    // F3: explicit instruments
+    `${LOCK} Measure the actual line voltage using a multimeter.`,
+    `${LOCK} Measure the actual line voltage with a multimeter.`,
+  ])("warns, keeping the full answer: %s", (a) => {
+    const v = run(a);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a);
+    }
+  });
+
+  it.each([
+    `${LOCK} Verify zero volts with a multimeter at the input terminals.`,
+    `${LOCK} Do not probe and measure the actual line voltage at the input terminals.`,
+    `${LOCK} Read the actual line voltage from the remote display.`,
+  ])("no banner: %s", (a) => {
+    expect(run(a).ok).toBe(true);
+  });
+});

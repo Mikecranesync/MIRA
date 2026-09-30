@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { createNotebook, listNotebooks, listThreads } from "@/lib/equipment-notebooks";
+import { startManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,21 @@ export async function POST(req: NextRequest) {
           : "manual",
       identityObservation: body.identityObservation ?? null,
       createdBy: ctx.userId ?? null,
+    });
+    // #4075 — a technician-confirmed identity (the Scan machine flow) starts the
+    // search for its official manual in the background, so the first question
+    // can already have it. Never awaited; a no-op unless enabled and confirmed.
+    await startManualAcquisition({
+      tenantId: ctx.tenantId,
+      userId: ctx.userId ?? null,
+      notebookId: notebook.id,
+      nodeId: notebook.nodeId,
+      identity: {
+        identityStatus: notebook.identityStatus,
+        manufacturer: notebook.manufacturer,
+        model: notebook.model,
+        catalogNumber: notebook.catalogNumber,
+      },
     });
     return NextResponse.json({ notebook }, { status: 201 });
   } catch (err) {

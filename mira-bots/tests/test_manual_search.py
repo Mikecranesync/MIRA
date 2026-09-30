@@ -485,3 +485,13 @@ class TestValidatePdfSsrf:
         monkeypatch.setattr(search_mod, "_transport_for_tests", _httpx.MockTransport(handler))
         assert await search_mod.validate_pdf("https://good.example/m.pdf") is False
         assert n["count"] <= (search_mod._MAX_REDIRECT_HOPS + 1) * 2  # HEAD loop + GET loop
+
+
+def test_preprint_servers_are_denied():
+    # 2026-09-29: an MG17 gearbox search returned a bioRxiv tissue-imaging paper
+    # as a "validated" candidate while the judge was off.
+    from shared.manual_search.search import _is_denied
+
+    assert _is_denied("www.biorxiv.org") is True
+    assert _is_denied("arxiv.org") is True
+    assert _is_denied("static.smc.eu") is False

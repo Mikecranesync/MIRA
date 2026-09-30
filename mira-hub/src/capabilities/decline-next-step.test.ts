@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { declineKind, declineText } from "./decline-next-step";
+import { declineKind, declineText, unidentifiedServiceDecline } from "./decline-next-step";
 
 describe("declineKind", () => {
   it.each([
@@ -57,5 +57,40 @@ describe("declineText", () => {
     const t = declineText("service_procedure", "AUMA AC 01.2", "AUMA");
     expect(t).toContain("AUMA service");
     expect(t).toContain("won't guess");
+  });
+});
+
+describe("unidentifiedServiceDecline (#4128)", () => {
+  it("answers both halves of the #4101 service-only question", () => {
+    const t = unidentifiedServiceDecline("How do I recover this actuator firmware by USB, and what is its service password?")!;
+    expect(t).toContain("won't give generic steps");
+    expect(t).toContain("make and model");
+    expect(t).toContain("equipment owner or the manufacturer's service line");
+  });
+
+  it.each([
+    ["what's the service password for this drive?", "service line", "won't give generic steps"],
+    ["My actuator firmware is corrupted. How do I recover it?", "won't give generic steps", "service line"],
+    ["The actuator firmware is corrupted. How do I recover it?", "won't give generic steps", "service line"],
+    ["What is its service password?", "service line", "won't give generic steps"],
+  ])("only the half that was asked: %s", (m, present, absent) => {
+    const t = unidentifiedServiceDecline(m)!;
+    expect(t).toContain(present);
+    expect(t).not.toContain(absent);
+  });
+
+  it.each([
+    "What does a service password protect on a drive?",
+    "What is firmware recovery?",
+    "it keeps rebooting, what do I check first",
+    "Which pin numbers on my PLC connector carry 24 V?",
+    "what firmware version supports Modbus TCP on my drive",
+  ])("control — not a credential/recovery question about own equipment: %s", (m) => {
+    expect(unidentifiedServiceDecline(m)).toBeNull();
+  });
+
+  it("never names a device or a manufacturer it was not given", () => {
+    const t = unidentifiedServiceDecline("how do I reflash the firmware on this hoist after it bricked")!;
+    expect(t).not.toMatch(/Demag|Siemens|Rockwell|Allen-Bradley|AUMA/);
   });
 });
