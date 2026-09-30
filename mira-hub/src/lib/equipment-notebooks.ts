@@ -327,18 +327,21 @@ export async function getNotebook(
   notebookId: string,
 ): Promise<EquipmentNotebook | null> {
   return withTenantContext(tenantId, async (c) => {
+    // #4130: one round trip, not two. A data-modifying CTE always executes, and
+    // the outer SELECT reads the statement's starting snapshot — so the row is
+    // returned as it was BEFORE the touch, exactly as the old SELECT-then-UPDATE
+    // did, and a missing/foreign id still touches nothing and returns null.
     const res = await c.query(
-      `SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
+      `WITH touched AS (
+         UPDATE equipment_notebooks SET last_opened_at = now(), updated_at = now()
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+       )
+       SELECT ${NOTEBOOK_COLS}, ${BOUND_ASSET_COLS}
          FROM equipment_notebooks n${BOUND_ASSET_JOIN}
         WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid`,
       [tenantId, notebookId],
     );
     if (res.rows.length === 0) return null;
-    await c.query(
-      `UPDATE equipment_notebooks SET last_opened_at = now(), updated_at = now()
-        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [tenantId, notebookId],
-    );
     return rowToNotebook(res.rows[0]);
   });
 }
@@ -890,8 +893,17 @@ export async function upsertNotebookSourceTx(
          ELSE EXCLUDED.match_state IN ('user_confirmed', 'verified')
        END,
        source_role    = EXCLUDED.source_role,
-       match_evidence = COALESCE(EXCLUDED.match_evidence,
-                                 equipment_notebook_sources.match_evidence),
+       -- A system 'candidate' re-suggestion never replaces the evidence of a
+       -- row that is already trusted or human-ruled: the same rule as the trust
+       -- columns above. Without it a stale background search that re-finds a
+       -- shared manual would overwrite a newer verified source's provenance
+       -- (and its autoAcquisitionKey, which migration 101 needs) — Codex #4118 r4 F5.
+       match_evidence = CASE
+         WHEN equipment_notebook_sources.match_state IN ('verified', 'user_confirmed', 'rejected')
+              AND EXCLUDED.match_state = 'candidate'
+           THEN equipment_notebook_sources.match_evidence
+         ELSE COALESCE(EXCLUDED.match_evidence, equipment_notebook_sources.match_evidence)
+       END,
        -- Set-if-provided, never cleared: an upsert without an origin keeps the
        -- one already recorded.
        origin_file_id = COALESCE(EXCLUDED.origin_file_id,

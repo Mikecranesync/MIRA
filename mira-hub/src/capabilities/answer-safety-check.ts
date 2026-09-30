@@ -306,6 +306,12 @@ export async function semanticSafetyCheck(opts: {
           stream: false,
           max_tokens: 200,
           temperature: 0,
+          // #4130: the provider's own body extras (Groq gpt-oss reasoning_effort),
+          // as every other canonical-cascade call sends them. Without it the
+          // hidden reasoning ate the 200-token budget: 8/10 valid verdicts at a
+          // 758 ms median vs 10/10 at 413 ms, and each miss fell through to the
+          // next provider.
+          ...(p.extra ?? {}),
         }),
         signal: ac.signal,
       });

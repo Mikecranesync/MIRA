@@ -44,7 +44,8 @@ export type DownloadRejection =
 
 export type SafeDownloadResult =
   | { ok: true; buffer: Buffer; finalUrl: string; contentType: string }
-  | { ok: false; reason: DownloadRejection };
+  /** `status` rides along only for http_error, so a caller can tell a 503 from a 404. */
+  | { ok: false; reason: DownloadRejection; status?: number };
 
 export interface SafeDownloadOptions {
   allowedHosts: string[];
@@ -340,7 +341,7 @@ export async function safeDownloadPdf(
         continue;
       }
 
-      if (!resp.ok) return reject(hostForLog, "http_error");
+      if (!resp.ok) return { ...reject(hostForLog, "http_error"), status: resp.status };
 
       const rawType = resp.headers.get("content-type") ?? "";
       const contentType = rawType.split(";")[0].trim().toLowerCase();
