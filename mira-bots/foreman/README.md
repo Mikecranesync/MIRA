@@ -347,9 +347,39 @@ Key guarantees (AC A–H, issue #3566):
 - `MissionState` round-trips to JSON for durable GitHub storage
 - `evaluate_go_no_go()` returns exactly `"GO"` or `"NO-GO"` with human gates
 
-Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (73 tests)
+Tests: `python3.12 -m pytest mira-bots/foreman/test_mission_loop.py -v` (88 tests)
 
 Mission spec: `docs/missions/AUTONOMOUS-FOREMAN-V1.md`
+
+**Provider:** Reviewer on Charlie may use **Claude** (default, current Fleet standing order) or **Codex** (accepted for when it returns). Mike decision 2026-09-17 (Option B in `docs/IR_PROVIDER_CONFLICT.md`).
+
+## Independent Review Verdict Contract
+
+The IR verdict coordinator contract (`ir_verdict.py`) ensures empty Charlie IR sessions
+cannot be treated as success. Pure policy module (no I/O) used by Foreman routines.
+
+**Core contract:** A review is never complete without a persisted artifact (GitHub comment)
+tied to the exact tip SHA. Empty exit = ERROR, not "try again."
+
+**Key rules:**
+- PASS on an older tip is stale when head moves (does not approve the new head)
+- `review_verdict=null` or missing GitHub comment → ERROR (not silent approval)
+- Staging-gate PASS does not count as Independent Review (different framing required)
+- After 2 empty IR exits on the same tip, stop and diagnose (do not relaunch indefinitely)
+- PASS on tip blocks relaunch (review is complete for that SHA)
+- **`_send_and_wait` returning `"(no response)"` must NEVER be treated as a review verdict**
+  - `bot.py` line 375: `return result.result or "(no response)"`
+  - This is a fallback string when the agent returns no result
+  - It is NOT a verdict and must not be recorded as one
+  - Caller must validate the response is a valid verdict (PASS|FAIL|BLOCKED|ERROR) before recording
+
+Tests: `python3 -m pytest mira-bots/foreman/test_ir_verdict.py -v` (9 tests)
+
+**Wiring:** `mission_loop.py` now accepts BLOCKED|ERROR as terminal incomplete outcomes (not approval).
+Tests: `python3 -m pytest mira-bots/foreman/test_mission_loop.py::TestIRVerdictContract -v` (8 tests)
+
+See `specialists/adversarial-reviewer.md` for verdict format requirements and
+enforcement details. See `docs/IR_PROVIDER_CONFLICT.md` for the Codex-vs-Claude decision required.
 
 ## Support
 
