@@ -9,20 +9,33 @@ Serper/network call is ever made.
 
 import asyncio
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ask_api.manual_discovery import is_oem_host, router as manual_discovery_router
 
 
-def _client() -> TestClient:
+_KEY = "test-manual-discovery-key"
+
+
+@pytest.fixture(autouse=True)
+def _discovery_key(monkeypatch):
+    """The endpoint fails closed without its key (#4160 S2), so every test
+    runs with one configured unless it deliberately removes it."""
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", _KEY)
+    monkeypatch.delenv("ASK_API_KEY", raising=False)
+
+
+def _client(key: str | None = _KEY) -> TestClient:
     """Create a minimal app with only the manual_discovery router.
 
     Avoids importing ask_api.app, which constructs the Supervisor engine.
+    Sends the configured key by default; pass ``key=None`` to send none.
     """
     app = FastAPI()
     app.include_router(manual_discovery_router)
-    return TestClient(app)
+    return TestClient(app, headers={"X-Mira-Key": key} if key is not None else {})
 
 
 _VALIDATED_CANDIDATE = {
@@ -169,55 +182,123 @@ class TestManualDiscoverySearchValidation:
 
 
 class TestManualDiscoverySearchAuth:
-    """Optional shared-secret authentication."""
+    """Required shared-secret authentication (#4160 S2, PRD R13).
 
-    def test_auth_off_request_without_header_succeeds(self, monkeypatch):
-        monkeypatch.delenv("ASK_API_KEY", raising=False)
+    The endpoint spends paid provider queries, so it fails closed: with no
+    key configured it answers 503, never an open search. It uses its own
+    key, MANUAL_DISCOVERY_API_KEY, not the shared ASK_API_KEY: the Ignition
+    kiosk posts an empty X-Mira-Key to /ask, so turning ASK_API_KEY on
+    globally would break it.
+    """
 
+    def _fake_search(self, monkeypatch, calls):
         async def fake_search_manual(make, model):
+            calls.append((make, model))
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
-        client = _client()
-        resp = client.post(
+
+    def test_key_unset_returns_503_and_never_searches(self, monkeypatch):
+        monkeypatch.delenv("MANUAL_DISCOVERY_API_KEY", raising=False)
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key=None).post(
             "/manual-discovery/search",
             json={"manufacturer": "Rockwell Automation", "model": "525"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 503
+        assert calls == []
 
-    def test_auth_on_request_without_header_fails(self, monkeypatch):
-        monkeypatch.setenv("ASK_API_KEY", "sekret")
-        client = _client()
-        resp = client.post(
+    def test_key_blank_is_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "   ")
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key="   ").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 503
+        assert calls == []
+
+    def test_shared_ask_api_key_is_not_a_substitute(self, monkeypatch):
+        monkeypatch.delenv("MANUAL_DISCOVERY_API_KEY", raising=False)
+        monkeypatch.setenv("ASK_API_KEY", "kiosk-key")
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key="kiosk-key").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 503
+        assert calls == []
+
+    def test_missing_header_returns_401_and_never_searches(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key=None).post(
             "/manual-discovery/search",
             json={"manufacturer": "Rockwell Automation", "model": "525"},
         )
         assert resp.status_code == 401
+        assert calls == []
 
-    def test_auth_on_request_with_wrong_key_fails(self, monkeypatch):
-        monkeypatch.setenv("ASK_API_KEY", "sekret")
-        client = _client()
-        resp = client.post(
+    def test_wrong_key_returns_401_and_never_searches(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key="wrong").post(
             "/manual-discovery/search",
             json={"manufacturer": "Rockwell Automation", "model": "525"},
-            headers={"X-Mira-Key": "wrong"},
         )
         assert resp.status_code == 401
+        assert calls == []
 
-    def test_auth_on_request_with_correct_key_succeeds(self, monkeypatch):
-        monkeypatch.setenv("ASK_API_KEY", "sekret")
-
-        async def fake_search_manual(make, model):
-            return None
-
-        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
-        client = _client()
-        resp = client.post(
+    def test_empty_header_returns_401(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key="").post(
             "/manual-discovery/search",
             json={"manufacturer": "Rockwell Automation", "model": "525"},
-            headers={"X-Mira-Key": "sekret"},
+        )
+        assert resp.status_code == 401
+        assert calls == []
+
+    def test_correct_key_searches(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
         )
         assert resp.status_code == 200
+        assert calls == [("Rockwell Automation", "525")]
+
+    def test_comparison_is_constant_time(self, monkeypatch):
+        import ask_api.manual_discovery as md
+
+        seen = []
+        real = md.hmac.compare_digest
+
+        def spy(a, b):
+            seen.append((a, b))
+            return real(a, b)
+
+        monkeypatch.setattr(md.hmac, "compare_digest", spy)
+        self._fake_search(monkeypatch, [])
+        _client(key="wrong").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert seen, "key check must use hmac.compare_digest"
+
+    def test_auth_runs_before_request_validation_side_effects(self, monkeypatch):
+        """An unauthenticated caller learns nothing from the body: 401, not invalid_query."""
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key=None).post(
+            "/manual-discovery/search",
+            json={"manufacturer": "   ", "model": "525"},
+        )
+        assert resp.status_code == 401
 
 
 class TestManualDiscoverySearchErrorHandling:
@@ -388,13 +469,7 @@ def test_all_rejected_disappears_as_no_manual_found(monkeypatch):
 
     monkeypatch.setattr(md, "search_manual", fake_search)
     monkeypatch.setattr(md, "oem_request_link", fake_link)
-    monkeypatch.delenv("ASK_API_KEY", raising=False)
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    app = FastAPI()
-    app.include_router(md.router)
-    r = TestClient(app).post(
+    r = _client().post(
         "/manual-discovery/search", json={"manufacturer": "Harrington", "model": "UMS3-0335"}
     )
     d = r.json()

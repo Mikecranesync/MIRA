@@ -547,6 +547,10 @@ services:
       # missing Doppler value degrades to the same behavior the module uses
       # when run standalone. MIRA_MANUAL_SENSE_WEB_ENABLED defaults off.
       SERPER_API_KEY: "${SERPER_API_KEY:-}"
+      # Required shared secret for /manual-discovery/search (#4160 S2). Unset =
+      # the endpoint answers 503 and never searches (fail closed). Its own key,
+      # not ASK_API_KEY: the Ignition kiosk posts an empty X-Mira-Key to /ask.
+      MANUAL_DISCOVERY_API_KEY: "${MANUAL_DISCOVERY_API_KEY:-}"
       MANUAL_SEARCH_TIMEOUT: "${MANUAL_SEARCH_TIMEOUT:-15}"
       MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
       MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-50}"
@@ -879,6 +883,8 @@ services:
       # error/non-match.
       - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
       - ASK_API_KEY=${ASK_API_KEY:-}
+      # Sent as X-Mira-Key to /manual-discovery/search only (#4160 S2).
+      - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
       # Nameplate crop-then-recognize (src/lib/nameplate/detect.ts): ONE shared
       # switch with the mira-ask endpoint above — the hub only calls
       # /nameplate/detect when this is "1", so a single Doppler flip turns the

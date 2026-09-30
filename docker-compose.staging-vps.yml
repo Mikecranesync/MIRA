@@ -338,6 +338,8 @@ services:
       # Manual discovery (nameplate confirm → official OEM manual) — stg-mira-ask.
       - MIRA_ASK_URL=http://stg-mira-ask:8011
       - ASK_API_KEY=${ASK_API_KEY:-}
+      # Sent as X-Mira-Key to /manual-discovery/search only (#4160 S2).
+      - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://127.0.0.1:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -639,6 +641,8 @@ services:
       - MIRA_PROCESS_TIMEOUT=90
       - MIRA_DIRECT_ANSWER_MODE=1
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # Required for /manual-discovery/search; unset = 503, no search (#4160 S2).
+      - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
       - MANUAL_SEARCH_TIMEOUT=${MANUAL_SEARCH_TIMEOUT:-15}
       - MANUAL_HEAD_TIMEOUT=${MANUAL_HEAD_TIMEOUT:-8}
       - MANUAL_DISCOVERY_TIMEOUT=${MANUAL_DISCOVERY_TIMEOUT:-50}
