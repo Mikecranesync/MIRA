@@ -829,6 +829,158 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
   });
 });
 
+// #4185/#4186 — the #4160 Pixel walk incident (c5941295415): the model
+// answered a manual-search question from its own training ("I'm unable to
+// browse the web… contact the manufacturer (SMC)") instead of MIRA's real
+// capability, while MIRA's own search for this identity was offered or
+// running. A false capability claim is wrong whether or not the rest of the
+// turn would be classified as a refusal — this guard runs unconditionally.
+describe("#4185/#4186: a false capability-denial claim while MIRA's own search is offered/running", () => {
+  const base = { question: "can you search the web for the manual", general: true, served: true, refused: false };
+
+  it.each([
+    "I'm unable to browse the web, so I can't look that up.",
+    "I can't browse the internet to find that for you.",
+    "I cannot search the web for this part.",
+    "I don't have internet access, so I can't check that.",
+  ])("capability denial, with MIRA's own acquisition running, is replaced: %s", (answerText) => {
+    const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsupported_specificity");
+      expect(v.replacement).toContain("I'm already searching for the official manual");
+      expect(v.replacement).not.toContain("unable to browse");
+    }
+  });
+
+  it.each([
+    "You may want to contact the manufacturer (SMC) directly for a copy of the manual.",
+    "I'd recommend you contact SMC support for the official documentation.",
+    "Please check their official website for the datasheet.",
+  ])("contact-the-maker deflection, with an unconfirmed candidate search running, is replaced: %s", (answerText) => {
+    const v = validateAnswer({ ...base, answerText, manualSearchRunning: "candidate" });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsupported_specificity");
+      expect(v.replacement).toContain("I'm already searching for the official manual");
+      expect(v.replacement).toContain("turned off until you check it");
+      expect(v.replacement).not.toContain("contact");
+    }
+  });
+
+  it("reproduces the exact #4160 incident text and replaces it", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText:
+        "I'm unable to browse the web, so I can't look that up. You may want to contact the manufacturer (SMC) directly or check their official website for more information.",
+      manualSearchRunning: "candidate",
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:capability-denial");
+  });
+
+  it("a curly apostrophe in the denial is still caught (scanText folds it)", () => {
+    const v = validateAnswer({ ...base, answerText: "I can’t browse the web for that.", manualSearchRunning: "confirmed" });
+    expect(v.ok).toBe(false);
+  });
+
+  it("negative control: the same denial phrase with no offer or acquisition running is left alone", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText: "I'm unable to browse the web, so I can't look that up.",
+      manualSearchRunning: null,
+    });
+    expect(v.ok).toBe(true);
+  });
+
+  it("negative control: a normal answer is untouched while a search is running", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText: "The fault typically clears after a power cycle of the drive.",
+      manualSearchRunning: "confirmed",
+    });
+    expect(v.ok).toBe(true);
+  });
+
+  // Codex #4193 F1: the first shipped guard matched on the bare phrase alone
+  // ("contact the manufacturer", "have internet access"), with no requirement
+  // that the subject be MIRA itself or that the deflection be about the
+  // manual — so it also swallowed ordinary, correct maintenance advice that
+  // has nothing to do with MIRA's own browsing capability. Every one of these
+  // must pass through UNCHANGED, whether a search is merely offered
+  // (candidate) or actually running (confirmed), and in both the general and
+  // the grounded (citation) lane.
+  describe("#4193 F1: warranty/service/network advice is never mistaken for a false capability claim", () => {
+    const WARRANTY_SERVICE = "Do not use the damaged unit. Contact the manufacturer for warranty service.";
+    const NETWORK_ADVICE = "The machine does not have internet access; check the network cable.";
+    const WARRANTY_CLAIM = "If it's still under warranty, contact the manufacturer for a warranty claim before you open the enclosure.";
+    const SERVICE_VISIT = "Contact the manufacturer support line to schedule a service visit for this unit.";
+    const PLC_NETWORK = "The PLC doesn't have internet access configured, so check your network switch and cabling first.";
+    // Round 2 (Codex F1): "I ... access" with NO web/internet/online object —
+    // an honest, correct capability statement manual discovery never provides.
+    const PLC_REMOTE_ACCESS = "I cannot access your PLC remotely. Check the network cable and share the fault message.";
+    const PRIVATE_RECORDS = "I can't access your private maintenance records.";
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["a warranty-claim deflection", WARRANTY_CLAIM],
+      ["a service-visit deflection", SERVICE_VISIT],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["PLC network-advice (no internet access)", PLC_NETWORK],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
+    ])("%s is left alone with a candidate search running, general lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "candidate" });
+      expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["a warranty-claim deflection", WARRANTY_CLAIM],
+      ["a service-visit deflection", SERVICE_VISIT],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["PLC network-advice (no internet access)", PLC_NETWORK],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
+    ])("%s is left alone with a confirmed search running, general lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
+    ])("%s is left alone with a confirmed search running, grounded lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, general: false, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
+    ])("%s is left alone with a candidate search running, grounded lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, general: false, manualSearchRunning: "candidate" });
+      expect(v.ok).toBe(true);
+    });
+
+    // The actual #4160 incident text, and its component verbs, must still be
+    // caught — round 2 narrows the OBJECT required, not the verb set.
+    it.each([
+      "I'm unable to browse the web, so I can't look that up.",
+      "I can't browse the internet to find that for you.",
+      "I cannot search the web for this part.",
+      "I don't have internet access, so I can't check that.",
+      "I cannot access the internet to look that up for you.",
+      "I can't look that up online for you.",
+    ])("the real incident denial is still caught: %s", (answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(false);
+    });
+  });
+});
+
 describe("#4098 part 2: established RTD definitions in general chat", () => {
   const Q77 = "A technician is comparing two RTD sensor types: PT100 and PT1000. What is the primary difference?";
   const Q6 =

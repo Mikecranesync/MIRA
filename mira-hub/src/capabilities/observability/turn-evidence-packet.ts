@@ -147,8 +147,10 @@ export type TurnEvidencePacketRetrieval = {
   photo_part_manual_lookup: {
     /** #4150: a search runs only on an exact, candidate-bound confirmation. */
     /** "limited" (quota refusal) and "unavailable" (search service unreachable)
-     *  mean no search completed — searched=false (#4171 Codex F1/F5). */
-    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
+     *  mean no search completed — searched=false (#4171 Codex F1/F5). "expired"
+     *  means the offer reached PART_SEARCH_OFFER_TURN_LIMIT and was not
+     *  re-shown (#4193 Codex F2). */
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable" | "expired";
     searched: boolean;
     part_number_sha256: string | null;
     found: boolean;

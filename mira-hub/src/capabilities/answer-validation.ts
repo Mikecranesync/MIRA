@@ -1081,6 +1081,80 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
   };
 }
 
+// #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
+// sometimes answers a manual-search question from its own training instead
+// of MIRA's real capability — "I'm unable to browse the web…contact the
+// manufacturer (SMC)" — even while MIRA's own search for this identity is
+// offered (a candidate acquisition, unconfirmed) or running (confirmed). Both
+// lanes, unconditional on `refused`: a false capability claim is wrong
+// whether or not the rest of the turn also reads as a refusal.
+//
+// #4193 Codex review round 1 F1: the first shipped version matched on the
+// bare verb phrase alone, so it also discarded a real, correct maintenance
+// answer — "Contact the manufacturer for warranty service" (an ordinary
+// escalation instruction, nothing to do with MIRA's own browsing) and "The
+// machine does not have internet access" (a statement about the MACHINE, not
+// about MIRA). Both are excluded structurally, not by a wider keyword list:
+//
+//   - CAPABILITY_DENIAL only fires on MIRA's OWN first-person capability
+//     claim — the subject must be "I" (optionally "I'm"/"I am"), immediately
+//     followed by the denial verb. "The machine does not have internet
+//     access" has no "I" subject at all, so it can never match, whatever verb
+//     tense follows.
+//   - CONTACT_MAKER_DEFLECTION only fires when the deflection is about
+//     OBTAINING THE MANUAL/DOCUMENT itself: the matched phrase must be
+//     followed, within the same sentence, by a document word (manual,
+//     documentation, datasheet, spec sheet, drawing, print, wiring diagram).
+//     "Contact the manufacturer for warranty service" names no document word
+//     before the sentence ends, so it is left alone; "contact SMC support for
+//     the official documentation" is still caught.
+//
+// #4193 Codex review round 2 F1: round 1's "I ... access" branch still had no
+// required object, so "I cannot access your PLC remotely" and "I can't access
+// your private maintenance records" — real, correct answers about a
+// capability manual discovery never claims — were also discarded. The denied
+// capability must now concern PUBLIC WEB / MANUAL DISCOVERY specifically:
+//   - "browse" alone always denies web access (no object needed — nobody
+//     says "browse" to mean anything else).
+//   - "search" / "access" / "look ... up" / "download" / "fetch" require a
+//     web-discovery object (internet, web, online, or the manufacturer's
+//     site/website) SOMEWHERE LATER IN THE SAME SENTENCE. "your PLC remotely"
+//     and "your private maintenance records" name no such object, so those
+//     two sentences can never match, however the verb is phrased.
+const WEB_DISCOVERY_OBJECT_SRC =
+  "(?:\\binternet\\b|\\bweb\\b|\\bonline\\b|\\bmanufacturer'?s?\\s+(?:site|website)\\b)";
+const CAPABILITY_DENIAL = new RegExp(
+  "\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+browse\\b" +
+    "|\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+(?:search|access|look\\s+\\w*\\s*up|download|fetch)\\b" +
+      `(?=(?:(?!\\.).){0,60}?${WEB_DISCOVERY_OBJECT_SRC})` +
+    "|\\bI\\s+(?:don'?t|don’t|do not|does not)\\s+have\\s+(?:internet|web)\\s+access\\b",
+  "i",
+);
+// A document/manual word that must appear SOMEWHERE in the rest of the
+// sentence for a "contact the maker" / "check their website" phrase to count
+// as a deflection about the manual — never crossing a sentence boundary
+// (the `(?!\.)` guard), so "Contact the manufacturer for warranty service."
+// cannot reach forward into an unrelated later sentence that happens to
+// mention a manual.
+const DEFLECTION_DOC_WORD_SRC =
+  "manuals?|documentation|datasheets?|spec(?:ification)?\\s*sheets?|drawings?|prints?|wiring\\s+diagrams?";
+const CONTACT_MAKER_DEFLECTION = new RegExp(
+  "\\bcontact\\s+(?:the\\s+)?(?:manufacturer|[\\w.&'-]+(?:\\s+[\\w.&'-]+){0,2}\\s+support)\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)` +
+    "|\\bcheck\\s+(?:their|its)\\s+official\\s+website\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)`,
+  "i",
+);
+
+function falseCapabilityClaim(text: string): string | null {
+  const m = CAPABILITY_DENIAL.exec(text) ?? CONTACT_MAKER_DEFLECTION.exec(text);
+  return m ? m[0] : null;
+}
+
+/** The bulleted fallback lines above are written as a list item; this guard
+ *  replaces a whole answer, so it needs the same sentence standing alone. */
+const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
@@ -1205,6 +1279,26 @@ export function validateAnswer(opts: {
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
   if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
+
+  // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
+  // unconditional on `refused`: it is wrong regardless of how the rest of the
+  // turn is classified. Only fires while MIRA's own part-search is actually
+  // offered or running for this identity — an idle notebook may legitimately
+  // tell the technician to fetch the manual themselves (MANUAL_SELF_SERVE_LINE).
+  if (opts.manualSearchRunning) {
+    const denial = falseCapabilityClaim(scanText);
+    if (denial) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:capability-denial",
+        detail: denial.slice(0, 160),
+        replacement: toStandaloneSentence(
+          opts.manualSearchRunning === "candidate" ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE : MANUAL_SEARCH_RUNNING_LINE,
+        ),
+      };
+    }
+  }
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
