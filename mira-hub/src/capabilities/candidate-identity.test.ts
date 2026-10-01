@@ -147,8 +147,21 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("rejects a value beside an unparsed serial label unless it is the labelled part", () => {
     expect(isSafeCandidateSearchIdentity("AB-1234567 serial number", "", "AB-1234567")).toBe(false);
   });
-  it("accepts a distinct, explicitly labelled part on a photo that also carries a serial", () => {
-    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(true);
+  it("strict: any serial label in either text means no automatic search, even beside a labelled part", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(false);
+    // Codex post-cap 3 F6: a normalised serial typed back ("TP 700" -> TP700).
+    expect(isSafeCandidateSearchIdentity("S/N: TP 700", "Find the manual for Siemens TP700", "TP700")).toBe(false);
+  });
+  it("strict: an identity the serial-safe reader did not produce never auto-searches", () => {
+    expect(isSafeCandidateSearchIdentity("", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03")).toBe(false);
+  });
+  it("strict: two labelled part numbers are ambiguous, not absent (Codex post-cap 3 F5)", () => {
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 1769-L33ER and P/N: 1769-L24ER", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 1769-L33ER and P/N: 1769-L24ER", "", "1769-L33ER")).toBe(false);
+  });
+  it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(true);
+    expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302")).toBe(true);
   });
   it("rejects a photo that names two machines", () => {
     expect(isSafeCandidateSearchIdentity("Siemens 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "TP700")).toBe(false);
@@ -164,7 +177,9 @@ describe("isSafeCandidateSearchIdentity", () => {
   });
   it("accepts a single-machine photo and a neutral question", () => {
     expect(isSafeCandidateSearchIdentity("Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC", "Find the manual for this", "SS5Y3-DUW01302")).toBe(true);
-    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort panel, 24 VDC", "Find the manual for this", "TP700")).toBe(true);
+    // TP700 is not a serial-safe part code, so under the strict rule it never
+    // auto-searches (#4173 tracks short models).
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort panel, 24 VDC", "Find the manual for this", "TP700")).toBe(false);
   });
   it("fails closed on a panel model beside a different order-number code (accepted cost of the narrowing)", () => {
     // Even when both describe one panel, two distinct identities never auto-search;

@@ -20,7 +20,7 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { mentionsSerialLabel, unambiguousPartNumber } from "./photo-part-lookup";
+import { mentionsSerialLabel, partCodes, unambiguousPartNumber } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -75,34 +75,25 @@ export function wantsManualDocumentation(message: string): boolean {
 }
 
 /**
- * May `part` leave MIRA as a candidate manual-search identity, given the photo
- * observation and the technician's typed text (#4172 Codex post-cap F6/F5)?
- * The ONE gate every candidate-basis proposal and acquisition passes, so the
- * rules cannot drift apart per path. Fail closed:
- *  - in EITHER text carrying a serial label, a value that text mentions must be
- *    the explicitly labelled part unambiguousPartNumber() returns for it, so a
- *    serial never leaves (ADR-0036) and typing a photo's serial back does not
- *    restore it (unambiguousPartNumber never returns a serial);
- *  - an explicitly labelled part (unambiguousPartNumber) in EITHER text that
- *    differs from `part` is a second machine — a P/N label must not hide it
- *    from the ambiguity scan, which blanks label values;
- *  - the photo and typed text TOGETHER name no machine other than `part`
- *    (proposeIdentityFromText's multi-machine rejection, aliases preserved).
+ * May `part` leave MIRA as an automatic, pre-confirmation manual-search identity,
+ * given the photo observation and the technician's typed text (#4172)? The ONE
+ * gate every candidate-basis proposal and acquisition passes. Strict by owner
+ * decision after six review rounds — all must hold, else no automatic search
+ * (a confirmed identity still searches through the existing confirmed path):
+ *  - no serial label in EITHER text (ADR-0036: no serial egress, under any
+ *    parser's normalisation);
+ *  - the serial-safe part codes across BOTH texts are exactly `part` — so the
+ *    identity came from the serial-safe reader, and two codes are ambiguity,
+ *    never absence;
+ *  - the photo and typed text TOGETHER name no other machine
+ *    (proposeIdentityFromText's multi-machine rejection).
  */
 export function isSafeCandidateSearchIdentity(photoText: string, typed: string, part: string): boolean {
   const key = part.trim().toUpperCase();
   if (!key) return false;
-  for (const text of [photoText, typed]) {
-    if (!text) continue;
-    if (
-      mentionsSerialLabel(text) &&
-      text.toUpperCase().includes(key) &&
-      unambiguousPartNumber(text)?.toUpperCase() !== key
-    ) {
-      return false;
-    }
-    const labelled = unambiguousPartNumber(text);
-    if (labelled && labelled.toUpperCase() !== key) return false;
-  }
-  return namesOnlyThisMachine([photoText, typed].filter(Boolean).join("\n"), part);
+  const texts = [photoText, typed].filter(Boolean);
+  if (texts.some(mentionsSerialLabel)) return false;
+  const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
+  if (codes.size !== 1 || !codes.has(key)) return false;
+  return namesOnlyThisMachine(texts.join("\n"), part);
 }

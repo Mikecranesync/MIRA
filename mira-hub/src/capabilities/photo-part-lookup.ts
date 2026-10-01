@@ -9,7 +9,12 @@ const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 
-export function unambiguousPartNumber(photoText: string): string | null {
+/**
+ * Every distinct, serial-safe part code in the text (#4172: exported so a caller
+ * can tell "no code" from "several codes", which unambiguousPartNumber() folds
+ * into the same null).
+ */
+export function partCodes(photoText: string): string[] {
   // Quotes are label punctuation, never identifier characters (#4150 F1/F4).
   const text = photoText.replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
   // A serial number must never be sent to web search (ADR-0036). Fail closed
@@ -36,8 +41,12 @@ export function unambiguousPartNumber(photoText: string): string | null {
     .filter((code) => !serials.has(code.toUpperCase()))
     .filter((code) => !/^X00[A-Z0-9]{7}$/i.test(code))
     .filter((code) => !/^\d+(?:\.\d+)?(?:\s*(?:-|to|\/)\s*\d+(?:\.\d+)?)?\s*(?:VAC|VDC|V|A|HZ|KHZ|W|KW|KVA|MA)$/i.test(code));
-  const unique = new Map(found.map((code) => [code.toUpperCase(), code]));
-  return unique.size === 1 ? [...unique.values()][0] : null;
+  return [...new Map(found.map((code) => [code.toUpperCase(), code])).values()];
+}
+
+export function unambiguousPartNumber(photoText: string): string | null {
+  const codes = partCodes(photoText);
+  return codes.length === 1 ? codes[0] : null;
 }
 
 /**

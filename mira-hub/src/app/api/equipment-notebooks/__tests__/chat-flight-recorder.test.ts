@@ -745,6 +745,39 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
+    it("Codex post-cap 3 F6: photo 'S/N: TP 700' + typed 'Siemens TP700' (corpus proposal) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o16", sessionId: "s1", text: "S/N: TP 700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for Siemens TP700");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 3 F5: two labelled parts on the photo + a typed corpus proposal starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o17", sessionId: "s1", text: "Controller P/N: 1769-L33ER and P/N: 1769-L24ER",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("strict: a typed corpus proposal alone still offers 'Use its manuals' but never auto-searches", async () => {
+      domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
+      filesMock.photoLinkedToTarget.mockResolvedValue(null as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
     it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
       siemensLabel();
       const f = await ask("Find the manual for this");
