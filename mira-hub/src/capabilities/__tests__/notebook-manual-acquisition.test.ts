@@ -261,6 +261,25 @@ describe("Codex #4118 F2 — what the record says was actually attached", () => 
     });
     expect(r.attached_indexed).toBe(true);
   });
+  it("#4172: an attached, indexed, applicability-verified candidate is recorded as promoting on confirm", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, matchState: "candidate", candidateApplicability: "verified" }, candidate: { host: "h" } },
+    });
+    expect(r.promotes_on_confirm).toBe(true);
+  });
+  it("#4172: a 'candidate' applicability verdict, or nothing attached, never promotes on confirm", () => {
+    const cand = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, matchState: "candidate", candidateApplicability: "candidate" }, candidate: { host: "h" } },
+    });
+    expect(cand.promotes_on_confirm).toBe(false);
+    const unattached = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: null, indexed: false, candidateApplicability: "verified" }, candidate: { host: "h" } },
+    });
+    expect(unattached.promotes_on_confirm).toBe(false);
+  });
   it("another request still indexing the same bytes → stays 'running' so the stale recovery retries it", () => {
     const r = recordFromOutcome("K", null, {
       status: "candidate_review",
@@ -502,10 +521,38 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     expect(t).not.toMatch(/ask again in a minute/);
   });
 
-  it("'candidate_review' invites confirmation rather than pointing at Sources", () => {
-    const t = acquisitionDeclineText(rec("candidate_review"), "K", "SMC SS5Y3-DUW01302", "candidate");
+  // Codex post-cap 4 F9 (#4172): only promise "confirm and I'll answer from it"
+  // when confirming will actually promote an attached, applicability-verified
+  // document (migration 104 / fencedWriter's promoteNow). Otherwise give the
+  // real next step.
+  it("'candidate_review' that confirmation WILL promote invites the confirm tap, not Sources", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: true, promotes_on_confirm: true },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    );
     expect(t).toMatch(/Use its manuals/);
     expect(t).not.toMatch(/Sources/);
+  });
+
+  it("'candidate_review' with an attached document confirmation will NOT promote points at Sources, never promises", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: true, promotes_on_confirm: false },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    )!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).not.toMatch(/once you do/);
+    expect(t).toMatch(/Sources/);
+  });
+
+  it("a review-only result (nothing attached) gives its URL and the upload step, never the confirm promise", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: false, candidate_url: "https://oem.example/landing" },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    )!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).not.toMatch(/once you do/);
+    expect(t).toContain("https://oem.example/landing");
+    expect(t).toMatch(/upload/i);
   });
 
   it("'complete' (the confirmed-same-key race) still invites the explicit confirm tap", () => {

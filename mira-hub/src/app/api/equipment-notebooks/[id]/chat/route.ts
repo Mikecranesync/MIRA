@@ -1826,7 +1826,7 @@ async function handleChatTurn(
       const candidate = extractCandidateIdentity(photoTextForOem, message);
       // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
       // ambiguity across photo AND typed text) — see isSafeCandidateSearchIdentity.
-      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part)) return null;
+      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part, candidate.manufacturer)) return null;
       return { manufacturer: candidate.manufacturer, model: candidate.part };
     } catch (err) {
       console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
@@ -1999,7 +1999,7 @@ async function handleChatTurn(
     const model =
       candidatePart &&
       (!oemModel || oemModel.value.toUpperCase() === candidatePart.toUpperCase()) &&
-      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart)
+      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart, oemManufacturer.name)
         ? candidatePart
         : null;
     if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
@@ -2095,7 +2095,7 @@ async function handleChatTurn(
     }) !== null &&
     // The single egress gate: every proposal path (including #4120's corpus
     // proposal) passes the same candidate validator before any search starts.
-    isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model) &&
+    isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
   const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any

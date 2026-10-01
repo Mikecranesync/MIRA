@@ -29,9 +29,9 @@ const DICTIONARY_MAKERS = new Set(["sick", "banner", "parker", "eaton", "emerson
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The maker named in `text`, upper-cased as printed on a label, or null when
- *  none or more than one distinct maker is named. */
-export function makerFromText(text: string): string | null {
+/** Every maker group (the OEM table's first domain) named in `text`, mapped to the
+ *  longest matched name. Aliases of one maker share a group. */
+function makerGroups(text: string): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
@@ -43,6 +43,13 @@ export function makerFromText(text: string): string | null {
     const prior = hits.get(group);
     if (!prior || name.length > prior.length) hits.set(group, name);
   }
+  return hits;
+}
+
+/** The maker named in `text`, upper-cased as printed on a label, or null when
+ *  none or more than one distinct maker is named. */
+export function makerFromText(text: string): string | null {
+  const hits = makerGroups(text);
   if (hits.size !== 1) return null;
   return [...hits.values()][0].toUpperCase();
 }
@@ -86,14 +93,20 @@ export function wantsManualDocumentation(message: string): boolean {
  *    identity came from the serial-safe reader, and two codes are ambiguity,
  *    never absence;
  *  - the photo and typed text TOGETHER name no other machine
- *    (proposeIdentityFromText's multi-machine rejection).
+ *    (proposeIdentityFromText's multi-machine rejection);
+ *  - neither text names a maker other than `manufacturer` (aliases of one maker
+ *    share an OEM-table group); a proposed maker the table cannot place is
+ *    never checked against a maker the text does name — fail closed.
  */
-export function isSafeCandidateSearchIdentity(photoText: string, typed: string, part: string): boolean {
+export function isSafeCandidateSearchIdentity(photoText: string, typed: string, part: string, manufacturer: string): boolean {
   const key = part.trim().toUpperCase();
   if (!key) return false;
   const texts = [photoText, typed].filter(Boolean);
   if (texts.some(mentionsSerialLabel)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
+  const proposed = new Set(makerGroups(manufacturer).keys());
+  const named = texts.flatMap((t) => [...makerGroups(t).keys()]);
+  if (named.some((g) => !proposed.has(g))) return false;
   return namesOnlyThisMachine(texts.join("\n"), part);
 }

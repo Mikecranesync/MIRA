@@ -60,6 +60,10 @@ export interface AcquisitionRecord {
   candidate_url?: string | null;
   /** An INDEXED document was attached to this notebook's sources (reviewable in Sources). */
   attached_indexed?: boolean;
+  /** #4172: confirming the candidate identity WILL turn this document on — it is
+   *  attached, indexed, and stamped candidateApplicability='verified' (the only
+   *  rows migration 104 / fencedWriter promote). Never true otherwise. */
+  promotes_on_confirm?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
@@ -216,7 +220,14 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
 export function recordFromOutcome(key: string, startedAt: string | null, out: ManualAcquisitionOutcome): AcquisitionRecord {
   const p = out.payload as {
     candidate?: { host?: unknown; url?: unknown } | null;
-    manual?: { matchState?: unknown; docId?: unknown; fileId?: unknown; indexed?: unknown; attached?: unknown } | null;
+    manual?: {
+      matchState?: unknown;
+      docId?: unknown;
+      fileId?: unknown;
+      indexed?: unknown;
+      attached?: unknown;
+      candidateApplicability?: unknown;
+    } | null;
     oemRequestUrl?: unknown;
     warning?: unknown;
     reason?: unknown;
@@ -258,6 +269,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     oem_request_url: str(p.oemRequestUrl),
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
+    promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified",
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -617,7 +629,14 @@ export function acquisitionDeclineText(
       case "running":
         return `I'm looking for the official ${label} manual now. Tap "Use its manuals" to confirm this is your part — I'll answer from the manual once you do.`;
       case "candidate_review":
-        return `I found a possible manual for the ${label}. Tap "Use its manuals" to confirm this is your part — I'll check it and answer from it once you do.`;
+        // Codex post-cap 4 F9 (#4172): promise "confirm and I'll answer from it"
+        // ONLY when confirming will actually promote an attached, verified
+        // document. Otherwise the shared copy below gives the real next step
+        // (check it in Sources, or the URL and the upload instruction).
+        if (rec.promotes_on_confirm) {
+          return `I found the official ${label} manual. Tap "Use its manuals" to confirm this is your part, and I'll answer from it and show you the page.`;
+        }
+        break;
       case "complete":
         return `I found the official ${label} manual. Tap "Use its manuals" to confirm this is your part, and I'll answer from it and show you the page.`;
       default:

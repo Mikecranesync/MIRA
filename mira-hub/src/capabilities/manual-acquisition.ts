@@ -460,6 +460,10 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let matchState: string = "candidate";
   let attached = true;
   let removedDuringRun = false;
+  // #4172 Codex post-cap 4 F9: what the chat may promise a candidate-basis turn
+  // ("confirm and I'll answer from it") depends on this stamp, so the outcome
+  // carries it alongside the persisted evidence.
+  let candidateApplicability: "verified" | "candidate" | null = null;
   // A database failure while judging the manual is transient: the manual stays
   // an UNDECIDED candidate (the pending evidence from the attach above, which
   // a retry may still promote), and the outcome says "retry", never "reviewed"
@@ -522,6 +526,8 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
         ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated ? "verified" : "candidate" }
         : {}),
     };
+    candidateApplicability =
+      (verifiedEvidence as { candidateApplicability?: "verified" | "candidate" }).candidateApplicability ?? null;
     // The route writes unconditionally (the technician is confirming right
     // now). A background caller passes a FENCED writer that writes only an
     // undecided candidate it still owns; otherwise it writes NOTHING (Codex
@@ -566,6 +572,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       indexed: manualDocId !== null,
       reused,
       attached,
+      ...(candidateApplicability ? { candidateApplicability } : {}),
     },
     applicability: verdict,
     message: !attached

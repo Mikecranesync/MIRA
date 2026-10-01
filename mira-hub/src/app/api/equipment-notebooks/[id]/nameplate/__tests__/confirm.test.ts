@@ -75,6 +75,7 @@ vi.mock("@/lib/visual-evidence-context", () => ({
 
 import { POST } from "../confirm/route";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
+import { recordFromOutcome } from "@/capabilities/notebook-manual-acquisition";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -603,6 +604,10 @@ describe("manual import: candidate until the document proves itself", () => {
       expect(ev.decisionMethod).toBe("catalog_number_exact"); // the verdict IS verified...
       expect(ev.candidateApplicability).toBe("candidate"); // ...but never stamped as such
       expect(out.status).toBe("candidate_review");
+      // Codex post-cap 4 F9: the outcome carries the stamp, so the chat never
+      // promises that confirming will turn this document on.
+      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("candidate");
+      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
     });
 
     it("control: the SAME text, with a VALIDATED discovery result, stamps candidateApplicability='verified'", async () => {
@@ -610,10 +615,12 @@ describe("manual import: candidate until the document proves itself", () => {
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
       provingText();
       const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
-      await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
       const ev = patch.matchEvidence as Record<string, unknown>;
       expect(ev.candidateApplicability).toBe("verified");
+      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("verified");
+      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(true);
     });
   });
 

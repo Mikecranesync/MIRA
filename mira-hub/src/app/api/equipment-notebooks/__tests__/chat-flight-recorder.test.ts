@@ -778,6 +778,17 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
+    it("Codex post-cap 4 F8: SMC on the photo + typed 'Siemens SS5Y3-…' (corpus proposal) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o18", sessionId: "s1", text: "Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for Siemens SS5Y3-DUW01302");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
     it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
       siemensLabel();
       const f = await ask("Find the manual for this");
