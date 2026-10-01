@@ -172,6 +172,11 @@ describe("isSafeCandidateSearchIdentity", () => {
     expect(isSafeCandidateSearchIdentity("SMC Ser. No. AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
     expect(isSafeCandidateSearchIdentity("SMC SER: AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
   });
+  it("rejects any turn whose photo or typed text carries an asset-tag label (Codex post-cap 14 F14)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
+  });
   it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
     expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);

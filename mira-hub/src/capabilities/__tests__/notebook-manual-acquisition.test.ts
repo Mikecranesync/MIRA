@@ -515,16 +515,18 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     oem_request_url: null,
   });
 
-  // Codex post-cap 13 F13 (#4172): no shipping client renders the
-  // identity_proposal frame or offers a "Use its manuals" action (the client
-  // half is #4095 / #3626), so the copy names NO button. It says what is true:
-  // the search is running, and the manual answers once THIS notebook is
-  // confirmed as that machine (migration 104 promotes on any such confirmation).
-  it("'running' says the search is on and that confirming this notebook as the machine unlocks it — naming no button", () => {
+  // Codex post-cap 13/14 F13 (#4172): no shipping client renders the
+  // identity_proposal frame, offers "Use its manuals", or can confirm an
+  // EXISTING notebook's make/model (#4095 / #3626). The one action a
+  // technician has on the acquired manual is turning it on in Sources (Hub
+  // notebook page, classic mobile notebook screen), so the copy points there
+  // and promises nothing about confirmation.
+  it("'running' says the search is on and that the manual lands in Sources, turned off, to check — no button, no confirmation promise", () => {
     const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
     expect(t).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual now/);
-    expect(t).toMatch(/once this notebook is confirmed as that machine/i);
-    expect(t).not.toMatch(/Use its manuals|Tap|tap /);
+    expect(t).toMatch(/Sources/);
+    expect(t).toMatch(/turn it on/);
+    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
     expect(t).not.toMatch(/ask again in a minute/);
   });
 
@@ -532,15 +534,14 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
   // when confirming will actually promote an attached, applicability-verified
   // document (migration 104 / fencedWriter's promoteNow). Otherwise give the
   // real next step.
-  it("'candidate_review' that confirmation WILL promote says so — naming no button, not Sources", () => {
+  it("'candidate_review', even one confirmation WOULD promote, points at Sources and promises nothing about confirmation", () => {
     const t = acquisitionDeclineText(
       { ...rec("candidate_review"), attached_indexed: true, promotes_on_confirm: true },
       "K", "SMC SS5Y3-DUW01302", "candidate",
     )!;
-    expect(t).toMatch(/found the official SMC SS5Y3-DUW01302 manual/);
-    expect(t).toMatch(/once this notebook is confirmed as that machine/i);
-    expect(t).not.toMatch(/Use its manuals|Tap|tap /);
-    expect(t).not.toMatch(/Sources/);
+    expect(t).toMatch(/Sources/);
+    expect(t).toMatch(/turn it on/);
+    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
   });
 
   it("'candidate_review' with an attached document confirmation will NOT promote points at Sources, never promises", () => {
@@ -577,7 +578,7 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).toBe(
       acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "confirmed"),
     );
-    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).not.toMatch(/once this notebook is confirmed/);
+    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).not.toMatch(/turned off until you check it/);
   });
 
   it("terminal honest-fact states (no manual found, a limit, a scan) are shared regardless of basis", () => {

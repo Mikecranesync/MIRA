@@ -20,7 +20,7 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { mentionsSerialLabel, partCodes, unambiguousPartNumber } from "./photo-part-lookup";
+import { mentionsAssetLabel, mentionsSerialLabel, partCodes, unambiguousPartNumber } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -87,8 +87,8 @@ export function wantsManualDocumentation(message: string): boolean {
  * gate every candidate-basis proposal and acquisition passes. Strict by owner
  * decision after six review rounds — all must hold, else no automatic search
  * (a confirmed identity still searches through the existing confirmed path):
- *  - no serial label in EITHER text (ADR-0036: no serial egress, under any
- *    parser's normalisation);
+ *  - no serial label and no asset-tag / customer-identifier label in EITHER
+ *    text (ADR-0036: no serial or asset-tag egress, under any normalisation);
  *  - the serial-safe part codes across BOTH texts are exactly `part` — so the
  *    identity came from the serial-safe reader, and two codes are ambiguity,
  *    never absence;
@@ -103,6 +103,9 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   if (!key) return false;
   const texts = [photoText, typed].filter(Boolean);
   if (texts.some(mentionsSerialLabel)) return false;
+  // A customer-assigned identifier anywhere (asset tag, unit id, …) is the
+  // same fail-closed signal as a serial label (ADR-0036; Codex post-cap 14 F14).
+  if (texts.some(mentionsAssetLabel)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());

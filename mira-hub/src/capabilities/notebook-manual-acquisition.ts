@@ -624,16 +624,16 @@ export async function reconcileAcquisition(
 
 /**
  * `basis` (#4160 S6, default "confirmed" — unchanged copy below): for
- * "candidate" the technician has not yet accepted this identity, so the
- * running / promotable-candidate copy says the search is on and that the
- * manual answers once THIS notebook is confirmed as that machine (migration
- * 104 promotes on any such confirmation) — rather than directing them to
- * Sources, which they cannot usefully act on for an identity that isn't
- * theirs to turn on yet (PRD R16-lite). It names NO button: no shipping
- * client renders the `identity_proposal` frame or offers a chat-side confirm
- * yet (Codex #4172 post-cap 13 F13; the client half is #4095 / #3626). Every
- * other state (no manual found, a limit, a scanned PDF, …) is an honest fact
- * independent of confirmation and keeps the shared copy below.
+ * "candidate" the technician has not yet accepted this identity. The only
+ * action a shipping client gives them on the acquired manual is turning it on
+ * in Sources (Hub notebook page; classic mobile notebook screen) — no client
+ * renders the `identity_proposal` frame, offers a chat-side confirm, or can
+ * confirm an EXISTING notebook's make/model (Codex #4172 F13; the client half
+ * is #4095 / #3626). So the running copy says where the manual will land and
+ * what to do with it, and every finished state uses the shared copy below,
+ * which already points at Sources or gives the URL and the upload step. It
+ * never names a button and never promises anything about confirmation
+ * (migration 104 still promotes if a future client confirms the same key).
  */
 export function acquisitionDeclineText(
   rec: AcquisitionRecord | null,
@@ -648,16 +648,13 @@ export function acquisitionDeclineText(
   if (basis === "candidate") {
     switch (rec.state) {
       case "running":
-        return `I'm looking for the official ${label} manual now. Once this notebook is confirmed as that machine, I'll answer from the manual and show you the page.`;
-      case "candidate_review":
-        // Codex post-cap 4 F9 (#4172): promise "confirm and I'll answer from it"
-        // ONLY when confirming will actually promote an attached, verified
-        // document. Otherwise the shared copy below gives the real next step
-        // (check it in Sources, or the URL and the upload instruction).
-        if (rec.promotes_on_confirm) {
-          return `I found the official ${label} manual. Once this notebook is confirmed as that machine, I'll answer from it and show you the page.`;
-        }
-        break;
+        return `I'm looking for the official ${label} manual now. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it and show you the page.`;
+      // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): never a
+      // promise about confirmation — no shipping client can confirm an
+      // EXISTING notebook's identity (#4095 / #3626). The shared copy below
+      // gives the one real next step: check it in Sources and turn it on, or
+      // the URL and the upload instruction. `promotes_on_confirm` stays on the
+      // record so a client that ships confirmation later can use it.
       // "complete" (Codex post-cap 6 F11): a cached complete record can outlive a
       // later revocation, and confirming never re-enables a revoked source, so
       // the shared copy below (pointing at Sources) is used instead of a promise.

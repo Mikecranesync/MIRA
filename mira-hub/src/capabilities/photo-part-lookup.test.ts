@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
@@ -276,6 +276,37 @@ describe("abbreviated serial labels", () => {
     "control: %s is not a serial label",
     (text) => {
       expect(mentionsSerialLabel(text)).toBe(false);
+      expect(unambiguousPartNumber(text)).toBe("SY3120-5LZD");
+    },
+  );
+});
+
+// Codex post-cap 14 F14 (#4172): a customer-assigned identifier (asset tag,
+// asset/equipment/unit id, inventory or work-order number) is never a part
+// and never leaves (ADR-0036) — the same fail-closed rule as a serial label.
+describe("asset-tag labels", () => {
+  it.each([
+    "SMC Asset tag: VALVE-1234",
+    "SMC Asset ID: AB-1234567",
+    "Tag No. 12-3456 SY3120-5LZD",
+    "Equipment ID: EQ-00123 SY3120-5LZD",
+    "Inventory # 44-1234 SY3120-5LZD",
+    "Unit No: U-1234 SY3120-5LZD",
+    "WO 123456 SY3120-5LZD",
+    "Fixed asset 7788-01 SY3120-5LZD",
+    "SMC SY3120-5LZD (asset tag)",
+  ])("%s carries an asset label; no unlabelled code survives it", (text) => {
+    expect(mentionsAssetLabel(text)).toBe(true);
+    expect(unambiguousPartNumber(text)).toBeNull();
+  });
+  it("an explicitly labelled part survives beside an asset tag, and the tag itself is never the part", () => {
+    expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+  });
+  it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list"])(
+    "control: %s is ordinary prose",
+    (text) => {
+      expect(mentionsAssetLabel(text)).toBe(false);
       expect(unambiguousPartNumber(text)).toBe("SY3120-5LZD");
     },
   );

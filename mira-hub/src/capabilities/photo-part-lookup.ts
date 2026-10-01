@@ -30,6 +30,19 @@ const SERIAL_LABEL = new RegExp(
     String.raw`|(?<=\d[A-Z0-9./-]*[^A-Za-z0-9]+)(?:ser|sr)\.?(?=\s*(?:$|[\r\n]|[^A-Za-z0-9\s.])))`,
   "gi",
 );
+// A customer-assigned identifier (ADR-0036: never sent to search). Strong words
+// (asset, tag, inventory, CMMS, SAP, work order, WO) are labels when followed by
+// an id word or straight by a digit-bearing code, or as a "(asset tag)" suffix;
+// weak words that are ordinary prose on their own (equipment, unit, machine,
+// location, site, plant, area, line, cell) only with an id word AND a code.
+const ID_WORD = String.raw`(?:tag|id|${NUM_WORD}|#)`;
+const CODE_AHEAD = String.raw`(?=(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))`;
+const ASSET_LABEL = new RegExp(
+  String.raw`\b(?:(?:fixed\s*asset|asset|tag|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])(?:${LABEL_SEP}${ID_WORD}(?![a-z])\.?)?${LABEL_SEP}(?:${CODE_AHEAD}|(?<=[(\[][^()\[\]]*)(?=\s*[)\]]))` +
+    String.raw`|(?:equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${LABEL_SEP}${ID_WORD}(?![a-z])\.?${LABEL_SEP}${CODE_AHEAD})`,
+  "gi",
+);
+
 const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|1P)\s*[:#]?\s*([A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
@@ -64,8 +77,10 @@ export function partCodes(photoText: string): string[] {
   const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
   // Any serial label on the photo means only an explicitly labelled part number
   // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
-  // "AB-1234567 serial number") — #4150 review r4 F1.
-  const serialLabelPresent = serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text);
+  // "AB-1234567 serial number") — #4150 review r4 F1. A customer-assigned
+  // identifier label (asset tag, unit id, …) is the same signal (F14, ADR-0036).
+  const serialLabelPresent =
+    serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text) || new RegExp(ASSET_LABEL.source, "i").test(text);
   const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)].map((m) => trimCode(m[0]));
   const found = [...unlabelled, ...labelled]
     .filter((code) => !serials.has(code.toUpperCase()))
@@ -85,6 +100,10 @@ export function unambiguousPartNumber(photoText: string): string | null {
  * labelled part number that unambiguousPartNumber() returns — never a value
  * another parser (the OEM retrieval model reader) picked out (ADR-0036).
  */
+export function mentionsAssetLabel(text: string): boolean {
+  return new RegExp(ASSET_LABEL.source, "i").test(normalize(text));
+}
+
 export function mentionsSerialLabel(text: string): boolean {
   return new RegExp(SERIAL_LABEL.source, "i").test(normalize(text));
 }
