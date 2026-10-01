@@ -83,6 +83,9 @@ export function wantsManualDocumentation(message: string): boolean {
  *    the explicitly labelled part unambiguousPartNumber() returns for it, so a
  *    serial never leaves (ADR-0036) and typing a photo's serial back does not
  *    restore it (unambiguousPartNumber never returns a serial);
+ *  - an explicitly labelled part (unambiguousPartNumber) in EITHER text that
+ *    differs from `part` is a second machine — a P/N label must not hide it
+ *    from the ambiguity scan, which blanks label values;
  *  - the photo and typed text TOGETHER name no machine other than `part`
  *    (proposeIdentityFromText's multi-machine rejection, aliases preserved).
  */
@@ -98,6 +101,8 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
     ) {
       return false;
     }
+    const labelled = unambiguousPartNumber(text);
+    if (labelled && labelled.toUpperCase() !== key) return false;
   }
   return namesOnlyThisMachine([photoText, typed].filter(Boolean).join("\n"), part);
 }

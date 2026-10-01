@@ -1992,12 +1992,16 @@ async function handleChatTurn(
       candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
         ? candidate.part
         : null;
-    // #4172 Codex r3/post-cap: the OEM retrieval parser is not a search-egress
-    // authority — its model, like the label reader's part, must pass the ONE
-    // candidate validator (no serial from either input, one machine across both).
-    const model = [oemModel?.value ?? null, candidatePart].find(
-      (m): m is string => Boolean(m) && isSafeCandidateSearchIdentity(photoTextForOem, message, m!),
-    );
+    // #4172 (owner decision after Codex post-cap 2): the search identity comes
+    // ONLY from the serial-safe label reader. The OEM retrieval parser may
+    // normalise a serial ("TP 700" → TP700) or pick a second machine, so it never
+    // chooses what leaves; if it names a DIFFERENT model, nothing is searched.
+    const model =
+      candidatePart &&
+      (!oemModel || oemModel.value.toUpperCase() === candidatePart.toUpperCase()) &&
+      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart)
+        ? candidatePart
+        : null;
     if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
   }
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the

@@ -562,25 +562,66 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
         obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
       } as never);
 
-    it("zero applicable chunks → identity_proposal is emitted and candidate acquisition starts", async () => {
+    // Narrowed (owner decision, Codex post-cap 2): on the corpus-maker path the
+    // search identity comes ONLY from the serial-safe label reader. A short model
+    // only the OEM retrieval parser recognises (TP700) no longer auto-searches.
+    it("narrowed: a model only the OEM parser recognises (TP700) proposes nothing and starts no search", async () => {
       siemensLabel();
-      // The describe-level beforeEach already queues ONE `[]` once-value for
-      // this test's single retrieveManualChunks call — do not queue a
-      // SECOND one here, or it leaks unconsumed into the next test (vitest's
-      // once-queue is FIFO and survives vi.clearAllMocks(), which clears
-      // call history, not queued implementations).
       acqMock.acquisitionEnabled.mockReturnValue(true);
       acqMock.startManualAcquisition.mockResolvedValue(true);
       const f = await ask("Find the manual for this");
-      const proposal = f.find((x) => x.kind === "identity_proposal");
-      expect(proposal).toMatchObject({ manufacturer: "Siemens", model: "TP700" });
-      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
-      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
-        expect.objectContaining({
-          identity: { identityStatus: "user_confirmed", manufacturer: "Siemens", model: "TP700", catalogNumber: "" },
-          basis: "candidate",
-        }),
-      );
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2 F6: a spaced serial the OEM parser normalises ('S/N: TP 700') is never searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o12", sessionId: "s1", text: "Siemens S/N: TP 700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2 F5: a P/N-labelled part plus a second model on the photo starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o13", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // The OEM parser reads a spaced "V 20" as V20 where the ambiguity scan does
+    // not — so the explicit "OEM names a different model → no search" check is
+    // what stops this one.
+    it("narrowed: the OEM parser naming a different model than the labelled part (V 20 vs 6ES…) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o15", sessionId: "s1", text: "Siemens V 20 P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2: a corpus proposal from typed text + a photo with a different labelled part starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o14", sessionId: "s1", text: "Controller P/N: 1769-L33ER",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
     // Codex r2 F2 (#4172): a part the OEM model parser does not know (oemModel

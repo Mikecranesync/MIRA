@@ -157,11 +157,18 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("rejects a second machine split across photo and typed text", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N 6ES7214-1AG40-0XB0", "and the TP700 too", "6ES7214-1AG40-0XB0")).toBe(false);
   });
+  it("rejects a candidate that differs from an explicitly labelled part in either text", () => {
+    // A P/N label must not hide a second machine (Codex post-cap 2 F5).
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "TP700")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 6ES7214-1AG40-0XB0", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03")).toBe(false);
+  });
   it("accepts a single-machine photo and a neutral question", () => {
     expect(isSafeCandidateSearchIdentity("Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC", "Find the manual for this", "SS5Y3-DUW01302")).toBe(true);
     expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort panel, 24 VDC", "Find the manual for this", "TP700")).toBe(true);
   });
-  it("keeps a panel and its own 6AV order number as one machine", () => {
-    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort 6AV2124-0GC01-0AX0", "", "TP700")).toBe(true);
+  it("fails closed on a panel model beside a different order-number code (accepted cost of the narrowing)", () => {
+    // Even when both describe one panel, two distinct identities never auto-search;
+    // the technician can still confirm the machine and bind it.
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort 6AV2124-0GC01-0AX0", "", "TP700")).toBe(false);
   });
 });
