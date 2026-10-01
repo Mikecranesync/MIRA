@@ -21,6 +21,17 @@ export interface DiscoveryIdentity {
   catalogNumber?: string | null;
 }
 
+/**
+ * Who is asking (#4160 S4, PRD R13/R14) — required so the router can reserve
+ * the provider query against per-user/tenant/global Postgres caps. userId is
+ * nullable in the TYPE (callers without a signed-in session exist) but a null
+ * value means the search never runs — see discoverManual().
+ */
+export interface DiscoveryContext {
+  tenantId: string;
+  userId: string | null;
+}
+
 export interface DiscoveryCandidate {
   url: string;
   title: string;
@@ -49,6 +60,11 @@ export interface DiscoveryResult {
    * discovery service (200 right now) — the official next step when nothing
    * could be found or trusted. */
   oemRequestUrl: string | null;
+  /** The search service answered with reason="quota_exceeded" — a per-user,
+   * per-tenant, or global daily/monthly cap is at capacity RIGHT NOW (#4160
+   * S4). This is NEVER the same as "no manual exists" (PRD R5) — the caller
+   * must say "limit reached", not "not found". */
+  quotaExceeded: boolean;
 }
 
 function requestUrl(body: Record<string, unknown> | null | undefined): string | null {
@@ -75,6 +91,7 @@ function unavailable(reason = UNAVAILABLE): DiscoveryResult {
     trustedDistributorHost: false,
     reason,
     oemRequestUrl: null,
+    quotaExceeded: false,
   };
 }
 
@@ -89,6 +106,22 @@ function notFound(reason = NO_MANUAL): DiscoveryResult {
     trustedDistributorHost: false,
     reason,
     oemRequestUrl: null,
+    quotaExceeded: false,
+  };
+}
+
+function quotaExceededResult(reason: string, oemRequestUrl: string | null): DiscoveryResult {
+  return {
+    serviceAvailable: true,
+    found: false,
+    candidate: null,
+    validated: false,
+    isDirectPdf: false,
+    oemHost: false,
+    trustedDistributorHost: false,
+    reason,
+    oemRequestUrl,
+    quotaExceeded: true,
   };
 }
 
@@ -101,13 +134,27 @@ function str(v: unknown): string | null {
 /**
  * Ask the router for an official manual for this identity. Best-effort:
  * resolves to a typed result, never throws.
+ *
+ * `ctx` identifies the caller (#4160 S4, PRD R13/R14) — every search is
+ * reserved against per-user/tenant/global Postgres caps on the router side,
+ * so a caller with no signed-in user is refused HERE, before any request:
+ * never invent an identity to let a search through.
  */
-export async function discoverManual(identity: DiscoveryIdentity): Promise<DiscoveryResult> {
+export async function discoverManual(
+  identity: DiscoveryIdentity,
+  ctx: DiscoveryContext,
+): Promise<DiscoveryResult> {
   const manufacturer = str(identity.manufacturer);
   const model = str(identity.model);
   const catalogNumber = str(identity.catalogNumber);
   if (!manufacturer || !(model || catalogNumber)) {
     return notFound("manufacturer and model are required to search for a manual");
+  }
+
+  const tenantId = str(ctx.tenantId);
+  const userId = str(ctx.userId);
+  if (!tenantId || !userId) {
+    return unavailable("a signed-in user is required to search for a manual");
   }
 
   const base = (process.env.MIRA_ASK_URL ?? DEFAULT_ASK_URL).replace(/\/+$/, "");
@@ -117,6 +164,9 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Required identity (#4160 S4) — the router 400s without it.
+        "X-Mira-Tenant": tenantId,
+        "X-Mira-User": userId,
         // The router's own key (#4160 S2) — not the shared ASK_API_KEY, which
         // belongs to the kiosk-facing endpoints. Unset → the router answers
         // 503, which lands below as "search service unavailable".
@@ -140,6 +190,24 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   }
 
   const body = (raw ?? {}) as Record<string, unknown>;
+  if (body.reason === "quota_exceeded") {
+    // A cap denial must NEVER look like "no manual exists" (PRD R5) — a
+    // distinct, named outcome so the caller says "limit reached".
+    return quotaExceededResult(
+      str(body.reason_detail) || "manual-search limit reached",
+      requestUrl(body),
+    );
+  }
+  if (body.reason === "search_unavailable") {
+    // Pre-existing defect fixed here (#4160 S4 code review): the router
+    // answers HTTP 200 with found=false, reason="search_unavailable" for BOTH
+    // a timeout/exception AND quota_unavailable — an infra miss, not "we
+    // looked and found nothing". The generic found!==true branch below used
+    // to map this to notFound() (serviceAvailable:true), which acquireManualForIdentity
+    // then turned into "no_manual_found" — indistinguishable from a genuine
+    // miss. This must read as "could not look".
+    return unavailable(str(body.reason_detail) || UNAVAILABLE);
+  }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
   if (body.found !== true || !url) {
@@ -179,6 +247,7 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     trustedDistributorHost: body.trusted_distributor_host === true,
     reason: str(body.reason_detail) || str(body.reason) || "candidate manual found",
     oemRequestUrl: requestUrl(body),
+    quotaExceeded: false,
   };
 }
 

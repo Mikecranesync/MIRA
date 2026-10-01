@@ -20,6 +20,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
+import shared.manual_search.quota as quota_mod  # noqa: E402
 import shared.manual_search.search as search_mod  # noqa: E402
 
 MIRA_BOTS = pathlib.Path(__file__).parent.parent
@@ -30,6 +31,24 @@ def _judge_off_and_key_set(monkeypatch):
     monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
     monkeypatch.setattr(search_mod, "SERPER_API_KEY", "test-key")
     monkeypatch.delenv("MANUAL_SEARCH_MAX_PROVIDER_QUERIES", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _quota_identity_ok(monkeypatch):
+    """#4160 S4 added a quota gate to the exact seam this suite exercises
+    (_serper_search). These tests pin the PER-CALL budget, not the quota —
+    give every call an identity and a reserver that always answers "ok" so
+    they stay hermetic (no Postgres) and the budget math is unaffected.
+    Quota-denial behavior itself is covered by test_manual_search_quota.py
+    and the "no_identity" refusal below."""
+
+    async def fake_reserve(identity, **kwargs):
+        return "ok"
+
+    monkeypatch.setattr(quota_mod, "reserve_provider_query", fake_reserve)
+    identity = quota_mod.QuotaIdentity(tenant_id="egress-test-tenant", user_id="egress-test-user")
+    with quota_mod.provider_query_quota(identity):
+        yield
 
 
 def _refuse_all_network(monkeypatch):
@@ -188,3 +207,83 @@ def test_the_budget_guard_flags_an_unbudgeted_call():
     )
     assert _unbudgeted_search_calls(ast.parse(bare)) == (1, [2])
     assert _unbudgeted_search_calls(ast.parse(wrapped)) == (1, [])
+
+
+# ── S4: the quota gate at the _serper_search seam (#4160, PRD R13/R14) ──────
+
+
+async def test_no_identity_refuses_every_query_and_never_sends(monkeypatch):
+    """PRD R14: a caller that cannot supply a tenant/user identity gets no web
+    search at all — the gate must refuse BEFORE _serper_post, never invent an
+    identity to let the query through."""
+    sent = _count_provider_posts(monkeypatch)
+    quota_mod._quota_identity.set(None)  # override the autouse default
+    with search_mod.provider_query_budget() as budget:
+        result = await search_mod.search_manual("SMC", "SS5Y3-DUW01302")
+    assert sent == []
+    assert budget.used == 0
+    # SMC's worst case tries 6 provider queries (test_an_unbounded_search_...);
+    # every single one is refused — the FIRST on "no_identity", the rest
+    # short-circuited by budget.quota_denied without re-checking identity.
+    assert budget.refused == 6
+    assert budget.quota_denied == "no_identity"
+    assert result is None
+
+
+async def test_a_denial_mid_call_stops_the_remaining_queries_without_touching_the_db_again(
+    monkeypatch,
+):
+    """Fix B (Codex/advisor review, #4160 S4): once one query in a call is
+    quota-denied, every remaining pass must refuse WITHOUT reserving again —
+    a DB outage must not cost up to six round trips inside one 50s caller
+    budget. SMC's worst case sends 6 provider queries unbounded; this proves
+    only the FIRST one ever reaches reserve_provider_query()."""
+    sent = _count_provider_posts(monkeypatch)
+    reserve_calls: list[str] = []
+
+    async def deny_after_first(identity, **kwargs):
+        reserve_calls.append(identity.tenant_id)
+        return "tenant_cap"
+
+    monkeypatch.setattr(quota_mod, "reserve_provider_query", deny_after_first)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    with quota_mod.provider_query_quota(identity):
+        with search_mod.provider_query_budget() as budget:
+            await search_mod.search_manual("SMC", "SS5Y3-DUW01302")
+    assert sent == []
+    assert budget.used == 0
+    assert len(reserve_calls) == 1, (
+        f"reserve_provider_query must be called exactly once per call after a denial, got {reserve_calls}"
+    )
+    assert budget.quota_denied == "tenant_cap"
+
+
+async def test_tenant_and_user_never_enter_the_provider_query_text(monkeypatch):
+    """PRD R4: the Serper query string is built only from (make, model) —
+    tenant/user identity must never leak into it. Runs the REAL search_manual
+    (only _serper_post and the reserver are mocked), with sentinel tenant/user
+    strings that would be unmistakable if they leaked."""
+    sent: list[str] = []
+
+    async def fake_post(query: str, num: int):
+        sent.append(query)
+        return []
+
+    async def fake_reserve(identity, **kwargs):
+        return "ok"
+
+    monkeypatch.setattr(search_mod, "_serper_post", fake_post)
+    monkeypatch.setattr(quota_mod, "reserve_provider_query", fake_reserve)
+    identity = quota_mod.QuotaIdentity(
+        tenant_id="SENTINEL-TENANT-ID-ZZZ", user_id="SENTINEL-USER-ID-ZZZ"
+    )
+    with quota_mod.provider_query_quota(identity):
+        with search_mod.provider_query_budget():
+            await search_mod.search_manual("SMC", "SS5Y3-DUW01302")
+    assert sent, "expected at least one provider query to be sent"
+    for q in sent:
+        assert "SENTINEL-TENANT-ID-ZZZ" not in q
+        assert "SENTINEL-USER-ID-ZZZ" not in q
+    # Positive control: the query text DOES carry make/model (so this test
+    # isn't vacuously passing against an empty/garbled query).
+    assert any("SMC" in q for q in sent)

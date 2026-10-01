@@ -153,8 +153,11 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL,
                   -- Automatic retries of a retryable failure are counted and capped
                   -- (Codex #4118 r12 F16): a PDF that never reads stops, eventually.
+                  -- search_limit_reached (#4160 S4) is retryable the SAME way: a
+                  -- cap denial must not be cached as a permanent miss (PRD R5) —
+                  -- the retry naturally re-checks the (reset) quota.
                   'retries', CASE WHEN manual_acquisition->>'key' = $3::text
-                                   AND manual_acquisition->>'state' = 'search_unavailable'
+                                   AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached')
                                   THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
                                   ELSE 0 END,
                   -- A retry remembers everything an earlier attempt ATTACHED —
@@ -162,13 +165,13 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   -- so a manual the technician removed is never put back
                   -- (Codex #4118 r14/r15 F19/F20).
                   'prior_doc_id', CASE WHEN manual_acquisition->>'key' = $3::text
-                                        AND manual_acquisition->>'state' IN ('search_unavailable', 'running')
+                                        AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                        THEN COALESCE(
                                               CASE WHEN manual_acquisition->>'linked' = 'true'
                                                    THEN manual_acquisition->'doc_id' END,
                                               manual_acquisition->'prior_doc_id') END,
                   'prior_file_id', CASE WHEN manual_acquisition->>'key' = $3::text
-                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'running')
+                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                         THEN COALESCE(
                                                CASE WHEN manual_acquisition->>'linked' = 'true'
                                                     THEN manual_acquisition->'file_id' END,
@@ -179,7 +182,7 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  OR (manual_acquisition->>'state' = 'running'
                      AND (manual_acquisition->>'started_at')::timestamptz
                          < now() - make_interval(mins => $4))
-                 OR (manual_acquisition->>'state' = 'search_unavailable'
+                 OR (manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached')
                      AND COALESCE((manual_acquisition->>'retries')::int, 0) < $6
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
                          < now() - make_interval(mins => $5)))
@@ -494,7 +497,7 @@ export async function reconcileAcquisition(
   // A retryable record whose attempt attached a manual is checked too, so a
   // removal during the backoff is honored before any retry (r14 F19).
   // For a retryable record, check what ANY attempt attached (r15 F20).
-  const retryable = rec.state === "search_unavailable";
+  const retryable = rec.state === "search_unavailable" || rec.state === "search_limit_reached";
   const docRef = retryable ? (rec.linked ? rec.doc_id : null) || rec.prior_doc_id || null : rec.doc_id || null;
   const fileRef = retryable ? (rec.linked ? rec.file_id : null) || rec.prior_file_id || null : rec.file_id || null;
   const bySource =
@@ -551,6 +554,11 @@ export function acquisitionDeclineText(rec: AcquisitionRecord | null, key: strin
       return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
     case "no_manual_found":
       return `I looked for the official ${label} manual and couldn't find one${rec.oem_request_url ? ` — you can request it from the manufacturer: ${rec.oem_request_url}` : ""}. Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.`;
+    case "search_limit_reached":
+      // Distinct from "couldn't find one" (PRD R5, #4160 S4) — a cap denial
+      // must never read as "no manual exists". The record is retried once the
+      // cap window resets (claim()'s retry predicate below).
+      return `I hit today's search limit before I could look for the official ${label} manual. I'll try again automatically once the limit resets — ask again in a bit, or upload the manual yourself in the meantime.`;
     case "search_unavailable":
     case "download_rejected":
     case "manufacturer_model_required":

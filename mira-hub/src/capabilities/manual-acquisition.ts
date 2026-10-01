@@ -40,7 +40,10 @@ export type ManualAcquisitionStatus =
   | "search_unavailable"
   | "no_extractable_text"
   | "manufacturer_model_required"
-  | "download_rejected";
+  | "download_rejected"
+  // A per-user/tenant/global provider-query cap is at capacity RIGHT NOW
+  // (#4160 S4, PRD R5) — never the same as "no manual exists".
+  | "search_limit_reached";
 
 export interface ManualAcquisitionOutcome {
   status: ManualAcquisitionStatus;
@@ -150,11 +153,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     });
   }
 
-  const discovery = await discoverManual({
-    manufacturer: identity.manufacturer,
-    model: identity.model,
-    catalogNumber: identity.catalogNumber,
-  });
+  const discovery = await discoverManual(
+    {
+      manufacturer: identity.manufacturer,
+      model: identity.model,
+      catalogNumber: identity.catalogNumber,
+    },
+    ctx,
+  );
+  if (discovery.quotaExceeded) {
+    // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
+    return outcome("search_limit_reached", { message: discovery.reason });
+  }
   if (!discovery.serviceAvailable) {
     return outcome("search_unavailable", { message: discovery.reason });
   }

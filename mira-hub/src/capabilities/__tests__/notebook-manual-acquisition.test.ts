@@ -105,7 +105,14 @@ describe("startManualAcquisition", () => {
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
-    expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
+    expect(claimQ.sql).toMatch(/state' IN \('search_unavailable', 'search_limit_reached'\)/);
+    // #4160 S4: anchored to the WHERE-clause retry predicate specifically (not
+    // just "appears somewhere in the query") — a quota-cap denial is retryable
+    // the SAME way a transient search-unavailable outcome is, never cached as
+    // a permanent miss (PRD R5).
+    expect(claimQ.sql).toMatch(
+      /OR \(manual_acquisition->>'state' IN \('search_unavailable', 'search_limit_reached'\)\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
+    );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
     expect(rec).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "candidate_review", candidate_host: "www.smcworld.com", match_state: "candidate" });
@@ -195,6 +202,12 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
     const t = acquisitionDeclineText(rec({ state: "no_manual_found", oem_request_url: "https://oem.example/request" }), "K", "SMC VQ1000")!;
     expect(t).toContain("couldn't find one");
     expect(t).toContain("https://oem.example/request");
+  });
+  it("#4160 S4: search_limit_reached says 'limit', NEVER 'couldn't find' — a cap denial is not a miss (PRD R5)", () => {
+    const t = acquisitionDeclineText(rec({ state: "search_limit_reached" }), "K", "SMC VQ1000")!;
+    expect(t).not.toBeNull();
+    expect(t.toLowerCase()).toContain("limit");
+    expect(t.toLowerCase()).not.toContain("couldn't find");
   });
   it("adds nothing for a record about a different identity, or for outcomes with nothing to show", () => {
     expect(acquisitionDeclineText(rec({ state: "no_manual_found" }), "OTHER", "X")).toBeNull();

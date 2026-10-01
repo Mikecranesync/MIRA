@@ -554,6 +554,15 @@ services:
       MANUAL_SEARCH_TIMEOUT: "${MANUAL_SEARCH_TIMEOUT:-15}"
       MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
       MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-50}"
+      # Atomic per-user/tenant/global provider-query caps (#4160 S4, PRD R13).
+      # Enforced in shared/manual_search/quota.py against NEON_DATABASE_URL
+      # (already set above via bot-common-env). The global monthly cap is
+      # PROVISIONAL pending owner decision D4 (the final $ ceiling) — it is a
+      # config value here precisely so D4 can land as a Doppler change, not a
+      # code change.
+      MANUAL_SEARCH_USER_DAILY_CAP: "${MANUAL_SEARCH_USER_DAILY_CAP:-10}"
+      MANUAL_SEARCH_TENANT_DAILY_CAP: "${MANUAL_SEARCH_TENANT_DAILY_CAP:-50}"
+      MANUAL_SEARCH_GLOBAL_MONTHLY_CAP: "${MANUAL_SEARCH_GLOBAL_MONTHLY_CAP:-3000}"
       # Read-before-choose judge (shared/manual_search/judge.py). Code default is
       # ON; this compose default is OFF ON PURPOSE — owner decision 2026-08-26:
       # ship dark, verify health, enable (Doppler prd MANUAL_JUDGE_ENABLED=1 +

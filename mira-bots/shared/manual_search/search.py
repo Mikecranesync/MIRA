@@ -58,6 +58,8 @@ from urllib.parse import urljoin, urlparse
 import httpcore
 import httpx
 
+from . import quota as _quota
+
 logger = logging.getLogger("mira.manual_search")
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
@@ -424,6 +426,12 @@ class ProviderQueryBudget:
     limit: int
     used: int = 0
     refused: int = 0
+    # Set to the quota denial reason ("user_cap"/"tenant_cap"/"global_cap"/
+    # "quota_unavailable"/"no_identity") the FIRST time one occurs in this
+    # call. Once set, every remaining query in the call is refused WITHOUT
+    # touching Postgres again — a DB outage must not cost up to six
+    # connect-timeouts inside one search_manual() call (#4160 S4).
+    quota_denied: str | None = None
 
 
 _provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
@@ -446,6 +454,14 @@ def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBu
 
 
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
+    """The one place a provider query leaves this process.
+
+    Order matters (Codex, #4160 S4): the per-call ceiling is checked FIRST
+    (free — no I/O) and does not touch the quota accounting at all. Only a
+    query that passes the ceiling spends a Postgres reservation. `used` is
+    incremented ONLY on an actual send, so a quota-denied query is never
+    double-counted as both used and refused.
+    """
     if not SERPER_API_KEY:
         raise RuntimeError("SERPER_API_KEY is not configured")
     budget = _provider_budget.get()
@@ -458,6 +474,32 @@ async def _serper_search(query: str, num: int = 10) -> list[dict]:
                 query[:120],
             )
             return []
+        if budget.quota_denied is not None:
+            # A prior query in THIS call already hit the quota gate — stop
+            # re-reserving (see the ProviderQueryBudget.quota_denied comment).
+            budget.refused += 1
+            return []
+
+    identity = _quota.current_quota_identity()
+    if identity is None:
+        # PRD R14: a caller that cannot supply a tenant/user identity gets no
+        # web search at all — never invent one. The bot-vision web rung
+        # (shared/visual/equipment.py) supplies none and is meant to land here.
+        if budget is not None:
+            budget.refused += 1
+            budget.quota_denied = "no_identity"
+        logger.info("MANUAL_SEARCH_QUOTA_DENIED reason=no_identity")
+        return []
+
+    reason = await _quota.reserve_provider_query(identity)
+    if reason != "ok":
+        if budget is not None:
+            budget.refused += 1
+            budget.quota_denied = reason
+        logger.info("MANUAL_SEARCH_QUOTA_DENIED reason=%s", reason)
+        return []
+
+    if budget is not None:
         budget.used += 1
     return await _serper_post(query, num)
 

@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { discoverManual, allowedHostsForCandidate } from "@/lib/manual-discovery";
 
 const IDENTITY = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
+const CTX = { tenantId: "test-tenant", userId: "test-user" };
 
 const FOUND_BODY = {
   found: true,
@@ -46,7 +47,7 @@ describe("discoverManual — happy path", () => {
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(true);
     expect(res.found).toBe(true);
     expect(res.validated).toBe(true);
@@ -68,6 +69,28 @@ describe("discoverManual — happy path", () => {
     });
     // No key configured → no header.
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
+    // #4160 S4: required identity headers always sent.
+    expect((init.headers as Record<string, string>)["X-Mira-Tenant"]).toBe("test-tenant");
+    expect((init.headers as Record<string, string>)["X-Mira-User"]).toBe("test-user");
+  });
+
+  it("never calls the service when ctx.userId is null, and refuses honestly", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual(IDENTITY, { tenantId: "t1", userId: null });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(false);
+    expect(res.reason).toMatch(/signed-in user/i);
+  });
+
+  it("never calls the service when ctx.tenantId is blank", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual(IDENTITY, { tenantId: "   ", userId: "u1" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.serviceAvailable).toBe(false);
   });
 
   it("honors MIRA_ASK_URL and sends X-Mira-Key when MANUAL_DISCOVERY_API_KEY is set", async () => {
@@ -78,7 +101,7 @@ describe("discoverManual — happy path", () => {
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    await discoverManual(IDENTITY);
+    await discoverManual(IDENTITY, CTX);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://ask.internal:9000/manual-discovery/search");
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBe("k123");
@@ -93,7 +116,7 @@ describe("discoverManual — happy path", () => {
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    await discoverManual(IDENTITY);
+    await discoverManual(IDENTITY, CTX);
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
   });
@@ -107,7 +130,7 @@ describe("discoverManual — honest degradation", () => {
         new Response(JSON.stringify({ detail: "manual discovery is not configured" }), { status: 503 }),
       ),
     );
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
@@ -115,7 +138,7 @@ describe("discoverManual — honest degradation", () => {
 
   it("reports 'search service unavailable' on a network failure and invents nothing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ETIMEDOUT")));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
@@ -124,14 +147,14 @@ describe("discoverManual — honest degradation", () => {
 
   it("reports unavailable on a non-200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 500 })));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.candidate).toBeNull();
   });
 
   it("reports unavailable on a malformed body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.candidate).toBeNull();
   });
@@ -145,7 +168,7 @@ describe("discoverManual — honest degradation", () => {
         }),
       ),
     );
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(true);
     expect(res.found).toBe(false);
     expect(res.reason).toBe("no OEM PDF");
@@ -158,15 +181,84 @@ describe("discoverManual — honest degradation", () => {
         new Response(JSON.stringify({ found: true, candidate: { title: "x" } }), { status: 200 }),
       ),
     );
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
+  });
+
+  // ── #4160 S4: a quota denial must never look like "no manual exists" ──────
+
+  it("maps reason=quota_exceeded to a distinct quotaExceeded result, not a plain miss", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            found: false,
+            candidate: null,
+            reason: "quota_exceeded",
+            reason_detail: "Daily manual-search limit reached for this user.",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(true);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(true);
+    expect(res.reason).toBe("Daily manual-search limit reached for this user.");
+  });
+
+  it("a quota_exceeded body with no reason_detail still reports quotaExceeded with a sane reason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "quota_exceeded" }), {
+          status: 200,
+        }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.quotaExceeded).toBe(true);
+    expect(res.reason.length).toBeGreaterThan(0);
+  });
+
+  it("control: a plain miss (no cap language in reason) is NOT quotaExceeded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "no_result" }), {
+          status: 200,
+        }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.quotaExceeded).toBe(false);
+  });
+
+  it("a server-reported reason=search_unavailable (quota_unavailable or a timeout) is 'could not look', not 'found nothing' (pre-existing defect fixed in S4)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ found: false, candidate: null, reason: "search_unavailable" }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    // Before the fix this was serviceAvailable:true (notFound()) — acquisition
+    // then reported "no_manual_found" for what was actually an infra miss.
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(false);
   });
 
   it("never calls the service without a manufacturer and a model/catalog", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    const res = await discoverManual({ manufacturer: "Allen-Bradley" });
+    const res = await discoverManual({ manufacturer: "Allen-Bradley" }, CTX);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.found).toBe(false);
     expect(res.reason).toMatch(/manufacturer and model/i);
@@ -274,7 +366,7 @@ describe("discoverManual — judge rejections disappear honestly", () => {
         ),
       ),
     );
-    const r = await discoverManual({ manufacturer: "Harrington", model: "UMS3-0335", catalogNumber: null });
+    const r = await discoverManual({ manufacturer: "Harrington", model: "UMS3-0335", catalogNumber: null }, CTX);
     expect(r.serviceAvailable).toBe(true);
     expect(r.found).toBe(false);
     expect(r.candidate).toBeNull();
@@ -289,7 +381,7 @@ describe("discoverManual — judge rejections disappear honestly", () => {
         new Response(JSON.stringify({ found: false, candidate: null, reason: "no_result", oem_request_url: "javascript:alert(1)" }), { status: 200 }),
       ),
     );
-    const r = await discoverManual({ manufacturer: "X", model: "Y", catalogNumber: null });
+    const r = await discoverManual({ manufacturer: "X", model: "Y", catalogNumber: null }, CTX);
     expect(r.oemRequestUrl).toBeNull();
   });
 });
