@@ -1818,6 +1818,10 @@ async function handleChatTurn(
     // (photoTextForOem — notebookRetrieval is false here, so it is the real
     // text) and this turn's typed message. Still only a candidate: never
     // binds, never writes a notebook identity column, never scopes retrieval.
+    // Codex r2 F4 (#4172): only when the automatic search can actually run. With
+    // MIRA_NOTEBOOK_MANUAL_ACQUISITION off the turn stays exactly as before S6
+    // (the explicit, confirm-first photo search below keeps the turn).
+    if (!acquisitionEnabled()) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
       return candidate?.manufacturer ? { manufacturer: candidate.manufacturer, model: candidate.part } : null;
@@ -1973,10 +1977,20 @@ async function handleChatTurn(
     boundAsset.state === "unbound" &&
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     oemManufacturer !== null &&
-    oemModel !== null &&
-    chunks.length === 0
+    chunks.length === 0 &&
+    acquisitionEnabled()
   ) {
-    identityProposal = { manufacturer: oemManufacturer.name, model: oemModel.value };
+    // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
+    // families, so a valid part it does not recognise (oemModel null) falls back
+    // to the corpus-independent label reader — but only when that reader names
+    // the SAME maker, which keeps its ambiguity and serial exclusions intact.
+    const candidate = oemModel ? null : extractCandidateIdentity(photoTextForOem, message);
+    const model =
+      oemModel?.value ??
+      (candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
+        ? candidate.part
+        : null);
+    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
   }
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
   // history reload deliver the same proposal the live stream did. Computed
@@ -2049,11 +2063,26 @@ async function handleChatTurn(
   const photoCandidate = extractCandidateIdentity(photoTextForPartLookup);
   const photoMaker = photoCandidate && photoCandidate.part === photoPartNumber ? photoCandidate.manufacturer : null;
   // Codex r1 F1 (#4172, HIGH): mutually exclusive with #4160 S6's candidate
-  // acquisition. When R1 recognises a maker (photoMaker, identity strings),
-  // the candidate-acquisition flow above already owns this turn — the
-  // maker-less part-only proposal ("search the web for just this label
-  // text") must not also fire and contend for the same reply/evidence.
-  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && photoMaker === null;
+  // acquisition — the maker-less part-only proposal ("search the web for just
+  // this label text") must never also fire and contend for the same reply.
+  //
+  // Codex r2 F1/F4 (#4172): "owns the turn" is decided ONCE, from the FINAL
+  // candidate identity (photo and typed text together) and the exact trigger
+  // the acquisition block below runs on — never from the photo's maker alone.
+  // When automatic acquisition is off, or this turn would not start it, the
+  // explicit confirm-first search keeps the turn (pre-S6 behaviour).
+  const candidateAcquisitionOwnsTurn =
+    identityProposal !== null &&
+    Boolean(nb) &&
+    acquisitionEnabled() &&
+    acquisitionKey({
+      identityStatus: "user_confirmed",
+      manufacturer: identityProposal.manufacturer,
+      model: identityProposal.model,
+      catalogNumber: "",
+    }) !== null &&
+    ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
+  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. Read only for a confirm/cancel message; fail closed.
   let previousTurnEvidence: unknown[] = [];
@@ -2288,12 +2317,11 @@ async function handleChatTurn(
   // itself can never enable a source before confirmation (fenced in
   // notebook-manual-acquisition.ts, basis="candidate"); migration 104
   // promotes it once the technician confirms this SAME identity.
-  if (identityProposal && nb && acquisitionEnabled()) {
-    // Half 1 of the trigger: the identity came from a label read (a photo
-    // observation) — this turn's photo text itself yielded an unambiguous
-    // part. Half 2: the turn explicitly asks for the manual/documentation.
-    const partFromPhoto = Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null;
-    if (partFromPhoto || wantsManualDocumentation(message)) {
+  // The trigger (decided above as candidateAcquisitionOwnsTurn): half 1, the
+  // identity came from a label read — this turn's photo text yielded an
+  // unambiguous part; half 2, the turn explicitly asks for the manual.
+  if (candidateAcquisitionOwnsTurn && identityProposal && nb) {
+    {
       const candidateIdentity = {
         identityStatus: "user_confirmed" as const,
         manufacturer: identityProposal.manufacturer,

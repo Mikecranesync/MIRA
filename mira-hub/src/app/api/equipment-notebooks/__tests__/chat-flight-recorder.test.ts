@@ -192,6 +192,10 @@ beforeAll(() => {
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations: a test that turns automatic acquisition
+  // on must not leak it into the next (off-by-default) test.
+  acqMock.acquisitionEnabled.mockReturnValue(false);
+  acqMock.startManualAcquisition.mockResolvedValue(false);
   handle.reset();
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
@@ -415,44 +419,88 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
 
-  // Codex r1 F1 (#4172, HIGH): a maker-bearing candidate (R1 recognises a
-  // manufacturer) is now mutually exclusive with the maker-LESS part-only
-  // proposal flow below — the candidate gets #4160 S6's identity_proposal
-  // instead, and the old "search the web for just this label text" grammar
-  // never fires for it. These three tests pinned the PRE-fix overlap (the
-  // part-search flow firing for a RECOGNISED maker); they are rewritten here
-  // to pin the post-fix, mutually-exclusive behaviour instead.
-  it("S5 / Codex r1 F1: the SMC valve candidate gets an identity_proposal, never the part-only web-search confirmation", async () => {
+  // #4171 behaviour, preserved with automatic acquisition OFF (Codex r2 F4,
+  // #4172): the flag is unset in production, so the explicit, confirm-first
+  // photo search must still be offered for a maker-bearing candidate. The
+  // automatic candidate acquisition only takes the turn over when it can run.
+  it("S5 (flag off): the SMC valve proposal names the maker that would be sent alongside the part", async () => {
     smcLabel();
     const f = await ask("Look up the PDF manual");
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
-    const proposal = f.find((x) => x.kind === "identity_proposal");
-    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
-    // Mutual exclusivity: the maker-only part-search proposal (its chips,
-    // and its "I haven't searched" / "Search the web for ..." text) never
-    // also fires for a maker-bearing candidate.
-    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
-    const status = f.find((x) => x.kind === "status");
-    expect(String(status?.message ?? "")).not.toContain("I haven't searched");
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const msg = String(f.find((x) => x.kind === "status")?.message);
+    expect(msg).toContain(`Search the web for "${SMC_PART}"`);
+    expect(msg).toContain('"SMC"');
+    // Flag off reproduces the pre-S6 turn exactly: no unconfirmed-identity chip.
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
   });
 
-  it("S5 control / Codex r1 F1: a maker-bearing 'confirm' phrasing does not route through the old part-search confirm flow (never consumes a pending part-only proposal)", async () => {
+  it("S5 (flag off): confirming the SMC proposal searches the maker and the part, once, with no background acquisition", async () => {
     smcLabel();
-    // No listTurns/discoverManual setup: partSearchEligible is false for a
-    // RECOGNISED maker (photoMaker !== null), so neither is ever called —
-    // proven below directly, rather than queuing an unconsumed mock result
-    // that would leak into a later test's FIFO queue.
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", "SMC") as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask(`Search the web for "${SMC_PART}"`);
-    expect(domainMock.listTurns).not.toHaveBeenCalled();
-    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith(
+      { manufacturer: "SMC", catalogNumber: SMC_PART },
+      expect.objectContaining({ tenantId: expect.any(String) }),
+    );
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
   // #4171 Codex r1 — F1 quota, F3 one-time spend, F4 maker binding.
-  it("F4 / Codex r1 F1: a maker-bearing candidate never reaches the part-only proposal's confirm lookup at all", async () => {
+  it("F4 (flag off): a maker that appeared after a part-only proposal does not search", async () => {
     smcLabel();
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", null) as never);
+    await ask(`Search the web for "${SMC_PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // Codex r1 F1 (#4172): with automatic acquisition ON, the candidate flow owns
+  // the turn and the explicit part-only proposal never also fires.
+  it("S6 (flag on): the SMC valve candidate gets an identity_proposal, never the part-only web-search confirmation", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const f = await ask("Look up the PDF manual");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(String(f.find((x) => x.kind === "status")?.message ?? "")).not.toContain("I haven't searched");
+  });
+
+  it("S6 (flag on): a search-confirm phrasing never routes through the part-only confirm flow", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
     await ask(`Search the web for "${SMC_PART}"`);
     expect(domainMock.listTurns).not.toHaveBeenCalled();
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // Codex r2 F1 (#4172): ownership follows the FINAL candidate identity, not the
+  // photo alone — a maker-less label plus a typed maker is still one flow.
+  it("Codex r2 F1: maker-less photo + typed 'SMC' + acquisition on → one acquisition, proposal, no part-search chips", async () => {
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o4", sessionId: "s1", text: "Blue solenoid valve. Label text: SS5Y3-DUW01302 24VDC",
+      obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+    } as never);
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    const f = await ask("Find the manual for this SMC valve");
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: SMC_PART, catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persisted = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: Array<{ kind?: string }> };
+    expect(persisted.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+    expect(persisted.evidence.some((e) => e.kind === "part_search_proposal")).toBe(false);
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    const everyMessage = f.map((x) => String((x as { message?: unknown }).message ?? "")).join(" ");
+    expect(everyMessage).not.toContain("haven't searched");
   });
 
   // Codex r1 F1 (#4172, HIGH) — exactly the scenario the review named: a real
@@ -493,6 +541,7 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
   // must ride that reply too, not only the answered-path one.
   it("Codex r1 F1: identity_proposal is emitted AND persisted on the ABSTAIN path too", async () => {
     smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
     const f = await ask("Is this compatible with a different valve?");
     const status = f.find((x) => x.kind === "status");
     expect(status).toMatchObject({ status: "insufficient_evidence" });
@@ -532,6 +581,33 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
           basis: "candidate",
         }),
       );
+    });
+
+    // Codex r2 F2 (#4172): a part the OEM model parser does not know (oemModel
+    // null) still gets the corpus-independent candidate part.
+    it("Codex r2 F2: Siemens + a part OEM parsing does not recognise + zero chunks → proposes and acquires that exact part", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o5", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0" });
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identity: { identityStatus: "user_confirmed", manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0", catalogNumber: "" },
+          basis: "candidate",
+        }),
+      );
+    });
+
+    it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
+      siemensLabel();
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
     it("control: chunks DO exist → no proposal, no candidate acquisition, no duplicate discovery (OEM retrieval already grounds the turn)", async () => {
