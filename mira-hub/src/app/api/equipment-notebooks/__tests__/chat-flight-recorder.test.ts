@@ -415,33 +415,147 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
 
-  it("S5: the SMC valve proposal names the maker that would be sent alongside the part", async () => {
+  // Codex r1 F1 (#4172, HIGH): a maker-bearing candidate (R1 recognises a
+  // manufacturer) is now mutually exclusive with the maker-LESS part-only
+  // proposal flow below — the candidate gets #4160 S6's identity_proposal
+  // instead, and the old "search the web for just this label text" grammar
+  // never fires for it. These three tests pinned the PRE-fix overlap (the
+  // part-search flow firing for a RECOGNISED maker); they are rewritten here
+  // to pin the post-fix, mutually-exclusive behaviour instead.
+  it("S5 / Codex r1 F1: the SMC valve candidate gets an identity_proposal, never the part-only web-search confirmation", async () => {
     smcLabel();
     const f = await ask("Look up the PDF manual");
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
-    const msg = String(f.find((x) => x.kind === "status")?.message);
-    expect(msg).toContain(`Search the web for "${SMC_PART}"`);
-    expect(msg).toContain('"SMC"');
+    const proposal = f.find((x) => x.kind === "identity_proposal");
+    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    // Mutual exclusivity: the maker-only part-search proposal (its chips,
+    // and its "I haven't searched" / "Search the web for ..." text) never
+    // also fires for a maker-bearing candidate.
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    const status = f.find((x) => x.kind === "status");
+    expect(String(status?.message ?? "")).not.toContain("I haven't searched");
   });
 
-  it("S5: confirming the SMC proposal searches the maker and the part, nothing else", async () => {
+  it("S5 control / Codex r1 F1: a maker-bearing 'confirm' phrasing does not route through the old part-search confirm flow (never consumes a pending part-only proposal)", async () => {
     smcLabel();
-    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", "SMC") as never);
-    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    // No listTurns/discoverManual setup: partSearchEligible is false for a
+    // RECOGNISED maker (photoMaker !== null), so neither is ever called —
+    // proven below directly, rather than queuing an unconsumed mock result
+    // that would leak into a later test's FIFO queue.
     await ask(`Search the web for "${SMC_PART}"`);
-    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
-    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith(
-      { manufacturer: "SMC", catalogNumber: SMC_PART },
-      expect.objectContaining({ tenantId: expect.any(String) }),
-    );
+    expect(domainMock.listTurns).not.toHaveBeenCalled();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
   });
 
   // #4171 Codex r1 — F1 quota, F3 one-time spend, F4 maker binding.
-  it("F4: a maker that appeared after a part-only proposal does not search", async () => {
+  it("F4 / Codex r1 F1: a maker-bearing candidate never reaches the part-only proposal's confirm lookup at all", async () => {
     smcLabel();
-    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", null) as never);
     await ask(`Search the web for "${SMC_PART}"`);
+    expect(domainMock.listTurns).not.toHaveBeenCalled();
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // Codex r1 F1 (#4172, HIGH) — exactly the scenario the review named: a real
+  // (here, current-turn) SMC photo observation, a corpus that does not know
+  // "SMC" (this file's corpusManufacturers mock), acquisition ON, and an
+  // explicit "Find the manual" ask. One acquisition starts; the identity
+  // proposal is emitted AND persisted; no web-search confirmation chips; no
+  // "I haven't searched" claim anywhere in the reply.
+  it("Codex r1 F1 acceptance: SMC photo + empty corpus + acquisition on + 'Find the manual' → one acquisition, proposal emitted+persisted, no part-search chips, no 'haven't searched'", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    const f = await ask("Find the manual for this");
+
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: SMC_PART, catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+
+    const proposal = f.find((x) => x.kind === "identity_proposal");
+    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persistedEvidence = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(persistedEvidence.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    const everyMessage = f.map((x) => String((x as { message?: unknown }).message ?? "")).join(" ");
+    expect(everyMessage).not.toContain("I haven't searched");
+    expect(everyMessage).not.toContain("haven't searched");
+  });
+
+  // Codex r1 F1 (#4172, HIGH), abstention-path half: a maker-bearing candidate
+  // can still reach Gate G through an UNRELATED abstain trigger (here, a part-
+  // compatibility question) — the identity_proposal frame + evidence entry
+  // must ride that reply too, not only the answered-path one.
+  it("Codex r1 F1: identity_proposal is emitted AND persisted on the ABSTAIN path too", async () => {
+    smcLabel();
+    const f = await ask("Is this compatible with a different valve?");
+    const status = f.find((x) => x.kind === "status");
+    expect(status).toMatchObject({ status: "insufficient_evidence" });
+    const proposal = f.find((x) => x.kind === "identity_proposal");
+    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persisted = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(persisted.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+  });
+
+  // Codex r1 F2 (#4172, MEDIUM): a CORPUS-RECOGNISED maker (oemManufacturer
+  // set — "Siemens" is in this file's corpusManufacturers mock) must not
+  // suppress the proposal/acquisition just because retrieval ran — only when
+  // retrieval actually found something does suppression make sense.
+  describe("Codex r1 F2 — corpus-recognised maker + zero chunks still proposes + acquires", () => {
+    const siemensLabel = () =>
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o3", sessionId: "s1", text: "Siemens TP700 Comfort panel, 24 VDC",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+
+    it("zero applicable chunks → identity_proposal is emitted and candidate acquisition starts", async () => {
+      siemensLabel();
+      // The describe-level beforeEach already queues ONE `[]` once-value for
+      // this test's single retrieveManualChunks call — do not queue a
+      // SECOND one here, or it leaks unconsumed into the next test (vitest's
+      // once-queue is FIFO and survives vi.clearAllMocks(), which clears
+      // call history, not queued implementations).
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      const proposal = f.find((x) => x.kind === "identity_proposal");
+      expect(proposal).toMatchObject({ manufacturer: "Siemens", model: "TP700" });
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identity: { identityStatus: "user_confirmed", manufacturer: "Siemens", model: "TP700", catalogNumber: "" },
+          basis: "candidate",
+        }),
+      );
+    });
+
+    it("control: chunks DO exist → no proposal, no candidate acquisition, no duplicate discovery (OEM retrieval already grounds the turn)", async () => {
+      siemensLabel();
+      // Reset first: clears both the describe-level beforeEach's queued `[]`
+      // and any prior test's unconsumed once-value, so THIS test's single
+      // retrieveManualChunks call deterministically returns the chunk below.
+      ragMock.retrieveManualChunks.mockReset();
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([
+        {
+          content: "Siemens TP700 Comfort operating instructions",
+          docId: null,
+          manufacturer: "Siemens",
+          modelNumber: "TP700",
+          sourceUrl: "https://example/manual.pdf",
+          sourcePage: 1,
+          title: "TP700 manual",
+        },
+      ] as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
   });
 
   it("F3: the proposal is claimed (by its turn id and owner) before any search", async () => {

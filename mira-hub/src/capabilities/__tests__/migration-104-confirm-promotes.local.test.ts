@@ -226,6 +226,33 @@ run("Migration 104 — confirming an identity promotes a matching candidate-basi
       expect(res).toEqual({ matchState: "verified", enabledByDefault: true });
     });
 
+    // Codex r1 F3 (#4172, HIGH): the common race must NOT bypass the
+    // unvalidated-download review hold. Even when the notebook is ALREADY
+    // confirmed to the matching key, a candidateApplicability of 'candidate'
+    // (manual-acquisition.ts stamps this for a probeUnvalidated download,
+    // regardless of how exact the text match was) must never promote.
+    it("the common race does NOT promote when candidateApplicability is 'candidate' (an unvalidated download) — review hold wins over confirmation timing", async () => {
+      const c = await raw();
+      await c.query(
+        `INSERT INTO equipment_notebook_sources (tenant_id, notebook_id, doc_id, match_state, enabled_by_default, match_evidence)
+         VALUES ($1, $2, $3, 'candidate', false, '{"decisionMethod":"pending_applicability_check"}'::jsonb)`,
+        [T, NB, DOC],
+      );
+      await confirmSameIdentity(c); // confirmed BEFORE the search's write lands
+      await c.end();
+      const res = await fencedWriter(KEY, GEN, "candidate")(T, NB, DOC, {
+        matchState: "candidate",
+        enabledByDefault: false,
+        matchEvidence: { candidateApplicability: "candidate", decisionMethod: "catalog_number_exact" },
+      });
+      expect(res).toEqual({ matchState: "candidate", enabledByDefault: false });
+      const c2 = await raw();
+      const row = await source(c2);
+      expect(row.match_state).toBe("candidate");
+      expect(row.enabled_by_default).toBe(false);
+      await c2.end();
+    });
+
     it("refuses ownership when confirmed to a DIFFERENT identity — writes nothing", async () => {
       const c = await raw();
       await c.query(

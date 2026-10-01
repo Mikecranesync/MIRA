@@ -581,6 +581,42 @@ describe("manual import: candidate until the document proves itself", () => {
     });
   });
 
+  // Codex r1 F3 (HIGH, #4172) — candidateApplicability must NEVER read 'verified'
+  // when the discovery result itself required a human review hold
+  // (probeUnvalidated: an unvalidated-by-the-service candidate, probed only
+  // because it is independently OEM-hosted). Both promotion paths —
+  // fencedWriter's promoteNow (the common race) and migration 104 (confirm
+  // arrives after the search finishes) — gate ONLY on candidateApplicability,
+  // so a document whose BYTES were never provenance-validated must stamp
+  // 'candidate' even when its TEXT matches exactly. Reuses the exact
+  // candidate/identity the #3400 suite already proved is probed-but-unvalidated
+  // (literature.rockwellautomation.com, independently Allen-Bradley-hosted).
+  describe("Codex r1 F3 (#4172) — candidateApplicability never 'verified' on an unvalidated download", () => {
+    it("probeUnvalidated + exact matching text (catalog_number_exact) → candidateApplicability stays 'candidate'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscoveryTyped(), validated: false });
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText(); // exact catalog number in the text — would be catalog_number_exact/verified
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      const ev = patch.matchEvidence as Record<string, unknown>;
+      expect(ev.decisionMethod).toBe("catalog_number_exact"); // the verdict IS verified...
+      expect(ev.candidateApplicability).toBe("candidate"); // ...but never stamped as such
+      expect(out.status).toBe("candidate_review");
+    });
+
+    it("control: the SAME text, with a VALIDATED discovery result, stamps candidateApplicability='verified'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped()); // validated: true (importableDiscovery())
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      const ev = patch.matchEvidence as Record<string, unknown>;
+      expect(ev.candidateApplicability).toBe("verified");
+    });
+  });
+
   it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());

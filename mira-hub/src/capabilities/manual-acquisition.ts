@@ -506,7 +506,21 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       // always forced false for candidate basis): the fenced writer reads
       // this to decide whether a race (the technician already confirmed this
       // exact identity by the time this write lands) should promote anyway.
-      ...(input.basis === "candidate" ? { candidateApplicability: verdict.state } : {}),
+      //
+      // Codex r1 F3 (#4172, HIGH): this must NEVER read 'verified' when the
+      // download itself required a human review hold (probeUnvalidated — an
+      // unvalidated-by-the-service candidate, probed only because it is
+      // independently OEM-hosted). Both promotion paths (fencedWriter's
+      // promoteNow and migration 104) gate purely on this field, so a
+      // 'verified' stamp here would let identity confirmation alone promote a
+      // document whose BYTES were never provenance-validated — bypassing the
+      // unvalidated-download review hold `probeUnvalidated`/
+      // `requiresUserConfirmation` exist to enforce. An exact-matching verdict
+      // on an unvalidated download therefore still stamps 'candidate': a
+      // human must review the SOURCE, not just confirm the identity.
+      ...(input.basis === "candidate"
+        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated ? "verified" : "candidate" }
+        : {}),
     };
     // The route writes unconditionally (the technician is confirming right
     // now). A background caller passes a FENCED writer that writes only an
