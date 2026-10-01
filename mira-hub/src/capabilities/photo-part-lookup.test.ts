@@ -261,12 +261,12 @@ describe("mentionsSerialLabel", () => {
 
 // Codex post-cap 7 F12 (#4172): abbreviated serial labels are serial labels too.
 describe("abbreviated serial labels", () => {
-  const spellings = ["SMC SER: AB-1234567", "SMC Ser. No. AB-1234567", "SMC Ser# AB-1234567", "SMC SER NO AB-1234567", "SMC Ser.Nr. AB-1234567", "SMC SER AB-1234567", "AB-1234567 (SER)"];
+  const spellings = ["SMC SER: AB-1234567", "SMC Ser. No. AB-1234567", "SMC Ser# AB-1234567", "SMC SER NO AB-1234567", "SMC Ser.Nr. AB-1234567", "SMC SER AB-1234567", "AB-1234567 (SER)", "SMC SER. AB-1234567", "SMC Ser.: AB-1234567", "SMC SER.# AB-1234567", "SMC AB-1234567 (SER.)", "SMC Ser.AB-1234567", "SMC Ser-No AB-1234567", "SMC Sr. No. AB-1234567"];
   it.each(spellings)("%s is a serial label, and its value is never a part number", (text) => {
     expect(mentionsSerialLabel(text)).toBe(true);
     expect(unambiguousPartNumber(text)).toBeNull();
   });
-  it.each(["SMC Series SY valve SY3120-5LZD", "Service manual for SY3120-5LZD", "Server rack SY3120-5LZD", "SY3120-5LZD ser. valve body"])(
+  it.each(["SMC Series SY valve SY3120-5LZD", "Service manual for SY3120-5LZD", "Server rack SY3120-5LZD", "SY3120-5LZD ser. valve body", "Sr. technician note: SY3120-5LZD"])(
     "control: %s is not a serial label",
     (text) => {
       expect(mentionsSerialLabel(text)).toBe(false);
