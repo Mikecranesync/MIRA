@@ -47,6 +47,7 @@ import type { GenerationAttempt } from "@/capabilities/observability/turn-eviden
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
+  namesOnlyThisMachine,
   proposeIdentityFromText,
   unconfirmedMachineDirective,
   type IdentityProposal,
@@ -111,6 +112,7 @@ import {
   confirmedPartSearchCandidate,
   isPartSearchProposal,
   partSearchConfirmation,
+  mentionsSerialLabel,
   partSearchDecision,
   unambiguousPartNumber,
   type PartSearchDecision,
@@ -1824,7 +1826,10 @@ async function handleChatTurn(
     if (!acquisitionEnabled()) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
-      return candidate?.manufacturer ? { manufacturer: candidate.manufacturer, model: candidate.part } : null;
+      // Codex r3 F5 (#4172): keep proposeIdentityFromText's multi-machine
+      // rejection — a comparison never becomes one machine's search.
+      if (!candidate?.manufacturer || !namesOnlyThisMachine(message, candidate.part)) return null;
+      return { manufacturer: candidate.manufacturer, model: candidate.part };
     } catch (err) {
       console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
       return null;
@@ -1984,13 +1989,20 @@ async function handleChatTurn(
     // families, so a valid part it does not recognise (oemModel null) falls back
     // to the corpus-independent label reader — but only when that reader names
     // the SAME maker, which keeps its ambiguity and serial exclusions intact.
-    const candidate = oemModel ? null : extractCandidateIdentity(photoTextForOem, message);
-    const model =
-      oemModel?.value ??
-      (candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
+    const candidate = extractCandidateIdentity(photoTextForOem, message);
+    const candidatePart =
+      candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
         ? candidate.part
-        : null);
-    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
+        : null;
+    // Codex r3 F6 (#4172): the OEM retrieval parser is not a search-egress
+    // authority. With a serial label anywhere on the photo or message, only the
+    // explicitly labelled part (the serial-safe reader's result) may leave
+    // (ADR-0036) — the same fail-closed rule unambiguousPartNumber applies.
+    const serialContext = mentionsSerialLabel(photoTextForOem) || mentionsSerialLabel(message);
+    const fromOem =
+      oemModel && (!serialContext || candidatePart?.toUpperCase() === oemModel.value.toUpperCase()) ? oemModel.value : null;
+    const model = fromOem ?? candidatePart;
+    if (model && namesOnlyThisMachine(message, model)) identityProposal = { manufacturer: oemManufacturer.name, model };
   }
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
   // history reload deliver the same proposal the live stream did. Computed

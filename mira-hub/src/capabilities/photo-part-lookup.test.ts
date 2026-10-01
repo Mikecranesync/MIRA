@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
   it("uses one label-shaped code as a lookup candidate without asserting what it is", () => {
@@ -237,5 +238,23 @@ describe("partSearchDecision — identity binding and one-time use", () => {
     expect(
       partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: consumed }).action,
     ).toBe("mismatch");
+  });
+});
+
+// Codex r3 F6 (#4172): the OEM retrieval parser is not a search-egress
+// authority — any serial label on the text must be detectable by the route.
+describe("mentionsSerialLabel", () => {
+  it("detects S/N, serial number and serial no. labels", () => {
+    expect(mentionsSerialLabel("Siemens S/N: 6AV2124-0GC01-0AX0")).toBe(true);
+    expect(mentionsSerialLabel("Serial number is AB-1234567")).toBe(true);
+    expect(mentionsSerialLabel("serial no. 12345678")).toBe(true);
+  });
+  it("is false for a plain model or labelled part", () => {
+    expect(mentionsSerialLabel("Siemens TP700 Comfort panel, 24 VDC")).toBe(false);
+    expect(mentionsSerialLabel("Siemens P/N: 6ES7214-1AG40-0XB0")).toBe(false);
+  });
+  it("premise: the real OEM parser does read a serial-labelled order number as a model", () => {
+    expect(resolveModelFromObservationText("Siemens S/N: 6AV2124-0GC01-0AX0").model).not.toBeNull();
+    expect(unambiguousPartNumber("Siemens S/N: 6AV2124-0GC01-0AX0")).toBeNull();
   });
 });

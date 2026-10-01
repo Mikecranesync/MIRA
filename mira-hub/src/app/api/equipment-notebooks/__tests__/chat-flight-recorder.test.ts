@@ -603,6 +603,44 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       );
     });
 
+    // Codex r3 F6 (#4172): the OEM retrieval parser reads a serial-labelled
+    // order number as a model (premise proven against the REAL parser in
+    // photo-part-lookup.test.ts); that must never become a search identity.
+    it("Codex r3 F6: a serial-labelled value the OEM parser reads as a model is never proposed or searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o6", sessionId: "s1", text: "Siemens S/N: 6AV2124-0GC01-0AX0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      const realSeam = ragMock.resolveModelFromObservationText.getMockImplementation()!;
+      ragMock.resolveModelFromObservationText.mockImplementation((text: string) =>
+        /6AV2124-0GC01-0AX0/.test(text) ? { model: "6AV2124-0GC01-0AX0", ambiguous: false } : realSeam(text),
+      );
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      let f: Record<string, unknown>[];
+      try {
+        f = await ask("Find the manual for this");
+      } finally {
+        ragMock.resolveModelFromObservationText.mockImplementation(realSeam);
+      }
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+      expect(JSON.stringify(f)).not.toContain("6AV2124-0GC01-0AX0");
+    });
+
+    it("Codex r3 F5: a corpus-recognised maker + a message comparing a second model proposes nothing", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o7", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Compare the manuals for this one and the S7-1200");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
     it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
       siemensLabel();
       const f = await ask("Find the manual for this");

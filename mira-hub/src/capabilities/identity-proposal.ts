@@ -377,6 +377,23 @@ export function proposeIdentityFromText(
 }
 
 /**
+ * Does this message name no machine other than `part` (#4172 Codex r3 F5)? The
+ * corpus-independent fallback reuses proposeIdentityFromText's multi-machine
+ * rejection, so a comparison ("6ES7214-… and TP700") never yields a search for
+ * one of them. Fail closed: any error means "not only this machine".
+ */
+export function namesOnlyThisMachine(message: string, part: string): boolean {
+  try {
+    const text = withoutLabelValues(message);
+    if (resolveModelFromObservationText(text).ambiguous) return false;
+    const chosen = canonicalModel(part);
+    return modelMentions(text, part).every((m) => norm(m) === norm(part) || sameMachine(m, part, chosen));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Appended to the GENERAL system prompt only when a proposal is made, so an
  * unconfirmed machine is never answered as if its manual were loaded.
  *

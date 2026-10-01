@@ -40,6 +40,16 @@ export function unambiguousPartNumber(photoText: string): string | null {
   return unique.size === 1 ? [...unique.values()][0] : null;
 }
 
+/**
+ * Does this text carry a serial-number label anywhere (#4172 Codex r3 F6)? Any
+ * identity bound for search egress from such text must be the explicitly
+ * labelled part number that unambiguousPartNumber() returns — never a value
+ * another parser (the OEM retrieval model reader) picked out (ADR-0036).
+ */
+export function mentionsSerialLabel(text: string): boolean {
+  return new RegExp(SERIAL_LABEL.source, "i").test(text.replace(/["'\u2018\u2019\u201c\u201d`]/g, " "));
+}
+
 const LOOKUP_VERB = String.raw`(?:find|look\s+up|search(?:\s+for)?|locate|get|download)`;
 const DOC_WORD = String.raw`(?:manual|data\s*sheet|datasheet|pdf)`;
 /** A request addressed to MIRA: the sentence OPENS with the lookup verb, optionally

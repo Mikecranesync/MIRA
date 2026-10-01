@@ -253,3 +253,21 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
   });
 });
+
+// Codex r3 F5 (#4172): the corpus-independent fallback keeps the existing
+// multi-machine rejection — a comparison never yields one machine's search.
+describe("#4160 S6 — an ambiguous identity is never resurrected by the fallback", () => {
+  it("a two-machine comparison proposes nothing and starts no search", async () => {
+    const res = await POST(req({ message: "Compare the manuals for Siemens 6ES7214-1AG40-0XB0 and TP700", mode: "general" }), params);
+    const f = await frames(res);
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it("control: the single part alone still proposes and searches", async () => {
+    const res = await POST(req({ message: "Find the manual for Siemens 6ES7214-1AG40-0XB0", mode: "general" }), params);
+    const f = await frames(res);
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ model: "6ES7214-1AG40-0XB0" });
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+  });
+});
