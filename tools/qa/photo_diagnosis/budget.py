@@ -90,7 +90,9 @@ class Ledger:
         n = self.queries_per_search if additional is None else additional
         return self.manual_search_queries + n > self.manual_search_cap
 
-    def record_manual_search_from_packet(self, packet: dict | None) -> None:
+    def record_manual_search_from_packet(
+        self, packet: dict | None, *, photo_turn: bool = False
+    ) -> None:
         """Fed from the turn evidence packet's `retrieval.manual_acquisition`
         and `retrieval.photo_part_manual_lookup` — the REAL packet shape is
         `{state, started_this_turn, candidate_host} | None` and
@@ -113,7 +115,13 @@ class Ledger:
         This is an ESTIMATE from in-flight telemetry, not a bill. Staging's
         quota_spend_view (the after-the-fact Neon cross-check of real
         provider spend, maintained outside this harness) is the
-        authoritative source if the two ever disagree."""
+        authoritative source if the two ever disagree.
+
+        `photo_turn` (Codex r2 F4): a turn that carried a photo can start a
+        CANDIDATE-identity acquisition (chat route, basis="candidate") that
+        neither counted field reports. So a photo turn with no explicitly
+        counted start is charged one worst-case search anyway — an over-count,
+        never an under-count, so the hard stop stays a hard stop."""
         if not isinstance(packet, dict):
             self.record_manual_search(self.queries_per_search)
             return
@@ -137,6 +145,8 @@ class Ledger:
                 continue
             if value.get(started_flag) is True:
                 starts += 1
+        if photo_turn and starts == 0:
+            starts = 1  # unattributable candidate acquisition -> worst case
         if starts:
             self.record_manual_search(starts * self.queries_per_search)
 

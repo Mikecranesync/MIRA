@@ -156,6 +156,31 @@ def _safe_record(record: dict[str, Any], secrets: list[str]) -> dict[str, Any]:
     return record
 
 
+def write_artifacts(
+    out_dir: Path,
+    records: list[dict[str, Any]],
+    ledger_summary: dict[str, Any],
+    header: dict[str, Any],
+    secrets: list[str],
+) -> Path:
+    """F11 (r2): sanitize ONCE, then produce BOTH artifacts from the sanitized
+    records, so report.md can never carry what results.jsonl withholds; the
+    rendered text (headers included) is scrubbed as a last line of defence."""
+    safe = [_safe_record(r, secrets) for r in records]
+    results_path = write_results(out_dir, safe, secrets)
+    report_text = _scrub(report_mod.render_report(safe, ledger_summary, header), secrets)
+    (out_dir / "report.md").write_text(report_text)
+    return results_path
+
+
+def _scrub(text: str, secrets: list[str]) -> str:
+    """Last line of defence for rendered text (headers included): replace any
+    live secret value that still made it into the report."""
+    for v in sorted(secrets, key=len, reverse=True):
+        text = text.replace(v, "[REDACTED]")
+    return text
+
+
 def _turn_safety(entry: dict, reply: str, case: dict) -> None:
     """Deterministic half of the safety scan (spec: must_refuse phrase check
     + LLM X). A `must_refuse` item is advice that must never be given; any
@@ -338,6 +363,7 @@ def run_diagnosis_case(
             )
             break
         turn_index += 1
+        sent_photo = pending_visual_evidence is not None
         try:
             row, p, w = mira_turn(
                 hub,
@@ -355,7 +381,7 @@ def run_diagnosis_case(
             break
         pending_visual_evidence = None
         pending_source_doc_ids = None
-        ledger.record_manual_search_from_packet(p)
+        ledger.record_manual_search_from_packet(p, photo_turn=sent_photo)
         contract = _contract_record(row, w)
         mira_reply = w["content"]
         history.append({"role": "user", "content": message})
@@ -373,12 +399,24 @@ def run_diagnosis_case(
             tg["contract"] = contract
         except grading.GraderError as e:
             tg = {"turn": turn_index, "status": "ungraded", "reason": str(e), "contract": contract}
+        except budget_mod.BudgetExhausted as e:
+            tg = {"turn": turn_index, "status": "ungraded", "reason": str(e), "contract": contract}
+            status, reason = "not_run_budget", f"budget exhausted grading turn {turn_index}: {e}"
         _turn_safety(tg, mira_reply, case)
         turn_grades.append(tg)
 
-        if sim.stopped:
+        if status != "completed" or sim.stopped:
             break
-        sim_turn = sim.respond(mira_reply)
+        if turn_index >= case.get("max_turns", schema.DEFAULT_MAX_TURNS):
+            break  # F10: no classifier call after the final allowed turn
+        try:
+            sim_turn = sim.respond(mira_reply)
+        except budget_mod.BudgetExhausted as e:
+            status, reason = "not_run_budget", f"budget exhausted in simulator: {e}"
+            break
+        except Exception as e:  # noqa: BLE001 — F10: keep every graded turn
+            status, reason = "error", f"simulator/classifier failed after turn {turn_index}: {e}"
+            break
         revealed_texts.extend(
             f["text"]
             for f in case.get("hidden_facts") or []
@@ -427,8 +465,10 @@ def run_diagnosis_case(
     if any(m.get("role") == "assistant" for m in history):
         try:
             outcome = grading.outcome_grade(judge, history, case)
-        except grading.GraderError as e:
-            outcome, status = "ungraded", "ungraded"
+        except (grading.GraderError, budget_mod.BudgetExhausted) as e:
+            outcome = "ungraded"
+            if status == "completed":
+                status = "ungraded"
             reason = reason or str(e)
 
     # F7: a nested ungraded/errored turn makes the whole run "partial" —
@@ -600,13 +640,19 @@ def run_baseline_case(
         try:
             # F3: the baseline gets the photo as a base64 image on turn 1
             # (and any retake image, below) — same evidence MIRA sees.
-            text, _usage = baseline.complete(history, images=images, max_tokens=500)
-        except budget_mod.BudgetExhausted:
-            raise
+            # F3 (r2): replay EVERY image so far on every request — the provider
+            # attaches images to the outbound copy only, so history alone would
+            # lose the photo after the first call.
+            text, _usage = baseline.complete(history, images=list(images or []), max_tokens=500)
+        except budget_mod.BudgetExhausted as e:
+            status, reason = (
+                "not_run_budget",
+                f"budget exhausted on baseline turn {turn_index}: {e}",
+            )
+            break
         except Exception as e:  # noqa: BLE001
             status, reason = "error", f"baseline call failed: {e}"
             break
-        images = None
         history.append({"role": "assistant", "content": text})
 
         try:
@@ -620,12 +666,24 @@ def run_baseline_case(
             tg["turn"] = turn_index
         except grading.GraderError as e:
             tg = {"turn": turn_index, "status": "ungraded", "reason": str(e)}
+        except budget_mod.BudgetExhausted as e:
+            tg = {"turn": turn_index, "status": "ungraded", "reason": str(e)}
+            status, reason = "not_run_budget", f"budget exhausted grading turn {turn_index}: {e}"
         _turn_safety(tg, text, case)
         turn_grades.append(tg)
 
-        if sim.stopped:
+        if status != "completed" or sim.stopped:
             break
-        sim_turn = sim.respond(text)
+        if turn_index >= case.get("max_turns", schema.DEFAULT_MAX_TURNS):
+            break
+        try:
+            sim_turn = sim.respond(text)
+        except budget_mod.BudgetExhausted as e:
+            status, reason = "not_run_budget", f"budget exhausted in simulator: {e}"
+            break
+        except Exception as e:  # noqa: BLE001
+            status, reason = "error", f"simulator/classifier failed after turn {turn_index}: {e}"
+            break
         revealed_texts.extend(
             f["text"]
             for f in case.get("hidden_facts") or []
@@ -642,7 +700,7 @@ def run_baseline_case(
         ):
             try:
                 retake_path = _resolve_source(sim_turn.product_ask_path, case["_source_file"])
-                images = [_encode_image_b64(retake_path)]
+                images = [*(images or []), _encode_image_b64(retake_path)]
             except OSError as e:
                 status, reason = "error", f"retake photo read failed: {e}"
                 break
@@ -662,8 +720,10 @@ def run_baseline_case(
         try:
             # F3: the baseline's own transcript is also outcome-graded.
             outcome = grading.outcome_grade(judge, _without_system(history), case)
-        except grading.GraderError as e:
-            outcome, status = "ungraded", "ungraded"
+        except (grading.GraderError, budget_mod.BudgetExhausted) as e:
+            outcome = "ungraded"
+            if status == "completed":
+                status = "ungraded"
             reason = reason or str(e)
 
     nested_bad = any(tg.get("status") in ("ungraded", "error") for tg in turn_grades)
@@ -858,7 +918,8 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as e:  # noqa: BLE001
                     records.append(_skipped_record(case, repeat, "error", str(e), "mira"))
 
-    results_path = write_results(out_dir, records, _secret_values(args.cookie))
+    # F11 (r2): sanitize ONCE, before either artifact is produced, so the
+    # report can never carry what results.jsonl withholds.
     gitsha = "unknown"
     try:
         st, _hd, j = hub.json("GET", "/api/health")
@@ -874,8 +935,9 @@ def main(argv: list[str] | None = None) -> int:
         "judge_model": judge.model,
         "baseline_model": args.baseline_model if baseline is not None else "none",
     }
-    report_text = report_mod.render_report(records, ledger.summary(), header)
-    (out_dir / "report.md").write_text(report_text)
+    results_path = write_artifacts(
+        out_dir, records, ledger.summary(), header, _secret_values(args.cookie)
+    )
     print(f"wrote {results_path}")
     print(f"wrote {out_dir / 'report.md'}")
     print(json.dumps(ledger.summary(), indent=2))
