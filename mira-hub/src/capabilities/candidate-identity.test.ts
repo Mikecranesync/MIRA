@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidateIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
 // LOOK observation or typed text WITHOUT consulting the corpus. Makers come
@@ -131,5 +131,37 @@ describe("wantsManualDocumentation — #4160 S6 candidate-basis trigger, half 1 
   it("control: an ordinary troubleshooting question never matches", () => {
     expect(wantsManualDocumentation("why is this valve not actuating")).toBe(false);
     expect(wantsManualDocumentation("is this part compatible with my cylinder")).toBe(false);
+  });
+});
+
+// Codex post-cap F6/F5 (#4172): ONE validator for every candidate identity
+// that may leave as a search — serials and ambiguity across BOTH inputs.
+describe("isSafeCandidateSearchIdentity", () => {
+  const SERIAL_PHOTO = "Siemens S/N: 6AV2124-0GC01-0AX0";
+  it("rejects a photo serial even when the technician types it back", () => {
+    expect(isSafeCandidateSearchIdentity(SERIAL_PHOTO, "Find the manual for Siemens 6AV2124-0GC01-0AX0", "6AV2124-0GC01-0AX0")).toBe(false);
+  });
+  it("rejects a typed serial", () => {
+    expect(isSafeCandidateSearchIdentity("", "manual for S/N 6AV2124-0GC01-0AX0", "6AV2124-0GC01-0AX0")).toBe(false);
+  });
+  it("rejects a value beside an unparsed serial label unless it is the labelled part", () => {
+    expect(isSafeCandidateSearchIdentity("AB-1234567 serial number", "", "AB-1234567")).toBe(false);
+  });
+  it("accepts a distinct, explicitly labelled part on a photo that also carries a serial", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(true);
+  });
+  it("rejects a photo that names two machines", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "TP700")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Siemens 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(false);
+  });
+  it("rejects a second machine split across photo and typed text", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N 6ES7214-1AG40-0XB0", "and the TP700 too", "6ES7214-1AG40-0XB0")).toBe(false);
+  });
+  it("accepts a single-machine photo and a neutral question", () => {
+    expect(isSafeCandidateSearchIdentity("Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC", "Find the manual for this", "SS5Y3-DUW01302")).toBe(true);
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort panel, 24 VDC", "Find the manual for this", "TP700")).toBe(true);
+  });
+  it("keeps a panel and its own 6AV order number as one machine", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort 6AV2124-0GC01-0AX0", "", "TP700")).toBe(true);
   });
 });

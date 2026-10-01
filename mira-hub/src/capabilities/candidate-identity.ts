@@ -19,7 +19,8 @@
  * confirms it (R2/R3).
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
-import { unambiguousPartNumber } from "./photo-part-lookup";
+import { namesOnlyThisMachine } from "./identity-proposal";
+import { mentionsSerialLabel, unambiguousPartNumber } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -71,4 +72,32 @@ const MANUAL_INTENT_RE =
 
 export function wantsManualDocumentation(message: string): boolean {
   return MANUAL_INTENT_RE.test(message);
+}
+
+/**
+ * May `part` leave MIRA as a candidate manual-search identity, given the photo
+ * observation and the technician's typed text (#4172 Codex post-cap F6/F5)?
+ * The ONE gate every candidate-basis proposal and acquisition passes, so the
+ * rules cannot drift apart per path. Fail closed:
+ *  - in EITHER text carrying a serial label, a value that text mentions must be
+ *    the explicitly labelled part unambiguousPartNumber() returns for it, so a
+ *    serial never leaves (ADR-0036) and typing a photo's serial back does not
+ *    restore it (unambiguousPartNumber never returns a serial);
+ *  - the photo and typed text TOGETHER name no machine other than `part`
+ *    (proposeIdentityFromText's multi-machine rejection, aliases preserved).
+ */
+export function isSafeCandidateSearchIdentity(photoText: string, typed: string, part: string): boolean {
+  const key = part.trim().toUpperCase();
+  if (!key) return false;
+  for (const text of [photoText, typed]) {
+    if (!text) continue;
+    if (
+      mentionsSerialLabel(text) &&
+      text.toUpperCase().includes(key) &&
+      unambiguousPartNumber(text)?.toUpperCase() !== key
+    ) {
+      return false;
+    }
+  }
+  return namesOnlyThisMachine([photoText, typed].filter(Boolean).join("\n"), part);
 }

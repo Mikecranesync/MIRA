@@ -47,7 +47,6 @@ import type { GenerationAttempt } from "@/capabilities/observability/turn-eviden
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
-  namesOnlyThisMachine,
   proposeIdentityFromText,
   unconfirmedMachineDirective,
   type IdentityProposal,
@@ -112,13 +111,12 @@ import {
   confirmedPartSearchCandidate,
   isPartSearchProposal,
   partSearchConfirmation,
-  mentionsSerialLabel,
   partSearchDecision,
   unambiguousPartNumber,
   type PartSearchDecision,
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
-import { extractCandidateIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -1826,9 +1824,9 @@ async function handleChatTurn(
     if (!acquisitionEnabled()) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
-      // Codex r3 F5 (#4172): keep proposeIdentityFromText's multi-machine
-      // rejection — a comparison never becomes one machine's search.
-      if (!candidate?.manufacturer || !namesOnlyThisMachine(message, candidate.part)) return null;
+      // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
+      // ambiguity across photo AND typed text) — see isSafeCandidateSearchIdentity.
+      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part)) return null;
       return { manufacturer: candidate.manufacturer, model: candidate.part };
     } catch (err) {
       console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
@@ -1994,15 +1992,13 @@ async function handleChatTurn(
       candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
         ? candidate.part
         : null;
-    // Codex r3 F6 (#4172): the OEM retrieval parser is not a search-egress
-    // authority. With a serial label anywhere on the photo or message, only the
-    // explicitly labelled part (the serial-safe reader's result) may leave
-    // (ADR-0036) — the same fail-closed rule unambiguousPartNumber applies.
-    const serialContext = mentionsSerialLabel(photoTextForOem) || mentionsSerialLabel(message);
-    const fromOem =
-      oemModel && (!serialContext || candidatePart?.toUpperCase() === oemModel.value.toUpperCase()) ? oemModel.value : null;
-    const model = fromOem ?? candidatePart;
-    if (model && namesOnlyThisMachine(message, model)) identityProposal = { manufacturer: oemManufacturer.name, model };
+    // #4172 Codex r3/post-cap: the OEM retrieval parser is not a search-egress
+    // authority — its model, like the label reader's part, must pass the ONE
+    // candidate validator (no serial from either input, one machine across both).
+    const model = [oemModel?.value ?? null, candidatePart].find(
+      (m): m is string => Boolean(m) && isSafeCandidateSearchIdentity(photoTextForOem, message, m!),
+    );
+    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
   }
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
   // history reload deliver the same proposal the live stream did. Computed
@@ -2093,6 +2089,9 @@ async function handleChatTurn(
       model: identityProposal.model,
       catalogNumber: "",
     }) !== null &&
+    // The single egress gate: every proposal path (including #4120's corpus
+    // proposal) passes the same candidate validator before any search starts.
+    isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
   const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any

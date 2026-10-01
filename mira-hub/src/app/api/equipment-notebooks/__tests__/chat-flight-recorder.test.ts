@@ -641,6 +641,69 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
+    // Codex post-cap F6 (#4172): typing back a serial the photo excluded must
+    // not restore it (extractCandidateIdentity falls back to typed text).
+    it("Codex post-cap F6: a photo serial typed back by the technician is never proposed or searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o8", sessionId: "s1", text: "Siemens S/N: 6AV2124-0GC01-0AX0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for Siemens 6AV2124-0GC01-0AX0");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    // Codex post-cap F5 (#4172): ambiguity is judged over the photo AND the
+    // message — a two-machine label never starts either machine's search.
+    it("Codex post-cap F5: a photo naming two machines proposes nothing (Siemens in the corpus)", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o9", sessionId: "s1", text: "Siemens 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap F5: a photo naming two machines proposes nothing (Siemens NOT in the corpus)", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o10", sessionId: "s1", text: "Siemens 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      const realCorpus = ragMock.corpusManufacturers.getMockImplementation()!;
+      ragMock.corpusManufacturers.mockImplementation(async () => ["Allen-Bradley", "Automation Direct"]);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      let f: Record<string, unknown>[];
+      try {
+        f = await ask("Find the manual for this");
+      } finally {
+        ragMock.corpusManufacturers.mockImplementation(realCorpus);
+      }
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // The single egress gate also covers #4120's corpus proposal: a typed
+    // machine that disagrees with the machine on the photo never searches.
+    it("Codex post-cap: a corpus proposal from typed text + a photo naming another machine starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o11", sessionId: "s1", text: "Controller label: S7-1200",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      // #4120's proposal itself is unchanged; only the search is withheld.
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
     it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
       siemensLabel();
       const f = await ask("Find the manual for this");
