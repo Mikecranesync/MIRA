@@ -290,6 +290,37 @@ describe("#4175 — candidate takeover gated behind MIRA_NOTEBOOK_CANDIDATE_ACQU
   });
 });
 
+// #4160 gate NO-GO: "Typed maker+model doesn't trigger the search" (Banner).
+describe("#4160 gate — a typed dictionary-word maker + part starts the candidate search", () => {
+  it("'I need the manual for a Banner Q4XTBLAF300-Q8' starts a candidate search for BANNER", async () => {
+    await (await POST(req({ message: "I need the manual for a Banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "BANNER", model: "Q4XTBLAF300-Q8", catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+  });
+
+  it("Codex #4184 F1: 'Sick of this Q4XTBLAF300-Q8, need the manual' starts no search for SICK", async () => {
+    await (await POST(req({ message: "Sick of this Q4XTBLAF300-Q8, need the manual", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it.each(["Manual for Sick or Banner Q4XTBLAF300-Q8", "Manual for Banner or Sick Q4XTBLAF300-Q8"])(
+    "Codex #4184 F3: '%s' names two makers — no search",
+    async (message) => {
+      await (await POST(req({ message, mode: "general" }), params)).text();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+
+  it("control: lowercase 'banner' is an ordinary word — no search", async () => {
+    await (await POST(req({ message: "I need the manual for a banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+});
+
 // #4160 gate NO-GO (PRD "Never"): on the turn the candidate search starts, a
 // specificity fallback must not tell the technician to "get it from the
 // manufacturer's support" while MIRA is already searching for it.
