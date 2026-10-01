@@ -11,7 +11,15 @@ from collections import defaultdict
 from typing import Any
 
 METRIC_FIELDS = ("H", "D", "S", "R", "U", "X", "N")
-FAILURE_STATUSES = ("ungraded", "error", "not_run_budget", "sim_error", "redacted_secret_detected")
+FAILURE_STATUSES = (
+    "ungraded",
+    "error",
+    "not_run_budget",
+    "sim_error",
+    "redacted_secret_detected",
+    "partial",
+)
+_NESTED_BAD_STATUSES = ("ungraded", "error")
 
 
 def _header_block(header: dict[str, Any], ledger_summary: dict[str, Any]) -> list[str]:
@@ -32,58 +40,115 @@ def _header_block(header: dict[str, Any], ledger_summary: dict[str, Any]) -> lis
     return lines
 
 
+def _safety_status(r: dict) -> str:
+    """'failed' if any GRADED turn has X=True (a later refusal never clears
+    it — matches the turn-grader's own rule). 'unknown' when no turn has
+    X=True but some turn is ungraded/errored — we cannot claim clean
+    because we never actually checked that turn. Otherwise 'clean'.
+
+    Top-level `safety_failed`/`X` are honored too (pre-F6 synthetic rows,
+    and the whole-run `X` field computed in runner.py)."""
+    turn_grades = r.get("turn_grades") or []
+    if r.get("safety_failed") or r.get("X") or any(tg.get("X") for tg in turn_grades):
+        return "failed"
+    if any(tg.get("status") in _NESTED_BAD_STATUSES for tg in turn_grades):
+        return "unknown"
+    return "clean"
+
+
 def _safety_failures_block(results: list[dict]) -> list[str]:
     lines = ["## Safety failures"]
-    failures = [r for r in results if r.get("safety_failed") or r.get("X")]
-    if not failures:
+    failed = [r for r in results if _safety_status(r) == "failed"]
+    unknown = [r for r in results if _safety_status(r) == "unknown"]
+    if not failed and not unknown:
         lines.append("None.")
     else:
-        for r in failures:
+        for r in failed:
             lines.append(
                 f"- **{r.get('case_id', '?')}** repeat {r.get('repeat', '?')}: "
                 f"{r.get('safety_notes', r.get('notes', ''))}"
+            )
+        for r in unknown:
+            lines.append(
+                f"- **{r.get('case_id', '?')}** repeat {r.get('repeat', '?')}: "
+                "UNKNOWN — one or more turns were ungraded; safety cannot be confirmed clean"
             )
     lines.append("")
     return lines
 
 
 def _outcomes_table(results: list[dict]) -> list[str]:
+    """F6: grouped by (case_id, arm) — mixing MIRA and baseline repeats
+    into one bucket silently halved the k/n denominator."""
     ok_outcomes = {"resolved_true", "resolved_acceptable", "safe_next_action"}
-    by_case: dict[str, list[dict]] = defaultdict(list)
-    for r in results:
-        by_case[r.get("case_id", "?")].append(r)
+    diagnosis_rows = [r for r in results if r.get("kind", "diagnosis") == "diagnosis"]
+    by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for r in diagnosis_rows:
+        by_key[(r.get("case_id", "?"), r.get("arm", "mira"))].append(r)
 
     lines = [
         "## Outcomes by case",
-        "| case | type | repeats (k/n) | outcomes |",
-        "|---|---|---|---|",
+        "| case | arm | type | repeats (k/n) | outcomes |",
+        "|---|---|---|---|---|",
     ]
-    for case_id in sorted(by_case):
-        rows = by_case[case_id]
+    for case_id, arm in sorted(by_key):
+        rows = by_key[(case_id, arm)]
         n = len(rows)
-        outcomes = [r.get("outcome", r.get("status", "?")) for r in rows]
+        outcomes = [r.get("outcome") or r.get("status", "?") for r in rows]
         k = sum(1 for o in outcomes if o in ok_outcomes)
         case_type = rows[0].get("type", "?")
-        lines.append(f"| {case_id} | {case_type} | {k}/{n} | {', '.join(outcomes)} |")
+        lines.append(f"| {case_id} | {arm} | {case_type} | {k}/{n} | {', '.join(outcomes)} |")
     lines.append("")
     return lines
 
 
 def _metric_rates_block(results: list[dict]) -> list[str]:
+    """F6: H/D/S/R/U/X/N are per-TURN labels — derive rates from the nested
+    `turn_grades` on every run (both arms), counting only turns that were
+    actually graded (an ungraded/errored nested entry has no H/D/... keys
+    and is correctly excluded, never silently counted as False)."""
     lines = ["## Metric rates (min/max across repeats)"]
     any_metric = False
     for metric in METRIC_FIELDS:
-        present = [r for r in results if metric in r and r[metric] is not None]
-        if not present:
+        rates: list[float] = []
+        for r in results:
+            for tg in r.get("turn_grades") or []:
+                if metric in tg and isinstance(tg[metric], bool):
+                    rates.append(1.0 if tg[metric] else 0.0)
+        if not rates:
             continue
         any_metric = True
-        rates = [1.0 if r[metric] else 0.0 for r in present]
         mean = sum(rates) / len(rates)
         lines.append(
             f"- {metric}: mean={mean:.2f} min={min(rates):.2f} max={max(rates):.2f} (n={len(rates)})"
         )
     if not any_metric:
         lines.append("No graded turns.")
+    lines.append("")
+    return lines
+
+
+def _qa_block(results: list[dict]) -> list[str]:
+    """Per-case exact-match and citation-missing rates, with denominators —
+    QA answers were never summarized anywhere before F6."""
+    lines = ["## QA accuracy"]
+    qa_rows = [r for r in results if r.get("kind") == "qa"]
+    if not qa_rows:
+        lines.append("No QA runs.")
+        lines.append("")
+        return lines
+    by_case: dict[str, list[dict]] = defaultdict(list)
+    for r in qa_rows:
+        by_case[r.get("case_id", "?")].append(r)
+    lines.append("| case | exact-match | citation-missing |")
+    lines.append("|---|---|---|")
+    for case_id in sorted(by_case):
+        answers = [a for r in by_case[case_id] for a in (r.get("answers") or [])]
+        graded = [a for a in answers if "exact_match" in a]
+        em_n, em_k = len(graded), sum(1 for a in graded if a.get("exact_match"))
+        cm_rows = [a for a in answers if "citation_missing" in a]
+        cm_n, cm_k = len(cm_rows), sum(1 for a in cm_rows if a.get("citation_missing"))
+        lines.append(f"| {case_id} | {em_k}/{em_n} | {cm_k}/{cm_n} |")
     lines.append("")
     return lines
 
@@ -101,9 +166,27 @@ def _comparator_block(results: list[dict]) -> list[str]:
 
 
 def _ungraded_block(results: list[dict]) -> list[str]:
+    """F7: enumerates NESTED failures too (a turn/answer ungraded/errored
+    inside an otherwise-"completed" run must still show up here with its
+    reason, not just the top-level status rows)."""
     lines = ["## Ungraded / failed runs"]
     bad = [r for r in results if r.get("status") in FAILURE_STATUSES]
-    if not bad:
+    nested: list[str] = []
+    for r in results:
+        for tg in r.get("turn_grades") or []:
+            if tg.get("status") in _NESTED_BAD_STATUSES:
+                nested.append(
+                    f"- {r.get('case_id', '?')} repeat {r.get('repeat', '?')} "
+                    f"turn {tg.get('turn', '?')}: {tg.get('status')} — {tg.get('reason', '')}"
+                )
+        for a in r.get("answers") or []:
+            if a.get("status") in _NESTED_BAD_STATUSES:
+                where = str(a.get("q", "?"))[:60]
+                nested.append(
+                    f"- {r.get('case_id', '?')} repeat {r.get('repeat', '?')} q: {where}: "
+                    f"{a.get('status')} — {a.get('reason', '')}"
+                )
+    if not bad and not nested:
         lines.append("None.")
     else:
         for r in bad:
@@ -111,6 +194,7 @@ def _ungraded_block(results: list[dict]) -> list[str]:
                 f"- {r.get('case_id', '?')} repeat {r.get('repeat', '?')}: "
                 f"{r.get('status')} — {r.get('reason', '')}"
             )
+        lines += nested
     lines.append("")
     return lines
 
@@ -158,6 +242,7 @@ def render_report(
     lines += _outcomes_table(results)
     lines += _metric_rates_block(results)
     lines += _comparator_block(results)
+    lines += _qa_block(results)
     lines += _contract_block(results)
     lines += _ungraded_block(results)
     lines += _privacy_block(header)

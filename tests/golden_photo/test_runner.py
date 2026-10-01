@@ -19,8 +19,103 @@ CASES_DIR = Path(__file__).resolve().parent / "cases"
 if str(TOOLS_QA) not in sys.path:
     sys.path.insert(0, str(TOOLS_QA))
 
-from photo_diagnosis import budget, runner, schema  # noqa: E402
+from photo_diagnosis import budget, grading, runner, schema, simulator  # noqa: E402
 from photo_diagnosis.providers import FakeProvider  # noqa: E402
+
+PHOTO = REPO_ROOT / "tests" / "eval" / "fixtures" / "photos" / "pilz_pnoz_x3.jpg"
+MANUAL_PDF = REPO_ROOT / "tools" / "demo-3tag-plc-vfd-conveyor.pdf"
+
+
+def _full_turn_json(**overrides) -> str:
+    data = {f: False for f in grading.TURN_FIELDS}
+    data.update(overrides)
+    data.setdefault("notes", "")
+    return json.dumps(data)
+
+
+def _outcome_json(label: str = "resolved_true") -> str:
+    return json.dumps({"outcome": label, "notes": ""})
+
+
+def _diagnosis_case(**overrides) -> dict:
+    """A schema-shaped `kind: diagnosis` case (as `schema.load_cases` would
+    normalize it) pointing at real fixture files, for runner-level
+    integration tests that drive `run_diagnosis_case`/`run_baseline_case`
+    end to end against a monkeypatched Hub."""
+    case = {
+        "id": "it-diag-1",
+        "kind": "diagnosis",
+        "type": "D",
+        "photo": str(PHOTO),
+        "sources": [],
+        "visible_facts": ["Pilz PNOZ X3 safety relay"],
+        "reported_facts": "Guard door closed, pressed reset, CH1/CH2 lights won't come on.",
+        "checks": [
+            {"id": "door_switch", "description": "door switch", "discriminates": ["welded_k1"]},
+        ],
+        "hidden_facts": [
+            {"id": "f1", "text": "Both channels make.", "revealed_by": ["door_switch"]},
+        ],
+        "hypotheses": [
+            {"id": "welded_k1", "text": "Welded K1", "status": "true_cause", "ruled_out_by": None},
+        ],
+        "unproven": [],
+        "safety": [],
+        "must_refuse": [],
+        "legit_product_asks": {
+            "identity_confirm": "Confirming: Pilz PNOZ X3?",
+            "retake_photo": str(PHOTO),
+            "manual_upload": str(MANUAL_PDF),
+        },
+        "controls": [],
+        "validated_by": "mike",
+        "validated_on": None,
+        "privacy": "bench",
+        "max_turns": 12,
+        "_photo_path": PHOTO,
+        "_source_file": CASES_DIR / "it_case.yaml",
+    }
+    case.update(overrides)
+    return case
+
+
+def _qa_case(**overrides) -> dict:
+    case = {
+        "id": "it-qa-1",
+        "kind": "qa",
+        "type": "N",
+        "photo": str(PHOTO),
+        "sources": [],
+        "visible_facts": ["Pilz PNOZ X3 nameplate"],
+        "questions": [
+            {
+                "q": "What model is this safety relay?",
+                "answer_key": {"value": "PNOZ X3", "source": "nameplate"},
+                "acceptable": [],
+                "requires_citation": False,
+                "honest_unknown_ok": False,
+                "must_not": [],
+            },
+            {
+                "q": "What is the rated voltage?",
+                "answer_key": {"value": "24 V", "source": "nameplate"},
+                "acceptable": [],
+                "requires_citation": False,
+                "honest_unknown_ok": False,
+                "must_not": [],
+            },
+        ],
+        "safety": [],
+        "must_refuse": [],
+        "controls": [],
+        "validated_by": "mike",
+        "validated_on": None,
+        "privacy": "bench",
+        "_photo_path": PHOTO,
+        "_source_file": CASES_DIR / "it_case.yaml",
+    }
+    case.update(overrides)
+    return case
 
 
 # ---------------------------------------------------------------------------
@@ -120,49 +215,82 @@ def _sse_body(frames: list[dict]) -> bytes:
     return ("\n\n".join(f"data: {json.dumps(f)}" for f in frames)).encode()
 
 
+def _default_packet(**overrides) -> dict:
+    """The real evidence-packet shape (mira-hub .../turn-evidence-packet.ts).
+    `manual_acquisition`/`photo_part_manual_lookup` are explicit `None` —
+    a legitimate "no search ran" — so tests don't silently exercise F4's
+    fail-closed (missing-telemetry) path by accident."""
+    packet = {
+        "environment": "staging",
+        "generation": {
+            "served_provider": "groq",
+            "served_model": "llama-test",
+            "input_tokens": 50,
+            "output_tokens": 20,
+        },
+        "answer_gate": {},
+        "retrieval": {
+            "executed": False,
+            "candidate_count": 0,
+            "strategy": "skipped_general_mode",
+            "oem_corpus_searched": False,
+            "returned_doc_ids": [],
+            "manual_acquisition": None,
+            "photo_part_manual_lookup": None,
+        },
+        "context": {
+            "chunk_count": 0,
+            "evidence_doc_ids": [],
+            "system_prompt_kind": "general",
+        },
+    }
+    packet.update(overrides)
+    return packet
+
+
 class _FakeHubTransport:
     """Scripted responses keyed on (method, path-prefix), installed over
-    Hub._req so create_notebook/look/chat/diagnostics/attach_manual all run
-    their real logic against canned bytes — never a socket."""
+    Hub._req so create_notebook/look/chat/diagnostics/attach_manual/sources
+    all run their real logic against canned bytes — never a socket.
 
-    def __init__(self, trace_id: str):
+    `replies` is a queue of assistant reply strings, popped one per
+    `/chat/` call (F1 needs a distinct reply on a specific turn).
+    `packets` is a queue of evidence-packet dicts, popped one per
+    `/turns/diagnostics/` call (F4 needs to vary the packet per turn);
+    falls back to `_default_packet()` once exhausted. Every `/chat/`
+    request body is captured in `chat_bodies` (F5: assert `visualEvidence`
+    / `sourceDocIds` actually reach the next turn)."""
+
+    def __init__(
+        self,
+        trace_id: str,
+        replies: list[str] | None = None,
+        packets: list[dict] | None = None,
+    ):
         self.trace_id = trace_id
         self.requests: list[tuple[str, str]] = []
+        self.chat_bodies: list[dict] = []
+        self._replies = list(replies) if replies is not None else ["ok."]
+        self._packets = list(packets) if packets is not None else []
+        self._look_calls = 0
+        self._attach_calls = 0
 
     def __call__(self, hub_self, method, path, body=None, headers=None):
         self.requests.append((method, path))
         if path.startswith("/api/equipment-notebooks/") and path.endswith("/chat/"):
+            req_body = json.loads(body.decode()) if body else {}
+            self.chat_bodies.append(req_body)
+            reply = self._replies.pop(0) if self._replies else "ok."
             frames = [
                 {"kind": "trace", "traceId": self.trace_id},
-                {"kind": "content", "content": "The nameplate reads PNOZ X3."},
+                {"kind": "content", "content": reply},
                 {"kind": "sources", "citations": []},
                 {"kind": "evidence", "basis": "general_reasoning", "label": "general"},
                 {"kind": "status", "status": "answered"},
             ]
             return 200, {"x-mira-trace-id": self.trace_id}, _sse_body(frames)
         if path.startswith("/api/equipment-notebooks/") and "/turns/diagnostics/" in path:
-            packet = {
-                "environment": "staging",
-                "generation": {
-                    "served_provider": "groq",
-                    "served_model": "llama-test",
-                    "input_tokens": 50,
-                    "output_tokens": 20,
-                },
-                "answer_gate": {},
-                "retrieval": {
-                    "executed": False,
-                    "candidate_count": 0,
-                    "strategy": "skipped_general_mode",
-                    "oem_corpus_searched": False,
-                    "returned_doc_ids": [],
-                },
-                "context": {
-                    "chunk_count": 0,
-                    "evidence_doc_ids": [],
-                    "system_prompt_kind": "general",
-                },
-            }
+            packet = self._packets.pop(0) if self._packets else _default_packet()
             body_json = {
                 "turnId": "turn-1",
                 "traceId": self.trace_id,
@@ -174,20 +302,36 @@ class _FakeHubTransport:
             nb = {"id": "nb-" + uuid.uuid4().hex[:8], "nodeId": "node-1"}
             return 201, {}, json.dumps({"notebook": nb}).encode()
         if path.endswith("/look/"):
+            self._look_calls += 1
             return (
                 200,
                 {},
                 json.dumps(
-                    {"fileId": "file-1", "observation": {"capturedAt": "2026-10-01T00:00:00Z"}}
+                    {
+                        "fileId": f"file-{self._look_calls}",
+                        "observation": {"capturedAt": "2026-10-01T00:00:00Z"},
+                    }
                 ).encode(),
             )
+        if path.startswith("/api/namespace/node/") and path.endswith("/files/"):
+            self._attach_calls += 1
+            return (
+                200,
+                {},
+                json.dumps({"indexed": True, "uploadId": f"doc-{self._attach_calls}"}).encode(),
+            )
+        if path.startswith("/api/equipment-notebooks/") and path.endswith("/sources/"):
+            return 201, {}, json.dumps({"ok": True}).encode()
         raise AssertionError(f"unexpected request in fake Hub transport: {method} {path}")
 
 
 def test_run_qa_case_against_monkeypatched_hub(monkeypatch):
     ra = runner.load_retrieval_acceptance()
     hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
-    transport = _FakeHubTransport(trace_id="0af7651916cd43dd8448eb211c80319c")
+    transport = _FakeHubTransport(
+        trace_id="0af7651916cd43dd8448eb211c80319c",
+        replies=["The nameplate reads PNOZ X3."],
+    )
     monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
     monkeypatch.setattr(ra.time, "sleep", lambda s: None)
 
@@ -238,3 +382,272 @@ def test_contract_record_keeps_failed_checks_and_marks_citation_text_unavailable
     assert (
         runner._contract_record(ra.Row("y"), {"citations": 0})["citation_support"] == "no_citations"
     )
+
+
+# ---------------------------------------------------------------------------
+# F1 — the turn grader gets the FULL history through the current assistant
+# reply, plus only the facts revealed BEFORE that reply.
+
+
+def test_f1_turn_grader_sees_full_reply_but_not_hindsight_facts(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    transport = _FakeHubTransport(
+        trace_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        replies=["UNSAFE_SENTINEL reply on turn one.", "turn two reply."],
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _diagnosis_case(max_turns=2)
+    judge = FakeProvider(responses=[_full_turn_json(), _full_turn_json(), _outcome_json()])
+    ledger = budget.Ledger(cap_usd=10.0)
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(check_ids=["door_switch"])
+
+    record = runner.run_diagnosis_case(hub, ra, case, ledger, judge, classifier, repeat=1)
+
+    assert record["status"] == "completed"
+    assert len(judge.received_messages) == 3  # turn1 grade, turn2 grade, outcome
+    turn1_prompt = json.dumps(judge.received_messages[0])
+    turn2_prompt = json.dumps(judge.received_messages[1])
+    # positive control: the reply being graded IS in its own turn's prompt
+    assert "UNSAFE_SENTINEL reply on turn one." in turn1_prompt
+    # the fact revealed by the SIMULATOR'S RESPONSE to turn 1 must not leak
+    # backward into turn 1's own grading prompt
+    assert "Both channels make." not in turn1_prompt
+    # by turn 2 that fact IS known (it's in the conversation + revealed_texts)
+    assert "Both channels make." in turn2_prompt
+
+
+# ---------------------------------------------------------------------------
+# F2 — meter the baseline exactly once (same MeteredProvider pattern as the
+# judge/classifier: the runner calls `.complete()` directly, never a second
+# `ledger.call(...)`).
+
+
+def test_f2_baseline_metered_exactly_once_via_cli_wiring():
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge_provider = FakeProvider(
+        name="fake", model="judge-fake-model", responses=[_full_turn_json(), _outcome_json()]
+    )
+    baseline_provider = FakeProvider(
+        name="fake", model="baseline-fake-model", responses=["baseline reply."]
+    )
+    # Exactly the CLI's wiring: both are MeteredProvider instances sharing
+    # one ledger (`main()`'s metered_judge / baseline construction).
+    metered_judge = budget.MeteredProvider(judge_provider, ledger)
+    metered_baseline = budget.MeteredProvider(baseline_provider, ledger)
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    case = _diagnosis_case(max_turns=1)
+    record = runner.run_baseline_case(case, metered_baseline, metered_judge, classifier, repeat=1)
+
+    assert record["status"] == "completed"
+    assert baseline_provider.calls == 1  # not 2 — the double-metering bug called it twice
+    baseline_log_entries = [c for c in ledger.call_log if c["model"] == "baseline-fake-model"]
+    assert len(baseline_log_entries) == 1  # one reservation/log entry per request
+    assert ledger.spent_usd > 0  # settled, not left reserved
+
+
+# ---------------------------------------------------------------------------
+# F3 — the baseline gets the photo too, and is graded the same no-hindsight
+# way as MIRA (comparable turn_grades + outcome in the record).
+
+
+def test_f3_baseline_receives_photo_and_produces_comparable_grades(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    transport = _FakeHubTransport(
+        trace_id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        replies=["mira turn one reply."],
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _diagnosis_case(max_turns=1)
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge_provider = FakeProvider(
+        responses=[_full_turn_json(), _outcome_json(), _full_turn_json(), _outcome_json()]
+    )
+    baseline_provider = FakeProvider(responses=["baseline turn one reply."])
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    mira_record = runner.run_diagnosis_case(hub, ra, case, ledger, judge_provider, classifier, 1)
+    baseline_record = runner.run_baseline_case(
+        case, baseline_provider, judge_provider, classifier, repeat=1
+    )
+
+    # the baseline provider actually received the photo as an image
+    assert baseline_provider.received_images[0] is not None
+    assert len(baseline_provider.received_images[0]) == 1
+
+    for record in (mira_record, baseline_record):
+        assert record["outcome"] in grading.OUTCOME_LABELS
+        assert record["turn_grades"]
+        for tg in record["turn_grades"]:
+            for field in grading.TURN_FIELDS:
+                assert isinstance(tg[field], bool)
+    assert mira_record["arm"] == "mira"
+    assert baseline_record["arm"] == "baseline"
+
+
+# ---------------------------------------------------------------------------
+# F5 — structured product asks (retake_photo / manual_upload) are dispatched
+# through Hub.look / Hub.attach_manual and their evidence reaches the next
+# chat turn.
+
+
+def test_f5_product_asks_are_dispatched_and_evidence_reaches_next_turn(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    transport = _FakeHubTransport(
+        trace_id="cccccccccccccccccccccccccccccccc",
+        replies=["can you send a clearer photo?", "can you attach the manual?", "thanks, got it."],
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _diagnosis_case(max_turns=3)
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge = FakeProvider(responses=[_full_turn_json()] * 3 + [_outcome_json()])
+
+    asks = [
+        simulator.ClassifierResult(product_ask="retake_photo"),
+        simulator.ClassifierResult(product_ask="manual_upload"),
+        simulator.ClassifierResult(actionable=False),
+    ]
+
+    def classifier(reply, checks):
+        return asks.pop(0)
+
+    record = runner.run_diagnosis_case(hub, ra, case, ledger, judge, classifier, repeat=1)
+
+    assert record["status"] == "completed"
+    assert record["turns"] == 3
+    assert transport._look_calls == 2  # opening photo + the retake
+    assert transport._attach_calls == 1  # the uploaded manual
+
+    # turn 2's chat body carries the RETAKE's new visual evidence + the
+    # fixed next-turn reply constant
+    assert transport.chat_bodies[1]["visualEvidence"]["fileId"] == "file-2"
+    assert transport.chat_bodies[1]["message"] == simulator.RETAKE_REPLY_TEXT
+    assert "sourceDocIds" not in transport.chat_bodies[1] or not transport.chat_bodies[1].get(
+        "sourceDocIds"
+    )
+
+    # turn 3's chat body carries the newly-attached manual's doc id + the
+    # fixed next-turn reply constant — and does NOT replay stale visualEvidence
+    assert transport.chat_bodies[2]["sourceDocIds"] == ["doc-1"]
+    assert transport.chat_bodies[2]["message"] == simulator.MANUAL_UPLOAD_REPLY_TEXT
+    assert "visualEvidence" not in transport.chat_bodies[2]
+
+
+# ---------------------------------------------------------------------------
+# F7 — a nested ungraded turn/answer makes the run "partial", never a
+# silently-clean "completed".
+
+
+def test_f7_diagnosis_partial_when_a_turn_grader_fails_but_outcome_succeeds(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    transport = _FakeHubTransport(
+        trace_id="dddddddddddddddddddddddddddddddd", replies=["turn one reply."]
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _diagnosis_case(max_turns=1)
+    ledger = budget.Ledger(cap_usd=10.0)
+    # First call (turn_grade) is garbage; second (outcome_grade) succeeds.
+    judge = FakeProvider(responses=["not json at all", _outcome_json()])
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    record = runner.run_diagnosis_case(hub, ra, case, ledger, judge, classifier, repeat=1)
+
+    assert record["status"] == "partial"
+    assert record["outcome"] == "resolved_true"
+    assert record["turn_grades"][0]["status"] == "ungraded"
+    assert record["turn_grades"][0]["reason"]
+    assert record["reason"]
+
+
+def test_f7_qa_partial_when_every_answer_errors(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+
+    class _ChatAlwaysBrokenTransport(_FakeHubTransport):
+        def __call__(self, hub_self, method, path, body=None, headers=None):
+            if path.startswith("/api/equipment-notebooks/") and path.endswith("/chat/"):
+                raise RuntimeError("chat transport down")
+            return super().__call__(hub_self, method, path, body, headers)
+
+    transport = _ChatAlwaysBrokenTransport(trace_id="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _qa_case()
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge = FakeProvider(responses=[])
+
+    record = runner.run_qa_case(hub, ra, case, ledger, judge, repeat=1)
+
+    assert record["status"] == "partial"
+    assert len(record["answers"]) == 2
+    assert all(a["status"] == "error" for a in record["answers"])
+    assert all(a.get("reason") for a in record["answers"])
+    assert record["reason"]
+
+
+# ---------------------------------------------------------------------------
+# F4 — the pre-turn gate actually stops further turns once a small
+# configured cap would be exceeded, fed from the real packet shape.
+
+
+def test_f4_pre_turn_gate_stops_further_turns_when_cap_would_be_exceeded(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    turn1_packet = _default_packet(
+        retrieval={
+            "executed": True,
+            "candidate_count": 1,
+            "strategy": "oem",
+            "oem_corpus_searched": True,
+            "returned_doc_ids": [],
+            "manual_acquisition": {
+                "state": "running",
+                "started_this_turn": True,
+                "candidate_host": "example.com",
+            },
+            "photo_part_manual_lookup": None,
+        }
+    )
+    transport = _FakeHubTransport(
+        trace_id="ffffffffffffffffffffffffffffffff",
+        replies=["turn one reply.", "turn two reply should never be requested."],
+        packets=[turn1_packet],
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+
+    case = _diagnosis_case(max_turns=3)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    judge = FakeProvider(responses=[_full_turn_json(), _outcome_json()])
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    record = runner.run_diagnosis_case(hub, ra, case, ledger, judge, classifier, repeat=1)
+
+    assert record["status"] == "not_run_budget"
+    assert record["reason"]
+    assert record["turns"] == 1  # only the first turn ran
+    assert ledger.manual_search_queries == 4
+    assert len(transport.chat_bodies) == 1  # the second turn's chat call never happened

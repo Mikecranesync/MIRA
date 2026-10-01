@@ -14,9 +14,11 @@ if str(TOOLS_QA) not in sys.path:
 
 from photo_diagnosis.simulator import (  # noqa: E402
     DONT_KNOW,
+    MANUAL_UPLOAD_REPLY_TEXT,
     MAX_NUDGES,
     NUDGE,
     REPEAT_PREFIX,
+    RETAKE_REPLY_TEXT,
     ClassifierResult,
     SimulatorAlreadyStopped,
     TechSimulator,
@@ -180,7 +182,7 @@ _PRODUCT_ASKS = ["identity_confirm", "retake_photo", "manual_upload", None, "bog
 
 
 def _is_allowed_text(text: str) -> bool:
-    if text in ("", DONT_KNOW, NUDGE):
+    if text in ("", DONT_KNOW, NUDGE, RETAKE_REPLY_TEXT, MANUAL_UPLOAD_REPLY_TEXT):
         return True
     if text in _FIXTURE_TEXTS:
         return True

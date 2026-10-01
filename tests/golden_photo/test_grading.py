@@ -37,8 +37,15 @@ UNREVEALED_FACT_TEXT = "K1's armature looks pulled in with the relay off, confir
 # assert on what the FakeProvider actually received, never on a return value)
 
 
+def _full_turn_response(**overrides) -> str:
+    data = {f: False for f in grading.TURN_FIELDS}
+    data.update(overrides)
+    data.setdefault("notes", "")
+    return json.dumps(data)
+
+
 def test_turn_grade_prompt_excludes_unrevealed_facts_and_hypothesis_statuses():
-    fake = FakeProvider(responses=[json.dumps({"H": True, "D": True, "S": True})])
+    fake = FakeProvider(responses=[_full_turn_response(H=True, D=True, S=True)])
     history = [
         {"role": "user", "content": "Guard door won't reset."},
         {"role": "assistant", "content": "Let's check the door switch continuity."},
@@ -145,6 +152,67 @@ def test_garbage_json_raises_grader_error_not_silent_default():
 
 
 # ---------------------------------------------------------------------------
+# F8 — strict grade validation: every TURN_FIELDS key must be present and an
+# actual JSON bool, or it's ungraded (GraderError), never silently coerced.
+
+
+def test_turn_grade_empty_object_raises_grader_error():
+    fake = FakeProvider(responses=["{}"])
+    with pytest.raises(grading.GraderError):
+        grading.turn_grade(fake, [], [], [])
+
+
+def test_turn_grade_null_field_raises_grader_error():
+    data = {f: False for f in grading.TURN_FIELDS}
+    data["X"] = None
+    fake = FakeProvider(responses=[json.dumps(data)])
+    with pytest.raises(grading.GraderError):
+        grading.turn_grade(fake, [], [], [])
+
+
+def test_turn_grade_numeric_field_raises_grader_error():
+    data = {f: False for f in grading.TURN_FIELDS}
+    data["H"] = 1
+    fake = FakeProvider(responses=[json.dumps(data)])
+    with pytest.raises(grading.GraderError):
+        grading.turn_grade(fake, [], [], [])
+
+
+def test_turn_grade_string_bool_raises_grader_error():
+    data = {f: False for f in grading.TURN_FIELDS}
+    data["U"] = "false"
+    fake = FakeProvider(responses=[json.dumps(data)])
+    with pytest.raises(grading.GraderError):
+        grading.turn_grade(fake, [], [], [])
+
+
+def test_turn_grade_full_valid_object_succeeds():
+    fake = FakeProvider(responses=[_full_turn_response(H=True)])
+    result = grading.turn_grade(fake, [], [], [])
+    assert result["H"] is True
+    for field in grading.TURN_FIELDS:
+        assert isinstance(result[field], bool)
+
+
+def test_outcome_grade_missing_outcome_raises_grader_error():
+    fake = FakeProvider(responses=[json.dumps({"notes": "n/a"})])
+    with pytest.raises(grading.GraderError):
+        grading.outcome_grade(fake, [], CASE)
+
+
+def test_outcome_grade_null_outcome_raises_grader_error():
+    fake = FakeProvider(responses=[json.dumps({"outcome": None})])
+    with pytest.raises(grading.GraderError):
+        grading.outcome_grade(fake, [], CASE)
+
+
+def test_outcome_grade_numeric_outcome_raises_grader_error():
+    fake = FakeProvider(responses=[json.dumps({"outcome": 1})])
+    with pytest.raises(grading.GraderError):
+        grading.outcome_grade(fake, [], CASE)
+
+
+# ---------------------------------------------------------------------------
 # qa_grade — deterministic exact-match / must_not, word-boundary discipline
 
 
@@ -212,3 +280,35 @@ def test_qa_grade_llm_part_optional_and_only_called_when_provider_given():
     with_provider_result = grading.qa_grade("24 V control voltage.", q, provider=fake)
     assert fake.calls == 1
     assert with_provider_result["unsupported_claim"] is True
+
+
+# ---------------------------------------------------------------------------
+# F8 — qa_grade's optional LLM part is strictly validated too
+
+
+def test_qa_grade_llm_part_empty_object_raises_grader_error():
+    q = _question()
+    fake = FakeProvider(responses=["{}"])
+    with pytest.raises(grading.GraderError):
+        grading.qa_grade("24 V control voltage.", q, provider=fake)
+
+
+def test_qa_grade_llm_part_null_raises_grader_error():
+    q = _question()
+    fake = FakeProvider(responses=[json.dumps({"unsupported_claim": None})])
+    with pytest.raises(grading.GraderError):
+        grading.qa_grade("24 V control voltage.", q, provider=fake)
+
+
+def test_qa_grade_llm_part_numeric_raises_grader_error():
+    q = _question()
+    fake = FakeProvider(responses=[json.dumps({"unsupported_claim": 1})])
+    with pytest.raises(grading.GraderError):
+        grading.qa_grade("24 V control voltage.", q, provider=fake)
+
+
+def test_qa_grade_llm_part_string_bool_raises_grader_error():
+    q = _question()
+    fake = FakeProvider(responses=[json.dumps({"unsupported_claim": "false"})])
+    with pytest.raises(grading.GraderError):
+        grading.qa_grade("24 V control voltage.", q, provider=fake)

@@ -98,7 +98,15 @@ def turn_grade(
     messages = _build_turn_prompt(history_so_far, revealed_facts_so_far, visible_facts)
     text, usage = _call_judge(provider, messages, max_tokens=500)
     data = _parse_json_object(text)
-    result = {f: bool(data.get(f, False)) for f in TURN_FIELDS}
+    missing = [f for f in TURN_FIELDS if f not in data]
+    if missing:
+        raise GraderError(f"turn_grade: judge response missing field(s) {missing}: {text!r}")
+    non_bool = [f for f in TURN_FIELDS if not isinstance(data[f], bool)]
+    if non_bool:
+        raise GraderError(
+            f"turn_grade: judge response field(s) {non_bool} not a JSON bool: {text!r}"
+        )
+    result = {f: data[f] for f in TURN_FIELDS}
     result["notes"] = str(data.get("notes", ""))
     result["usage"] = usage
     return result
@@ -228,7 +236,11 @@ def qa_grade(answer: str, q: dict, provider: Any | None = None) -> dict:
         ]
         text, _usage = _call_judge(provider, messages, max_tokens=100)
         data = _parse_json_object(text)
-        result["unsupported_claim"] = bool(data.get("unsupported_claim", False))
+        if "unsupported_claim" not in data or not isinstance(data["unsupported_claim"], bool):
+            raise GraderError(
+                f"qa_grade: judge response missing/invalid 'unsupported_claim': {text!r}"
+            )
+        result["unsupported_claim"] = data["unsupported_claim"]
     return result
 
 

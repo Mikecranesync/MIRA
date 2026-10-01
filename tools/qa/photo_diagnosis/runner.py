@@ -19,6 +19,7 @@ this runner keeps that guard (`_refuses_prod`).
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -205,6 +206,18 @@ def _resolve_source(raw: str, case_file: Path) -> Path:
     return p if p.is_absolute() else (case_file.parent / p)
 
 
+def _encode_image_b64(path: Path) -> str:
+    return base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def _without_system(history: list[dict]) -> list[dict]:
+    """Drop the `role: system` entry before handing a transcript to a
+    grader — the grading prompt builders join every message verbatim, and
+    the baseline's system prompt is not conversation content the judge
+    should be shown."""
+    return [m for m in history if m.get("role") != "system"]
+
+
 # ---------------------------------------------------------------------------
 # Diagnosis-case loop
 
@@ -238,8 +251,26 @@ def run_diagnosis_case(
     turn_index = 0
     status = "completed"
     reason = ""
+    # Carried from the PREVIOUS turn's product-ask fulfillment (F5) — the
+    # photo/manual attached by a retake/manual-upload only rides the very
+    # next chat turn, same as the opening photo rides only turn 1.
+    pending_visual_evidence: dict | None = visual_evidence
+    pending_source_doc_ids: list[str] | None = source_doc_ids or None
 
     while turn_index < case.get("max_turns", schema.DEFAULT_MAX_TURNS):
+        # F4: enforce the manual-search cap BEFORE each turn, not after —
+        # a worst-case search this turn must not be allowed to start if it
+        # would push the running total past the cap.
+        if ledger.manual_search_cap_exceeded():
+            status, reason = (
+                "not_run_budget",
+                (
+                    f"manual-search budget ({ledger.manual_search_queries}+"
+                    f"{ledger.queries_per_search}) would exceed cap "
+                    f"{ledger.manual_search_cap} before turn {turn_index + 1}"
+                ),
+            )
+            break
         turn_index += 1
         try:
             row, p, w = mira_turn(
@@ -249,13 +280,15 @@ def run_diagnosis_case(
                 f"{case['id']} turn{turn_index}",
                 message,
                 thread_id=thread_id,
-                visual_evidence=visual_evidence if turn_index == 1 else None,
+                visual_evidence=pending_visual_evidence,
                 history=history if turn_index > 1 else None,
-                source_doc_ids=source_doc_ids if turn_index == 1 else None,
+                source_doc_ids=pending_source_doc_ids,
             )
         except Exception as e:  # noqa: BLE001 — recorded as a failed run, not silently dropped
             status, reason = "error", f"mira turn failed: {e}"
             break
+        pending_visual_evidence = None
+        pending_source_doc_ids = None
         ledger.record_manual_search_from_packet(p)
         contract = _contract_record(row, w)
         mira_reply = w["content"]
@@ -263,8 +296,12 @@ def run_diagnosis_case(
         history.append({"role": "assistant", "content": mira_reply})
 
         try:
+            # F1: grade the reply under review — the FULL history through
+            # THIS assistant reply, but only the facts revealed before it
+            # (revealed_texts is not updated with this reply's own
+            # follow-up facts until after grading, below).
             tg = grading.turn_grade(
-                judge, list(history[:-1]), list(revealed_texts), case.get("visible_facts") or []
+                judge, list(history), list(revealed_texts), case.get("visible_facts") or []
             )
             tg["turn"] = turn_index
             tg["contract"] = contract
@@ -284,13 +321,51 @@ def run_diagnosis_case(
         )
         if sim_turn.kind == "stop":
             break
-        message = sim_turn.text or "(no reply)"
+        # F5: dispatch structured product asks instead of discarding them.
+        if (
+            sim_turn.kind == "product_ask"
+            and sim_turn.product_ask == "retake_photo"
+            and sim_turn.product_ask_path
+        ):
+            try:
+                retake_path = _resolve_source(sim_turn.product_ask_path, case["_source_file"])
+                _, look2 = hub.look(nb["id"], retake_path)
+                pending_visual_evidence = {
+                    "fileId": look2["fileId"],
+                    "capturedAt": look2["observation"]["capturedAt"],
+                }
+            except Exception as e:  # noqa: BLE001
+                status, reason = "error", f"retake photo upload failed: {e}"
+                break
+            message = simulator_mod.RETAKE_REPLY_TEXT
+        elif (
+            sim_turn.kind == "product_ask"
+            and sim_turn.product_ask == "manual_upload"
+            and sim_turn.product_ask_path
+        ):
+            try:
+                manual_path = _resolve_source(sim_turn.product_ask_path, case["_source_file"])
+                doc_id = hub.attach_manual(nb, manual_path)
+                pending_source_doc_ids = [doc_id]
+            except Exception as e:  # noqa: BLE001
+                status, reason = "error", f"manual upload failed: {e}"
+                break
+            message = simulator_mod.MANUAL_UPLOAD_REPLY_TEXT
+        else:
+            message = sim_turn.text or "(no reply)"
 
     try:
         outcome = grading.outcome_grade(judge, history, case)
     except grading.GraderError as e:
         outcome, status = "ungraded", "ungraded"
         reason = reason or str(e)
+
+    # F7: a nested ungraded/errored turn makes the whole run "partial" —
+    # never silently reported as a clean "completed".
+    nested_bad = any(tg.get("status") in ("ungraded", "error") for tg in turn_grades)
+    if status == "completed" and nested_bad:
+        status = "partial"
+        reason = reason or "one or more turns were ungraded/errored — see turn_grades"
 
     return {
         "case_id": case["id"],
@@ -324,7 +399,19 @@ def run_qa_case(
     visual_evidence = {"fileId": look["fileId"], "capturedAt": look["observation"]["capturedAt"]}
 
     answers: list[dict] = []
+    status = "completed"
+    reason = ""
     for i, q in enumerate(case.get("questions") or []):
+        # F4: same pre-turn gate as the diagnosis loop.
+        if ledger.manual_search_cap_exceeded():
+            status, reason = (
+                "not_run_budget",
+                (
+                    f"manual-search budget would exceed cap {ledger.manual_search_cap} "
+                    f"before question {i + 1}"
+                ),
+            )
+            break
         try:
             row, p, w = mira_turn(
                 hub,
@@ -345,27 +432,43 @@ def run_qa_case(
             graded["citation_missing"] = True
         answers.append({"q": q["q"], **graded})
 
+    # F7: any nested answer error makes the run "partial", never a silent
+    # "completed" that hides the missing assessment.
+    nested_bad = any(a.get("status") == "error" for a in answers)
+    if status == "completed" and nested_bad:
+        status = "partial"
+        reason = "one or more questions errored — see answers"
+
     return {
         "case_id": case["id"],
         "kind": "qa",
         "type": case["type"],
         "repeat": repeat,
         "arm": "mira",
-        "status": "completed",
+        "status": status,
+        "reason": reason,
         "answers": answers,
     }
 
 
 def run_baseline_case(
     case: dict,
-    ledger: budget_mod.Ledger,
     baseline: Any,
+    judge: Any,
     classifier: simulator_mod.Classifier,
     repeat: int,
 ) -> dict:
     """Equal-evidence comparator: same simulator + photo, baseline's OWN
     history, a plain "maintenance technician assistant" system prompt — no
-    retrieval."""
+    retrieval.
+
+    `baseline` and `judge` are already `MeteredProvider` instances wrapping
+    the shared ledger (same pattern the CLI uses for the classifier) — this
+    function calls `.complete()` on them DIRECTLY. It must never also wrap
+    either in `ledger.call(...)`: `MeteredProvider.complete` already
+    reserves/settles/logs through the ledger, so a second `ledger.call`
+    would double-meter every request (F2).
+    """
     if case["kind"] != "diagnosis":
         return {
             "case_id": case["id"],
@@ -375,28 +478,104 @@ def run_baseline_case(
             "status": "skipped",
         }
     sim = simulator_mod.TechSimulator(case, classifier)
-    history = [{"role": "system", "content": "You are a maintenance technician assistant."}]
+    history: list[dict] = [
+        {"role": "system", "content": "You are a maintenance technician assistant."}
+    ]
+    revealed_texts: list[str] = []
+    turn_grades: list[dict] = []
     message = sim.opening()
     turn_index = 0
     status = "completed"
     reason = ""
+    outcome = None
+
+    try:
+        images: list[str] | None = [_encode_image_b64(case["_photo_path"])]
+    except OSError as e:
+        return {
+            "case_id": case["id"],
+            "kind": "diagnosis",
+            "type": case["type"],
+            "repeat": repeat,
+            "arm": "baseline",
+            "status": "error",
+            "reason": f"could not read photo: {e}",
+            "turns": 0,
+        }
+
     while turn_index < case.get("max_turns", schema.DEFAULT_MAX_TURNS):
         turn_index += 1
         history.append({"role": "user", "content": message})
         try:
-            text, _usage = ledger.call(baseline, history, max_tokens=500)
+            # F3: the baseline gets the photo as a base64 image on turn 1
+            # (and any retake image, below) — same evidence MIRA sees.
+            text, _usage = baseline.complete(history, images=images, max_tokens=500)
         except budget_mod.BudgetExhausted:
             raise
         except Exception as e:  # noqa: BLE001
             status, reason = "error", f"baseline call failed: {e}"
             break
+        images = None
         history.append({"role": "assistant", "content": text})
+
+        try:
+            # F3: graded with the same no-hindsight turn_grade as MIRA.
+            tg = grading.turn_grade(
+                judge,
+                _without_system(history),
+                list(revealed_texts),
+                case.get("visible_facts") or [],
+            )
+            tg["turn"] = turn_index
+            turn_grades.append(tg)
+        except grading.GraderError as e:
+            turn_grades.append({"turn": turn_index, "status": "ungraded", "reason": str(e)})
+
         if sim.stopped:
             break
         sim_turn = sim.respond(text)
+        revealed_texts.extend(
+            f["text"]
+            for f in case.get("hidden_facts") or []
+            if f["id"] in sim_turn.revealed_fact_ids
+        )
         if sim_turn.kind == "stop":
             break
-        message = sim_turn.text or "(no reply)"
+        # F5: the baseline's equivalent of a retake is a new image on the
+        # next call; it has no retrieval/attach capability for a manual.
+        if (
+            sim_turn.kind == "product_ask"
+            and sim_turn.product_ask == "retake_photo"
+            and sim_turn.product_ask_path
+        ):
+            try:
+                retake_path = _resolve_source(sim_turn.product_ask_path, case["_source_file"])
+                images = [_encode_image_b64(retake_path)]
+            except OSError as e:
+                status, reason = "error", f"retake photo read failed: {e}"
+                break
+            message = simulator_mod.RETAKE_REPLY_TEXT
+        elif (
+            sim_turn.kind == "product_ask"
+            and sim_turn.product_ask == "manual_upload"
+            and sim_turn.product_ask_path
+        ):
+            message = simulator_mod.MANUAL_UPLOAD_REPLY_TEXT
+        else:
+            message = sim_turn.text or "(no reply)"
+
+    try:
+        # F3: the baseline's own transcript is also outcome-graded.
+        outcome = grading.outcome_grade(judge, _without_system(history), case)
+    except grading.GraderError as e:
+        outcome, status = "ungraded", "ungraded"
+        reason = reason or str(e)
+
+    nested_bad = any(tg.get("status") in ("ungraded", "error") for tg in turn_grades)
+    if status == "completed" and nested_bad:
+        status = "partial"
+        reason = reason or "one or more turns were ungraded/errored — see turn_grades"
+
     return {
         "case_id": case["id"],
         "kind": "diagnosis",
@@ -405,7 +584,10 @@ def run_baseline_case(
         "arm": "baseline",
         "status": status,
         "reason": reason,
+        "outcome": outcome,
         "turns": turn_index,
+        "turn_grades": turn_grades,
+        "X": any(tg.get("X") for tg in turn_grades),
     }
 
 
@@ -444,6 +626,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
                 help=f"current {arm} {side}put price, $ per million tokens (required for a live run)",
             )
     ap.add_argument("--manual-search-cap", type=int, default=budget_mod.DEFAULT_MANUAL_SEARCH_CAP)
+    ap.add_argument(
+        "--queries-per-search",
+        type=int,
+        default=budget_mod.DEFAULT_QUERIES_PER_SEARCH,
+        help="worst-case provider queries one manual-search start can spend",
+    )
     ap.add_argument("--verbose", action="store_true")
     return ap
 
@@ -466,7 +654,11 @@ def main(argv: list[str] | None = None) -> int:
 
     ra = load_retrieval_acceptance()
     hub = ra.Hub(args.base, args.cookie)
-    ledger = budget_mod.Ledger(args.budget_usd, manual_search_cap=args.manual_search_cap)
+    ledger = budget_mod.Ledger(
+        args.budget_usd,
+        manual_search_cap=args.manual_search_cap,
+        queries_per_search=args.queries_per_search,
+    )
     judge = providers_mod.OpenAIProvider(
         args.judge_model,
         price_in_per_mtok=args.judge_price_in,
@@ -510,12 +702,16 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             try:
                 if case["kind"] == "diagnosis":
-                    records.append(
-                        run_diagnosis_case(hub, ra, case, ledger, metered_judge, classifier, repeat)
+                    mira_record = run_diagnosis_case(
+                        hub, ra, case, ledger, metered_judge, classifier, repeat
                     )
-                    if baseline is not None:
+                    records.append(mira_record)
+                    # Don't bother running the baseline for a repeat whose
+                    # MIRA arm already hit the manual-search cap — the
+                    # comparison would be against an incomplete run.
+                    if baseline is not None and mira_record.get("status") != "not_run_budget":
                         records.append(
-                            run_baseline_case(case, ledger, baseline, classifier, repeat)
+                            run_baseline_case(case, baseline, metered_judge, classifier, repeat)
                         )
                 else:
                     records.append(run_qa_case(hub, ra, case, ledger, metered_judge, repeat))

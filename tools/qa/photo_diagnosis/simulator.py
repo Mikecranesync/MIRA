@@ -1,12 +1,19 @@
 """Photo Diagnosis Benchmark — the fixed-fact technician simulator.
 
 The simulator never generates free text. Every string it can emit is either
-one of three fixed constants (:data:`DONT_KNOW`, :data:`NUDGE`, the
-``"Already told you: "`` prefix) or a verbatim quote from the case fixture
+one of the fixed constants (:data:`DONT_KNOW`, :data:`NUDGE`, the
+``"Already told you: "`` prefix, :data:`RETAKE_REPLY_TEXT`,
+:data:`MANUAL_UPLOAD_REPLY_TEXT`) or a verbatim quote from the case fixture
 (``reported_facts``, ``hidden_facts[].text``,
 ``legit_product_asks.identity_confirm``). This is a structural guarantee,
 not a style preference: it is what keeps the simulator from ever handing
 MIRA a decisive clue MIRA did not earn by asking the right question.
+
+:data:`RETAKE_REPLY_TEXT` and :data:`MANUAL_UPLOAD_REPLY_TEXT` are the
+technician's fixed next-turn reply once the runner has actually fulfilled a
+``retake_photo``/``manual_upload`` product ask (re-attached the clearer photo
+or the manual) — the runner, not this module, sends them; they live here so
+every caller shares one spelling and the property test below covers them.
 
 A :class:`Classifier` callable (injected — tests use a fake; production
 uses :func:`make_llm_classifier`) maps MIRA's reply to the checks it is
@@ -22,6 +29,8 @@ from typing import Any, Protocol
 DONT_KNOW = "I don't know — I haven't checked that."
 NUDGE = "What should I check next?"
 REPEAT_PREFIX = "Already told you: "
+RETAKE_REPLY_TEXT = "Here's a clearer photo."
+MANUAL_UPLOAD_REPLY_TEXT = "I uploaded the manual."
 MAX_NUDGES = 2
 
 SIM_TURN_KINDS = ("facts", "dont_know", "repeat", "nudge", "product_ask", "stop")
@@ -209,6 +218,8 @@ __all__ = [
     "DONT_KNOW",
     "NUDGE",
     "REPEAT_PREFIX",
+    "RETAKE_REPLY_TEXT",
+    "MANUAL_UPLOAD_REPLY_TEXT",
     "MAX_NUDGES",
     "ClassifierResult",
     "Classifier",

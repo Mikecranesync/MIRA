@@ -14,6 +14,11 @@ from typing import Any
 _CHARS_PER_TOKEN = 4
 _TOKENS_PER_IMAGE = 800  # conservative fixed estimate for one image attachment
 DEFAULT_MANUAL_SEARCH_CAP = 40
+# Upper bound on provider queries a single search start can spend — mirrors
+# mira-bots/shared/manual_search/search.py `_DEFAULT_MAX_PROVIDER_QUERIES`
+# (pass 1 + up to 4 pass-2 model-variant queries + pass 3). The CLI's
+# `--queries-per-search` overrides this when the real ceiling changes.
+DEFAULT_QUERIES_PER_SEARCH = 4
 
 
 class BudgetExhausted(Exception):
@@ -29,11 +34,17 @@ def _estimate_input_tokens(messages: list[dict], images: list[str] | None = None
 
 
 class Ledger:
-    def __init__(self, cap_usd: float, manual_search_cap: int = DEFAULT_MANUAL_SEARCH_CAP):
+    def __init__(
+        self,
+        cap_usd: float,
+        manual_search_cap: int = DEFAULT_MANUAL_SEARCH_CAP,
+        queries_per_search: int = DEFAULT_QUERIES_PER_SEARCH,
+    ):
         self.cap_usd = cap_usd
         self.spent_usd = 0.0
         self.manual_search_queries = 0
         self.manual_search_cap = manual_search_cap
+        self.queries_per_search = queries_per_search
         self.call_log: list[dict[str, Any]] = []
         self._reservations: dict[str, float] = {}
         self._next_token = 0
@@ -63,25 +74,71 @@ class Ledger:
         self._reservations.pop(token, None)
 
     def record_manual_search(self, n: int = 1) -> None:
+        """Record N provider queries that have ALREADY been spent. Never
+        raises — recording happens AFTER the turn ran, and a turn that
+        already happened cannot be un-run by raising here. Enforcement is
+        the caller's job, BEFORE the turn, via `manual_search_cap_exceeded`."""
         self.manual_search_queries += n
-        if self.manual_search_queries > self.manual_search_cap:
-            raise BudgetExhausted(
-                f"manual-search queries {self.manual_search_queries} exceeded cap "
-                f"{self.manual_search_cap}"
-            )
+
+    def manual_search_cap_exceeded(self, additional: int | None = None) -> bool:
+        """Pre-turn check: would spending `additional` more provider
+        queries (default: one worst-case search, `self.queries_per_search`)
+        push the running total past the cap? The runner calls this BEFORE
+        each turn and, if true, stops new work for that run (status
+        `not_run_budget`) rather than running the turn and discovering only
+        afterward that it can't be recorded."""
+        n = self.queries_per_search if additional is None else additional
+        return self.manual_search_queries + n > self.manual_search_cap
 
     def record_manual_search_from_packet(self, packet: dict | None) -> None:
-        """Fed from the turn packet's `retrieval.manual_acquisition` —
-        tolerates missing keys (the packet shape is still settling)."""
-        retrieval = (packet or {}).get("retrieval") or {}
-        acquisition = retrieval.get("manual_acquisition") or {}
-        n = acquisition.get("query_count") or acquisition.get("queries") or 0
-        try:
-            n = int(n)
-        except (TypeError, ValueError):
-            n = 0
-        if n:
-            self.record_manual_search(n)
+        """Fed from the turn evidence packet's `retrieval.manual_acquisition`
+        and `retrieval.photo_part_manual_lookup` — the REAL packet shape is
+        `{state, started_this_turn, candidate_host} | None` and
+        `{action, searched, ...} | None`
+        (mira-hub/src/capabilities/observability/turn-evidence-packet.ts
+        lines 141-145). Counts search STARTS — `manual_acquisition.
+        started_this_turn is True`, or `photo_part_manual_lookup.searched is
+        True` — and charges each start at `self.queries_per_search`
+        provider queries, the worst-case ceiling one `search_manual()` call
+        can spend (mira-bots/shared/manual_search/search.py
+        `_DEFAULT_MAX_PROVIDER_QUERIES`).
+
+        A field present as `null` is a legitimate "no search ran" (0
+        queries) — don't charge it. A field that is MISSING entirely, or a
+        `packet`/`retrieval` object that isn't even a dict, is unknown
+        telemetry: charged as one worst-case start rather than read as
+        zero. Cost-invisible spend is banned
+        (`.claude/rules/zero-token-architecture.md`).
+
+        This is an ESTIMATE from in-flight telemetry, not a bill. Staging's
+        quota_spend_view (the after-the-fact Neon cross-check of real
+        provider spend, maintained outside this harness) is the
+        authoritative source if the two ever disagree."""
+        if not isinstance(packet, dict):
+            self.record_manual_search(self.queries_per_search)
+            return
+        retrieval = packet.get("retrieval")
+        if not isinstance(retrieval, dict):
+            self.record_manual_search(self.queries_per_search)
+            return
+        starts = 0
+        for key, started_flag in (
+            ("manual_acquisition", "started_this_turn"),
+            ("photo_part_manual_lookup", "searched"),
+        ):
+            if key not in retrieval:
+                starts += 1  # missing telemetry -> fail closed
+                continue
+            value = retrieval[key]
+            if value is None:
+                continue  # legitimate "no search"
+            if not isinstance(value, dict):
+                starts += 1  # malformed -> fail closed
+                continue
+            if value.get(started_flag) is True:
+                starts += 1
+        if starts:
+            self.record_manual_search(starts * self.queries_per_search)
 
     def call(
         self,
@@ -127,6 +184,7 @@ class Ledger:
             "calls": len(self.call_log),
             "manual_search_queries": self.manual_search_queries,
             "manual_search_cap": self.manual_search_cap,
+            "queries_per_search": self.queries_per_search,
         }
 
 
@@ -161,4 +219,5 @@ __all__ = [
     "Ledger",
     "MeteredProvider",
     "DEFAULT_MANUAL_SEARCH_CAP",
+    "DEFAULT_QUERIES_PER_SEARCH",
 ]

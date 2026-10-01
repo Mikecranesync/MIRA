@@ -107,27 +107,124 @@ def test_call_estimates_image_tokens_when_images_present():
 # manual-search counter
 
 
-def test_manual_search_counter_raises_past_cap():
+def test_manual_search_record_never_raises_past_cap():
+    # F4: recording happens AFTER a turn ran and must never raise — the
+    # turn already happened and cannot be un-run. Enforcement is the
+    # caller's job, BEFORE the turn, via manual_search_cap_exceeded().
     ledger = Ledger(cap_usd=10.0, manual_search_cap=3)
     ledger.record_manual_search(3)
-    with pytest.raises(BudgetExhausted):
-        ledger.record_manual_search(1)
+    ledger.record_manual_search(1)  # does not raise
+    assert ledger.manual_search_queries == 4
 
 
-def test_manual_search_from_packet_tolerates_missing_keys():
-    ledger = Ledger(cap_usd=10.0)
-    ledger.record_manual_search_from_packet({})  # no 'retrieval' key at all
-    ledger.record_manual_search_from_packet({"retrieval": {}})  # no manual_acquisition
-    ledger.record_manual_search_from_packet(None)
+def test_manual_search_cap_exceeded_is_the_pre_turn_gate():
+    ledger = Ledger(cap_usd=10.0, manual_search_cap=5, queries_per_search=4)
+    assert ledger.manual_search_cap_exceeded() is False  # 0 + 4 <= 5
+    ledger.record_manual_search(2)
+    assert ledger.manual_search_cap_exceeded() is True  # 2 + 4 > 5
+    assert ledger.manual_search_cap_exceeded(additional=2) is False  # 2 + 2 <= 5
+
+
+# ---------------------------------------------------------------------------
+# F4 — record_manual_search_from_packet reads the REAL packet shape
+# (mira-hub .../turn-evidence-packet.ts: retrieval.manual_acquisition =
+# {state, started_this_turn, candidate_host} | None;
+# retrieval.photo_part_manual_lookup = {action, searched, ...} | None).
+# A null field is a legitimate "no search"; a MISSING field, or a
+# packet/retrieval that isn't a dict, fails closed (charged as a start).
+
+
+def test_manual_search_from_packet_null_fields_are_legitimate_no_search():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
+    ledger.record_manual_search_from_packet(
+        {"retrieval": {"manual_acquisition": None, "photo_part_manual_lookup": None}}
+    )
     assert ledger.manual_search_queries == 0
 
 
-def test_manual_search_from_packet_reads_query_count():
-    ledger = Ledger(cap_usd=10.0)
+def test_manual_search_from_packet_started_this_turn_charges_one_search_worth():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
     ledger.record_manual_search_from_packet(
-        {"retrieval": {"manual_acquisition": {"query_count": 2}}}
+        {
+            "retrieval": {
+                "manual_acquisition": {
+                    "state": "running",
+                    "started_this_turn": True,
+                    "candidate_host": "example.com",
+                },
+                "photo_part_manual_lookup": None,
+            }
+        }
     )
-    assert ledger.manual_search_queries == 2
+    assert ledger.manual_search_queries == 4
+
+
+def test_manual_search_from_packet_not_started_charges_nothing():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
+    ledger.record_manual_search_from_packet(
+        {
+            "retrieval": {
+                "manual_acquisition": {
+                    "state": "idle",
+                    "started_this_turn": False,
+                    "candidate_host": None,
+                },
+                "photo_part_manual_lookup": {
+                    "action": "proposed",
+                    "searched": False,
+                    "part_number_sha256": None,
+                    "found": False,
+                    "candidate_host": None,
+                },
+            }
+        }
+    )
+    assert ledger.manual_search_queries == 0
+
+
+def test_manual_search_from_packet_both_fields_started_charges_two_searches_worth():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
+    ledger.record_manual_search_from_packet(
+        {
+            "retrieval": {
+                "manual_acquisition": {"started_this_turn": True},
+                "photo_part_manual_lookup": {"searched": True},
+            }
+        }
+    )
+    assert ledger.manual_search_queries == 8
+
+
+def test_manual_search_from_packet_missing_fields_fail_closed():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
+    ledger.record_manual_search_from_packet({"retrieval": {}})  # both fields missing
+    assert ledger.manual_search_queries == 8  # one worst-case start per missing field
+
+
+def test_manual_search_from_packet_missing_retrieval_or_packet_fails_closed():
+    ledger = Ledger(cap_usd=10.0, queries_per_search=4)
+    ledger.record_manual_search_from_packet({})  # no 'retrieval' key at all
+    ledger.record_manual_search_from_packet(None)
+    ledger.record_manual_search_from_packet({"retrieval": "not-a-dict"})
+    assert ledger.manual_search_queries == 12  # 3 x one worst-case search
+
+
+def test_manual_search_from_packet_integration_small_cap_stops_further_work():
+    # The "Test to prove" from the review: feed real packet shapes through
+    # the pre-turn gate and prove a small configured cap actually stops
+    # further work rather than silently staying at zero.
+    ledger = Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    assert ledger.manual_search_cap_exceeded() is False
+    ledger.record_manual_search_from_packet(
+        {
+            "retrieval": {
+                "manual_acquisition": {"started_this_turn": True},
+                "photo_part_manual_lookup": None,
+            }
+        }
+    )
+    assert ledger.manual_search_queries == 4
+    assert ledger.manual_search_cap_exceeded() is True  # 4 + 4 > 4 -- next turn must stop
 
 
 # ---------------------------------------------------------------------------
