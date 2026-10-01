@@ -22,8 +22,8 @@
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
-import { activeSpanId, activeTraceId, setSpanAttrs } from "@/capabilities/observability/tracing";
-import { safeSpan } from "@/capabilities/observability/acquisition-spans";
+import { activeTraceId, setSpanAttrs } from "@/capabilities/observability/tracing";
+import { captureActiveSpanLink, safeSpan } from "@/capabilities/observability/acquisition-spans";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
@@ -557,8 +557,7 @@ export async function startManualAcquisition(
   // starts — the turn's own span may already have ended by the time this
   // background run finishes, so the root span below is a NEW trace (root:
   // true) carrying a LINK back to this trace/span, not a child of it.
-  const turnTraceId = activeTraceId();
-  const turnSpanId = activeSpanId();
+  const turnLink = captureActiveSpanLink();
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
@@ -566,7 +565,7 @@ export async function startManualAcquisition(
         "manual_acquisition.run",
         {
           "mira.acquisition.basis": basis,
-          "mira.acquisition.started_this_turn": turnTraceId !== null,
+          "mira.acquisition.started_this_turn": turnLink !== undefined,
         },
         async () => {
           const result = await acquire({
@@ -593,7 +592,7 @@ export async function startManualAcquisition(
           }
           return result;
         },
-        { root: true, link: turnTraceId && turnSpanId ? { traceId: turnTraceId, spanId: turnSpanId } : undefined },
+        { root: true, link: turnLink },
       );
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);

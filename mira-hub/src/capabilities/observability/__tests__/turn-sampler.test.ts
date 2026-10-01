@@ -112,4 +112,32 @@ describe("remote parents never bypass the turn filter (#4107 review F1)", () => 
     const child = tracer.startSpan("retrieval.execute", undefined, trace.setSpan(context.active(), turn));
     expect(child.isRecording()).toBe(true);
   });
+
+  // Codex #4194 F1: a detached manual-acquisition root is its own trace, linked
+  // to the turn that started it. It is kept exactly when that turn was kept.
+  describe("detached manual_acquisition.run roots", () => {
+    const link = (sampled: boolean) => ({
+      context: {
+        traceId: "1af7651916cd43dd8448eb211c80319c",
+        spanId: "c7ad6b7169203331",
+        traceFlags: sampled ? TraceFlags.SAMPLED : TraceFlags.NONE,
+      },
+    });
+    const acq = (links: ReturnType<typeof link>[]) =>
+      turnOnlySampler(1).shouldSample(ROOT_CONTEXT, TRACE, "manual_acquisition.run", SpanKind.INTERNAL, {}, links)
+        .decision;
+
+    it("kept when linked to a sampled turn", () => {
+      expect(acq([link(true)])).toBe(SamplingDecision.RECORD_AND_SAMPLED);
+    });
+    it("dropped when its turn was dropped, or when it has no turn at all", () => {
+      expect(acq([link(false)])).toBe(SamplingDecision.NOT_RECORD);
+      expect(acq([])).toBe(SamplingDecision.NOT_RECORD);
+    });
+    it("no other root name gets in through a link", () => {
+      expect(
+        turnOnlySampler(1).shouldSample(ROOT_CONTEXT, TRACE, "GET", SpanKind.INTERNAL, {}, [link(true)]).decision,
+      ).toBe(SamplingDecision.NOT_RECORD);
+    });
+  });
 });

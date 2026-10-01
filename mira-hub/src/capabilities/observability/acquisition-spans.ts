@@ -21,12 +21,29 @@
  * error always wins over a tracing-layer failure.
  */
 import { SpanStatusCode, trace } from "@opentelemetry/api";
-import { addSpanLink, getTracer, setSpanAttrs } from "@/capabilities/observability/tracing";
+import type { SpanOptions } from "@opentelemetry/api";
+import { getTracer, setSpanAttrs } from "@/capabilities/observability/tracing";
 import type { SpanAttrs } from "@/capabilities/observability/tracing";
 
 export interface SpanLink {
   traceId: string;
   spanId: string;
+  /** The linked span's trace flags — the sampler keeps a detached acquisition
+   *  root only when the turn it links to was itself sampled (Codex #4194 F1). */
+  traceFlags: number;
+}
+
+/** The active (recording) span as a link target, captured where a detached run
+ *  is started; undefined when there is none. Never throws. */
+export function captureActiveSpanLink(): SpanLink | undefined {
+  try {
+    const span = trace.getActiveSpan();
+    if (!span || !span.isRecording()) return undefined;
+    const c = span.spanContext();
+    return { traceId: c.traceId, spanId: c.spanId, traceFlags: c.traceFlags };
+  } catch {
+    return undefined;
+  }
 }
 
 export interface SafeSpanOptions {
@@ -39,6 +56,13 @@ export interface SafeSpanOptions {
   root?: boolean;
   /** A span link to another trace (e.g. the turn that started a detached run). */
   link?: SpanLink;
+}
+
+/** A bounded, identifier-free error category: the class name when it is a plain
+ *  identifier (`NoExtractableTextError`), otherwise "Error". */
+function errorCategory(e: unknown): string {
+  const name = e instanceof Error ? e.name : "";
+  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : "Error";
 }
 
 function logTracingError(name: string, stage: string, err: unknown): void {
@@ -66,27 +90,29 @@ export async function safeSpan<T>(
 ): Promise<T> {
   let entered = false;
   try {
-    return await getTracer().startActiveSpan(name, opts.root ? { root: true } : {}, async (span) => {
+    // The link is supplied AT CREATION so the sampler can see it (Codex #4194 F1).
+    const spanOpts: SpanOptions = {
+      ...(opts.root ? { root: true } : {}),
+      ...(opts.link
+        ? { links: [{ context: { traceId: opts.link.traceId, spanId: opts.link.spanId, traceFlags: opts.link.traceFlags, isRemote: false } }] }
+        : {}),
+    };
+    return await getTracer().startActiveSpan(name, spanOpts, async (span) => {
       entered = true;
       try {
         setSpanAttrs(attrs, span);
       } catch (err) {
         logTracingError(name, "setSpanAttrs", err);
       }
-      if (opts.link) {
-        try {
-          addSpanLink(opts.link.traceId, opts.link.spanId);
-        } catch (err) {
-          logTracingError(name, "addSpanLink", err);
-        }
-      }
       try {
         return await fn();
       } catch (fnErr) {
+        // Codex #4194 F2: never export the raw message or stack — acquisition
+        // errors carry filenames and URLs (e.g. "PowerFlex-525.pdf has no
+        // extractable text"). Only the error's class name, bounded.
         try {
-          const error = fnErr instanceof Error ? fnErr : new Error(String(fnErr));
-          span.recordException(error);
-          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+          span.setAttribute("mira.acquisition.error", errorCategory(fnErr));
+          span.setStatus({ code: SpanStatusCode.ERROR, message: errorCategory(fnErr) });
         } catch (err) {
           logTracingError(name, "recordException", err);
         }

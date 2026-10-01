@@ -863,6 +863,7 @@ class TestManualDiscoverySearchStats:
         refused: int = 0,
         quota_denied: str | None = None,
         candidate: dict | None = None,
+        examined: tuple[str, ...] = (),
     ):
         """A fake search_manual that spends the SAME contextvar budget the
         real _serper_search gate would, mirroring the established pattern in
@@ -876,12 +877,19 @@ class TestManualDiscoverySearchStats:
             budget.refused += refused
             if quota_denied:
                 budget.quota_denied = quota_denied
+            # search_manual records what it examined on the same budget (F4)
+            budget.examined.update(examined)
             return candidate
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
 
     def test_found_path_reports_provider_queries_and_one_candidate(self, monkeypatch):
-        self._fake_with_budget(monkeypatch, used=2, candidate=dict(_VALIDATED_CANDIDATE))
+        self._fake_with_budget(
+            monkeypatch,
+            used=2,
+            candidate=dict(_VALIDATED_CANDIDATE),
+            examined=(_VALIDATED_CANDIDATE["url"],),
+        )
         resp = _client().post(
             "/manual-discovery/search",
             json={"manufacturer": "Rockwell Automation", "model": "525"},
@@ -898,7 +906,12 @@ class TestManualDiscoverySearchStats:
     def test_found_path_counts_judged_rejected_siblings_alongside_the_match(self, monkeypatch):
         cand = dict(_VALIDATED_CANDIDATE)
         cand["judged_rejected"] = [{"url": "https://x.example/a.pdf", "reason": "wrong model"}]
-        self._fake_with_budget(monkeypatch, used=3, candidate=cand)
+        self._fake_with_budget(
+            monkeypatch,
+            used=3,
+            candidate=cand,
+            examined=(_VALIDATED_CANDIDATE["url"], "https://x.example/a.pdf"),
+        )
         body = (
             _client()
             .post(
@@ -936,8 +949,10 @@ class TestManualDiscoverySearchStats:
         one document considered and rejected), never 0 (nothing examined) or
         2 (double-counted with itself)."""
         import ask_api.manual_discovery as md
+        from shared.manual_search import search as _search_mod
 
         async def fake_search(make, model):
+            _search_mod._note_examined(["https://linpub.example/news.pdf"])
             return {
                 "url": "https://linpub.example/news.pdf",
                 "title": "Car show",
@@ -1057,6 +1072,37 @@ class TestManualDiscoverySearchStats:
         assert body["is_direct_pdf"] is True
         assert body["oem_host"] is True
         assert body["candidate"]["url"] == _VALIDATED_CANDIDATE["url"]
+
+    def test_real_search_counts_every_document_it_examined(self, monkeypatch):
+        """Codex #4194 F4: the REAL search_manual HEAD-validates three
+        candidates (two fail, the third confirms) — candidates is 3, the
+        documents actually examined, not 1 (the one returned)."""
+        from shared.manual_search import search as search_mod
+
+        urls = [f"https://docs.rockwellautomation.com/750-um00{i}.pdf" for i in (1, 2, 3)]
+
+        async def fake_serper(query: str, num: int = 10):
+            return [
+                {"link": u, "title": f"PowerFlex 750 User Manual {i}", "snippet": "PowerFlex 750"}
+                for i, u in enumerate(urls)
+            ]
+
+        async def fake_validate(url: str) -> bool:
+            return url == urls[2]
+
+        monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: False)
+        monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
+        monkeypatch.setattr(search_mod, "validate_pdf", fake_validate)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "750"},
+            )
+            .json()
+        )
+        assert body["found"] is True
+        assert body["search_stats"]["candidates"] == 3
 
 
 def test_all_rejected_disappears_as_no_manual_found(monkeypatch):

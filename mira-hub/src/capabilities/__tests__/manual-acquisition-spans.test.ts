@@ -231,4 +231,49 @@ describe("acquireManualForIdentity — R15 span tree", () => {
     // cap_hit is always known (quotaExceeded is a plain boolean, never absent).
     expect(search.attributes["mira.acquisition.cap_hit"]).toBe(false);
   });
+
+  // Codex #4194 F3: discovery returns a usable candidate that survived a later
+  // cap denial (found, quotaExceeded=false, quota_denied set) — still a cap hit.
+  it("a candidate that survives a later cap denial still reports cap_hit=true with its scope", async () => {
+    discoveryMock.discoverManual.mockResolvedValue({
+      ...FOUND_DISCOVERY,
+      searchStats: { providerQueries: 2, refusedQueries: 1, quotaDenied: "user_cap", candidates: 1 },
+    });
+    expect((await acquireManualForIdentity({ ...BASE_INPUT })).status).toBe("complete");
+    const search = handle.finished().find((s) => s.name === "manual_acquisition.search")!;
+    expect(search.attributes["mira.acquisition.cap_hit"]).toBe(true);
+    expect(search.attributes["mira.acquisition.cap_scope"]).toBe("user_cap");
+  });
+
+  it("control: an infrastructure denial (quota_unavailable) is NOT a cap hit, though its scope is kept", async () => {
+    discoveryMock.discoverManual.mockResolvedValue({
+      ...FOUND_DISCOVERY,
+      searchStats: { providerQueries: 2, refusedQueries: 1, quotaDenied: "quota_unavailable", candidates: 1 },
+    });
+    await acquireManualForIdentity({ ...BASE_INPUT });
+    const search = handle.finished().find((s) => s.name === "manual_acquisition.search")!;
+    expect(search.attributes["mira.acquisition.cap_hit"]).toBe(false);
+    expect(search.attributes["mira.acquisition.cap_scope"]).toBe("quota_unavailable");
+  });
+
+  // Codex #4194 F2: a failing stage must not export its raw message — the
+  // scanned-PDF error names the file, and the file is named after the model.
+  it("a stage that throws exports only an error category — never the message, stack or filename", async () => {
+    const { NoExtractableTextError } = await import("@/lib/node-knowledge-ingest");
+    ingestMock.ingestPdfToNode.mockRejectedValue(new NoExtractableTextError(`${MODEL}-manual.pdf`));
+    const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
+    expect(outcome.status).toBe("no_extractable_text");
+
+    const spans = handle.finished();
+    const errored = spans.filter((s) => s.attributes["mira.acquisition.error"] !== undefined);
+    expect(errored.length).toBeGreaterThan(0);
+    expect(errored.every((s) => s.attributes["mira.acquisition.error"] === "NoExtractableTextError")).toBe(true);
+    const exported = JSON.stringify(
+      spans.map((s) => ({ attributes: s.attributes, events: s.events, status: s.status, name: s.name })),
+    );
+    for (const leak of [MFR, MODEL, PART, "no extractable text in"]) {
+      expect(exported.includes(leak)).toBe(false);
+    }
+  });
 });
+

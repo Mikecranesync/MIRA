@@ -50,9 +50,9 @@ import os
 import re
 import socket
 import ssl
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 import httpcore
@@ -432,11 +432,22 @@ class ProviderQueryBudget:
     # touching Postgres again — a DB outage must not cost up to six
     # connect-timeouts inside one search_manual() call (#4160 S4).
     quota_denied: str | None = None
+    # Candidate documents this call actually EXAMINED — read by the judge or
+    # HEAD-validated — keyed by URL (#4160 R15, Codex #4194 F4). Recorded as
+    # they are examined, so a timeout keeps the partial count.
+    examined: set[str] = field(default_factory=set)
 
 
 _provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
     "manual_search_provider_budget", default=None
 )
+
+
+def _note_examined(urls: Iterable[str]) -> None:
+    """Record candidate documents examined in this call (no-op outside a budget)."""
+    budget = _provider_budget.get()
+    if budget is not None:
+        budget.examined.update(urls)
 
 
 @contextmanager
@@ -951,6 +962,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
         ranked = await _judge.judge_candidates(make, model, deduped)
+        _note_examined(c["url"] for c in ranked if c.get("judge"))
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None
@@ -1007,6 +1019,8 @@ async def search_manual(make: str, model: str) -> dict | None:
 
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
+        if not c.get("validated"):
+            _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
             if use_judge:

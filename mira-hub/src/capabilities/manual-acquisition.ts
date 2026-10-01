@@ -45,6 +45,8 @@ function providerQueryCostUsd(): number {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_PROVIDER_QUERY_COST_USD;
 }
 
+const CAP_SCOPES = new Set(["user_cap", "tenant_cap", "global_cap"]);
+
 export type ManualAcquisitionStatus =
   | "complete"
   | "candidate_review"
@@ -197,7 +199,11 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     setActiveSpanAttrs({
       "mira.acquisition.provider_queries": providerQueries,
       "mira.acquisition.candidates": d.searchStats?.candidates ?? null,
-      "mira.acquisition.cap_hit": d.quotaExceeded,
+      // Codex #4194 F3: a usable candidate can survive a later cap denial
+      // (discovery returns found with quota_denied set) — that is still a cap
+      // hit. quota_unavailable / no_identity are infrastructure, not caps.
+      "mira.acquisition.cap_hit":
+        d.quotaExceeded || CAP_SCOPES.has(d.searchStats?.quotaDenied ?? ""),
       "mira.acquisition.cap_scope": d.searchStats?.quotaDenied ?? null,
       "mira.acquisition.cost_usd":
         providerQueries === null ? null : Math.round(providerQueries * providerQueryCostUsd() * 1e6) / 1e6,
