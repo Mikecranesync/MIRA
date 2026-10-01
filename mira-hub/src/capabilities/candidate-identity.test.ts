@@ -227,9 +227,16 @@ describe("#4160 gate — typed dictionary-word makers next to a part code", () =
     ["Sick. Manual for Q4XTBLAF300-Q8", "a sentence ends between the word and the part code"],
     ["Sick of this Q4XTBLAF300-Q8, need the manual", "Codex #4184 F1: an ordinary word sits between them"],
     ["Banner is wrong on the Q4XTBLAF300-Q8 manual", "a verb sits between them"],
+    ["Manual for Sick or Banner Q4XTBLAF300-Q8", "Codex #4184 F3: two makers named as alternatives"],
+    ["Manual for Banner or Sick Q4XTBLAF300-Q8", "Codex #4184 F3: reversed order"],
     ["Banner at the gate fell down, so I need the long datasheet for the old Q4XTBLAF300-Q8 again", "more than a few words away"],
   ])("control: %s → no maker (%s)", (typed) => {
     expect(extractCandidateIdentity("", typed)?.manufacturer ?? null).toBeNull();
+  });
+
+  it("Codex #4184 F3: the safety gate also declines coordinated typed makers", () => {
+    expect(isSafeCandidateSearchIdentity("", "Manual for Sick or Banner Q4XTBLAF300-Q8", "Q4XTBLAF300-Q8", "BANNER")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("", "Manual for Banner or Sick Q4XTBLAF300-Q8", "Q4XTBLAF300-Q8", "SICK")).toBe(false);
   });
 
   it("known limit (unchanged safety gate): naming the family AND the part still declines the automatic search", () => {

@@ -307,6 +307,14 @@ describe("#4160 gate — a typed dictionary-word maker + part starts the candida
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
+  it.each(["Manual for Sick or Banner Q4XTBLAF300-Q8", "Manual for Banner or Sick Q4XTBLAF300-Q8"])(
+    "Codex #4184 F3: '%s' names two makers — no search",
+    async (message) => {
+      await (await POST(req({ message, mode: "general" }), params)).text();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+
   it("control: lowercase 'banner' is an ordinary word — no search", async () => {
     await (await POST(req({ message: "I need the manual for a banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();

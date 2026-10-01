@@ -67,7 +67,7 @@ function typedMakerNamesPart(text: string, matched: string, matchIndex: number, 
  *  longest matched name. Aliases of one maker share a group. `typedPart`: the
  *  text is the technician's typed message and this is the part it names, which
  *  enables the typed-text rule for dictionary-word makers above. */
-function makerGroups(text: string, typedPart?: string): Map<string, string> {
+function makerGroups(text: string, typedPart?: string, loose = false): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
@@ -77,6 +77,8 @@ function makerGroups(text: string, typedPart?: string): Map<string, string> {
       (m) =>
         !dictionary ||
         m[0] === m[0].toUpperCase() ||
+        // `loose` (ambiguity check only): any capitalised mention counts.
+        (loose && /^[A-Z]/.test(m[0])) ||
         (typedPart !== undefined && typedMakerNamesPart(text, m[0], m.index ?? 0, typedPart)),
     );
     if (!named) continue;
@@ -92,6 +94,12 @@ function makerGroups(text: string, typedPart?: string): Map<string, string> {
 export function makerFromText(text: string, typedPart?: string): string | null {
   const hits = makerGroups(text, typedPart);
   if (hits.size !== 1) return null;
+  // Codex #4184 F3: in TYPED text, any OTHER maker the technician capitalised
+  // ("Sick or Banner Q4X…") makes the choice ambiguous — never pick one.
+  if (typedPart !== undefined) {
+    const [chosen] = hits.keys();
+    if ([...makerGroups(text, undefined, true).keys()].some((g) => g !== chosen)) return null;
+  }
   return [...hits.values()][0].toUpperCase();
 }
 
@@ -152,7 +160,12 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());
-  const named = texts.flatMap((t) => [...makerGroups(t).keys()]);
+  // Codex #4184 F3: the typed text is read loosely (any capitalised maker
+  // word), so coordinated alternatives ("Sick or Banner") are a contradiction.
+  const named = [
+    ...(photoText ? [...makerGroups(photoText).keys()] : []),
+    ...(typed ? [...makerGroups(typed, undefined, true).keys()] : []),
+  ];
   if (named.some((g) => !proposed.has(g))) return false;
   return namesOnlyThisMachine(texts.join("\n"), part);
 }
