@@ -51,7 +51,10 @@ export type ConfirmStatus =
   | "no_extractable_text"
   | "manufacturer_model_required"
   | "nameplate_not_indexed"
-  | "download_rejected";
+  | "download_rejected"
+  // A per-user/tenant/global provider-query cap is at capacity RIGHT NOW
+  // (#4160 S4, PRD R5) — never the same as "no manual exists".
+  | "search_limit_reached";
 
 const IDENTITY_FIELDS = [
   "manufacturer",

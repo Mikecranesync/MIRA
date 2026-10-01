@@ -153,6 +153,14 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   'candidate_host', NULL, 'match_state', NULL, 'oem_request_url', NULL,
                   -- Automatic retries of a retryable failure are counted and capped
                   -- (Codex #4118 r12 F16): a PDF that never reads stops, eventually.
+                  -- search_limit_reached (#4160 S4) is retried on a DIFFERENT
+                  -- clock (the next UTC day — see the WHERE clause) and is
+                  -- deliberately NOT counted here: a quota denial costs no
+                  -- Serper query, so there is no reason to ever give up on it,
+                  -- and counting it against the 30-min/3-retry budget below
+                  -- would make it terminal in ~90 minutes while the real
+                  -- daily/monthly window is still hours or weeks from reset —
+                  -- a cap denial permanently cached as a miss (PRD R5).
                   'retries', CASE WHEN manual_acquisition->>'key' = $3::text
                                    AND manual_acquisition->>'state' = 'search_unavailable'
                                   THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
@@ -162,13 +170,13 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   -- so a manual the technician removed is never put back
                   -- (Codex #4118 r14/r15 F19/F20).
                   'prior_doc_id', CASE WHEN manual_acquisition->>'key' = $3::text
-                                        AND manual_acquisition->>'state' IN ('search_unavailable', 'running')
+                                        AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                        THEN COALESCE(
                                               CASE WHEN manual_acquisition->>'linked' = 'true'
                                                    THEN manual_acquisition->'doc_id' END,
                                               manual_acquisition->'prior_doc_id') END,
                   'prior_file_id', CASE WHEN manual_acquisition->>'key' = $3::text
-                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'running')
+                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                         THEN COALESCE(
                                                CASE WHEN manual_acquisition->>'linked' = 'true'
                                                     THEN manual_acquisition->'file_id' END,
@@ -182,7 +190,15 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  OR (manual_acquisition->>'state' = 'search_unavailable'
                      AND COALESCE((manual_acquisition->>'retries')::int, 0) < $6
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
-                         < now() - make_interval(mins => $5)))
+                         < now() - make_interval(mins => $5))
+                 -- search_limit_reached: retry once a NEW UTC day has started
+                 -- since the denial (the daily caps reset at UTC midnight; a
+                 -- retry that still hits the monthly global cap just denies
+                 -- again at zero cost and tries again the following day).
+                 -- Uncapped by $6 on purpose — see the 'retries' comment above.
+                 OR (manual_acquisition->>'state' = 'search_limit_reached'
+                     AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
+                         < date_trunc('day', now(), 'UTC')))
           RETURNING manual_acquisition->>'gen' AS gen`,
         [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES],
       );
@@ -494,7 +510,7 @@ export async function reconcileAcquisition(
   // A retryable record whose attempt attached a manual is checked too, so a
   // removal during the backoff is honored before any retry (r14 F19).
   // For a retryable record, check what ANY attempt attached (r15 F20).
-  const retryable = rec.state === "search_unavailable";
+  const retryable = rec.state === "search_unavailable" || rec.state === "search_limit_reached";
   const docRef = retryable ? (rec.linked ? rec.doc_id : null) || rec.prior_doc_id || null : rec.doc_id || null;
   const fileRef = retryable ? (rec.linked ? rec.file_id : null) || rec.prior_file_id || null : rec.file_id || null;
   const bySource =
@@ -551,6 +567,16 @@ export function acquisitionDeclineText(rec: AcquisitionRecord | null, key: strin
       return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
     case "no_manual_found":
       return `I looked for the official ${label} manual and couldn't find one${rec.oem_request_url ? ` — you can request it from the manufacturer: ${rec.oem_request_url}` : ""}. Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.`;
+    case "search_limit_reached":
+      // Distinct from "couldn't find one" (PRD R5, #4160 S4) — a cap denial
+      // must never read as "no manual exists". Scope-agnostic on purpose: the
+      // cap that was hit could be this user's or this org's DAILY limit, or
+      // the system-wide MONTHLY one — claim()'s retry predicate below retries
+      // once a new UTC day starts regardless of which, so "tomorrow" is
+      // accurate for the daily case and still eventually true for the
+      // monthly one (never "in a bit", which the old wording promised and
+      // the retry predicate could not keep for a daily backoff).
+      return `I hit a search limit before I could look for the official ${label} manual. I'll automatically try again — check back tomorrow, or upload the manual yourself in the meantime.`;
     case "search_unavailable":
     case "download_rejected":
     case "manufacturer_model_required":

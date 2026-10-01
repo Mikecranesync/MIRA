@@ -1628,6 +1628,72 @@ jobs:
           grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.plain || {
             echo "::error::could not confirm a positive passing test count"; exit 1; }
 
+  manual-search-quota-pg:
+    name: Manual-search quota caps (disposable Postgres, migration 103)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # WHY THIS JOB EXISTS (#4160 S4)
+    # mira-bots/tests/test_manual_search_quota_pg.py is the only proof that the
+    # paid-search caps hold under real Postgres semantics: the exact cap boundary,
+    # rollback on a partial reservation, and 30 concurrent reservations never
+    # overselling a cap of 10. A fake double passed with `<=` in place of `<`;
+    # only real Postgres caught it. The suite self-skips without a database, and
+    # a skip is indistinguishable from a pass — so this job must prove it RAN.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: changes
+        with:
+          filters: |
+            quota:
+              - 'mira-bots/shared/manual_search/**'
+              - 'mira-bots/ask_api/manual_discovery.py'
+              - 'mira-bots/tests/test_manual_search_quota*.py'
+              - 'mira-hub/db/migrations/103_manual_search_quota.sql'
+              - '.github/workflows/ci.yml'
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: steps.changes.outputs.quota == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        if: steps.changes.outputs.quota == 'true'
+        run: pip install "psycopg2-binary>=2.9" httpx pytest pytest-asyncio
+
+      - name: Quota suite against real Postgres (must RUN, not skip)
+        if: steps.changes.outputs.quota == 'true'
+        working-directory: mira-bots
+        run: |
+          set -euo pipefail
+          # -p no:xdist: the suite TRUNCATEs one shared table per test and must
+          # run serially (see the test module docstring).
+          python -m pytest -p no:xdist -p no:cacheprovider -rs \
+            tests/test_manual_search_quota_pg.py 2>&1 | tee /tmp/quota-pg.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/quota-pg.out > /tmp/quota-pg.plain
+          if grep -qE "[0-9]+ skipped" /tmp/quota-pg.plain; then
+            echo "::error::quota PG suite SKIPPED a test — the gate proved nothing"; exit 1
+          fi
+          grep -qE "(^|[^0-9])[1-9][0-9]* passed" /tmp/quota-pg.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
@@ -1642,6 +1708,7 @@ jobs:
       - test-unit
       - mira-hub-unit
       - turn-lifecycle-reconciliation
+      - manual-search-quota-pg
       - mobile-unit-tests
       - mira-web-pack-tests
       - architecture-check
@@ -1669,6 +1736,7 @@ jobs:
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
           LIFECYCLE_RECON_RESULT: ${{ needs.turn-lifecycle-reconciliation.result }}
+          QUOTA_PG_RESULT: ${{ needs.manual-search-quota-pg.result }}
           MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
           ARCH_RESULT: ${{ needs.architecture-check.result }}
@@ -1708,6 +1776,8 @@ jobs:
           # what makes it able to BLOCK. Omitting it would reproduce the exact
           # silent no-op the job was written to eliminate.
           require_success turn-lifecycle-reconciliation "$LIFECYCLE_RECON_RESULT"
+          # #4160 S4: same shape — step-level paths filter, never job-level skipped.
+          require_success manual-search-quota-pg "$QUOTA_PG_RESULT"
           # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
           # here, so a red mobile suite could not fail the merge (observed on
           # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape

@@ -106,6 +106,26 @@ describe("startManualAcquisition", () => {
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
+    // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
+    // "appears somewhere in the query"):
+    //  - search_unavailable keeps its existing 30-min/3-retry backoff.
+    //  - search_limit_reached (a quota-cap denial) is retried once a NEW UTC
+    //    day starts since it finished, and is NOT counted against the
+    //    retries budget — a cap denial costs no Serper query and must never
+    //    become a permanently-cached miss (PRD R5).
+    expect(claimQ.sql).toMatch(
+      /OR \(manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
+    );
+    expect(claimQ.sql).toMatch(
+      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\)/,
+    );
+    // The retries counter itself must NOT increment for search_limit_reached
+    // (only for search_unavailable) — else a quota denial would exhaust
+    // MAX_AUTOMATIC_RETRIES in ~90 minutes while the real daily/monthly
+    // window is still far from reset.
+    expect(claimQ.sql).toMatch(
+      /'retries', CASE WHEN manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
+    );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
     expect(rec).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "candidate_review", candidate_host: "www.smcworld.com", match_state: "candidate" });
@@ -195,6 +215,12 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
     const t = acquisitionDeclineText(rec({ state: "no_manual_found", oem_request_url: "https://oem.example/request" }), "K", "SMC VQ1000")!;
     expect(t).toContain("couldn't find one");
     expect(t).toContain("https://oem.example/request");
+  });
+  it("#4160 S4: search_limit_reached says 'limit', NEVER 'couldn't find' — a cap denial is not a miss (PRD R5)", () => {
+    const t = acquisitionDeclineText(rec({ state: "search_limit_reached" }), "K", "SMC VQ1000")!;
+    expect(t).not.toBeNull();
+    expect(t.toLowerCase()).toContain("limit");
+    expect(t.toLowerCase()).not.toContain("couldn't find");
   });
   it("adds nothing for a record about a different identity, or for outcomes with nothing to show", () => {
     expect(acquisitionDeclineText(rec({ state: "no_manual_found" }), "OTHER", "X")).toBeNull();

@@ -27,15 +27,32 @@ def _discovery_key(monkeypatch):
     monkeypatch.delenv("ASK_API_KEY", raising=False)
 
 
-def _client(key: str | None = _KEY) -> TestClient:
+_TENANT = "test-tenant"
+_USER = "test-user"
+
+
+def _client(
+    key: str | None = _KEY,
+    *,
+    tenant: str | None = _TENANT,
+    user: str | None = _USER,
+) -> TestClient:
     """Create a minimal app with only the manual_discovery router.
 
     Avoids importing ask_api.app, which constructs the Supervisor engine.
-    Sends the configured key by default; pass ``key=None`` to send none.
+    Sends the configured key AND a default tenant/user identity (#4160 S4)
+    by default; pass ``key=None``/``tenant=None``/``user=None`` to omit one.
     """
     app = FastAPI()
     app.include_router(manual_discovery_router)
-    return TestClient(app, headers={"X-Mira-Key": key} if key is not None else {})
+    headers: dict[str, str] = {}
+    if key is not None:
+        headers["X-Mira-Key"] = key
+    if tenant is not None:
+        headers["X-Mira-Tenant"] = tenant
+    if user is not None:
+        headers["X-Mira-User"] = user
+    return TestClient(app, headers=headers)
 
 
 _VALIDATED_CANDIDATE = {
@@ -299,6 +316,339 @@ class TestManualDiscoverySearchAuth:
             json={"manufacturer": "   ", "model": "525"},
         )
         assert resp.status_code == 401
+
+
+class TestManualDiscoverySearchIdentity:
+    """Required X-Mira-Tenant / X-Mira-User identity (#4160 S4, PRD R13/R14).
+
+    Every search is reserved against per-user/tenant/global Postgres caps, so
+    the caller must identify itself. Checked AFTER the key check (a caller
+    with no valid key learns nothing about the identity requirement either).
+    """
+
+    def _fake_search(self, monkeypatch, calls):
+        async def fake_search_manual(make, model):
+            calls.append((make, model))
+            return None
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+
+    def test_missing_tenant_header_returns_400_and_never_searches(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(tenant=None).post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "tenant and user required"
+        assert calls == []
+
+    def test_missing_user_header_returns_400_and_never_searches(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(user=None).post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "tenant and user required"
+        assert calls == []
+
+    def test_blank_tenant_header_returns_400(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(tenant="   ").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 400
+        assert calls == []
+
+    def test_blank_user_header_returns_400(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(user="   ").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 400
+        assert calls == []
+
+    def test_wrong_key_with_missing_identity_still_returns_401_not_400(self, monkeypatch):
+        """Auth runs BEFORE the identity check: a bad key never leaks whether
+        the identity headers would have been accepted."""
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client(key="wrong", tenant=None, user=None).post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 401
+        assert calls == []
+
+    def test_both_headers_present_searches_normally(self, monkeypatch):
+        calls = []
+        self._fake_search(monkeypatch, calls)
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 200
+        assert calls == [("Rockwell Automation", "525")]
+
+
+class TestManualDiscoveryQuota:
+    """Quota-denial mapping (#4160 S4, PRD R5): a cap denial must never look
+    like "no manual exists". The real _serper_search gate is not exercised
+    here (search_manual is swapped, same boundary as the rest of this file);
+    instead the fake search_manual sets budget.quota_denied exactly as the
+    real gate would, so these tests pin the ENDPOINT's branching on it."""
+
+    def _fake_search_setting_denial(self, monkeypatch, reason: str):
+        import ask_api.manual_discovery as md
+        from shared.manual_search import search as _search_mod
+
+        async def fake_search_manual(make, model):
+            # Set the SAME contextvar the real _serper_search gate would, so
+            # this fake behaves exactly like a real denial for the purpose of
+            # pinning the endpoint's branching on budget.quota_denied.
+            budget = _search_mod._provider_budget.get()
+            assert budget is not None, "the endpoint must open provider_query_budget()"
+            budget.quota_denied = reason
+            budget.refused += 1
+            return None
+
+        monkeypatch.setattr(md, "search_manual", fake_search_manual)
+
+    def test_user_cap_denial_maps_to_quota_exceeded_with_scope_detail(self, monkeypatch):
+        self._fake_search_setting_denial(monkeypatch, "user_cap")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["found"] is False
+        assert body["candidate"] is None
+        assert body["reason"] == "quota_exceeded"
+        assert "user" in body["reason_detail"].lower()
+        assert "limit" in body["reason_detail"].lower()
+
+    def test_tenant_cap_denial_maps_to_quota_exceeded_with_scope_detail(self, monkeypatch):
+        self._fake_search_setting_denial(monkeypatch, "tenant_cap")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "quota_exceeded"
+        assert "organization" in body["reason_detail"].lower()
+
+    def test_global_cap_denial_maps_to_quota_exceeded_with_scope_detail(self, monkeypatch):
+        self._fake_search_setting_denial(monkeypatch, "global_cap")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "quota_exceeded"
+        assert "system-wide" in body["reason_detail"].lower()
+
+    def test_global_cap_unconfigured_maps_to_search_unavailable_not_quota_exceeded(
+        self, monkeypatch
+    ):
+        """Owner decision D4 (2026-09-30): the global monthly $ ceiling is not
+        yet decided, so quota.py fails closed with "global_cap_unconfigured"
+        rather than inventing a default. That is an infra/config miss, not a
+        cap AT capacity — it must read as "search unavailable", never "limit
+        reached" (which would wrongly imply the system is actually enforcing
+        a real monthly number right now)."""
+        self._fake_search_setting_denial(monkeypatch, "global_cap_unconfigured")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "search_unavailable"
+        assert body["reason"] != "quota_exceeded"
+
+    def test_quota_unavailable_maps_to_search_unavailable_not_quota_exceeded(self, monkeypatch):
+        """quota_unavailable (DB/env problem) is an infra miss, not a cap
+        denial — it must read as "search unavailable", never "limit reached"."""
+        self._fake_search_setting_denial(monkeypatch, "quota_unavailable")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "search_unavailable"
+        assert body["reason"] != "quota_exceeded"
+
+    def test_no_identity_denial_maps_to_search_unavailable_never_a_blank_quota_exceeded(
+        self, monkeypatch
+    ):
+        """Defense in depth (code-review follow-up): "no_identity" should be
+        structurally unreachable from THIS route (it always opens
+        provider_query_quota() with a validated identity — see the real-wiring
+        test below), but if a future regression ever removes that wrapper, the
+        fallback must be the honest "search_unavailable" infra miss — never a
+        "quota_exceeded" with an empty reason_detail (which the old `else`
+        branch produced for ANY non-"quota_unavailable" denial, including
+        this one)."""
+        self._fake_search_setting_denial(monkeypatch, "no_identity")
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "search_unavailable"
+        assert body["reason"] != "quota_exceeded"
+
+    def test_control_no_denial_is_a_plain_no_result_not_quota_exceeded(self, monkeypatch):
+        """Negative control: a plain miss (budget.quota_denied stays None)
+        must NOT be mapped to quota_exceeded."""
+
+        async def fake_search_manual(make, model):
+            return None
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["reason"] == "no_result"
+
+
+class TestManualDiscoveryRealQuotaWiring:
+    """Proves the END-TO-END wiring the rest of this file's mocking boundary
+    cannot (search_manual is swapped everywhere else): X-Mira-Tenant/
+    X-Mira-User headers -> QuotaIdentity -> the provider_query_quota()
+    contextvar -> across the asyncio.wait_for task boundary -> the REAL
+    _serper_search enforcement point. Only _serper_post (the actual network
+    call) and reserve_provider_query (the actual DB round trip) are faked;
+    search_manual itself runs for real.
+
+    Mutation-proven (this file): deleting the route's
+    `provider_query_quota(identity)` wrapper makes this go red — the
+    identity never reaches _serper_search, every query is refused
+    "no_identity", and nothing is ever sent.
+    """
+
+    def test_identity_headers_reach_the_real_quota_reservation(self, monkeypatch):
+        import shared.manual_search.quota as quota_mod
+        import shared.manual_search.search as search_mod
+
+        monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+        monkeypatch.setattr(search_mod, "SERPER_API_KEY", "test-key")
+        seen_identities = []
+        sent_queries = []
+
+        async def fake_reserve(identity, **kwargs):
+            seen_identities.append(identity)
+            return "ok"
+
+        async def fake_post(query, num=10):
+            sent_queries.append(query)
+            return []
+
+        monkeypatch.setattr(quota_mod, "reserve_provider_query", fake_reserve)
+        monkeypatch.setattr(search_mod, "_serper_post", fake_post)
+
+        resp = _client(tenant="hdr-tenant", user="hdr-user").post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        assert resp.status_code == 200
+        assert sent_queries, "expected the real search_manual to attempt a provider query"
+        assert seen_identities, "expected reserve_provider_query to be called with an identity"
+        assert seen_identities[0].tenant_id == "hdr-tenant"
+        assert seen_identities[0].user_id == "hdr-user"
+
+
+class TestQuotaDenialInterruptsJudgedSearch:
+    """#4168 Codex r1 F2: a cap denial that stopped the search part-way must
+    not be reported as a completed miss. If the judge rejected what WAS
+    collected, the honest answer is "limit reached" (retryable), not
+    judged_not_applicable (terminal no_manual_found in the Hub)."""
+
+    def _fake(self, monkeypatch, candidate, denial):
+        import ask_api.manual_discovery as md
+        from shared.manual_search import search as _search_mod
+
+        async def fake_search_manual(make, model):
+            budget = _search_mod._provider_budget.get()
+            assert budget is not None
+            if denial:
+                budget.quota_denied = denial
+                budget.refused += 1
+            return candidate
+
+        monkeypatch.setattr(md, "search_manual", fake_search_manual)
+
+    _REJECTED = {
+        "url": "https://linpub.example/news.pdf",
+        "title": "Newspaper",
+        "host": "linpub.example",
+        "validated": False,
+        "is_direct_pdf": True,
+        "reason": "judged_not_applicable",
+        "reason_detail": "Read the PDF: a newspaper article.",
+        "judged_rejected": [{"url": "https://linpub.example/news.pdf", "reason": "newspaper"}],
+    }
+
+    def test_judged_rejection_after_a_cap_denial_reports_quota_exceeded(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), "user_cap")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "quota_exceeded"
+        assert "user" in body["reason_detail"].lower()
+
+    def test_judged_rejection_after_quota_unavailable_reports_search_unavailable(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), "quota_unavailable")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "search_unavailable"
+
+    def test_control_judged_rejection_without_denial_stays_judged_not_applicable(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), None)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["reason"] == "judged_not_applicable"
+
+    def test_control_usable_candidate_survives_a_later_denial(self, monkeypatch):
+        self._fake(monkeypatch, dict(_VALIDATED_CANDIDATE), "user_cap")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is True
+        assert body["validated"] is True
 
 
 class TestManualDiscoverySearchErrorHandling:
