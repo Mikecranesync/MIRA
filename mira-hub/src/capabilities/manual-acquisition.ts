@@ -553,6 +553,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     }
     attached = persisted !== null && persisted.matchState !== "rejected";
     removedDuringRun = persisted === null;
+    // Codex post-cap 5 F10 (#4172): report the stamp only when the row that was
+    // actually stored is a disabled candidate. The upsert overwrites a candidate
+    // row's evidence with ours, but preserves a verified / user_confirmed /
+    // rejected row's state and evidence, so for those this stamp is not on the
+    // row and confirming the identity cannot enable it.
+    if (!(persisted && persisted.matchState === "candidate" && !persisted.enabledByDefault)) candidateApplicability = null;
   }
 
   const answering = attached && enabled && (matchState === "verified" || matchState === "user_confirmed");

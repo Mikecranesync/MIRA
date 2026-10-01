@@ -624,6 +624,22 @@ describe("manual import: candidate until the document proves itself", () => {
     });
   });
 
+  // Codex post-cap 5 F10 (#4172): the "confirm and I'll answer from it" promise
+  // follows the PERSISTED row, not the attempted verdict. A source the notebook
+  // already had as verified and the technician switched off keeps its own
+  // state and evidence (upsert preserves them), so confirming cannot enable it.
+  it("Codex post-cap 5 F10: a re-found source persisted verified+disabled never reports promotes_on_confirm", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: false }));
+    const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+    const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+    expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified"); // attempted
+    expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBeUndefined();
+    expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
+  });
+
   it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
