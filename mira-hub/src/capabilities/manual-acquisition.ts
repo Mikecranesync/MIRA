@@ -26,12 +26,23 @@ import { ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from 
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
 /** Manuals are big; 80 MB is generous for an OEM PDF and still bounded. */
 const MAX_MANUAL_BYTES = 80 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 /** Identity evidence lives near the front of a manual — bound the scan. */
 const APPLICABILITY_CHUNK_LIMIT = 80;
+/** $0.001/provider-query default (docs/env-vars.md MANUAL_SEARCH_GLOBAL_MONTHLY_CAP
+ * sizing: $10/month -> 10,000 queries). Overridable; a non-numeric env value
+ * falls back to this default rather than producing a NaN cost (#4160 gate R15). */
+const DEFAULT_PROVIDER_QUERY_COST_USD = 0.001;
+
+function providerQueryCostUsd(): number {
+  const raw = process.env.MANUAL_SEARCH_COST_PER_QUERY_USD;
+  const n = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_PROVIDER_QUERY_COST_USD;
+}
 
 export type ManualAcquisitionStatus =
   | "complete"
@@ -169,14 +180,29 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     });
   }
 
-  const discovery = await discoverManual(
-    {
-      manufacturer: identity.manufacturer,
-      model: identity.model,
-      catalogNumber: identity.catalogNumber,
-    },
-    ctx,
-  );
+  // R15 span: provider-query accounting, cap state and candidates considered
+  // — set from the discovery result itself, never invented when mira-ask
+  // didn't carry search_stats (an old version, or a malformed response).
+  const discovery = await safeSpan("manual_acquisition.search", {}, async () => {
+    const d = await discoverManual(
+      {
+        manufacturer: identity.manufacturer,
+        model: identity.model,
+        catalogNumber: identity.catalogNumber,
+      },
+      ctx,
+    );
+    const providerQueries = d.searchStats?.providerQueries ?? null;
+    setActiveSpanAttrs({
+      "mira.acquisition.provider_queries": providerQueries,
+      "mira.acquisition.candidates": d.searchStats?.candidates ?? null,
+      "mira.acquisition.cap_hit": d.quotaExceeded,
+      "mira.acquisition.cap_scope": d.searchStats?.quotaDenied ?? null,
+      "mira.acquisition.cost_usd":
+        providerQueries === null ? null : Math.round(providerQueries * providerQueryCostUsd() * 1e6) / 1e6,
+    });
+    return d;
+  });
   if (discovery.quotaExceeded) {
     // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
     return outcome("search_limit_reached", { message: discovery.reason });
@@ -248,10 +274,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   // applicability block below.
   const requiresUserConfirmation = probeUnvalidated || input.basis === "candidate";
 
-  const download = await safeDownloadPdf(candidate.url, {
-    allowedHosts: allowedHostsForCandidate(identity, candidate),
-    maxBytes: MAX_MANUAL_BYTES,
-    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+  const downloadStartedAt = Date.now();
+  const download = await safeSpan("manual_acquisition.download", {}, async () => {
+    const d = await safeDownloadPdf(candidate.url, {
+      allowedHosts: allowedHostsForCandidate(identity, candidate),
+      maxBytes: MAX_MANUAL_BYTES,
+      timeoutMs: DOWNLOAD_TIMEOUT_MS,
+    });
+    setActiveSpanAttrs({
+      "mira.acquisition.download_bytes": d.ok ? d.buffer.length : null,
+      "mira.acquisition.download_ms": Date.now() - downloadStartedAt,
+    });
+    return d;
   });
   if (!download.ok) {
     return outcome("download_rejected", {
@@ -337,6 +371,11 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let scannedPdf = false;
   let manualClaimToken: string | null = null;
   let reused = manualParked.reused && manualParked.uploadId !== null;
+  // R15 span: exact-byte dedup is the only "recall" this pipeline has — an
+  // existing indexed manual for these bytes being reused instead of a fresh
+  // ingest. A concurrent-request claim collision below is a race, not a
+  // recall, so it is deliberately not folded into this attribute.
+  await safeSpan("manual_acquisition.recall", { "mira.acquisition.recall_hit": reused }, async () => {});
 
   if (!reused && manualDocId === null) {
     // Atomic ingestion claim (Codex P1, 2026-08-16): a concurrent identical
@@ -373,14 +412,25 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
 
   if (!reused && manualDocId === null) {
     try {
-      const ing = await ingestPdfToNode({
-        tenantId: ctx.tenantId,
-        nodeId: notebook.nodeId,
-        unsPath: null,
-        filename: manualFilename,
-        mimeType: "application/pdf",
-        sizeBytes: download.buffer.length,
-        buffer: download.buffer,
+      const ingestStartedAt = Date.now();
+      const ing = await safeSpan("manual_acquisition.ingest", {}, async () => {
+        const r = await ingestPdfToNode({
+          tenantId: ctx.tenantId,
+          nodeId: notebook.nodeId,
+          unsPath: null,
+          filename: manualFilename,
+          mimeType: "application/pdf",
+          sizeBytes: download.buffer.length,
+          buffer: download.buffer,
+        });
+        setActiveSpanAttrs({
+          // NodeIngestResult carries no page count — never invented (R15: "pages
+          // may be null if unknown, never invented").
+          "mira.acquisition.ingest_pages": null,
+          "mira.acquisition.ingest_chunks": r.chunkCount,
+          "mira.acquisition.ingest_ms": Date.now() - ingestStartedAt,
+        });
+        return r;
       });
       manualChunks = ing.chunkCount;
       // Token-fenced finalize (see nameplate section): if the claim was stolen
@@ -515,14 +565,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     if (chunks === null) return retryLater();
-    verdict = assessApplicability({
-      identity: {
-        manufacturer: identity.manufacturer,
-        model: identity.model,
-        catalogNumber: identity.catalogNumber,
-      },
-      chunks,
-      oemHost: discovery.oemHost,
+    verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
+      const v = assessApplicability({
+        identity: {
+          manufacturer: identity.manufacturer,
+          model: identity.model,
+          catalogNumber: identity.catalogNumber,
+        },
+        chunks,
+        oemHost: discovery.oemHost,
+      });
+      setActiveSpanAttrs({ "mira.acquisition.match_state": v.state });
+      return v;
     });
     const verifiedEvidence = {
       ...baseEvidence,

@@ -42,6 +42,22 @@ export interface DiscoveryCandidate {
   validated: boolean;
 }
 
+/**
+ * Additive provider-query accounting for the Turn Flight Recorder's
+ * acquisition spans (#4160 gate R15) — parsed from the router's
+ * `search_stats` object, itself additive on every mira-ask response. An old
+ * mira-ask version that predates this field, or any malformed shape, must
+ * keep working: see parseSearchStats() below.
+ */
+export interface DiscoverySearchStats {
+  providerQueries: number | null;
+  refusedQueries: number | null;
+  /** The cap scope at capacity right now ("user_cap"/"tenant_cap"/"global_cap"/...), or null. */
+  quotaDenied: string | null;
+  /** Candidate documents considered while producing this result (0 when none). */
+  candidates: number | null;
+}
+
 export interface DiscoveryResult {
   /** The search service answered (whether or not it found anything). */
   serviceAvailable: boolean;
@@ -65,11 +81,39 @@ export interface DiscoveryResult {
    * S4). This is NEVER the same as "no manual exists" (PRD R5) — the caller
    * must say "limit reached", not "not found". */
   quotaExceeded: boolean;
+  /** Provider-query accounting for this call, or null/absent — absent on an
+   * old mira-ask version or a malformed response; never fabricated. OPTIONAL
+   * so pre-existing test literals of this shape (which predate this field,
+   * same as the pre-existing oemRequestUrl/quotaExceeded gap in
+   * confirm.test.ts) keep type-checking without adding a new tsc error. */
+  searchStats?: DiscoverySearchStats | null;
 }
 
 function requestUrl(body: Record<string, unknown> | null | undefined): string | null {
   const u = body?.oem_request_url;
   return typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : null;
+}
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Parse the additive `search_stats` object. Absent or malformed -> null,
+ * never throws, never fabricates a 0 for a field the body didn't actually
+ * carry (an old mira-ask version keeps working — the Hub just has nothing to
+ * show for that run).
+ */
+function parseSearchStats(body: Record<string, unknown> | null | undefined): DiscoverySearchStats | null {
+  const s = body?.search_stats;
+  if (!s || typeof s !== "object") return null;
+  const r = s as Record<string, unknown>;
+  return {
+    providerQueries: numOrNull(r.provider_queries),
+    refusedQueries: numOrNull(r.refused_queries),
+    quotaDenied: str(r.quota_denied),
+    candidates: numOrNull(r.candidates),
+  };
 }
 
 const DEFAULT_ASK_URL = "http://mira-ask:8011";
@@ -80,7 +124,7 @@ const DISCOVERY_TIMEOUT_MS = 60_000;
 const NO_MANUAL = "no official manual found";
 const UNAVAILABLE = "search service unavailable";
 
-function unavailable(reason = UNAVAILABLE): DiscoveryResult {
+function unavailable(reason = UNAVAILABLE, searchStats: DiscoverySearchStats | null = null): DiscoveryResult {
   return {
     serviceAvailable: false,
     found: false,
@@ -92,10 +136,11 @@ function unavailable(reason = UNAVAILABLE): DiscoveryResult {
     reason,
     oemRequestUrl: null,
     quotaExceeded: false,
+    searchStats,
   };
 }
 
-function notFound(reason = NO_MANUAL): DiscoveryResult {
+function notFound(reason = NO_MANUAL, searchStats: DiscoverySearchStats | null = null): DiscoveryResult {
   return {
     serviceAvailable: true,
     found: false,
@@ -107,10 +152,15 @@ function notFound(reason = NO_MANUAL): DiscoveryResult {
     reason,
     oemRequestUrl: null,
     quotaExceeded: false,
+    searchStats,
   };
 }
 
-function quotaExceededResult(reason: string, oemRequestUrl: string | null): DiscoveryResult {
+function quotaExceededResult(
+  reason: string,
+  oemRequestUrl: string | null,
+  searchStats: DiscoverySearchStats | null = null,
+): DiscoveryResult {
   return {
     serviceAvailable: true,
     found: false,
@@ -122,6 +172,7 @@ function quotaExceededResult(reason: string, oemRequestUrl: string | null): Disc
     reason,
     oemRequestUrl,
     quotaExceeded: true,
+    searchStats,
   };
 }
 
@@ -196,6 +247,7 @@ export async function discoverManual(
     return quotaExceededResult(
       str(body.reason_detail) || "manual-search limit reached",
       requestUrl(body),
+      parseSearchStats(body),
     );
   }
   if (body.reason === "search_unavailable") {
@@ -210,7 +262,10 @@ export async function discoverManual(
     // response includes oem_request_url; the bare unavailable() default of
     // null would otherwise silently drop it, same spread pattern as the
     // notFound() branch below).
-    return { ...unavailable(str(body.reason_detail) || UNAVAILABLE), oemRequestUrl: requestUrl(body) };
+    return {
+      ...unavailable(str(body.reason_detail) || UNAVAILABLE, parseSearchStats(body)),
+      oemRequestUrl: requestUrl(body),
+    };
   }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
@@ -218,7 +273,7 @@ export async function discoverManual(
     // Prefer the judge's human line ("Read the PDF: a newspaper article…") over
     // the code ("judged_not_applicable") — the phone renders this verbatim.
     return {
-      ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL),
+      ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
     };
   }
@@ -227,7 +282,7 @@ export async function discoverManual(
     try {
       host = new URL(url).hostname;
     } catch {
-      return notFound("the search result was not a usable URL");
+      return notFound("the search result was not a usable URL", parseSearchStats(body));
     }
   }
 
@@ -252,6 +307,7 @@ export async function discoverManual(
     reason: str(body.reason_detail) || str(body.reason) || "candidate manual found",
     oemRequestUrl: requestUrl(body),
     quotaExceeded: false,
+    searchStats: parseSearchStats(body),
   };
 }
 

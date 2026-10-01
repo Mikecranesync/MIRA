@@ -22,6 +22,8 @@
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
+import { activeSpanId, activeTraceId, setSpanAttrs } from "@/capabilities/observability/tracing";
+import { safeSpan } from "@/capabilities/observability/acquisition-spans";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
@@ -550,26 +552,48 @@ export async function startManualAcquisition(
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
+  // R15: captured HERE, inside the chat turn, before the detached run below
+  // starts — the turn's own span may already have ended by the time this
+  // background run finishes, so the root span below is a NEW trace (root:
+  // true) carrying a LINK back to this trace/span, not a child of it.
+  const turnTraceId = activeTraceId();
+  const turnSpanId = activeSpanId();
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
-      out = await acquire({
-        tenantId: input.tenantId,
-        userId: input.userId,
-        notebookId: input.notebookId,
-        nodeId: input.nodeId,
-        identity: {
-          manufacturer: clean(input.identity.manufacturer) || undefined,
-          model: clean(input.identity.model) || undefined,
-          catalogNumber: clean(input.identity.catalogNumber) || undefined,
+      out = await safeSpan(
+        "manual_acquisition.run",
+        {
+          "mira.acquisition.basis": basis,
+          "mira.acquisition.started_this_turn": turnTraceId !== null,
         },
-        // Omitted entirely for the default "confirmed" basis — keeps the
-        // acquire() call payload byte-identical to pre-S6 for every existing
-        // (nameplate confirm + confirmed-identity notebook) caller.
-        ...(basis === "candidate" ? { basis } : {}),
-        writeSourceState: fencedWriter(key, gen, basis),
-        attach: fencedAttach(key, gen, basis),
-      });
+        async () => {
+          const result = await acquire({
+            tenantId: input.tenantId,
+            userId: input.userId,
+            notebookId: input.notebookId,
+            nodeId: input.nodeId,
+            identity: {
+              manufacturer: clean(input.identity.manufacturer) || undefined,
+              model: clean(input.identity.model) || undefined,
+              catalogNumber: clean(input.identity.catalogNumber) || undefined,
+            },
+            // Omitted entirely for the default "confirmed" basis — keeps the
+            // acquire() call payload byte-identical to pre-S6 for every existing
+            // (nameplate confirm + confirmed-identity notebook) caller.
+            ...(basis === "candidate" ? { basis } : {}),
+            writeSourceState: fencedWriter(key, gen, basis),
+            attach: fencedAttach(key, gen, basis),
+          });
+          try {
+            setSpanAttrs({ "mira.acquisition.outcome": result.status });
+          } catch (err) {
+            console.error("[manual-acquisition] span outcome attr failed:", err instanceof Error ? err.message : err);
+          }
+          return result;
+        },
+        { root: true, link: turnTraceId && turnSpanId ? { traceId: turnTraceId, spanId: turnSpanId } : undefined },
+      );
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
       out = { status: "search_unavailable", payload: {} };
@@ -619,13 +643,31 @@ export async function runManualAcquisition(
   const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
-    // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
-    // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
-    // exactly as the background runner does — so if the process dies after the
-    // attach commits but before `finish`, the stale-running recovery still
-    // knows what was attached and honors a removal instead of re-attaching
-    // (the r16 F22 invariant). The caller's own source writer stays.
-    out = await acquire({ ...input, attach: fencedAttach(key, gen) });
+    // R15: this run is AWAITED inside the chat/confirm turn, so its root span
+    // is simply a child of whatever turn span is active — no link needed
+    // (contrast the detached background run in startManualAcquisition above).
+    out = await safeSpan(
+      "manual_acquisition.run",
+      {
+        "mira.acquisition.basis": input.basis ?? "confirmed",
+        "mira.acquisition.started_this_turn": activeTraceId() !== null,
+      },
+      async () => {
+        // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
+        // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
+        // exactly as the background runner does — so if the process dies after the
+        // attach commits but before `finish`, the stale-running recovery still
+        // knows what was attached and honors a removal instead of re-attaching
+        // (the r16 F22 invariant). The caller's own source writer stays.
+        const result = await acquire({ ...input, attach: fencedAttach(key, gen) });
+        try {
+          setSpanAttrs({ "mira.acquisition.outcome": result.status });
+        } catch (err) {
+          console.error("[manual-acquisition] span outcome attr failed:", err instanceof Error ? err.message : err);
+        }
+        return result;
+      },
+    );
   } catch (err) {
     console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);
     out = { status: "search_unavailable", payload: {} };

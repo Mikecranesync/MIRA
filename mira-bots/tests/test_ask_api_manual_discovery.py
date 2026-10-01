@@ -850,6 +850,215 @@ class TestIsOemHost:
         assert is_oem_host("rockwell", "") is False
 
 
+class TestManualDiscoverySearchStats:
+    """search_stats (#4160 gate R15, PRD v1.7.1 R15): additive block on EVERY
+    response — provider_queries, refused_queries, quota_denied, candidates.
+    No identity strings/URLs/serials in it; existing fields unchanged."""
+
+    def _fake_with_budget(
+        self,
+        monkeypatch,
+        *,
+        used: int = 0,
+        refused: int = 0,
+        quota_denied: str | None = None,
+        candidate: dict | None = None,
+    ):
+        """A fake search_manual that spends the SAME contextvar budget the
+        real _serper_search gate would, mirroring the established pattern in
+        TestManualDiscoveryQuota above."""
+        from shared.manual_search import search as _search_mod
+
+        async def fake_search_manual(make, model):
+            budget = _search_mod._provider_budget.get()
+            assert budget is not None, "the endpoint must open provider_query_budget()"
+            budget.used += used
+            budget.refused += refused
+            if quota_denied:
+                budget.quota_denied = quota_denied
+            return candidate
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+
+    def test_found_path_reports_provider_queries_and_one_candidate(self, monkeypatch):
+        self._fake_with_budget(monkeypatch, used=2, candidate=dict(_VALIDATED_CANDIDATE))
+        resp = _client().post(
+            "/manual-discovery/search",
+            json={"manufacturer": "Rockwell Automation", "model": "525"},
+        )
+        body = resp.json()
+        assert body["found"] is True
+        assert body["search_stats"] == {
+            "provider_queries": 2,
+            "refused_queries": 0,
+            "quota_denied": None,
+            "candidates": 1,
+        }
+
+    def test_found_path_counts_judged_rejected_siblings_alongside_the_match(self, monkeypatch):
+        cand = dict(_VALIDATED_CANDIDATE)
+        cand["judged_rejected"] = [{"url": "https://x.example/a.pdf", "reason": "wrong model"}]
+        self._fake_with_budget(monkeypatch, used=3, candidate=cand)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        # The match itself + the one sibling the judge read and rejected.
+        assert body["search_stats"]["candidates"] == 2
+        assert body["search_stats"]["provider_queries"] == 3
+
+    def test_no_result_path_reports_zero_candidates(self, monkeypatch):
+        self._fake_with_budget(monkeypatch, used=4, refused=1, candidate=None)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "AcmeCo", "model": "Blender9000"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "no_result"
+        assert body["search_stats"] == {
+            "provider_queries": 4,
+            "refused_queries": 1,
+            "quota_denied": None,
+            "candidates": 0,
+        }
+
+    def test_judged_not_applicable_path_counts_the_rejected_candidate_once(self, monkeypatch):
+        """Owner canary rejection path (#4160 R15): the judge read and
+        rejected everything, found=False — candidates must still read 1 (the
+        one document considered and rejected), never 0 (nothing examined) or
+        2 (double-counted with itself)."""
+        import ask_api.manual_discovery as md
+
+        async def fake_search(make, model):
+            return {
+                "url": "https://linpub.example/news.pdf",
+                "title": "Car show",
+                "host": "linpub.example",
+                "score": 30,
+                "is_direct_pdf": True,
+                "validated": False,
+                "reason": "judged_not_applicable",
+                "reason_detail": "Read the PDF: a newspaper article.",
+                "judged_rejected": [
+                    {"url": "https://linpub.example/news.pdf", "reason": "newspaper"}
+                ],
+            }
+
+        monkeypatch.setattr(md, "search_manual", fake_search)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Harrington", "model": "UMS3-0335"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "judged_not_applicable"
+        assert body["search_stats"]["candidates"] == 1
+
+    def test_quota_denied_path_reports_quota_denied_scope_and_zero_candidates(self, monkeypatch):
+        self._fake_with_budget(
+            monkeypatch, used=1, refused=1, quota_denied="user_cap", candidate=None
+        )
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["reason"] == "quota_exceeded"
+        assert body["search_stats"] == {
+            "provider_queries": 1,
+            "refused_queries": 1,
+            "quota_denied": "user_cap",
+            "candidates": 0,
+        }
+
+    def test_search_unavailable_path_reports_search_stats_from_the_spent_budget(self, monkeypatch):
+        from shared.manual_search import search as _search_mod
+
+        async def fake_search_manual(make, model):
+            budget = _search_mod._provider_budget.get()
+            assert budget is not None
+            budget.used += 2
+            budget.refused += 1
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["reason"] == "search_unavailable"
+        assert body["search_stats"] == {
+            "provider_queries": 2,
+            "refused_queries": 1,
+            "quota_denied": None,
+            "candidates": 0,
+        }
+
+    def test_invalid_query_path_reports_zero_search_stats_without_opening_a_budget(
+        self, monkeypatch
+    ):
+        body = _client().post("/manual-discovery/search", json={"manufacturer": "Rockwell"}).json()
+        assert body["reason"] == "invalid_query"
+        assert body["search_stats"] == {
+            "provider_queries": 0,
+            "refused_queries": 0,
+            "quota_denied": None,
+            "candidates": 0,
+        }
+
+    def test_no_identity_strings_or_urls_leak_into_search_stats(self, monkeypatch):
+        self._fake_with_budget(monkeypatch, used=1, candidate=dict(_VALIDATED_CANDIDATE))
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert set(body["search_stats"].keys()) == {
+            "provider_queries",
+            "refused_queries",
+            "quota_denied",
+            "candidates",
+        }
+        assert _VALIDATED_CANDIDATE["url"] not in body["search_stats"].values()
+        assert _VALIDATED_CANDIDATE["host"] not in body["search_stats"].values()
+
+    def test_existing_fields_unchanged_when_search_stats_is_added(self, monkeypatch):
+        self._fake_with_budget(monkeypatch, candidate=dict(_VALIDATED_CANDIDATE))
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["validated"] is True
+        assert body["is_direct_pdf"] is True
+        assert body["oem_host"] is True
+        assert body["candidate"]["url"] == _VALIDATED_CANDIDATE["url"]
+
+
 def test_all_rejected_disappears_as_no_manual_found(monkeypatch):
     """Owner canary rule 2026-08-26: when every read candidate was rejected the
     technician gets no_manual_found + reasons + the OEM request link — never a

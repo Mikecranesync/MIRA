@@ -43,6 +43,7 @@ from shared.manual_search.quota import QuotaIdentity, provider_query_quota
 from shared.manual_search.search import (
     OEM_DOMAINS,
     TRUSTED_DOMAINS,
+    ProviderQueryBudget,
     oem_request_link,
     provider_query_budget,
     search_manual,
@@ -96,6 +97,41 @@ _NO_RESULT = {
     "trusted_distributor_host": False,
     "reason": "no_result",
 }
+
+
+def _candidate_count(candidate: dict | None) -> int:
+    """How many candidate documents search_manual() considered (#4160 gate R15).
+
+    `judged_rejected` is the list of judge-read-and-rejected candidates
+    search_manual() attaches to its return value. In the "every relevant
+    candidate was read and rejected" branch, the returned candidate IS one of
+    those rejections (search_manual sets its own `reason` to
+    "judged_not_applicable" there, and nowhere else) — so counting it again
+    would double-count. Everywhere else the returned candidate is NOT a
+    member of `judged_rejected` (search_manual explicitly excludes the
+    judged match from its own `judged_rejected` list, and the legacy
+    HEAD-validate paths only ever attach `judged_rejected` to a candidate
+    that was never read/rejected), so it adds one more considered document.
+    """
+    if candidate is None:
+        return 0
+    rejected = candidate.get("judged_rejected") or []
+    if candidate.get("reason") == "judged_not_applicable":
+        return len(rejected)
+    return 1 + len(rejected)
+
+
+def _search_stats(budget: ProviderQueryBudget | None, candidate: dict | None = None) -> dict:
+    """Additive `search_stats` block for EVERY response (#4160 gate R15, PRD
+    v1.7.1 R15). No identity strings, URLs, or serials — pure provider-query
+    accounting plus a candidate count. `budget` is None only for the
+    early `invalid_query` return, before any search is attempted."""
+    return {
+        "provider_queries": budget.used if budget is not None else 0,
+        "refused_queries": budget.refused if budget is not None else 0,
+        "quota_denied": budget.quota_denied if budget is not None else None,
+        "candidates": _candidate_count(candidate),
+    }
 
 
 def is_oem_host(manufacturer: str, host: str) -> bool:
@@ -186,6 +222,7 @@ async def manual_discovery_search(
     if not (model or catalog_number):
         result = _NO_RESULT.copy()
         result["reason"] = "invalid_query"
+        result["search_stats"] = _search_stats(None)
         return result
 
     # Strongest identifier wins: catalog_number over model, when supplied.
@@ -206,6 +243,9 @@ async def manual_discovery_search(
     timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
     identity = QuotaIdentity(tenant_id=tenant_id, user_id=user_id)
+    # Bound even if a TimeoutError/Exception below fires before the `with`
+    # block assigns it (defensive — see _search_stats's None branch).
+    budget: ProviderQueryBudget | None = None
     try:
         # Every provider query this call sends is counted and capped (PRD R13)
         # AND reserved against the per-user/tenant/global Postgres caps (S4).
@@ -232,12 +272,14 @@ async def manual_discovery_search(
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
     except Exception as e:  # noqa: BLE001
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     interrupted = budget.quota_denied is not None and (
@@ -259,11 +301,13 @@ async def manual_discovery_search(
             # see the allow-list comment above) are an infra miss, not a cap.
             result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget, candidate)
         return result
 
     if candidate is None:
         result = _NO_RESULT.copy()
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget, candidate)
         return result
     if candidate.get("reason") == "judged_not_applicable":
         # Every relevant candidate was READ and rejected. Owner canary rule
@@ -275,6 +319,7 @@ async def manual_discovery_search(
         result["reason_detail"] = candidate.get("reason_detail") or ""
         result["judged_rejected"] = candidate.get("judged_rejected") or []
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget, candidate)
         return result
 
     validated = bool(candidate.get("validated"))
@@ -300,4 +345,5 @@ async def manual_discovery_search(
         "judge": candidate.get("judge") or None,
         "judged_rejected": candidate.get("judged_rejected") or [],
         "oem_request_url": oem_request_url,
+        "search_stats": _search_stats(budget, candidate),
     }
