@@ -225,6 +225,8 @@ describe("#4160 gate — typed dictionary-word makers next to a part code", () =
     ["a banner Q4XTBLAF300-Q8 manual", "lowercase is an ordinary word"],
     ["Sick of this sensor. Need the manual for Q4XTBLAF300-Q8", "the word is far from the part code"],
     ["Sick. Manual for Q4XTBLAF300-Q8", "a sentence ends between the word and the part code"],
+    ["Sick of this Q4XTBLAF300-Q8, need the manual", "Codex #4184 F1: an ordinary word sits between them"],
+    ["Banner is wrong on the Q4XTBLAF300-Q8 manual", "a verb sits between them"],
     ["Banner at the gate fell down, so I need the long datasheet for the old Q4XTBLAF300-Q8 again", "more than a few words away"],
   ])("control: %s → no maker (%s)", (typed) => {
     expect(extractCandidateIdentity("", typed)?.manufacturer ?? null).toBeNull();

@@ -33,6 +33,16 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *  before the part code it names ("Banner Q4X sensor, part Q4XTBLAF300-Q8"). */
 const TYPED_MAKER_MAX_GAP_WORDS = 4;
 
+/** Words allowed between a typed dictionary-word maker and its part code. */
+const TYPED_MAKER_GAP_WORDS = new Set([
+  "part", "pn", "p/n", "model", "series", "cat", "catalog", "no", "number", "type", "a", "an", "the",
+  "sensor", "sensors", "photo", "eye", "photoeye", "photocell", "prox", "proximity", "switch", "valve",
+  "valves", "cylinder", "regulator", "manifold", "fitting", "relay", "drive", "vfd", "inverter", "motor",
+  "gearmotor", "gearbox", "encoder", "controller", "plc", "module", "hmi", "panel", "pump", "actuator",
+  "light", "curtain", "breaker", "contactor", "starter", "supply", "transmitter", "gauge", "filter",
+  "safety", "pneumatic", "hydraulic",
+]);
+
 /** #4160 gate NO-GO: in a technician's TYPED text a dictionary-word maker
  *  ("Banner", "Sick") counts when it is capitalised and the part code follows
  *  in the same sentence within a few words — the way people write a model,
@@ -45,7 +55,12 @@ function typedMakerNamesPart(text: string, matched: string, matchIndex: number, 
   const gap = after.slice(0, at);
   if (/[.!?\n]/.test(gap)) return false;
   const words = gap.split(/[\s,;:()]+/).filter(Boolean);
-  return words.length <= TYPED_MAKER_MAX_GAP_WORDS;
+  if (words.length > TYPED_MAKER_MAX_GAP_WORDS) return false;
+  // Codex #4184 F1: only a maker-to-part phrase may sit between them — an
+  // equipment word ("valve", "sensor", "part") or a code-like token with a
+  // digit (the family, "Q4X"). Anything else ("Sick of this …", "Banner is
+  // wrong on …") means the word is being used as an ordinary word.
+  return words.every((w) => /\d/.test(w) || TYPED_MAKER_GAP_WORDS.has(w.toLowerCase().replace(/[.#]$/, "")));
 }
 
 /** Every maker group (the OEM table's first domain) named in `text`, mapped to the

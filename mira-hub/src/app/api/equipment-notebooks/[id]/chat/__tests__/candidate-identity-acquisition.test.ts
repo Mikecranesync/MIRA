@@ -302,6 +302,11 @@ describe("#4160 gate — a typed dictionary-word maker + part starts the candida
     );
   });
 
+  it("Codex #4184 F1: 'Sick of this Q4XTBLAF300-Q8, need the manual' starts no search for SICK", async () => {
+    await (await POST(req({ message: "Sick of this Q4XTBLAF300-Q8, need the manual", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
   it("control: lowercase 'banner' is an ordinary word — no search", async () => {
     await (await POST(req({ message: "I need the manual for a banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
