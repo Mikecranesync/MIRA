@@ -587,15 +587,19 @@ def _resolve_public(host: str, port: int) -> list[str]:
     return addrs
 
 
+# RFC 8305 "Connection Attempt Delay" — the stagger between address attempts.
+_HAPPY_EYEBALLS_DELAY_S = 0.25
+
+
 class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
     def __init__(self) -> None:
         self._inner = _inner_network_backend()
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         # One deadline covers resolution AND dialing, as AnyIOBackend's own
-        # fail_after did before pinning (#4163 Codex F2). Every checked address
-        # is tried in answer order, so a dead first address (e.g. a broken IPv6
-        # route) falls back to the next without re-resolving (#4163 Codex F1).
+        # fail_after did before pinning (#4163 Codex F2). The checked addresses
+        # are then raced happy-eyeballs style, so a dead or stalled first address
+        # (e.g. a broken IPv6 route) falls back without re-resolving (Codex F1/r2).
         loop = asyncio.get_running_loop()
         deadline = None if timeout is None else loop.time() + timeout
 
@@ -608,21 +612,68 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
             )
         except TimeoutError as e:
             raise httpcore.ConnectTimeout(f"manual-search dns timed out for {host[:80]}") from e
-        last: Exception | None = None
-        for ip in addrs:
-            left = remaining()
-            if left is not None and left <= 0:
-                raise httpcore.ConnectTimeout(f"manual-search connect timed out for {host[:80]}")
-            try:
-                return await self._inner.connect_tcp(
-                    ip,
-                    port,
-                    timeout=left,
-                    local_address=local_address,
-                    socket_options=socket_options,
+        return await self._staggered_connect(
+            host, addrs, port, remaining, local_address, socket_options
+        )
+
+    async def _staggered_connect(self, host, addrs, port, remaining, local_address, socket_options):
+        """Happy-eyeballs over the CHECKED literals (#4163 Codex r2): start the
+        next address after _HAPPY_EYEBALLS_DELAY_S (or at once when an attempt
+        fails), first success wins, losers are cancelled and closed. A stalled
+        first address can no longer eat the whole connect budget."""
+
+        async def attempt(ip: str):
+            return await self._inner.connect_tcp(
+                ip,
+                port,
+                timeout=remaining(),
+                local_address=local_address,
+                socket_options=socket_options,
+            )
+
+        pending: set[asyncio.Task] = set()
+        errors: list[BaseException] = []
+        winner = None
+        idx = 0
+        try:
+            while winner is None:
+                if idx < len(addrs):
+                    pending.add(asyncio.ensure_future(attempt(addrs[idx])))
+                    idx += 1
+                if not pending:
+                    break  # every address failed
+                left = remaining()
+                if left is not None and left <= 0:
+                    break  # overall deadline
+                wait = _HAPPY_EYEBALLS_DELAY_S if idx < len(addrs) else left
+                if left is not None and wait is not None:
+                    wait = min(wait, left)
+                done, pending = await asyncio.wait(
+                    pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED
                 )
-            except (httpcore.ConnectError, httpcore.ConnectTimeout, OSError) as e:
-                last = e
+                for t in done:
+                    if t.exception() is not None:
+                        errors.append(t.exception())
+                    elif winner is None:
+                        winner = t.result()
+                    else:
+                        await t.result().aclose()  # a second success loses: close it
+        finally:
+            for t in pending:
+                t.cancel()
+            for t in pending:
+                try:
+                    loser = await t
+                except BaseException:  # noqa: BLE001 — cancelled/failed losers are expected
+                    continue
+                if loser is not winner:
+                    await loser.aclose()
+        if winner is not None:
+            return winner
+        left = remaining()
+        if left is not None and left <= 0:
+            raise httpcore.ConnectTimeout(f"manual-search connect timed out for {host[:80]}")
+        last = errors[-1] if errors else None
         raise httpcore.ConnectError(f"manual-search could not connect to {host[:80]}") from last
 
     async def connect_unix_socket(self, path, timeout=None, socket_options=None):

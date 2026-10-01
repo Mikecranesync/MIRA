@@ -234,3 +234,70 @@ class TestCodexR1Findings:
             await s._PinnedNetworkBackend().connect_tcp("slow.example.com", 443, timeout=0.05)
         assert time.monotonic() - t0 < 0.25
         assert recorder.dials == []
+
+
+class _Stream:
+    def __init__(self, ip: str) -> None:
+        self.ip = ip
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class _StallFirstBackend(_RecordingBackend):
+    """First address silently drops the SYN (stalls until cancelled); later ones answer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cancelled: list[str] = []
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        import asyncio
+
+        self.dials.append((host, port))
+        if len(self.dials) == 1:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                self.cancelled.append(host)
+                raise
+        return _Stream(host)
+
+
+class TestCodexR2StalledFirstAddress:
+    """#4163 Codex r2 F1: a stalled first address must not eat the whole budget."""
+
+    async def test_stalled_first_address_falls_back_within_budget(self, monkeypatch):
+        import time
+
+        rec = _StallFirstBackend()
+        monkeypatch.setattr(s, "_inner_network_backend", lambda: rec)
+        v6 = "2606:2800:220:1:248:1893:25c8:1946"
+        _resolver(monkeypatch, [v6, PUBLIC])
+        t0 = time.monotonic()
+        stream = await s._PinnedNetworkBackend().connect_tcp(
+            "literature.example.com", 443, timeout=2.0
+        )
+        elapsed = time.monotonic() - t0
+        assert isinstance(stream, _Stream) and stream.ip == PUBLIC
+        assert elapsed < 1.0, f"fallback took {elapsed:.2f}s — the stalled address ate the budget"
+        assert [ip for ip, _ in rec.dials] == [v6, PUBLIC]
+        assert rec.cancelled == [v6], "the losing attempt must be cancelled"
+
+    async def test_overall_deadline_still_raises_connect_timeout(self, monkeypatch):
+        class _AllStall(_RecordingBackend):
+            async def connect_tcp(
+                self, host, port, timeout=None, local_address=None, socket_options=None
+            ):
+                import asyncio
+
+                self.dials.append((host, port))
+                await asyncio.sleep(30)
+
+        rec = _AllStall()
+        monkeypatch.setattr(s, "_inner_network_backend", lambda: rec)
+        _resolver(monkeypatch, [PUBLIC, "93.184.216.35"])
+        with pytest.raises(httpcore.ConnectTimeout):
+            await s._PinnedNetworkBackend().connect_tcp("literature.example.com", 443, timeout=0.6)
+        assert {ip for ip, _ in rec.dials} == {PUBLIC, "93.184.216.35"}
