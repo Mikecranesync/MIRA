@@ -49,11 +49,13 @@ import logging
 import os
 import re
 import socket
+import ssl
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
+import httpcore
 import httpx
 
 logger = logging.getLogger("mira.manual_search")
@@ -479,9 +481,9 @@ async def _serper_post(query: str, num: int) -> list[dict]:
 # http(s) only, every hop's hostname must resolve EXCLUSIVELY to public
 # addresses (private / loopback / link-local / reserved / multicast / v4-mapped
 # all rejected), redirects are followed MANUALLY with each hop re-validated,
-# and reads are streamed with a hard byte cap. Residual risk, same as the Hub
-# side: DNS rebinding between the resolve and the connect — no allowlist can
-# exist for open-web discovery, so this is documented rather than closed.
+# and reads are streamed with a hard byte cap. DNS rebinding between the check
+# and the connect is closed by _PinnedNetworkBackend below (#4160 S3a): the
+# connection dials the address that passed the check, never a second lookup.
 
 _MAX_REDIRECT_HOPS = 5
 _PROBE_READ_CAP = 512
@@ -546,6 +548,158 @@ def _url_is_probeable(url: str) -> bool:
 _transport_for_tests: httpx.AsyncBaseTransport | None = None
 
 
+# ── DNS resolve-and-pin (Manual-First PRD R6, #4160 S3a) ─────────────────────
+#
+# _url_is_probeable resolves the name and checks it, but the socket layer used
+# to resolve it AGAIN at connect time — a rebinding host could answer "public"
+# to the check and "10.0.0.5" to the connect. This backend closes that window:
+# it resolves once, refuses the connection if ANY answer is non-public, and
+# dials the checked address. httpcore still passes the URL hostname as the TLS
+# server_hostname, so SNI and certificate/hostname verification are unchanged.
+# Every redirect hop and every retry opens its connection through here.
+
+
+def _inner_network_backend() -> httpcore.AsyncNetworkBackend:
+    """The real socket layer (test seam: tests swap in a recorder)."""
+    return httpcore.AnyIOBackend()
+
+
+def _resolve_public(host: str, port: int) -> list[str]:
+    """Sync (DNS-blocking) — call via asyncio.to_thread. Returns every checked
+    public address for `host` (answer order, de-duplicated), or raises
+    ConnectError if resolution fails or ANY answer is non-public."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise httpcore.ConnectError(f"manual-search dns failed for {host[:80]}") from e
+    addrs = list(dict.fromkeys(str(info[4][0]).split("%")[0] for info in infos))
+    if not addrs:
+        raise httpcore.ConnectError(f"manual-search dns empty for {host[:80]}")
+    for a in addrs:
+        try:
+            public = _ip_is_public(ipaddress.ip_address(a))
+        except ValueError:
+            public = False
+        if not public:
+            raise httpcore.ConnectError(
+                f"manual-search connect blocked: {host[:80]} -> non-public address"
+            )
+    return addrs
+
+
+# RFC 8305 "Connection Attempt Delay" — the stagger between address attempts.
+_HAPPY_EYEBALLS_DELAY_S = 0.25
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self) -> None:
+        self._inner = _inner_network_backend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        # One deadline covers resolution AND dialing, as AnyIOBackend's own
+        # fail_after did before pinning (#4163 Codex F2). The checked addresses
+        # are then raced happy-eyeballs style, so a dead or stalled first address
+        # (e.g. a broken IPv6 route) falls back without re-resolving (Codex F1/r2).
+        loop = asyncio.get_running_loop()
+        deadline = None if timeout is None else loop.time() + timeout
+
+        def remaining() -> float | None:
+            return None if deadline is None else deadline - loop.time()
+
+        try:
+            addrs = await asyncio.wait_for(
+                asyncio.to_thread(_resolve_public, host, port), remaining()
+            )
+        except TimeoutError as e:
+            raise httpcore.ConnectTimeout(f"manual-search dns timed out for {host[:80]}") from e
+        return await self._staggered_connect(
+            host, addrs, port, remaining, local_address, socket_options
+        )
+
+    async def _staggered_connect(self, host, addrs, port, remaining, local_address, socket_options):
+        """Happy-eyeballs over the CHECKED literals (#4163 Codex r2): start the
+        next address after _HAPPY_EYEBALLS_DELAY_S (or at once when an attempt
+        fails), first success wins, losers are cancelled and closed. A stalled
+        first address can no longer eat the whole connect budget."""
+
+        async def attempt(ip: str):
+            return await self._inner.connect_tcp(
+                ip,
+                port,
+                timeout=remaining(),
+                local_address=local_address,
+                socket_options=socket_options,
+            )
+
+        pending: set[asyncio.Task] = set()
+        errors: list[BaseException] = []
+        winner = None
+        idx = 0
+        try:
+            while winner is None:
+                if idx < len(addrs):
+                    pending.add(asyncio.ensure_future(attempt(addrs[idx])))
+                    idx += 1
+                if not pending:
+                    break  # every address failed
+                left = remaining()
+                if left is not None and left <= 0:
+                    break  # overall deadline
+                wait = _HAPPY_EYEBALLS_DELAY_S if idx < len(addrs) else left
+                if left is not None and wait is not None:
+                    wait = min(wait, left)
+                done, pending = await asyncio.wait(
+                    pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in done:
+                    if t.exception() is not None:
+                        errors.append(t.exception())
+                    elif winner is None:
+                        winner = t.result()
+                    else:
+                        await t.result().aclose()  # a second success loses: close it
+        finally:
+            for t in pending:
+                t.cancel()
+            for t in pending:
+                try:
+                    loser = await t
+                except BaseException:  # noqa: BLE001 — cancelled/failed losers are expected
+                    continue
+                if loser is not winner:
+                    await loser.aclose()
+        if winner is not None:
+            return winner
+        left = remaining()
+        if left is not None and left <= 0:
+            raise httpcore.ConnectTimeout(f"manual-search connect timed out for {host[:80]}")
+        last = errors[-1] if errors else None
+        raise httpcore.ConnectError(f"manual-search could not connect to {host[:80]}") from last
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("manual-search never connects to unix sockets")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
+def _probe_transport() -> httpx.AsyncBaseTransport:
+    """Transport for every probe/fetch of an untrusted URL: the pinned backend
+    with TLS verification on. The test seam, when set, wins."""
+    if _transport_for_tests is not None:
+        return _transport_for_tests
+    transport = httpx.AsyncHTTPTransport()
+    # httpx does not expose httpcore's network_backend; rebuild its pool with
+    # the pinned backend. tests/test_manual_search_dns_pin.py asserts this
+    # wiring so an httpx upgrade that moves `_pool` fails loudly instead of
+    # silently resolving through the default backend again.
+    transport._pool = httpcore.AsyncConnectionPool(
+        ssl_context=ssl.create_default_context(),
+        network_backend=_PinnedNetworkBackend(),
+    )
+    return transport
+
+
 async def _guarded_probe(
     client: httpx.AsyncClient, method: str, url: str, headers: dict | None = None
 ) -> httpx.Response | None:
@@ -583,7 +737,8 @@ async def validate_pdf(url: str) -> bool:
         async with httpx.AsyncClient(
             timeout=HEAD_TIMEOUT,
             follow_redirects=False,
-            transport=_transport_for_tests,
+            transport=_probe_transport(),
+            trust_env=False,  # never route an untrusted probe through an env proxy
             headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
         ) as client:
             try:
