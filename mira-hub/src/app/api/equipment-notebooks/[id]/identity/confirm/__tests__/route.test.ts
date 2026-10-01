@@ -15,6 +15,31 @@ vi.mock("@/lib/equipment-notebooks", () => ({
   listSources: vi.fn(),
 }));
 
+// Codex F5 (MEDIUM) — "Use the existing acquisition entry point after
+// confirmation ... reusing its claim/idempotency and feature gates." Same
+// controllable-spy pattern as candidate-identity-acquisition.test.ts: the
+// SAME capability module backs both the candidate-basis (chat route) and
+// confirmed-identity (this route) search, proving WIRING here without
+// re-proving the fencing SQL (notebook-manual-acquisition.test.ts owns that).
+const acqMock = vi.hoisted(() => ({
+  acquisitionEnabled: vi.fn(() => true),
+  startManualAcquisition: vi.fn(async () => true),
+  readAcquisition: vi.fn(async () => null as unknown),
+}));
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
+  return {
+    ...actual,
+    acquisitionEnabled: acqMock.acquisitionEnabled,
+    startManualAcquisition: acqMock.startManualAcquisition,
+    readAcquisition: acqMock.readAcquisition,
+    // acquisitionKey stays REAL — pure, already unit-proven; this suite
+    // checks the route builds the exact same key the candidate-basis
+    // search would (see the existing "writes an identity whose
+    // acquisitionKey matches ..." test below).
+  };
+});
+
 import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources, updateNotebook } from "@/lib/equipment-notebooks";
@@ -50,6 +75,12 @@ beforeEach(() => {
   vi.mocked(getNotebook).mockResolvedValue({ id: NB, nodeId: "node-1", asset: null } as never);
   vi.mocked(updateNotebook).mockResolvedValue(true as never);
   vi.mocked(listSources).mockResolvedValue([] as never);
+  // `clearAllMocks` resets call history, not a `mockReturnValue` a test
+  // overrode — reset the acquisition spies to their defaults explicitly so
+  // one test can never leak its override into the next.
+  acqMock.acquisitionEnabled.mockReturnValue(true);
+  acqMock.startManualAcquisition.mockResolvedValue(true);
+  acqMock.readAcquisition.mockResolvedValue(null);
 });
 
 describe("POST identity/confirm", () => {
@@ -72,6 +103,21 @@ describe("POST identity/confirm", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_json" });
   });
+
+  // Codex F7 (LOW): `req.json()` happily parses the JSON literal `null`, and
+  // the route's `body: Record<string, unknown>` cast does not make it one at
+  // runtime — `readString` then dereferences `body[key]` on `null` and throws
+  // instead of a controlled 400. Same for any other non-object JSON value.
+  it.each([null, [], "a string", 42, true])(
+    "400s a valid-JSON-but-non-object body (%p) instead of throwing",
+    async (value) => {
+      const res = await POST(req(value), params);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_body" });
+      expect(getNotebook).not.toHaveBeenCalled();
+      expect(updateNotebook).not.toHaveBeenCalled();
+    },
+  );
 
   it("400s when manufacturer or model is missing or blank", async () => {
     expect((await POST(req({ model: "X" }), params)).status).toBe(400);
@@ -115,7 +161,7 @@ describe("POST identity/confirm", () => {
 
   it("reports manualReady:false and a 'I'll look for it' message when no verified+enabled source exists yet", async () => {
     vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: false, matchState: "candidate", sourceRole: "manual" },
+      { docId: "d1", enabledByDefault: false, matchState: "candidate", sourceRole: "manual", readiness: { canChat: false } },
     ] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     const body = await res.json();
@@ -123,12 +169,12 @@ describe("POST identity/confirm", () => {
     expect(body.message).toMatch(/look for its manual/);
   });
 
-  it("reports manualReady:true once migration 104 has promoted a matching candidate", async () => {
+  it("reports manualReady:true once migration 104 has promoted a matching candidate (verified)", async () => {
     // This is what the migration 104 trigger leaves behind on the SAME row
     // (verified + enabled_by_default=true) once the identity write commits —
     // asserted here by its real column semantics, not re-derived.
     vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual" },
+      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true } },
     ] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     const body = await res.json();
@@ -136,12 +182,39 @@ describe("POST identity/confirm", () => {
     expect(body.message).toMatch(/ready to answer from/);
   });
 
+  // Codex F3 (MEDIUM): manualReady must represent an APPLICABLE, ANSWERABLE
+  // manual — sourceRole "manual", readiness.canChat true, and matchState
+  // verified OR user_confirmed (mirrors validateChatSources' own trust bar).
+  it("reports manualReady:true for a ready user_confirmed manual (not only 'verified')", async () => {
+    vi.mocked(listSources).mockResolvedValue([
+      { docId: "d1", enabledByDefault: true, matchState: "user_confirmed", sourceRole: "manual", readiness: { canChat: true } },
+    ] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+    expect((await res.json()).manualReady).toBe(true);
+  });
+
   it("never reports manualReady:true for a merely-found, unverified candidate (a human still reviews it)", async () => {
     vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: false, matchState: "candidate", sourceRole: "manual" },
+      { docId: "d1", enabledByDefault: false, matchState: "candidate", sourceRole: "manual", readiness: { canChat: true } },
       // Enabled but NOT verified should never happen post-104, but the route
       // must not treat "enabled" alone as ready — both conditions are required.
-      { docId: "d2", enabledByDefault: true, matchState: "candidate", sourceRole: "manual" },
+      { docId: "d2", enabledByDefault: true, matchState: "candidate", sourceRole: "manual", readiness: { canChat: true } },
+    ] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
+    expect((await res.json()).manualReady).toBe(false);
+  });
+
+  it("never reports manualReady:true for an enabled+verified manual that failed materialization (readiness.canChat false)", async () => {
+    vi.mocked(listSources).mockResolvedValue([
+      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: false } },
+    ] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
+    expect((await res.json()).manualReady).toBe(false);
+  });
+
+  it("never reports manualReady:true for an unrelated enabled+verified source that isn't a manual (e.g. a wiring diagram)", async () => {
+    vi.mocked(listSources).mockResolvedValue([
+      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "drawing", readiness: { canChat: true } },
     ] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
     expect((await res.json()).manualReady).toBe(false);
@@ -152,6 +225,94 @@ describe("POST identity/confirm", () => {
     const res = await POST(req({ manufacturer: "SMC", model: "X" }), params);
     expect(res.status).toBe(200);
     expect((await res.json()).manualReady).toBe(false);
+  });
+
+  // Codex F5 (MEDIUM) — confirming must never promise a search it doesn't
+  // start. The route reuses the EXISTING background-acquisition entry point
+  // (startManualAcquisition, its claim/idempotency, its own feature gate) —
+  // never a second acquisition path — and the "I'll look for its manual"
+  // copy appears only when a search is honestly underway.
+  describe("manual search on confirm (no manual ready yet)", () => {
+    it("starts the background search through the canonical acquisition seam, keyed exactly as the candidate-basis search would", async () => {
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      const call = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+        tenantId: string;
+        notebookId: string;
+        nodeId: string;
+        identity: { identityStatus: string; manufacturer: string; model: string; catalogNumber: string };
+      };
+      expect(call.tenantId).toBe(TENANT);
+      expect(call.notebookId).toBe(NB);
+      expect(call.nodeId).toBe("node-1");
+      expect(call.identity).toEqual({
+        identityStatus: "user_confirmed",
+        manufacturer: "SMC",
+        model: "SS5Y3-DUW01302",
+        catalogNumber: "",
+      });
+      const key = acquisitionKey(call.identity);
+      expect(key).not.toBeNull();
+      expect(key).toBe(acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" }));
+      const body = await res.json();
+      expect(body.message).toMatch(/look for its manual/);
+    });
+
+    it("a repeated confirmation does not duplicate the search — a refused claim (already running) still reports the honest 'looking' copy, not a fabricated promise", async () => {
+      // startManualAcquisition's OWN claim() refuses a duplicate for the
+      // same key (idempotency lives there, not re-implemented here) — a
+      // refusal means a search for this identity is already running.
+      acqMock.startManualAcquisition.mockResolvedValue(false);
+      acqMock.readAcquisition.mockResolvedValue({
+        key: acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" }),
+        state: "running",
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      const body = await res.json();
+      expect(body.manualReady).toBe(false);
+      expect(body.message).toMatch(/look(ing|) for its manual/);
+    });
+
+    it("when a refused claim's record does NOT match this identity's key, honestly says no search was started", async () => {
+      acqMock.startManualAcquisition.mockResolvedValue(false);
+      acqMock.readAcquisition.mockResolvedValue({
+        key: "SOMEONE|ELSE|",
+        state: "running",
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      const body = await res.json();
+      expect(body.message).not.toMatch(/look for its manual/);
+      expect(body.message).toMatch(/no (automatic )?(search|manual search) (was )?started/i);
+    });
+
+    it("never starts a search, and reports honestly, when acquisition is disabled (flag off)", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(false);
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.manualReady).toBe(false);
+      expect(body.message).not.toMatch(/look for its manual/);
+      expect(body.message).toMatch(/no (automatic )?(search|manual search) (was )?started/i);
+    });
+
+    it("never starts a search when a manual is already ready — nothing to search for", async () => {
+      vi.mocked(listSources).mockResolvedValue([
+        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true } },
+      ] as never);
+      await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
   });
 
   it("writes an identity whose acquisitionKey matches the candidate-basis search's own key exactly (migration 104's promotion predicate)", async () => {
