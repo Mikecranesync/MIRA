@@ -24,6 +24,8 @@ import {
   createShellState,
   shellReducer,
   type Attachment,
+  type ConfirmIdentityResult,
+  type IdentityProposal,
   type InteractionPart,
   type InteractionTurn,
   type ProjectItem,
@@ -597,6 +599,32 @@ export function HubShellHost() {
     readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
   }, [readAloud, view.thread.turns, citations]);
 
+  // T2 (#4175): confirm a machine MIRA proposed from free text (#4120).
+  // Posts to the Hub's own confirm route (which reuses `updateNotebook` — not
+  // a second identity-write path) and relays its outcome verbatim; the shell
+  // renders the server's own `manualReady`/`message`, never a client guess.
+  // Refresh afterward so a promoted candidate manual (migration 104) shows
+  // up in Sources/the answer the next time the technician asks.
+  const onConfirmIdentity = useCallback(async (proposal: IdentityProposal): Promise<ConfirmIdentityResult> => {
+    const notebookId = selectionRef.current?.notebookId;
+    if (!notebookId) throw new Error("no notebook selected");
+    const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
+    if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/identity/confirm/`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => null)) as { ok?: unknown; manualReady?: unknown; message?: unknown } | null;
+    if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
+    const sel = selectionRef.current;
+    if (sel) void loadDetail(sel);
+    return {
+      manualReady: data.manualReady === true,
+      ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
+    };
+  }, [loadDetail]);
+
   // Plant memory (migration 095): record what fixed the machine, filed under
   // the question this answer replied to. The platform prompt/alert dialogs are
   // the capture UI (commodity-before-custom); the next answer on this notebook
@@ -639,6 +667,7 @@ export function HubShellHost() {
     ...(selection?.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
+    ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
