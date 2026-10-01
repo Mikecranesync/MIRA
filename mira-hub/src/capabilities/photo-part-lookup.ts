@@ -15,11 +15,14 @@ const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A
 const LABEL_SEP = String.raw`[^A-Za-z0-9]*`;
 // The "number" word of a compound label, in any common spelling or language:
 // No, Nr, Num, Number, Numero, Nummer, Nmbr, N°, №.
-const NUM_WORD = String.raw`(?:n(?:o|r|um(?:ber|ero|mer)?|mbr)|n[\u00b0\u00ba]|\u2116)`;
+const NUM_WORD = String.raw`(?:n(?:o|r|um(?:ber|ero|mer)?|mbr|br)|n[\u00b0\u00ba]|\u2116)`;
 const SERIAL_LABEL = new RegExp(
-  String.raw`\b(?:(?:s\s?e\s?r\s?i\s?a\s?l|s[^A-Za-z0-9]*n(?:o|r|um(?:ber|ero|mer)?|mbr)?)(?![a-z])(?:${LABEL_SEP}${NUM_WORD}(?![a-z])\.?|${LABEL_SEP}#)?` +
-    String.raw`|(?:ser|sr)(?![a-z])(?:${LABEL_SEP}${NUM_WORD}(?![a-z])\.?|${LABEL_SEP}#|\.?(?=\s*[)\]])` +
-    String.raw`|${LABEL_SEP}(?=(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9])))` +
+  // The number word may be JOINED to the token ("SerialNumber", "SerNo"): it is
+  // tried before the no-letter-follows check, so a joined form is a label while
+  // "serials" or "series" (no number word, a letter follows) is not.
+  String.raw`\b(?:(?:s\s?e\s?r\s?i\s?a\s?l|s[^A-Za-z0-9]*n(?:o|r|um(?:ber|ero|mer)?|mbr|br)?)(?:${LABEL_SEP}${NUM_WORD})?\.?(?![a-z])(?:${LABEL_SEP}#)?` +
+    String.raw`|(?:ser|sr)(?:${LABEL_SEP}${NUM_WORD}\.?(?![a-z])|(?![a-z])(?:${LABEL_SEP}#|\.?(?=\s*[)\]])` +
+    String.raw`|${LABEL_SEP}(?=(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))))` +
     // A suffix label after the value ("AB-1234567 SER.", "AB-1234567 SR, 24VDC"):
     // a digit-bearing code, separators, the abbreviation, then the end of the
     // text, a line break, or a non-alphanumeric character other than "." —
