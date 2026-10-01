@@ -16,10 +16,12 @@
  *     covers this component; otherwise it is attached DISABLED as a candidate
  *     for the technician to confirm. A search-result title is never evidence.
  *
- * What this route deliberately does NOT do: write the notebook's identity
- * fields. The nameplate belongs to a COMPONENT inside the machine, not to the
- * machine. Overwriting the notebook's manufacturer/model with a drive's
- * nameplate would silently rename the ride after one of its parts.
+ * What this route deliberately does NOT do: write the identity of a notebook
+ * that already names a machine (or is bound to an asset). There the nameplate
+ * belongs to a COMPONENT inside the machine; overwriting the notebook's
+ * manufacturer/model with a drive's nameplate would silently rename the ride
+ * after one of its parts. A BLANK notebook has no machine to rename, so it
+ * adopts the confirmed nameplate (#4178, nameplate-identity-adoption.ts).
  *
  * Business outcomes are HTTP 200 with a `status` the mobile client maps
  * directly; only auth and request-shape failures use 4xx.
@@ -38,6 +40,12 @@ import { getFile, parkOrReuseFile, linkFileToUpload, claimIngest, releaseIngestC
 import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
+import {
+  adoptNameplateIdentity,
+  isAdoptableIdentity,
+  isBlankUnboundNotebook,
+  mayBeNameplateAdopted,
+} from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
@@ -529,6 +537,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ingested: !nameplateIngestFailed,
   };
 
+  // #4178: set when this confirm adopted the nameplate as a BLANK notebook's
+  // identity (see adoptNameplateIdentity) — reported so a client can say so.
+  let identityAdopted = false;
   const respond = (
     status: ConfirmStatus,
     extra: Record<string, unknown> = {},
@@ -536,6 +547,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     NextResponse.json({
       ok: true,
       status,
+      ...(identityAdopted ? { identityAdopted: true } : {}),
       notebookId,
       nameplate,
       // Slice 2: how many persisted visual observations this confirm promoted to
@@ -573,6 +585,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
+  // ── (c2) #4178: a BLANK notebook adopts the confirmed nameplate ─────────────
+  // Only after the nameplate is citable (above). A notebook that already names a
+  // machine, or is bound to an asset, keeps its identity — there the nameplate
+  // is a component. The conditional write is the authority; a lost race (the
+  // notebook gained an identity meanwhile) just leaves the inline search below.
+  // Codex #4191: a correction of the SAME photo moves an identity this photo
+  // adopted, unless it was edited or bound since. Provenance rides on the
+  // notebook row in the same single UPDATE (see nameplate-identity-adoption.ts).
+  // A database failure here is answered with a retryable 503 rather than a
+  // manual search under an identity that did not save: the phone's existing
+  // error state offers "try again", and the replay re-runs this adoption.
+  try {
+    if (isAdoptableIdentity(identity) && (isBlankUnboundNotebook(notebook) || mayBeNameplateAdopted(notebook))) {
+      identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, fileId, identity);
+    }
+  } catch (err) {
+    console.error(`[nameplate-confirm] identity adoption failed notebook=${notebookId}: ${(err as Error).message}`);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "identity_save_failed",
+        retryable: true,
+        message: "The nameplate was saved, but the machine's identity could not be saved. Try again.",
+      },
+      { status: 503 },
+    );
+  }
+
   // ── (d) Manual discovery ──────────────────────────────────────────────────
   if (body.discover === false) {
     return respond("complete", {
@@ -598,12 +638,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // record could not be retried for it and would be overwritten by the
   // notebook's own search. A refused claim (a live search for this key) or
   // the flag off also falls back to the unrecorded inline search.
-  const ownKey = acquisitionKey({
-    identityStatus: notebook.identityStatus,
-    manufacturer: notebook.manufacturer,
-    model: notebook.model,
-    catalogNumber: notebook.catalogNumber,
-  });
+  // #4178: an adopted nameplate IS the notebook's own confirmed identity now.
+  const ownKey = acquisitionKey(
+    identityAdopted
+      ? {
+          identityStatus: "user_confirmed",
+          manufacturer: identity.manufacturer ?? null,
+          model: identity.model ?? null,
+          catalogNumber: identity.catalogNumber ?? null,
+        }
+      : {
+          identityStatus: notebook.identityStatus,
+          manufacturer: notebook.manufacturer,
+          model: notebook.model,
+          catalogNumber: notebook.catalogNumber,
+        },
+  );
   const nameplateKey = acquisitionKey({
     identityStatus: "user_confirmed",
     manufacturer: identity.manufacturer ?? null,
