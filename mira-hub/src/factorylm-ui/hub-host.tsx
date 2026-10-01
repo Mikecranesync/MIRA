@@ -28,6 +28,7 @@ import {
   type IdentityProposal,
   type InteractionPart,
   type InteractionTurn,
+  type ManualSearchStatus,
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
@@ -53,7 +54,7 @@ import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
+import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
   chatBodyFor,
@@ -77,7 +78,15 @@ import {
   type HubSelection,
 } from "./hub-host-logic";
 
-type Detail = { notebook: EquipmentNotebook; sources: NotebookSource[]; turns: (PersistedTurn & { createdAt?: string })[] };
+type Detail = {
+  notebook: EquipmentNotebook;
+  sources: NotebookSource[];
+  turns: (PersistedTurn & { createdAt?: string })[];
+  // T2 (#4189 F6): the notebook's CURRENT manual-search status, computed
+  // fresh by the GET route on every read (`currentManualSearchStatus`) —
+  // absent/null on a server that predates it, or when nothing is running.
+  manualSearch?: ManualSearchStatus | null;
+};
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
 type Live = {
@@ -284,7 +293,16 @@ export function HubShellHost() {
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread: EMPTY_FIXTURE.thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
-    const thread = { ...base.thread, turns: [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns] };
+    // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
+    // overlays the CURRENT status onto the last assistant turn. The live
+    // in-flight gap (a turn still streaming) is the documented BLOCKED note:
+    // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
+    // frame, so this appears only once `loadDetail` has re-fetched.
+    const turns = withManualSearchStatus(
+      [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns],
+      detail.manualSearch ?? null,
+    );
+    const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
   }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
 

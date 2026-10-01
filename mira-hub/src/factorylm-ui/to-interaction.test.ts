@@ -17,6 +17,7 @@ import {
   sourceIdFor,
   threadFromPersisted,
   turnsFromPersisted,
+  withManualSearchStatus,
   type HubNotebookMeta,
 } from "./to-interaction";
 
@@ -406,6 +407,57 @@ describe("identityProposalOf / turnsFromPersisted — the confirm card on reload
   it("does not render it when no proposal was persisted", () => {
     const [, a] = turnsFromPersisted(row(), meta);
     expect(a.parts.some((p) => p.type === "identity_proposal")).toBe(false);
+  });
+});
+
+// Codex F6 (MEDIUM): the Hub never rendered manual_search_status at all.
+// `withManualSearchStatus` overlays the GET route's freshly-computed
+// `manualSearch` field onto the LAST assistant turn, the post-turn-refresh
+// render path (the live in-flight gap stays the documented BLOCKED note).
+describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", () => {
+  it("appends a manual_search_status part to the LAST assistant turn", () => {
+    const thread = threadFromPersisted([row(), row({ id: "turn-2", createdAt: "2026-09-17T12:05:00.000Z" })], meta);
+    const out = withManualSearchStatus(thread.turns, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
+    const lastAssistant = [...out].reverse().find((t) => t.role === "assistant")!;
+    expect(lastAssistant.parts).toContainEqual({
+      type: "manual_search_status",
+      manufacturer: "SMC",
+      model: "SS5Y3-DUW01302",
+      running: true,
+    });
+    // Every OTHER turn (including the earlier assistant turn) is untouched.
+    const otherAssistant = out.find((t) => t.role === "assistant" && t.id !== lastAssistant.id)!;
+    expect(otherAssistant.parts.some((p) => p.type === "manual_search_status")).toBe(false);
+  });
+
+  it("includes the message once the search has settled (not running)", () => {
+    const thread = threadFromPersisted([row()], meta);
+    const out = withManualSearchStatus(thread.turns, {
+      manufacturer: "SMC",
+      model: "SS5Y3-DUW01302",
+      running: false,
+      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+    });
+    const lastAssistant = [...out].reverse().find((t) => t.role === "assistant")!;
+    expect(lastAssistant.parts).toContainEqual({
+      type: "manual_search_status",
+      manufacturer: "SMC",
+      model: "SS5Y3-DUW01302",
+      running: false,
+      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+    });
+  });
+
+  it("returns the turns unchanged when there is no current status", () => {
+    const thread = threadFromPersisted([row()], meta);
+    const out = withManualSearchStatus(thread.turns, null);
+    expect(out).toEqual(thread.turns);
+  });
+
+  it("returns the turns unchanged when there is no assistant turn at all", () => {
+    const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
+    const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
+    expect(out).toEqual(userOnly);
   });
 });
 

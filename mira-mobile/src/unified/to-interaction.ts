@@ -16,6 +16,7 @@ import type {
   InteractionTurn,
   Lifecycle,
   Machine,
+  ManualSearchStatus,
   Project,
   ShellFixture,
   SourceReference,
@@ -274,6 +275,49 @@ export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNoteb
     turns: messages.map((msg) => toTurn(msg, meta)),
     createdAt: meta.capturedAt,
     updatedAt: meta.capturedAt,
+  };
+}
+
+/**
+ * Codex F4 (#4189) — the most recent `manual_search_status` part across the
+ * thread (persisted or live), or null. Read straight off the already-mapped
+ * `InteractionTurn[]`, the same part the live SSE passthrough already
+ * produces (`toInteractionPart`'s `unknownInteractionPart`); this is just the
+ * lookup `UnifiedChat`'s bounded re-check needs to know what to resolve.
+ */
+export function latestManualSearchStatus(
+  turns: readonly InteractionTurn[],
+): Extract<InteractionPart, { type: "manual_search_status" }> | null {
+  let latest: Extract<InteractionPart, { type: "manual_search_status" }> | null = null;
+  for (const t of turns) {
+    for (const p of t.parts) if (p.type === "manual_search_status") latest = p;
+  }
+  return latest;
+}
+
+/**
+ * Codex F4 (#4189) — once the running search this turn reported has settled,
+ * overlay the real outcome onto the SAME part (by manufacturer+model) rather
+ * than leaving "Searching…" frozen forever in `liveTurns` (NotebookScreen
+ * keeps completed answers verbatim; nothing else ever revisits them). Thread
+ * identity (ids, lifecycle, other parts) is untouched — only a matching
+ * `manual_search_status` part's `running`/`message` fields are replaced.
+ */
+export function withManualSearchOverride(
+  thread: InteractionThread,
+  override: ManualSearchStatus | null,
+): InteractionThread {
+  if (!override) return thread;
+  return {
+    ...thread,
+    turns: thread.turns.map((t) => ({
+      ...t,
+      parts: t.parts.map((p) =>
+        p.type === "manual_search_status" && p.manufacturer === override.manufacturer && p.model === override.model
+          ? { type: "manual_search_status" as const, manufacturer: override.manufacturer, model: override.model, running: override.running, ...(override.message ? { message: override.message } : {}) }
+          : p,
+      ),
+    })),
   };
 }
 

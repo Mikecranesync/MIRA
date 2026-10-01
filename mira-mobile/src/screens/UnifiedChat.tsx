@@ -15,7 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
   createShellState,
@@ -26,7 +26,7 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
-import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
+import type { Attachment, InteractionPart, InteractionTurn, ManualSearchStatus } from "@factorylm/interaction";
 import {
   FactoryLMShell,
   closeLayerAction,
@@ -42,7 +42,8 @@ import {
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
 import { confirmIdentityProposal } from "../api/identity-confirm";
-import type { NotebookServerTurn } from "../api/resources";
+import { fetchManualSearchStatus } from "../api/manual-search-status";
+import { canBeChatSource, enabledDocIds, getNotebookDetail, type NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
@@ -51,10 +52,12 @@ import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/atta
 import {
   citationIndex,
   contextFor,
+  latestManualSearchStatus,
   liveFixture,
   machinesFor,
   projectsFor,
   toThread,
+  withManualSearchOverride,
   type UnifiedNotebookMeta,
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
@@ -158,22 +161,81 @@ export function UnifiedChat({
   attachmentThreadId,
 }: UnifiedChatProps) {
   const capturedAt = useRef(new Date().toISOString());
+  // Codex F1 (HIGH, #4175/#4189): the re-read scope a confirmed identity just
+  // promoted, consumed one-shot by the next send (see `onSend` below).
+  const confirmedScopeRef = useRef<string[] | null>(null);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+  const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
+
+  // Codex F4 (HIGH, #4189): "Searching…" must resolve once the background
+  // search settles. NotebookScreen (frozen) keeps a COMPLETED turn's parts
+  // verbatim in `liveTurns` forever — nothing else ever revisits them — so a
+  // `manual_search_status` part baked at stream-close time with running:true
+  // would otherwise stay "Searching…" indefinitely. `manualSearchOverride`
+  // holds the latest settled outcome, applied on top of `baseThread` by
+  // `withManualSearchOverride` (matching by manufacturer+model, not by turn
+  // id, since the part's identity IS the proposed machine).
+  const [manualSearchOverride, setManualSearchOverride] = useState<ManualSearchStatus | null>(null);
+  const resolvedThread = useMemo(
+    () => withManualSearchOverride(baseThread, manualSearchOverride),
+    [baseThread, manualSearchOverride],
+  );
 
   useEffect(() => {
     dispatch({
       type: "hydrate",
       data: {
-        thread: toThread(messages, fullMeta),
+        thread: resolvedThread,
         projects: host ? host.projects : projectsFor(fullMeta),
         machines: host ? host.machines : machinesFor(fullMeta),
         activeContext: contextFor(fullMeta, messages.some((m) => m.parts.some((p) => p.type === "identity_dispute"))),
       },
     });
-  }, [messages, fullMeta, host]);
+  }, [resolvedThread, messages, fullMeta, host]);
+
+  // Bounded re-check (NOT a polling framework — one setTimeout chain, capped
+  // attempts, cleared on unmount/dep change): while the thread's latest
+  // manual_search_status part is still running, re-fetch the notebook's
+  // CURRENT status (reusing the existing detail-fetch seam,
+  // `fetchManualSearchStatus` — the SAME GET route `getNotebookDetail` already
+  // calls) a few times, a few seconds apart, and stop as soon as it settles.
+  const notebookId = meta.notebookId || null;
+  useEffect(() => {
+    const running = latestManualSearchStatus(baseThread.turns);
+    if (!running || !running.running || !notebookId) return;
+    // Already resolved for this exact identity — nothing left to check.
+    if (manualSearchOverride && !manualSearchOverride.running
+      && manualSearchOverride.manufacturer === running.manufacturer
+      && manualSearchOverride.model === running.model) {
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const MAX_ATTEMPTS = 5;
+    const DELAY_MS = 4000;
+    const tick = () => {
+      attempts += 1;
+      void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
+        .then((status) => {
+          if (cancelled || !status) return;
+          if (status.manufacturer !== running.manufacturer || status.model !== running.model) return;
+          setManualSearchOverride(status);
+          if (status.running && attempts < MAX_ATTEMPTS) timer = setTimeout(tick, DELAY_MS);
+        })
+        .catch(() => {
+          if (!cancelled && attempts < MAX_ATTEMPTS) timer = setTimeout(tick, DELAY_MS);
+        });
+    };
+    timer = setTimeout(tick, DELAY_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [baseThread, manualSearchOverride, notebookId, attachmentThreadId]);
 
   // Open shell layers join the app's one BACK stack (lib/transient-layer.ts):
   // hardware BACK closes the top layer before any tab navigation happens.
@@ -275,9 +337,19 @@ export function UnifiedChat({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
+    // promoted a candidate manual into an enabled source (migration 104) —
+    // `onConfirmIdentity` below re-reads detail and stashes the refreshed
+    // scope here so THIS send rides it immediately, rather than the stale
+    // scope the host computed before the confirm. One-shot: consumed (and
+    // cleared) by the very next send, exactly like the document-upload
+    // `composed.scope` override below.
+    const confirmedScope = confirmedScopeRef.current;
+    confirmedScopeRef.current = null;
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
-      handlers.onSend(text);
+      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
+      else handlers.onSend(text);
       return;
     }
     // Nothing held here, nothing carried from HOME, and not a retry: the plain,
@@ -288,7 +360,8 @@ export function UnifiedChat({
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
     if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
-      handlers.onSend(text);
+      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
+      else handlers.onSend(text);
       return;
     }
     void attachments.compose(text, pending, opts).then((composed) => {
@@ -299,8 +372,11 @@ export function UnifiedChat({
         return;
       }
       // A text or photo turn keeps its exact two-argument send; only a document
-      // upload adds the re-read scope.
-      if (composed.scope) handlers.onSend(composed.question, composed.rider, composed.scope);
+      // upload (or a just-confirmed identity) adds the re-read scope — the
+      // upload's own re-read wins when both are present (it is the fresher of
+      // the two, computed for this exact send).
+      const scope = composed.scope ?? confirmedScope;
+      if (scope) handlers.onSend(composed.question, composed.rider, scope);
       else handlers.onSend(composed.question, composed.rider);
       // Uploaded but not searchable stays visible rather than being swallowed.
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
@@ -405,7 +481,30 @@ export function UnifiedChat({
     suggestChips,
     busy,
     ...(meta.notebookId
-      ? { onConfirmIdentity: (proposal) => confirmIdentityProposal(meta.notebookId, proposal) }
+      ? {
+          onConfirmIdentity: async (proposal) => {
+            const result = await confirmIdentityProposal(meta.notebookId, proposal);
+            // Codex F1 (HIGH): confirming may have just promoted a candidate
+            // manual into an enabled source (migration 104) — re-read the
+            // authoritative detail and stash its scope so the NEXT question
+            // rides notebook retrieval with the promoted doc, rather than the
+            // stale (possibly empty) scope the host computed before this
+            // confirm. Mirrors the Hub's own `loadDetail` call after confirm
+            // (`hub-host.tsx`'s `onConfirmIdentity`). Best-effort: the confirm
+            // itself already succeeded, so a failed re-read here never fails
+            // the card — the next send simply falls back to the host's own
+            // (eventually refreshed, via its OWN `refresh()`) scope.
+            try {
+              const after = await getNotebookDetail(meta.notebookId, {
+                threadId: attachmentThreadId ?? undefined,
+              });
+              confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+            } catch {
+              confirmedScopeRef.current = null;
+            }
+            return result;
+          },
+        }
       : {}),
   };
 

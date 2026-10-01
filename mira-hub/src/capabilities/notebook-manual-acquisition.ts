@@ -792,3 +792,73 @@ export function acquisitionDeclineText(
       return null;
   }
 }
+
+/** T2 (#4189 F4/F6) — the shape the notebook GET route returns alongside
+ *  `notebook`/`sources`/`turns`, for both the Hub and mobile post-refresh
+ *  render path. Mirrors `ManualSearchStatus` in `packages/factorylm-interaction`
+ *  field-for-field (not imported: that package has no DB-adjacent deps and
+ *  this one does, by design — see that package's own header). */
+export interface ManualSearchStatus {
+  manufacturer: string;
+  model: string;
+  running: boolean;
+  message?: string;
+}
+
+/**
+ * The notebook's CURRENT manual-search status — for its own confirmed
+ * identity, or (if that search never ran or isn't this notebook's own) the
+ * most recently PROPOSED (not yet confirmed) identity — recomputed fresh on
+ * every call via `readAcquisition` + `reconcileAcquisition`, never read from
+ * a persisted snapshot. `manualSearchStatusFrame` (chat/route.ts) is
+ * deliberately transient for exactly this reason: a "running" state captured
+ * at persist-time reads as permanently stale once the search finishes. This
+ * is the ONE place that recomputes it — reused by the Hub (`hub-host.tsx`'s
+ * `loadDetail`, already called after every send and after a confirm) and
+ * mobile (`getNotebookDetail`) on their EXISTING post-turn/post-confirm
+ * refetch, never a second acquisition-status path.
+ *
+ * Returns null when acquisition is disabled, there is no record, or the
+ * record belongs to neither identity (nothing current to report).
+ */
+export async function currentManualSearchStatus(
+  tenantId: string,
+  notebookId: string,
+  confirmed: ConfirmedIdentity,
+  proposedIdentity: { manufacturer: string; model: string } | null,
+  deps: { env?: Record<string, string | undefined> } = {},
+): Promise<ManualSearchStatus | null> {
+  if (!acquisitionEnabled(deps.env)) return null;
+  const rec = await readAcquisition(tenantId, notebookId);
+  if (!rec) return null;
+
+  const confirmedKey = acquisitionKey(confirmed);
+  const candidateIdentity: ConfirmedIdentity | null = proposedIdentity
+    ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
+    : null;
+  const candidateKey = candidateIdentity ? acquisitionKey(candidateIdentity) : null;
+
+  let manufacturer: string;
+  let model: string;
+  let key: string;
+  let basis: "confirmed" | "candidate";
+  if (confirmedKey && rec.key === confirmedKey && confirmed.manufacturer && confirmed.model) {
+    manufacturer = confirmed.manufacturer;
+    model = confirmed.model;
+    key = confirmedKey;
+    basis = "confirmed";
+  } else if (candidateKey && proposedIdentity && rec.key === candidateKey) {
+    manufacturer = proposedIdentity.manufacturer;
+    model = proposedIdentity.model;
+    key = candidateKey;
+    basis = "candidate";
+  } else {
+    return null;
+  }
+
+  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
+  if (!reconciled) return null;
+  const running = reconciled.state === "running";
+  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
+  return { manufacturer, model, running, ...(message ? { message } : {}) };
+}

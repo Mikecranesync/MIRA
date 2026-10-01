@@ -6,12 +6,14 @@ import {
   basisKind,
   citationIndex,
   contextFor,
+  latestManualSearchStatus,
   liveFixture,
   projectsFor,
   sourceFor,
   toInteractionPart,
   toThread,
   toTurn,
+  withManualSearchOverride,
   type UnifiedNotebookMeta,
 } from "../to-interaction";
 
@@ -173,5 +175,55 @@ describe("turns and thread", () => {
     expect(contextFor({ ...META, asset: null })).toMatchObject({ machineIdentity: "not_applicable", evidenceAuthorization: "not_applicable" });
     expect(toTurn(messages[0], { ...META, asset: null }).context.machineId).toBeUndefined();
     expect(contextFor({ ...META, identityConfirmed: false })).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+});
+
+// Codex F4 (#4189): "Searching…" must resolve once the background search
+// settles, even though NotebookScreen (frozen) keeps a completed turn's
+// parts verbatim in `liveTurns` forever. `UnifiedChat`'s bounded re-check
+// overlays the real outcome via these two pure helpers.
+describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () => {
+  const searching: AdapterMessage[] = [
+    { id: "q", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a",
+      role: "assistant",
+      parts: [
+        { type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } },
+        { type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true } },
+      ],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+  ];
+
+  it("finds the most recent manual_search_status part across the thread", () => {
+    const thread = toThread(searching, META);
+    expect(latestManualSearchStatus(thread.turns)).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+  });
+
+  it("returns null when nothing is searching", () => {
+    expect(latestManualSearchStatus(toThread([searching[0]], META).turns)).toBeNull();
+  });
+
+  it("overlays the settled outcome onto the matching part — 'Searching…' resolves to the real result", () => {
+    const thread = toThread(searching, META);
+    const resolved = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    const part = resolved.turns[1].parts.find((p) => p.type === "manual_search_status");
+    expect(part).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    // Every other part on that turn, and the question turn, are untouched.
+    expect(resolved.turns[1].parts[0]).toEqual(thread.turns[1].parts[0]);
+    expect(resolved.turns[0]).toEqual(thread.turns[0]);
+  });
+
+  it("does nothing when the override is for a different identity", () => {
+    const thread = toThread(searching, META);
+    const out = withManualSearchOverride(thread, { manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
+    expect(out).toEqual(thread);
+  });
+
+  it("does nothing when the override is null", () => {
+    const thread = toThread(searching, META);
+    expect(withManualSearchOverride(thread, null)).toBe(thread);
   });
 });

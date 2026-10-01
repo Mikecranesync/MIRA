@@ -52,6 +52,7 @@ import {
   MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
   acquisitionKey,
+  currentManualSearchStatus,
   readAcquisition,
   reconcileAcquisition,
   recordFromOutcome,
@@ -921,5 +922,52 @@ describe("limit copy claims no reset time", () => {
     expect(t).toMatch(/try again later/i);
     expect(t).not.toMatch(/tomorrow/i);
     expect(t.toLowerCase()).toContain("limit");
+  });
+});
+
+// T2 (#4189 F4/F6) — the notebook GET route's current (never-stale) status,
+// recomputed on every call instead of read from a persisted "running"
+// snapshot captured at some earlier point in time.
+describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot", () => {
+  const confirmedIdentity = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: null };
+  const confirmedKey = acquisitionKey(confirmedIdentity)!;
+  const candidateKey = acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" })!;
+
+  it("returns null when acquisition is disabled", async () => {
+    db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: {} });
+    expect(r).toBeNull();
+  });
+
+  it("returns null when there is no acquisition record at all", async () => {
+    db.readRow = null;
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
+    expect(r).toBeNull();
+  });
+
+  it("reports running:true for the notebook's own confirmed identity while the search is live", async () => {
+    db.readRow = { key: confirmedKey, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
+  });
+
+  it("reports running:false with the real outcome once the confirmed-identity search finishes", async () => {
+    db.readRow = { key: confirmedKey, state: "no_manual_found", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z", candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
+    expect(r?.running).toBe(false);
+    expect(r?.message).toMatch(/couldn't find/i);
+  });
+
+  it("falls back to the PROPOSED (unconfirmed) identity when the notebook has none of its own", async () => {
+    const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+    db.readRow = { key: candidateKey, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", unconfirmed, { manufacturer: "SMC", model: "SS5Y3-DUW01302" }, { env: ON });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
+  });
+
+  it("returns null when the record's key matches neither the confirmed nor the proposed identity", async () => {
+    db.readRow = { key: "SOMETHING|ELSE|", state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, { manufacturer: "Other", model: "X" }, { env: ON });
+    expect(r).toBeNull();
   });
 });

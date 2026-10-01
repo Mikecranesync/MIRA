@@ -24,6 +24,7 @@ import type {
   InteractionThread,
   InteractionTurn,
   Lifecycle,
+  ManualSearchStatus,
   SourceReference,
 } from "../../../packages/factorylm-interaction/src";
 import type {
@@ -391,6 +392,39 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     updatedAt: at,
   };
   return [question, answer];
+}
+
+/**
+ * T2 (#4189 F6) — overlay the notebook's CURRENT manual-search status (the
+ * GET route's `manualSearch` field — `currentManualSearchStatus`, computed
+ * FRESH on every read, never persisted on a turn) onto the LAST assistant
+ * turn's parts, mirroring where the live SSE stream pairs it with that
+ * turn's own `identity_proposal` card. This is the "post-turn refresh"
+ * render path the PR body's BLOCKED note names: the Hub's live, in-flight
+ * stream (`notebook-chat-utils.ts`, guarded legacy presentation) cannot carry
+ * this status while a turn is still streaming, so it appears here, once the
+ * send completes and `hub-host.tsx` re-loads detail — not before.
+ * `status: null` (no acquisition running/recorded, or the flag is off)
+ * returns the turns unchanged.
+ */
+export function withManualSearchStatus(
+  turns: readonly InteractionTurn[],
+  status: ManualSearchStatus | null,
+): InteractionTurn[] {
+  if (!status) return [...turns];
+  let lastAssistantIndex = -1;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+  }
+  if (lastAssistantIndex === -1) return [...turns];
+  const part: InteractionPart = {
+    type: "manual_search_status",
+    manufacturer: status.manufacturer,
+    model: status.model,
+    running: status.running,
+    ...(status.message ? { message: status.message } : {}),
+  };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
 export function threadFromPersisted(
