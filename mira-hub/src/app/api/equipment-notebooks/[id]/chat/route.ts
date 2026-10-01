@@ -2145,11 +2145,25 @@ async function handleChatTurn(
     // offered. age === 1 is always a fresh proposal from this turn's photo.
     const reshown = partSearch.age > 1 ? pendingPartSearchProposal(previousTurnEvidence) : null;
     const maker = reshown ? (reshown.manufacturer ?? null) : photoMaker;
-    // #4193 Codex round 2 F3+F6: a FRESH propose (age 1) has no origin from
-    // the pure decision yet — THIS turn, about to be persisted, IS the
-    // origin. A re-show (age > 1) already carries the resolved origin
-    // forward from `partSearchDecision()`.
-    const originTurnId = partSearch.originTurnId ?? turnId;
+    // #4193 Codex round 3 F7: a FRESH propose (age 1) has no origin from the
+    // pure decision yet, and must NOT fall back to `turnId` — `turnId` is
+    // the client-request/tracing id (line ~912: `clientRequestId ??
+    // crypto.randomUUID()`), never the row this turn is about to be
+    // persisted under (that id comes from the database's own
+    // `gen_random_uuid()` default, migration 073 — recordTurn's INSERT never
+    // supplies `id`). Falling back to it persisted an origin that matched no
+    // real row, so claimPartSearchProposal's `WHERE id = originTurnId`
+    // always missed and even a technician's first, never-claimed
+    // confirmation was refused as "already used" (Codex round 3 F7).
+    //
+    // The fix needs no new plumbing: a fresh propose simply omits
+    // `originTurnId` (exactly the true-legacy shape F6 already handles).
+    // The very next read of this entry — a confirmation or a re-show —
+    // resolves its origin from `previousTurnId`, which by then IS the real
+    // persisted row id (it comes from `listTurns()`, reading an
+    // already-written row). A re-show (age > 1) still carries the resolved
+    // origin forward unchanged from `partSearchDecision()`.
+    const originTurnId = partSearch.originTurnId;
     photoPartLookup = {
       action: "proposed",
       searched: false,

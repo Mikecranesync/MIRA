@@ -408,9 +408,22 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
     // The proposal binds the whole identity it would send (#4171 F4): no maker here.
-    // #4193 Codex round 2 F3+F6: a fresh proposal's `originTurnId` IS this turn
-    // (route.ts's own, about-to-be-persisted turn id — unpredictable here).
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1, originTurnId: expect.any(String) });
+    // #4193 Codex round 3 F7: a fresh proposal persists NO `originTurnId` at
+    // all — never `turnId` (the client-request/tracing id), which is NOT the
+    // real database row id this turn gets (that comes from the database's
+    // own `gen_random_uuid()` default). `expect.any(String)` here would have
+    // passed for either the correct value or the F7 regression's wrong one;
+    // only an exact absence distinguishes them.
+    // toContainEqual's equality treats a key whose value is `undefined` as
+    // equivalent to that key being absent (on EITHER side) — exactly the
+    // distinction that matters: `originTurnId: expect.any(String)` would
+    // have passed for the F7 regression's wrong value too; omitting the key
+    // here passes ONLY when the real code sets no value (or `undefined`).
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1 });
+    const freshProposal = recorded.evidence.find(
+      (e): e is { kind: string; originTurnId?: unknown } => (e as { kind?: unknown })?.kind === "part_search_proposal",
+    );
+    expect(freshProposal?.originTurnId).toBeUndefined();
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
     expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
