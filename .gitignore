@@ -339,3 +339,9 @@ tests/beta/fixtures/t2108/*.pdf
 
 # Hub build: packages/ resolves react/@assistant-ui from mira-hub/node_modules through this symlink (#3839)
 packages/node_modules
+
+# Photo Diagnosis Benchmark — private Pixel-photo fixtures and local triage
+# manifests (never-run-photo privacy rule) + per-run output. See
+# `.planning/photo-benchmark/TASK-2026-10-01-harness.md`.
+tests/golden_photo/local/
+tests/golden_photo/runs/
