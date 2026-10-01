@@ -334,6 +334,32 @@ async function resolveAndPin(hostname: string): Promise<PinResult> {
   };
 }
 
+const ABORTED = Symbol("aborted");
+
+/**
+ * Await `p` unless `signal` aborts first (#4164 Codex F1): `dns.lookup` has no
+ * cancellation, so a stalled resolver must not hold the download past its
+ * total budget. The listener is always removed; a late DNS answer after an
+ * abort is ignored and never starts a request.
+ */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal): Promise<T | typeof ABORTED> {
+  if (signal.aborted) return Promise.resolve(ABORTED);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(ABORTED);
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
 /**
  * A connect-time `lookup` hook (the shape `https.request`/`http.request`
  * accept) that ignores whatever the socket layer would otherwise resolve and
@@ -529,7 +555,8 @@ export async function safeDownloadPdf(
       const gate = gateUrl(current, opts.allowedHosts);
       if (gate) return reject(hostForLog, gate);
 
-      const pinResult = await resolveAndPin(parsed.hostname);
+      const pinResult = await untilAborted(resolveAndPin(parsed.hostname), controller.signal);
+      if (pinResult === ABORTED || timedOut) return reject(hostForLog, "timeout");
       if (!pinResult.ok) {
         if (pinResult.reason === "blocked_address") return reject(hostForLog, "blocked_address");
         return reject(hostForLog, timedOut ? "timeout" : "network_error");

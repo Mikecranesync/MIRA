@@ -571,3 +571,30 @@ describe("safeDownloadPdf — pinned lookup hook contract", () => {
     expect(got).toEqual([{ address: PUBLIC_IP, family: 4 }]);
   });
 });
+
+// #4164 Codex r1 F1: DNS resolution must sit inside the total time budget. A
+// resolver that never settles used to leave safeDownloadPdf pending forever.
+describe("safeDownloadPdf — DNS is bounded by timeoutMs", () => {
+  it("resolves with timeout (and never calls the transport) when DNS never settles", async () => {
+    __setResolverForTests(() => new Promise(() => {}));
+    const transport = vi.fn();
+    __setTransportForTests(transport);
+    const t0 = Date.now();
+    const res = await safeDownloadPdf(`https://${OEM}/m.pdf`, { allowedHosts: ALLOWED, maxBytes: 1000, timeoutMs: 40 });
+    expect(res).toEqual({ ok: false, reason: "timeout" });
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("times out on a stalled resolver at a redirect hop, without a second request", async () => {
+    const hop2 = "docs.rockwellautomation.com";
+    __setResolverForTests(async (hostname: string) =>
+      hostname === hop2 ? new Promise(() => {}) : [{ address: PUBLIC_IP, family: 4 }],
+    );
+    const transport = vi.fn(async () => redirectResponse(`https://${hop2}/m.pdf`));
+    __setTransportForTests(transport);
+    const res = await safeDownloadPdf(`https://${OEM}/m.pdf`, { allowedHosts: ALLOWED, maxBytes: 1000, timeoutMs: 60 });
+    expect(res).toEqual({ ok: false, reason: "timeout" });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+});
