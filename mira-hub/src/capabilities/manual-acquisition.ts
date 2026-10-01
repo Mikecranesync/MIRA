@@ -432,8 +432,13 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   ]);
   if (docGate === "error" || docGate === "removed") return gateOutcome(docGate, manualParked.fileId, manualDocId);
   if (docGate === false) {
-    // Already a source on this notebook, or this search lost ownership: leave
-    // whatever is there untouched and report what exists.
+    // This search lost ownership of the notebook (its identity was changed or
+    // cleared while the manual was being fetched — the fenced attach refused):
+    // nothing was attached, nothing is claimed. An explicit UNATTACHED outcome
+    // (#4177 Codex r7 F9): `attached: false` + `linked: false` keep the durable
+    // record from recording an attachment, and the reply never says the manual
+    // is in Sources (an existing source row is NOT what `false` means — the
+    // fence attaches over one so a retry reaches its applicability check).
     return outcome("candidate_review", {
       candidate: candidateView,
       manual: {
@@ -448,8 +453,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
         indexed: manualDocId !== null,
         reused,
         attachSkipped: true,
+        attached: false,
       },
-      message: "That manual is already in this notebook's sources.",
+      linked: false,
+      ownershipLost: true,
+      message:
+        "This notebook's identity changed while MIRA was fetching the manual, so it was not added. Confirm the nameplate again if this is still the right machine.",
     });
   }
 

@@ -730,6 +730,19 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(setSourceState).not.toHaveBeenCalled();
     expect(out.status).toBe("candidate_review");
     expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, attachSkipped: true });
+    // #4177 Codex r7 F9: lost ownership is an explicit UNATTACHED outcome —
+    // nothing was added, the reply never claims the manual is in Sources, and
+    // the durable record never claims an attachment.
+    expect(out.payload.manual).toMatchObject({ attached: false });
+    expect(out.payload.linked).toBe(false);
+    expect(out.payload.ownershipLost).toBe(true);
+    expect(String(out.payload.message)).not.toMatch(/already in this notebook/i);
+    expect(String(out.payload.message)).toMatch(/not added|was not added/i);
+    const rec = recordFromOutcome("ALLENBRADLEY|525|", null, out);
+    expect(rec.attached_indexed).toBe(false);
+    expect(rec.promotes_on_confirm).toBe(false);
+    expect(rec.linked).toBe(false);
+    expect(rec.state).toBe("candidate_review");
   });
 
 
