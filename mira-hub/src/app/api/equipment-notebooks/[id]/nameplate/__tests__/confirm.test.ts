@@ -76,6 +76,7 @@ vi.mock("@/lib/visual-evidence-context", () => ({
 import { POST } from "../confirm/route";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { recordFromOutcome } from "@/capabilities/notebook-manual-acquisition";
+import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -363,7 +364,10 @@ describe("discovery terminal states", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("search_unavailable");
-    expect(body.message).toBe("search service unavailable");
+    // #4160 gate NO-GO: the technician sees the approved outage sentence; the
+    // service's own reason is kept for diagnostics, never shown as the message.
+    expect(body.message).toBe(MANUAL_SEARCH_UNAVAILABLE_COPY);
+    expect(body.reason).toBe("search service unavailable");
     expect(body.manual).toBeNull();
     expect(body.candidate).toBeNull();
     expect(safeDownloadPdf).not.toHaveBeenCalled();
@@ -677,7 +681,10 @@ describe("manual import: candidate until the document proves itself", () => {
     });
     const out = await acquireManualForIdentity(acquireInput);
     expect(out.status).toBe("search_limit_reached");
-    expect(out.payload.message).toBe("Daily manual-search limit reached for this user.");
+    // #4160 gate NO-GO: the approved limit sentence, verbatim; the service's
+    // scoped reason stays on the payload for diagnostics.
+    expect(out.payload.message).toBe(MANUAL_SEARCH_LIMIT_COPY);
+    expect(out.payload.reason).toBe("Daily manual-search limit reached for this user.");
   });
 
   it("control: quotaExceeded:false with no candidate still maps to no_manual_found", async () => {
