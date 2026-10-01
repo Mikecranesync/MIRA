@@ -2393,6 +2393,47 @@ async function handleChatTurn(
       }
     }
   }
+  // Codex r3 F5 (#4177, #4160 S7) — recovery must not depend on how this turn
+  // is answered. The #4075 block above runs only when the OEM answer-route is
+  // about to decline for lack of a manual, which a SOURCE-SELECTED turn never
+  // reaches (notebook sources own it, oemManufacturer is null). After a
+  // nameplate confirmation the nameplate source is enabled by default, so the
+  // technician's normal next question is exactly that turn — and a recorded
+  // limit denial / outage sat untouched unless every source was deselected.
+  // So: a RETRYABLE record for the notebook's OWN confirmed identity is
+  // reconciled and sent back through the claim here regardless of routing.
+  // The claim keeps every existing rule (UTC-day boundary, 30-minute backoff,
+  // MAX_AUTOMATIC_RETRIES, live-running refusal); reconcile keeps the
+  // source-removal rule. Nothing here starts a NEW search, changes retrieval,
+  // or alters the reply — the turn stays grounded in its selected sources; the
+  // packet records the recovery (`manual_acquisition`) for the flight recorder.
+  if (manualAcquisition === null && nb && acquisitionEnabled()) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      if (acq && acq.key === key && (acq.state === "search_unavailable" || acq.state === "search_limit_reached")) {
+        acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+        if (acq && acq.key === key && !acq.source_removed) {
+          const started = await startManualAcquisition({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId ?? null,
+            notebookId,
+            nodeId: nb.nodeId,
+            identity,
+          });
+          manualAcquisition = started
+            ? { state: "running", started_this_turn: true, candidate_host: null }
+            : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+        }
+      }
+    }
+  }
   rec.stage("retrieval", {
     manual_acquisition: manualAcquisition,
     photo_part_manual_lookup: photoPartLookup
