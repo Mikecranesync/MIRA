@@ -416,6 +416,8 @@ services:
       # official manual (discover -> download -> ingest -> applicability). Off
       # unless set in Doppler stg; needs migration 100. Staging only for now.
       - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
+      # #4160 S6 candidate takeover (#4175): off until a client can confirm a candidate identity.
+      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
