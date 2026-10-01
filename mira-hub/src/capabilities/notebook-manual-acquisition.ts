@@ -184,7 +184,13 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                   -- would make it terminal in ~90 minutes while the real
                   -- daily/monthly window is still hours or weeks from reset —
                   -- a cap denial permanently cached as a miss (PRD R5).
-                  'retries', CASE WHEN manual_acquisition->>'key' = $3::text
+                  -- Automatic retries of search_unavailable are counted against
+                  -- MAX_AUTOMATIC_RETRIES. An EXPLICIT technician confirmation
+                  -- ($7) is not an automatic retry: it never spends that budget
+                  -- and resets it, so a fresh attempt gets fresh automatic
+                  -- recovery (#4177 Codex r2 F4).
+                  'retries', CASE WHEN NOT $7::boolean
+                                   AND manual_acquisition->>'key' = $3::text
                                    AND manual_acquisition->>'state' = 'search_unavailable'
                                   THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
                                   ELSE 0 END,

@@ -134,7 +134,7 @@ describe("startManualAcquisition", () => {
     // MAX_AUTOMATIC_RETRIES in ~90 minutes while the real daily/monthly
     // window is still far from reset.
     expect(claimQ.sql).toMatch(
-      /'retries', CASE WHEN manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
+      /'retries', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
     );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
@@ -845,6 +845,9 @@ describe("runManualAcquisition — the inline, recorded search", () => {
     // no_manual_found, or a retryable one still in backoff) — so its real
     // outcome is always persisted, never a stale miss left behind.
     expect(claimQ.params[6]).toBe(true);
+    // #4177 Codex r2 F4: an explicit confirmation never spends the automatic
+    // retry budget and resets it — the increment is guarded by NOT $7.
+    expect(claimQ.sql).toMatch(/'retries', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*THEN COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) \+ 1\s*\n\s*ELSE 0 END/);
     expect(claimQ.sql).toMatch(/OR \(\$7::boolean\s*\n?\s*AND manual_acquisition->>'key' = \$3::text\s*\n?\s*AND manual_acquisition->>'state' <> 'running'\)/);
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     expect(finishQ).toBeDefined();
