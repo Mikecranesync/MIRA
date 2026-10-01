@@ -113,7 +113,8 @@ describe("startManualAcquisition", () => {
       attach: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
+    // A background start is NOT an explicit technician confirmation ($7 false).
+    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
@@ -126,7 +127,7 @@ describe("startManualAcquisition", () => {
       /OR \(manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
     );
     expect(claimQ.sql).toMatch(
-      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\)/,
+      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\s*\n\s*OR \(\$7::boolean/,
     );
     // The retries counter itself must NOT increment for search_limit_reached
     // (only for search_unavailable) — else a quota denial would exhaust
@@ -838,7 +839,13 @@ describe("runManualAcquisition — the inline, recorded search", () => {
     expect(acquire).toHaveBeenCalledTimes(1);
     expect(acquire.mock.calls[0][0]).not.toHaveProperty("writeSourceState");
     expect(acquire.mock.calls[0][0]).toMatchObject({ identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D" } });
-    expect(db.queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))).toBe(true);
+    const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+    // #4177 Codex r1 F2: an explicit confirmation owns a new generation over
+    // ANY same-key record that is not a live running search (a terminal
+    // no_manual_found, or a retryable one still in backoff) — so its real
+    // outcome is always persisted, never a stale miss left behind.
+    expect(claimQ.params[6]).toBe(true);
+    expect(claimQ.sql).toMatch(/OR \(\$7::boolean\s*\n?\s*AND manual_acquisition->>'key' = \$3::text\s*\n?\s*AND manual_acquisition->>'state' <> 'running'\)/);
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     expect(finishQ).toBeDefined();
     expect(JSON.parse(finishQ.params[2] as string)).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "search_limit_reached", gen: "g1" });

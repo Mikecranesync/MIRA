@@ -1641,14 +1641,25 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
     serviceAvailable: false, found: false, candidate: null, validated: false, isDirectPdf: false,
     oemHost: false, trustedDistributorHost: false, reason: "search service unavailable",
   });
-  /** A tenant-context client whose claim either wins (gen g1) or is refused. */
-  const lifecycleDb = (claimWins: boolean) => {
+  /** The notebook's OWN confirmed identity is the nameplate identity — the only
+   *  case the chat's retry can recover (#4178 tracks components in other notebooks). */
+  const sameMachine = () =>
+    vi.mocked(getNotebook).mockResolvedValue({
+      ...(notebook as object),
+      manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104", identityStatus: "user_confirmed",
+    } as never);
+  /** A tenant-context client. `claim` is "won" (gen g1) per mode: always, never (a live
+   *  running search), or only for an EXPLICIT confirmation ($7 true — a terminal record). */
+  const lifecycleDb = (mode: "wins" | "running" | "terminal") => {
     const queries: { sql: string; params: unknown[] }[] = [];
     const impl = async (_t: string, fn: (c: unknown) => unknown) =>
       fn({
         query: vi.fn(async (sql: string, params: unknown[]) => {
           queries.push({ sql, params });
-          if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: claimWins ? 1 : 0, rows: claimWins ? [{ gen: "g1" }] : [] };
+          if (/RETURNING manual_acquisition->>'gen'/.test(sql)) {
+            const wins = mode === "wins" || (mode === "terminal" && params[6] === true);
+            return { rowCount: wins ? 1 : 0, rows: wins ? [{ gen: "g1" }] : [] };
+          }
           if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
           return { rowCount: 1, rows: [] };
         }),
@@ -1667,35 +1678,51 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       else process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = prev;
     }
   };
+  const claimed = (queries: { sql: string; params: unknown[] }[]) => queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql));
   const finishedState = (queries: { sql: string; params: unknown[] }[]) => {
     const q = queries.find((x) => /jsonb_set/.test(x.sql));
     return q ? (JSON.parse(q.params[2] as string) as { state: string }).state : null;
   };
 
-  it("a limit denial at confirm is recorded as search_limit_reached and answered honestly", async () => {
+  it("a limit denial at confirm (the notebook's own machine) is recorded as search_limit_reached and answered honestly", async () => {
     await withFlag(true, async () => {
-      const queries = lifecycleDb(true);
+      sameMachine();
+      const queries = lifecycleDb("wins");
       vi.mocked(discoverManual).mockResolvedValue(limited() as never);
       const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
       const body = await res.json();
       expect(body.status).toBe("search_limit_reached");
       expect(String(body.message)).not.toMatch(/tomorrow|no manual|couldn't find/i);
-      expect(queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))).toBe(true);
+      expect(claimed(queries)).toBe(true);
       expect(finishedState(queries)).toBe("search_limit_reached");
     });
   });
   it("an outage at confirm is recorded as search_unavailable (retryable)", async () => {
     await withFlag(true, async () => {
-      const queries = lifecycleDb(true);
+      sameMachine();
+      const queries = lifecycleDb("wins");
       vi.mocked(discoverManual).mockResolvedValue(unreachable() as never);
       const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
       expect((await res.json()).status).toBe("search_unavailable");
       expect(finishedState(queries)).toBe("search_unavailable");
     });
   });
-  it("a refused claim (a search already running for this key) still answers the technician inline — once, unrecorded", async () => {
+  // Codex r1 F2: an explicit confirmation over a TERMINAL record (e.g. an earlier
+  // no_manual_found) owns a new generation and persists its real outcome.
+  it("Codex r1 F2: re-confirming over a terminal record still records the new outcome", async () => {
     await withFlag(true, async () => {
-      const queries = lifecycleDb(false);
+      sameMachine();
+      const queries = lifecycleDb("terminal");
+      vi.mocked(discoverManual).mockResolvedValue(unreachable() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_unavailable");
+      expect(finishedState(queries)).toBe("search_unavailable");
+    });
+  });
+  it("a LIVE running search for this key refuses the claim: the technician is still answered inline — once, unrecorded", async () => {
+    await withFlag(true, async () => {
+      sameMachine();
+      const queries = lifecycleDb("running");
       vi.mocked(discoverManual).mockResolvedValue(limited() as never);
       const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
       expect((await res.json()).status).toBe("search_limit_reached");
@@ -1703,13 +1730,38 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       expect(finishedState(queries)).toBeNull();
     });
   });
-  it("flag off: exactly today's inline search — no lifecycle record", async () => {
-    await withFlag(false, async () => {
-      const queries = lifecycleDb(true);
+  // Codex r1 F1: a COMPONENT nameplate in a notebook whose own identity differs
+  // (the default fixture: Nobody Inc / RIDE-1 vs Allen-Bradley / 525) is not
+  // recorded on the notebook-level record — the chat's retry could not consume
+  // it and the notebook's own search would overwrite it. Inline, as before.
+  // Tracked in #4178.
+  it("Codex r1 F1: a component nameplate in a differently-identified notebook stays inline and unrecorded", async () => {
+    await withFlag(true, async () => {
+      const queries = lifecycleDb("wins");
       vi.mocked(discoverManual).mockResolvedValue(limited() as never);
       const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
       expect((await res.json()).status).toBe("search_limit_reached");
-      expect(queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))).toBe(false);
+      expect(claimed(queries)).toBe(false);
+      expect(finishedState(queries)).toBeNull();
+    });
+  });
+  it("Codex r1 F1: an unbound notebook stays inline and unrecorded too", async () => {
+    await withFlag(true, async () => {
+      vi.mocked(getNotebook).mockResolvedValue({ ...(notebook as object), manufacturer: null, model: null, identityStatus: "unknown" } as never);
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect(claimed(queries)).toBe(false);
+    });
+  });
+  it("flag off: exactly today's inline search — no lifecycle record", async () => {
+    await withFlag(false, async () => {
+      sameMachine();
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_limit_reached");
+      expect(claimed(queries)).toBe(false);
       expect(finishedState(queries)).toBeNull();
     });
   });

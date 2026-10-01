@@ -155,7 +155,14 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * "search_unavailable" record older than the retry backoff. Exactly one
  * concurrent caller wins.
  */
-async function claim(tenantId: string, notebookId: string, key: string): Promise<string | null> {
+/**
+ * `explicit` (#4177 S7, Codex r1 F2): an explicit technician confirmation owns a
+ * new generation over ANY same-key record that is not a live running search —
+ * a terminal no_manual_found, or a retryable one still inside its backoff — so
+ * its real outcome is always persisted and a stale miss is never left behind.
+ * A background start never passes it.
+ */
+async function claim(tenantId: string, notebookId: string, key: string, explicit = false): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -214,9 +221,12 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  -- Uncapped by $6 on purpose — see the 'retries' comment above.
                  OR (manual_acquisition->>'state' = 'search_limit_reached'
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
-                         < date_trunc('day', now(), 'UTC')))
+                         < date_trunc('day', now(), 'UTC'))
+                 OR ($7::boolean
+                     AND manual_acquisition->>'key' = $3::text
+                     AND manual_acquisition->>'state' <> 'running'))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -569,9 +579,13 @@ export async function startManualAcquisition(
  * technician's next question, with no repeat of the nameplate flow. The
  * caller's own source writer is used (no fenced writer: the technician is
  * confirming right now). `started: false` when the flag is off, the identity
- * is not searchable, or a search for this key is already running — the caller
- * then falls back to its unrecorded inline search (at worst two queries in a
- * rare race, never a lost outcome).
+ * is not searchable, or a LIVE search for this key is already running (an
+ * explicit confirmation takes over any other same-key record — see `claim`) —
+ * the caller then falls back to its unrecorded inline search (at worst two
+ * queries in a rare race, and the running search's record stays the fresh
+ * one). The caller decides WHICH acquisitions belong on the notebook-level
+ * record: only the notebook's own confirmed identity, since that is the key
+ * the chat's retry re-searches (#4178 tracks component nameplates).
  */
 export async function runManualAcquisition(
   input: ManualAcquisitionInput,
@@ -585,7 +599,7 @@ export async function runManualAcquisition(
     catalogNumber: input.identity.catalogNumber ?? null,
   });
   if (!key) return { started: false, outcome: null };
-  const gen = await claim(input.tenantId, input.notebookId, key);
+  const gen = await claim(input.tenantId, input.notebookId, key, true);
   if (!gen) return { started: false, outcome: null };
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
