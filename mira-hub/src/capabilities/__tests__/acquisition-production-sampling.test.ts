@@ -24,7 +24,7 @@ vi.mock("@/lib/tenant-context", () => ({
 vi.mock("@/lib/workspace-files", () => ({ attachFileToTargetsTx: vi.fn(async () => ({ ok: true, links: [] })) }));
 vi.mock("@/capabilities/manual-acquisition", () => ({ acquireManualForIdentity: vi.fn() }));
 
-import { startManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
+import { runManualAcquisition, startManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import { safeSpan } from "@/capabilities/observability/acquisition-spans";
 
 const input = {
@@ -87,6 +87,44 @@ describe("background acquisition under the production sampler", () => {
   it("a dropped turn (ratio 0) drops its acquisition tree too", async () => {
     ratio = 0;
     await turnStartingAcquisition();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+    ratio = 1;
+  });
+
+  // Codex #4194 r2 F1: the nameplate-confirm route (inline) and notebook create
+  // (background) open no mira.turn — the framework request span is dropped by
+  // the sampler. Their acquisitions are units of work of their own.
+  async function underDroppedRequestSpan(fn: () => Promise<unknown>) {
+    await trace.getTracer(TRACER_NAME).startActiveSpan("POST", { root: true }, async (span) => {
+      expect(span.isRecording()).toBe(false); // the turn-only sampler drops it
+      await fn();
+      span.end();
+    });
+  }
+
+  it("inline run outside any turn (nameplate confirm): exported with its children", async () => {
+    ratio = 1;
+    await underDroppedRequestSpan(() => runManualAcquisition(input, { acquire, env: ON }));
+    const names = exporter.getFinishedSpans().map((s) => s.name);
+    expect(names).toContain("manual_acquisition.run");
+    expect(names).toContain("manual_acquisition.search");
+    expect(names).not.toContain("POST");
+  });
+
+  it("background run outside any turn (notebook create): exported with its children", async () => {
+    ratio = 1;
+    await underDroppedRequestSpan(() => startManualAcquisition(input, { acquire, env: ON }));
+    await vi.waitFor(() => {
+      expect(exporter.getFinishedSpans().some((s) => s.name === "manual_acquisition.run")).toBe(true);
+    });
+    expect(exporter.getFinishedSpans().map((s) => s.name)).toContain("manual_acquisition.search");
+  });
+
+  it("standalone runs honor a zero ratio", async () => {
+    ratio = 0;
+    await underDroppedRequestSpan(() => runManualAcquisition(input, { acquire, env: ON }));
+    await underDroppedRequestSpan(() => startManualAcquisition(input, { acquire, env: ON }));
     await new Promise((r) => setTimeout(r, 50));
     expect(exporter.getFinishedSpans()).toHaveLength(0);
     ratio = 1;

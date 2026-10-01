@@ -1073,6 +1073,46 @@ class TestManualDiscoverySearchStats:
         assert body["oem_host"] is True
         assert body["candidate"]["url"] == _VALIDATED_CANDIDATE["url"]
 
+    def test_judge_timeout_keeps_the_documents_already_examined(self, monkeypatch):
+        """Codex #4194 r2 F4: the endpoint times out while the judge is still
+        reading. Each read is counted when it starts, so the cancelled search
+        reports the two documents it examined — never 0."""
+        import asyncio
+
+        from shared.manual_search import judge as judge_mod
+        from shared.manual_search import search as search_mod
+
+        urls = [
+            "https://docs.rockwellautomation.com/a.pdf",
+            "https://docs.rockwellautomation.com/b.pdf",
+        ]
+
+        async def fake_serper(query: str, num: int = 10):
+            return [
+                {"link": u, "title": f"PowerFlex 750 User Manual {i}", "snippet": "PowerFlex 750"}
+                for i, u in enumerate(urls)
+            ]
+
+        async def fake_fetch(url: str):
+            if url == urls[0]:
+                return None  # finishes: unfetched
+            await asyncio.sleep(30)  # stalls past the endpoint timeout
+
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.2")
+        monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
+        monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
+        monkeypatch.setattr(judge_mod, "fetch_pdf_bytes", fake_fetch)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "750"},
+            )
+            .json()
+        )
+        assert body["reason"] == "search_unavailable"
+        assert body["search_stats"]["candidates"] == 2
+
     def test_real_search_counts_every_document_it_examined(self, monkeypatch):
         """Codex #4194 F4: the REAL search_manual HEAD-validates three
         candidates (two fail, the third confirms) — candidates is 3, the

@@ -23,7 +23,7 @@
 import { withTenantContext } from "@/lib/tenant-context";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 import { activeTraceId, setSpanAttrs } from "@/capabilities/observability/tracing";
-import { captureActiveSpanLink, safeSpan } from "@/capabilities/observability/acquisition-spans";
+import { activeSpanIsRecording, captureActiveSpanLink, safeSpan } from "@/capabilities/observability/acquisition-spans";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
@@ -643,9 +643,11 @@ export async function runManualAcquisition(
   const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
-    // R15: this run is AWAITED inside the chat/confirm turn, so its root span
-    // is simply a child of whatever turn span is active — no link needed
-    // (contrast the detached background run in startManualAcquisition above).
+    // R15: this run is AWAITED. Inside a recording chat turn its span is simply
+    // a child of that turn. With no recording span (the nameplate-confirm route
+    // opens no mira.turn, and the sampler drops its framework request span) it
+    // is a root of its own, sampled at the turn ratio (Codex #4194 r2 F1).
+    const nested = activeSpanIsRecording();
     out = await safeSpan(
       "manual_acquisition.run",
       {
@@ -667,6 +669,7 @@ export async function runManualAcquisition(
         }
         return result;
       },
+      nested ? {} : { root: true },
     );
   } catch (err) {
     console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);

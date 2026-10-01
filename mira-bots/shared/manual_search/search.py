@@ -961,8 +961,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
-        ranked = await _judge.judge_candidates(make, model, deduped)
-        _note_examined(c["url"] for c in ranked if c.get("judge"))
+        ranked = await _judge.judge_candidates(make, model, deduped)  # records what it reads
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None

@@ -130,9 +130,15 @@ describe("remote parents never bypass the turn filter (#4107 review F1)", () => 
     it("kept when linked to a sampled turn", () => {
       expect(acq([link(true)])).toBe(SamplingDecision.RECORD_AND_SAMPLED);
     });
-    it("dropped when its turn was dropped, or when it has no turn at all", () => {
+    it("dropped when the turn that started it was dropped", () => {
       expect(acq([link(false)])).toBe(SamplingDecision.NOT_RECORD);
-      expect(acq([])).toBe(SamplingDecision.NOT_RECORD);
+    });
+    it("started with no turn (confirm / create): sampled at the turn ratio (Codex #4194 r2 F1)", () => {
+      expect(acq([])).toBe(SamplingDecision.RECORD_AND_SAMPLED);
+      expect(
+        turnOnlySampler(0).shouldSample(ROOT_CONTEXT, TRACE, "manual_acquisition.run", SpanKind.INTERNAL, {}, [])
+          .decision,
+      ).toBe(SamplingDecision.NOT_RECORD);
     });
     it("no other root name gets in through a link", () => {
       expect(

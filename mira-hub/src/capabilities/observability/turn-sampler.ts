@@ -44,9 +44,10 @@ export function turnSampleRatio(): number {
   return Math.min(1, Math.max(0, n));
 }
 
-/** Root spans: keep `mira.turn` (at the configured ratio), and a detached
- *  acquisition root whose creation-time link points at a SAMPLED span (its turn —
- *  so it inherits that turn's ratio decision); drop anything else. */
+/** Root spans: keep `mira.turn` (at the configured ratio). An acquisition root
+ *  started BY a turn carries a creation-time link and follows that turn's
+ *  decision; one started with no turn (nameplate confirm, notebook create) is a
+ *  unit of work of its own and is sampled at the turn ratio. Drop anything else. */
 class TurnRootSampler implements Sampler {
   private readonly ratio: Sampler;
 
@@ -63,6 +64,7 @@ class TurnRootSampler implements Sampler {
     links: Link[],
   ): SamplingResult {
     if (spanName === ACQUISITION_ROOT_SPAN) {
+      if (links.length === 0) return this.ratio.shouldSample(context, traceId, spanName, spanKind, attributes, links);
       const linkedToKeptTurn = links.some(
         (l) => (l.context.traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED,
       );
