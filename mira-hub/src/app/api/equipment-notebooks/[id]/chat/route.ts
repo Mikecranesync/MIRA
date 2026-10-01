@@ -98,6 +98,7 @@ import {
   hazardBanner,
   matchSafetyStop,
   safetyFlagDirective,
+  improvisedLockoutAddendum,
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
@@ -2798,9 +2799,9 @@ async function handleChatTurn(
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
-    ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
+    ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}${improvisedLockoutAddendum(message, safetyTrigger)}`
     : safetyTrigger
-      ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
+      ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger, message)}`
       : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with

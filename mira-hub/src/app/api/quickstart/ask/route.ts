@@ -185,7 +185,7 @@ export async function POST(req: Request) {
     {
       role: "system",
       content: withStepSafety(
-        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger)}` : SYSTEM_PROMPT,
+        safetyTrigger ? `${SYSTEM_PROMPT}\n\n${flagDirectiveFor(safetyTrigger, question)}` : SYSTEM_PROMPT,
       ),
     },
     { role: "user", content: userMsg },

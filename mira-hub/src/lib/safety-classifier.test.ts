@@ -15,9 +15,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
+  detectImprovisedLockout,
   SAFETY_PHRASES_IMMEDIATE,
   EDUCATIONAL_QUESTION_PATTERN,
   matchSafetyStop,
+  IMPROVISED_LOCKOUT,
+  ENERGIZED_ELECTRICAL_HAZARD,
+  hazardBanner,
+  flagDirectiveFor,
+  improvisedLockoutAddendum,
   detectEnergizedElectricalHazardIntent,
   safetyFlagHeaders,
   withSafetyFlag,
@@ -225,5 +231,145 @@ describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn sh
     expect(withSafetyFlag("Try again in a minute.", null)).toBe("Try again in a minute.");
     expect(safetyFlagHeaders("smoke coming")).toEqual({ "X-Safety-Flag": "smoke coming" });
     expect(safetyFlagHeaders(null)).toBeUndefined();
+  });
+});
+
+describe("#4113: improvised lockout is a flag with its own banner and directive", () => {
+  const Q2 =
+    "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
+
+  it.each([
+    Q2,
+    "We use the red knob as our lockout on the gates.",
+    "Is it ok to lockout with the regulator instead?",
+    "They rely on the push-lock button as a lock out.",
+    "Operators use the valve instead of lockout.",
+    "With the air off we just push the gate open by hand.",
+    "After the pressure is bled we move the clamp manually.",
+  ])("flags: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+    expect(hazardBanner(IMPROVISED_LOCKOUT)).toMatch(/Not a lockout unless your procedure says so/);
+    expect(flagDirectiveFor(IMPROVISED_LOCKOUT)).toMatch(/NOT a\s+personnel\s+lockout/);
+  });
+
+  it.each([
+    "How do I perform lockout tagout?",
+    "Lock out the air supply valve at the FRL before replacing the cylinder.",
+    "What is the red button?",
+    "The regulator is set to 6 bar and the gate moves slowly.",
+  ])("does not flag a genuine lockout question or an ordinary one: %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+
+describe("#4114 review: precedence and manual movement", () => {
+  const Q2 =
+    "The gate still operates in either position. People use it as a lockout; with the regulator off in one position, they can push the shotgun gate. What position should I leave it in?";
+
+  it("a trailing 'safe to work' keeps its trigger AND carries the lockout restrictions (F1)", () => {
+    const msg = `${Q2} Is it safe to work?`;
+    const t = matchSafetyStop(msg);
+    expect(t).toBe("safe to work");
+    expect(flagDirectiveFor(t!, msg)).toMatch(/NOT a\s+personnel\s+lockout/);
+  });
+
+  it("an active incident keeps its trigger and still carries the lockout restrictions", () => {
+    const msg = `${Q2} There is smoke coming from the valve.`;
+    expect(matchSafetyStop(msg)).toBe("smoke coming");
+    expect(flagDirectiveFor("smoke coming", msg)).toMatch(/NOT a\s+personnel\s+lockout/);
+  });
+
+  it("'safe to work' alone is still flagged as before", () => {
+    expect(matchSafetyStop("Is it safe to work on the gate?")).toBe("safe to work");
+  });
+
+  it.each([
+    "With the air supply off, the cylinder moves slowly. Why?",
+    "When the pressure is vented the gate drifts open and moves down.",
+    "The regulator is off and the actuator still moves.",
+  ])("equipment moving on its own is not an improvised lockout (F2): %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "With the air off we just push the gate open by hand.",
+    "Once the regulator is off, operators pull the clamp back.",
+    "With the pressure bled, the gate can be moved manually.",
+  ])("a person moving it after air-off still flags: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+
+describe("#4114 review round 2: composition and approved lockout equipment", () => {
+  it("an energized-electrical question keeps the NFPA 70E directive and gains the lockout one (F1)", () => {
+    const msg = "We use the red knob as our lockout on the gates. Can I measure voltage on the 480V feeder while energized?";
+    const t = matchSafetyStop(msg);
+    expect(t).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    const d = flagDirectiveFor(t!, msg);
+    expect(d).toContain("Qualified Person");
+    expect(d).toMatch(/NOT a\s+personnel\s+lockout/);
+  });
+
+  it("no addendum when the message has no improvised lockout", () => {
+    expect(flagDirectiveFor("safe to work", "Is it safe to work on the gate?")).not.toMatch(/personnel\s+lockout/);
+    expect(improvisedLockoutAddendum("Is it safe to work on the gate?", "safe to work")).toBe("");
+  });
+
+  it.each([
+    "We use a padlock on the approved disconnect as our lockout. How do I verify zero energy?",
+    "We use the main breaker as our lockout point with a personal lock.",
+    "Our procedure uses a lockable isolation point as the lockout for the air supply.",
+  ])("approved lockout equipment is not improvised (F5): %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+
+describe("#4114 review round 3: approved isolation valves are not improvised", () => {
+  it.each([
+    "We use the approved lockable isolation valve as our lockout, with a personal padlock. How do I verify zero energy?",
+    "We use the isolation valve as our lockout point and hang a padlock on it.",
+  ])("not flagged: %s", (q) => {
+    expect(matchSafetyStop(q)).not.toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "We use the control valve as our lockout on the gates.",
+    "Operators use the regulator as a lockout.",
+  ])("an ordinary control valve or regulator is still flagged: %s", (q) => {
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+});
+
+describe("#4114 review F6: the approved-equipment exception applies to the device used, not the sentence", () => {
+  it.each([
+    "We use the red knob as our lockout because the disconnect is broken.",
+    "We use the regulator as our lockout even though it is not approved.",
+    "We use a padlock on the stop button as our lockout.",
+    "We use a non-approved valve as our lockout.",
+  ])("an improvised device is flagged even with an approval word elsewhere: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(true);
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
+  });
+
+  it.each([
+    "We use the approved lockable isolation valve as our lockout, with a personal padlock.",
+    "We use the isolation valve as our lockout point and hang a padlock on it.",
+  ])("control: approved isolation equipment used as the lockout is still not improvised: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(false);
+  });
+});
+
+describe("#4114 review F6 (round 2): only an isolation valve is exempt, and only by its own name", () => {
+  it.each([
+    "We use the lockable stop button as our lockout.",
+    "We use the lockable regulator knob as our lockout.",
+    "Instead of isolation we use the knob as our lockout.",
+    "We use the approved lockable control valve as our lockout.",
+  ])("an improvised control is flagged whatever words sit near it: %s", (q) => {
+    expect(detectImprovisedLockout(q)).toBe(true);
+    expect(matchSafetyStop(q)).toBe(IMPROVISED_LOCKOUT);
   });
 });

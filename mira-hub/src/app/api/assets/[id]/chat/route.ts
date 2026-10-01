@@ -557,7 +557,7 @@ export async function POST(
 
   const systemPrompt = withStepSafety(withAnswerLanguage(
     appendManualContext(
-      safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag)}` : withMachineMemory,
+      safetyFlag ? `${withMachineMemory}\n\n${flagDirectiveFor(safetyFlag, lastUser.content)}` : withMachineMemory,
       manualChunks,
     ),
   ));
