@@ -22,8 +22,7 @@
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
-import { activeTraceId, setSpanAttrs } from "@/capabilities/observability/tracing";
-import { activeSpanIsRecording, captureActiveSpanLink, safeSpan } from "@/capabilities/observability/acquisition-spans";
+import type { SpanContext } from "@opentelemetry/api";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
@@ -522,6 +521,8 @@ export interface StartInput {
   notebookId: string;
   nodeId: string;
   identity: ConfirmedIdentity;
+  /** R15: the chat turn starting this search (see ManualAcquisitionInput). */
+  turnSpanContext?: SpanContext;
   /**
    * "candidate" starts the search for an identity the technician has not yet
    * confirmed (#4160 S6, PRD R2) — `identity` here is the SYNTHETIC
@@ -553,47 +554,29 @@ export async function startManualAcquisition(
   if (!gen) return false;
   const acquire = deps.acquire ?? acquireManualForIdentity;
   const startedAt = new Date().toISOString();
-  // R15: captured HERE, inside the chat turn, before the detached run below
-  // starts — the turn's own span may already have ended by the time this
-  // background run finishes, so the root span below is a NEW trace (root:
-  // true) carrying a LINK back to this trace/span, not a child of it.
-  const turnLink = captureActiveSpanLink();
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
-      out = await safeSpan(
-        "manual_acquisition.run",
-        {
-          "mira.acquisition.basis": basis,
-          "mira.acquisition.started_this_turn": turnLink !== undefined,
+      // R15: the run's root span is made inside acquireManualForIdentity,
+      // linked to `turnSpanContext` when a chat turn started it.
+      out = await acquire({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        notebookId: input.notebookId,
+        nodeId: input.nodeId,
+        identity: {
+          manufacturer: clean(input.identity.manufacturer) || undefined,
+          model: clean(input.identity.model) || undefined,
+          catalogNumber: clean(input.identity.catalogNumber) || undefined,
         },
-        async () => {
-          const result = await acquire({
-            tenantId: input.tenantId,
-            userId: input.userId,
-            notebookId: input.notebookId,
-            nodeId: input.nodeId,
-            identity: {
-              manufacturer: clean(input.identity.manufacturer) || undefined,
-              model: clean(input.identity.model) || undefined,
-              catalogNumber: clean(input.identity.catalogNumber) || undefined,
-            },
-            // Omitted entirely for the default "confirmed" basis — keeps the
-            // acquire() call payload byte-identical to pre-S6 for every existing
-            // (nameplate confirm + confirmed-identity notebook) caller.
-            ...(basis === "candidate" ? { basis } : {}),
-            writeSourceState: fencedWriter(key, gen, basis),
-            attach: fencedAttach(key, gen, basis),
-          });
-          try {
-            setSpanAttrs({ "mira.acquisition.outcome": result.status });
-          } catch (err) {
-            console.error("[manual-acquisition] span outcome attr failed:", err instanceof Error ? err.message : err);
-          }
-          return result;
-        },
-        { root: true, link: turnLink },
-      );
+        // Omitted entirely for the default "confirmed" basis — keeps the
+        // acquire() call payload byte-identical to pre-S6 for every existing
+        // (nameplate confirm + confirmed-identity notebook) caller.
+        ...(basis === "candidate" ? { basis } : {}),
+        ...(input.turnSpanContext ? { turnSpanContext: input.turnSpanContext } : {}),
+        writeSourceState: fencedWriter(key, gen, basis),
+        attach: fencedAttach(key, gen, basis),
+      });
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
       out = { status: "search_unavailable", payload: {} };
@@ -643,34 +626,14 @@ export async function runManualAcquisition(
   const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
-    // R15: this run is AWAITED. Inside a recording chat turn its span is simply
-    // a child of that turn. With no recording span (the nameplate-confirm route
-    // opens no mira.turn, and the sampler drops its framework request span) it
-    // is a root of its own, sampled at the turn ratio (Codex #4194 r2 F1).
-    const nested = activeSpanIsRecording();
-    out = await safeSpan(
-      "manual_acquisition.run",
-      {
-        "mira.acquisition.basis": input.basis ?? "confirmed",
-        "mira.acquisition.started_this_turn": activeTraceId() !== null,
-      },
-      async () => {
-        // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
-        // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
-        // exactly as the background runner does — so if the process dies after the
-        // attach commits but before `finish`, the stale-running recovery still
-        // knows what was attached and honors a removal instead of re-attaching
-        // (the r16 F22 invariant). The caller's own source writer stays.
-        const result = await acquire({ ...input, attach: fencedAttach(key, gen) });
-        try {
-          setSpanAttrs({ "mira.acquisition.outcome": result.status });
-        } catch (err) {
-          console.error("[manual-acquisition] span outcome attr failed:", err instanceof Error ? err.message : err);
-        }
-        return result;
-      },
-      nested ? {} : { root: true },
-    );
+    // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
+    // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
+    // exactly as the background runner does — so if the process dies after the
+    // attach commits but before `finish`, the stale-running recovery still
+    // knows what was attached and honors a removal instead of re-attaching
+    // (the r16 F22 invariant). The caller's own source writer stays.
+    // R15: the run's root span is made inside acquireManualForIdentity.
+    out = await acquire({ ...input, attach: fencedAttach(key, gen) });
   } catch (err) {
     console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);
     out = { status: "search_unavailable", payload: {} };

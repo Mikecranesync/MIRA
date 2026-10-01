@@ -33,29 +33,6 @@ export interface SpanLink {
   traceFlags: number;
 }
 
-/** Is a recording span active here? (Never throws.) An inline acquisition nests
- *  under a recording turn; with none — a confirm or create request, whose
- *  framework span the turn-only sampler dropped — it starts its own root. */
-export function activeSpanIsRecording(): boolean {
-  try {
-    return trace.getActiveSpan()?.isRecording() === true;
-  } catch {
-    return false;
-  }
-}
-
-/** The active (recording) span as a link target, captured where a detached run
- *  is started; undefined when there is none. Never throws. */
-export function captureActiveSpanLink(): SpanLink | undefined {
-  try {
-    const span = trace.getActiveSpan();
-    if (!span || !span.isRecording()) return undefined;
-    const c = span.spanContext();
-    return { traceId: c.traceId, spanId: c.spanId, traceFlags: c.traceFlags };
-  } catch {
-    return undefined;
-  }
-}
 
 export interface SafeSpanOptions {
   /**

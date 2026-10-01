@@ -27,6 +27,7 @@ import { ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from 
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import type { SpanContext } from "@opentelemetry/api";
 import { safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
 /** Manuals are big; 80 MB is generous for an OEM PDF and still bounded. */
@@ -88,6 +89,14 @@ export interface ManualAcquisitionInput {
    * confirm route's existing unconditional-writer behaviour, unchanged.
    */
   basis?: "confirmed" | "candidate";
+  /**
+   * R15: the chat turn that started this acquisition, passed EXPLICITLY (the
+   * chat route never activates its `mira.turn`). The run root links to it and
+   * follows its sampling decision — kept turn, kept run; dropped turn, dropped
+   * run. Absent for a standalone acquisition (nameplate confirm, notebook
+   * create), whose run root is sampled on its own at the turn ratio.
+   */
+  turnSpanContext?: SpanContext;
   /**
    * Write this notebook's source state for the discovered manual and return
    * what is ACTUALLY persisted afterwards: the written state, the untouched
@@ -172,7 +181,34 @@ async function chunksForDoc(
   }
 }
 
+/**
+ * R15: EVERY acquisition — chat background run, nameplate-confirm inline run,
+ * the confirm route's direct component search, notebook create — passes
+ * through here, so this is the one place its `manual_acquisition.run` root is
+ * made (Codex #4194 r3 F1/F5). Always a root of its own: never a child of an
+ * ambient framework span the turn-only sampler drops.
+ */
 export async function acquireManualForIdentity(input: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> {
+  const turn = input.turnSpanContext;
+  return safeSpan(
+    "manual_acquisition.run",
+    {
+      "mira.acquisition.basis": input.basis ?? "confirmed",
+      "mira.acquisition.started_this_turn": turn !== undefined,
+    },
+    async () => {
+      const out = await acquireInner(input);
+      setActiveSpanAttrs({ "mira.acquisition.outcome": out.status });
+      return out;
+    },
+    {
+      root: true,
+      link: turn ? { traceId: turn.traceId, spanId: turn.spanId, traceFlags: turn.traceFlags } : undefined,
+    },
+  );
+}
+
+async function acquireInner(input: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> {
   const { identity, notebookId } = input;
   const ctx = { tenantId: input.tenantId, userId: input.userId };
   const notebook = { nodeId: input.nodeId };
