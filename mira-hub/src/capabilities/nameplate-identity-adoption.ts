@@ -13,7 +13,7 @@
  * the recorded confirm-time manual search, its server-side recovery after a
  * limit or outage (#4160 S7), and OEM retrieval scoped to that model.
  *
- * The write is CONDITIONAL and atomic: it re-checks blankness in the WHERE, so a
+ * The write is CONDITIONAL and atomic (with its provenance — adoptNameplateIdentity): it re-checks blankness in the WHERE, so a
  * concurrent chat turn or edit that gave the notebook an identity first is never
  * overwritten (the caller then falls back to the unrecorded inline search).
  * Only maker, model and catalog number are adopted — never a serial number
@@ -47,33 +47,6 @@ export function isBlankUnboundNotebook(nb: NotebookShape): boolean {
 /** A nameplate identity worth adopting: a maker plus a model or catalog number. */
 export function isAdoptableIdentity(id: NameplateIdentity): boolean {
   return filled(id.manufacturer) && (filled(id.model) || filled(id.catalogNumber));
-}
-
-/** Atomically adopt the nameplate identity iff the notebook is still blank and
- *  unbound. Returns true only when the row was actually written. */
-export async function adoptNameplateIdentityIfBlank(
-  tenantId: string,
-  notebookId: string,
-  id: NameplateIdentity,
-): Promise<boolean> {
-  if (!isAdoptableIdentity(id)) return false;
-  const clean = (v: string | null | undefined) => (filled(v) ? v.trim() : null);
-  return withTenantContext(tenantId, async (c) => {
-    const res = await c.query(
-      `UPDATE equipment_notebooks
-          SET manufacturer = $3, model = $4, catalog_number = $5,
-              identity_status = 'user_confirmed', identity_source_type = 'nameplate_image',
-              updated_at = now()
-        WHERE tenant_id = $1::uuid AND id = $2::uuid
-          AND COALESCE(btrim(manufacturer), '') = ''
-          AND COALESCE(btrim(model), '') = ''
-          AND COALESCE(btrim(catalog_number), '') = ''
-          AND identity_status IN ('unknown', 'candidate')
-          AND equipment_entity_id IS NULL`,
-      [tenantId, notebookId, clean(id.manufacturer), clean(id.model), clean(id.catalogNumber)],
-    );
-    return (res.rowCount ?? 0) > 0;
-  });
 }
 
 // ── Codex #4191 F1: corrections of the adopting photo ─────────────────────────
@@ -118,47 +91,101 @@ export function isCorrectionOfAdoptedNameplate(
   return sameIdentity(nb, priorAdopted);
 }
 
-/** Atomically move an adopted identity to the corrected nameplate. */
-export async function readoptCorrectedNameplate(
-  tenantId: string,
-  notebookId: string,
-  previous: NameplateIdentity,
-  corrected: NameplateIdentity,
-): Promise<boolean> {
-  if (!isAdoptableIdentity(corrected)) return false;
-  const next = toIdentity(corrected);
-  const prev = toIdentity(previous);
-  return withTenantContext(tenantId, async (c) => {
-    const res = await c.query(
-      `UPDATE equipment_notebooks
-          SET manufacturer = $3, model = $4, catalog_number = $5, updated_at = now()
-        WHERE tenant_id = $1::uuid AND id = $2::uuid
-          AND identity_source_type = 'nameplate_image'
-          AND identity_status = 'user_confirmed'
-          AND NULLIF(btrim(manufacturer), '') IS NOT DISTINCT FROM $6
-          AND NULLIF(btrim(model), '') IS NOT DISTINCT FROM $7
-          AND NULLIF(btrim(catalog_number), '') IS NOT DISTINCT FROM $8
-          AND equipment_entity_id IS NULL`,
-      [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber, prev.manufacturer, prev.model, prev.catalogNumber],
-    );
-    return (res.rowCount ?? 0) > 0;
-  });
-}
+// ── Codex #4191 r2 F1: identity and provenance commit TOGETHER ───────────────
+// The notebook UPDATE and the provenance stamp run in ONE transaction. A stamp
+// that fails (or finds no source row) rolls the adoption back, so an identity
+// is never adopted without the provenance a later correction needs. The caller
+// sees a thrown error and reports it; nothing is half-written.
+//
+// Provenance is read from EVERY reading of the photo, superseded ones included
+// (findAdoptedIdentityForPhoto). An edited re-confirm supersedes the stamped
+// reading before it re-adopts; if that re-adoption then fails, the retry still
+// finds the stamp on the superseded row and recognises the correction. Each
+// stamp is written in the same transaction as its adoption, so the newest stamp
+// is the identity this photo last gave the notebook.
 
-/** Stamp the adopted identity on the nameplate source row it came from. Best
- *  effort: a missing stamp only means a later correction is not recognised. */
-export async function stampAdoptionProvenance(
+export type AdoptionRequest =
+  | { kind: "blank"; identity: NameplateIdentity }
+  | { kind: "correction"; previous: NameplateIdentity; identity: NameplateIdentity };
+
+export class AdoptionProvenanceError extends Error {}
+
+/** Atomically adopt (blank notebook) or re-adopt (correction of the adopting
+ *  photo) and stamp the provenance on `nameplateDocId`'s source row. Returns
+ *  false when the conditional write lost (the notebook changed meanwhile);
+ *  throws — with nothing committed — when the provenance cannot be recorded. */
+export async function adoptNameplateIdentity(
   tenantId: string,
   notebookId: string,
   nameplateDocId: string,
-  id: NameplateIdentity,
-): Promise<void> {
-  await withTenantContext(tenantId, async (c) => {
-    await c.query(
+  req: AdoptionRequest,
+): Promise<boolean> {
+  if (!isAdoptableIdentity(req.identity)) return false;
+  const next = toIdentity(req.identity);
+  return withTenantContext(tenantId, async (c) => {
+    const res =
+      req.kind === "blank"
+        ? await c.query(
+            `UPDATE equipment_notebooks
+                SET manufacturer = $3, model = $4, catalog_number = $5,
+                    identity_status = 'user_confirmed', identity_source_type = 'nameplate_image',
+                    updated_at = now()
+              WHERE tenant_id = $1::uuid AND id = $2::uuid
+                AND COALESCE(btrim(manufacturer), '') = ''
+                AND COALESCE(btrim(model), '') = ''
+                AND COALESCE(btrim(catalog_number), '') = ''
+                AND identity_status IN ('unknown', 'candidate')
+                AND equipment_entity_id IS NULL`,
+            [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber],
+          )
+        : await (() => {
+            const prev = toIdentity(req.previous);
+            return c.query(
+              `UPDATE equipment_notebooks
+                  SET manufacturer = $3, model = $4, catalog_number = $5, updated_at = now()
+                WHERE tenant_id = $1::uuid AND id = $2::uuid
+                  AND identity_source_type = 'nameplate_image'
+                  AND identity_status = 'user_confirmed'
+                  AND NULLIF(btrim(manufacturer), '') IS NOT DISTINCT FROM $6
+                  AND NULLIF(btrim(model), '') IS NOT DISTINCT FROM $7
+                  AND NULLIF(btrim(catalog_number), '') IS NOT DISTINCT FROM $8
+                  AND equipment_entity_id IS NULL`,
+              [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber, prev.manufacturer, prev.model, prev.catalogNumber],
+            );
+          })();
+    if ((res.rowCount ?? 0) === 0) return false;
+    const stamp = await c.query(
       `UPDATE equipment_notebook_sources
           SET match_evidence = COALESCE(match_evidence, '{}'::jsonb) || jsonb_build_object('adopted_identity', $4::jsonb)
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
-      [tenantId, notebookId, nameplateDocId, JSON.stringify(toIdentity(id))],
+      [tenantId, notebookId, nameplateDocId, JSON.stringify(next)],
     );
+    if ((stamp.rowCount ?? 0) === 0) {
+      // Throwing rolls the identity UPDATE back with it (one transaction).
+      throw new AdoptionProvenanceError(`no nameplate source row ${nameplateDocId} to stamp`);
+    }
+    return true;
+  });
+}
+
+/** The identity this photo most recently gave the notebook, read across ALL of
+ *  its readings (superseded included), or null when it never adopted one. */
+export async function findAdoptedIdentityForPhoto(
+  tenantId: string,
+  notebookId: string,
+  originFileId: string,
+): Promise<NameplateIdentity | null> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT match_evidence
+         FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND origin_file_id = $3::uuid
+          AND match_evidence ? 'adopted_identity'
+        ORDER BY created_at DESC, doc_id DESC
+        LIMIT 1`,
+      [tenantId, notebookId, originFileId],
+    );
+    return adoptedIdentityFromEvidence(res.rows?.[0]?.match_evidence);
   });
 }

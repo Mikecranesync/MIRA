@@ -41,13 +41,11 @@ import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-i
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import {
-  adoptNameplateIdentityIfBlank,
-  adoptedIdentityFromEvidence,
+  adoptNameplateIdentity,
+  findAdoptedIdentityForPhoto,
   isAdoptableIdentity,
   isBlankUnboundNotebook,
   isCorrectionOfAdoptedNameplate,
-  readoptCorrectedNameplate,
-  stampAdoptionProvenance,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
@@ -541,8 +539,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   };
 
   // #4178: set when this confirm adopted the nameplate as a BLANK notebook's
-  // identity (see adoptNameplateIdentityIfBlank) — reported so a client can say so.
+  // identity (see adoptNameplateIdentity) — reported so a client can say so.
   let identityAdopted = false;
+  // Codex #4191 r2 F1: the adoption threw (nothing committed) — reported so the
+  // client can offer a retry instead of the technician silently losing it.
+  let identityAdoptionFailed = false;
   const respond = (
     status: ConfirmStatus,
     extra: Record<string, unknown> = {},
@@ -551,6 +552,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ok: true,
       status,
       ...(identityAdopted ? { identityAdopted: true } : {}),
+      ...(identityAdoptionFailed ? { identityAdoptionFailed: true } : {}),
       notebookId,
       nameplate,
       // Slice 2: how many persisted visual observations this confirm promoted to
@@ -596,21 +598,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Codex #4191 F1: a correction of the SAME photo that adopted the identity
   // (its prior reading carries the provenance stamp, and the notebook still
   // holds exactly that identity, unbound) moves the adopted identity with it.
-  const priorAdopted = adoptedIdentityFromEvidence(existingOrigin?.matchEvidence);
+  // Codex #4191 r2 F1: identity + provenance commit in one transaction, and the
+  // provenance is read across every reading of this photo (superseded included),
+  // so a correction whose earlier attempt failed after its supersede still
+  // re-adopts on retry. A failure is reported, never silently dropped.
   try {
-    if (isBlankUnboundNotebook(notebook) && isAdoptableIdentity(identity)) {
-      identityAdopted = await adoptNameplateIdentityIfBlank(ctx.tenantId, notebookId, identity);
-    } else if (isCorrectionOfAdoptedNameplate(notebook, priorAdopted) && isAdoptableIdentity(identity)) {
-      identityAdopted = await readoptCorrectedNameplate(ctx.tenantId, notebookId, priorAdopted!, identity);
-    }
-    if (identityAdopted && nameplateDocId) {
-      await stampAdoptionProvenance(ctx.tenantId, notebookId, nameplateDocId, identity).catch((err) =>
-        console.error(
-          `[nameplate-confirm] adoption provenance stamp failed notebook=${notebookId}: ${(err as Error).message}`,
-        ),
-      );
+    if (nameplateDocId && isAdoptableIdentity(identity)) {
+      if (isBlankUnboundNotebook(notebook)) {
+        identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, nameplateDocId, {
+          kind: "blank",
+          identity,
+        });
+      } else {
+        const priorAdopted = await findAdoptedIdentityForPhoto(ctx.tenantId, notebookId, fileId);
+        if (isCorrectionOfAdoptedNameplate(notebook, priorAdopted)) {
+          identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, nameplateDocId, {
+            kind: "correction",
+            previous: priorAdopted!,
+            identity,
+          });
+        }
+      }
     }
   } catch (err) {
+    identityAdoptionFailed = true;
     console.error(`[nameplate-confirm] identity adoption failed notebook=${notebookId}: ${(err as Error).message}`);
   }
 

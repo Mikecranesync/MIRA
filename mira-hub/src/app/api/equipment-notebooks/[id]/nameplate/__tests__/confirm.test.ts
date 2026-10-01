@@ -1711,7 +1711,7 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
     } as never);
   /** A tenant-context client. `claim` is "won" (gen g1) per mode: always, never (a live
    *  running search), or only for an EXPLICIT confirmation ($7 true — a terminal record). */
-  const lifecycleDb = (mode: "wins" | "running" | "terminal") => {
+  const lifecycleDb = (mode: "wins" | "running" | "terminal", adoptedStamp?: Record<string, unknown>) => {
     const queries: { sql: string; params: unknown[] }[] = [];
     const impl = async (_t: string, fn: (c: unknown) => unknown) =>
       fn({
@@ -1722,6 +1722,8 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
             return { rowCount: wins ? 1 : 0, rows: wins ? [{ gen: "g1" }] : [] };
           }
           if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
+          if (/\? 'adopted_identity'/.test(sql))
+            return { rows: adoptedStamp ? [{ match_evidence: { adopted_identity: adoptedStamp } }] : [] };
           return { rowCount: 1, rows: [] };
         }),
       });
@@ -1889,8 +1891,7 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       it("same photo, adopted from it, untouched since → re-adopts the correction and records ITS search", async () => {
         await withFlag(true, async () => {
           adopted();
-          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
-          const queries = lifecycleDb("wins");
+          const queries = lifecycleDb("wins", ADOPTED);
           vi.mocked(discoverManual).mockResolvedValue(limited() as never);
           const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
           const r = readoption(queries);
@@ -1919,8 +1920,7 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       it("control: an intervening manual edit (identity no longer the adopted one) never re-adopts", async () => {
         await withFlag(true, async () => {
           adopted({ model: "526" });
-          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
-          const queries = lifecycleDb("wins");
+          const queries = lifecycleDb("wins", ADOPTED);
           vi.mocked(discoverManual).mockResolvedValue(limited() as never);
           await POST(correct(), makeParams(NOTEBOOK_ID));
           expect(readoption(queries)).toBeUndefined();
@@ -1930,11 +1930,105 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       it("control: a notebook bound to an asset since the adoption never re-adopts", async () => {
         await withFlag(true, async () => {
           adopted({ asset: { entityId: ASSET_UUID } });
-          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
-          const queries = lifecycleDb("wins");
+          const queries = lifecycleDb("wins", ADOPTED);
           vi.mocked(discoverManual).mockResolvedValue(limited() as never);
           await POST(correct(), makeParams(NOTEBOOK_ID));
           expect(readoption(queries)).toBeUndefined();
+        });
+      });
+    });
+
+    // Codex #4191 r2 F1: identity and provenance commit together. Each
+    // withTenantContext call is one transaction; a fault in the stamp must
+    // abort that SAME transaction so the identity never commits without it.
+    describe("Codex #4191 r2 F1 — adoption and provenance are one transaction", () => {
+      /** Tenant contexts tagged by call; `stamp` decides the provenance UPDATE's fate. */
+      const txDb = (stamp: "ok" | "no_row" | "throws", adoptedStamp?: Record<string, unknown>) => {
+        const queries: { sql: string; params: unknown[]; tx: number }[] = [];
+        const rolledBack = new Set<number>();
+        let tx = 0;
+        vi.mocked(withTenantContext).mockImplementation((async (_t: string, fn: (c: unknown) => unknown) => {
+          const id = ++tx;
+          const client = {
+            query: vi.fn(async (sql: string, params: unknown[]) => {
+              queries.push({ sql, params, tx: id });
+              if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: 1, rows: [{ gen: "g1" }] };
+              if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
+              if (/\? 'adopted_identity'/.test(sql))
+                return { rows: adoptedStamp ? [{ match_evidence: { adopted_identity: adoptedStamp } }] : [] };
+              if (/UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(sql)) {
+                if (stamp === "throws") throw new Error("connection reset");
+                return { rowCount: stamp === "no_row" ? 0 : 1, rows: [] };
+              }
+              return { rowCount: 1, rows: [] };
+            }),
+          };
+          try {
+            return await fn(client);
+          } catch (err) {
+            rolledBack.add(id); // withTenantContext ROLLBACKs the whole callback
+            throw err;
+          }
+        }) as never);
+        return { queries, rolledBack };
+      };
+      const committedIdentityWrite = (db: ReturnType<typeof txDb>) =>
+        db.queries.find(
+          (q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'/.test(q.sql) && !db.rolledBack.has(q.tx),
+        );
+
+      it("the identity UPDATE and the provenance stamp run in the SAME transaction", async () => {
+        await withFlag(true, async () => {
+          blank();
+          const db = txDb("ok");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+          const id = committedIdentityWrite(db)!;
+          const stamp = db.queries.find((q) => /UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(q.sql))!;
+          expect(id).toBeDefined();
+          expect(stamp.tx).toBe(id.tx);
+          expect(body.identityAdopted).toBe(true);
+        });
+      });
+
+      for (const fault of ["no_row", "throws"] as const) {
+        it(`a provenance fault (${fault}) rolls the adoption back, reports it, and keeps the search inline`, async () => {
+          await withFlag(true, async () => {
+            blank();
+            const db = txDb(fault);
+            vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+            const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+            expect(committedIdentityWrite(db)).toBeUndefined(); // nothing half-written
+            expect(body.identityAdopted).toBeUndefined();
+            expect(body.identityAdoptionFailed).toBe(true);
+            expect(body.status).toBe("search_limit_reached"); // the technician is still answered
+            expect(db.queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))).toBe(false);
+          });
+        });
+      }
+
+      it("recovery: a correction whose stamped reading was already superseded still re-adopts on retry", async () => {
+        await withFlag(true, async () => {
+          vi.mocked(getNotebook).mockResolvedValue({
+            ...(notebook as object),
+            manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104",
+            identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
+          } as never);
+          // The visible reading is the NEW, unstamped one (the stamped one was superseded
+          // by the failed attempt); the stamp survives on the superseded row.
+          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "new-doc", matchEvidence: {} } as never);
+          const db = txDb("ok", { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (
+            await POST(
+              makeReq({ ...baseBody, identity: { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" } }),
+              makeParams(NOTEBOOK_ID),
+            )
+          ).json();
+          const lookup = db.queries.find((q) => /\? 'adopted_identity'/.test(q.sql))!;
+          expect(lookup.sql).not.toMatch(/superseded_at IS NULL/); // reads superseded readings too
+          expect(committedIdentityWrite(db)!.params).toEqual(expect.arrayContaining(["755", "525"]));
+          expect(body.identityAdopted).toBe(true);
         });
       });
     });
