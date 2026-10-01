@@ -304,7 +304,7 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * different confirmed identity is not this search's owner, same as
  * "confirmed" basis). A candidate-basis write never enables a source UNLESS,
  * at this exact instant, the notebook turns out to already be confirmed to
- * the matching key (the common race: the technician taps "Use its manuals"
+ * the matching key (the common race: the technician confirms the identity
  * before the search finishes) — then it promotes using the REAL applicability
  * verdict this write carries (`candidateApplicability`, stamped by
  * manual-acquisition.ts), exactly as a "confirmed" write would. Otherwise it
@@ -625,11 +625,14 @@ export async function reconcileAcquisition(
 /**
  * `basis` (#4160 S6, default "confirmed" — unchanged copy below): for
  * "candidate" the technician has not yet accepted this identity, so the
- * running/candidate_review/complete copy asks for the SAME confirmation the
- * `identity_proposal` frame already offers ("Use its manuals") rather than
- * directing them to Sources, which they cannot usefully act on for an
- * identity that isn't theirs to turn on yet (PRD R16-lite). Every other
- * state (no manual found, a limit, a scanned PDF, …) is an honest fact
+ * running / promotable-candidate copy says the search is on and that the
+ * manual answers once THIS notebook is confirmed as that machine (migration
+ * 104 promotes on any such confirmation) — rather than directing them to
+ * Sources, which they cannot usefully act on for an identity that isn't
+ * theirs to turn on yet (PRD R16-lite). It names NO button: no shipping
+ * client renders the `identity_proposal` frame or offers a chat-side confirm
+ * yet (Codex #4172 post-cap 13 F13; the client half is #4095 / #3626). Every
+ * other state (no manual found, a limit, a scanned PDF, …) is an honest fact
  * independent of confirmation and keeps the shared copy below.
  */
 export function acquisitionDeclineText(
@@ -645,14 +648,14 @@ export function acquisitionDeclineText(
   if (basis === "candidate") {
     switch (rec.state) {
       case "running":
-        return `I'm looking for the official ${label} manual now. Tap "Use its manuals" to confirm this is your part — I'll answer from the manual once you do.`;
+        return `I'm looking for the official ${label} manual now. Once this notebook is confirmed as that machine, I'll answer from the manual and show you the page.`;
       case "candidate_review":
         // Codex post-cap 4 F9 (#4172): promise "confirm and I'll answer from it"
         // ONLY when confirming will actually promote an attached, verified
         // document. Otherwise the shared copy below gives the real next step
         // (check it in Sources, or the URL and the upload instruction).
         if (rec.promotes_on_confirm) {
-          return `I found the official ${label} manual. Tap "Use its manuals" to confirm this is your part, and I'll answer from it and show you the page.`;
+          return `I found the official ${label} manual. Once this notebook is confirmed as that machine, I'll answer from it and show you the page.`;
         }
         break;
       // "complete" (Codex post-cap 6 F11): a cached complete record can outlive a

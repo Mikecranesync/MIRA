@@ -768,7 +768,7 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
-    it("strict: a typed corpus proposal alone still offers 'Use its manuals' but never auto-searches", async () => {
+    it("strict: a typed corpus proposal alone still emits the identity_proposal frame but never auto-searches", async () => {
       domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
       filesMock.photoLinkedToTarget.mockResolvedValue(null as never);
       acqMock.acquisitionEnabled.mockReturnValue(true);

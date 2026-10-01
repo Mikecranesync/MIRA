@@ -2489,8 +2489,9 @@ async function handleChatTurn(
         ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),
         // Codex r1 F1 (#4172, HIGH) — the identity_proposal entry is what the
         // client's later confirm/reject PATCH is checked against, and what a
-        // history reload needs to render the same "Use its manuals" chip the
-        // live turn showed. Persisted on EVERY reply path, abstention included.
+        // history reload needs to render the same proposal the live turn
+        // carried (once a client renders it — #4095). Persisted on EVERY reply
+        // path, abstention included.
         ...proposalEntries,
       ],
       model: null,
@@ -3795,8 +3796,9 @@ async function handleChatTurn(
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
-      // #4095 — the proposal rides next to the answer; the client offers
-      // "Use its manuals" / "Not this". Emitted whatever the answer status.
+      // #4095 — the proposal rides next to the answer for a client that
+      // renders it (none ships that yet; unknown frames are ignored). Emitted
+      // whatever the answer status.
       if (identityProposal) {
         const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
         controller.enqueue(enc.encode(sse(proposalFrame)));

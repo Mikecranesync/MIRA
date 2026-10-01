@@ -249,7 +249,8 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
     const sentBody = JSON.parse((call[1] as RequestInit).body as string);
     const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
-    expect(systemMsg?.content).toMatch(/Use its manuals/);
+    expect(systemMsg?.content).toMatch(/once this notebook is confirmed as that machine/i);
+    expect(systemMsg?.content).not.toMatch(/Use its manuals/);
     expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
   });
 });

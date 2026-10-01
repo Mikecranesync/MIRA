@@ -5,9 +5,11 @@
  * A technician types into an empty notebook: "Find the manual for this
  * Allen-Bradley SLC 5/03 …". MIRA may PROPOSE that machine; it never binds it,
  * never scopes retrieval to it on this turn, and never answers as if it were
- * confirmed. The client offers "Use its manuals" / "Not this"; confirming binds
- * the notebook through the existing PATCH, and the existing identity-bound path
- * (and #4075's manual acquisition) takes over from there.
+ * confirmed. A client that renders the frame may offer "Use its manuals" /
+ * "Not this" (the client half is #4095 / #3626 — none ships it yet, so server
+ * copy never names that button); confirming binds the notebook through the
+ * existing PATCH, and the existing identity-bound path (and #4075's manual
+ * acquisition) takes over from there.
  *
  * Rules (owner decisions 2026-09-28 and 2026-09-29):
  *  - The manufacturer must be one the shared library holds (corpus list), named
