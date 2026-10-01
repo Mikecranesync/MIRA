@@ -27,19 +27,13 @@ class Provider(Protocol):
 
 class UnknownModelError(Exception):
     """An unpriced model was requested. Cost-invisible spend is banned —
-    add the rate to `_PRICE_TABLE_PER_MTOK` before running it for real."""
+    pass explicit $/Mtok rates before running it for real."""
 
 
-# Illustrative rates ($ / million tokens) — verify against the live OpenAI
-# price list before any real spend. The zero-token rule only requires these
-# be EXPLICIT (never cost-invisible), not that they track a moving public
-# price list; `providers.py`'s own tests never make a network call.
-_PRICE_TABLE_PER_MTOK: dict[str, dict[str, float]] = {
-    "gpt-4o": {"in": 2.50, "out": 10.00},
-    "gpt-4o-mini": {"in": 0.15, "out": 0.60},
-    "gpt-4.1": {"in": 2.00, "out": 8.00},
-    "gpt-4.1-mini": {"in": 0.40, "out": 1.60},
-}
+# No built-in price table: a hard-coded rate goes stale silently and makes the
+# ledger lie. The operator passes the current $/Mtok rates explicitly (runner
+# flags --judge-price-in/--judge-price-out etc.); without them the provider
+# refuses to construct, so spend can never be cost-invisible.
 
 
 class OpenAIProvider:
@@ -50,14 +44,18 @@ class OpenAIProvider:
         self,
         model: str,
         api_key: str | None = None,
+        price_in_per_mtok: float | None = None,
+        price_out_per_mtok: float | None = None,
         base_url: str = "https://api.openai.com/v1",
         timeout: int = 90,
     ):
-        if model not in _PRICE_TABLE_PER_MTOK:
+        if price_in_per_mtok is None or price_out_per_mtok is None:
             raise UnknownModelError(
-                f"no price entry for model {model!r} — add one to _PRICE_TABLE_PER_MTOK "
-                "before running it (cost-invisible spend is banned)"
+                f"no $/Mtok rates given for model {model!r} — pass the current input and "
+                "output prices explicitly (cost-invisible spend is banned)"
             )
+        self.price_in_per_mtok = float(price_in_per_mtok)
+        self.price_out_per_mtok = float(price_out_per_mtok)
         self.model = model
         self.name = "openai"
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
@@ -98,8 +96,10 @@ class OpenAIProvider:
         return text, {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}
 
     def est_cost(self, in_tokens: int, out_tokens: int) -> float:
-        rates = _PRICE_TABLE_PER_MTOK[self.model]
-        return in_tokens / 1_000_000 * rates["in"] + out_tokens / 1_000_000 * rates["out"]
+        return (
+            in_tokens / 1_000_000 * self.price_in_per_mtok
+            + out_tokens / 1_000_000 * self.price_out_per_mtok
+        )
 
 
 @dataclass

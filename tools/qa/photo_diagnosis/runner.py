@@ -181,6 +181,25 @@ def mira_turn(
     return row, p, w
 
 
+def _contract_record(row: Any, w: dict) -> dict:
+    """Keep what `common_checks` found — a contract failure must reach the report.
+
+    Citation SUPPORT cannot be graded from this transport: the SSE `sources`
+    frame the Hub client summarizes carries a citation count, not the cited
+    chunk text. Record that honestly instead of guessing (spec: never infer).
+    """
+    return {
+        "passed": row.passed,
+        "failed": [name for name, ok, _ in row.checks if not ok],
+        "trace_id": row.trace_id,
+        "basis": w.get("basis"),
+        "citations": w.get("citations", 0),
+        "citation_support": (
+            "citation_text_unavailable" if w.get("citations", 0) else "no_citations"
+        ),
+    }
+
+
 def _resolve_source(raw: str, case_file: Path) -> Path:
     p = Path(raw)
     return p if p.is_absolute() else (case_file.parent / p)
@@ -223,7 +242,7 @@ def run_diagnosis_case(
     while turn_index < case.get("max_turns", schema.DEFAULT_MAX_TURNS):
         turn_index += 1
         try:
-            _row, p, w = mira_turn(
+            row, p, w = mira_turn(
                 hub,
                 ra,
                 nb["id"],
@@ -238,6 +257,7 @@ def run_diagnosis_case(
             status, reason = "error", f"mira turn failed: {e}"
             break
         ledger.record_manual_search_from_packet(p)
+        contract = _contract_record(row, w)
         mira_reply = w["content"]
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": mira_reply})
@@ -247,9 +267,12 @@ def run_diagnosis_case(
                 judge, list(history[:-1]), list(revealed_texts), case.get("visible_facts") or []
             )
             tg["turn"] = turn_index
+            tg["contract"] = contract
             turn_grades.append(tg)
         except grading.GraderError as e:
-            turn_grades.append({"turn": turn_index, "status": "ungraded", "reason": str(e)})
+            turn_grades.append(
+                {"turn": turn_index, "status": "ungraded", "reason": str(e), "contract": contract}
+            )
 
         if sim.stopped:
             break
@@ -303,7 +326,7 @@ def run_qa_case(
     answers: list[dict] = []
     for i, q in enumerate(case.get("questions") or []):
         try:
-            _row, p, w = mira_turn(
+            row, p, w = mira_turn(
                 hub,
                 ra,
                 nb["id"],
@@ -317,8 +340,9 @@ def run_qa_case(
             continue
         ledger.record_manual_search_from_packet(p)
         graded = grading.qa_grade(w["content"], q)
+        graded["contract"] = _contract_record(row, w)
         if q.get("requires_citation") and w.get("citations", 0) == 0:
-            graded["citation_text_unavailable"] = True
+            graded["citation_missing"] = True
         answers.append({"q": q["q"], **graded})
 
     return {
@@ -410,6 +434,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--baseline-model", default=os.environ.get("PHOTO_BENCH_BASELINE_MODEL", "gpt-4o")
     )
+    for arm in ("judge", "baseline"):
+        for side in ("in", "out"):
+            env = os.environ.get(f"PHOTO_BENCH_{arm.upper()}_PRICE_{side.upper()}")
+            ap.add_argument(
+                f"--{arm}-price-{side}",
+                type=float,
+                default=float(env) if env else None,
+                help=f"current {arm} {side}put price, $ per million tokens (required for a live run)",
+            )
     ap.add_argument("--manual-search-cap", type=int, default=budget_mod.DEFAULT_MANUAL_SEARCH_CAP)
     ap.add_argument("--verbose", action="store_true")
     return ap
@@ -434,12 +467,20 @@ def main(argv: list[str] | None = None) -> int:
     ra = load_retrieval_acceptance()
     hub = ra.Hub(args.base, args.cookie)
     ledger = budget_mod.Ledger(args.budget_usd, manual_search_cap=args.manual_search_cap)
-    judge = providers_mod.OpenAIProvider(args.judge_model)
+    judge = providers_mod.OpenAIProvider(
+        args.judge_model,
+        price_in_per_mtok=args.judge_price_in,
+        price_out_per_mtok=args.judge_price_out,
+    )
     metered_judge = budget_mod.MeteredProvider(judge, ledger)
     classifier = simulator_mod.make_llm_classifier(metered_judge)
     baseline = None
     if not args.no_baseline:
-        baseline_provider = providers_mod.OpenAIProvider(args.baseline_model)
+        baseline_provider = providers_mod.OpenAIProvider(
+            args.baseline_model,
+            price_in_per_mtok=args.baseline_price_in,
+            price_out_per_mtok=args.baseline_price_out,
+        )
         baseline = budget_mod.MeteredProvider(baseline_provider, ledger)
 
     valid, errors = schema.load_cases(cases_dir)

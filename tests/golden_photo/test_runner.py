@@ -224,3 +224,17 @@ def test_hermetic_tests_never_touch_a_real_socket(monkeypatch):
     fake = FakeProvider(responses=['{"H": true}'])
     ledger.call(fake, [{"role": "user", "content": "hi"}], max_tokens=10)
     assert fake.calls == 1
+
+
+def test_contract_record_keeps_failed_checks_and_marks_citation_text_unavailable():
+    ra = runner.load_retrieval_acceptance()
+    row = ra.Row("x")
+    row.check("passes", True)
+    row.check("badge truthful", False, "oem without citation")
+    rec = runner._contract_record(row, {"citations": 2, "basis": "oem_documentation"})
+    assert rec["passed"] is False
+    assert rec["failed"] == ["badge truthful"]
+    assert rec["citation_support"] == "citation_text_unavailable"
+    assert (
+        runner._contract_record(ra.Row("y"), {"citations": 0})["citation_support"] == "no_citations"
+    )

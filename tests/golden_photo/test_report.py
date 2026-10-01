@@ -124,3 +124,22 @@ def test_report_privacy_destinations_line_present():
     assert "the staging tenant" in text
     assert "the pinned judge provider" in text
     assert "the baseline provider" in text
+
+
+def test_contract_failures_from_common_checks_reach_the_report():
+    results = [
+        {
+            "case_id": "c1",
+            "repeat": 0,
+            "arm": "mira",
+            "status": "completed",
+            "turn_grades": [
+                {
+                    "turn": 2,
+                    "contract": {"passed": False, "failed": ["badge truthful"], "trace_id": "t-9"},
+                }
+            ],
+        }
+    ]
+    md = render_report(results, {}, {})
+    assert "c1 repeat 0 turn 2: badge truthful (trace t-9)" in md

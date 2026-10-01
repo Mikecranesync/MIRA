@@ -176,6 +176,15 @@ def test_summary_shape():
 # Zero-token rule — an unpriced model refuses to run, no network triggered
 
 
-def test_openai_provider_unknown_model_refuses_before_any_network_call():
+def test_openai_provider_without_explicit_prices_refuses_before_any_network_call():
     with pytest.raises(UnknownModelError):
-        OpenAIProvider("totally-unpriced-model-xyz", api_key="sk-test-not-real")
+        OpenAIProvider("any-model", api_key="sk-test-not-real")
+    with pytest.raises(UnknownModelError):
+        OpenAIProvider("any-model", api_key="sk-test-not-real", price_in_per_mtok=1.0)
+
+
+def test_openai_provider_cost_uses_the_operator_rates():
+    p = OpenAIProvider(
+        "any-model", api_key="sk-test-not-real", price_in_per_mtok=2.0, price_out_per_mtok=8.0
+    )
+    assert p.est_cost(1_000_000, 500_000) == pytest.approx(6.0)

@@ -115,6 +115,26 @@ def _ungraded_block(results: list[dict]) -> list[str]:
     return lines
 
 
+def _contract_block(results: list[dict]) -> list[str]:
+    """Grounding-contract failures from `common_checks`, per turn/answer."""
+    lines = ["## Grounding-contract failures (common_checks)"]
+    found = []
+    for r in results:
+        for item in (r.get("turn_grades") or []) + (r.get("answers") or []):
+            c = item.get("contract") or {}
+            if c and not c.get("passed", True):
+                where = (
+                    f"turn {item['turn']}" if "turn" in item else f"q: {item.get('q', '?')[:60]}"
+                )
+                found.append(
+                    f"- {r.get('case_id', '?')} repeat {r.get('repeat', '?')} {where}: "
+                    f"{', '.join(c.get('failed') or [])} (trace {c.get('trace_id')})"
+                )
+    lines += found or ["None."]
+    lines.append("")
+    return lines
+
+
 def _privacy_block(header: dict[str, Any]) -> list[str]:
     destinations = header.get(
         "privacy_destinations",
@@ -138,6 +158,7 @@ def render_report(
     lines += _outcomes_table(results)
     lines += _metric_rates_block(results)
     lines += _comparator_block(results)
+    lines += _contract_block(results)
     lines += _ungraded_block(results)
     lines += _privacy_block(header)
     return "\n".join(lines)
