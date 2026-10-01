@@ -1,8 +1,10 @@
 import type {
   Attachment,
+  ConfirmIdentityResult,
   ConversionIntent,
   ProjectNode,
   ContextSnapshot,
+  IdentityProposal,
   InteractionPart,
   InteractionTurn,
   Lifecycle,
@@ -112,6 +114,21 @@ export interface HostHooks {
    * surface. Absent = plain paragraph.
    */
   readonly renderText?: (text: string, turn: InteractionTurn) => ReactNode;
+  /**
+   * Confirm a machine MIRA proposed from free text (#4120/#4175): "Use its
+   * manuals". The host PATCHes the notebook's identity server-side and
+   * resolves with the server's outcome — never a client-side guess. Rendered
+   * only when provided; without a host to confirm against, the button is
+   * honestly disabled (same discipline as `onNewChat`/`onCreateProject`).
+   */
+  readonly onConfirmIdentity?: (proposal: IdentityProposal) => Promise<ConfirmIdentityResult>;
+  /**
+   * Reject a proposed identity: "Not this". Purely a local dismissal — the
+   * contract is "no identity write" (T2 acceptance #2), so this is OPTIONAL
+   * telemetry for the host, never a precondition for the button: "Not this"
+   * always works, even without a host.
+   */
+  readonly onRejectIdentity?: (proposal: IdentityProposal) => void;
   readonly busy?: boolean;
 }
 
@@ -265,6 +282,76 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
           : null}
     </div>
   </Card>;
+}
+
+/**
+ * "Is this an {manufacturer} {model}?" — the confirm card for a machine MIRA
+ * proposed from free text (#4120/#4175). Two buttons:
+ *  - "Use its manuals" calls `hooks.onConfirmIdentity`, which sets the
+ *    notebook's identity server-side; migration 104 promotes a matching
+ *    candidate manual ONLY if its applicability was already verified. The
+ *    card then shows the server's own outcome — never a guess.
+ *  - "Not this" is a pure local dismissal (no identity write, ever); it
+ *    always works, with or without a host, and only optionally tells the
+ *    host via `onRejectIdentity` (telemetry, not a precondition).
+ * Buttons are plain `<button>` inside `.fl-card__actions`, so the shell's
+ * `.fl-shell button` rule (min 44px) applies without bespoke CSS.
+ */
+function IdentityProposalPart({
+  part,
+  hooks,
+}: {
+  readonly part: Extract<InteractionPart, { type: "identity_proposal" }>;
+  readonly hooks?: HostHooks;
+}) {
+  const [outcome, setOutcome] = useState<"confirmed" | "rejected" | "failed" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ConfirmIdentityResult | null>(null);
+  const proposal: IdentityProposal = {
+    manufacturer: part.manufacturer,
+    model: part.model,
+    ...(part.catalogNumber ? { catalogNumber: part.catalogNumber } : {}),
+  };
+  const name = `${part.manufacturer} ${part.model}`;
+  const confirm = () => {
+    if (busy || outcome || !hooks?.onConfirmIdentity) return;
+    setBusy(true);
+    hooks
+      .onConfirmIdentity(proposal)
+      .then((r) => { setResult(r); setOutcome("confirmed"); })
+      .catch(() => setOutcome("failed"))
+      .finally(() => setBusy(false));
+  };
+  const reject = () => {
+    if (busy || outcome) return;
+    hooks?.onRejectIdentity?.(proposal);
+    setOutcome("rejected");
+  };
+  return <Card type="identity_proposal" label="Machine identity" title={`Is this a ${name}?`}>
+    {outcome === null ? <div className="fl-card__actions">
+      <button
+        type="button"
+        aria-busy={busy}
+        disabled={busy || !hooks?.onConfirmIdentity}
+        title={hooks?.onConfirmIdentity ? undefined : "Confirming isn't available on this surface yet"}
+        onClick={confirm}
+      >
+        Use its manuals
+      </button>
+      <button type="button" disabled={busy} onClick={reject}>Not this</button>
+    </div> : outcome === "confirmed" ? <p role="status" className="fl-card__meta">
+      {result?.message ?? (result?.manualReady ? "Confirmed — its manual is ready to answer from." : "Confirmed.")}
+    </p> : outcome === "rejected" ? <p className="fl-card__meta">Not this machine.</p>
+      : <p role="alert" className="fl-card__meta">Could not confirm. Try again.</p>}
+  </Card>;
+}
+
+function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPart, { type: "manual_search_status" }> }) {
+  return <p className="fl-part fl-status" role="status" data-part-type="manual_search_status">
+    {part.running
+      ? `Searching ${part.manufacturer}'s documentation for ${part.model}…`
+      : part.message ?? `Finished searching for the ${part.manufacturer} ${part.model} manual.`}
+  </p>;
 }
 
 export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
@@ -464,6 +551,12 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
         Machine identity not confirmed for this turn: the asset claimed did not match the notebook's confirmed
         binding, so no machine history was used and nothing here is stated as machine-specific fact.
       </p>;
+
+    case "identity_proposal":
+      return <IdentityProposalPart part={part} hooks={hooks} />;
+
+    case "manual_search_status":
+      return <ManualSearchStatusPart part={part} />;
 
     case "unknown": {
       // NotebookTraceFrame is transport metadata, preserved on the part for

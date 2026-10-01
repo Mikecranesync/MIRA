@@ -276,6 +276,45 @@ export interface Artifact {
   readonly kind: "handoff" | "report" | "work_order";
 }
 
+/**
+ * A machine identity MIRA proposed from free text (mira-hub #4120/#4172) —
+ * never bound, never scoped retrieval, until the technician confirms it.
+ * Mirrors the Hub's own `IdentityProposal` (mira-hub/src/capabilities/
+ * identity-proposal.ts) field-for-field, including the `& `-style flattening
+ * on `InteractionPart` below, so the wire shape and the shell shape never
+ * drift into two vocabularies for the same fact.
+ */
+export interface IdentityProposal {
+  readonly manufacturer: string;
+  readonly model: string;
+  /** Rarely present today (#4120 proposals don't carry one yet); forward-compatible. */
+  readonly catalogNumber?: string;
+}
+
+/**
+ * The outcome of confirming an `IdentityProposal` (`HostHooks.onConfirmIdentity`).
+ * `manualReady` is server-owned truth (migration 104's promotion trigger, via
+ * the Hub confirm route) — never inferred client-side. `message` is optional,
+ * human-readable server copy for the card's result state.
+ */
+export interface ConfirmIdentityResult {
+  readonly manualReady: boolean;
+  readonly message?: string;
+}
+
+/**
+ * Background manual-search progress for a proposed (not yet confirmed)
+ * identity (#4160 S6 candidate-basis acquisition). Purely informational —
+ * never implies the manual is usable; that is `ConfirmIdentityResult.manualReady`.
+ */
+export interface ManualSearchStatus {
+  readonly manufacturer: string;
+  readonly model: string;
+  readonly running: boolean;
+  /** Human-readable outcome once the search is no longer running. Server copy — never invented client-side. */
+  readonly message?: string;
+}
+
 export interface ContextSnapshot {
   readonly tenantId: string;
   readonly projectId?: string;
@@ -323,6 +362,14 @@ export type InteractionPart =
    *  match the confirmed binding, so no machine history was used. Presence-only; ids stay
    *  server-side. Mirrors the mobile chat-adapter's `identity_dispute`. */
   | { readonly type: "identity_dispute" }
+  /** MIRA proposed a machine from free text (#4120/#4175) — unconfirmed, unbound. The
+   *  renderer offers "Use its manuals" / "Not this"; confirming sets the notebook's
+   *  identity server-side (migration 104 promotes a matching candidate manual). Flattened
+   *  (not nested under a `proposal` key) to mirror the Hub's own wire frame 1:1. */
+  | ({ readonly type: "identity_proposal" } & IdentityProposal)
+  /** Background manual-search progress for THAT SAME unconfirmed identity (#4160 S6 /
+   *  #4189). Flattened to mirror `ManualSearchStatus`, plus the part's own `type`. */
+  | ({ readonly type: "manual_search_status" } & ManualSearchStatus)
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {
