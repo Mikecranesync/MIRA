@@ -55,6 +55,7 @@ import {
 import {
   acquisitionEnabled,
   acquisitionKey,
+  candidateAcquisitionEnabled,
   acquisitionDeclineText,
   readAcquisition,
   reconcileAcquisition,
@@ -1818,10 +1819,10 @@ async function handleChatTurn(
     // (photoTextForOem — notebookRetrieval is false here, so it is the real
     // text) and this turn's typed message. Still only a candidate: never
     // binds, never writes a notebook identity column, never scopes retrieval.
-    // Codex r2 F4 (#4172): only when the automatic search can actually run. With
-    // MIRA_NOTEBOOK_MANUAL_ACQUISITION off the turn stays exactly as before S6
+    // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
+    // run (both flags; #4175). Otherwise the turn stays exactly as before S6
     // (the explicit, confirm-first photo search below keeps the turn).
-    if (!acquisitionEnabled()) return null;
+    if (!candidateAcquisitionEnabled()) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
       // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
@@ -1981,7 +1982,7 @@ async function handleChatTurn(
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     oemManufacturer !== null &&
     chunks.length === 0 &&
-    acquisitionEnabled()
+    candidateAcquisitionEnabled()
   ) {
     // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
     // families, so a valid part it does not recognise (oemModel null) falls back
@@ -2086,7 +2087,7 @@ async function handleChatTurn(
   const candidateAcquisitionOwnsTurn =
     identityProposal !== null &&
     Boolean(nb) &&
-    acquisitionEnabled() &&
+    candidateAcquisitionEnabled() &&
     acquisitionKey({
       identityStatus: "user_confirmed",
       manufacturer: identityProposal.manufacturer,

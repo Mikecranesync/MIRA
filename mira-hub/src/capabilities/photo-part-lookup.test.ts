@@ -302,6 +302,9 @@ describe("asset-tag labels", () => {
     "VALVE-1234 tag",
     "SMC Tag ID — VALVE-1234",
     "Equipment identifier: EQ-00123 SY3120-5LZD",
+    "SMC INV: VALVE-1234",
+    "SMC Inv. No. VALVE-1234",
+    "SMC Inventory tag VALVE-1234",
   ])("%s carries an asset label; no unlabelled code survives it", (text) => {
     expect(mentionsAssetLabel(text)).toBe(true);
     expect(unambiguousPartNumber(text)).toBeNull();
@@ -310,7 +313,7 @@ describe("asset-tag labels", () => {
     expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
     expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBe("SY3120-5LZD");
   });
-  it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list", "tagged for SY3120-5LZD", "SY3120-5LZD tagline"])(
+  it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list", "tagged for SY3120-5LZD", "SY3120-5LZD tagline", "inverter drive SY3120-5LZD", "invalid reading on SY3120-5LZD"])(
     "control: %s is ordinary prose",
     (text) => {
       expect(mentionsAssetLabel(text)).toBe(false);

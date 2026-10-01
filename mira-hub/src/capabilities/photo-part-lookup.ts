@@ -32,7 +32,7 @@ const SERIAL_LABEL = new RegExp(
 );
 // A customer-assigned identifier (ADR-0036: never sent to search). Presence
 // is the whole rule, like a serial label. The strong words (asset, fixed asset,
-// inventory, CMMS, SAP, work order, WO) are labels wherever they appear as a
+// inventory, inv, CMMS, SAP, work order, WO) are labels wherever they appear as a
 // whole word ("assets" is not). "tag" and the weak words that are ordinary
 // prose on their own (equipment, unit, machine, location, site, plant, area,
 // line, cell) count only in a label shape: with an id word (tag, id,
@@ -41,7 +41,7 @@ const SERIAL_LABEL = new RegExp(
 const ID_WORD = String.raw`(?:tag|ident(?:ifier)?|id|ref(?:erence)?|${NUM_WORD}|#)`;
 const CODE_AHEAD = String.raw`(?=(?:is\b)?[^A-Za-z0-9]*(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9]))`;
 const ASSET_LABEL = new RegExp(
-  String.raw`\b(?:(?:fixed\s*asset|asset|inventory|cmms|sap|work\s*order|wo)(?![a-z])` +
+  String.raw`\b(?:(?:fixed\s*asset|asset|inventory|inv|cmms|sap|work\s*order|wo)(?![a-z])` +
     String.raw`|(?:tag|equip(?:ment)?|unit|machine|location|loc|site|plant|area|line|cell)(?![a-z])${LABEL_SEP}(?:${ID_WORD}(?![a-z])|${CODE_AHEAD})` +
     String.raw`|(?<=\d[A-Z0-9./-]*[^A-Za-z0-9]+)tag(?![a-z]))`,
   "gi",

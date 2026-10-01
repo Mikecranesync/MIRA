@@ -4,6 +4,7 @@
  * Run: npx vitest run src/capabilities/__tests__/notebook-manual-acquisition.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { candidateAcquisitionEnabled } from "../notebook-manual-acquisition";
 
 const db = vi.hoisted(() => ({
   queries: [] as { sql: string; params: unknown[] }[],
@@ -803,5 +804,16 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
       linked: true,
     });
     expect(r?.source_removed).toBe(true);
+  });
+});
+
+// #4172 F13 / #4175: candidate takeover has its own flag, and needs the base one.
+describe("candidateAcquisitionEnabled", () => {
+  it("is on only when BOTH flags are exactly '1'", () => {
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
+    expect(candidateAcquisitionEnabled({})).toBe(false);
   });
 });

@@ -95,6 +95,18 @@ export function acquisitionEnabled(env: Record<string, string | undefined> = pro
   return (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "").trim() === "1";
 }
 
+/**
+ * #4160 S6 candidate takeover (the RC1 identity proposal from a label read,
+ * the candidate-basis background search, and the replacement of #4171's
+ * explicit search chip) — gated behind its OWN flag until a client can
+ * confirm a candidate identity (#4175; Codex #4172 F13). Requires the base
+ * flag too. Off (the default everywhere): the chat behaves exactly as before
+ * S6. Only the exact value "1" enables it.
+ */
+export function candidateAcquisitionEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return acquisitionEnabled(env) && (env.MIRA_NOTEBOOK_CANDIDATE_ACQUISITION ?? "").trim() === "1";
+}
+
 function clean(v: string | null | undefined): string {
   return (v ?? "").trim();
 }

@@ -82,6 +82,8 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 // (notebook-manual-acquisition.test.ts, migration-104 integration test).
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
+  // #4175: follows the base flag unless a test pins it, as the real one requires both.
+  candidateAcquisitionEnabled: vi.fn((): boolean => acqMock.acquisitionEnabled()),
   startManualAcquisition: vi.fn(async () => true),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
@@ -91,6 +93,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
   return {
     ...actual,
     acquisitionEnabled: acqMock.acquisitionEnabled,
+    candidateAcquisitionEnabled: acqMock.candidateAcquisitionEnabled,
     startManualAcquisition: acqMock.startManualAcquisition,
     readAcquisition: acqMock.readAcquisition,
     reconcileAcquisition: acqMock.reconcileAcquisition,
@@ -147,6 +150,7 @@ beforeEach(() => {
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
   ragMock.corpusManufacturers.mockResolvedValue([]); // RC1: the corpus does not know this maker
   acqMock.acquisitionEnabled.mockReturnValue(true);
+  acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
   acqMock.reconcileAcquisition.mockImplementation(async (_t: string, _n: string, rec: unknown) => rec);
@@ -270,5 +274,18 @@ describe("#4160 S6 — an ambiguous identity is never resurrected by the fallbac
     const f = await frames(res);
     expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ model: "6ES7214-1AG40-0XB0" });
     expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #4172 F13 / #4175: the candidate takeover flag, off, is exactly pre-S6 even
+// with the base acquisition flag on.
+describe("#4175 — candidate takeover gated behind MIRA_NOTEBOOK_CANDIDATE_ACQUISITION", () => {
+  it("base flag on, candidate flag off → no RC1 proposal, no candidate search", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+    const res = await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
+    const f = await frames(res);
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 });

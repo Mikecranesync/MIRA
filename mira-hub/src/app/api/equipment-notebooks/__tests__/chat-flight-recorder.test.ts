@@ -126,6 +126,9 @@ vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
 // seams. Off by default so every other test in this file is unaffected.
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => false),
+  // #4175: the candidate takeover flag follows the base flag in this file
+  // unless a test pins it (so "acquisition on" tests exercise S6 behaviour).
+  candidateAcquisitionEnabled: vi.fn((): boolean => acqMock.acquisitionEnabled()),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
   startManualAcquisition: vi.fn(async () => false),
@@ -195,6 +198,7 @@ beforeEach(() => {
   // clearAllMocks keeps implementations: a test that turns automatic acquisition
   // on must not leak it into the next (off-by-default) test.
   acqMock.acquisitionEnabled.mockReturnValue(false);
+  acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
   acqMock.startManualAcquisition.mockResolvedValue(false);
   handle.reset();
   process.env.GROQ_API_KEY = "k1";
@@ -458,6 +462,19 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
 
   // Codex r1 F1 (#4172): with automatic acquisition ON, the candidate flow owns
   // the turn and the explicit part-only proposal never also fires.
+  // #4172 F13 / #4175: with the base flag on but the candidate flag off, the
+  // turn is exactly pre-S6 — #4171's explicit chip, no proposal, no search.
+  it("candidate flag off (base on): the SMC valve keeps #4171's explicit search chip and starts no candidate search", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+    const f = await ask("Look up the PDF manual");
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "followups")?.suggestions).toEqual([`Search the web for "${SMC_PART}"`, "Don't search"]);
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain('"SMC"');
+  });
+
   it("S6 (flag on): the SMC valve candidate gets an identity_proposal, never the part-only web-search confirmation", async () => {
     smcLabel();
     acqMock.acquisitionEnabled.mockReturnValue(true);
@@ -800,6 +817,32 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
       expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    it("#4175: corpus-maker path with the candidate flag off (base on) proposes nothing and starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o20", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("#4175: a #4120 typed corpus proposal with the candidate flag off (base on) still proposes but starts no search", async () => {
+      domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
+      filesMock.photoLinkedToTarget.mockResolvedValue(null as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      // A part-code model the strict validator accepts, so the ownership gate
+      // is the ONLY thing standing between the proposal and a search.
+      const f = await ask("Find the manual for Siemens 6ES7214-1AG40-0XB0");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
     it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
