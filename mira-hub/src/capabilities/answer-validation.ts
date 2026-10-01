@@ -943,7 +943,18 @@ function codeMeaningViolation(
  *  triage; "I lost the manual" gained it). So nothing is classified: the
  *  fallback offers both next steps, each labelled with when it applies.
  *  Copy only — what is withheld is unchanged. */
-export function specificityFallback(code: string | null): string {
+const MANUAL_SELF_SERVE_LINE =
+  "- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.";
+/** #4160 gate NO-GO (PRD "Never"): while MIRA's own automatic search for the
+ *  official manual is running, never send the technician off to fetch it —
+ *  say the search is underway and where the manual will appear. */
+const MANUAL_SEARCH_RUNNING_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it will show up in this notebook's Sources — ask again then and I'll answer from it with a page reference.";
+
+export function specificityFallback(
+  code: string | null,
+  opts: { manualSearchRunning?: boolean } = {},
+): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
@@ -951,7 +962,7 @@ export function specificityFallback(code: string | null): string {
 
 What you can do next:
 - If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.
+${opts.manualSearchRunning ? MANUAL_SEARCH_RUNNING_LINE : MANUAL_SELF_SERVE_LINE}
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -1086,9 +1097,14 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
+  /** #4160: MIRA's automatic official-manual search is running for this
+   *  notebook (this turn started it, or a recorded one is still running), so a
+   *  specificity fallback must not tell the technician to fetch it themselves. */
+  manualSearchRunning?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
+  const fallbackOpts = { manualSearchRunning: opts.manualSearchRunning === true };
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -1188,7 +1204,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: `fabricated-doc:${p.id}`,
         detail: m[0].slice(0, 160),
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, fallbackOpts),
       };
     }
   }
@@ -1200,7 +1216,7 @@ export function validateAnswer(opts: {
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:exact-setting",
       detail: es[0].slice(0, 160),
-      replacement: specificityFallback(null),
+      replacement: specificityFallback(null, fallbackOpts),
     };
   }
 
@@ -1212,7 +1228,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
         detail: er.excerpt,
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, fallbackOpts),
         match: { term: er.term, unit: er.unit },
       };
     }
@@ -1228,7 +1244,7 @@ export function validateAnswer(opts: {
       // The ONLY visible string in this module built from a matched token, so
       // it is the one place the fold could leak into what a technician reads.
       // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText)),
+      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
     };
   }
 
