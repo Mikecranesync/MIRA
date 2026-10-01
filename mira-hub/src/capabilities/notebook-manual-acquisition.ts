@@ -611,7 +611,13 @@ export async function runManualAcquisition(
   const startedAt = new Date().toISOString();
   let out: ManualAcquisitionOutcome;
   try {
-    out = await acquire(input);
+    // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
+    // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
+    // exactly as the background runner does — so if the process dies after the
+    // attach commits but before `finish`, the stale-running recovery still
+    // knows what was attached and honors a removal instead of re-attaching
+    // (the r16 F22 invariant). The caller's own source writer stays.
+    out = await acquire({ ...input, attach: fencedAttach(key, gen) });
   } catch (err) {
     console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);
     out = { status: "search_unavailable", payload: {} };

@@ -28,8 +28,19 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "pg";
 import { runManualAcquisition, startManualAcquisition } from "../notebook-manual-acquisition";
 import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "../manual-acquisition";
+import { attachFileToTargetsTx } from "@/lib/workspace-files";
+
+// The real attach needs the full workspace schema; the F7 proof stubs it (same
+// as race-4118.local.test.ts) — the checkpoint under test is written by
+// fencedAttach itself, in the same transaction, after this call.
+vi.mock("@/lib/workspace-files", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/workspace-files")>("@/lib/workspace-files");
+  return { ...actual, attachFileToTargetsTx: vi.fn(actual.attachFileToTargetsTx) };
+});
 
 const run = process.env.PG_104 === "1" ? describe : describe.skip;
+const DOC = "33333333-3333-4333-8333-333333333333";
+const FILE = "55555555-5555-4555-8555-555555555555";
 const MIGRATIONS = join(__dirname, "../../../db/migrations");
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -58,11 +69,18 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
       DO $$ BEGIN CREATE ROLE factorylm_app; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       CREATE TABLE IF NOT EXISTS equipment_notebooks (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, manufacturer text,
         model text, catalog_number text, identity_status text NOT NULL DEFAULT 'unknown', manual_acquisition jsonb);
-      GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks TO factorylm_app;
+      CREATE TABLE IF NOT EXISTS equipment_notebook_sources (tenant_id uuid NOT NULL, notebook_id uuid NOT NULL,
+        doc_id uuid NOT NULL, match_state text, enabled_by_default boolean NOT NULL DEFAULT false, match_evidence jsonb,
+        source_role text, added_by text, origin_file_id uuid, PRIMARY KEY (notebook_id, doc_id));
+      CREATE TABLE IF NOT EXISTS workspace_file_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+        file_id uuid NOT NULL, target_type text NOT NULL, target_id uuid NOT NULL);
+      GRANT SELECT, INSERT, UPDATE, DELETE ON equipment_notebooks, equipment_notebook_sources, workspace_file_links TO factorylm_app;
     `);
     await c.query(readFileSync(join(MIGRATIONS, "100_notebook_manual_acquisition.sql"), "utf8"));
   });
   beforeEach(async () => {
+    vi.mocked(attachFileToTargetsTx).mockReset();
+    await c.query(`DELETE FROM equipment_notebook_sources; DELETE FROM workspace_file_links;`);
     await c.query(`DELETE FROM equipment_notebooks WHERE id = $1`, [NB]);
     await c.query(
       `INSERT INTO equipment_notebooks (id, tenant_id, manufacturer, model, identity_status, manual_acquisition)
@@ -119,5 +137,60 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     const r = await runManualAcquisition(input, { acquire: vi.fn(outage), env: ON });
     expect(r.started).toBe(false);
     expect((await record()).gen).toBe("g-live");
+  });
+
+  // Codex r5 F7 (#4177): the inline runner's attachment is checkpointed in the
+  // attach transaction (fenced by its generation), so a crash after the attach
+  // commits but before finish cannot lose it — and a removal the technician
+  // makes afterwards is honored by stale-running recovery, never undone.
+  const bgIdentity = { identityStatus: "user_confirmed" as const, manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D", catalogNumber: null };
+  const confirmTimeAttach = async () => {
+    vi.mocked(attachFileToTargetsTx).mockImplementation(async () => ({ ok: true, links: [] }) as never);
+    let checkpoint: Record<string, unknown> | null = null;
+    const inline = vi.fn(async (inp: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> => {
+      const attached = await inp.attach!(TENANT, NB, FILE, DOC, [], null);
+      // Read the record BEFORE finish runs: this is what a crash would leave.
+      checkpoint = { attached, ...(await record()) };
+      return { status: "complete", payload: {} };
+    });
+    expect((await runManualAcquisition(input, { acquire: inline, env: ON })).started).toBe(true);
+    expect(checkpoint).toMatchObject({ attached: true, prior_doc_id: DOC, prior_file_id: FILE });
+    // The source row the (stubbed) attach would have created, then the "crash":
+    // the record is frozen at running, older than the stale window.
+    await c.query(
+      `INSERT INTO equipment_notebook_sources (tenant_id, notebook_id, doc_id, match_state, enabled_by_default, match_evidence)
+       VALUES ($1, $2, $3, 'candidate', false, '{}'::jsonb)`,
+      [TENANT, NB, DOC],
+    );
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = manual_acquisition || jsonb_build_object('state', 'running',
+         'started_at', to_jsonb((now() - interval '30 minutes')::text), 'finished_at', null) WHERE id = $1`,
+      [NB],
+    );
+  };
+  const recover = async () => {
+    const seen: unknown[] = [];
+    const bg = vi.fn(async (inp: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> => {
+      seen.push(await inp.attach!(TENANT, NB, FILE, DOC, [], null));
+      return { status: "no_manual_found", payload: {} };
+    });
+    expect(await startManualAcquisition({ ...input, identity: bgIdentity }, { acquire: bg, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(seen.length).toBe(1));
+    return seen[0];
+  };
+
+  it("Codex r5 F7: confirm-time attach is checkpointed before finish; after a crash and a removal, recovery does NOT re-attach", async () => {
+    await confirmTimeAttach();
+    await c.query(`DELETE FROM equipment_notebook_sources WHERE doc_id = $1`, [DOC]); // the technician removes it
+    expect(await recover()).toBe("removed");
+    expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1); // only the confirm-time attach, never again
+    expect((await c.query(`SELECT 1 FROM equipment_notebook_sources WHERE doc_id = $1`, [DOC])).rowCount).toBe(0);
+    expect((await c.query(`SELECT 1 FROM workspace_file_links WHERE file_id = $1`, [FILE])).rowCount).toBe(0);
+  });
+
+  it("Codex r5 F7 control: with the source retained, recovery resumes on it (no second attach)", async () => {
+    await confirmTimeAttach();
+    expect(await recover()).toBe("resume");
+    expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1);
   });
 });

@@ -839,6 +839,10 @@ describe("runManualAcquisition — the inline, recorded search", () => {
     expect(acquire).toHaveBeenCalledTimes(1);
     expect(acquire.mock.calls[0][0]).not.toHaveProperty("writeSourceState");
     expect(acquire.mock.calls[0][0]).toMatchObject({ identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D" } });
+    // #4177 Codex r5 F7: the attachment IS fenced — the inline runner threads
+    // the generation-fenced attach (checkpoints prior_file_id / prior_doc_id in
+    // the attach transaction) so a crash before finish cannot lose it.
+    expect(acquire.mock.calls[0][0].attach).toEqual(expect.any(Function));
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     // #4177 Codex r1 F2: an explicit confirmation owns a new generation over
     // ANY same-key record that is not a live running search (a terminal
