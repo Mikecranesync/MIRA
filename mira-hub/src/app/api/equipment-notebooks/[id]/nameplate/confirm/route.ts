@@ -37,6 +37,7 @@ import {
 import { getFile, parkOrReuseFile, linkFileToUpload, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
+import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
@@ -579,12 +580,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       discovery: { requested: false },
     });
   }
-  const acquired = await acquireManualForIdentity({
+  const acquireInput = {
     tenantId: ctx.tenantId,
     userId: ctx.userId ?? null,
     notebookId,
     nodeId: notebook.nodeId,
     identity,
+  };
+  // #4160 S7 — with the acquisition flag on, and ONLY when the confirmed
+  // nameplate identity is this notebook's own confirmed identity, the search
+  // runs under the lifecycle so a limit denial or an outage is RECORDED and
+  // the chat's existing retry (which re-searches the notebook's identity)
+  // recovers it on the technician's next question — never a repeat of the
+  // nameplate flow. The outcome returned is the real one, exactly as before.
+  // A component nameplate in a differently-identified or unbound notebook
+  // stays inline and unrecorded (Codex #4177 F1; #4178): the notebook-level
+  // record could not be retried for it and would be overwritten by the
+  // notebook's own search. A refused claim (a live search for this key) or
+  // the flag off also falls back to the unrecorded inline search.
+  const ownKey = acquisitionKey({
+    identityStatus: notebook.identityStatus,
+    manufacturer: notebook.manufacturer,
+    model: notebook.model,
+    catalogNumber: notebook.catalogNumber,
   });
+  const nameplateKey = acquisitionKey({
+    identityStatus: "user_confirmed",
+    manufacturer: identity.manufacturer ?? null,
+    model: identity.model ?? null,
+    catalogNumber: identity.catalogNumber ?? null,
+  });
+  if (acquisitionEnabled() && ownKey !== null && ownKey === nameplateKey) {
+    const run = await runManualAcquisition(acquireInput);
+    if (run.started && run.outcome) return respond(run.outcome.status, run.outcome.payload);
+  }
+  const acquired = await acquireManualForIdentity(acquireInput);
   return respond(acquired.status, acquired.payload);
 }

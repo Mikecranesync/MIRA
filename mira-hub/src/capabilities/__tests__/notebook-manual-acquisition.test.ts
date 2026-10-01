@@ -44,6 +44,7 @@ vi.mock("@/lib/tenant-context", () => ({
 vi.mock("@/lib/workspace-files", () => ({ attachFileToTargetsTx: vi.fn(async () => ({ ok: true, links: [] })) }));
 // The real pipeline is covered by the nameplate confirm tests; here it is a seam.
 vi.mock("@/capabilities/manual-acquisition", () => ({ acquireManualForIdentity: vi.fn() }));
+import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "@/capabilities/manual-acquisition";
 
 import {
   acquisitionDeclineText,
@@ -52,6 +53,7 @@ import {
   readAcquisition,
   reconcileAcquisition,
   recordFromOutcome,
+  runManualAcquisition,
   startManualAcquisition,
   type AcquisitionRecord,
 } from "../notebook-manual-acquisition";
@@ -111,7 +113,8 @@ describe("startManualAcquisition", () => {
       attach: expect.any(Function),
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
-    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
+    // A background start is NOT an explicit technician confirmation ($7 false).
+    expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3, false]);
     expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
     // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
     // "appears somewhere in the query"):
@@ -124,14 +127,14 @@ describe("startManualAcquisition", () => {
       /OR \(manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
     );
     expect(claimQ.sql).toMatch(
-      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\)/,
+      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\s*\n\s*OR \(\$7::boolean/,
     );
     // The retries counter itself must NOT increment for search_limit_reached
     // (only for search_unavailable) — else a quota denial would exhaust
     // MAX_AUTOMATIC_RETRIES in ~90 minutes while the real daily/monthly
     // window is still far from reset.
     expect(claimQ.sql).toMatch(
-      /'retries', CASE WHEN manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
+      /'retries', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
     );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;
@@ -815,5 +818,87 @@ describe("candidateAcquisitionEnabled", () => {
     expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
     expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
     expect(candidateAcquisitionEnabled({})).toBe(false);
+  });
+});
+
+// #4160 S7 (owner decision 2026-10-01 §2): acquisition owns recovery server-side.
+// A confirm-time search runs INLINE under the same lifecycle (claim → acquire →
+// finish), so a limit denial or outage is RECORDED and the chat's existing
+// retry predicates (new UTC day / 30-min backoff) recover it on the next
+// question — the technician never repeats the nameplate flow.
+describe("runManualAcquisition — the inline, recorded search", () => {
+  // The route's own search input (the confirmed identity fields, no status).
+  const runInput: ManualAcquisitionInput = { tenantId: "t", userId: "u", notebookId: "nb", nodeId: "node", identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D" } };
+  const acquireMock = (impl: (i: ManualAcquisitionInput) => Promise<ManualAcquisitionOutcome>) => vi.fn(impl);
+  it("claims, awaits the search, records the outcome, and returns it", async () => {
+    const acquire = acquireMock(async () => ({ status: "search_limit_reached", payload: { message: "Daily manual-search limit reached for this user." } }));
+    const r = await runManualAcquisition(runInput, { acquire, env: ON });
+    expect(r.started).toBe(true);
+    expect(r.outcome?.status).toBe("search_limit_reached");
+    // The route's own unconditional source writer stays: no fenced writer is injected.
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(acquire.mock.calls[0][0]).not.toHaveProperty("writeSourceState");
+    expect(acquire.mock.calls[0][0]).toMatchObject({ identity: { manufacturer: "SMC", model: "VQ1000-FPG-C6C6-D" } });
+    // #4177 Codex r5 F7: the attachment IS fenced — the inline runner threads
+    // the generation-fenced attach (checkpoints prior_file_id / prior_doc_id in
+    // the attach transaction) so a crash before finish cannot lose it.
+    expect(acquire.mock.calls[0][0].attach).toEqual(expect.any(Function));
+    const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+    // #4177 Codex r1 F2: an explicit confirmation owns a new generation over
+    // ANY same-key record that is not a live running search (a terminal
+    // no_manual_found, or a retryable one still in backoff) — so its real
+    // outcome is always persisted, never a stale miss left behind.
+    expect(claimQ.params[6]).toBe(true);
+    // #4177 Codex r2 F4: an explicit confirmation never spends the automatic
+    // retry budget and resets it — the increment is guarded by NOT $7.
+    expect(claimQ.sql).toMatch(/'retries', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*THEN COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) \+ 1\s*\n\s*ELSE 0 END/);
+    expect(claimQ.sql).toMatch(/OR \(\$7::boolean\s*\n?\s*AND manual_acquisition->>'key' = \$3::text\s*\n?\s*AND manual_acquisition->>'state' <> 'running'\)/);
+    // #4177 Codex r6 F8: removal history (prior_doc_id / prior_file_id) is
+    // carried forward for AUTOMATIC claims only — an explicit confirmation
+    // starts with no prior references and attaches what discovery returns now.
+    expect(claimQ.sql).toMatch(/'prior_doc_id', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text/);
+    expect(claimQ.sql).toMatch(/'prior_file_id', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text/);
+    const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
+    expect(finishQ).toBeDefined();
+    expect(JSON.parse(finishQ.params[2] as string)).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "search_limit_reached", gen: "g1" });
+  });
+  it("an outage is recorded as search_unavailable (retryable), never no_manual_found", async () => {
+    const acquire = acquireMock(async () => { throw new Error("socket hang up"); });
+    const r = await runManualAcquisition(runInput, { acquire, env: ON });
+    expect(r.started).toBe(true);
+    expect(r.outcome?.status).toBe("search_unavailable");
+    const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
+    expect(JSON.parse(finishQ.params[2] as string).state).toBe("search_unavailable");
+  });
+  it("a refused claim (a search for this key is already running) does not start and records nothing", async () => {
+    db.claimRows = 0;
+    const acquire = acquireMock(async () => ({ status: "complete", payload: {} }));
+    const r = await runManualAcquisition(runInput, { acquire, env: ON });
+    expect(r.started).toBe(false);
+    expect(r.outcome).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+    expect(db.queries.some((q) => /jsonb_set/.test(q.sql))).toBe(false);
+  });
+  it("the flag off ⇒ not started, nothing queried", async () => {
+    const acquire = acquireMock(async () => ({ status: "complete", payload: {} }));
+    const r = await runManualAcquisition(runInput, { acquire, env: {} });
+    expect(r.started).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(db.queries.length).toBe(0);
+  });
+});
+
+// #4160 S7 (owner decision 2026-10-01 §1): never claim a reset time the backend
+// does not know — a denial may be the daily OR the monthly cap.
+describe("limit copy claims no reset time", () => {
+  it("search_limit_reached: 'try again later', never 'tomorrow'", () => {
+    const limited: AcquisitionRecord = {
+      key: "K", state: "search_limit_reached", started_at: null, finished_at: "2026-01-01T00:01:00Z",
+      candidate_host: null, match_state: null, oem_request_url: null,
+    };
+    const t = acquisitionDeclineText(limited, "K", "SMC VQ1000")!;
+    expect(t).toMatch(/try again later/i);
+    expect(t).not.toMatch(/tomorrow/i);
+    expect(t.toLowerCase()).toContain("limit");
   });
 });

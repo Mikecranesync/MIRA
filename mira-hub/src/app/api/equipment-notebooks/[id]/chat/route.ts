@@ -2204,7 +2204,10 @@ async function handleChatTurn(
         part_number: confirmedPart,
         found: false,
         candidate_host: null,
-        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Ask again tomorrow, or upload the manual yourself and I'll answer from it.`,
+        // #4160 S7 (owner decision 2026-10-01 §1): the approved sentence,
+        // verbatim — never a reset time the backend does not know (the denial
+        // may be the daily or the monthly cap).
+        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Manual-search limit reached — try again later, or upload the manual yourself.`,
         proposal: null,
       };
     } else {
@@ -2386,6 +2389,52 @@ async function handleChatTurn(
             `${identityProposal.manufacturer} ${identityProposal.model}`,
             "candidate",
           );
+        }
+      }
+    }
+  }
+  // Codex r3 F5 (#4177, #4160 S7) — recovery must not depend on how this turn
+  // is answered. The #4075 block above runs only when the OEM answer-route is
+  // about to decline for lack of a manual, which a SOURCE-SELECTED turn never
+  // reaches (notebook sources own it, oemManufacturer is null). After a
+  // nameplate confirmation the nameplate source is enabled by default, so the
+  // technician's normal next question is exactly that turn — and a recorded
+  // limit denial / outage sat untouched unless every source was deselected.
+  // So: a RETRYABLE record for the notebook's OWN confirmed identity is
+  // reconciled and sent back through the claim here regardless of routing,
+  // and (Codex r4 F6) a RUNNING record goes back through the claim too — its
+  // stale-window predicate resumes a search orphaned by a restart or recorded
+  // as running on concurrent indexing, and refuses while a live search holds
+  // it (same as the #4075 block). The claim keeps every existing rule
+  // (UTC-day boundary, 30-minute backoff, MAX_AUTOMATIC_RETRIES, live-running
+  // refusal); reconcile keeps the source-removal rule. Nothing here starts a
+  // NEW search, changes retrieval, or alters the reply — the turn stays
+  // grounded in its selected sources; the packet records the recovery
+  // (`manual_acquisition`) for the flight recorder.
+  if (manualAcquisition === null && nb && acquisitionEnabled()) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
+      if (acq && acq.key === key && (retryable || acq.state === "running")) {
+        if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+        if (acq && acq.key === key && !acq.source_removed) {
+          const started = await startManualAcquisition({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId ?? null,
+            notebookId,
+            nodeId: nb.nodeId,
+            identity,
+          });
+          manualAcquisition = started
+            ? { state: "running", started_this_turn: true, candidate_host: null }
+            : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
         }
       }
     }

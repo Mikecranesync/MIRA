@@ -155,7 +155,14 @@ export async function readAcquisition(tenantId: string, notebookId: string): Pro
  * "search_unavailable" record older than the retry backoff. Exactly one
  * concurrent caller wins.
  */
-async function claim(tenantId: string, notebookId: string, key: string): Promise<string | null> {
+/**
+ * `explicit` (#4177 S7, Codex r1 F2): an explicit technician confirmation owns a
+ * new generation over ANY same-key record that is not a live running search —
+ * a terminal no_manual_found, or a retryable one still inside its backoff — so
+ * its real outcome is always persisted and a stale miss is never left behind.
+ * A background start never passes it.
+ */
+async function claim(tenantId: string, notebookId: string, key: string, explicit = false): Promise<string | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       // Every claim mints a fresh generation; only the holder of the CURRENT
@@ -177,21 +184,35 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                   -- would make it terminal in ~90 minutes while the real
                   -- daily/monthly window is still hours or weeks from reset —
                   -- a cap denial permanently cached as a miss (PRD R5).
-                  'retries', CASE WHEN manual_acquisition->>'key' = $3::text
+                  -- Automatic retries of search_unavailable are counted against
+                  -- MAX_AUTOMATIC_RETRIES. An EXPLICIT technician confirmation
+                  -- ($7) is not an automatic retry: it never spends that budget
+                  -- and resets it, so a fresh attempt gets fresh automatic
+                  -- recovery (#4177 Codex r2 F4).
+                  'retries', CASE WHEN NOT $7::boolean
+                                   AND manual_acquisition->>'key' = $3::text
                                    AND manual_acquisition->>'state' = 'search_unavailable'
                                   THEN COALESCE((manual_acquisition->>'retries')::int, 0) + 1
                                   ELSE 0 END,
                   -- A retry remembers everything an earlier attempt ATTACHED —
                   -- across retries, early failures and stale-running recovery —
                   -- so a manual the technician removed is never put back
-                  -- (Codex #4118 r14/r15 F19/F20).
-                  'prior_doc_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                  -- (Codex #4118 r14/r15 F19/F20). Removal history binds
+                  -- AUTOMATIC attempts only: a fresh EXPLICIT confirmation ($7)
+                  -- is the technician asking for the manual now, so it starts
+                  -- with no prior references and attaches what discovery
+                  -- returns; its OWN attachment is then checkpointed by the
+                  -- fenced attach, so a later removal binds the automatic
+                  -- recovery of THAT attempt (#4177 Codex r6 F8).
+                  'prior_doc_id', CASE WHEN NOT $7::boolean
+                                        AND manual_acquisition->>'key' = $3::text
                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                        THEN COALESCE(
                                               CASE WHEN manual_acquisition->>'linked' = 'true'
                                                    THEN manual_acquisition->'doc_id' END,
                                               manual_acquisition->'prior_doc_id') END,
-                  'prior_file_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                  'prior_file_id', CASE WHEN NOT $7::boolean
+                                         AND manual_acquisition->>'key' = $3::text
                                          AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                         THEN COALESCE(
                                                CASE WHEN manual_acquisition->>'linked' = 'true'
@@ -214,9 +235,12 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  -- Uncapped by $6 on purpose — see the 'retries' comment above.
                  OR (manual_acquisition->>'state' = 'search_limit_reached'
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
-                         < date_trunc('day', now(), 'UTC')))
+                         < date_trunc('day', now(), 'UTC'))
+                 OR ($7::boolean
+                     AND manual_acquisition->>'key' = $3::text
+                     AND manual_acquisition->>'state' <> 'running'))
           RETURNING manual_acquisition->>'gen' AS gen`,
-        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES],
+        [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES, explicit],
       );
       return r.rows[0]?.gen ?? null;
     });
@@ -560,6 +584,57 @@ export async function startManualAcquisition(
 }
 
 /**
+ * #4160 S7 (owner decision 2026-10-01 §2 — acquisition owns recovery
+ * server-side): the confirm-time search, run INLINE under the same lifecycle
+ * as the background one. `claim` owns the record, the search is awaited so
+ * the caller still reports the real outcome, and `finish` records it — so a
+ * limit denial (`search_limit_reached`) or an outage (`search_unavailable`)
+ * is recovered by the chat route's existing retry predicates on the
+ * technician's next question, with no repeat of the nameplate flow. The
+ * caller's own source writer is used (no fenced writer: the technician is
+ * confirming right now). `started: false` when the flag is off, the identity
+ * is not searchable, or a LIVE search for this key is already running (an
+ * explicit confirmation takes over any other same-key record — see `claim`) —
+ * the caller then falls back to its unrecorded inline search (at worst two
+ * queries in a rare race, and the running search's record stays the fresh
+ * one). The caller decides WHICH acquisitions belong on the notebook-level
+ * record: only the notebook's own confirmed identity, since that is the key
+ * the chat's retry re-searches (#4178 tracks component nameplates).
+ */
+export async function runManualAcquisition(
+  input: ManualAcquisitionInput,
+  deps: { acquire?: typeof acquireManualForIdentity; env?: Record<string, string | undefined> } = {},
+): Promise<{ started: boolean; outcome: ManualAcquisitionOutcome | null }> {
+  if (!acquisitionEnabled(deps.env)) return { started: false, outcome: null };
+  const key = acquisitionKey({
+    identityStatus: "user_confirmed",
+    manufacturer: input.identity.manufacturer ?? null,
+    model: input.identity.model ?? null,
+    catalogNumber: input.identity.catalogNumber ?? null,
+  });
+  if (!key) return { started: false, outcome: null };
+  const gen = await claim(input.tenantId, input.notebookId, key, true);
+  if (!gen) return { started: false, outcome: null };
+  const acquire = deps.acquire ?? acquireManualForIdentity;
+  const startedAt = new Date().toISOString();
+  let out: ManualAcquisitionOutcome;
+  try {
+    // Codex #4177 r5 F7: the attachment is checkpointed IN THE ATTACH
+    // TRANSACTION, fenced by this generation (prior_file_id / prior_doc_id),
+    // exactly as the background runner does — so if the process dies after the
+    // attach commits but before `finish`, the stale-running recovery still
+    // knows what was attached and honors a removal instead of re-attaching
+    // (the r16 F22 invariant). The caller's own source writer stays.
+    out = await acquire({ ...input, attach: fencedAttach(key, gen) });
+  } catch (err) {
+    console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);
+    out = { status: "search_unavailable", payload: {} };
+  }
+  await finish(input.tenantId, input.notebookId, { ...recordFromOutcome(key, startedAt, out), gen });
+  return { started: true, outcome: out };
+}
+
+/**
  * What the chat says about the automatic search when this notebook's own
  * manuals had nothing. Null when there is nothing honest to add (no record, or a
  * record for a different identity). Never claims a manual it did not attach.
@@ -700,7 +775,9 @@ export function acquisitionDeclineText(
       // accurate for the daily case and still eventually true for the
       // monthly one (never "in a bit", which the old wording promised and
       // the retry predicate could not keep for a daily backoff).
-      return `I hit a search limit before I could look for the official ${label} manual. I'll automatically try again — check back tomorrow, or upload the manual yourself in the meantime.`;
+      // #4160 S7 (owner decision 2026-10-01 §1): never a reset time the backend
+      // does not know — the denial may be the daily or the monthly cap.
+      return `I hit a search limit before I could look for the official ${label} manual. I'll try again automatically — try again later, or upload the manual yourself in the meantime.`;
     case "search_unavailable":
     case "download_rejected":
     case "manufacturer_model_required":

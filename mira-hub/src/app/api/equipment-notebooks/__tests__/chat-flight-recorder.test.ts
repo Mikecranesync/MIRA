@@ -908,6 +908,10 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(msg).toContain("didn't search");
     expect(msg).toContain("Daily manual-search limit reached");
     expect(msg).not.toContain("found no candidate");
+    // #4160 S7 (owner decision 2026-10-01 §1): the approved sentence, verbatim,
+    // and never a reset time the backend does not know.
+    expect(msg).toContain("Manual-search limit reached — try again later, or upload the manual yourself.");
+    expect(msg).not.toMatch(/tomorrow/i);
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "limited", searched: false });
   });
@@ -2225,6 +2229,156 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
     expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
     expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+  });
+
+  // Codex r3 F5 (#4177): after a nameplate confirmation the nameplate source is
+  // enabled by default, so the technician's next question is a SOURCE-SELECTED
+  // turn (no mode: "general"). That turn never reaches the decline-time block
+  // above, so a recorded limit denial / outage was never retried unless the
+  // technician deselected every source. Recovery of a retryable record for the
+  // notebook's own identity must not depend on how the turn is answered.
+  describe("Codex r3 F5 (#4177): recovery on a normal source-selected follow-up", () => {
+    const askWithSources = async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream("Check the drive's status word first.")));
+      return frames(await POST(chatReq({ message: "it keeps rebooting, what do I check first" }), params));
+    };
+    const limited = (finished_at: string) => ({
+      key: KEY,
+      state: "search_limit_reached",
+      started_at: null,
+      finished_at,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+
+    it("a matching search_limit_reached record is reconciled and sent back through the claim; the answer stays on the selected sources", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const rec = limited("2026-09-29T06:00:00Z");
+      acqMock.readAcquisition.mockResolvedValue(rec);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      const fr = await askWithSources();
+      expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notebookId: NB,
+          nodeId: "n1",
+          identity: { identityStatus: "user_confirmed", manufacturer: "Siemens", model: "TP700 Comfort", catalogNumber: null },
+        }),
+      );
+      // The turn itself is unchanged: notebook retrieval ran over the selected
+      // sources and no acquisition status line replaced the answer.
+      expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
+      expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+      const everyMessage = fr.map((x) => String((x as { message?: unknown }).message ?? "")).join(" ");
+      expect(everyMessage).not.toContain("looking for the official one now");
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: true, candidate_host: null });
+    });
+
+    it("a matching search_unavailable record is retried the same way", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue({ ...limited("2026-09-29T06:00:00Z"), state: "search_unavailable", retries: 1 });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    });
+
+    it("control: no record → a source-selected turn never starts a NEW search", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue(null);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("control: a terminal no_manual_found record is not retried from a source-selected turn", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue({ ...limited("2026-09-29T06:00:00Z"), state: "no_manual_found" });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("control: a record whose manual the technician removed is reconciled and NOT retried", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const rec = limited("2026-09-29T06:00:00Z");
+      acqMock.readAcquisition.mockResolvedValue(rec);
+      acqMock.reconcileAcquisition.mockResolvedValueOnce({ ...rec, source_removed: true });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("control: a record for a different key is left alone", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue({ ...limited("2026-09-29T06:00:00Z"), key: "SMC|VQ1000FPGC6C6D|" });
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.reconcileAcquisition).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // Codex r4 F6 (#4177): a search orphaned by a restart (or recorded as
+    // running on concurrent indexing) is recovered by the claim's stale-window
+    // predicate — so a matching running record goes back through the claim
+    // from here too. The claim itself decides staleness; a live search refuses.
+    it("Codex r4 F6: a matching stale running record is sent back through the claim and resumes", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const rec = {
+        ...limited("2026-09-29T06:00:00Z"),
+        state: "running",
+        started_at: "2026-09-29T05:00:00Z",
+        finished_at: null,
+      };
+      acqMock.readAcquisition.mockResolvedValue(rec);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      // A running record is not reconciled (nothing attached yet); it is claimed.
+      expect(acqMock.reconcileAcquisition).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({ notebookId: NB, nodeId: "n1", identity: expect.objectContaining({ manufacturer: "Siemens", model: "TP700 Comfort" }) }),
+      );
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: true, candidate_host: null });
+    });
+
+    it("Codex r4 F6 control: a LIVE running record is refused by the claim — one claim attempt, no duplicate worker, honest packet", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue({
+        ...limited("2026-09-29T06:00:00Z"),
+        state: "running",
+        started_at: new Date().toISOString(),
+        finished_at: null,
+      });
+      // The real claim refuses while a live search holds the record; the seam
+      // models exactly that refusal.
+      acqMock.startManualAcquisition.mockResolvedValue(false);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: false, candidate_host: null });
+    });
+
+    it("control: flag off → nothing is read or started on a source-selected turn", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(false);
+      acqMock.readAcquisition.mockResolvedValue(limited("2026-09-29T06:00:00Z"));
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.readAcquisition).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
   });
 
   it("#4168 F1: before the UTC day turns the claim refuses, and the turn keeps the limit message", async () => {
