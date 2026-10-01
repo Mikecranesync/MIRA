@@ -908,6 +908,10 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(msg).toContain("didn't search");
     expect(msg).toContain("Daily manual-search limit reached");
     expect(msg).not.toContain("found no candidate");
+    // #4160 S7 (owner decision 2026-10-01 §1): the approved sentence, verbatim,
+    // and never a reset time the backend does not know.
+    expect(msg).toContain("Manual-search limit reached — try again later, or upload the manual yourself.");
+    expect(msg).not.toMatch(/tomorrow/i);
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "limited", searched: false });
   });

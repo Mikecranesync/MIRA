@@ -560,6 +560,47 @@ export async function startManualAcquisition(
 }
 
 /**
+ * #4160 S7 (owner decision 2026-10-01 §2 — acquisition owns recovery
+ * server-side): the confirm-time search, run INLINE under the same lifecycle
+ * as the background one. `claim` owns the record, the search is awaited so
+ * the caller still reports the real outcome, and `finish` records it — so a
+ * limit denial (`search_limit_reached`) or an outage (`search_unavailable`)
+ * is recovered by the chat route's existing retry predicates on the
+ * technician's next question, with no repeat of the nameplate flow. The
+ * caller's own source writer is used (no fenced writer: the technician is
+ * confirming right now). `started: false` when the flag is off, the identity
+ * is not searchable, or a search for this key is already running — the caller
+ * then falls back to its unrecorded inline search (at worst two queries in a
+ * rare race, never a lost outcome).
+ */
+export async function runManualAcquisition(
+  input: ManualAcquisitionInput,
+  deps: { acquire?: typeof acquireManualForIdentity; env?: Record<string, string | undefined> } = {},
+): Promise<{ started: boolean; outcome: ManualAcquisitionOutcome | null }> {
+  if (!acquisitionEnabled(deps.env)) return { started: false, outcome: null };
+  const key = acquisitionKey({
+    identityStatus: "user_confirmed",
+    manufacturer: input.identity.manufacturer ?? null,
+    model: input.identity.model ?? null,
+    catalogNumber: input.identity.catalogNumber ?? null,
+  });
+  if (!key) return { started: false, outcome: null };
+  const gen = await claim(input.tenantId, input.notebookId, key);
+  if (!gen) return { started: false, outcome: null };
+  const acquire = deps.acquire ?? acquireManualForIdentity;
+  const startedAt = new Date().toISOString();
+  let out: ManualAcquisitionOutcome;
+  try {
+    out = await acquire(input);
+  } catch (err) {
+    console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);
+    out = { status: "search_unavailable", payload: {} };
+  }
+  await finish(input.tenantId, input.notebookId, { ...recordFromOutcome(key, startedAt, out), gen });
+  return { started: true, outcome: out };
+}
+
+/**
  * What the chat says about the automatic search when this notebook's own
  * manuals had nothing. Null when there is nothing honest to add (no record, or a
  * record for a different identity). Never claims a manual it did not attach.
@@ -700,7 +741,9 @@ export function acquisitionDeclineText(
       // accurate for the daily case and still eventually true for the
       // monthly one (never "in a bit", which the old wording promised and
       // the retry predicate could not keep for a daily backoff).
-      return `I hit a search limit before I could look for the official ${label} manual. I'll automatically try again — check back tomorrow, or upload the manual yourself in the meantime.`;
+      // #4160 S7 (owner decision 2026-10-01 §1): never a reset time the backend
+      // does not know — the denial may be the daily or the monthly cap.
+      return `I hit a search limit before I could look for the official ${label} manual. I'll try again automatically — try again later, or upload the manual yourself in the meantime.`;
     case "search_unavailable":
     case "download_rejected":
     case "manufacturer_model_required":

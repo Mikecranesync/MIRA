@@ -37,6 +37,7 @@ import {
 import { getFile, parkOrReuseFile, linkFileToUpload, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
+import { acquisitionEnabled, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
@@ -579,12 +580,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       discovery: { requested: false },
     });
   }
-  const acquired = await acquireManualForIdentity({
+  const acquireInput = {
     tenantId: ctx.tenantId,
     userId: ctx.userId ?? null,
     notebookId,
     nodeId: notebook.nodeId,
     identity,
-  });
+  };
+  // #4160 S7 — with the acquisition flag on, the confirm-time search runs
+  // under the lifecycle so a limit denial or an outage is RECORDED and the
+  // chat's existing retry recovers it on the technician's next question
+  // (never a repeat of the nameplate flow). The outcome returned is the real
+  // one, exactly as before. A refused claim (a search for this key already
+  // running) or the flag off falls back to the unrecorded inline search.
+  if (acquisitionEnabled()) {
+    const run = await runManualAcquisition(acquireInput);
+    if (run.started && run.outcome) return respond(run.outcome.status, run.outcome.payload);
+  }
+  const acquired = await acquireManualForIdentity(acquireInput);
   return respond(acquired.status, acquired.payload);
 }

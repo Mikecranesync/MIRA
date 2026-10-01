@@ -2204,7 +2204,10 @@ async function handleChatTurn(
         part_number: confirmedPart,
         found: false,
         candidate_host: null,
-        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Ask again tomorrow, or upload the manual yourself and I'll answer from it.`,
+        // #4160 S7 (owner decision 2026-10-01 §1): the approved sentence,
+        // verbatim — never a reset time the backend does not know (the denial
+        // may be the daily or the monthly cap).
+        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Manual-search limit reached — try again later, or upload the manual yourself.`,
         proposal: null,
       };
     } else {
