@@ -248,7 +248,7 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
-  it("relays the running search's honest status through the system prompt directive, not a new SSE frame", async () => {
+  it("relays the running search's honest status through the system prompt directive (unchanged — the model still gets the same instruction)", async () => {
     await (await POST(req({ message: SMC_MESSAGE, mode: "general" }), params)).text();
     const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
     const sentBody = JSON.parse((call[1] as RequestInit).body as string);
@@ -256,6 +256,31 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(systemMsg?.content).toMatch(/saved to this notebook's Sources/);
     expect(systemMsg?.content).not.toMatch(/Use its manuals|confirmed as that machine/);
     expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
+  });
+
+  // T2 (#4189, mira-84): R16-lite (e41b21a78) deliberately shipped the prose
+  // directive ABOVE with "no new SSE frame, no client change" — there was no
+  // client to render one yet. #4175/#4189 ship that client, so this is the
+  // other half landing, not a reversal: the prompt directive (proven above,
+  // unchanged byte-for-byte) and this frame now coexist on the SAME wire —
+  // one steers the model, the other gives a non-LLM surface a live status
+  // line to render instantly instead of waiting for the model to mention it
+  // in prose. See manualSearchStatusFrame's own header in route.ts.
+  it("ALSO emits a transient manual_search_status frame (running) for the proposed identity — #4189", async () => {
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      manufacturer: "SMC",
+      model: "SS5Y3-DUW01302",
+      running: true,
+    });
+  });
+
+  it("never emits manual_search_status when there is no proposed identity to pair it with", async () => {
+    const f = await frames(
+      await POST(req({ message: "is a VFD the same as an inverter?", mode: "general" }), params),
+    );
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    expect(f.find((x) => x.kind === "manual_search_status")).toBeUndefined();
   });
 });
 

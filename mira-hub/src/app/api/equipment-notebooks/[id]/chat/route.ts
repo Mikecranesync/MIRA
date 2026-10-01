@@ -671,6 +671,38 @@ function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame
   return r.kind === "identity_proposal" && typeof r.manufacturer === "string" && typeof r.model === "string";
 }
 
+/**
+ * T2 (#4189) — the background candidate-basis manual search's progress, for
+ * the SAME proposed (not yet confirmed) identity the `identity_proposal`
+ * frame names. Transient only — unlike `proposalEntries`, this is NEVER
+ * added to a persisted turn's `evidence[]`: a search's "running" state would
+ * read as permanently stale on reload once the search finishes. A client
+ * that didn't catch it live simply sees no status line, same as any other
+ * live-only SSE frame (`content`, `trace`).
+ *
+ * Reuses `manualSearchRunning` (#4183) and `candidateAcquisitionText`
+ * (#4160 S6) verbatim — no new acquisition-state logic. Scoped to the
+ * CANDIDATE basis only: the confirmed-identity search
+ * (`manualSearchRunning === "confirmed"`) has no proposal to pair a card
+ * with and keeps its existing (prose-only) UX, unchanged.
+ */
+function manualSearchStatusFrame(
+  identityProposal: IdentityProposal | null,
+  manualSearchRunning: "confirmed" | "candidate" | null,
+  candidateAcquisitionText: string | null,
+): Record<string, unknown> | null {
+  if (!identityProposal) return null;
+  const running = manualSearchRunning === "candidate";
+  if (!running && !candidateAcquisitionText) return null;
+  return {
+    kind: "manual_search_status",
+    manufacturer: identityProposal.manufacturer,
+    model: identityProposal.model,
+    running,
+    ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
+  };
+}
+
 function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
@@ -2615,6 +2647,9 @@ async function handleChatTurn(
           const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
+        // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText);
+        if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
             kind: "followups",
@@ -3871,6 +3906,11 @@ async function handleChatTurn(
       if (identityProposal) {
         const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
         controller.enqueue(enc.encode(sse(proposalFrame)));
+      }
+      // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
+      {
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText);
+        if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
         const provenFacets = plan.facets.length
