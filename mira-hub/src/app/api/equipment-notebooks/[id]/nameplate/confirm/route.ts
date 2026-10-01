@@ -42,8 +42,12 @@ import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import {
   adoptNameplateIdentityIfBlank,
+  adoptedIdentityFromEvidence,
   isAdoptableIdentity,
   isBlankUnboundNotebook,
+  isCorrectionOfAdoptedNameplate,
+  readoptCorrectedNameplate,
+  stampAdoptionProvenance,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
@@ -589,14 +593,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // machine, or is bound to an asset, keeps its identity — there the nameplate
   // is a component. The conditional write is the authority; a lost race (the
   // notebook gained an identity meanwhile) just leaves the inline search below.
-  if (isBlankUnboundNotebook(notebook) && isAdoptableIdentity(identity)) {
-    try {
+  // Codex #4191 F1: a correction of the SAME photo that adopted the identity
+  // (its prior reading carries the provenance stamp, and the notebook still
+  // holds exactly that identity, unbound) moves the adopted identity with it.
+  const priorAdopted = adoptedIdentityFromEvidence(existingOrigin?.matchEvidence);
+  try {
+    if (isBlankUnboundNotebook(notebook) && isAdoptableIdentity(identity)) {
       identityAdopted = await adoptNameplateIdentityIfBlank(ctx.tenantId, notebookId, identity);
-    } catch (err) {
-      console.error(
-        `[nameplate-confirm] identity adoption failed notebook=${notebookId}: ${(err as Error).message}`,
+    } else if (isCorrectionOfAdoptedNameplate(notebook, priorAdopted) && isAdoptableIdentity(identity)) {
+      identityAdopted = await readoptCorrectedNameplate(ctx.tenantId, notebookId, priorAdopted!, identity);
+    }
+    if (identityAdopted && nameplateDocId) {
+      await stampAdoptionProvenance(ctx.tenantId, notebookId, nameplateDocId, identity).catch((err) =>
+        console.error(
+          `[nameplate-confirm] adoption provenance stamp failed notebook=${notebookId}: ${(err as Error).message}`,
+        ),
       );
     }
+  } catch (err) {
+    console.error(`[nameplate-confirm] identity adoption failed notebook=${notebookId}: ${(err as Error).message}`);
   }
 
   // ── (d) Manual discovery ──────────────────────────────────────────────────

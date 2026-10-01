@@ -1851,6 +1851,87 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       });
     });
 
+    it("first adoption stamps its provenance on the nameplate source (so a later correction can be recognised)", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        const stamp = queries.find((q) => /UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(q.sql));
+        expect(stamp).toBeDefined();
+        expect(stamp!.params).toEqual(expect.arrayContaining([NAMEPLATE_DOC_ID]));
+        const stamped = JSON.parse(String(stamp!.params.find((x) => typeof x === "string" && x.startsWith("{"))));
+        expect(stamped).toEqual({ manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
+      });
+    });
+
+    // Codex #4191 F1: correcting the SAME photo after an adoption must move the
+    // notebook (and its recorded search) to the corrected identity.
+    describe("Codex #4191 F1 — a correction of the adopting photo re-adopts", () => {
+      const ADOPTED = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
+      const CORRECTED = { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" };
+      const adopted = (extra: Record<string, unknown> = {}) =>
+        vi.mocked(getNotebook).mockResolvedValue({
+          ...(notebook as object), ...ADOPTED, identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
+          ...extra,
+        } as never);
+      const readoption = (queries: { sql: string; params: unknown[] }[]) =>
+        queries.find((q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'[\s\S]*IS NOT DISTINCT FROM/.test(q.sql));
+      const correct = () => makeReq({ ...baseBody, identity: { ...CORRECTED, serialNumber: "SN-99" } });
+
+      it("same photo, adopted from it, untouched since → re-adopts the correction and records ITS search", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          const r = readoption(queries);
+          expect(r).toBeDefined();
+          expect(r!.params).toEqual(expect.arrayContaining(["755", "20G11NC022AA0NNNNN", "525", "25B-D010N104"]));
+          expect(JSON.stringify(r!.params)).not.toContain("SN-99");
+          expect(r!.sql).toMatch(/equipment_entity_id IS NULL/);
+          expect(body.identityAdopted).toBe(true);
+          expect(finishedState(queries)).toBe("search_limit_reached");
+          const claim = queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+          expect(JSON.stringify(claim.params)).toContain("755");
+        });
+      });
+
+      it("control: a DIFFERENT photo (no adopted_identity on this photo's prior reading) never re-adopts", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          await POST(correct(), makeParams(NOTEBOOK_ID));
+          expect(readoption(queries)).toBeUndefined();
+        });
+      });
+
+      it("control: an intervening manual edit (identity no longer the adopted one) never re-adopts", async () => {
+        await withFlag(true, async () => {
+          adopted({ model: "526" });
+          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          await POST(correct(), makeParams(NOTEBOOK_ID));
+          expect(readoption(queries)).toBeUndefined();
+        });
+      });
+
+      it("control: a notebook bound to an asset since the adoption never re-adopts", async () => {
+        await withFlag(true, async () => {
+          adopted({ asset: { entityId: ASSET_UUID } });
+          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "old-doc", matchEvidence: { adopted_identity: ADOPTED } } as never);
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          await POST(correct(), makeParams(NOTEBOOK_ID));
+          expect(readoption(queries)).toBeUndefined();
+        });
+      });
+    });
+
     it("a lost adoption race (row no longer blank) falls back to the inline, unrecorded search — never an error", async () => {
       await withFlag(true, async () => {
         blank();
