@@ -129,12 +129,28 @@ def _organic(url: str, title: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_search_returns_none_when_serper_key_unset(monkeypatch):
+async def test_search_raises_unavailable_when_every_pass_fails(monkeypatch):
+    # #4150 F3: every Serper pass failing (no key, outage) is "could not search",
+    # never "searched and found nothing" -- the caller must be able to say so.
     monkeypatch.setattr(search_mod, "SERPER_API_KEY", "")
     with patch.object(search_mod, "_serper_search", AsyncMock(side_effect=RuntimeError)):
-        result = await search_mod.search_manual("Rockwell Automation", "750")
-    # All three passes raise (no key) -> no candidates -> None
-    assert result is None
+        with pytest.raises(search_mod.ManualSearchUnavailable):
+            await search_mod.search_manual("Rockwell Automation", "750")
+
+
+@pytest.mark.asyncio
+async def test_search_returns_none_when_a_pass_succeeds_empty():
+    # Control: one pass fails, another completes with no results -> an honest miss.
+    calls = {"n": 0}
+
+    async def flaky(query, num=10):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient")
+        return []
+
+    with patch.object(search_mod, "_serper_search", flaky):
+        assert await search_mod.search_manual("Rockwell Automation", "750") is None
 
 
 @pytest.mark.asyncio
@@ -189,6 +205,30 @@ async def test_search_never_promotes_unvalidated_candidate_silently():
 async def test_search_returns_none_on_empty_query():
     result = await search_mod.search_manual("", "")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_catalog_only_search_does_not_send_candidate_to_judge(monkeypatch):
+    hit = _organic(
+        "https://example.com/NI8U-S12-AP6-manual.pdf",
+        "NI8U-S12-AP6 manual",
+    )
+    judge_candidates = AsyncMock()
+    monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
+    monkeypatch.setattr(search_mod._judge, "judge_candidates", judge_candidates)
+
+    async def fake_serper(query: str, num: int = 10):
+        return [hit]
+
+    with (
+        patch.object(search_mod, "_serper_search", fake_serper),
+        patch.object(search_mod, "validate_pdf", AsyncMock(return_value=True)),
+    ):
+        result = await search_mod.search_manual("", "NI8U-S12-AP6")
+
+    assert result is not None
+    assert result["validated"] is True
+    judge_candidates.assert_not_awaited()
 
 
 @pytest.mark.asyncio

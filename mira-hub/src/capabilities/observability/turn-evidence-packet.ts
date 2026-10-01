@@ -143,6 +143,17 @@ export type TurnEvidencePacketRetrieval = {
     started_this_turn: boolean;
     candidate_host: string | null;
   } | null;
+  /** Explicit manual search from a photo-read part number, without binding it. */
+  photo_part_manual_lookup: {
+    /** #4150: a search runs only on an exact, candidate-bound confirmation. */
+    /** "limited" (quota refusal) and "unavailable" (search service unreachable)
+     *  mean no search completed — searched=false (#4171 Codex F1/F5). */
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
+    searched: boolean;
+    part_number_sha256: string | null;
+    found: boolean;
+    candidate_host: string | null;
+  } | null;
 };
 
 export type TurnEvidencePacketContext = {
@@ -355,6 +366,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       zero_result_reason: null,
       prior_visual_observations_considered: 0,
       manual_acquisition: null,
+      photo_part_manual_lookup: null,
     },
     context: {
       evidence_doc_ids: [],

@@ -1574,6 +1574,8 @@ jobs:
               - 'mira-hub/src/capabilities/observability/**'
               - 'mira-hub/src/app/api/equipment-notebooks/**'
               - 'mira-hub/src/lib/inference/persist-usage.ts'
+              - 'mira-hub/src/capabilities/part-search-claim.ts'
+              - 'mira-hub/src/capabilities/__tests__/part-search-claim.integration.test.ts'
               - 'mira-hub/scripts/setup-integration-db.mjs'
               - 'mira-hub/vitest.integration.config.ts'
               - '.github/workflows/ci.yml'
@@ -1601,6 +1603,7 @@ jobs:
           node node_modules/vitest/vitest.mjs run \
             --config vitest.integration.config.ts \
             src/capabilities/observability/__tests__/turn-ingress.integration.test.ts \
+            src/capabilities/__tests__/part-search-claim.integration.test.ts \
             2>&1 | tee /tmp/reconciliation.out
           # A skip here is the exact failure this job was added to prevent. The
           # suite self-skips when TEST_DATABASE_URL is unset, vitest then EXITS 0,

@@ -147,8 +147,8 @@ export async function discoverManual(
   const manufacturer = str(identity.manufacturer);
   const model = str(identity.model);
   const catalogNumber = str(identity.catalogNumber);
-  if (!manufacturer || !(model || catalogNumber)) {
-    return notFound("manufacturer and model are required to search for a manual");
+  if (!(model || catalogNumber)) {
+    return notFound("a model or part number is required to search for a manual");
   }
 
   const tenantId = str(ctx.tenantId);
@@ -175,8 +175,8 @@ export async function discoverManual(
           : {}),
       },
       body: JSON.stringify({
-        manufacturer,
-        model: model ?? catalogNumber,
+        ...(manufacturer ? { manufacturer } : {}),
+        ...(model ? { model } : {}),
         ...(catalogNumber ? { catalog_number: catalogNumber } : {}),
       }),
       signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -294,6 +294,15 @@ const OEM_HOSTS: Record<string, string[]> = {
   phoenix: ["phoenixcontact.com"],
   "phoenix contact": ["phoenixcontact.com"],
 };
+
+/**
+ * The shared OEM maker table, read-only, for corpus-independent maker
+ * recognition (Manual-First PRD R1, candidate-identity.ts). One table: the
+ * same entries decide which hosts count as a maker's own documentation.
+ */
+export function oemMakerTable(): ReadonlyArray<{ name: string; domains: readonly string[] }> {
+  return Object.entries(OEM_HOSTS).map(([name, domains]) => ({ name, domains }));
+}
 
 /**
  * Can WE independently confirm that `host` is this manufacturer's own
