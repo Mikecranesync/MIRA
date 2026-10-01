@@ -2029,7 +2029,7 @@ async function handleChatTurn(
       })
     : { action: "none" };
   let photoPartLookup: {
-    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited";
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
     searched: boolean;
     part_number: string | null;
     found: boolean;
@@ -2119,9 +2119,10 @@ async function handleChatTurn(
         : candidate && manualUrl && manualHost
           ? `I searched for a manual using the exact label text \"${confirmedPart}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
           : `I searched for a manual using the exact label text \"${confirmedPart}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
+      // An outage is not a completed search (#4171 Codex F5): searched=false.
       photoPartLookup = {
-        action: "searched",
-        searched: true,
+        action: result.serviceAvailable ? "searched" : "unavailable",
+        searched: result.serviceAvailable,
         part_number: confirmedPart,
         found: Boolean(candidate),
         candidate_host: manualHost,

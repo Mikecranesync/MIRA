@@ -480,6 +480,19 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "limited", searched: false });
   });
 
+  it("F5: an unreachable search records searched=false, distinct from an empty search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce({
+      serviceAvailable: false, found: false, candidate: null, validated: false, isDirectPdf: false,
+      oemHost: false, trustedDistributorHost: false, quotaExceeded: false,
+      reason: "manual search service unavailable", oemRequestUrl: null,
+    });
+    const f = await ask(`Search the web for "${PART}"`);
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain("couldn't reach manual search");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "unavailable", searched: false });
+  });
+
   it("#4150 positive control: the exact confirmation after the proposal searches ONLY that string", async () => {
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);

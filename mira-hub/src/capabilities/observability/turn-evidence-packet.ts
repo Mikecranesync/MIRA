@@ -146,8 +146,9 @@ export type TurnEvidencePacketRetrieval = {
   /** Explicit manual search from a photo-read part number, without binding it. */
   photo_part_manual_lookup: {
     /** #4150: a search runs only on an exact, candidate-bound confirmation. */
-    /** "limited": a quota refusal — no search ran (#4171 Codex F1). */
-    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited";
+    /** "limited" (quota refusal) and "unavailable" (search service unreachable)
+     *  mean no search completed — searched=false (#4171 Codex F1/F5). */
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
     searched: boolean;
     part_number_sha256: string | null;
     found: boolean;
