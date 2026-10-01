@@ -10,20 +10,28 @@
  *   - Host must be on the caller's allowlist (exact or dot-suffix subdomain) AND
  *     must not resolve to a literal loopback/private/link-local/CGNAT/metadata
  *     address — revalidated on EVERY redirect hop, bounded at 3 hops.
+ *   - DNS is resolved by this module BEFORE connecting, every returned address
+ *     is checked against the same loopback/private/link-local/CGNAT/metadata
+ *     rules, and the socket is then pinned (via Node's `https.request` connect-
+ *     time `lookup` hook) to CONNECT to exactly the address that was checked —
+ *     a name that resolves (or re-resolves) to a private address between the
+ *     check and the connect can no longer reach it (DNS rebinding is closed).
+ *     TLS SNI/servername and certificate verification still use the URL
+ *     hostname; `rejectUnauthorized` is never set to `false`.
  *   - One total-time budget across all hops (AbortSignal).
- *   - maxBytes enforced WHILE STREAMING — the body is aborted as soon as the
- *     accumulated size crosses the limit; an oversized body is never buffered.
+ *   - maxBytes enforced WHILE STREAMING — the response is destroyed as soon as
+ *     the accumulated size crosses the limit; an oversized body is never
+ *     buffered.
  *   - Content-Type must be application/pdf AND the first bytes must be `%PDF-`.
  *   - Any derived filename is sanitized (no separators, no control chars, no
  *     leading dots, length-capped, forced `.pdf`).
  *   - Logs carry the HOST and a reason code only — never the URL query string,
  *     credentials, or document content.
- *
- * Residual risk (documented, not silently ignored): a DNS name on the allowlist
- * that resolves to a private address (DNS rebinding) is not caught here — Node's
- * fetch gives no connect-time address hook. The allowlist is the mitigation: the
- * caller only ever allows OEM documentation hosts it already trusts.
  */
+
+import * as dns from "node:dns";
+import * as https from "node:https";
+import type { LookupFunction } from "node:net";
 
 export type DownloadRejection =
   | "invalid_url"
@@ -31,6 +39,7 @@ export type DownloadRejection =
   | "url_credentials"
   | "non_standard_port"
   | "blocked_host"
+  | "blocked_address"
   | "host_not_allowed"
   | "too_many_redirects"
   | "redirect_no_location"
@@ -198,7 +207,9 @@ const BLOCKED_SUFFIXES = [".localhost", ".local", ".internal", ".localdomain"];
 /**
  * Loopback / private / link-local / CGNAT / metadata rejection for a hostname,
  * covering literal IPv4, literal IPv6 (including IPv4-mapped forms), and the
- * well-known non-routable names.
+ * well-known non-routable names. Also the ONE classifier for a resolved DNS
+ * address (see `resolveAndPin` below) — a bare IP literal always falls through
+ * the name checks and into `parseIpv4`/`parseIpv6`.
  */
 export function isBlockedHost(hostname: string): boolean {
   const h = normalizeHost(hostname);
@@ -259,6 +270,232 @@ export function safePdfFilename(url: string, fallback = "manual.pdf"): string {
   return `${base}.pdf`;
 }
 
+// ── DNS resolve-and-pin (connect-time rebinding guard) ──────────────────────
+
+/**
+ * Resolves every address a hostname's DNS record advertises. Overridable in
+ * tests via `__setResolverForTests` so the suite never touches a real
+ * resolver. The default implementation is the one and only place `dns.lookup`
+ * is called.
+ */
+export type LookupAllFn = (hostname: string) => Promise<dns.LookupAddress[]>;
+
+let resolverOverride: LookupAllFn | null = null;
+
+/** Test-only seam: inject a fake DNS resolver. Pass `null` to restore the real one. */
+export function __setResolverForTests(fn: LookupAllFn | null): void {
+  resolverOverride = fn;
+}
+
+function defaultLookupAll(hostname: string): Promise<dns.LookupAddress[]> {
+  return new Promise((resolve, reject) => {
+    dns.lookup(hostname, { all: true }, (err, addresses) => {
+      if (err) reject(err);
+      else resolve(addresses);
+    });
+  });
+}
+
+/** Every address the check approved, in DNS order (never empty). */
+interface Pin {
+  addresses: Array<{ address: string; family: 4 | 6 }>;
+}
+
+type PinResult = { ok: true; pin: Pin } | { ok: false; reason: "blocked_address" | "network_error" };
+
+/**
+ * Resolve `hostname` to every address it advertises and reject if ANY of them
+ * is loopback/private/link-local/CGNAT/metadata — reusing `isBlockedHost`
+ * (the one classifier) rather than a second one for raw addresses. EVERY
+ * checked address is kept, so the socket can fall back from a dead first
+ * address (e.g. a broken IPv6 route) without a second, unchecked lookup.
+ */
+async function resolveAndPin(hostname: string): Promise<PinResult> {
+  const resolver = resolverOverride ?? defaultLookupAll;
+  let records: dns.LookupAddress[];
+  try {
+    records = await resolver(hostname);
+  } catch {
+    return { ok: false, reason: "network_error" };
+  }
+  if (!records || records.length === 0) {
+    return { ok: false, reason: "network_error" };
+  }
+  for (const r of records) {
+    if (isBlockedHost(r.address)) {
+      return { ok: false, reason: "blocked_address" };
+    }
+  }
+  return {
+    ok: true,
+    pin: {
+      addresses: records.map((r) => ({ address: r.address, family: r.family === 6 ? 6 : 4 })),
+    },
+  };
+}
+
+const ABORTED = Symbol("aborted");
+
+/**
+ * Await `p` unless `signal` aborts first (#4164 Codex F1): `dns.lookup` has no
+ * cancellation, so a stalled resolver must not hold the download past its
+ * total budget. The listener is always removed; a late DNS answer after an
+ * abort is ignored and never starts a request.
+ */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal): Promise<T | typeof ABORTED> {
+  if (signal.aborted) return Promise.resolve(ABORTED);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(ABORTED);
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * A connect-time `lookup` hook (the shape `https.request`/`http.request`
+ * accept) that ignores whatever the socket layer would otherwise resolve and
+ * only ever hands back addresses `resolveAndPin` already checked. This is
+ * what makes the connection go to a checked address instead of whatever a
+ * second, independent resolution might return.
+ *
+ * Node >= 20 dials with `autoSelectFamily`, which calls this hook with
+ * `{ all: true }` and REQUIRES an array — answering with a single pair there
+ * fails every real connection. With the full list, Node's happy-eyeballs
+ * fallback walks the checked addresses in DNS order.
+ */
+function makePinnedLookup(pin: Pin): LookupFunction {
+  return ((_hostname: string, options: { all?: boolean }, callback: (...args: unknown[]) => void) => {
+    if (options && options.all) {
+      callback(null, pin.addresses.map((a) => ({ address: a.address, family: a.family })));
+      return;
+    }
+    const first = pin.addresses[0];
+    callback(null, first.address, first.family);
+  }) as unknown as LookupFunction;
+}
+
+// ── Transport (real https.request, injectable in tests) ────────────────────
+
+export interface TransportResponse {
+  statusCode: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: NodeJS.ReadableStream;
+}
+
+/**
+ * Test-only seam: given the exact options this module would hand to
+ * `https.request` (including the pinned `lookup` and `signal`), produce a
+ * response. Lets tests assert on `options.lookup`/`options.servername`/
+ * `options.rejectUnauthorized` without opening a real TLS socket.
+ */
+export type TransportFn = (options: https.RequestOptions, url: URL) => Promise<TransportResponse>;
+
+let transportOverride: TransportFn | null = null;
+
+/** Test-only seam: inject a fake transport. Pass `null` to restore the real one. */
+export function __setTransportForTests(fn: TransportFn | null): void {
+  transportOverride = fn;
+}
+
+function defaultTransport(options: https.RequestOptions): Promise<TransportResponse> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      resolve({ statusCode: res.statusCode ?? 0, headers: res.headers, body: res });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function performRequest(url: URL, pin: Pin, signal: AbortSignal): Promise<TransportResponse> {
+  const options: https.RequestOptions = {
+    hostname: url.hostname,
+    // Never set rejectUnauthorized: false. TLS SNI/certificate checks stay on
+    // the URL's own hostname — `lookup` only changes where the socket
+    // connects, never what the server is expected to present.
+    servername: url.hostname,
+    port: 443,
+    path: `${url.pathname}${url.search}`,
+    method: "GET",
+    headers: { Accept: "application/pdf,*/*;q=0.5" },
+    lookup: makePinnedLookup(pin),
+    signal,
+  };
+  const transport = transportOverride ?? defaultTransport;
+  return transport(options, url);
+}
+
+function getHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | undefined {
+  const v = headers[name.toLowerCase()];
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function drainBody(body: NodeJS.ReadableStream | undefined): void {
+  try {
+    (body as { destroy?: () => void } | undefined)?.destroy?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+type ReadResult =
+  | { ok: true; buffer: Buffer }
+  | { ok: false; reason: "too_large" | "not_pdf" | "empty_body" | "timeout" | "network_error" };
+
+/** Stream the body, enforcing maxBytes AS BYTES ARRIVE and checking the PDF magic. */
+async function readBodyWithLimits(
+  body: NodeJS.ReadableStream,
+  maxBytes: number,
+  timedOut: () => boolean,
+): Promise<ReadResult> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let magicChecked = false;
+  try {
+    for await (const chunk of body as unknown as AsyncIterable<Buffer | string>) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (buf.length === 0) continue;
+      total += buf.length;
+      if (total > maxBytes) {
+        // Destroy AS SOON AS the limit is crossed — the rest of an oversized
+        // body is never read, let alone buffered.
+        drainBody(body);
+        return { ok: false, reason: "too_large" };
+      }
+      chunks.push(buf);
+      if (!magicChecked && total >= PDF_MAGIC.length) {
+        const head = Buffer.concat(chunks, PDF_MAGIC.length).toString("latin1");
+        if (head !== PDF_MAGIC) {
+          drainBody(body);
+          return { ok: false, reason: "not_pdf" };
+        }
+        magicChecked = true;
+      }
+    }
+  } catch {
+    return { ok: false, reason: timedOut() ? "timeout" : "network_error" };
+  }
+
+  if (total === 0) return { ok: false, reason: "empty_body" };
+  const buffer = Buffer.concat(chunks, total);
+  if (!magicChecked || buffer.subarray(0, PDF_MAGIC.length).toString("latin1") !== PDF_MAGIC) {
+    return { ok: false, reason: "not_pdf" };
+  }
+  return { ok: true, buffer };
+}
+
 // ── Fetch ────────────────────────────────────────────────────────────────────
 
 function reject(host: string, reason: DownloadRejection): { ok: false; reason: DownloadRejection } {
@@ -307,106 +544,70 @@ export async function safeDownloadPdf(
     let hostForLog = "";
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      const gate = gateUrl(current, opts.allowedHosts);
+      let parsed: URL;
       try {
-        hostForLog = new URL(current).hostname;
+        parsed = new URL(current);
+        hostForLog = parsed.hostname;
       } catch {
-        hostForLog = "";
+        return reject(hostForLog, "invalid_url");
       }
+
+      const gate = gateUrl(current, opts.allowedHosts);
       if (gate) return reject(hostForLog, gate);
 
-      let resp: Response;
+      const pinResult = await untilAborted(resolveAndPin(parsed.hostname), controller.signal);
+      if (pinResult === ABORTED || timedOut) return reject(hostForLog, "timeout");
+      if (!pinResult.ok) {
+        if (pinResult.reason === "blocked_address") return reject(hostForLog, "blocked_address");
+        return reject(hostForLog, timedOut ? "timeout" : "network_error");
+      }
+
+      let resp: TransportResponse;
       try {
-        resp = await fetch(current, {
-          method: "GET",
-          redirect: "manual",
-          signal: controller.signal,
-          headers: { Accept: "application/pdf,*/*;q=0.5" },
-        });
+        resp = await performRequest(parsed, pinResult.pin, controller.signal);
       } catch {
         return reject(hostForLog, timedOut ? "timeout" : "network_error");
       }
 
-      if (resp.status >= 300 && resp.status < 400) {
+      if (resp.statusCode >= 300 && resp.statusCode < 400) {
+        drainBody(resp.body);
         if (hop === MAX_REDIRECTS) return reject(hostForLog, "too_many_redirects");
-        const loc = resp.headers.get("location");
+        const loc = getHeader(resp.headers, "location");
         if (!loc) return reject(hostForLog, "redirect_no_location");
         try {
           current = new URL(loc, current).toString();
         } catch {
           return reject(hostForLog, "invalid_url");
         }
-        // Loop re-gates the new URL: a redirect off the allowlist or onto a
-        // private address is rejected exactly like a first-hop attempt.
+        // Loop re-gates AND re-resolves-and-pins the new URL: a redirect off
+        // the allowlist, onto a literal private address, or onto a name that
+        // DNS-resolves private is rejected exactly like a first-hop attempt.
         continue;
       }
 
-      if (!resp.ok) return { ...reject(hostForLog, "http_error"), status: resp.status };
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        drainBody(resp.body);
+        return { ...reject(hostForLog, "http_error"), status: resp.statusCode };
+      }
 
-      const rawType = resp.headers.get("content-type") ?? "";
+      const rawType = getHeader(resp.headers, "content-type") ?? "";
       const contentType = rawType.split(";")[0].trim().toLowerCase();
       if (contentType !== "application/pdf") {
+        drainBody(resp.body);
         return reject(hostForLog, "wrong_content_type");
       }
 
       // A declared Content-Length over the cap is refused before reading a byte.
-      const declared = Number(resp.headers.get("content-length") ?? "");
+      const declared = Number(getHeader(resp.headers, "content-length") ?? "");
       if (Number.isFinite(declared) && declared > maxBytes) {
-        try {
-          await resp.body?.cancel();
-        } catch {
-          /* ignore */
-        }
+        drainBody(resp.body);
         return reject(hostForLog, "too_large");
       }
 
-      if (!resp.body) return reject(hostForLog, "empty_body");
+      const read = await readBodyWithLimits(resp.body, maxBytes, () => timedOut);
+      if (!read.ok) return reject(hostForLog, read.reason);
 
-      const reader = resp.body.getReader();
-      const chunks: Buffer[] = [];
-      let total = 0;
-      let magicChecked = false;
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (!value || value.length === 0) continue;
-          const buf = Buffer.from(value);
-          total += buf.length;
-          if (total > maxBytes) {
-            // Abort AS SOON AS the limit is crossed — the rest of an oversized
-            // body is never read, let alone buffered.
-            try {
-              await reader.cancel();
-            } catch {
-              /* ignore */
-            }
-            return reject(hostForLog, "too_large");
-          }
-          chunks.push(buf);
-          if (!magicChecked && total >= PDF_MAGIC.length) {
-            const head = Buffer.concat(chunks, PDF_MAGIC.length).toString("latin1");
-            if (head !== PDF_MAGIC) {
-              try {
-                await reader.cancel();
-              } catch {
-                /* ignore */
-              }
-              return reject(hostForLog, "not_pdf");
-            }
-            magicChecked = true;
-          }
-        }
-      } catch {
-        return reject(hostForLog, timedOut ? "timeout" : "network_error");
-      }
-
-      if (total === 0) return reject(hostForLog, "empty_body");
-      const buffer = Buffer.concat(chunks, total);
-      if (!magicChecked || buffer.subarray(0, PDF_MAGIC.length).toString("latin1") !== PDF_MAGIC) {
-        return reject(hostForLog, "not_pdf");
-      }
-      return { ok: true, buffer, finalUrl: current, contentType };
+      return { ok: true, buffer: read.buffer, finalUrl: current, contentType };
     }
 
     return reject(hostForLog, "too_many_redirects");
