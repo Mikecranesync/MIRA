@@ -1081,6 +1081,27 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
   };
 }
 
+// #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
+// sometimes answers a manual-search question from its own training instead
+// of MIRA's real capability — "I'm unable to browse the web…contact the
+// manufacturer (SMC)" — even while MIRA's own search for this identity is
+// offered (a candidate acquisition, unconfirmed) or running (confirmed). Both
+// lanes, unconditional on `refused`: a false capability claim is wrong
+// whether or not the rest of the turn also reads as a refusal.
+const CAPABILITY_DENIAL =
+  /\bunable to browse\b|\bcan(?:not|'t|’t) browse\b|\bcan(?:not|'t|’t) search the web\b|\b(?:don'?t|doesn'?t|do not|does not) have internet access\b/i;
+const CONTACT_MAKER_DEFLECTION =
+  /\bcontact the manufacturer\b|\bcontact\s+(?:the\s+)?[\w.&'-]+(?:\s+[\w.&'-]+){0,2}\s+support\b|\bcheck\s+(?:their|its)\s+official\s+website\b/i;
+
+function falseCapabilityClaim(text: string): string | null {
+  const m = CAPABILITY_DENIAL.exec(text) ?? CONTACT_MAKER_DEFLECTION.exec(text);
+  return m ? m[0] : null;
+}
+
+/** The bulleted fallback lines above are written as a list item; this guard
+ *  replaces a whole answer, so it needs the same sentence standing alone. */
+const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
@@ -1205,6 +1226,26 @@ export function validateAnswer(opts: {
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
   if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
+
+  // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
+  // unconditional on `refused`: it is wrong regardless of how the rest of the
+  // turn is classified. Only fires while MIRA's own part-search is actually
+  // offered or running for this identity — an idle notebook may legitimately
+  // tell the technician to fetch the manual themselves (MANUAL_SELF_SERVE_LINE).
+  if (opts.manualSearchRunning) {
+    const denial = falseCapabilityClaim(scanText);
+    if (denial) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:capability-denial",
+        detail: denial.slice(0, 160),
+        replacement: toStandaloneSentence(
+          opts.manualSearchRunning === "candidate" ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE : MANUAL_SEARCH_RUNNING_LINE,
+        ),
+      };
+    }
+  }
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.

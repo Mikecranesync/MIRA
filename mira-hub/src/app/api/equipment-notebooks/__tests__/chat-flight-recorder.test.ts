@@ -408,7 +408,7 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
     // The proposal binds the whole identity it would send (#4171 F4): no maker here.
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null });
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1 });
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
     expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
@@ -457,6 +457,65 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     smcLabel();
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", null) as never);
     await ask(`Search the web for "${SMC_PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // #4185/#4186 (the #4160 Pixel walk incident, c5941295415): an unquoted or
+  // short-affirmative reply to a pending offer must be honoured through the
+  // REAL route — not just the pure `partSearchDecision` unit — and a
+  // non-matching reply must re-show the offer (persisted with an aged
+  // proposal entry) rather than silently losing it, for up to 3 turns.
+  it("#4185: an unquoted confirmation after a proposal still searches", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask(`search the web for ${PART}`);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith(
+      { catalogNumber: PART },
+      expect.objectContaining({ tenantId: expect.any(String) }),
+    );
+  });
+
+  it("#4185: a short affirmative ('yes') right after a proposal searches", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask("yes");
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+  });
+
+  it("#4186: a non-matching reply re-shows the offer, aging it, instead of expiring it", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    const f = await ask("What is the warranty on this?");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain(`Search the web for "${PART}"`);
+    const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2 });
+  });
+
+  it("#4186: the offer stays valid through the 3rd subsequent turn", async () => {
+    domainMock.listTurns.mockResolvedValueOnce([{
+      id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
+      answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 3 }],
+      basis: null, createdAt: "2026-09-30T00:00:00Z", ownerUserId: "u1", sharedLegacy: false,
+    }] as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+  });
+
+  it("#4186: the offer does not survive a 4th subsequent turn — a late confirmation no longer searches", async () => {
+    domainMock.listTurns.mockResolvedValueOnce([{
+      id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
+      answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 4 }],
+      basis: null, createdAt: "2026-09-30T00:00:00Z", ownerUserId: "u1", sharedLegacy: false,
+    }] as never);
+    await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("#4185: an unquoted confirmation naming a part that was never offered is still refused (mismatch, no serial/asset-guard regression)", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    await ask("search the web for OTHER-123");
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
   });
 

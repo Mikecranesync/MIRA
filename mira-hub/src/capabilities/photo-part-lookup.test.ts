@@ -141,7 +141,7 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
 
   it("a request only proposes; it never authorizes a search", () => {
     expect(partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] }))
-      .toEqual({ action: "propose", candidate: CANDIDATE });
+      .toEqual({ action: "propose", candidate: CANDIDATE, age: 1 });
   });
 
   it.each([
@@ -184,6 +184,83 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
   it("the confirmation must be exact: extra words are not a confirmation", () => {
     expect(confirmedPartSearchCandidate(`${partSearchConfirmation(CANDIDATE)} and also the other one`)).toBeNull();
     expect(confirmedPartSearchCandidate(`Don't ${partSearchConfirmation(CANDIDATE)}`)).toBeNull();
+  });
+});
+
+// #4185/#4186: the Pixel walk incident (#4160, c5941295415) — an unquoted or
+// short-affirmative reply to a pending offer got an LLM answer ("I'm unable
+// to browse the web… contact the manufacturer (SMC)") instead of being
+// recognised as consent, and a non-matching reply silently dropped the offer.
+describe("#4185/#4186 — tolerant search consent", () => {
+  const CANDIDATE = "SS5Y3-DUW01302";
+  const proposed = (age?: number) => [
+    { kind: "part_search_proposal", candidate: CANDIDATE, ...(age === undefined ? {} : { age }) },
+  ];
+
+  it("an unquoted confirmation, any case, is accepted", () => {
+    expect(confirmedPartSearchCandidate(`search the web for ${CANDIDATE}`)).toBe(CANDIDATE);
+    expect(
+      partSearchDecision({ message: `search the web for ${CANDIDATE}`, candidate: CANDIDATE, previousEvidence: proposed() }),
+    ).toEqual({ action: "search", candidate: CANDIDATE });
+  });
+
+  it("a curly-quoted confirmation is accepted (pinned control, not a regression)", () => {
+    const curly = `Search the web for “${CANDIDATE}”`;
+    expect(confirmedPartSearchCandidate(curly)).toBe(CANDIDATE);
+    expect(partSearchDecision({ message: curly, candidate: CANDIDATE, previousEvidence: proposed() }))
+      .toEqual({ action: "search", candidate: CANDIDATE });
+  });
+
+  it.each(["yes", "Yes", "search", "go ahead", "yes search", "yes search."])(
+    "a short affirmative right after an offer confirms it: %s",
+    (message) => {
+      expect(partSearchDecision({ message, candidate: CANDIDATE, previousEvidence: proposed() }))
+        .toEqual({ action: "search", candidate: CANDIDATE });
+    },
+  );
+
+  it("a short affirmative with no pending offer does not propose or search", () => {
+    expect(partSearchDecision({ message: "yes", candidate: CANDIDATE, previousEvidence: [] }).action).toBe("none");
+  });
+
+  it("an unquoted confirmation naming a part that was never offered is still refused", () => {
+    expect(
+      partSearchDecision({ message: `Search the web for "OTHER-123"`, candidate: CANDIDATE, previousEvidence: proposed() }).action,
+    ).toBe("mismatch");
+    expect(
+      partSearchDecision({ message: `search the web for OTHER-123`, candidate: CANDIDATE, previousEvidence: proposed() }).action,
+    ).toBe("mismatch");
+  });
+
+  it("a non-matching reply re-shows the offer instead of expiring it", () => {
+    expect(
+      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(1) }),
+    ).toEqual({ action: "propose", candidate: CANDIDATE, age: 2 });
+  });
+
+  it("the offer stays valid for up to 3 subsequent turns — a late confirmation still searches", () => {
+    // age:3 means this is the 3rd subsequent turn the offer has survived.
+    expect(
+      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: proposed(3) }),
+    ).toEqual({ action: "search", candidate: CANDIDATE });
+    expect(
+      partSearchDecision({ message: "yes", candidate: CANDIDATE, previousEvidence: proposed(3) }),
+    ).toEqual({ action: "search", candidate: CANDIDATE });
+  });
+
+  it("the offer does not survive a 4th subsequent turn — neither confirms nor re-shows", () => {
+    expect(
+      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: proposed(4) }).action,
+    ).toBe("mismatch");
+    expect(
+      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(4) }),
+    ).toEqual({ action: "none" });
+  });
+
+  it("cancelling and confirming both still require the photo to still yield the offered candidate", () => {
+    expect(
+      partSearchDecision({ message: "search the web for " + CANDIDATE, candidate: "OTHER-123", previousEvidence: proposed() }).action,
+    ).toBe("mismatch");
   });
 });
 

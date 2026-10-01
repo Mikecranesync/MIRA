@@ -152,6 +152,10 @@ export type PartSearchProposalEntry = {
   kind: typeof PART_SEARCH_PROPOSAL_KIND;
   candidate: string;
   manufacturer?: string | null;
+  /** #4185/#4186: how many of the technician's own turns this offer has
+   *  survived, counting the turn it was first proposed on as 1. Absent on a
+   *  legacy entry, treated the same as 1. */
+  age?: number;
 };
 /** Marker appended to the proposal's own turn when a confirmation spends it
  *  (atomically, before any search) — a proposal authorizes ONE search (F3). */
@@ -163,11 +167,22 @@ export function partSearchConfirmation(candidate: string): string {
 }
 
 /** The candidate named by an exact confirmation message, or null. Nothing else
- *  in the message is allowed: extra words are not a confirmation. */
+ *  in the message is allowed: extra words are not a confirmation. Quotes are
+ *  OPTIONAL (#4185: "search the web for X" with no quotes at all \u2014 the shape
+ *  the #4160 Pixel walk incident actually typed \u2014 must still count); straight
+ *  or curly quotes are accepted when present. */
 export function confirmedPartSearchCandidate(message: string): string | null {
-  const m = message.trim().match(/^search the web for ["\u201c]([^"\u201c\u201d\n]{1,80})["\u201d]\.?$/i);
-  return m ? m[1] : null;
+  const m = message
+    .trim()
+    .match(/^search the web for (?:["\u201c]([^"\u201c\u201d\n]{1,80})["\u201d]|([^"\u201c\u201d\n]{1,80}?))\.?$/i);
+  return m ? (m[1] ?? m[2]) : null;
 }
+
+/** #4185/#4186: a bare affirmative right after an offer confirms it without
+ *  re-typing the candidate string. Only meaningful when a proposal is
+ *  actually pending (checked by the caller) \u2014 "yes" on its own is never a
+ *  lookup request. */
+const SHORT_AFFIRMATIVE = /^(?:yes(?:\s+search)?|search|go\s+ahead)[.!]?$/i;
 
 export function isPartSearchProposal(entry: unknown): entry is PartSearchProposalEntry {
   if (typeof entry !== "object" || entry === null) return false;
@@ -177,10 +192,38 @@ export function isPartSearchProposal(entry: unknown): entry is PartSearchProposa
 
 export type PartSearchDecision =
   | { action: "none" }
-  | { action: "propose"; candidate: string }
+  | { action: "propose"; candidate: string; age: number }
   | { action: "search"; candidate: string }
   | { action: "cancelled"; candidate: string }
   | { action: "mismatch"; candidate: string | null };
+
+/** #4185/#4186: how many of the technician's own turns an offer stays valid
+ *  for, when their reply doesn't match it. The offer is kept alive by being
+ *  re-proposed on each non-matching turn (see `partSearchDecision` below), so
+ *  a caller only ever needs the evidence of the single immediately-preceding
+ *  turn — the age travels forward with it. */
+const PART_SEARCH_OFFER_TURN_LIMIT = 3;
+
+/** The still-valid pending proposal in `previousEvidence` — not yet consumed,
+ *  and not older than `PART_SEARCH_OFFER_TURN_LIMIT` — or null. A proposal
+ *  past the limit is treated exactly like no proposal at all: it cannot be
+ *  confirmed, cancelled, or re-shown. Exported so a caller that re-persists a
+ *  re-shown offer can read its bound manufacturer back out. */
+export function pendingPartSearchProposal(previousEvidence: readonly unknown[]): PartSearchProposalEntry | null {
+  const consumed = previousEvidence.some(
+    (e) => typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === PART_SEARCH_CONSUMED_KIND,
+  );
+  const raw = consumed ? null : (previousEvidence.find(isPartSearchProposal) ?? null);
+  return raw && (raw.age ?? 1) <= PART_SEARCH_OFFER_TURN_LIMIT ? raw : null;
+}
+
+/** Case-insensitive identity match — a technician confirming by typing a
+ *  slightly different case ("ss5y3-duw01302") still names the same string;
+ *  the string that actually leaves is always the canonical `opts.candidate`,
+ *  never what was typed. */
+function sameCandidate(a: string | null, b: string | null): boolean {
+  return a !== null && b !== null && a.toUpperCase() === b.toUpperCase();
+}
 
 /**
  * Decide this turn's photo-part search. `candidate` is the part number the
@@ -195,28 +238,36 @@ export function partSearchDecision(opts: {
   manufacturer?: string | null;
   previousEvidence: readonly unknown[];
 }): PartSearchDecision {
-  const consumed = opts.previousEvidence.some(
-    (e) => typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === PART_SEARCH_CONSUMED_KIND,
-  );
-  const pending = consumed ? null : (opts.previousEvidence.find(isPartSearchProposal) ?? null);
+  const pending = pendingPartSearchProposal(opts.previousEvidence);
   const makerNow = opts.manufacturer ?? null;
   const confirmed = confirmedPartSearchCandidate(opts.message);
-  if (confirmed !== null) {
-    // Exact string equality, three ways: what was proposed, what is confirmed,
+  // A bare affirmative only means anything when there is something pending to
+  // affirm — otherwise it is not a lookup request at all (falls through below).
+  const shortAffirmative = pending !== null && SHORT_AFFIRMATIVE.test(opts.message.trim());
+  if (confirmed !== null || shortAffirmative) {
+    // Three-way match: what was proposed, what (if anything) was typed back,
     // and what the photo yields now. Any difference means no egress.
-    return pending &&
-      opts.candidate &&
-      confirmed === opts.candidate &&
-      pending.candidate === opts.candidate &&
-      (pending.manufacturer ?? null) === makerNow
-      ? { action: "search", candidate: opts.candidate }
+    const matches =
+      pending !== null &&
+      opts.candidate !== null &&
+      sameCandidate(pending.candidate, opts.candidate) &&
+      (confirmed === null || sameCandidate(confirmed, opts.candidate)) &&
+      (pending.manufacturer ?? null) === makerNow;
+    return matches
+      ? { action: "search", candidate: opts.candidate as string }
       : { action: "mismatch", candidate: opts.candidate };
   }
   if (pending && opts.message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase()) {
     return { action: "cancelled", candidate: pending.candidate };
   }
   if (opts.candidate && explicitManualLookupRequest(opts.message)) {
-    return { action: "propose", candidate: opts.candidate };
+    return { action: "propose", candidate: opts.candidate, age: 1 };
+  }
+  // #4185/#4186: a reply that neither confirms, cancels, nor starts a fresh
+  // lookup does not expire a pending offer — it re-shows it, aging it by one
+  // turn, until PART_SEARCH_OFFER_TURN_LIMIT is reached.
+  if (pending) {
+    return { action: "propose", candidate: pending.candidate, age: (pending.age ?? 1) + 1 };
   }
   return { action: "none" };
 }

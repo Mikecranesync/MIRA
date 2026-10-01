@@ -829,6 +829,80 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
   });
 });
 
+// #4185/#4186 — the #4160 Pixel walk incident (c5941295415): the model
+// answered a manual-search question from its own training ("I'm unable to
+// browse the web… contact the manufacturer (SMC)") instead of MIRA's real
+// capability, while MIRA's own search for this identity was offered or
+// running. A false capability claim is wrong whether or not the rest of the
+// turn would be classified as a refusal — this guard runs unconditionally.
+describe("#4185/#4186: a false capability-denial claim while MIRA's own search is offered/running", () => {
+  const base = { question: "can you search the web for the manual", general: true, served: true, refused: false };
+
+  it.each([
+    "I'm unable to browse the web, so I can't look that up.",
+    "I can't browse the internet to find that for you.",
+    "I cannot search the web for this part.",
+    "I don't have internet access, so I can't check that.",
+  ])("capability denial, with MIRA's own acquisition running, is replaced: %s", (answerText) => {
+    const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsupported_specificity");
+      expect(v.replacement).toContain("I'm already searching for the official manual");
+      expect(v.replacement).not.toContain("unable to browse");
+    }
+  });
+
+  it.each([
+    "You may want to contact the manufacturer (SMC) directly for a copy of the manual.",
+    "I'd recommend you contact SMC support for the official documentation.",
+    "Please check their official website for the datasheet.",
+  ])("contact-the-maker deflection, with an unconfirmed candidate search running, is replaced: %s", (answerText) => {
+    const v = validateAnswer({ ...base, answerText, manualSearchRunning: "candidate" });
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsupported_specificity");
+      expect(v.replacement).toContain("I'm already searching for the official manual");
+      expect(v.replacement).toContain("turned off until you check it");
+      expect(v.replacement).not.toContain("contact");
+    }
+  });
+
+  it("reproduces the exact #4160 incident text and replaces it", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText:
+        "I'm unable to browse the web, so I can't look that up. You may want to contact the manufacturer (SMC) directly or check their official website for more information.",
+      manualSearchRunning: "candidate",
+    });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.violation).toBe("unsupported-specificity:capability-denial");
+  });
+
+  it("a curly apostrophe in the denial is still caught (scanText folds it)", () => {
+    const v = validateAnswer({ ...base, answerText: "I can’t browse the web for that.", manualSearchRunning: "confirmed" });
+    expect(v.ok).toBe(false);
+  });
+
+  it("negative control: the same denial phrase with no offer or acquisition running is left alone", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText: "I'm unable to browse the web, so I can't look that up.",
+      manualSearchRunning: null,
+    });
+    expect(v.ok).toBe(true);
+  });
+
+  it("negative control: a normal answer is untouched while a search is running", () => {
+    const v = validateAnswer({
+      ...base,
+      answerText: "The fault typically clears after a power cycle of the drive.",
+      manualSearchRunning: "confirmed",
+    });
+    expect(v.ok).toBe(true);
+  });
+});
+
 describe("#4098 part 2: established RTD definitions in general chat", () => {
   const Q77 = "A technician is comparing two RTD sensor types: PT100 and PT1000. What is the primary difference?";
   const Q6 =

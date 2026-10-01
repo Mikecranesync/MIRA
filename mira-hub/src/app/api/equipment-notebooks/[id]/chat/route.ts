@@ -109,10 +109,10 @@ import { withRetailCodeNote } from "@/capabilities/retail-codes";
 import {
   PART_SEARCH_CANCEL,
   asksPartCompatibility,
-  confirmedPartSearchCandidate,
   isPartSearchProposal,
   partSearchConfirmation,
   partSearchDecision,
+  pendingPartSearchProposal,
   unambiguousPartNumber,
   type PartSearchDecision,
   type PartSearchProposalEntry,
@@ -2100,13 +2100,14 @@ async function handleChatTurn(
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
   const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any
-  // pending proposal. Read only for a confirm/cancel message; fail closed.
+  // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
+  // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a
+  // short affirmative, an unquoted confirmation, or an unrelated reply can
+  // never see a pending offer, and it silently expires instead of staying
+  // valid or being re-shown. Fail closed on any read error.
   let previousTurnEvidence: unknown[] = [];
   let previousTurnId: string | null = null;
-  const mayAnswerProposal =
-    confirmedPartSearchCandidate(message) !== null ||
-    message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase();
-  if (partSearchEligible && mayAnswerProposal) {
+  if (partSearchEligible) {
     try {
       const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
       if (last && last.ownerUserId === ctx.userId) {
@@ -2136,14 +2137,21 @@ async function handleChatTurn(
   } | null = null;
   if (partSearch.action === "propose") {
     const c = partSearch.candidate;
+    // #4185/#4186: age > 1 means this is a RE-SHOW of an offer that a
+    // non-matching reply didn't expire — keep the ORIGINAL maker it was bound
+    // to (never re-derive from this turn's photo, which may carry none) so a
+    // later confirmation is still checked against the identity actually
+    // offered. age === 1 is always a fresh proposal from this turn's photo.
+    const reshown = partSearch.age > 1 ? pendingPartSearchProposal(previousTurnEvidence) : null;
+    const maker = reshown ? (reshown.manufacturer ?? null) : photoMaker;
     photoPartLookup = {
       action: "proposed",
       searched: false,
       part_number: c,
       found: false,
       candidate_host: null,
-      message: `I can search the web for a manual using only the exact label text \"${c}\"${photoMaker ? ` and the maker name \"${photoMaker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
-      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: photoMaker },
+      message: `I can search the web for a manual using only the exact label text \"${c}\"${maker ? ` and the maker name \"${maker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age },
     };
   } else if (partSearch.action === "cancelled") {
     photoPartLookup = {
