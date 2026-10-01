@@ -112,7 +112,22 @@ export function SensorSheet({
   initialReadState?: "scan";
 }) {
   const notebookId = notebook.id;
-  const [mode, setMode] = useState<SensorMode | null>(initialMode ?? null);
+  // Hardware BACK registers through the Sheet below (viewer → mode → Sensor
+  // sheet → notebook). React fires mount effects children-before-parent, so
+  // when a mode's own BACK layer (the `current !== null` block's BackDismiss)
+  // mounts in the SAME commit as this Sheet, it registers BEFORE the Sheet's
+  // own onClose — putting the Sheet ON TOP of the stack. One BACK press then
+  // closed the whole sheet instead of unwinding a rung (#4187: the shell's
+  // "Scan machine" quick action passes `initialMode` already set on first
+  // mount, so Sheet and the mode/scan layers all mount in one commit).
+  // Starting `mode` null and promoting it a tick later lets Sheet's own
+  // registration land first — exactly like the organic "tap a mode button"
+  // flow already does, where Sheet mounts alone before any mode exists.
+  const [mode, setMode] = useState<SensorMode | null>(null);
+  useEffect(() => {
+    if (initialMode) setMode(initialMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const current = SENSOR_MODES.find((m) => m.id === mode) ?? null;
 
   return (
