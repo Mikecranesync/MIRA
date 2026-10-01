@@ -126,6 +126,9 @@ vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
 // seams. Off by default so every other test in this file is unaffected.
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => false),
+  // #4175: the candidate takeover flag follows the base flag in this file
+  // unless a test pins it (so "acquisition on" tests exercise S6 behaviour).
+  candidateAcquisitionEnabled: vi.fn((): boolean => acqMock.acquisitionEnabled()),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
   startManualAcquisition: vi.fn(async () => false),
@@ -192,6 +195,11 @@ beforeAll(() => {
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations: a test that turns automatic acquisition
+  // on must not leak it into the next (off-by-default) test.
+  acqMock.acquisitionEnabled.mockReturnValue(false);
+  acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
+  acqMock.startManualAcquisition.mockResolvedValue(false);
   handle.reset();
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
@@ -415,16 +423,23 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
 
-  it("S5: the SMC valve proposal names the maker that would be sent alongside the part", async () => {
+  // #4171 behaviour, preserved with automatic acquisition OFF (Codex r2 F4,
+  // #4172): the flag is unset in production, so the explicit, confirm-first
+  // photo search must still be offered for a maker-bearing candidate. The
+  // automatic candidate acquisition only takes the turn over when it can run.
+  it("S5 (flag off): the SMC valve proposal names the maker that would be sent alongside the part", async () => {
     smcLabel();
     const f = await ask("Look up the PDF manual");
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     const msg = String(f.find((x) => x.kind === "status")?.message);
     expect(msg).toContain(`Search the web for "${SMC_PART}"`);
     expect(msg).toContain('"SMC"');
+    // Flag off reproduces the pre-S6 turn exactly: no unconfirmed-identity chip.
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
   });
 
-  it("S5: confirming the SMC proposal searches the maker and the part, nothing else", async () => {
+  it("S5 (flag off): confirming the SMC proposal searches the maker and the part, once, with no background acquisition", async () => {
     smcLabel();
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", "SMC") as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
@@ -434,14 +449,431 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       { manufacturer: "SMC", catalogNumber: SMC_PART },
       expect.objectContaining({ tenantId: expect.any(String) }),
     );
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
   // #4171 Codex r1 — F1 quota, F3 one-time spend, F4 maker binding.
-  it("F4: a maker that appeared after a part-only proposal does not search", async () => {
+  it("F4 (flag off): a maker that appeared after a part-only proposal does not search", async () => {
     smcLabel();
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", null) as never);
     await ask(`Search the web for "${SMC_PART}"`);
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // Codex r1 F1 (#4172): with automatic acquisition ON, the candidate flow owns
+  // the turn and the explicit part-only proposal never also fires.
+  // #4172 F13 / #4175: with the base flag on but the candidate flag off, the
+  // turn is exactly pre-S6 — #4171's explicit chip, no proposal, no search.
+  it("candidate flag off (base on): the SMC valve keeps #4171's explicit search chip and starts no candidate search", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+    const f = await ask("Look up the PDF manual");
+    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "followups")?.suggestions).toEqual([`Search the web for "${SMC_PART}"`, "Don't search"]);
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain('"SMC"');
+  });
+
+  it("S6 (flag on): the SMC valve candidate gets an identity_proposal, never the part-only web-search confirmation", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const f = await ask("Look up the PDF manual");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(String(f.find((x) => x.kind === "status")?.message ?? "")).not.toContain("I haven't searched");
+  });
+
+  it("S6 (flag on): a search-confirm phrasing never routes through the part-only confirm flow", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    await ask(`Search the web for "${SMC_PART}"`);
+    expect(domainMock.listTurns).not.toHaveBeenCalled();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // Codex r2 F1 (#4172): ownership follows the FINAL candidate identity, not the
+  // photo alone — a maker-less label plus a typed maker is still one flow.
+  it("Codex r2 F1: maker-less photo + typed 'SMC' + acquisition on → one acquisition, proposal, no part-search chips", async () => {
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o4", sessionId: "s1", text: "Blue solenoid valve. Label text: SS5Y3-DUW01302 24VDC",
+      obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+    } as never);
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    const f = await ask("Find the manual for this SMC valve");
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: SMC_PART, catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+    expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persisted = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: Array<{ kind?: string }> };
+    expect(persisted.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+    expect(persisted.evidence.some((e) => e.kind === "part_search_proposal")).toBe(false);
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    const everyMessage = f.map((x) => String((x as { message?: unknown }).message ?? "")).join(" ");
+    expect(everyMessage).not.toContain("haven't searched");
+  });
+
+  // Codex r1 F1 (#4172, HIGH) — exactly the scenario the review named: a real
+  // (here, current-turn) SMC photo observation, a corpus that does not know
+  // "SMC" (this file's corpusManufacturers mock), acquisition ON, and an
+  // explicit "Find the manual" ask. One acquisition starts; the identity
+  // proposal is emitted AND persisted; no web-search confirmation chips; no
+  // "I haven't searched" claim anywhere in the reply.
+  it("Codex r1 F1 acceptance: SMC photo + empty corpus + acquisition on + 'Find the manual' → one acquisition, proposal emitted+persisted, no part-search chips, no 'haven't searched'", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    const f = await ask("Find the manual for this");
+
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "SMC", model: SMC_PART, catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+
+    const proposal = f.find((x) => x.kind === "identity_proposal");
+    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persistedEvidence = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(persistedEvidence.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    const everyMessage = f.map((x) => String((x as { message?: unknown }).message ?? "")).join(" ");
+    expect(everyMessage).not.toContain("I haven't searched");
+    expect(everyMessage).not.toContain("haven't searched");
+  });
+
+  // Codex r1 F1 (#4172, HIGH), abstention-path half: a maker-bearing candidate
+  // can still reach Gate G through an UNRELATED abstain trigger (here, a part-
+  // compatibility question) — the identity_proposal frame + evidence entry
+  // must ride that reply too, not only the answered-path one.
+  it("Codex r1 F1: identity_proposal is emitted AND persisted on the ABSTAIN path too", async () => {
+    smcLabel();
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const f = await ask("Is this compatible with a different valve?");
+    const status = f.find((x) => x.kind === "status");
+    expect(status).toMatchObject({ status: "insufficient_evidence" });
+    const proposal = f.find((x) => x.kind === "identity_proposal");
+    expect(proposal).toMatchObject({ manufacturer: "SMC", model: SMC_PART });
+    const persisted = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(persisted.evidence).toContainEqual({ kind: "identity_proposal", manufacturer: "SMC", model: SMC_PART });
+  });
+
+  // Codex r1 F2 (#4172, MEDIUM): a CORPUS-RECOGNISED maker (oemManufacturer
+  // set — "Siemens" is in this file's corpusManufacturers mock) must not
+  // suppress the proposal/acquisition just because retrieval ran — only when
+  // retrieval actually found something does suppression make sense.
+  describe("Codex r1 F2 — corpus-recognised maker + zero chunks still proposes + acquires", () => {
+    const siemensLabel = () =>
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o3", sessionId: "s1", text: "Siemens TP700 Comfort panel, 24 VDC",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+
+    // Narrowed (owner decision, Codex post-cap 2): on the corpus-maker path the
+    // search identity comes ONLY from the serial-safe label reader. A short model
+    // only the OEM retrieval parser recognises (TP700) no longer auto-searches.
+    it("narrowed: a model only the OEM parser recognises (TP700) proposes nothing and starts no search", async () => {
+      siemensLabel();
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2 F6: a spaced serial the OEM parser normalises ('S/N: TP 700') is never searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o12", sessionId: "s1", text: "Siemens S/N: TP 700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2 F5: a P/N-labelled part plus a second model on the photo starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o13", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // The OEM parser reads a spaced "V 20" as V20 where the ambiguity scan does
+    // not — so the explicit "OEM names a different model → no search" check is
+    // what stops this one.
+    it("narrowed: the OEM parser naming a different model than the labelled part (V 20 vs 6ES…) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o15", sessionId: "s1", text: "Siemens V 20 P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 2: a corpus proposal from typed text + a photo with a different labelled part starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o14", sessionId: "s1", text: "Controller P/N: 1769-L33ER",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // Codex r2 F2 (#4172): a part the OEM model parser does not know (oemModel
+    // null) still gets the corpus-independent candidate part.
+    it("Codex r2 F2: Siemens + a part OEM parsing does not recognise + zero chunks → proposes and acquires that exact part", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o5", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0" });
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identity: { identityStatus: "user_confirmed", manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0", catalogNumber: "" },
+          basis: "candidate",
+        }),
+      );
+    });
+
+    // Codex r3 F6 (#4172): the OEM retrieval parser reads a serial-labelled
+    // order number as a model (premise proven against the REAL parser in
+    // photo-part-lookup.test.ts); that must never become a search identity.
+    it("Codex r3 F6: a serial-labelled value the OEM parser reads as a model is never proposed or searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o6", sessionId: "s1", text: "Siemens S/N: 6AV2124-0GC01-0AX0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      const realSeam = ragMock.resolveModelFromObservationText.getMockImplementation()!;
+      ragMock.resolveModelFromObservationText.mockImplementation((text: string) =>
+        /6AV2124-0GC01-0AX0/.test(text) ? { model: "6AV2124-0GC01-0AX0", ambiguous: false } : realSeam(text),
+      );
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      let f: Record<string, unknown>[];
+      try {
+        f = await ask("Find the manual for this");
+      } finally {
+        ragMock.resolveModelFromObservationText.mockImplementation(realSeam);
+      }
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+      expect(JSON.stringify(f)).not.toContain("6AV2124-0GC01-0AX0");
+    });
+
+    it("Codex r3 F5: a corpus-recognised maker + a message comparing a second model proposes nothing", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o7", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Compare the manuals for this one and the S7-1200");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // Codex post-cap F6 (#4172): typing back a serial the photo excluded must
+    // not restore it (extractCandidateIdentity falls back to typed text).
+    it("Codex post-cap F6: a photo serial typed back by the technician is never proposed or searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o8", sessionId: "s1", text: "Siemens S/N: 6AV2124-0GC01-0AX0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for Siemens 6AV2124-0GC01-0AX0");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    // Codex post-cap F5 (#4172): ambiguity is judged over the photo AND the
+    // message — a two-machine label never starts either machine's search.
+    it("Codex post-cap F5: a photo naming two machines proposes nothing (Siemens in the corpus)", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o9", sessionId: "s1", text: "Siemens 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap F5: a photo naming two machines proposes nothing (Siemens NOT in the corpus)", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o10", sessionId: "s1", text: "Siemens 6ES7214-1AG40-0XB0 and TP700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      const realCorpus = ragMock.corpusManufacturers.getMockImplementation()!;
+      ragMock.corpusManufacturers.mockImplementation(async () => ["Allen-Bradley", "Automation Direct"]);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      let f: Record<string, unknown>[];
+      try {
+        f = await ask("Find the manual for this");
+      } finally {
+        ragMock.corpusManufacturers.mockImplementation(realCorpus);
+      }
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    // The single egress gate also covers #4120's corpus proposal: a typed
+    // machine that disagrees with the machine on the photo never searches.
+    it("Codex post-cap: a corpus proposal from typed text + a photo naming another machine starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o11", sessionId: "s1", text: "Controller label: S7-1200",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      // #4120's proposal itself is unchanged; only the search is withheld.
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 3 F6: photo 'S/N: TP 700' + typed 'Siemens TP700' (corpus proposal) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o16", sessionId: "s1", text: "S/N: TP 700",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for Siemens TP700");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 3 F5: two labelled parts on the photo + a typed corpus proposal starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o17", sessionId: "s1", text: "Controller P/N: 1769-L33ER and P/N: 1769-L24ER",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("strict: a typed corpus proposal alone still emits the identity_proposal frame but never auto-searches", async () => {
+      domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
+      filesMock.photoLinkedToTarget.mockResolvedValue(null as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for my Allen-Bradley SLC 5/03");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Allen-Bradley" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 4 F8: SMC on the photo + typed 'Siemens SS5Y3-…' (corpus proposal) starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o18", sessionId: "s1", text: "Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      await ask("Find the manual for Siemens SS5Y3-DUW01302");
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex post-cap 7 F12: an abbreviated serial label ('SER:') on the photo is never searched", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o19", sessionId: "s1", text: "SMC SER: AB-1234567",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    });
+
+    it("#4175: corpus-maker path with the candidate flag off (base on) proposes nothing and starts no search", async () => {
+      veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "o20", sessionId: "s1", text: "Siemens P/N: 6ES7214-1AG40-0XB0",
+        obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+      } as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("#4175: a #4120 typed corpus proposal with the candidate flag off (base on) still proposes but starts no search", async () => {
+      domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unbound part", manufacturer: null, model: null } as never);
+      filesMock.photoLinkedToTarget.mockResolvedValue(null as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      // A part-code model the strict validator accepts, so the ownership gate
+      // is the ONLY thing standing between the proposal and a search.
+      const f = await ask("Find the manual for Siemens 6ES7214-1AG40-0XB0");
+      expect(f.find((x) => x.kind === "identity_proposal")).toMatchObject({ manufacturer: "Siemens", model: "6ES7214-1AG40-0XB0" });
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("Codex r2 F2 / F4: the same Siemens turn with acquisition OFF proposes nothing (pre-S6 behaviour)", async () => {
+      siemensLabel();
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("control: chunks DO exist → no proposal, no candidate acquisition, no duplicate discovery (OEM retrieval already grounds the turn)", async () => {
+      siemensLabel();
+      // Reset first: clears both the describe-level beforeEach's queued `[]`
+      // and any prior test's unconsumed once-value, so THIS test's single
+      // retrieveManualChunks call deterministically returns the chunk below.
+      ragMock.retrieveManualChunks.mockReset();
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([
+        {
+          content: "Siemens TP700 Comfort operating instructions",
+          docId: null,
+          manufacturer: "Siemens",
+          modelNumber: "TP700",
+          sourceUrl: "https://example/manual.pdf",
+          sourcePage: 1,
+          title: "TP700 manual",
+        },
+      ] as never);
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const f = await ask("Find the manual for this");
+      expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
   });
 
   it("F3: the proposal is claimed (by its turn id and owner) before any search", async () => {

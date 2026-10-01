@@ -55,6 +55,7 @@ import {
 import {
   acquisitionEnabled,
   acquisitionKey,
+  candidateAcquisitionEnabled,
   acquisitionDeclineText,
   readAcquisition,
   reconcileAcquisition,
@@ -116,7 +117,7 @@ import {
   type PartSearchDecision,
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
-import { extractCandidateIdentity } from "@/capabilities/candidate-identity";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -1782,19 +1783,26 @@ async function handleChatTurn(
   // this turn (retrieval above is already decided), and the answer is told the
   // machine is unconfirmed so it cannot state that machine's specs or service
   // procedures. Fail-open: any error means no proposal.
-  const identityProposal: IdentityProposal | null = await (async () => {
+  // Codex r1 F2 (#4172, MEDIUM): this IIFE's OWN `oemManufacturer !== null`
+  // bail covers only the RC1 fallback (a maker the corpus does NOT recognise
+  // at all). A corpus-RECOGNISED maker (oemManufacturer set, e.g. Siemens)
+  // with zero applicable chunks still needs a proposal + candidate
+  // acquisition — handled by the separate, narrower reassignment below, once
+  // `chunks` is known, so a maker OEM retrieval actually grounds is never
+  // second-guessed by a redundant "unconfirmed machine" proposal.
+  let identityProposal: IdentityProposal | null = await (async () => {
     if (!general || notebookRetrieval || oemManufacturer !== null) return null;
     // Only a notebook with NO identity at all: not bound to an asset, and loaded
     // (fail closed when it could not be read) — Codex #4120 F3.
     if (!nb || boundAsset.state !== "unbound") return null;
     if (nb.manufacturer?.trim() || nb.model?.trim()) return null;
+    let fromCorpus: IdentityProposal | null = null;
     let client: PoolClient | null = null;
     try {
       client = await pool.connect();
-      return proposeIdentityFromText(message, await corpusManufacturers(client));
+      fromCorpus = proposeIdentityFromText(message, await corpusManufacturers(client));
     } catch (err) {
       console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
-      return null;
     } finally {
       try {
         client?.release();
@@ -1802,12 +1810,30 @@ async function handleChatTurn(
         /* already released */
       }
     }
+    if (fromCorpus) return fromCorpus;
+    // RC1 fix (#4160 S6): proposeIdentityFromText only recognises a maker that
+    // already has corpus rows (corpusManufacturers) — a maker with none (the
+    // SMC valve trace that started Manual-First) could never be proposed.
+    // Fall back to the corpus-INDEPENDENT candidate reader (#4150's label
+    // parser, candidate-identity.ts), over the SAME photo observation
+    // (photoTextForOem — notebookRetrieval is false here, so it is the real
+    // text) and this turn's typed message. Still only a candidate: never
+    // binds, never writes a notebook identity column, never scopes retrieval.
+    // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
+    // run (both flags; #4175). Otherwise the turn stays exactly as before S6
+    // (the explicit, confirm-first photo search below keeps the turn).
+    if (!candidateAcquisitionEnabled()) return null;
+    try {
+      const candidate = extractCandidateIdentity(photoTextForOem, message);
+      // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
+      // ambiguity across photo AND typed text) — see isSafeCandidateSearchIdentity.
+      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part, candidate.manufacturer)) return null;
+      return { manufacturer: candidate.manufacturer, model: candidate.part };
+    } catch (err) {
+      console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
+      return null;
+    }
   })();
-  // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
-  // history reload deliver the same proposal the live stream did.
-  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
-    ? [{ kind: "identity_proposal", ...identityProposal }]
-    : [];
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
@@ -1938,6 +1964,54 @@ async function handleChatTurn(
     endTimed(retrievalSpan, "retrieval");
   }
 
+  // Codex r1 F2 (#4172, MEDIUM) — a corpus-RECOGNISED maker (oemManufacturer
+  // set from the photo) whose OEM retrieval found ZERO applicable chunks
+  // still qualifies for the SAME "propose, then confirm" + candidate
+  // acquisition as the RC1 fallback above. Only when chunks ARE found does
+  // OEM retrieval actually ground the turn — a redundant proposal there would
+  // contradict the cited answer the technician is about to receive, so this
+  // never fires then (no duplicate discovery). `oemManufacturer.source` can
+  // only be "photo" here: "notebook" would mean `nb.manufacturer` is set,
+  // which the RC1 IIFE's own unbound-identity guard already excludes.
+  if (
+    !identityProposal &&
+    general &&
+    !notebookRetrieval &&
+    nb &&
+    boundAsset.state === "unbound" &&
+    !(nb.manufacturer?.trim() || nb.model?.trim()) &&
+    oemManufacturer !== null &&
+    chunks.length === 0 &&
+    candidateAcquisitionEnabled()
+  ) {
+    // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
+    // families, so a valid part it does not recognise (oemModel null) falls back
+    // to the corpus-independent label reader — but only when that reader names
+    // the SAME maker, which keeps its ambiguity and serial exclusions intact.
+    const candidate = extractCandidateIdentity(photoTextForOem, message);
+    const candidatePart =
+      candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
+        ? candidate.part
+        : null;
+    // #4172 (owner decision after Codex post-cap 2): the search identity comes
+    // ONLY from the serial-safe label reader. The OEM retrieval parser may
+    // normalise a serial ("TP 700" → TP700) or pick a second machine, so it never
+    // chooses what leaves; if it names a DIFFERENT model, nothing is searched.
+    const model =
+      candidatePart &&
+      (!oemModel || oemModel.value.toUpperCase() === candidatePart.toUpperCase()) &&
+      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart, oemManufacturer.name)
+        ? candidatePart
+        : null;
+    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
+  }
+  // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
+  // history reload deliver the same proposal the live stream did. Computed
+  // here (after the F2 reassignment above) so it reflects the FINAL proposal.
+  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
+    ? [{ kind: "identity_proposal", ...identityProposal }]
+    : [];
+
   // Once retrieval has produced chunks — from the notebook's own sources OR the
   // shared OEM corpus — the turn is DOCUMENT-GROUNDED for everything
   // downstream: grounding rules in the system prompt, [n] citation markers,
@@ -2001,7 +2075,30 @@ async function handleChatTurn(
   // searched for. Only meaningful when it names the same part.
   const photoCandidate = extractCandidateIdentity(photoTextForPartLookup);
   const photoMaker = photoCandidate && photoCandidate.part === photoPartNumber ? photoCandidate.manufacturer : null;
-  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null;
+  // Codex r1 F1 (#4172, HIGH): mutually exclusive with #4160 S6's candidate
+  // acquisition — the maker-less part-only proposal ("search the web for just
+  // this label text") must never also fire and contend for the same reply.
+  //
+  // Codex r2 F1/F4 (#4172): "owns the turn" is decided ONCE, from the FINAL
+  // candidate identity (photo and typed text together) and the exact trigger
+  // the acquisition block below runs on — never from the photo's maker alone.
+  // When automatic acquisition is off, or this turn would not start it, the
+  // explicit confirm-first search keeps the turn (pre-S6 behaviour).
+  const candidateAcquisitionOwnsTurn =
+    identityProposal !== null &&
+    Boolean(nb) &&
+    candidateAcquisitionEnabled() &&
+    acquisitionKey({
+      identityStatus: "user_confirmed",
+      manufacturer: identityProposal.manufacturer,
+      model: identityProposal.model,
+      catalogNumber: "",
+    }) !== null &&
+    // The single egress gate: every proposal path (including #4120's corpus
+    // proposal) passes the same candidate validator before any search starts.
+    isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
+    ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
+  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. Read only for a confirm/cancel message; fail closed.
   let previousTurnEvidence: unknown[] = [];
@@ -2156,6 +2253,9 @@ async function handleChatTurn(
   // confirmed fields — never this message's free text.
   let manualAcquisition: { state: string; started_this_turn: boolean; candidate_host: string | null } | null = null;
   let acquisitionText: string | null = null;
+  // #4160 S6 PRD R16-lite — the candidate-basis search's honest status line,
+  // relayed through unconfirmedMachineDirective below (never a new SSE frame).
+  let candidateAcquisitionText: string | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2220,6 +2320,76 @@ async function handleChatTurn(
       }
     }
   }
+  // #4160 S6 — candidate-basis background acquisition (PRD R2). When a
+  // candidate identity was proposed THIS turn (the RC1-fixed label read, or
+  // the pre-existing #4120 corpus proposal above), start the SAME search the
+  // eventual PATCH confirm would trigger — keyed EXACTLY as acquisitionKey()
+  // would key the identity that bind writes (manufacturer, model = the
+  // proposal's part, catalog empty) — so a second identical photo, or the
+  // real confirm, reuse this search instead of starting a new one (claim()
+  // idempotency, unchanged). `identity` below is a LOCAL object built only to
+  // compute the matching key and feed discovery/applicability — nothing here
+  // calls updateNotebook or writes any notebook identity column. The write
+  // itself can never enable a source before confirmation (fenced in
+  // notebook-manual-acquisition.ts, basis="candidate"); migration 104
+  // promotes it once the technician confirms this SAME identity.
+  // The trigger (decided above as candidateAcquisitionOwnsTurn): half 1, the
+  // identity came from a label read — this turn's photo text yielded an
+  // unambiguous part; half 2, the turn explicitly asks for the manual.
+  if (candidateAcquisitionOwnsTurn && identityProposal && nb) {
+    {
+      const candidateIdentity = {
+        identityStatus: "user_confirmed" as const,
+        manufacturer: identityProposal.manufacturer,
+        model: identityProposal.model,
+        catalogNumber: "",
+      };
+      const candidateKey = acquisitionKey(candidateIdentity);
+      if (candidateKey) {
+        let cAcq = await readAcquisition(ctx.tenantId, notebookId);
+        let cStarted = false;
+        const retryableState = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
+        if (cAcq && cAcq.key === candidateKey && retryableState(cAcq.state)) {
+          cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        }
+        if (
+          !cAcq ||
+          cAcq.key !== candidateKey ||
+          cAcq.state === "running" ||
+          (retryableState(cAcq.state) && !cAcq.source_removed)
+        ) {
+          cStarted = await startManualAcquisition({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId ?? null,
+            notebookId,
+            nodeId: nb.nodeId,
+            identity: candidateIdentity,
+            basis: "candidate",
+          });
+          if (cStarted) {
+            cAcq = {
+              key: candidateKey,
+              state: "running",
+              started_at: new Date().toISOString(),
+              finished_at: null,
+              candidate_host: null,
+              match_state: null,
+              oem_request_url: null,
+            };
+          }
+        }
+        if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        if (cAcq && cAcq.key === candidateKey) {
+          candidateAcquisitionText = acquisitionDeclineText(
+            cAcq,
+            candidateKey,
+            `${identityProposal.manufacturer} ${identityProposal.model}`,
+            "candidate",
+          );
+        }
+      }
+    }
+  }
   rec.stage("retrieval", {
     manual_acquisition: manualAcquisition,
     photo_part_manual_lookup: photoPartLookup
@@ -2265,6 +2435,11 @@ async function handleChatTurn(
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
       ? acquisitionText
+      // Codex r1 F1 (#4172, HIGH) — a candidate acquisition's honest status
+      // (never "I haven't searched": the search either started or already
+      // reported a result) outranks a generic "couldn't find" fallback.
+      : candidateAcquisitionText
+      ? candidateAcquisitionText
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
@@ -2313,6 +2488,12 @@ async function handleChatTurn(
         ...(visualEntry ? [visualEntry] : []),
         // #4150 — the pending proposal is what a confirmation is checked against.
         ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),
+        // Codex r1 F1 (#4172, HIGH) — the identity_proposal entry is what the
+        // client's later confirm/reject PATCH is checked against, and what a
+        // history reload needs to render the same proposal the live turn
+        // carried (once a client renders it — #4095). Persisted on EVERY reply
+        // path, abstention included.
+        ...proposalEntries,
       ],
       model: null,
       // An abstain about a specific machine is still a record about that
@@ -2366,6 +2547,14 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
         controller.enqueue(enc.encode(sse(status)));
+        // Codex r1 F1 (#4172, HIGH) — emitted whatever the answer status
+        // (mirrors the answered path below): the client offers "Use its
+        // manuals" / "Not this" on an abstained turn too, not only an
+        // answered one.
+        if (identityProposal) {
+          const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
+          controller.enqueue(enc.encode(sse(proposalFrame)));
+        }
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
             kind: "followups",
@@ -2626,7 +2815,7 @@ async function handleChatTurn(
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
-      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal) : ""),
+      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText) : ""),
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -3608,8 +3797,9 @@ async function handleChatTurn(
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
-      // #4095 — the proposal rides next to the answer; the client offers
-      // "Use its manuals" / "Not this". Emitted whatever the answer status.
+      // #4095 — the proposal rides next to the answer for a client that
+      // renders it (none ships that yet; unknown frames are ignored). Emitted
+      // whatever the answer status.
       if (identityProposal) {
         const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
         controller.enqueue(enc.encode(sse(proposalFrame)));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
   it("uses one label-shaped code as a lookup candidate without asserting what it is", () => {
@@ -238,4 +239,85 @@ describe("partSearchDecision — identity binding and one-time use", () => {
       partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: consumed }).action,
     ).toBe("mismatch");
   });
+});
+
+// Codex r3 F6 (#4172): the OEM retrieval parser is not a search-egress
+// authority — any serial label on the text must be detectable by the route.
+describe("mentionsSerialLabel", () => {
+  it("detects S/N, serial number and serial no. labels", () => {
+    expect(mentionsSerialLabel("Siemens S/N: 6AV2124-0GC01-0AX0")).toBe(true);
+    expect(mentionsSerialLabel("Serial number is AB-1234567")).toBe(true);
+    expect(mentionsSerialLabel("serial no. 12345678")).toBe(true);
+  });
+  it("is false for a plain model or labelled part", () => {
+    expect(mentionsSerialLabel("Siemens TP700 Comfort panel, 24 VDC")).toBe(false);
+    expect(mentionsSerialLabel("Siemens P/N: 6ES7214-1AG40-0XB0")).toBe(false);
+  });
+  it("premise: the real OEM parser does read a serial-labelled order number as a model", () => {
+    expect(resolveModelFromObservationText("Siemens S/N: 6AV2124-0GC01-0AX0").model).not.toBeNull();
+    expect(unambiguousPartNumber("Siemens S/N: 6AV2124-0GC01-0AX0")).toBeNull();
+  });
+});
+
+// Codex post-cap 7 F12 (#4172): abbreviated serial labels are serial labels too.
+describe("abbreviated serial labels", () => {
+  const spellings = ["SMC SER: AB-1234567", "SMC Ser. No. AB-1234567", "SMC Ser# AB-1234567", "SMC SER NO AB-1234567", "SMC Ser.Nr. AB-1234567", "SMC SER AB-1234567", "AB-1234567 (SER)", "SMC SER. AB-1234567", "SMC Ser.: AB-1234567", "SMC SER.# AB-1234567", "SMC AB-1234567 (SER.)", "SMC Ser.AB-1234567", "SMC Ser-No AB-1234567", "SMC Sr. No. AB-1234567", "SMC SER - AB-1234567", "SMC SER. - AB-1234567", "SMC Sr# AB-1234567", "SMC SER \u2013 AB-1234567", "SMC Serial - AB-1234567", "SMC SER.-AB-1234567", "SMC SER/AB-1234567", "AB-1234567 SER.", "AB-1234567 SR, 24VDC", "SMC SER\u2116 AB-1234567", "SMC Serial \u2116 AB-1234567", "SMC SER \u2014 AB-1234567", "SMC SER: (AB-1234567)", "SMC SER [AB-1234567]", "SMC SER\u2192AB-1234567", "SMC SER {AB-1234567}", "SMC S/N \u2014 (AB-1234567)", "AB-1234567 SER \u2014 24VDC", "SMC S\u2044N AB-1234567", "SMC Ser\u00adial AB-1234567", "SMC S-N: AB-1234567", "SMC S / N: AB-1234567", "SMC S. N.: AB-1234567", "SMC S /N AB-1234567", "SMC S.No. AB-1234567", "SMC S N AB-1234567", "SMC Ser ial AB-1234567", "SMC SNO: AB-1234567", "SMC Ser. Num. AB-1234567", "SMC SER NUM: AB-1234567", "SMC Ser. N\u00b0 AB-1234567", "SMC Serial Num AB-1234567", "SMC S/Num AB-1234567", "SMC Ser. Numero AB-1234567", "SMC Ser.-Nummer AB-1234567", "SMC Sr Nmbr AB-1234567", "SMC Ser. Nbr. AB-1234567", "SMC SerialNumber: AB-1234567", "SMC SERIALNO AB-1234567", "SMC SerNo AB-1234567", "SMC S/Nbr AB-1234567", "SMC SrNum AB-1234567"];
+  it.each(spellings)("%s is a serial label, and its value is never a part number", (text) => {
+    expect(mentionsSerialLabel(text)).toBe(true);
+    expect(unambiguousPartNumber(text)).toBeNull();
+  });
+  it("a prefix label never marks the labelled part printed before it as the serial", () => {
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD Serial AB-1234567")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD SER: AB-1234567")).toBe("SY3120-5LZD");
+    // Whereas a bare suffix label with no value after it marks the code before it.
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD AB-1234567 SER.")).toBe("SY3120-5LZD");
+  });
+  it.each(["SMC Series SY valve SY3120-5LZD", "Service manual for SY3120-5LZD", "Server rack SY3120-5LZD", "SY3120-5LZD ser. valve body", "Sr. technician note: SY3120-5LZD", "Senior technician SY3120-5LZD", "SR latch for SY3120-5LZD", "snap ring SY3120-5LZD", "SY3120-5LZD, 24 VDC, SER.", "This is not the SY3120-5LZD", "Bus N 5 feeds SY3120-5LZD", "snow chains for SY3120-5LZD", "Phase S not needed on SY3120-5LZD", "sensors nearby: SY3120-5LZD"])(
+    "control: %s is not a serial label",
+    (text) => {
+      expect(mentionsSerialLabel(text)).toBe(false);
+      expect(unambiguousPartNumber(text)).toBe("SY3120-5LZD");
+    },
+  );
+});
+
+// Codex post-cap 14 F14 (#4172): a customer-assigned identifier (asset tag,
+// asset/equipment/unit id, inventory or work-order number) is never a part
+// and never leaves (ADR-0036) — the same fail-closed rule as a serial label.
+describe("asset-tag labels", () => {
+  it.each([
+    "SMC Asset tag: VALVE-1234",
+    "SMC Asset ID: AB-1234567",
+    "Tag No. 12-3456 SY3120-5LZD",
+    "Equipment ID: EQ-00123 SY3120-5LZD",
+    "Inventory # 44-1234 SY3120-5LZD",
+    "Unit No: U-1234 SY3120-5LZD",
+    "WO 123456 SY3120-5LZD",
+    "Fixed asset 7788-01 SY3120-5LZD",
+    "SMC SY3120-5LZD (asset tag)",
+    "SMC Asset identifier: VALVE-1234",
+    "SMC VALVE-1234 asset tag",
+    "SMC Asset tag is VALVE-1234",
+    "SMC asset ref VALVE-1234",
+    "VALVE-1234 tag",
+    "SMC Tag ID — VALVE-1234",
+    "Equipment identifier: EQ-00123 SY3120-5LZD",
+    "SMC INV: VALVE-1234",
+    "SMC Inv. No. VALVE-1234",
+    "SMC Inventory tag VALVE-1234",
+  ])("%s carries an asset label; no unlabelled code survives it", (text) => {
+    expect(mentionsAssetLabel(text)).toBe(true);
+    expect(unambiguousPartNumber(text)).toBeNull();
+  });
+  it("an explicitly labelled part survives beside an asset tag, and the tag itself is never the part", () => {
+    expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+  });
+  it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list", "tagged for SY3120-5LZD", "SY3120-5LZD tagline", "inverter drive SY3120-5LZD", "invalid reading on SY3120-5LZD"])(
+    "control: %s is ordinary prose",
+    (text) => {
+      expect(mentionsAssetLabel(text)).toBe(false);
+      expect(unambiguousPartNumber(text)).toBe("SY3120-5LZD");
+    },
+  );
 });

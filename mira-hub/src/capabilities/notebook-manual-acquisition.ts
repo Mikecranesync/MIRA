@@ -60,6 +60,10 @@ export interface AcquisitionRecord {
   candidate_url?: string | null;
   /** An INDEXED document was attached to this notebook's sources (reviewable in Sources). */
   attached_indexed?: boolean;
+  /** #4172: confirming the candidate identity WILL turn this document on — it is
+   *  attached, indexed, and stamped candidateApplicability='verified' (the only
+   *  rows migration 104 / fencedWriter promote). Never true otherwise. */
+  promotes_on_confirm?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
@@ -89,6 +93,18 @@ export interface ConfirmedIdentity {
 /** Off unless explicitly enabled — eval harnesses create confirmed notebooks too. */
 export function acquisitionEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "").trim() === "1";
+}
+
+/**
+ * #4160 S6 candidate takeover (the RC1 identity proposal from a label read,
+ * the candidate-basis background search, and the replacement of #4171's
+ * explicit search chip) — gated behind its OWN flag until a client can
+ * confirm a candidate identity (#4175; Codex #4172 F13). Requires the base
+ * flag too. Off (the default everywhere): the chat behaves exactly as before
+ * S6. Only the exact value "1" enables it.
+ */
+export function candidateAcquisitionEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return acquisitionEnabled(env) && (env.MIRA_NOTEBOOK_CANDIDATE_ACQUISITION ?? "").trim() === "1";
 }
 
 function clean(v: string | null | undefined): string {
@@ -216,7 +232,14 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
 export function recordFromOutcome(key: string, startedAt: string | null, out: ManualAcquisitionOutcome): AcquisitionRecord {
   const p = out.payload as {
     candidate?: { host?: unknown; url?: unknown } | null;
-    manual?: { matchState?: unknown; docId?: unknown; fileId?: unknown; indexed?: unknown; attached?: unknown } | null;
+    manual?: {
+      matchState?: unknown;
+      docId?: unknown;
+      fileId?: unknown;
+      indexed?: unknown;
+      attached?: unknown;
+      candidateApplicability?: unknown;
+    } | null;
     oemRequestUrl?: unknown;
     warning?: unknown;
     reason?: unknown;
@@ -258,6 +281,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     oem_request_url: str(p.oemRequestUrl),
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
+    promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified",
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -284,8 +308,24 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * what is actually persisted afterwards, null when the source is gone (F9).
  * The search key is stamped into the evidence so a later identity change can
  * find what this search enabled.
+ *
+ * `basis` (#4160 S6, default "confirmed" — byte-identical to the pre-S6
+ * behaviour above): for "candidate", ownership does NOT require
+ * `identity_status = 'user_confirmed'` — the notebook may be wholly unbound —
+ * but if it IS confirmed, it must be confirmed to THIS exact key (a
+ * different confirmed identity is not this search's owner, same as
+ * "confirmed" basis). A candidate-basis write never enables a source UNLESS,
+ * at this exact instant, the notebook turns out to already be confirmed to
+ * the matching key (the common race: the technician confirms the identity
+ * before the search finishes) — then it promotes using the REAL applicability
+ * verdict this write carries (`candidateApplicability`, stamped by
+ * manual-acquisition.ts), exactly as a "confirmed" write would. Otherwise it
+ * is forced to match_state='candidate', enabled_by_default=false regardless
+ * of what `patch` asked for (acquireManualForIdentity already forces
+ * promote=false for candidate basis, so this is normally a no-op override —
+ * it is the fence of record, not a formality).
  */
-export function fencedWriter(key: string, gen: string): SourceStateWriter {
+export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed"): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
     try {
       return await withTenantContext(tenantId, async (c) => {
@@ -298,17 +338,25 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
           const row = r.rows[0];
           return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : null;
         };
-        const owner = await c.query(
-          `SELECT n.id FROM equipment_notebooks n
+        const owner = await c.query<{ confirmed_same_key: boolean }>(
+          `SELECT (n.identity_status = 'user_confirmed' AND ${NOTEBOOK_KEY_SQL} = $3) AS confirmed_same_key
+             FROM equipment_notebooks n
             WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
-              AND n.identity_status = 'user_confirmed'
               AND n.manual_acquisition->>'key' = $3
               AND n.manual_acquisition->>'gen' = $4
-              AND ${NOTEBOOK_KEY_SQL} = $3
+              AND (
+                ($5::text = 'confirmed' AND n.identity_status = 'user_confirmed' AND ${NOTEBOOK_KEY_SQL} = $3)
+                OR ($5::text = 'candidate' AND (n.identity_status <> 'user_confirmed' OR ${NOTEBOOK_KEY_SQL} = $3))
+              )
             FOR UPDATE`,
-          [tenantId, notebookId, key, gen],
+          [tenantId, notebookId, key, gen, basis],
         );
-        if ((owner.rowCount ?? 0) === 0) return current();
+        const row0 = owner.rows[0];
+        if (!row0) return current();
+        const evidence: Record<string, unknown> = { ...patch.matchEvidence, autoAcquisitionKey: key };
+        const promoteNow = basis === "candidate" && row0.confirmed_same_key === true && evidence.candidateApplicability === "verified";
+        const matchState = basis === "confirmed" ? patch.matchState : promoteNow ? "verified" : "candidate";
+        const enabledByDefault = basis === "confirmed" ? patch.enabledByDefault : promoteNow;
         const written = await c.query<{ match_state: string; enabled_by_default: boolean }>(
           `UPDATE equipment_notebook_sources
               SET match_state = $4, enabled_by_default = $5, match_evidence = $6::jsonb
@@ -316,14 +364,7 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
               AND match_state = 'candidate'
               AND match_evidence->>'decisionMethod' = 'pending_applicability_check'
             RETURNING match_state, enabled_by_default`,
-          [
-            tenantId,
-            notebookId,
-            docId,
-            patch.matchState,
-            patch.enabledByDefault,
-            JSON.stringify({ ...patch.matchEvidence, autoAcquisitionKey: key }),
-          ],
+          [tenantId, notebookId, docId, matchState, enabledByDefault, JSON.stringify(evidence)],
         );
         const row = written.rows[0];
         return row ? { matchState: row.match_state, enabledByDefault: row.enabled_by_default } : current();
@@ -354,8 +395,19 @@ export function fencedWriter(key: string, gen: string): SourceStateWriter {
  * removal either committed first (seen, honored) or waits on the row lock and
  * removes the manual after this commit — it is never undone (Codex #4118 r15
  * F19). A database failure throws: retryable, not a refusal (r14 F18).
+ *
+ * `basis` (#4160 S6, default "confirmed" — identical ownership to pre-S6):
+ * for "candidate" the notebook need not be confirmed yet (it may be unbound),
+ * but if it IS confirmed, only to THIS exact key — the same relaxation as
+ * `fencedWriter`. Attaching is not itself an enable decision (that is
+ * `fencedWriter`'s job); this only decides who may attach the file/doc at
+ * all.
  */
-export function fencedAttach(key: string, gen: string): NonNullable<ManualAcquisitionInput["attach"]> {
+export function fencedAttach(
+  key: string,
+  gen: string,
+  basis: "confirmed" | "candidate" = "confirmed",
+): NonNullable<ManualAcquisitionInput["attach"]> {
   return async (tenantId, notebookId, fileId, docId, targets, createdBy) =>
     withTenantContext(tenantId, async (c) => {
       const owner = await c.query<{ prior_doc: string | null; prior_file: string | null }>(
@@ -363,12 +415,14 @@ export function fencedAttach(key: string, gen: string): NonNullable<ManualAcquis
                 n.manual_acquisition->>'prior_file_id' AS prior_file
            FROM equipment_notebooks n
           WHERE n.tenant_id = $1::uuid AND n.id = $2::uuid
-            AND n.identity_status = 'user_confirmed'
             AND n.manual_acquisition->>'key' = $3
             AND n.manual_acquisition->>'gen' = $4
-            AND ${NOTEBOOK_KEY_SQL} = $3
+            AND (
+              ($5::text = 'confirmed' AND n.identity_status = 'user_confirmed' AND ${NOTEBOOK_KEY_SQL} = $3)
+              OR ($5::text = 'candidate' AND (n.identity_status <> 'user_confirmed' OR ${NOTEBOOK_KEY_SQL} = $3))
+            )
           FOR UPDATE`,
-        [tenantId, notebookId, key, gen],
+        [tenantId, notebookId, key, gen, basis],
       );
       const row = owner.rows[0];
       if (!row) return false;
@@ -441,6 +495,18 @@ export interface StartInput {
   notebookId: string;
   nodeId: string;
   identity: ConfirmedIdentity;
+  /**
+   * "candidate" starts the search for an identity the technician has not yet
+   * confirmed (#4160 S6, PRD R2) — `identity` here is the SYNTHETIC
+   * `{identityStatus: "user_confirmed", manufacturer, model, catalogNumber}`
+   * the caller builds from the proposed/label-read maker+part, so `key` below
+   * is EXACTLY the key the real PATCH bind will key once the technician
+   * accepts (`acquisitionKey` only looks at the fields, not at whether the
+   * confirmation is real). Threaded into `fencedWriter`/`fencedAttach` so the
+   * write can never enable the source before that real confirmation lands.
+   * Defaults to "confirmed" — identical to pre-S6 behaviour.
+   */
+  basis?: "confirmed" | "candidate";
 }
 
 /**
@@ -453,6 +519,7 @@ export async function startManualAcquisition(
   deps: { acquire?: typeof acquireManualForIdentity; env?: Record<string, string | undefined> } = {},
 ): Promise<boolean> {
   if (!acquisitionEnabled(deps.env)) return false;
+  const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
   const gen = await claim(input.tenantId, input.notebookId, key);
@@ -472,8 +539,12 @@ export async function startManualAcquisition(
           model: clean(input.identity.model) || undefined,
           catalogNumber: clean(input.identity.catalogNumber) || undefined,
         },
-        writeSourceState: fencedWriter(key, gen),
-        attach: fencedAttach(key, gen),
+        // Omitted entirely for the default "confirmed" basis — keeps the
+        // acquire() call payload byte-identical to pre-S6 for every existing
+        // (nameplate confirm + confirmed-identity notebook) caller.
+        ...(basis === "candidate" ? { basis } : {}),
+        writeSourceState: fencedWriter(key, gen, basis),
+        attach: fencedAttach(key, gen, basis),
       });
     } catch (err) {
       console.error("[manual-acquisition] search failed:", err instanceof Error ? err.message : err);
@@ -521,13 +592,31 @@ export async function reconcileAcquisition(
   try {
     return await withTenantContext(tenantId, async (c) => {
       if (bySource) {
-        const r = await c.query<{ match_state: string }>(
-          `SELECT match_state FROM equipment_notebook_sources
+        const r = await c.query<{
+          match_state: string;
+          auto_key: string | null;
+          cand_app: string | null;
+          revoked: string | null;
+        }>(
+          `SELECT match_state,
+                  match_evidence->>'autoAcquisitionKey' AS auto_key,
+                  match_evidence->>'candidateApplicability' AS cand_app,
+                  match_evidence->>'revokedBecause' AS revoked
+             FROM equipment_notebook_sources
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
           [tenantId, notebookId, docRef],
         );
         const row = r.rows[0];
-        if (row && row.match_state !== "rejected") return rec;
+        if (row && row.match_state !== "rejected") {
+          // Codex post-cap 6 F11 (#4172): a cached promise that confirming will
+          // turn this source on is re-checked against the CURRENT row with
+          // migration 104's exact promotion predicate, so a source revoked
+          // since the search (identity cleared) is never promised again.
+          if (!rec.promotes_on_confirm) return rec;
+          const stillPromotes =
+            row.match_state === "candidate" && row.auto_key === rec.key && row.cand_app === "verified" && row.revoked == null;
+          return stillPromotes ? rec : { ...rec, promotes_on_confirm: false };
+        }
       } else {
         const r = await c.query(
           `SELECT 1 FROM workspace_file_links
@@ -545,10 +634,45 @@ export async function reconcileAcquisition(
   }
 }
 
-export function acquisitionDeclineText(rec: AcquisitionRecord | null, key: string | null, label: string): string | null {
+/**
+ * `basis` (#4160 S6, default "confirmed" — unchanged copy below): for
+ * "candidate" the technician has not yet accepted this identity. The only
+ * action a shipping client gives them on the acquired manual is turning it on
+ * in Sources (Hub notebook page; classic mobile notebook screen) — no client
+ * renders the `identity_proposal` frame, offers a chat-side confirm, or can
+ * confirm an EXISTING notebook's make/model (Codex #4172 F13; the client half
+ * is #4095 / #3626). So the running copy says where the manual will land and
+ * what to do with it, and every finished state uses the shared copy below,
+ * which already points at Sources or gives the URL and the upload step. It
+ * never names a button and never promises anything about confirmation
+ * (migration 104 still promotes if a future client confirms the same key).
+ */
+export function acquisitionDeclineText(
+  rec: AcquisitionRecord | null,
+  key: string | null,
+  label: string,
+  basis: "confirmed" | "candidate" = "confirmed",
+): string | null {
   if (!rec || !key || rec.key !== key) return null;
   if (rec.source_removed) {
     return `I found a manual for the ${label} earlier, but it's no longer in this notebook's Sources, so I can't answer from it. If you need it, add it back or upload the manual, and ask again — I'll answer from it and show you the page.`;
+  }
+  if (basis === "candidate") {
+    switch (rec.state) {
+      case "running":
+        return `I'm looking for the official ${label} manual now. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it and show you the page.`;
+      // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): never a
+      // promise about confirmation — no shipping client can confirm an
+      // EXISTING notebook's identity (#4095 / #3626). The shared copy below
+      // gives the one real next step: check it in Sources and turn it on, or
+      // the URL and the upload instruction. `promotes_on_confirm` stays on the
+      // record so a client that ships confirmation later can use it.
+      // "complete" (Codex post-cap 6 F11): a cached complete record can outlive a
+      // later revocation, and confirming never re-enables a revoked source, so
+      // the shared copy below (pointing at Sources) is used instead of a promise.
+      default:
+        break;
+    }
   }
   switch (rec.state) {
     case "running":

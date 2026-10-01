@@ -59,6 +59,22 @@ export interface ManualAcquisitionInput {
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
   /**
+   * "candidate" when this search is for an identity the technician has NOT
+   * yet confirmed — a proposed/label-read maker+part (#4160 S6, PRD R2).
+   * Forces `promote = false` below (never match_state='verified', never
+   * enabled_by_default=true FROM THIS FUNCTION): the deterministic
+   * applicability verdict is still computed and recorded as
+   * `candidateApplicability` on the written evidence (R8 — the judge may only
+   * reject, never auto-approve), but promotion to a citable, enabled source
+   * happens only when the technician confirms this SAME identity — either
+   * migration 104's trigger (the search finished first) or the fenced writer
+   * itself noticing, at write time, that the notebook was ALREADY confirmed
+   * to the matching key (the common case: confirming is near-instant, the
+   * search can take up to a minute). Defaults to "confirmed" — the nameplate
+   * confirm route's existing unconditional-writer behaviour, unchanged.
+   */
+  basis?: "confirmed" | "candidate";
+  /**
    * Write this notebook's source state for the discovered manual and return
    * what is ACTUALLY persisted afterwards: the written state, the untouched
    * existing state when the writer declined (a technician's decision, or lost
@@ -230,7 +246,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   // NOTHING about whether this is the right document, so an unvalidated
   // candidate can never auto-enable — a human confirms it. See the
   // applicability block below.
-  const requiresUserConfirmation = probeUnvalidated;
+  const requiresUserConfirmation = probeUnvalidated || input.basis === "candidate";
 
   const download = await safeDownloadPdf(candidate.url, {
     allowedHosts: allowedHostsForCandidate(identity, candidate),
@@ -444,6 +460,10 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let matchState: string = "candidate";
   let attached = true;
   let removedDuringRun = false;
+  // #4172 Codex post-cap 4 F9: what the chat may promise a candidate-basis turn
+  // ("confirm and I'll answer from it") depends on this stamp, so the outcome
+  // carries it alongside the persisted evidence.
+  let candidateApplicability: "verified" | "candidate" | null = null;
   // A database failure while judging the manual is transient: the manual stays
   // an UNDECIDED candidate (the pending evidence from the attach above, which
   // a retry may still promote), and the outcome says "retry", never "reviewed"
@@ -486,7 +506,28 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       evidencePages: verdict.evidencePages,
       applicabilityConfidence: verdict.confidence,
       reason: verdict.reason,
+      // #4160 S6 — the real verdict, independent of `promote` below (which is
+      // always forced false for candidate basis): the fenced writer reads
+      // this to decide whether a race (the technician already confirmed this
+      // exact identity by the time this write lands) should promote anyway.
+      //
+      // Codex r1 F3 (#4172, HIGH): this must NEVER read 'verified' when the
+      // download itself required a human review hold (probeUnvalidated — an
+      // unvalidated-by-the-service candidate, probed only because it is
+      // independently OEM-hosted). Both promotion paths (fencedWriter's
+      // promoteNow and migration 104) gate purely on this field, so a
+      // 'verified' stamp here would let identity confirmation alone promote a
+      // document whose BYTES were never provenance-validated — bypassing the
+      // unvalidated-download review hold `probeUnvalidated`/
+      // `requiresUserConfirmation` exist to enforce. An exact-matching verdict
+      // on an unvalidated download therefore still stamps 'candidate': a
+      // human must review the SOURCE, not just confirm the identity.
+      ...(input.basis === "candidate"
+        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated ? "verified" : "candidate" }
+        : {}),
     };
+    candidateApplicability =
+      (verifiedEvidence as { candidateApplicability?: "verified" | "candidate" }).candidateApplicability ?? null;
     // The route writes unconditionally (the technician is confirming right
     // now). A background caller passes a FENCED writer that writes only an
     // undecided candidate it still owns; otherwise it writes NOTHING (Codex
@@ -512,6 +553,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     }
     attached = persisted !== null && persisted.matchState !== "rejected";
     removedDuringRun = persisted === null;
+    // Codex post-cap 5 F10 (#4172): report the stamp only when the row that was
+    // actually stored is a disabled candidate. The upsert overwrites a candidate
+    // row's evidence with ours, but preserves a verified / user_confirmed /
+    // rejected row's state and evidence, so for those this stamp is not on the
+    // row and confirming the identity cannot enable it.
+    if (!(persisted && persisted.matchState === "candidate" && !persisted.enabledByDefault)) candidateApplicability = null;
   }
 
   const answering = attached && enabled && (matchState === "verified" || matchState === "user_confirmed");
@@ -531,6 +578,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       indexed: manualDocId !== null,
       reused,
       attached,
+      ...(candidateApplicability ? { candidateApplicability } : {}),
     },
     applicability: verdict,
     message: !attached

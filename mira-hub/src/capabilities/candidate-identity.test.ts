@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidateIdentity, makerFromText } from "./candidate-identity";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
 // LOOK observation or typed text WITHOUT consulting the corpus. Makers come
@@ -101,5 +101,107 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
 
   it("a maker name inside another word does not count", () => {
     expect(makerFromText("SMCX-200 adapter")).toBeNull();
+  });
+});
+
+describe("wantsManualDocumentation — #4160 S6 candidate-basis trigger, half 1 of PRD R2", () => {
+  it("recognises an explicit ask for the manual/documentation", () => {
+    expect(wantsManualDocumentation("can you find the manual for this?")).toBe(true);
+    expect(wantsManualDocumentation("do you have documentation for this part?")).toBe(true);
+    expect(wantsManualDocumentation("I need the datasheet")).toBe(true);
+    expect(wantsManualDocumentation("look up the data sheet")).toBe(true);
+    expect(wantsManualDocumentation("any instructions for this valve?")).toBe(true);
+    expect(wantsManualDocumentation("where's the user guide")).toBe(true);
+    expect(wantsManualDocumentation("need the service manual")).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(wantsManualDocumentation("MANUAL please")).toBe(true);
+  });
+
+  it("word-boundary discipline both directions — never a substring hit", () => {
+    // front boundary: "manual" must not match inside a longer word
+    expect(wantsManualDocumentation("manually operated valve")).toBe(false);
+    expect(wantsManualDocumentation("docset is out of date")).toBe(false);
+    // back boundary: the word before "manual"/"docs" must not glue onto it
+    expect(wantsManualDocumentation("aeromanuals are different")).toBe(false);
+    expect(wantsManualDocumentation("thedocs repo")).toBe(false);
+  });
+
+  it("control: an ordinary troubleshooting question never matches", () => {
+    expect(wantsManualDocumentation("why is this valve not actuating")).toBe(false);
+    expect(wantsManualDocumentation("is this part compatible with my cylinder")).toBe(false);
+  });
+});
+
+// Codex post-cap F6/F5 (#4172): ONE validator for every candidate identity
+// that may leave as a search — serials and ambiguity across BOTH inputs.
+describe("isSafeCandidateSearchIdentity", () => {
+  const SERIAL_PHOTO = "Siemens S/N: 6AV2124-0GC01-0AX0";
+  it("rejects a photo serial even when the technician types it back", () => {
+    expect(isSafeCandidateSearchIdentity(SERIAL_PHOTO, "Find the manual for Siemens 6AV2124-0GC01-0AX0", "6AV2124-0GC01-0AX0", "Siemens")).toBe(false);
+  });
+  it("rejects a typed serial", () => {
+    expect(isSafeCandidateSearchIdentity("", "manual for S/N 6AV2124-0GC01-0AX0", "6AV2124-0GC01-0AX0", "Siemens")).toBe(false);
+  });
+  it("rejects a value beside an unparsed serial label unless it is the labelled part", () => {
+    expect(isSafeCandidateSearchIdentity("AB-1234567 serial number", "", "AB-1234567", "Siemens")).toBe(false);
+  });
+  it("strict: any serial label in either text means no automatic search, even beside a labelled part", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+    // Codex post-cap 3 F6: a normalised serial typed back ("TP 700" -> TP700).
+    expect(isSafeCandidateSearchIdentity("S/N: TP 700", "Find the manual for Siemens TP700", "TP700", "Siemens")).toBe(false);
+  });
+  it("strict: an identity the serial-safe reader did not produce never auto-searches", () => {
+    expect(isSafeCandidateSearchIdentity("", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03", "Allen-Bradley")).toBe(false);
+  });
+  it("strict: two labelled part numbers are ambiguous, not absent (Codex post-cap 3 F5)", () => {
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 1769-L33ER and P/N: 1769-L24ER", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03", "Allen-Bradley")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 1769-L33ER and P/N: 1769-L24ER", "", "1769-L33ER", "Allen-Bradley")).toBe(false);
+  });
+  it("rejects a maker that either text contradicts (Codex post-cap 4 F8)", () => {
+    expect(isSafeCandidateSearchIdentity("Blue valve. Label: SMC SS5Y3-DUW01302", "Find the manual for Siemens SS5Y3-DUW01302", "SS5Y3-DUW01302", "Siemens")).toBe(false);
+    // A proposed maker the OEM table does not know cannot be checked against a
+    // maker the text DOES name — fail closed.
+    expect(isSafeCandidateSearchIdentity("Label: SMC SS5Y3-DUW01302", "", "SS5Y3-DUW01302", "Acme Widgets")).toBe(false);
+  });
+  it("control: the proposed maker matching the one the text names is accepted", () => {
+    expect(isSafeCandidateSearchIdentity("Label: SMC SS5Y3-DUW01302", "Find the manual for this", "SS5Y3-DUW01302", "SMC")).toBe(true);
+  });
+  it("rejects a value under an abbreviated serial label (Codex post-cap 7 F12)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC Ser. No. AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC SER: AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
+  });
+  it("rejects any turn whose photo or typed text carries an asset-tag label (Codex post-cap 14 F14)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
+  });
+  it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
+    expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);
+  });
+  it("rejects a photo that names two machines", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "TP700", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Siemens 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+  });
+  it("rejects a second machine split across photo and typed text", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens P/N 6ES7214-1AG40-0XB0", "and the TP700 too", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+  });
+  it("rejects a candidate that differs from an explicitly labelled part in either text", () => {
+    // A P/N label must not hide a second machine (Codex post-cap 2 F5).
+    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 and TP700", "Find the manual for this", "TP700", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Controller P/N: 6ES7214-1AG40-0XB0", "Find the manual for my Allen-Bradley SLC 5/03", "SLC 5/03", "Allen-Bradley")).toBe(false);
+  });
+  it("accepts a single-machine photo and a neutral question", () => {
+    expect(isSafeCandidateSearchIdentity("Blue solenoid valve. Label text: SMC SS5Y3-DUW01302 24VDC", "Find the manual for this", "SS5Y3-DUW01302", "SMC")).toBe(true);
+    // TP700 is not a serial-safe part code, so under the strict rule it never
+    // auto-searches (#4173 tracks short models).
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort panel, 24 VDC", "Find the manual for this", "TP700", "Siemens")).toBe(false);
+  });
+  it("fails closed on a panel model beside a different order-number code (accepted cost of the narrowing)", () => {
+    // Even when both describe one panel, two distinct identities never auto-search;
+    // the technician can still confirm the machine and bind it.
+    expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort 6AV2124-0GC01-0AX0", "", "TP700", "Siemens")).toBe(false);
   });
 });

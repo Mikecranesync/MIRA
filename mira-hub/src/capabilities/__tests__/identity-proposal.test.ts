@@ -4,7 +4,7 @@
  * Run: npx vitest run src/capabilities/__tests__/identity-proposal.test.ts
  */
 import { describe, expect, it } from "vitest";
-import { modelAfterManufacturer, proposeIdentityFromText, unconfirmedMachineDirective } from "../identity-proposal";
+import { modelAfterManufacturer, namesOnlyThisMachine, proposeIdentityFromText, unconfirmedMachineDirective } from "../identity-proposal";
 
 // corpusManufacturers() CANONICALIZES (normalizeManufacturer): staging's
 // "Allen-Bradley" rows are listed as "Rockwell Automation", "Mitsubishi" as
@@ -87,6 +87,27 @@ describe("unconfirmedMachineDirective", () => {
     expect(d).toContain("NOT confirmed");
     expect(d).toMatch(/Do NOT state its ratings, specifications/);
     expect(d).toMatch(/firmware or service procedure/);
+  });
+
+  // #4160 S6 — PRD R16-lite: the candidate-basis acquisition status rides this
+  // SAME directive as a verbatim-relay instruction (no new SSE frame).
+  describe("acquisitionStatus (#4160 S6)", () => {
+    const p = { manufacturer: "SMC", model: "SS5Y3-DUW01302" };
+
+    it("omitted or null/empty leaves the directive byte-identical to before", () => {
+      const base = unconfirmedMachineDirective(p);
+      expect(unconfirmedMachineDirective(p, null)).toBe(base);
+      expect(unconfirmedMachineDirective(p, "")).toBe(base);
+      expect(unconfirmedMachineDirective(p, undefined)).toBe(base);
+    });
+
+    it("when present, is appended as a verbatim-relay instruction, after the base directive", () => {
+      const status = "I'm looking for the official SMC SS5Y3-DUW01302 manual now.";
+      const d = unconfirmedMachineDirective(p, status);
+      expect(d.startsWith(unconfirmedMachineDirective(p))).toBe(true);
+      expect(d).toContain(status);
+      expect(d).toMatch(/in your own words/i);
+    });
   });
 });
 
@@ -384,5 +405,22 @@ describe("Codex #4120 r19", () => {
   });
   it("F19 control: weak everyday words still do not swallow a model", () => {
     expect(proposeIdentityFromText("Compare Siemens S7-1200 and no S7-1500", CORPUS)).toBeNull();
+  });
+});
+
+// Codex r3 F5 (#4172): the corpus-independent fallback must keep the existing
+// multi-machine rejection, not resurrect one machine from a comparison.
+describe("namesOnlyThisMachine", () => {
+  it("rejects a comparison that names a second model", () => {
+    expect(namesOnlyThisMachine("Compare the manuals for Siemens 6ES7214-1AG40-0XB0 and TP700", "6ES7214-1AG40-0XB0")).toBe(false);
+  });
+  it("rejects a slash-joined second model", () => {
+    expect(namesOnlyThisMachine("SS5Y3-DUW01302 or S7-1200 manual", "SS5Y3-DUW01302")).toBe(false);
+  });
+  it("accepts a message that names only the chosen part", () => {
+    expect(namesOnlyThisMachine("Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302")).toBe(true);
+  });
+  it("accepts a message that names no model at all", () => {
+    expect(namesOnlyThisMachine("Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(true);
   });
 });

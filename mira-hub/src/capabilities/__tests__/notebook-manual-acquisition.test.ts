@@ -4,6 +4,7 @@
  * Run: npx vitest run src/capabilities/__tests__/notebook-manual-acquisition.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { candidateAcquisitionEnabled } from "../notebook-manual-acquisition";
 
 const db = vi.hoisted(() => ({
   queries: [] as { sql: string; params: unknown[] }[],
@@ -15,6 +16,10 @@ const db = vi.hoisted(() => ({
   currentSource: null as unknown,
   sourceRow: null as unknown,
   fileLinked: false,
+  // #4160 S6 — the fencedWriter/fencedAttach owner-row's confirmed_same_key
+  // column. Defaults false so every pre-S6 ("confirmed" basis) test is
+  // unaffected: that basis never reads this field.
+  confirmedSameKey: false,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -24,10 +29,11 @@ vi.mock("@/lib/tenant-context", () => ({
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
-        if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/FOR UPDATE/.test(sql))
+          return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
         if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
-        if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
+        if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql) || /\bAS auto_key\b/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
         if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
         return { rowCount: 1, rows: [] };
@@ -64,6 +70,7 @@ beforeEach(() => {
   db.currentSource = null;
   db.sourceRow = null;
   db.fileLinked = false;
+  db.confirmedSameKey = false;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -255,6 +262,25 @@ describe("Codex #4118 F2 — what the record says was actually attached", () => 
     });
     expect(r.attached_indexed).toBe(true);
   });
+  it("#4172: an attached, indexed, applicability-verified candidate is recorded as promoting on confirm", () => {
+    const r = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, matchState: "candidate", candidateApplicability: "verified" }, candidate: { host: "h" } },
+    });
+    expect(r.promotes_on_confirm).toBe(true);
+  });
+  it("#4172: a 'candidate' applicability verdict, or nothing attached, never promotes on confirm", () => {
+    const cand = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: "d1", indexed: true, matchState: "candidate", candidateApplicability: "candidate" }, candidate: { host: "h" } },
+    });
+    expect(cand.promotes_on_confirm).toBe(false);
+    const unattached = recordFromOutcome("K", null, {
+      status: "candidate_review",
+      payload: { manual: { docId: null, indexed: false, candidateApplicability: "verified" }, candidate: { host: "h" } },
+    });
+    expect(unattached.promotes_on_confirm).toBe(false);
+  });
   it("another request still indexing the same bytes → stays 'running' so the stale recovery retries it", () => {
     const r = recordFromOutcome("K", null, {
       status: "candidate_review",
@@ -339,6 +365,233 @@ describe("Codex #4118 r3 F5 / r15 F19 — fencedAttach", () => {
   });
 });
 
+describe("#4160 S6 — fencedWriter basis='candidate' never enables before confirmation", () => {
+  it("defaults 'confirmed' is BYTE-IDENTICAL: the ownership SQL still names identity_status = 'user_confirmed' unconditionally for that branch", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "verified", enabledByDefault: true, matchEvidence: {} });
+    const lock = db.queries.at(-2)!;
+    expect(lock.sql).toMatch(/\$5::text = 'confirmed' AND n\.identity_status = 'user_confirmed'/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "confirmed"]);
+  });
+
+  it("NOT yet confirmed: forces match_state='candidate', enabled_by_default=false even though the verdict says verified+enabled", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = false;
+    const res = await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: { candidateApplicability: "verified" },
+    });
+    expect(res).toEqual({ matchState: "verified", enabledByDefault: true }); // db.updatedSource (what the mock reports persisted)
+    const write = db.queries.at(-1)!;
+    // The WRITE statement itself must have asked for candidate/false, not the
+    // verdict's verified/true — this is the actual guard; db.updatedSource
+    // above is just the mock's canned "what got persisted" response.
+    expect(write.params[3]).toBe("candidate");
+    expect(write.params[4]).toBe(false);
+    expect(JSON.parse(write.params[5] as string)).toMatchObject({ autoAcquisitionKey: "K", candidateApplicability: "verified" });
+  });
+
+  it("already confirmed to the SAME key (the common race) + candidateApplicability='verified': promotes, same as a confirmed-basis write", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = true;
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: { candidateApplicability: "verified" },
+    });
+    const write = db.queries.at(-1)!;
+    expect(write.params[3]).toBe("verified");
+    expect(write.params[4]).toBe(true);
+  });
+
+  it("already confirmed to the SAME key but candidateApplicability='candidate' (unproven): still never enables", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = true;
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "candidate",
+      enabledByDefault: false,
+      matchEvidence: { candidateApplicability: "candidate" },
+    });
+    const write = db.queries.at(-1)!;
+    expect(write.params[3]).toBe("candidate");
+    expect(write.params[4]).toBe(false);
+  });
+
+  it("the ownership SQL relaxes identity_status for 'candidate' basis, but still requires the SAME key when confirmed", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    const lock = db.queries.at(-2)!;
+    expect(lock.sql).toMatch(/\$5::text = 'candidate' AND \(n\.identity_status <> 'user_confirmed' OR/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "candidate"]);
+  });
+
+  it("refuses — and writes NOTHING — when the locked check finds no owning notebook, for candidate basis too", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.claimRows = 0;
+    db.currentSource = { match_state: "candidate", enabled_by_default: false };
+    const res = await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    expect(res).toEqual({ matchState: "candidate", enabledByDefault: false });
+    expect(db.queries.some((q) => /UPDATE equipment_notebook_sources/.test(q.sql))).toBe(false);
+  });
+});
+
+describe("#4160 S6 — fencedAttach basis='candidate' relaxes ownership the same way", () => {
+  const tgt = [{ targetType: "equipment_notebook" as const, targetId: "nb", role: "manual" as const, displayLabel: "m.pdf" }];
+  it("attaches while owning (unconfirmed OR confirmed to the SAME key), relaxing identity_status only for 'candidate'", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    db.claimRows = 1;
+    expect(await fencedAttach("K", "g1", "candidate")("t", "nb", "file", "doc", tgt, null)).toBe(true);
+    expect(attachFileToTargetsTx).toHaveBeenCalled();
+    const lock = db.queries.find((q) => /manual_acquisition->>'prior_doc_id'/.test(q.sql))!;
+    expect(lock.sql).toMatch(/\$5::text = 'candidate' AND \(n\.identity_status <> 'user_confirmed' OR/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "candidate"]);
+  });
+
+  it("refuses when ownership is lost, for candidate basis too", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    vi.mocked(attachFileToTargetsTx).mockClear();
+    db.claimRows = 0;
+    expect(await fencedAttach("K", "g1", "candidate")("t", "nb", "file", "doc", tgt, null)).toBe(false);
+    expect(attachFileToTargetsTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4160 S6 — startManualAcquisition basis='candidate' threading", () => {
+  const proposed = { identityStatus: "user_confirmed" as const, manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" };
+  const candidateInput = { tenantId: "t", userId: "u", notebookId: "nb", nodeId: "node", identity: proposed, basis: "candidate" as const };
+
+  it("keys EXACTLY as acquisitionKey() would key the identity a PATCH bind would write", () => {
+    expect(acquisitionKey(proposed)).toBe(acquisitionKey({ ...proposed }));
+    expect(acquisitionKey(proposed)).toBe("SMC|SS5Y3DUW01302|");
+  });
+
+  it("passes basis to the acquire() call, unlike the default 'confirmed' basis (which omits it)", async () => {
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    expect(await startManualAcquisition(candidateInput, { acquire, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    expect(acquire).toHaveBeenCalledWith(expect.objectContaining({ basis: "candidate" }));
+  });
+
+  // R4 — only manufacturer + part (the proposal's model) ever leave; the
+  // synthetic identity's empty catalogNumber is cleaned to undefined, exactly
+  // like the confirmed-basis path, so discoverManual's request body (built
+  // from truthy fields only — manual-discovery.ts) never sends a stray key.
+  it("R4: the synthetic candidate identity reaches acquire() with ONLY manufacturer + model — no catalogNumber", async () => {
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    await startManualAcquisition(candidateInput, { acquire, env: ON });
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    expect(acquire).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: undefined },
+      }),
+    );
+  });
+
+  it("claim idempotency: a second identical candidate (same key) while the first is still running does not start a second search", async () => {
+    db.readRow = { key: "SMC|SS5Y3DUW01302|", state: "running", started_at: new Date().toISOString(), finished_at: null };
+    db.claimRows = 0; // claim()'s WHERE clause would not match a fresh, non-stale 'running' record
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    expect(await startManualAcquisition(candidateInput, { acquire, env: ON })).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("the flag off ⇒ nothing starts, for candidate basis too", async () => {
+    const acquire = vi.fn();
+    expect(await startManualAcquisition(candidateInput, { acquire, env: {} })).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
+  const rec = (state: AcquisitionRecord["state"]): AcquisitionRecord => ({
+    key: "K",
+    state,
+    started_at: "2026-01-01T00:00:00Z",
+    finished_at: state === "running" ? null : "2026-01-01T00:01:00Z",
+    candidate_host: null,
+    match_state: null,
+    oem_request_url: null,
+  });
+
+  // Codex post-cap 13/14 F13 (#4172): no shipping client renders the
+  // identity_proposal frame, offers "Use its manuals", or can confirm an
+  // EXISTING notebook's make/model (#4095 / #3626). The one action a
+  // technician has on the acquired manual is turning it on in Sources (Hub
+  // notebook page, classic mobile notebook screen), so the copy points there
+  // and promises nothing about confirmation.
+  it("'running' says the search is on and that the manual lands in Sources, turned off, to check — no button, no confirmation promise", () => {
+    const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
+    expect(t).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual now/);
+    expect(t).toMatch(/Sources/);
+    expect(t).toMatch(/turn it on/);
+    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
+    expect(t).not.toMatch(/ask again in a minute/);
+  });
+
+  // Codex post-cap 4 F9 (#4172): only promise "confirm and I'll answer from it"
+  // when confirming will actually promote an attached, applicability-verified
+  // document (migration 104 / fencedWriter's promoteNow). Otherwise give the
+  // real next step.
+  it("'candidate_review', even one confirmation WOULD promote, points at Sources and promises nothing about confirmation", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: true, promotes_on_confirm: true },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    )!;
+    expect(t).toMatch(/Sources/);
+    expect(t).toMatch(/turn it on/);
+    expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
+  });
+
+  it("'candidate_review' with an attached document confirmation will NOT promote points at Sources, never promises", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: true, promotes_on_confirm: false },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    )!;
+    expect(t).not.toMatch(/Use its manuals|once this notebook is confirmed/);
+    expect(t).not.toMatch(/once you do/);
+    expect(t).toMatch(/Sources/);
+  });
+
+  it("a review-only result (nothing attached) gives its URL and the upload step, never the confirm promise", () => {
+    const t = acquisitionDeclineText(
+      { ...rec("candidate_review"), attached_indexed: false, candidate_url: "https://oem.example/landing" },
+      "K", "SMC SS5Y3-DUW01302", "candidate",
+    )!;
+    expect(t).not.toMatch(/Use its manuals|once this notebook is confirmed/);
+    expect(t).not.toMatch(/once you do/);
+    expect(t).toContain("https://oem.example/landing");
+    expect(t).toMatch(/upload/i);
+  });
+
+  // Codex post-cap 6 F11: a cached 'complete' record can outlive a later
+  // revocation, and confirming never re-enables a revoked source, so the
+  // candidate copy never promises it; the shared copy points at Sources.
+  it("'complete' never promises that confirming will answer from it; it points at Sources", () => {
+    const t = acquisitionDeclineText(rec("complete"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).toMatch(/Sources/);
+  });
+
+  it("default basis ('confirmed') is byte-identical to the pre-S6 copy", () => {
+    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).toBe(
+      acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "confirmed"),
+    );
+    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).not.toMatch(/turned off until you check it/);
+  });
+
+  it("terminal honest-fact states (no manual found, a limit, a scan) are shared regardless of basis", () => {
+    expect(acquisitionDeclineText(rec("no_manual_found"), "K", "X", "candidate")).toBe(
+      acquisitionDeclineText(rec("no_manual_found"), "K", "X", "confirmed"),
+    );
+    expect(acquisitionDeclineText(rec("search_limit_reached"), "K", "X", "candidate")).toBe(
+      acquisitionDeclineText(rec("search_limit_reached"), "K", "X", "confirmed"),
+    );
+  });
+});
+
 
 describe("key normalization", () => {
   it("the SQL key normalization matches acquisitionKey for the same identity", () => {
@@ -389,6 +642,34 @@ describe("Codex #4118 r8 F13 — a finished record is checked against the notebo
     const r = await reconcileAcquisition("t", "nb", done);
     expect(r?.source_removed).toBeUndefined();
     expect(acquisitionDeclineText(r, "K", "SMC VQ1000")).toMatch(/added it to this notebook's Sources/);
+  });
+  // Codex post-cap 6 F11 (#4172): the cached "confirm and it turns on" promise is
+  // re-checked against the CURRENT row with migration 104's exact promotion
+  // predicate — a source revoked after the search (identity cleared) is never
+  // promised again.
+  const promising = { ...done, key: "K", state: "candidate_review" as const, match_state: "candidate", promotes_on_confirm: true };
+  const promotable = { match_state: "candidate", enabled_by_default: false, auto_key: "K", cand_app: "verified", revoked: null };
+  it("F11: a source revoked since the search loses promotes_on_confirm, and the copy points at Sources", async () => {
+    db.sourceRow = { ...promotable, revoked: "notebook identity changed" };
+    const r = await reconcileAcquisition("t", "nb", promising);
+    expect(r?.promotes_on_confirm).toBe(false);
+    const t = acquisitionDeclineText(r, "K", "SMC VQ1000", "candidate")!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).toMatch(/Sources/);
+  });
+  it("F11: a different acquisition key, a 'candidate' stamp, or a non-candidate row also loses it", async () => {
+    for (const row of [
+      { ...promotable, auto_key: "OTHER" },
+      { ...promotable, cand_app: "candidate" },
+      { ...promotable, match_state: "verified" },
+    ]) {
+      db.sourceRow = row;
+      expect((await reconcileAcquisition("t", "nb", promising))?.promotes_on_confirm).toBe(false);
+    }
+  });
+  it("F11 control: a row migration 104 would still promote keeps the promise", async () => {
+    db.sourceRow = promotable;
+    expect((await reconcileAcquisition("t", "nb", promising))?.promotes_on_confirm).toBe(true);
   });
   it("a record without a document, or a running search, is not queried", async () => {
     db.queries = [];
@@ -523,5 +804,16 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
       linked: true,
     });
     expect(r?.source_removed).toBe(true);
+  });
+});
+
+// #4172 F13 / #4175: candidate takeover has its own flag, and needs the base one.
+describe("candidateAcquisitionEnabled", () => {
+  it("is on only when BOTH flags are exactly '1'", () => {
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
+    expect(candidateAcquisitionEnabled({})).toBe(false);
   });
 });

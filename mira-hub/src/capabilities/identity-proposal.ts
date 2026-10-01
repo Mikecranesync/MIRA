@@ -5,9 +5,11 @@
  * A technician types into an empty notebook: "Find the manual for this
  * Allen-Bradley SLC 5/03 …". MIRA may PROPOSE that machine; it never binds it,
  * never scopes retrieval to it on this turn, and never answers as if it were
- * confirmed. The client offers "Use its manuals" / "Not this"; confirming binds
- * the notebook through the existing PATCH, and the existing identity-bound path
- * (and #4075's manual acquisition) takes over from there.
+ * confirmed. A client that renders the frame may offer "Use its manuals" /
+ * "Not this" (the client half is #4095 / #3626 — none ships it yet, so server
+ * copy never names that button); confirming binds the notebook through the
+ * existing PATCH, and the existing identity-bound path (and #4075's manual
+ * acquisition) takes over from there.
  *
  * Rules (owner decisions 2026-09-28 and 2026-09-29):
  *  - The manufacturer must be one the shared library holds (corpus list), named
@@ -377,15 +379,40 @@ export function proposeIdentityFromText(
 }
 
 /**
+ * Does this message name no machine other than `part` (#4172 Codex r3 F5)? The
+ * corpus-independent fallback reuses proposeIdentityFromText's multi-machine
+ * rejection, so a comparison ("6ES7214-… and TP700") never yields a search for
+ * one of them. Fail closed: any error means "not only this machine".
+ */
+export function namesOnlyThisMachine(message: string, part: string): boolean {
+  try {
+    const text = withoutLabelValues(message);
+    if (resolveModelFromObservationText(text).ambiguous) return false;
+    const chosen = canonicalModel(part);
+    return modelMentions(text, part).every((m) => norm(m) === norm(part) || sameMachine(m, part, chosen));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Appended to the GENERAL system prompt only when a proposal is made, so an
  * unconfirmed machine is never answered as if its manual were loaded.
+ *
+ * `acquisitionStatus` (#4160 S6, PRD R16-lite): when a candidate-basis
+ * background search is already running or finished for this SAME proposed
+ * identity, its honest status line (acquisitionDeclineText, basis
+ * "candidate") is appended as a verbatim-relay instruction — the chat reply
+ * says what is happening in plain words without a new SSE frame or any
+ * client/presentation change. Omitted (default) → unchanged directive.
  */
-export function unconfirmedMachineDirective(p: IdentityProposal): string {
+export function unconfirmedMachineDirective(p: IdentityProposal, acquisitionStatus?: string | null): string {
   const name = `${p.manufacturer} ${p.model}`;
-  return (
+  const base =
     `\n\nUNCONFIRMED MACHINE — the technician named the ${name}, but it is NOT confirmed and none of its manuals are loaded. ` +
     `Do NOT state its ratings, specifications, settings, part numbers, wiring, fault meanings, or any reset, firmware or ` +
     `service procedure as fact. Answer only what is true in general, and say that once they confirm the ${name} you ` +
-    `will look up its manual and show them the page.`
-  );
+    `will look up its manual and show them the page.`;
+  if (!acquisitionStatus) return base;
+  return `${base} MIRA is already searching for its manual in the background — tell the technician, in your own words, this: "${acquisitionStatus}"`;
 }
