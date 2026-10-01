@@ -261,12 +261,18 @@ describe("mentionsSerialLabel", () => {
 
 // Codex post-cap 7 F12 (#4172): abbreviated serial labels are serial labels too.
 describe("abbreviated serial labels", () => {
-  const spellings = ["SMC SER: AB-1234567", "SMC Ser. No. AB-1234567", "SMC Ser# AB-1234567", "SMC SER NO AB-1234567", "SMC Ser.Nr. AB-1234567", "SMC SER AB-1234567", "AB-1234567 (SER)", "SMC SER. AB-1234567", "SMC Ser.: AB-1234567", "SMC SER.# AB-1234567", "SMC AB-1234567 (SER.)", "SMC Ser.AB-1234567", "SMC Ser-No AB-1234567", "SMC Sr. No. AB-1234567"];
+  const spellings = ["SMC SER: AB-1234567", "SMC Ser. No. AB-1234567", "SMC Ser# AB-1234567", "SMC SER NO AB-1234567", "SMC Ser.Nr. AB-1234567", "SMC SER AB-1234567", "AB-1234567 (SER)", "SMC SER. AB-1234567", "SMC Ser.: AB-1234567", "SMC SER.# AB-1234567", "SMC AB-1234567 (SER.)", "SMC Ser.AB-1234567", "SMC Ser-No AB-1234567", "SMC Sr. No. AB-1234567", "SMC SER - AB-1234567", "SMC SER. - AB-1234567", "SMC Sr# AB-1234567", "SMC SER \u2013 AB-1234567", "SMC Serial - AB-1234567", "SMC SER.-AB-1234567", "SMC SER/AB-1234567", "AB-1234567 SER.", "AB-1234567 SR, 24VDC", "SMC SER\u2116 AB-1234567", "SMC Serial \u2116 AB-1234567"];
   it.each(spellings)("%s is a serial label, and its value is never a part number", (text) => {
     expect(mentionsSerialLabel(text)).toBe(true);
     expect(unambiguousPartNumber(text)).toBeNull();
   });
-  it.each(["SMC Series SY valve SY3120-5LZD", "Service manual for SY3120-5LZD", "Server rack SY3120-5LZD", "SY3120-5LZD ser. valve body", "Sr. technician note: SY3120-5LZD"])(
+  it("a prefix label never marks the labelled part printed before it as the serial", () => {
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD Serial AB-1234567")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD SER: AB-1234567")).toBe("SY3120-5LZD");
+    // Whereas a bare suffix label with no value after it marks the code before it.
+    expect(unambiguousPartNumber("P/N: SY3120-5LZD AB-1234567 SER.")).toBe("SY3120-5LZD");
+  });
+  it.each(["SMC Series SY valve SY3120-5LZD", "Service manual for SY3120-5LZD", "Server rack SY3120-5LZD", "SY3120-5LZD ser. valve body", "Sr. technician note: SY3120-5LZD", "Senior technician SY3120-5LZD", "SR latch for SY3120-5LZD", "snap ring SY3120-5LZD", "SY3120-5LZD, 24 VDC, SER."])(
     "control: %s is not a serial label",
     (text) => {
       expect(mentionsSerialLabel(text)).toBe(false);
