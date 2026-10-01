@@ -4,26 +4,33 @@
  */
 const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}\b/gi;
 
-// A serial label is the label TOKEN plus any run of separator punctuation or
-// whitespace — never an enumerated separator list (Codex #4172 post-cap 7–9:
-// "SER:", "Ser. No.", "SER - …", "Sr# …" each slipped past a list). The
-// full words (serial, S/N, SN, S.N.) are labels wherever they appear; the
-// abbreviations (SER, Sr) only in a label shape — a "no/nr/number/#" word,
-// a digit-bearing code after the separators, or a "(SER)" suffix — so
-// "series", "service", "server", "snap" and a plain "Sr." never match.
-const LABEL_SEP = String.raw`[\s.:#=\/\-\u2013]*`;
+// A serial label is the label TOKEN plus any run of NON-ALPHANUMERIC characters
+// — never an enumerated punctuation list (Codex #4172 post-cap 7–10: ":",
+// "-", "/", "—", "(" each slipped past a list in turn). The full words
+// (serial, S/N, SN, S.N., any single separator between S and N) are labels
+// wherever they appear; the abbreviations
+// (SER, Sr) only in a label shape — a "no/nr/number/#/№" word, a digit-bearing
+// code after the separators, a "(SER)" suffix, or a bare suffix after a value
+// — so "series", "service", "server", "snap" and a plain "Sr." never match.
+const LABEL_SEP = String.raw`[^A-Za-z0-9]*`;
 const SERIAL_LABEL = new RegExp(
-  String.raw`\b(?:(?:serial|s\/?n|s\.\s?n)(?![a-z])(?:${LABEL_SEP}(?:no|nr|number|\u2116)(?![a-z])\.?|${LABEL_SEP}#)?` +
+  String.raw`\b(?:(?:serial|s[^A-Za-z0-9]?n)(?![a-z])(?:${LABEL_SEP}(?:no|nr|number|\u2116)(?![a-z])\.?|${LABEL_SEP}#)?` +
     String.raw`|(?:ser|sr)(?![a-z])(?:${LABEL_SEP}(?:no|nr|number|\u2116)(?![a-z])\.?|${LABEL_SEP}#|\.?(?=\s*[)\]])` +
     String.raw`|${LABEL_SEP}(?=(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9])))` +
-    // A suffix label after the value ("AB-1234567 SER."): a digit-bearing code,
-    // whitespace, the abbreviation, then the end of the text or punctuation.
-    String.raw`|(?<=\d[A-Z0-9./-]*\s+)(?:ser|sr)\.?(?=\s*(?:$|[,;)\]\r\n])))`,
+    // A suffix label after the value ("AB-1234567 SER.", "AB-1234567 SR, 24VDC"):
+    // a digit-bearing code, separators, the abbreviation, then the end of the
+    // text, a line break, or a non-alphanumeric character other than "." —
+    // never a following word ("… ser. valve body" is prose).
+    String.raw`|(?<=\d[A-Z0-9./-]*[^A-Za-z0-9]+)(?:ser|sr)\.?(?=\s*(?:$|[\r\n]|[^A-Za-z0-9\s.])))`,
   "gi",
 );
 const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|1P)\s*[:#]?\s*([A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
+/** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
+ *  characters (soft hyphen, zero-width, BOM) are nothing at all, so "Ser\u00adial" is
+ *  still "Serial" (#4172). */
+const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "").replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
 
 /**
  * Every distinct, serial-safe part code in the text (#4172: exported so a caller
@@ -31,8 +38,7 @@ const trimCode = (code: string) => code.replace(/[./-]+$/, "");
  * into the same null).
  */
 export function partCodes(photoText: string): string[] {
-  // Quotes are label punctuation, never identifier characters (#4150 F1/F4).
-  const text = photoText.replace(/["'\u2018\u2019\u201c\u201d`]/g, " ");
+  const text = normalize(photoText);
   // A serial number must never be sent to web search (ADR-0036). Fail closed
   // (#4150 r2 F1): every code-shaped token within reach of a serial label is a
   // serial, whatever the separator ("S/N = …", "Serial number is …", "(…)").
@@ -40,13 +46,13 @@ export function partCodes(photoText: string): string[] {
   for (const m of text.matchAll(SERIAL_LABEL)) {
     const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
     // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
-    const code = after.match(/^[\s.:#=\-\u2013(\[]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
+    const code = after.match(/^[^A-Za-z0-9]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
     if (code) serials.add(trimCode(code[1]).toUpperCase());
     // A suffix label marks the code just before it: "AB-1234567 (S/N)" — or,
     // when NO value follows the label, a bare "AB-1234567 SER." (never when a
     // value does follow: "SY3120-5LZD Serial AB-1234567" keeps its model).
     const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
-    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s+$/i));
+    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i));
     if (prior) serials.add(trimCode(prior[1]).toUpperCase());
   }
   const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
@@ -74,7 +80,7 @@ export function unambiguousPartNumber(photoText: string): string | null {
  * another parser (the OEM retrieval model reader) picked out (ADR-0036).
  */
 export function mentionsSerialLabel(text: string): boolean {
-  return new RegExp(SERIAL_LABEL.source, "i").test(text.replace(/["'\u2018\u2019\u201c\u201d`]/g, " "));
+  return new RegExp(SERIAL_LABEL.source, "i").test(normalize(text));
 }
 
 const LOOKUP_VERB = String.raw`(?:find|look\s+up|search(?:\s+for)?|locate|get|download)`;
