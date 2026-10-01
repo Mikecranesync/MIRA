@@ -194,8 +194,48 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
     case "identity_dispute":
       return { type: "identity_dispute" };
     case "unknown":
-      return { type: "unknown", raw: part.raw };
+      return unknownInteractionPart(part.raw);
   }
+}
+
+/** A raw string field, or null — never coerced from a non-string. */
+function rawString(raw: Record<string, unknown>, key: string): string | null {
+  const v = raw[key];
+  return typeof v === "string" ? v : null;
+}
+
+/**
+ * `{type:"unknown", raw}` is the mobile chat-adapter's generic passthrough for
+ * any server frame kind this contract version doesn't model — the ONE place
+ * (per `src/lib/sse.ts`'s "one canonical parser" rule) that already carries an
+ * `identity_proposal` or `manual_search_status` frame's full JSON all the way
+ * from the wire to the shell, un-reshaped. Recognizing a known `raw.kind` HERE
+ * — in the canonical, unguarded adapter — turns it into the shared part
+ * `PartRenderer` knows how to confirm/show, without touching `sse.ts` or
+ * `turns-to-parts.ts` (both guarded legacy presentation, #FACTORYLM-UNIFIED-
+ * UI-CUTOVER-001). Anything else still falls back to `unknown` verbatim —
+ * never a crash, never a guess (PRD §9.2).
+ */
+function unknownInteractionPart(raw: unknown): InteractionPart {
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const r = raw as Record<string, unknown>;
+    if (r.kind === "identity_proposal") {
+      const manufacturer = rawString(r, "manufacturer");
+      const model = rawString(r, "model");
+      if (manufacturer && model) {
+        const catalogNumber = rawString(r, "catalogNumber");
+        return { type: "identity_proposal", manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
+      }
+    } else if (r.kind === "manual_search_status") {
+      const manufacturer = rawString(r, "manufacturer");
+      const model = rawString(r, "model");
+      if (manufacturer && model && typeof r.running === "boolean") {
+        const message = rawString(r, "message");
+        return { type: "manual_search_status", manufacturer, model, running: r.running, ...(message ? { message } : {}) };
+      }
+    }
+  }
+  return { type: "unknown", raw };
 }
 
 export function lifecycleOf(msg: AdapterMessage): Lifecycle {

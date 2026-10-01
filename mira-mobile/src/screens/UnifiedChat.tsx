@@ -41,6 +41,7 @@ import {
 } from "@factorylm/ui";
 import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
+import { confirmIdentityProposal } from "../api/identity-confirm";
 import type { NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
@@ -403,6 +404,9 @@ export function UnifiedChat({
     groundingLine,
     suggestChips,
     busy,
+    ...(meta.notebookId
+      ? { onConfirmIdentity: (proposal) => confirmIdentityProposal(meta.notebookId, proposal) }
+      : {}),
   };
 
   return <div className="unified-host" data-testid="unified-chat">

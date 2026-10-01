@@ -112,6 +112,38 @@ describe("toInteractionPart", () => {
     expect(toInteractionPart({ type: "error", reason: "stopped" })).toMatchObject({ error: { code: "stopped", retryable: false } });
     expect(sourceFor({ ...CITATION, page: null, fileId: "file-9" })).toMatchObject({ kind: "workspace_file", locator: "Check the supply." });
   });
+
+  // T2 (#4175, #4189): identity_proposal and manual_search_status frames ride
+  // the mobile wire as `{type:"unknown", raw:{kind:"identity_proposal", ...}}`
+  // (sse.ts's generic passthrough, unmodified — it's guarded legacy
+  // presentation). Recognizing them HERE, in the canonical adapter, is what
+  // turns the raw "Unrecognized part" inspection box into the confirm card.
+  it("recognizes an identity_proposal raw frame and maps it to a real part", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }))
+      .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("carries catalogNumber through when the server includes one", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" } }))
+      .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" });
+  });
+
+  it("recognizes a manual_search_status raw frame, running and finished", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true } }))
+      .toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it." } }))
+      .toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it." });
+  });
+
+  it("falls back to unknown for a malformed identity_proposal/manual_search_status and any other kind (regression)", () => {
+    // Missing required fields — never half-render a card with blanks.
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } }))
+      .toEqual({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } });
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "X" } }))
+      .toEqual({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "X" } });
+    // A genuinely unknown future kind stays unknown, unchanged.
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "future" } })).toEqual({ type: "unknown", raw: { kind: "future" } });
+  });
 });
 
 describe("turns and thread", () => {
