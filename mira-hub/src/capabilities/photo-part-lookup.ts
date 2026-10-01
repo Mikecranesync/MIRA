@@ -9,13 +9,16 @@ const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A
 // "-", "/", "—", "(" each slipped past a list in turn). The full words
 // (serial — even OCR-split "Ser ial" — and S/N with ANY non-alphanumeric run
 // between S and N: S.N., S / N, S-N, S⁄N, S.No.) are labels wherever they appear; the abbreviations
-// (SER, Sr) only in a label shape — a "no/nr/number/#/№" word, a digit-bearing
+// (SER, Sr) only in a label shape — a number word (No/Nr/Num/Number/N°/№) or "#", a digit-bearing
 // code after the separators, a "(SER)" suffix, or a bare suffix after a value
 // — so "series", "service", "server", "snap" and a plain "Sr." never match.
 const LABEL_SEP = String.raw`[^A-Za-z0-9]*`;
+// The "number" word of a compound label, in any common spelling or language:
+// No, Nr, Num, Number, Numero, Nummer, Nmbr, N°, №.
+const NUM_WORD = String.raw`(?:n(?:o|r|um(?:ber|ero|mer)?|mbr)|n[\u00b0\u00ba]|\u2116)`;
 const SERIAL_LABEL = new RegExp(
-  String.raw`\b(?:(?:s\s?e\s?r\s?i\s?a\s?l|s[^A-Za-z0-9]*n(?:o|r)?)(?![a-z])(?:${LABEL_SEP}(?:no|nr|number|\u2116)(?![a-z])\.?|${LABEL_SEP}#)?` +
-    String.raw`|(?:ser|sr)(?![a-z])(?:${LABEL_SEP}(?:no|nr|number|\u2116)(?![a-z])\.?|${LABEL_SEP}#|\.?(?=\s*[)\]])` +
+  String.raw`\b(?:(?:s\s?e\s?r\s?i\s?a\s?l|s[^A-Za-z0-9]*n(?:o|r|um(?:ber|ero|mer)?|mbr)?)(?![a-z])(?:${LABEL_SEP}${NUM_WORD}(?![a-z])\.?|${LABEL_SEP}#)?` +
+    String.raw`|(?:ser|sr)(?![a-z])(?:${LABEL_SEP}${NUM_WORD}(?![a-z])\.?|${LABEL_SEP}#|\.?(?=\s*[)\]])` +
     String.raw`|${LABEL_SEP}(?=(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}(?![A-Z0-9])))` +
     // A suffix label after the value ("AB-1234567 SER.", "AB-1234567 SR, 24VDC"):
     // a digit-bearing code, separators, the abbreviation, then the end of the
