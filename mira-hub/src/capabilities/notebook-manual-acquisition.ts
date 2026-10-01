@@ -580,13 +580,31 @@ export async function reconcileAcquisition(
   try {
     return await withTenantContext(tenantId, async (c) => {
       if (bySource) {
-        const r = await c.query<{ match_state: string }>(
-          `SELECT match_state FROM equipment_notebook_sources
+        const r = await c.query<{
+          match_state: string;
+          auto_key: string | null;
+          cand_app: string | null;
+          revoked: string | null;
+        }>(
+          `SELECT match_state,
+                  match_evidence->>'autoAcquisitionKey' AS auto_key,
+                  match_evidence->>'candidateApplicability' AS cand_app,
+                  match_evidence->>'revokedBecause' AS revoked
+             FROM equipment_notebook_sources
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
           [tenantId, notebookId, docRef],
         );
         const row = r.rows[0];
-        if (row && row.match_state !== "rejected") return rec;
+        if (row && row.match_state !== "rejected") {
+          // Codex post-cap 6 F11 (#4172): a cached promise that confirming will
+          // turn this source on is re-checked against the CURRENT row with
+          // migration 104's exact promotion predicate, so a source revoked
+          // since the search (identity cleared) is never promised again.
+          if (!rec.promotes_on_confirm) return rec;
+          const stillPromotes =
+            row.match_state === "candidate" && row.auto_key === rec.key && row.cand_app === "verified" && row.revoked == null;
+          return stillPromotes ? rec : { ...rec, promotes_on_confirm: false };
+        }
       } else {
         const r = await c.query(
           `SELECT 1 FROM workspace_file_links
@@ -637,8 +655,9 @@ export function acquisitionDeclineText(
           return `I found the official ${label} manual. Tap "Use its manuals" to confirm this is your part, and I'll answer from it and show you the page.`;
         }
         break;
-      case "complete":
-        return `I found the official ${label} manual. Tap "Use its manuals" to confirm this is your part, and I'll answer from it and show you the page.`;
+      // "complete" (Codex post-cap 6 F11): a cached complete record can outlive a
+      // later revocation, and confirming never re-enables a revoked source, so
+      // the shared copy below (pointing at Sources) is used instead of a promise.
       default:
         break;
     }

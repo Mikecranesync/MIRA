@@ -32,7 +32,7 @@ vi.mock("@/lib/tenant-context", () => ({
           return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
         if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
-        if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
+        if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql) || /\bAS auto_key\b/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
         if (/SELECT match_state, enabled_by_default/.test(sql)) return { rowCount: db.currentSource ? 1 : 0, rows: db.currentSource ? [db.currentSource] : [] };
         if (/SELECT 1 FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.existingSource ? 1 : 0, rows: db.existingSource ? [{}] : [] };
         return { rowCount: 1, rows: [] };
@@ -555,9 +555,13 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
     expect(t).toMatch(/upload/i);
   });
 
-  it("'complete' (the confirmed-same-key race) still invites the explicit confirm tap", () => {
-    const t = acquisitionDeclineText(rec("complete"), "K", "SMC SS5Y3-DUW01302", "candidate");
-    expect(t).toMatch(/Use its manuals/);
+  // Codex post-cap 6 F11: a cached 'complete' record can outlive a later
+  // revocation, and confirming never re-enables a revoked source, so the
+  // candidate copy never promises it; the shared copy points at Sources.
+  it("'complete' never promises that confirming will answer from it; it points at Sources", () => {
+    const t = acquisitionDeclineText(rec("complete"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).toMatch(/Sources/);
   });
 
   it("default basis ('confirmed') is byte-identical to the pre-S6 copy", () => {
@@ -627,6 +631,34 @@ describe("Codex #4118 r8 F13 — a finished record is checked against the notebo
     const r = await reconcileAcquisition("t", "nb", done);
     expect(r?.source_removed).toBeUndefined();
     expect(acquisitionDeclineText(r, "K", "SMC VQ1000")).toMatch(/added it to this notebook's Sources/);
+  });
+  // Codex post-cap 6 F11 (#4172): the cached "confirm and it turns on" promise is
+  // re-checked against the CURRENT row with migration 104's exact promotion
+  // predicate — a source revoked after the search (identity cleared) is never
+  // promised again.
+  const promising = { ...done, key: "K", state: "candidate_review" as const, match_state: "candidate", promotes_on_confirm: true };
+  const promotable = { match_state: "candidate", enabled_by_default: false, auto_key: "K", cand_app: "verified", revoked: null };
+  it("F11: a source revoked since the search loses promotes_on_confirm, and the copy points at Sources", async () => {
+    db.sourceRow = { ...promotable, revoked: "notebook identity changed" };
+    const r = await reconcileAcquisition("t", "nb", promising);
+    expect(r?.promotes_on_confirm).toBe(false);
+    const t = acquisitionDeclineText(r, "K", "SMC VQ1000", "candidate")!;
+    expect(t).not.toMatch(/Use its manuals/);
+    expect(t).toMatch(/Sources/);
+  });
+  it("F11: a different acquisition key, a 'candidate' stamp, or a non-candidate row also loses it", async () => {
+    for (const row of [
+      { ...promotable, auto_key: "OTHER" },
+      { ...promotable, cand_app: "candidate" },
+      { ...promotable, match_state: "verified" },
+    ]) {
+      db.sourceRow = row;
+      expect((await reconcileAcquisition("t", "nb", promising))?.promotes_on_confirm).toBe(false);
+    }
+  });
+  it("F11 control: a row migration 104 would still promote keeps the promise", async () => {
+    db.sourceRow = promotable;
+    expect((await reconcileAcquisition("t", "nb", promising))?.promotes_on_confirm).toBe(true);
   });
   it("a record without a document, or a running search, is not queried", async () => {
     db.queries = [];
