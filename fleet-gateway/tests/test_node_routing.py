@@ -118,6 +118,16 @@ def _two_node_service(tmp_path: Path):
         data_dir=tmp_path / "gw",
         requester="routing-test",
     )
+    # D2: Inject per-node trust readers (not blanket). Bravo trusts bravo-origin, Charlie trusts CHARLIE_REPO.
+    def trust_reader(repo_path: str) -> bool:
+        """Per-node trust: bravo trusts its local repo, charlie trusts CHARLIE_REPO."""
+        if str(bravo_repo) in repo_path:
+            return True  # Bravo's local repo
+        if str(CHARLIE_REPO) in repo_path:
+            return True  # Charlie's repo
+        return False
+
+    service._trust_reader = trust_reader
     return service, bravo_cao, charlie_cao, sha
 
 
@@ -155,6 +165,18 @@ def _three_node_service(tmp_path: Path):
         data_dir=tmp_path / "gw",
         requester="routing-test",
     )
+    # D2: Inject per-node trust readers (not blanket).
+    def trust_reader(repo_path: str) -> bool:
+        """Per-node trust: each node trusts its own repo."""
+        if str(bravo_repo) in repo_path:
+            return True  # Bravo
+        if str(CHARLIE_REPO) in repo_path:
+            return True  # Charlie
+        if str(ALPHA_REPO) in repo_path:
+            return True  # Alpha
+        return False
+
+    service._trust_reader = trust_reader
     return service, bravo_cao, charlie_cao, alpha_cao, sha
 
 
@@ -296,6 +318,9 @@ def test_legacy_single_cao_still_works(tmp_path: Path) -> None:
         requester="legacy",
         worktrees=WorktreeProvisioner(repo=repo, parent=tmp_path / "wt"),
     )
+    # D2: Inject trust reader (not blanket)
+    service._trust_reader = lambda repo_path: str(repo) in repo_path
+
     assert service.router.is_single()  # wrapped into a single-node router
     out = _launch(service, role="bravo", sha=sha)
     assert out["ok"] is True

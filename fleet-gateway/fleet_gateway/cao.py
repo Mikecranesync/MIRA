@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -16,6 +17,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from fleet_gateway.errors import CaoConfigError, NotFoundError
+from fleet_gateway.lane_health import derive_lane_state
 
 # Only literal loopback IPv4. localhost / ::1 / 0.0.0.0 / LAN / Tailscale refused.
 LOOPBACK_HOST = "127.0.0.1"
@@ -131,15 +133,17 @@ class FakeCAO:
     def task_snapshot(self, task_id: str) -> dict[str, Any] | None:
         # Return the LIVE latest session for this task_id (not a stale tasks copy).
         # Using the live sessions dict captures chat_claimed_done and other mutable state.
+        # Return the actual session dict (not a copy) so modifications persist (D3: ever_ready flag).
         sid = self._latest_by_task.get(task_id)
         if sid is None:
             return None
         sess = self.sessions.get(sid)
-        return None if sess is None else dict(sess)
+        return sess
 
     def launch_worker(self, spec: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("launch_worker", dict(spec)))
         session_id = f"sess_{uuid.uuid4().hex[:12]}"
+        now = time.time()
         session = {
             "session_id": session_id,
             "task_id": spec["task_id"],
@@ -163,17 +167,21 @@ class FakeCAO:
             "handoff": None,
             "chat_claimed_done": False,
             "allowed_tools": self.allowed_tools_by_role.get(spec["role"]),
+            "launched_at": now,
+            "terminal_status": None,
         }
         self.sessions[session_id] = session
         # Track latest session per task (overwrite so latest always wins)
         self._latest_by_task[spec["task_id"]] = session_id
         # Also keep tasks dict in sync for backward-compat (tests may write to it)
         self.tasks[spec["task_id"]] = session
+        lane_state, _error = derive_lane_state(session, now)
         return {
             "session_id": session_id,
             "status": "running",
             "isolated_worktree": True,
             "allowed_tools": session["allowed_tools"],
+            "lane_state": lane_state,
         }
 
     def message_worker(self, session_id: str, text: str) -> dict[str, Any]:
@@ -306,6 +314,25 @@ class LoopbackCAOClient:
         with urlopen(req, timeout=t) as resp:  # noqa: S310 — URL host pinned to 127.0.0.1
             body = resp.read().decode("utf-8")
         return json.loads(body) if body else None
+
+    def _fetch_terminal_output(self, terminal_id: str) -> str | None:
+        """D1: Fetch terminal output from CAO. Fail-open on any error."""
+        if not terminal_id:
+            return None
+        try:
+            resp = self._request(
+                "GET",
+                f"/terminals/{terminal_id}/output",
+                params={"mode": "full"},
+                timeout=3.0,
+            )
+            output = resp.get("output", "")
+            # Keep only last 4096 chars
+            if isinstance(output, str):
+                return output[-4096:] if len(output) > 4096 else output
+            return None
+        except Exception:  # noqa: BLE001 — fail-open: don't crash status
+            return None
 
     def fleet_snapshot(self) -> dict[str, Any]:
         try:
@@ -464,6 +491,7 @@ class LoopbackCAOClient:
         if not isinstance(allowed_tools, list):
             allowed_tools = None
 
+        now = time.time()
         self._sessions[actual_name] = {
             "terminal_id": terminal_id,
             "session_name": actual_name,
@@ -475,15 +503,20 @@ class LoopbackCAOClient:
             "claimed": True,
             "chat_claimed_done": False,
             "allowed_tools": allowed_tools,
+            "launched_at": now,
+            "terminal_status": None,
         }
         self._session_order.append(actual_name)
 
+        session = self._sessions[actual_name]
+        lane_state, _error = derive_lane_state(session, now)
         return {
             "session_id": actual_name,
             "terminal_id": terminal_id,
             "status": "running",
             "isolated_worktree": True,
             "allowed_tools": allowed_tools,
+            "lane_state": lane_state,
         }
 
     def message_worker(self, session_id: str, text: str) -> dict[str, Any]:
@@ -603,8 +636,19 @@ class LoopbackCAOClient:
                 merged["_terminals_in_response"] = True
                 if terminals and isinstance(terminals[0], dict):
                     t = terminals[0]
-                    merged["terminal_id"] = t.get("id") or stored.get("terminal_id", "")
+                    terminal_id = t.get("id") or stored.get("terminal_id", "")
+                    merged["terminal_id"] = terminal_id
                     merged["terminal_status"] = t.get("status")
+                    # D3: persist readiness on the STORED session (merged is a throwaway
+                    # copy), so a lane that later stops/404s reports "stopped", not
+                    # "init_failed".
+                    if t.get("status") in ("idle", "processing", "completed", "waiting_user_answer"):
+                        stored["ever_ready"] = True
+                        stored.setdefault("ready_at", time.time())
+                    # D1: Fetch terminal output for usage limit detection
+                    terminal_output = self._fetch_terminal_output(terminal_id)
+                    if terminal_output:
+                        merged["terminal_output"] = terminal_output
                 # else: terminals key present but empty → _terminals_in_response=True, no terminal_status
             # In-process data fills any gaps CAO doesn't know (role, task_id, etc.)
             for k, v in stored.items():

@@ -85,13 +85,16 @@ def cao() -> FakeCAO:
 @pytest.fixture
 def service(data_dir: Path, cao: FakeCAO, origin_repo: tuple[Path, str], worktree_parent: Path):
     repo, _sha = origin_repo
-    return build_service(
+    svc = build_service(
         bearer_token=TEST_BEARER,
         cao=cao,
         data_dir=data_dir,
         requester="foreman-test",
         worktrees=WorktreeProvisioner(repo=repo, parent=worktree_parent),
     )
+    # By default, trust all repos in tests (tests can override _trust_reader)
+    svc._trust_reader = lambda _path: True
+    return svc
 
 
 @pytest.fixture

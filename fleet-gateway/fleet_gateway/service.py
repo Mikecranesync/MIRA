@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from fleet_gateway.errors import (
     NotFoundError,
     ReviewerCapabilityError,
 )
+from fleet_gateway.lane_health import check_repo_trust, derive_lane_state, format_reset
 from fleet_gateway.redact import sanitize_public_payload
 from fleet_gateway.router import NodeRouter
 from fleet_gateway.store import ArtifactStore
@@ -82,6 +84,12 @@ class FleetGatewayService:
         self.default_requester = default_requester
         # session_id → physical node, recorded at launch for later routing.
         self._session_nodes: dict[str, str] = {}
+        # node → blocked_until timestamp (Unix epoch) for usage limits
+        self._blocked_until: dict[str, float] = {}
+        # session_id → reset epoch from the FIRST time its usage-limit text was seen
+        self._limit_reset_by_session: dict[str | None, float] = {}
+        # Injected trust reader for testing
+        self._trust_reader: Any = None
 
     def list_tools(self) -> list[str]:
         return list(ALLOWED_TOOLS)
@@ -266,9 +274,27 @@ class FleetGatewayService:
                 blockers.append("chat_is_not_done")
         else:
             blockers = list(merged.get("blockers") or [])
+        # Derive lane state
+        lane_state, lane_error = derive_lane_state(snapshot, time.time())
+
+        # D1: If lane is blocked due to usage limit, update service._blocked_until[node]
+        node_name = merged.get("role") or merged.get("node")
+        if lane_state == "blocked_usage_limit" and snapshot.get("blocked_until"):
+            # Pin the reset to the FIRST sighting per session: the limit text stays
+            # in scrollback, and re-parsing "resets 12am" after it passes would yield
+            # the NEXT midnight and block the node forever.
+            sid = _as_str(merged.get("session_id") or snapshot.get("session_id"))
+            blocked_until = self._limit_reset_by_session.setdefault(sid, snapshot["blocked_until"])
+            snapshot["blocked_until"] = blocked_until
+            if isinstance(blocked_until, (int, float)):
+                if node_name and time.time() < blocked_until:
+                    self._blocked_until[node_name] = max(self._blocked_until.get(node_name, 0.0), blocked_until)
+                # Format blocked_until as ISO8601 for lane_error message
+                lane_error = f"usage limit reached on {node_name}; resets {format_reset(blocked_until)}"
+
         payload = {
             "task_id": task_id,
-            "node": merged.get("role") or merged.get("node"),
+            "node": node_name,
             "provider": merged.get("provider"),
             "branch": merged.get("branch"),
             "worktree": merged.get("worktree"),
@@ -283,7 +309,17 @@ class FleetGatewayService:
             "status": status,
             "done": done,
             "session_id": merged.get("session_id"),
+            "lane_state": lane_state,
         }
+        if lane_error:
+            payload["lane_error"] = lane_error
+        if snapshot.get("blocked_until"):
+            blocked_until = snapshot["blocked_until"]
+            # Store as Unix timestamp (integer) to avoid redaction of ISO8601
+            if isinstance(blocked_until, (int, float)):
+                payload["blocked_until"] = int(blocked_until)
+            else:
+                payload["blocked_until"] = str(blocked_until)
         return sanitize_public_payload(payload)
 
     def _launch_worker(self, params: dict[str, Any], requester: str) -> dict[str, Any]:
@@ -304,6 +340,13 @@ class FleetGatewayService:
         if isolated is not True:
             raise ContractViolation("launch_worker requires isolated_worktree=true")
         self._reject_denied_actions(params)
+
+        # Check usage limit blocking (fail-closed before any side effect)
+        self._check_usage_limit_block(role)
+
+        # Check repository trust preflight (for claude provider)
+        if provider == "claude":
+            self._check_repo_trust(role)
 
         import uuid  # noqa: PLC0415 — local import avoids unused-import lint when rare
 
@@ -368,6 +411,8 @@ class FleetGatewayService:
             "worktree": worktree,
         }
         artifact_path = self.artifacts.write_task(record)
+        # Get lane_state from the response or derive it
+        lane_state = launched.get("lane_state", "initializing")
         return sanitize_public_payload(
             {
                 "ok": True,
@@ -380,8 +425,57 @@ class FleetGatewayService:
                 "isolated_worktree": True,
                 "worktree": worktree,
                 "artifact": str(artifact_path.name),
+                "lane_state": lane_state,
             }
         )
+
+    def _check_usage_limit_block(self, node: str) -> None:
+        """Check if node is currently blocked due to usage limit.
+
+        Raises: ContractViolation if the node is blocked and reset time has not passed.
+        """
+        blocked_until = self._blocked_until.get(node)
+        if blocked_until is None:
+            return
+
+        now = time.time()
+        if now >= blocked_until:
+            # Block has expired, clear it
+            del self._blocked_until[node]
+            return
+
+        # Still blocked; format the reset time and refuse
+        raise ContractViolation(
+            f"node {node} is blocked due to usage limit; resets at {format_reset(blocked_until)}"
+        )
+
+    def _check_repo_trust(self, node: str) -> None:
+        """Check if repository is trusted before launching on this node.
+
+        D2: Reads ~/.claude.json ON THE TARGET NODE when provisioner has ssh_host.
+
+        Raises: ContractViolation if trust check fails.
+        """
+        try:
+            # Get the repo path and provisioner from the target node
+            target = self.router.target(node)
+            repo = target.worktrees.repo
+
+            # Use injected reader if available (for testing)
+            if self._trust_reader is not None:
+                trusted = self._trust_reader(str(repo))
+            else:
+                # D2: Pass provisioner so check_repo_trust can read on target node if ssh_host is set
+                trusted = check_repo_trust(str(repo), provisioner=target.worktrees)
+
+            if not trusted:
+                raise ContractViolation(
+                    f"Repository {repo} is not trusted. "
+                    f"Run: open Claude once in a worktree of {repo} and choose 'Yes, I trust this folder'"
+                )
+        except ValueError as e:
+            # Trust state cannot be determined
+            raise ContractViolation(f"Repository trust check failed: {e}")
 
     def _reject_lane_without_execution(
         self,
