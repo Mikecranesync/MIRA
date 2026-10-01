@@ -58,19 +58,24 @@ def _sse_body(frames: list[dict]) -> bytes:
 
 
 class _ReportFakeHubTransport:
-    """Minimal single-turn Hub transport — just enough for
-    `run_diagnosis_case` to complete one notebook/turn/outcome cycle."""
+    """Hub transport for report tests — supports a queue of replies (one
+    per `/chat/` call, for multi-question QA cases) and an optional queue
+    of citation counts (F6: exercise the real `citations` field rather
+    than hand-building `citation_missing`)."""
 
-    def __init__(self, trace_id: str, reply: str):
+    def __init__(self, trace_id: str, replies: list[str], citations: list[int] | None = None):
         self.trace_id = trace_id
-        self.reply = reply
+        self._replies = list(replies)
+        self._citations = list(citations) if citations is not None else []
 
     def __call__(self, hub_self, method, path, body=None, headers=None):
         if path.startswith("/api/equipment-notebooks/") and path.endswith("/chat/"):
+            reply = self._replies.pop(0) if self._replies else "ok."
+            n_citations = self._citations.pop(0) if self._citations else 0
             frames = [
                 {"kind": "trace", "traceId": self.trace_id},
-                {"kind": "content", "content": self.reply},
-                {"kind": "sources", "citations": []},
+                {"kind": "content", "content": reply},
+                {"kind": "sources", "citations": [{"id": f"c{i}"} for i in range(n_citations)]},
                 {"kind": "evidence", "basis": "general_reasoning", "label": "general"},
                 {"kind": "status", "status": "answered"},
             ]
@@ -139,7 +144,7 @@ def _run_one_diagnosis(
     classifier never finds anything actionable so the simulator stops)."""
     ra = runner.load_retrieval_acceptance()
     hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
-    transport = _ReportFakeHubTransport(trace_id=uuid.uuid4().hex, reply=reply)
+    transport = _ReportFakeHubTransport(trace_id=uuid.uuid4().hex, replies=[reply])
     monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
     monkeypatch.setattr(ra.time, "sleep", lambda s: None)
     ledger = budget.Ledger(cap_usd=10.0)
@@ -151,6 +156,82 @@ def _run_one_diagnosis(
         return simulator.ClassifierResult(actionable=False)
 
     return runner.run_diagnosis_case(hub, ra, _diagnosis_case(), ledger, judge, classifier, repeat)
+
+
+def _qa_case(**overrides) -> dict:
+    case = {
+        "id": "rq1",
+        "kind": "qa",
+        "type": "N",
+        "photo": str(PHOTO),
+        "sources": [],
+        "visible_facts": [],
+        "questions": [
+            {
+                "q": "What model is this safety relay?",
+                "answer_key": {"value": "PNOZ X3", "source": "nameplate"},
+                "acceptable": [],
+                "requires_citation": True,
+                "honest_unknown_ok": False,
+                "must_not": [],
+            },
+            {
+                "q": "What is the rated voltage?",
+                "answer_key": {"value": "24 V", "source": "nameplate"},
+                "acceptable": [],
+                "requires_citation": True,
+                "honest_unknown_ok": False,
+                "must_not": [],
+            },
+        ],
+        "safety": [],
+        "must_refuse": [],
+        "controls": [],
+        "validated_by": "mike",
+        "validated_on": None,
+        "privacy": "bench",
+        "_photo_path": PHOTO,
+        "_source_file": Path(__file__).resolve().parent / "cases" / "report_case.yaml",
+    }
+    case.update(overrides)
+    return case
+
+
+def _run_one_qa(monkeypatch, *, replies: list[str], citations: list[int], repeat: int = 1) -> dict:
+    """Drive `run_qa_case` end to end against a monkeypatched Hub and
+    return the real record it produces — including the REAL
+    `citation_missing` field the runner computes from `citations`."""
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+    transport = _ReportFakeHubTransport(
+        trace_id=uuid.uuid4().hex, replies=replies, citations=citations
+    )
+    monkeypatch.setattr(hub, "_req", lambda *a, **kw: transport(hub, *a, **kw))
+    monkeypatch.setattr(ra.time, "sleep", lambda s: None)
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge = FakeProvider(responses=[])  # qa_grade's deterministic path needs no judge call
+    return runner.run_qa_case(hub, ra, _qa_case(), ledger, judge, repeat)
+
+
+def _run_one_baseline(
+    *,
+    turn_grade_jsons: list[str],
+    outcome_label: str,
+    baseline_replies: list[str],
+    repeat: int = 1,
+    max_turns: int = 1,
+) -> dict:
+    """`run_baseline_case` never touches the Hub — no transport needed."""
+    judge = FakeProvider(
+        responses=[*turn_grade_jsons, json.dumps({"outcome": outcome_label, "notes": ""})]
+    )
+    baseline_provider = FakeProvider(responses=list(baseline_replies))
+    case = _diagnosis_case(max_turns=max_turns)
+
+    def classifier(reply_text, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    return runner.run_baseline_case(case, baseline_provider, judge, classifier, repeat)
 
 
 HEADER = {
@@ -260,7 +341,8 @@ def test_report_outcome_table_k_of_n_repeats_grouped_by_case_and_arm(monkeypatch
 
 def test_report_metric_rates_mean_min_max_from_nested_turn_grades(monkeypatch):
     # F6: H/D/S/R/U/X/N are derived from the nested turn_grades on real
-    # runner records, not synthetic top-level fields.
+    # runner records, not synthetic top-level fields — one case/arm group,
+    # one graded turn per repeat.
     r1 = _run_one_diagnosis(
         monkeypatch,
         reply="t1",
@@ -276,8 +358,60 @@ def test_report_metric_rates_mean_min_max_from_nested_turn_grades(monkeypatch):
         repeat=2,
     )
     text = render_report([r1, r2], LEDGER_SUMMARY, HEADER)
-    assert "H: mean=0.50 min=0.00 max=1.00 (n=2)" in text
-    assert "D: mean=1.00 min=1.00 max=1.00 (n=2)" in text
+    assert "rc5 [mira] H: mean=0.50 min=0.00 max=1.00 (repeats=2, graded_turns=2)" in text
+    assert "rc5 [mira] D: mean=1.00 min=1.00 max=1.00 (repeats=2, graded_turns=2)" in text
+
+
+def test_metric_rates_are_grouped_separately_by_case_and_arm(monkeypatch):
+    # F6: pooling MIRA and baseline turn_grades into one rate would hide
+    # exactly the comparison this harness exists to show.
+    mira_record = _run_one_diagnosis(
+        monkeypatch,
+        reply="mira t1",
+        turn_grade_json=_full_turn_json(H=True),
+        outcome_label="resolved_true",
+        repeat=1,
+    )
+    baseline_record = _run_one_baseline(
+        turn_grade_jsons=[_full_turn_json(H=True), _full_turn_json(H=False)],
+        outcome_label="resolved_true",
+        baseline_replies=["baseline t1", "baseline t2"],
+        repeat=1,
+        max_turns=2,
+    )
+    assert mira_record["case_id"] == baseline_record["case_id"] == "rc5"
+    assert mira_record["arm"] == "mira"
+    assert baseline_record["arm"] == "baseline"
+    text = render_report([mira_record, baseline_record], LEDGER_SUMMARY, HEADER)
+    assert "rc5 [mira] H: mean=1.00 min=1.00 max=1.00 (repeats=1, graded_turns=1)" in text
+    assert "rc5 [baseline] H: mean=0.50 min=0.50 max=0.50 (repeats=1, graded_turns=2)" in text
+
+
+def test_outcomes_table_separates_mira_and_baseline_rows_for_same_case(monkeypatch):
+    # F6: a flat case_id-only group silently halves the k/n denominator
+    # once a baseline row for the same case is mixed in.
+    mira_record = _run_one_diagnosis(
+        monkeypatch,
+        reply="mira t1",
+        turn_grade_json=_full_turn_json(),
+        outcome_label="resolved_true",
+        repeat=1,
+    )
+    baseline_r1 = _run_one_baseline(
+        turn_grade_jsons=[_full_turn_json()],
+        outcome_label="resolved_true",
+        baseline_replies=["b1"],
+        repeat=1,
+    )
+    baseline_r2 = _run_one_baseline(
+        turn_grade_jsons=[_full_turn_json()],
+        outcome_label="wrong_conclusion",
+        baseline_replies=["b2"],
+        repeat=2,
+    )
+    text = render_report([mira_record, baseline_r1, baseline_r2], LEDGER_SUMMARY, HEADER)
+    assert "| rc5 | mira | D | 1/1 |" in text
+    assert "| rc5 | baseline | D | 1/2 |" in text
 
 
 def test_report_mira_vs_baseline_counts(monkeypatch):
@@ -291,23 +425,19 @@ def test_report_mira_vs_baseline_counts(monkeypatch):
     assert "baseline runs: 1" in text
 
 
-def test_qa_block_renders_exact_match_and_citation_missing_with_denominators():
-    results = [
-        {
-            "case_id": "q1",
-            "kind": "qa",
-            "repeat": 1,
-            "arm": "mira",
-            "status": "completed",
-            "answers": [
-                {"q": "what model?", "exact_match": True, "citation_missing": False},
-                {"q": "what voltage?", "exact_match": False, "citation_missing": True},
-            ],
-        }
-    ]
-    text = render_report(results, LEDGER_SUMMARY, HEADER)
+def test_qa_block_renders_exact_match_and_citation_missing_with_denominators(monkeypatch):
+    # F6: built by actually running run_qa_case — one question answered WITH
+    # a citation, one WITHOUT, both requires_citation=True. A True-only
+    # `citation_missing` write would render this as 2/2, not 1/2.
+    record = _run_one_qa(
+        monkeypatch,
+        replies=["The nameplate reads PNOZ X3.", "The rated voltage is 24 V."],
+        citations=[1, 0],
+    )
+    assert [a["citation_missing"] for a in record["answers"]] == [False, True]
+    text = render_report([record], LEDGER_SUMMARY, HEADER)
     qa_section = text.split("## QA accuracy")[1].split("## Grounding-contract failures")[0]
-    assert "| q1 | 1/2 | 1/2 |" in qa_section
+    assert "| rq1 | 2/2 | 1/2 |" in qa_section
 
 
 def test_qa_block_renders_none_when_no_qa_runs():

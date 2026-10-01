@@ -10,10 +10,12 @@ not a style preference: it is what keeps the simulator from ever handing
 MIRA a decisive clue MIRA did not earn by asking the right question.
 
 :data:`RETAKE_REPLY_TEXT` and :data:`MANUAL_UPLOAD_REPLY_TEXT` are the
-technician's fixed next-turn reply once the runner has actually fulfilled a
-``retake_photo``/``manual_upload`` product ask (re-attached the clearer photo
-or the manual) — the runner, not this module, sends them; they live here so
-every caller shares one spelling and the property test below covers them.
+technician's fixed next-turn reply for a ``retake_photo``/``manual_upload``
+product ask — emitted here, as ``SimTurn.text``, like every other fixed
+constant, so the property test below actually exercises them. The runner
+only SENDS that text once it has actually fulfilled the ask (re-attached the
+clearer photo or the manual via the Hub); on a Hub failure it never reaches
+MIRA at all.
 
 A :class:`Classifier` callable (injected — tests use a fake; production
 uses :func:`make_llm_classifier`) maps MIRA's reply to the checks it is
@@ -151,9 +153,14 @@ class TechSimulator:
                     kind="product_ask",
                     product_ask="identity_confirm",
                 )
-            # retake_photo / manual_upload are structured signals, not prose
+            # retake_photo / manual_upload: structured signal + fixed text
+            fixed_text = (
+                RETAKE_REPLY_TEXT
+                if result.product_ask == "retake_photo"
+                else MANUAL_UPLOAD_REPLY_TEXT
+            )
             return SimTurn(
-                text="",
+                text=fixed_text,
                 revealed_fact_ids=[],
                 repeat_check_ids=[],
                 kind="product_ask",

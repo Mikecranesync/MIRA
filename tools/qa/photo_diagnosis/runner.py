@@ -231,6 +231,28 @@ def run_diagnosis_case(
     classifier: simulator_mod.Classifier,
     repeat: int,
 ) -> dict:
+    # F4: check the gate BEFORE any setup, not just before each turn — an
+    # already-exhausted budget must not spend a notebook create, a manual
+    # attach, and a photo look just to immediately bail on turn 1.
+    if ledger.manual_search_cap_exceeded():
+        return {
+            "case_id": case["id"],
+            "kind": "diagnosis",
+            "type": case["type"],
+            "repeat": repeat,
+            "arm": "mira",
+            "status": "not_run_budget",
+            "reason": (
+                f"manual-search budget already exhausted "
+                f"({ledger.manual_search_queries}/{ledger.manual_search_cap}) "
+                "before this run started"
+            ),
+            "outcome": None,
+            "turns": 0,
+            "turn_grades": [],
+            "X": False,
+        }
+
     sim = simulator_mod.TechSimulator(case, classifier)
     nb = hub.create_notebook(f"PB-{case['id']}-{repeat}-{uuid.uuid4().hex[:6]}")
     source_doc_ids = [
@@ -337,7 +359,7 @@ def run_diagnosis_case(
             except Exception as e:  # noqa: BLE001
                 status, reason = "error", f"retake photo upload failed: {e}"
                 break
-            message = simulator_mod.RETAKE_REPLY_TEXT
+            message = sim_turn.text
         elif (
             sim_turn.kind == "product_ask"
             and sim_turn.product_ask == "manual_upload"
@@ -350,15 +372,21 @@ def run_diagnosis_case(
             except Exception as e:  # noqa: BLE001
                 status, reason = "error", f"manual upload failed: {e}"
                 break
-            message = simulator_mod.MANUAL_UPLOAD_REPLY_TEXT
+            message = sim_turn.text
         else:
             message = sim_turn.text or "(no reply)"
 
-    try:
-        outcome = grading.outcome_grade(judge, history, case)
-    except grading.GraderError as e:
-        outcome, status = "ungraded", "ungraded"
-        reason = reason or str(e)
+    # F4: never grade an outcome that doesn't exist — a turn that errored
+    # (or a gate trip) before MIRA ever replied leaves `history` with no
+    # assistant message; calling outcome_grade on that is a paid judge
+    # call that grades nothing.
+    outcome = None
+    if any(m.get("role") == "assistant" for m in history):
+        try:
+            outcome = grading.outcome_grade(judge, history, case)
+        except grading.GraderError as e:
+            outcome, status = "ungraded", "ungraded"
+            reason = reason or str(e)
 
     # F7: a nested ungraded/errored turn makes the whole run "partial" —
     # never silently reported as a clean "completed".
@@ -390,6 +418,23 @@ def run_qa_case(
     judge: Any,
     repeat: int,
 ) -> dict:
+    # F4: same before-setup gate check as the diagnosis loop.
+    if ledger.manual_search_cap_exceeded():
+        return {
+            "case_id": case["id"],
+            "kind": "qa",
+            "type": case["type"],
+            "repeat": repeat,
+            "arm": "mira",
+            "status": "not_run_budget",
+            "reason": (
+                f"manual-search budget already exhausted "
+                f"({ledger.manual_search_queries}/{ledger.manual_search_cap}) "
+                "before this run started"
+            ),
+            "answers": [],
+        }
+
     nb = hub.create_notebook(f"PB-{case['id']}-{repeat}-{uuid.uuid4().hex[:6]}")
     source_doc_ids = [
         hub.attach_manual(nb, _resolve_source(s, case["_source_file"]))
@@ -428,8 +473,11 @@ def run_qa_case(
         ledger.record_manual_search_from_packet(p)
         graded = grading.qa_grade(w["content"], q)
         graded["contract"] = _contract_record(row, w)
-        if q.get("requires_citation") and w.get("citations", 0) == 0:
-            graded["citation_missing"] = True
+        # F6: ALWAYS record True/False for a citation-required question, not
+        # only True — a True-only write makes the report's citation-missing
+        # rate vacuously n/n (every graded answer "has the key").
+        if q.get("requires_citation"):
+            graded["citation_missing"] = w.get("citations", 0) == 0
         answers.append({"q": q["q"], **graded})
 
     # F7: any nested answer error makes the run "partial", never a silent
@@ -554,22 +602,25 @@ def run_baseline_case(
             except OSError as e:
                 status, reason = "error", f"retake photo read failed: {e}"
                 break
-            message = simulator_mod.RETAKE_REPLY_TEXT
+            message = sim_turn.text
         elif (
             sim_turn.kind == "product_ask"
             and sim_turn.product_ask == "manual_upload"
             and sim_turn.product_ask_path
         ):
-            message = simulator_mod.MANUAL_UPLOAD_REPLY_TEXT
+            message = sim_turn.text
         else:
             message = sim_turn.text or "(no reply)"
 
-    try:
-        # F3: the baseline's own transcript is also outcome-graded.
-        outcome = grading.outcome_grade(judge, _without_system(history), case)
-    except grading.GraderError as e:
-        outcome, status = "ungraded", "ungraded"
-        reason = reason or str(e)
+    # F4: same "don't grade an outcome that doesn't exist" guard as MIRA.
+    outcome = None
+    if any(m.get("role") == "assistant" for m in history):
+        try:
+            # F3: the baseline's own transcript is also outcome-graded.
+            outcome = grading.outcome_grade(judge, _without_system(history), case)
+        except grading.GraderError as e:
+            outcome, status = "ungraded", "ungraded"
+            reason = reason or str(e)
 
     nested_bad = any(tg.get("status") in ("ungraded", "error") for tg in turn_grades)
     if status == "completed" and nested_bad:
@@ -589,6 +640,28 @@ def run_baseline_case(
         "turn_grades": turn_grades,
         "X": any(tg.get("X") for tg in turn_grades),
     }
+
+
+def _skipped_record(case: dict, repeat: int, status: str, reason: str, arm: str) -> dict:
+    """A synthetic row for a case/repeat that never ran at all (the dollar
+    budget was already exhausted) or crashed outside a per-case function's
+    own error handling. Carries `kind`/`type`/`arm` like every real
+    record — an arm-less/kind-less row here is silently misclassified by
+    the report's (case_id, arm) grouping and the diagnosis/qa split (F6)."""
+    record: dict[str, Any] = {
+        "case_id": case["id"],
+        "kind": case["kind"],
+        "type": case["type"],
+        "repeat": repeat,
+        "arm": arm,
+        "status": status,
+        "reason": reason,
+    }
+    if case["kind"] == "diagnosis":
+        record.update({"outcome": None, "turns": 0, "turn_grades": [], "X": False})
+    else:
+        record["answers"] = []
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -691,44 +764,55 @@ def main(argv: list[str] | None = None) -> int:
     for case in cases:
         for repeat in range(1, args.repeats + 1):
             if budget_exhausted:
+                # One row per arm that WOULD have run — an arm-less row
+                # here would be silently misclassified as "mira" by the
+                # report's (case_id, arm) grouping (F6).
                 records.append(
-                    {
-                        "case_id": case["id"],
-                        "repeat": repeat,
-                        "status": "not_run_budget",
-                        "reason": "budget cap reached",
-                    }
+                    _skipped_record(case, repeat, "not_run_budget", "budget cap reached", "mira")
                 )
+                if case["kind"] == "diagnosis" and baseline is not None:
+                    records.append(
+                        _skipped_record(
+                            case, repeat, "not_run_budget", "budget cap reached", "baseline"
+                        )
+                    )
                 continue
-            try:
-                if case["kind"] == "diagnosis":
+            if case["kind"] == "diagnosis":
+                try:
                     mira_record = run_diagnosis_case(
                         hub, ra, case, ledger, metered_judge, classifier, repeat
                     )
-                    records.append(mira_record)
-                    # Don't bother running the baseline for a repeat whose
-                    # MIRA arm already hit the manual-search cap — the
-                    # comparison would be against an incomplete run.
-                    if baseline is not None and mira_record.get("status") != "not_run_budget":
+                except budget_mod.BudgetExhausted as e:
+                    budget_exhausted = True
+                    records.append(_skipped_record(case, repeat, "not_run_budget", str(e), "mira"))
+                    continue
+                except Exception as e:  # noqa: BLE001 — a failed run is a row, not a crash
+                    records.append(_skipped_record(case, repeat, "error", str(e), "mira"))
+                    continue
+                records.append(mira_record)
+                # Don't bother running the baseline for a repeat whose
+                # MIRA arm already hit the manual-search cap — the
+                # comparison would be against an incomplete run.
+                if baseline is not None and mira_record.get("status") != "not_run_budget":
+                    try:
                         records.append(
                             run_baseline_case(case, baseline, metered_judge, classifier, repeat)
                         )
-                else:
+                    except budget_mod.BudgetExhausted as e:
+                        budget_exhausted = True
+                        records.append(
+                            _skipped_record(case, repeat, "not_run_budget", str(e), "baseline")
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        records.append(_skipped_record(case, repeat, "error", str(e), "baseline"))
+            else:
+                try:
                     records.append(run_qa_case(hub, ra, case, ledger, metered_judge, repeat))
-            except budget_mod.BudgetExhausted as e:
-                budget_exhausted = True
-                records.append(
-                    {
-                        "case_id": case["id"],
-                        "repeat": repeat,
-                        "status": "not_run_budget",
-                        "reason": str(e),
-                    }
-                )
-            except Exception as e:  # noqa: BLE001 — a failed run is a recorded row, not a crash
-                records.append(
-                    {"case_id": case["id"], "repeat": repeat, "status": "error", "reason": str(e)}
-                )
+                except budget_mod.BudgetExhausted as e:
+                    budget_exhausted = True
+                    records.append(_skipped_record(case, repeat, "not_run_budget", str(e), "mira"))
+                except Exception as e:  # noqa: BLE001
+                    records.append(_skipped_record(case, repeat, "error", str(e), "mira"))
 
     results_path = write_results(out_dir, records)
     gitsha = "unknown"

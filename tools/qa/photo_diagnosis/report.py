@@ -103,25 +103,45 @@ def _outcomes_table(results: list[dict]) -> list[str]:
 
 
 def _metric_rates_block(results: list[dict]) -> list[str]:
-    """F6: H/D/S/R/U/X/N are per-TURN labels — derive rates from the nested
-    `turn_grades` on every run (both arms), counting only turns that were
-    actually graded (an ungraded/errored nested entry has no H/D/... keys
-    and is correctly excluded, never silently counted as False)."""
-    lines = ["## Metric rates (min/max across repeats)"]
+    """F6: H/D/S/R/U/X/N are per-TURN labels, grouped by (case_id, arm) —
+    pooling MIRA and baseline turn_grades into one rate would silently
+    merge the very two things this harness exists to compare. Within a
+    group, each REPEAT contributes one rate (graded-True / graded turns in
+    that repeat); "min/max across repeats" is then a real per-repeat
+    spread, not a pooled-turn 0/1 value. A turn that is ungraded/errored
+    has no H/D/... keys and is correctly excluded from its repeat's rate,
+    never silently counted as False."""
+    lines = ["## Metric rates by case and arm (min/max across repeats)"]
+    diagnosis_rows = [r for r in results if r.get("kind", "diagnosis") == "diagnosis"]
+    by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for r in diagnosis_rows:
+        by_key[(r.get("case_id", "?"), r.get("arm", "mira"))].append(r)
+
     any_metric = False
-    for metric in METRIC_FIELDS:
-        rates: list[float] = []
-        for r in results:
-            for tg in r.get("turn_grades") or []:
-                if metric in tg and isinstance(tg[metric], bool):
-                    rates.append(1.0 if tg[metric] else 0.0)
-        if not rates:
-            continue
-        any_metric = True
-        mean = sum(rates) / len(rates)
-        lines.append(
-            f"- {metric}: mean={mean:.2f} min={min(rates):.2f} max={max(rates):.2f} (n={len(rates)})"
-        )
+    for case_id, arm in sorted(by_key):
+        rows = by_key[(case_id, arm)]
+        for metric in METRIC_FIELDS:
+            repeat_rates: list[float] = []
+            graded_turns = 0
+            for r in rows:
+                turns = [
+                    tg
+                    for tg in (r.get("turn_grades") or [])
+                    if metric in tg and isinstance(tg[metric], bool)
+                ]
+                if not turns:
+                    continue
+                graded_turns += len(turns)
+                repeat_rates.append(sum(1 for tg in turns if tg[metric]) / len(turns))
+            if not repeat_rates:
+                continue
+            any_metric = True
+            mean = sum(repeat_rates) / len(repeat_rates)
+            lines.append(
+                f"- {case_id} [{arm}] {metric}: mean={mean:.2f} min={min(repeat_rates):.2f} "
+                f"max={max(repeat_rates):.2f} (repeats={len(repeat_rates)}, "
+                f"graded_turns={graded_turns})"
+            )
     if not any_metric:
         lines.append("No graded turns.")
     lines.append("")

@@ -427,8 +427,23 @@ def test_f1_turn_grader_sees_full_reply_but_not_hindsight_facts(monkeypatch):
 # `ledger.call(...)`).
 
 
-def test_f2_baseline_metered_exactly_once_via_cli_wiring():
+def test_f2_baseline_metered_exactly_once_via_cli_wiring(monkeypatch):
     ledger = budget.Ledger(cap_usd=10.0)
+    reserve_calls: list[float] = []
+    settle_calls: list[str] = []
+    orig_reserve, orig_settle = ledger.reserve, ledger.settle
+
+    def _reserve_spy(est_usd):
+        reserve_calls.append(est_usd)
+        return orig_reserve(est_usd)
+
+    def _settle_spy(token, actual_usd):
+        settle_calls.append(token)
+        return orig_settle(token, actual_usd)
+
+    monkeypatch.setattr(ledger, "reserve", _reserve_spy)
+    monkeypatch.setattr(ledger, "settle", _settle_spy)
+
     judge_provider = FakeProvider(
         name="fake", model="judge-fake-model", responses=[_full_turn_json(), _outcome_json()]
     )
@@ -447,10 +462,17 @@ def test_f2_baseline_metered_exactly_once_via_cli_wiring():
     record = runner.run_baseline_case(case, metered_baseline, metered_judge, classifier, repeat=1)
 
     assert record["status"] == "completed"
-    assert baseline_provider.calls == 1  # not 2 — the double-metering bug called it twice
-    baseline_log_entries = [c for c in ledger.call_log if c["model"] == "baseline-fake-model"]
-    assert len(baseline_log_entries) == 1  # one reservation/log entry per request
-    assert ledger.spent_usd > 0  # settled, not left reserved
+    # Exactly 3 real provider requests happen here: the judge's turn_grade,
+    # the judge's outcome_grade, and ONE baseline turn. The double-metering
+    # bug (`ledger.call(MeteredProvider_instance, ...)`) reserved, logged,
+    # and settled that SAME single baseline request TWICE — nested outer +
+    # inner `Ledger.call` — so it would show 4 reserves/settles/log
+    # entries here, not 3, even though the underlying FakeProvider is still
+    # only ever invoked once per request either way.
+    assert len(reserve_calls) == 3
+    assert len(settle_calls) == 3
+    assert len(ledger.call_log) == 3
+    assert baseline_provider.calls == 1
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +568,31 @@ def test_f5_product_asks_are_dispatched_and_evidence_reaches_next_turn(monkeypat
     assert transport.chat_bodies[2]["sourceDocIds"] == ["doc-1"]
     assert transport.chat_bodies[2]["message"] == simulator.MANUAL_UPLOAD_REPLY_TEXT
     assert "visualEvidence" not in transport.chat_bodies[2]
+
+
+def test_f5_baseline_retake_sends_a_new_image_on_the_next_call():
+    # The baseline's own equivalent of F5's retake dispatch: a retake ask
+    # must put a NEW image on the NEXT baseline.complete() call, not just
+    # on turn 1.
+    judge = FakeProvider(responses=[_full_turn_json(), _full_turn_json(), _outcome_json()])
+    baseline_provider = FakeProvider(responses=["can you send a clearer photo?", "thanks."])
+    case = _diagnosis_case(max_turns=2)
+
+    asks = [
+        simulator.ClassifierResult(product_ask="retake_photo"),
+        simulator.ClassifierResult(actionable=False),
+    ]
+
+    def classifier(reply, checks):
+        return asks.pop(0)
+
+    record = runner.run_baseline_case(case, baseline_provider, judge, classifier, repeat=1)
+
+    assert record["status"] == "completed"
+    assert record["turns"] == 2
+    assert baseline_provider.received_images[0] is not None  # the opening photo
+    assert baseline_provider.received_images[1] is not None  # the retake
+    assert len(baseline_provider.received_images[1]) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -651,3 +698,88 @@ def test_f4_pre_turn_gate_stops_further_turns_when_cap_would_be_exceeded(monkeyp
     assert record["turns"] == 1  # only the first turn ran
     assert ledger.manual_search_queries == 4
     assert len(transport.chat_bodies) == 1  # the second turn's chat call never happened
+
+
+# ---------------------------------------------------------------------------
+# main()'s synthetic skip/error rows carry kind/type/arm (F6 follow-up) —
+# an arm-less/kind-less row is silently misclassified by the report's
+# (case_id, arm) grouping and the diagnosis/qa split.
+
+
+def test_skipped_record_diagnosis_carries_kind_type_and_arm():
+    case = _diagnosis_case()
+    rec = runner._skipped_record(
+        case, repeat=2, status="not_run_budget", reason="x", arm="baseline"
+    )
+    assert rec["case_id"] == case["id"]
+    assert rec["kind"] == "diagnosis"
+    assert rec["type"] == case["type"]
+    assert rec["repeat"] == 2
+    assert rec["arm"] == "baseline"
+    assert rec["status"] == "not_run_budget"
+    assert rec["reason"] == "x"
+    assert rec["outcome"] is None
+    assert rec["turns"] == 0
+    assert rec["turn_grades"] == []
+
+
+def test_skipped_record_qa_carries_kind_type_and_arm():
+    case = _qa_case()
+    rec = runner._skipped_record(case, repeat=1, status="error", reason="boom", arm="mira")
+    assert rec["kind"] == "qa"
+    assert rec["type"] == case["type"]
+    assert rec["arm"] == "mira"
+    assert rec["answers"] == []
+
+
+# ---------------------------------------------------------------------------
+# F4 follow-up — an ALREADY-exhausted budget is checked BEFORE any setup:
+# no notebook, no look, no chat call, and no wasted judge call grading an
+# outcome that doesn't exist.
+
+
+def test_f4_already_exhausted_budget_skips_setup_entirely_for_diagnosis(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+
+    def _boom(*a, **kw):
+        raise AssertionError("no Hub request should happen once the gate is already exhausted")
+
+    monkeypatch.setattr(hub, "_req", _boom)
+
+    case = _diagnosis_case()
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger.record_manual_search(4)  # already AT the cap
+    judge = FakeProvider(responses=[])
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(actionable=False)
+
+    record = runner.run_diagnosis_case(hub, ra, case, ledger, judge, classifier, repeat=1)
+
+    assert record["status"] == "not_run_budget"
+    assert record["outcome"] is None
+    assert record["turns"] == 0
+    assert record["turn_grades"] == []
+    assert judge.calls == 0  # no outcome_grade call on empty history
+
+
+def test_f4_already_exhausted_budget_skips_setup_entirely_for_qa(monkeypatch):
+    ra = runner.load_retrieval_acceptance()
+    hub = ra.Hub("https://app-staging.factorylm.com", "fake-cookie")
+
+    def _boom(*a, **kw):
+        raise AssertionError("no Hub request should happen once the gate is already exhausted")
+
+    monkeypatch.setattr(hub, "_req", _boom)
+
+    case = _qa_case()
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger.record_manual_search(4)
+    judge = FakeProvider(responses=[])
+
+    record = runner.run_qa_case(hub, ra, case, ledger, judge, repeat=1)
+
+    assert record["status"] == "not_run_budget"
+    assert record["answers"] == []
+    assert judge.calls == 0

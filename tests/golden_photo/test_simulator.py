@@ -110,12 +110,12 @@ def test_identity_confirm_product_ask_returns_fixture_text():
     assert turn.text == CASE["legit_product_asks"]["identity_confirm"]
 
 
-def test_retake_photo_product_ask_is_structured_not_prose():
+def test_retake_photo_product_ask_is_structured_and_carries_the_fixed_reply():
     sim = TechSimulator(CASE, _const_classifier(ClassifierResult(product_ask="retake_photo")))
     turn = sim.respond("Can you send a clearer photo?")
     assert turn.kind == "product_ask"
     assert turn.product_ask == "retake_photo"
-    assert turn.text == ""  # no invented "here's a clearer photo" sentence
+    assert turn.text == RETAKE_REPLY_TEXT  # the fixed constant, not invented prose
     assert turn.product_ask_path == CASE["legit_product_asks"]["retake_photo"]
 
 
