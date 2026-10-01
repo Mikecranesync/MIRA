@@ -13,7 +13,7 @@
  * the recorded confirm-time manual search, its server-side recovery after a
  * limit or outage (#4160 S7), and OEM retrieval scoped to that model.
  *
- * The write is CONDITIONAL and atomic (with its provenance — adoptNameplateIdentity): it re-checks blankness in the WHERE, so a
+ * The write is ONE conditional statement that also records its provenance: it re-checks blankness in the WHERE, so a
  * concurrent chat turn or edit that gave the notebook an identity first is never
  * overwritten (the caller then falls back to the unrecorded inline search).
  * Only maker, model and catalog number are adopted — never a serial number
@@ -49,20 +49,29 @@ export function isAdoptableIdentity(id: NameplateIdentity): boolean {
   return filled(id.manufacturer) && (filled(id.model) || filled(id.catalogNumber));
 }
 
-// ── Codex #4191 F1: corrections of the adopting photo ─────────────────────────
+// ── Provenance lives ON the notebook row (Codex #4191 r2 F1, r3 F1/F3) ──────
 // A technician whose search failed may correct the SAME nameplate photo ("Edit
-// the details and try again"). The adopted identity must follow the correction,
-// or the corrected search runs unrecorded while the chat keeps retrying the
-// wrong model. Provenance makes this safe without a schema change: on adoption
-// the nameplate source row is stamped with `adopted_identity`; a later confirm
-// of that photo re-adopts only when the notebook still holds exactly that
-// identity (no manual edit since), still came from a nameplate, and is still
-// unbound — re-checked atomically in the UPDATE.
+// the details and try again"); the adopted identity must follow, or the
+// corrected search runs unrecorded while the chat retries the wrong model.
+//
+// Earlier rounds stamped provenance on the nameplate's source row. That row is
+// replaced by byte-dedup re-confirms, reordered by document reuse, and written
+// in a second statement — three ways to lose it. The provenance now rides in the
+// SAME single UPDATE as the identity, on the notebook itself:
+//
+//   identity_source_ref = 'nameplate:<photo file id>:<md5 of maker|model|catalog>'
+//
+// (`identity_source_ref` is migration 073's slot for exactly this — which
+// observation the identity came from; nothing else writes it.) The fingerprint
+// is computed by Postgres from the values it writes, so a later manual edit of
+// maker/model/catalog (PATCH never touches the ref) breaks the match and the
+// photo can no longer move the identity. One statement: nothing to half-write,
+// nothing to reorder, nothing for a source upsert to erase.
 
-const sameIdentity = (a: NameplateIdentity, b: NameplateIdentity) =>
-  (a.manufacturer ?? "").trim() === (b.manufacturer ?? "").trim() &&
-  (a.model ?? "").trim() === (b.model ?? "").trim() &&
-  (a.catalogNumber ?? "").trim() === (b.catalogNumber ?? "").trim();
+const FINGERPRINT_COLS = `md5(concat_ws('|', COALESCE(NULLIF(btrim(manufacturer), ''), ''),
+                                         COALESCE(NULLIF(btrim(model), ''), ''),
+                                         COALESCE(NULLIF(btrim(catalog_number), ''), '')))`;
+const FINGERPRINT_NEW = `md5(concat_ws('|', COALESCE($3::text, ''), COALESCE($4::text, ''), COALESCE($5::text, '')))`;
 
 const toIdentity = (id: NameplateIdentity): Required<NameplateIdentity> => ({
   manufacturer: filled(id.manufacturer) ? id.manufacturer.trim() : null,
@@ -70,122 +79,45 @@ const toIdentity = (id: NameplateIdentity): Required<NameplateIdentity> => ({
   catalogNumber: filled(id.catalogNumber) ? id.catalogNumber.trim() : null,
 });
 
-/** The identity this photo's earlier confirm adopted, if its source row was stamped. */
-export function adoptedIdentityFromEvidence(matchEvidence: unknown): NameplateIdentity | null {
-  if (!matchEvidence || typeof matchEvidence !== "object") return null;
-  const a = (matchEvidence as { adopted_identity?: unknown }).adopted_identity;
-  if (!a || typeof a !== "object") return null;
-  const r = a as Record<string, unknown>;
-  const str = (v: unknown) => (typeof v === "string" ? v : null);
-  return { manufacturer: str(r.manufacturer), model: str(r.model), catalogNumber: str(r.catalogNumber) };
+/** Pre-check only (the UPDATE is the authority): could this notebook's identity
+ *  have come from a nameplate photo, and is it still unbound? */
+export function mayBeNameplateAdopted(nb: NotebookShape & { identitySourceType?: string | null }): boolean {
+  return nb.identityStatus === "user_confirmed" && nb.identitySourceType === "nameplate_image" && !nb.asset?.entityId;
 }
 
-/** Pre-check (the conditional UPDATE is the authority): this notebook's identity
- *  was adopted from this photo and nothing has changed it since. */
-export function isCorrectionOfAdoptedNameplate(
-  nb: NotebookShape & { identitySourceType?: string | null },
-  priorAdopted: NameplateIdentity | null,
-): boolean {
-  if (!priorAdopted || nb.asset?.entityId) return false;
-  if (nb.identityStatus !== "user_confirmed" || nb.identitySourceType !== "nameplate_image") return false;
-  return sameIdentity(nb, priorAdopted);
-}
-
-// ── Codex #4191 r2 F1: identity and provenance commit TOGETHER ───────────────
-// The notebook UPDATE and the provenance stamp run in ONE transaction. A stamp
-// that fails (or finds no source row) rolls the adoption back, so an identity
-// is never adopted without the provenance a later correction needs. The caller
-// sees a thrown error and reports it; nothing is half-written.
-//
-// Provenance is read from EVERY reading of the photo, superseded ones included
-// (findAdoptedIdentityForPhoto). An edited re-confirm supersedes the stamped
-// reading before it re-adopts; if that re-adoption then fails, the retry still
-// finds the stamp on the superseded row and recognises the correction. Each
-// stamp is written in the same transaction as its adoption, so the newest stamp
-// is the identity this photo last gave the notebook.
-
-export type AdoptionRequest =
-  | { kind: "blank"; identity: NameplateIdentity }
-  | { kind: "correction"; previous: NameplateIdentity; identity: NameplateIdentity };
-
-export class AdoptionProvenanceError extends Error {}
-
-/** Atomically adopt (blank notebook) or re-adopt (correction of the adopting
- *  photo) and stamp the provenance on `nameplateDocId`'s source row. Returns
- *  false when the conditional write lost (the notebook changed meanwhile);
- *  throws — with nothing committed — when the provenance cannot be recorded. */
+/** Adopt the confirmed nameplate as the notebook's identity, in ONE statement,
+ *  when EITHER the notebook is still blank and unbound, OR its identity was
+ *  adopted from THIS photo and has not been edited or bound since (a correction).
+ *  Returns false when neither holds (a lost race, another photo, a manual edit). */
 export async function adoptNameplateIdentity(
   tenantId: string,
   notebookId: string,
-  nameplateDocId: string,
-  req: AdoptionRequest,
-): Promise<boolean> {
-  if (!isAdoptableIdentity(req.identity)) return false;
-  const next = toIdentity(req.identity);
-  return withTenantContext(tenantId, async (c) => {
-    const res =
-      req.kind === "blank"
-        ? await c.query(
-            `UPDATE equipment_notebooks
-                SET manufacturer = $3, model = $4, catalog_number = $5,
-                    identity_status = 'user_confirmed', identity_source_type = 'nameplate_image',
-                    updated_at = now()
-              WHERE tenant_id = $1::uuid AND id = $2::uuid
-                AND COALESCE(btrim(manufacturer), '') = ''
-                AND COALESCE(btrim(model), '') = ''
-                AND COALESCE(btrim(catalog_number), '') = ''
-                AND identity_status IN ('unknown', 'candidate')
-                AND equipment_entity_id IS NULL`,
-            [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber],
-          )
-        : await (() => {
-            const prev = toIdentity(req.previous);
-            return c.query(
-              `UPDATE equipment_notebooks
-                  SET manufacturer = $3, model = $4, catalog_number = $5, updated_at = now()
-                WHERE tenant_id = $1::uuid AND id = $2::uuid
-                  AND identity_source_type = 'nameplate_image'
-                  AND identity_status = 'user_confirmed'
-                  AND NULLIF(btrim(manufacturer), '') IS NOT DISTINCT FROM $6
-                  AND NULLIF(btrim(model), '') IS NOT DISTINCT FROM $7
-                  AND NULLIF(btrim(catalog_number), '') IS NOT DISTINCT FROM $8
-                  AND equipment_entity_id IS NULL`,
-              [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber, prev.manufacturer, prev.model, prev.catalogNumber],
-            );
-          })();
-    if ((res.rowCount ?? 0) === 0) return false;
-    const stamp = await c.query(
-      `UPDATE equipment_notebook_sources
-          SET match_evidence = COALESCE(match_evidence, '{}'::jsonb) || jsonb_build_object('adopted_identity', $4::jsonb)
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
-      [tenantId, notebookId, nameplateDocId, JSON.stringify(next)],
-    );
-    if ((stamp.rowCount ?? 0) === 0) {
-      // Throwing rolls the identity UPDATE back with it (one transaction).
-      throw new AdoptionProvenanceError(`no nameplate source row ${nameplateDocId} to stamp`);
-    }
-    return true;
-  });
-}
-
-/** The identity this photo most recently gave the notebook, read across ALL of
- *  its readings (superseded included), or null when it never adopted one. */
-export async function findAdoptedIdentityForPhoto(
-  tenantId: string,
-  notebookId: string,
   originFileId: string,
-): Promise<NameplateIdentity | null> {
+  id: NameplateIdentity,
+): Promise<boolean> {
+  if (!isAdoptableIdentity(id) || !filled(originFileId)) return false;
+  const next = toIdentity(id);
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT match_evidence
-         FROM equipment_notebook_sources
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
-          AND origin_file_id = $3::uuid
-          AND match_evidence ? 'adopted_identity'
-        ORDER BY created_at DESC, doc_id DESC
-        LIMIT 1`,
-      [tenantId, notebookId, originFileId],
+      `UPDATE equipment_notebooks
+          SET manufacturer = $3, model = $4, catalog_number = $5,
+              identity_status = 'user_confirmed', identity_source_type = 'nameplate_image',
+              identity_source_ref = 'nameplate:' || $6::text || ':' || ${FINGERPRINT_NEW},
+              updated_at = now()
+        WHERE tenant_id = $1::uuid AND id = $2::uuid
+          AND equipment_entity_id IS NULL
+          AND (
+            ( COALESCE(btrim(manufacturer), '') = ''
+              AND COALESCE(btrim(model), '') = ''
+              AND COALESCE(btrim(catalog_number), '') = ''
+              AND identity_status IN ('unknown', 'candidate') )
+            OR
+            ( identity_status = 'user_confirmed'
+              AND identity_source_type = 'nameplate_image'
+              AND identity_source_ref = 'nameplate:' || $6::text || ':' || ${FINGERPRINT_COLS} )
+          )`,
+      [tenantId, notebookId, next.manufacturer, next.model, next.catalogNumber, originFileId],
     );
-    return adoptedIdentityFromEvidence(res.rows?.[0]?.match_evidence);
+    return (res.rowCount ?? 0) > 0;
   });
 }

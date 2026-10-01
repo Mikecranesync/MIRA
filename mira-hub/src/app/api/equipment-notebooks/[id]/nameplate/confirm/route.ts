@@ -42,10 +42,9 @@ import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import {
   adoptNameplateIdentity,
-  findAdoptedIdentityForPhoto,
   isAdoptableIdentity,
   isBlankUnboundNotebook,
-  isCorrectionOfAdoptedNameplate,
+  mayBeNameplateAdopted,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
 
@@ -541,9 +540,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // #4178: set when this confirm adopted the nameplate as a BLANK notebook's
   // identity (see adoptNameplateIdentity) — reported so a client can say so.
   let identityAdopted = false;
-  // Codex #4191 r2 F1: the adoption threw (nothing committed) — reported so the
-  // client can offer a retry instead of the technician silently losing it.
-  let identityAdoptionFailed = false;
   const respond = (
     status: ConfirmStatus,
     extra: Record<string, unknown> = {},
@@ -552,7 +548,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ok: true,
       status,
       ...(identityAdopted ? { identityAdopted: true } : {}),
-      ...(identityAdoptionFailed ? { identityAdoptionFailed: true } : {}),
       notebookId,
       nameplate,
       // Slice 2: how many persisted visual observations this confirm promoted to
@@ -595,34 +590,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // machine, or is bound to an asset, keeps its identity — there the nameplate
   // is a component. The conditional write is the authority; a lost race (the
   // notebook gained an identity meanwhile) just leaves the inline search below.
-  // Codex #4191 F1: a correction of the SAME photo that adopted the identity
-  // (its prior reading carries the provenance stamp, and the notebook still
-  // holds exactly that identity, unbound) moves the adopted identity with it.
-  // Codex #4191 r2 F1: identity + provenance commit in one transaction, and the
-  // provenance is read across every reading of this photo (superseded included),
-  // so a correction whose earlier attempt failed after its supersede still
-  // re-adopts on retry. A failure is reported, never silently dropped.
+  // Codex #4191: a correction of the SAME photo moves an identity this photo
+  // adopted, unless it was edited or bound since. Provenance rides on the
+  // notebook row in the same single UPDATE (see nameplate-identity-adoption.ts).
+  // A database failure here is answered with a retryable 503 rather than a
+  // manual search under an identity that did not save: the phone's existing
+  // error state offers "try again", and the replay re-runs this adoption.
   try {
-    if (nameplateDocId && isAdoptableIdentity(identity)) {
-      if (isBlankUnboundNotebook(notebook)) {
-        identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, nameplateDocId, {
-          kind: "blank",
-          identity,
-        });
-      } else {
-        const priorAdopted = await findAdoptedIdentityForPhoto(ctx.tenantId, notebookId, fileId);
-        if (isCorrectionOfAdoptedNameplate(notebook, priorAdopted)) {
-          identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, nameplateDocId, {
-            kind: "correction",
-            previous: priorAdopted!,
-            identity,
-          });
-        }
-      }
+    if (isAdoptableIdentity(identity) && (isBlankUnboundNotebook(notebook) || mayBeNameplateAdopted(notebook))) {
+      identityAdopted = await adoptNameplateIdentity(ctx.tenantId, notebookId, fileId, identity);
     }
   } catch (err) {
-    identityAdoptionFailed = true;
     console.error(`[nameplate-confirm] identity adoption failed notebook=${notebookId}: ${(err as Error).message}`);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "identity_save_failed",
+        retryable: true,
+        message: "The nameplate was saved, but the machine's identity could not be saved. Try again.",
+      },
+      { status: 503 },
+    );
   }
 
   // ── (d) Manual discovery ──────────────────────────────────────────────────

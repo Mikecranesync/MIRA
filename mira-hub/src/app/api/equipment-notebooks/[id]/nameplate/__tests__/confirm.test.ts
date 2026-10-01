@@ -1860,23 +1860,26 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       });
     });
 
-    it("first adoption stamps its provenance on the nameplate source (so a later correction can be recognised)", async () => {
+    it("adoption records WHICH photo named the notebook, in the same single UPDATE (no second write)", async () => {
       await withFlag(true, async () => {
         blank();
         const queries = lifecycleDb("wins");
         vi.mocked(discoverManual).mockResolvedValue(limited() as never);
         await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
-        const stamp = queries.find((q) => /UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(q.sql));
-        expect(stamp).toBeDefined();
-        expect(stamp!.params).toEqual(expect.arrayContaining([NAMEPLATE_DOC_ID]));
-        const stamped = JSON.parse(String(stamp!.params.find((x) => typeof x === "string" && x.startsWith("{"))));
-        expect(stamped).toEqual({ manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
+        const a = adoption(queries)!;
+        expect(a.sql).toMatch(/identity_source_ref = 'nameplate:' \|\| \$6::text/);
+        expect(a.params[5]).toBe(PHOTO_FILE_ID);
+        // provenance is never a separate, losable write on the source row
+        expect(queries.some((q) => /adopted_identity/.test(q.sql))).toBe(false);
       });
     });
 
-    // Codex #4191 F1: correcting the SAME photo after an adoption must move the
-    // notebook (and its recorded search) to the corrected identity.
-    describe("Codex #4191 F1 — a correction of the adopting photo re-adopts", () => {
+    // Codex #4191: correcting the SAME photo after an adoption moves the notebook
+    // (and its recorded search) to the corrected identity. WHICH notebooks qualify
+    // is decided inside the UPDATE (proven on real Postgres in
+    // capabilities/__tests__/nameplate-identity-adoption.pg.test.ts); here the route
+    // must ask, and act on the answer.
+    describe("Codex #4191 — a correction of the adopting photo re-adopts", () => {
       const ADOPTED = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
       const CORRECTED = { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" };
       const adopted = (extra: Record<string, unknown> = {}) =>
@@ -1884,21 +1887,17 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
           ...(notebook as object), ...ADOPTED, identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
           ...extra,
         } as never);
-      const readoption = (queries: { sql: string; params: unknown[] }[]) =>
-        queries.find((q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'[\s\S]*IS NOT DISTINCT FROM/.test(q.sql));
       const correct = () => makeReq({ ...baseBody, identity: { ...CORRECTED, serialNumber: "SN-99" } });
 
-      it("same photo, adopted from it, untouched since → re-adopts the correction and records ITS search", async () => {
+      it("a nameplate-sourced notebook asks the conditional UPDATE; when it moves, ITS search is recorded", async () => {
         await withFlag(true, async () => {
           adopted();
-          const queries = lifecycleDb("wins", ADOPTED);
+          const queries = lifecycleDb("wins");
           vi.mocked(discoverManual).mockResolvedValue(limited() as never);
           const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
-          const r = readoption(queries);
-          expect(r).toBeDefined();
-          expect(r!.params).toEqual(expect.arrayContaining(["755", "20G11NC022AA0NNNNN", "525", "25B-D010N104"]));
-          expect(JSON.stringify(r!.params)).not.toContain("SN-99");
-          expect(r!.sql).toMatch(/equipment_entity_id IS NULL/);
+          const a = adoption(queries)!;
+          expect(a.params).toEqual(expect.arrayContaining(["755", "20G11NC022AA0NNNNN", PHOTO_FILE_ID]));
+          expect(JSON.stringify(a.params)).not.toContain("SN-99");
           expect(body.identityAdopted).toBe(true);
           expect(finishedState(queries)).toBe("search_limit_reached");
           const claim = queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
@@ -1906,130 +1905,65 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
         });
       });
 
-      it("control: a DIFFERENT photo (no adopted_identity on this photo's prior reading) never re-adopts", async () => {
+      it("when the UPDATE refuses (another photo, an edit, a binding), the search stays inline and unrecorded", async () => {
         await withFlag(true, async () => {
           adopted();
-          vi.mocked(findVisibleOriginSource).mockResolvedValue(null);
+          const queries = lifecycleDb("wins");
+          const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+          vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+            impl(t, (async (c: unknown) => {
+              const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+              const orig = client.query;
+              client.query = vi.fn(async (sql: string, params: unknown[]) =>
+                /identity_source_ref = 'nameplate:'/.test(sql) ? { rowCount: 0, rows: [] } : orig(sql, params),
+              );
+              return fn(client);
+            }) as never)) as never);
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          expect(body.status).toBe("search_limit_reached");
+          expect(body.identityAdopted).toBeUndefined();
+          expect(finishedState(queries)).toBeNull();
+        });
+      });
+
+      it("control: a notebook whose identity was TYPED is never sent to the adoption UPDATE", async () => {
+        await withFlag(true, async () => {
+          adopted({ identitySourceType: "user" });
           const queries = lifecycleDb("wins");
           vi.mocked(discoverManual).mockResolvedValue(limited() as never);
           await POST(correct(), makeParams(NOTEBOOK_ID));
-          expect(readoption(queries)).toBeUndefined();
-        });
-      });
-
-      it("control: an intervening manual edit (identity no longer the adopted one) never re-adopts", async () => {
-        await withFlag(true, async () => {
-          adopted({ model: "526" });
-          const queries = lifecycleDb("wins", ADOPTED);
-          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
-          await POST(correct(), makeParams(NOTEBOOK_ID));
-          expect(readoption(queries)).toBeUndefined();
-        });
-      });
-
-      it("control: a notebook bound to an asset since the adoption never re-adopts", async () => {
-        await withFlag(true, async () => {
-          adopted({ asset: { entityId: ASSET_UUID } });
-          const queries = lifecycleDb("wins", ADOPTED);
-          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
-          await POST(correct(), makeParams(NOTEBOOK_ID));
-          expect(readoption(queries)).toBeUndefined();
+          expect(adoption(queries)).toBeUndefined();
         });
       });
     });
 
-    // Codex #4191 r2 F1: identity and provenance commit together. Each
-    // withTenantContext call is one transaction; a fault in the stamp must
-    // abort that SAME transaction so the identity never commits without it.
-    describe("Codex #4191 r2 F1 — adoption and provenance are one transaction", () => {
-      /** Tenant contexts tagged by call; `stamp` decides the provenance UPDATE's fate. */
-      const txDb = (stamp: "ok" | "no_row" | "throws", adoptedStamp?: Record<string, unknown>) => {
-        const queries: { sql: string; params: unknown[]; tx: number }[] = [];
-        const rolledBack = new Set<number>();
-        let tx = 0;
-        vi.mocked(withTenantContext).mockImplementation((async (_t: string, fn: (c: unknown) => unknown) => {
-          const id = ++tx;
-          const client = {
-            query: vi.fn(async (sql: string, params: unknown[]) => {
-              queries.push({ sql, params, tx: id });
-              if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: 1, rows: [{ gen: "g1" }] };
-              if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
-              if (/\? 'adopted_identity'/.test(sql))
-                return { rows: adoptedStamp ? [{ match_evidence: { adopted_identity: adoptedStamp } }] : [] };
-              if (/UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(sql)) {
-                if (stamp === "throws") throw new Error("connection reset");
-                return { rowCount: stamp === "no_row" ? 0 : 1, rows: [] };
-              }
-              return { rowCount: 1, rows: [] };
-            }),
-          };
-          try {
-            return await fn(client);
-          } catch (err) {
-            rolledBack.add(id); // withTenantContext ROLLBACKs the whole callback
-            throw err;
-          }
-        }) as never);
-        return { queries, rolledBack };
-      };
-      const committedIdentityWrite = (db: ReturnType<typeof txDb>) =>
-        db.queries.find(
-          (q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'/.test(q.sql) && !db.rolledBack.has(q.tx),
-        );
-
-      it("the identity UPDATE and the provenance stamp run in the SAME transaction", async () => {
-        await withFlag(true, async () => {
-          blank();
-          const db = txDb("ok");
-          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
-          const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
-          const id = committedIdentityWrite(db)!;
-          const stamp = db.queries.find((q) => /UPDATE equipment_notebook_sources[\s\S]*adopted_identity/.test(q.sql))!;
-          expect(id).toBeDefined();
-          expect(stamp.tx).toBe(id.tx);
-          expect(body.identityAdopted).toBe(true);
-        });
-      });
-
-      for (const fault of ["no_row", "throws"] as const) {
-        it(`a provenance fault (${fault}) rolls the adoption back, reports it, and keeps the search inline`, async () => {
-          await withFlag(true, async () => {
-            blank();
-            const db = txDb(fault);
-            vi.mocked(discoverManual).mockResolvedValue(limited() as never);
-            const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
-            expect(committedIdentityWrite(db)).toBeUndefined(); // nothing half-written
-            expect(body.identityAdopted).toBeUndefined();
-            expect(body.identityAdoptionFailed).toBe(true);
-            expect(body.status).toBe("search_limit_reached"); // the technician is still answered
-            expect(db.queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))).toBe(false);
-          });
-        });
-      }
-
-      it("recovery: a correction whose stamped reading was already superseded still re-adopts on retry", async () => {
-        await withFlag(true, async () => {
-          vi.mocked(getNotebook).mockResolvedValue({
-            ...(notebook as object),
-            manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104",
-            identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
-          } as never);
-          // The visible reading is the NEW, unstamped one (the stamped one was superseded
-          // by the failed attempt); the stamp survives on the superseded row.
-          vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: "new-doc", matchEvidence: {} } as never);
-          const db = txDb("ok", { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" });
-          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
-          const body = await (
-            await POST(
-              makeReq({ ...baseBody, identity: { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" } }),
-              makeParams(NOTEBOOK_ID),
-            )
-          ).json();
-          const lookup = db.queries.find((q) => /\? 'adopted_identity'/.test(q.sql))!;
-          expect(lookup.sql).not.toMatch(/superseded_at IS NULL/); // reads superseded readings too
-          expect(committedIdentityWrite(db)!.params).toEqual(expect.arrayContaining(["755", "525"]));
-          expect(body.identityAdopted).toBe(true);
-        });
+    // Codex #4191 r3 F4: a failed identity save must not be followed by a search
+    // under an identity that did not save. The phone already turns any non-2xx
+    // into its error state ("Edit the details and try again"), and the same
+    // confirm key replays straight back into this adoption.
+    it("a database failure saving the identity is a retryable 503 — no manual search under an unsaved identity", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+        vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+          impl(t, (async (c: unknown) => {
+            const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+            const orig = client.query;
+            client.query = vi.fn(async (sql: string, params: unknown[]) => {
+              if (/identity_source_ref = 'nameplate:'/.test(sql)) throw new Error("connection reset");
+              return orig(sql, params);
+            });
+            return fn(client);
+          }) as never)) as never);
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        expect(res.status).toBe(503);
+        const body = await res.json();
+        expect(body).toMatchObject({ ok: false, error: "identity_save_failed", retryable: true });
+        expect(discoverManual).not.toHaveBeenCalled();
+        expect(claimed(queries)).toBe(false);
       });
     });
 
