@@ -2327,6 +2327,50 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
+    // Codex r4 F6 (#4177): a search orphaned by a restart (or recorded as
+    // running on concurrent indexing) is recovered by the claim's stale-window
+    // predicate — so a matching running record goes back through the claim
+    // from here too. The claim itself decides staleness; a live search refuses.
+    it("Codex r4 F6: a matching stale running record is sent back through the claim and resumes", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      const rec = {
+        ...limited("2026-09-29T06:00:00Z"),
+        state: "running",
+        started_at: "2026-09-29T05:00:00Z",
+        finished_at: null,
+      };
+      acqMock.readAcquisition.mockResolvedValue(rec);
+      acqMock.startManualAcquisition.mockResolvedValue(true);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      // A running record is not reconciled (nothing attached yet); it is claimed.
+      expect(acqMock.reconcileAcquisition).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+        expect.objectContaining({ notebookId: NB, nodeId: "n1", identity: expect.objectContaining({ manufacturer: "Siemens", model: "TP700 Comfort" }) }),
+      );
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: true, candidate_host: null });
+    });
+
+    it("Codex r4 F6 control: a LIVE running record is refused by the claim — one claim attempt, no duplicate worker, honest packet", async () => {
+      acqMock.acquisitionEnabled.mockReturnValue(true);
+      acqMock.readAcquisition.mockResolvedValue({
+        ...limited("2026-09-29T06:00:00Z"),
+        state: "running",
+        started_at: new Date().toISOString(),
+        finished_at: null,
+      });
+      // The real claim refuses while a live search holds the record; the seam
+      // models exactly that refusal.
+      acqMock.startManualAcquisition.mockResolvedValue(false);
+      domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+      await askWithSources();
+      expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      expect(packetOf().retrieval.manual_acquisition).toEqual({ state: "running", started_this_turn: false, candidate_host: null });
+    });
+
     it("control: flag off → nothing is read or started on a source-selected turn", async () => {
       acqMock.acquisitionEnabled.mockReturnValue(false);
       acqMock.readAcquisition.mockResolvedValue(limited("2026-09-29T06:00:00Z"));

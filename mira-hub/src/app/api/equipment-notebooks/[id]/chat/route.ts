@@ -2401,12 +2401,16 @@ async function handleChatTurn(
   // technician's normal next question is exactly that turn — and a recorded
   // limit denial / outage sat untouched unless every source was deselected.
   // So: a RETRYABLE record for the notebook's OWN confirmed identity is
-  // reconciled and sent back through the claim here regardless of routing.
-  // The claim keeps every existing rule (UTC-day boundary, 30-minute backoff,
-  // MAX_AUTOMATIC_RETRIES, live-running refusal); reconcile keeps the
-  // source-removal rule. Nothing here starts a NEW search, changes retrieval,
-  // or alters the reply — the turn stays grounded in its selected sources; the
-  // packet records the recovery (`manual_acquisition`) for the flight recorder.
+  // reconciled and sent back through the claim here regardless of routing,
+  // and (Codex r4 F6) a RUNNING record goes back through the claim too — its
+  // stale-window predicate resumes a search orphaned by a restart or recorded
+  // as running on concurrent indexing, and refuses while a live search holds
+  // it (same as the #4075 block). The claim keeps every existing rule
+  // (UTC-day boundary, 30-minute backoff, MAX_AUTOMATIC_RETRIES, live-running
+  // refusal); reconcile keeps the source-removal rule. Nothing here starts a
+  // NEW search, changes retrieval, or alters the reply — the turn stays
+  // grounded in its selected sources; the packet records the recovery
+  // (`manual_acquisition`) for the flight recorder.
   if (manualAcquisition === null && nb && acquisitionEnabled()) {
     const identity = {
       identityStatus: nb.identityStatus,
@@ -2417,8 +2421,9 @@ async function handleChatTurn(
     const key = acquisitionKey(identity);
     if (key) {
       let acq = await readAcquisition(ctx.tenantId, notebookId);
-      if (acq && acq.key === key && (acq.state === "search_unavailable" || acq.state === "search_limit_reached")) {
-        acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
+      if (acq && acq.key === key && (retryable || acq.state === "running")) {
+        if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
         if (acq && acq.key === key && !acq.source_removed) {
           const started = await startManualAcquisition({
             tenantId: ctx.tenantId,
