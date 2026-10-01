@@ -86,8 +86,11 @@ class FleetGatewayService:
         self._session_nodes: dict[str, str] = {}
         # node → blocked_until timestamp (Unix epoch) for usage limits
         self._blocked_until: dict[str, float] = {}
-        # session_id → reset epoch from the FIRST time its usage-limit text was seen
-        self._limit_reset_by_session: dict[str | None, float] = {}
+        # session_id → (refusal line, reset epoch) from the FIRST sighting of THAT refusal.
+        # Dropped once the lane answers anything else, so a later refusal re-pins.
+        self._limit_pins: dict[str | None, tuple[str, float]] = {}
+        # node → task_ids launched there, refreshed before each launch on that node
+        self._tasks_by_node: dict[str, list[str]] = {}
         # Injected trust reader for testing
         self._trust_reader: Any = None
 
@@ -277,20 +280,10 @@ class FleetGatewayService:
         # Derive lane state
         lane_state, lane_error = derive_lane_state(snapshot, time.time())
 
-        # D1: If lane is blocked due to usage limit, update service._blocked_until[node]
         node_name = merged.get("role") or merged.get("node")
-        if lane_state == "blocked_usage_limit" and snapshot.get("blocked_until"):
-            # Pin the reset to the FIRST sighting per session: the limit text stays
-            # in scrollback, and re-parsing "resets 12am" after it passes would yield
-            # the NEXT midnight and block the node forever.
-            sid = _as_str(merged.get("session_id") or snapshot.get("session_id"))
-            blocked_until = self._limit_reset_by_session.setdefault(sid, snapshot["blocked_until"])
-            snapshot["blocked_until"] = blocked_until
-            if isinstance(blocked_until, (int, float)):
-                if node_name and time.time() < blocked_until:
-                    self._blocked_until[node_name] = max(self._blocked_until.get(node_name, 0.0), blocked_until)
-                # Format blocked_until as ISO8601 for lane_error message
-                lane_error = f"usage limit reached on {node_name}; resets {format_reset(blocked_until)}"
+        sid = _as_str(merged.get("session_id") or snapshot.get("session_id"))
+        lane_state, limit_error = self._apply_limit(snapshot, lane_state, node_name, sid)
+        lane_error = limit_error or lane_error
 
         payload = {
             "task_id": task_id,
@@ -342,6 +335,7 @@ class FleetGatewayService:
         self._reject_denied_actions(params)
 
         # Check usage limit blocking (fail-closed before any side effect)
+        self._refresh_node_limits(role)
         self._check_usage_limit_block(role)
 
         # Check repository trust preflight (for claude provider)
@@ -388,6 +382,7 @@ class FleetGatewayService:
         # the SAME node's CAO — never inferred from the session id, never Bravo.
         if session_id:
             self._session_nodes[session_id] = role
+        self._tasks_by_node.setdefault(role, []).append(spec["task_id"])
         if hasattr(target.cao, "record_worktree"):
             target.cao.record_worktree(session_id, worktree)
         if role == "charlie":
@@ -428,6 +423,48 @@ class FleetGatewayService:
                 "lane_state": lane_state,
             }
         )
+
+    def _apply_limit(
+        self, snapshot: dict[str, Any], lane_state: str, node: str | None, sid: str | None
+    ) -> tuple[str, str | None]:
+        """D1: record a node block from a lane's limit refusal; returns (lane_state, error).
+
+        The refusal stays in scrollback, and re-parsing "resets 12am" after it passes would
+        yield the NEXT midnight and block forever, so the reset is pinned to the first
+        sighting of that refusal line on that session.
+        """
+        now = time.time()
+        if lane_state != "blocked_usage_limit" or not snapshot.get("blocked_until"):
+            self._limit_pins.pop(sid, None)  # lane answered something else: re-arm
+            return lane_state, None
+        line = str(snapshot.get("limit_line") or "")
+        pin = self._limit_pins.get(sid)
+        if pin is None or pin[0] != line:
+            pin = (line, float(snapshot["blocked_until"]))
+            self._limit_pins[sid] = pin
+        blocked_until = pin[1]
+        snapshot["blocked_until"] = blocked_until
+        if now >= blocked_until:
+            return derive_lane_state(snapshot, now, ignore_limit=True)
+        if node:
+            self._blocked_until[node] = max(self._blocked_until.get(node, 0.0), blocked_until)
+        return lane_state, f"usage limit reached on {node}; resets {format_reset(blocked_until)}"
+
+    def _refresh_node_limits(self, node: str) -> None:
+        """Re-read this node's own lanes before launching, so a refusal blocks the next
+        launch even when no task_status poll ran in between. Fail-open per lane."""
+        tasks = self._tasks_by_node.get(node, [])[-10:]
+        if not tasks:
+            return
+        cao = self.router.target(node).cao
+        for tid in tasks:
+            try:
+                snap = cao.task_snapshot(tid)
+                if snap:
+                    state, _ = derive_lane_state(snap, time.time())
+                    self._apply_limit(snap, state, node, _as_str(snap.get("session_id")))
+            except Exception:  # noqa: BLE001 — a dead lane must not block launching
+                logger.warning("usage-limit refresh failed for task %s on %s", tid, node)
 
     def _check_usage_limit_block(self, node: str) -> None:
         """Check if node is currently blocked due to usage limit.

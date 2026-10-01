@@ -198,16 +198,8 @@ def test_status_detection_blocks_next_launch_with_no_worktree(service, auth, cao
     assert created == []
 
 
-def test_stale_limit_text_does_not_reblock_after_reset(service, auth, cao) -> None:
-    """The limit line stays in scrollback; once its FIRST reset passes, the node unblocks."""
-    first = service.invoke("launch_worker", dict(LAUNCH_OK), authorization=auth)
-    sid = first.get("session_id") or next(iter(cao.sessions))
-    cao.sessions[sid]["terminal_output"] = LIMIT_TEXT
-    cao.sessions[sid]["terminal_status"] = "idle"
-    service._limit_reset_by_session[sid] = time.time() - 1  # first sighting's reset already passed
-    service.invoke("task_status", {"task_id": LAUNCH_OK["task_id"]}, authorization=auth)
-    assert service._blocked_until.get("bravo") is None
-    service.invoke("launch_worker", dict(LAUNCH_OK, task_id="issue-3532-c"), authorization=auth)
+# test_stale_limit_text_does_not_reblock_after_reset used to inject the pin it was meant
+# to prove; replaced by test_codex_round2.py::test_f8_stale_time_only_refusal_unblocks_after_its_first_reset.
 
 
 # ── Limit detection must not fire on text that merely CONTAINS the message ──
@@ -280,14 +272,14 @@ def test_stale_dated_refusal_is_in_the_past_not_next_year() -> None:
 def test_stale_dated_refusal_does_not_block_the_node() -> None:
     session = {"terminal_status": "idle", "launched_at": time.time() - 30,
                "terminal_output": f"⏺ You've hit your weekly limit · resets Sep 12 at 12am ({NY})\n"}
-    derive_lane_state(session, now=_at(2026, 10, 1, 11))
-    assert session["blocked_until"] < _at(2026, 10, 1, 11)
+    assert derive_lane_state(session, now=_at(2026, 10, 1, 11))[0] != "blocked_usage_limit"
+    assert "blocked_until" not in session
 
 
 def test_feb_29_in_a_non_leap_year_does_not_raise() -> None:
     now = _at(2027, 2, 25, 12)
     got = lane_health._parse_reset_time(f"You've hit your weekly limit · resets Feb 29 at 1am ({NY})", now)
-    assert got == _at(2028, 2, 29, 1)
+    assert got is None  # no valid date within a week: caller's bounded 1 h backoff, not 2028
 
 
 def test_stale_dated_refusal_does_not_refuse_the_next_launch(service, auth, cao) -> None:

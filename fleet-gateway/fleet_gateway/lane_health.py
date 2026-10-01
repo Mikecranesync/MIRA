@@ -23,15 +23,21 @@ LIMIT_BACKOFF_S = int(os.getenv("FLEET_GATEWAY_LIMIT_BACKOFF_S", "3600"))
 # A limit line is one that STARTS with the message once TUI glyphs/whitespace are
 # stripped. Matching anywhere would let a lane that merely prints the string (a grep,
 # a `git show` of a test fixture, a cat of a log) block a whole node until midnight.
-_LIMIT_LINE = re.compile(r"^You've hit your (weekly|session) limit\b", re.IGNORECASE)
-_TUI_PREFIX = re.compile(r"^[\s⏺●⎿│>❯*·✻✶✢✽✳-]+")
+_LIMIT_LINE = re.compile(r"^(?:[⏺●⎿]\s*)?You've hit your (weekly|session) limit\b", re.IGNORECASE)
+# Real render (CAO terminal log of a refused lane): "  ⎿  You've hit your weekly limit · resets …"
+# then only chrome: a "/usage-credits …" hint, a "✻ Sautéed for 1s" summary, rules, the
+# empty ❯ prompt and footer. Any other text after it means the lane answered again.
+_CHROME_AFTER = re.compile(r"^(?:$|/|[─━]|[✶✢✽✻✳·*]|❯|⏵|⬆|.*│)")
+# A tool call ("⏺ Bash(cat log)" or a bare "Read(x)") whose ⎿ output merely shows the text.
+_TOOL_HEADER = re.compile(r"^(?:⏺\s*)?[A-Za-z][\w.:-]*\(")
+_DATED_MAX_AHEAD_S = 8 * 86400  # weekly limits reset within 7 days
 _LIMIT_TAIL_LINES = 20
 _LIMIT_STATES = ("idle", "completed")  # a lane still processing has not been refused
 
 # "resets 12am (America/New_York)" · "resets 3:30pm (…)" · "resets Sep 12 at 12am (…)"
 _RESET_RE = re.compile(
     r"resets\s+(?:(?P<mon>[A-Z][a-z]{2,8})\s+(?P<day>\d{1,2})(?:,)?\s+(?:at\s+)?)?"
-    r"(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ampm>am|pm)?\s*\((?P<tz>[A-Za-z_]+/[A-Za-z_]+)\)",
+    r"(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ampm>am|pm)?\s*\((?P<tz>UTC|[A-Za-z_]+(?:/[A-Za-z0-9_+\-]+)+)\)",
     re.IGNORECASE,
 )
 _MONTHS = {m: i for i, m in enumerate(
@@ -39,12 +45,27 @@ _MONTHS = {m: i for i, m in enumerate(
 
 
 def _limit_line(output: str) -> str | None:
-    """The usage-limit line, if one of the last _LIMIT_TAIL_LINES lines IS that message."""
-    for raw in output.splitlines()[-_LIMIT_TAIL_LINES:]:
-        line = _TUI_PREFIX.sub("", raw).strip()
-        if _LIMIT_LINE.match(line):
-            return line
-    return None
+    """The usage-limit line, only if it is the lane's LAST answer.
+
+    It must be the last non-chrome line in the tail, and the block it closes (back to
+    the previous ❯ prompt) must not be a tool call whose output merely shows the text.
+    """
+    lines = [raw.strip() for raw in output.splitlines()[-_LIMIT_TAIL_LINES:]]
+    hit = None
+    for i in range(len(lines) - 1, -1, -1):
+        if _LIMIT_LINE.match(lines[i]):
+            hit = i
+            break
+        if not _CHROME_AFTER.match(lines[i]):
+            return None  # something other than chrome follows any refusal
+    if hit is None:
+        return None
+    for prev in reversed(lines[:hit]):
+        if prev.startswith("❯"):
+            break
+        if _TOOL_HEADER.match(prev):
+            return None
+    return re.sub(r"^[⏺●⎿]\s*", "", lines[hit])
 
 
 def format_reset(epoch: float) -> str:
@@ -53,7 +74,9 @@ def format_reset(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%d %H%MZ")
 
 
-def derive_lane_state(session: dict[str, Any], now: float | None = None) -> tuple[str, str | None]:
+def derive_lane_state(
+    session: dict[str, Any], now: float | None = None, ignore_limit: bool = False
+) -> tuple[str, str | None]:
     """Derive lane state from session data.
 
     Returns: (lane_state, lane_error_or_none)
@@ -67,7 +90,7 @@ def derive_lane_state(session: dict[str, Any], now: float | None = None) -> tupl
         now = time.time()
 
     # Check for usage limit first (overrides other states)
-    limit_state, limit_error = _check_usage_limit(session, now)
+    limit_state = "" if ignore_limit else _check_usage_limit(session, now)[0]
     if limit_state == "blocked_usage_limit":
         return "blocked_usage_limit", None  # lane_error handled in task_status
 
@@ -78,6 +101,9 @@ def derive_lane_state(session: dict[str, Any], now: float | None = None) -> tupl
 
     # Terminal status
     terminal_status = session.get("terminal_status")
+
+    if terminal_status == "error" and not session.get("ever_ready"):
+        return "init_failed", "Lane terminal errored before reaching a ready state."
 
     # Track ready states (D3: mark ever_ready when first reached)
     ready_states = ("idle", "processing", "completed", "waiting_user_answer")
@@ -114,8 +140,8 @@ def derive_lane_state(session: dict[str, Any], now: float | None = None) -> tupl
         error = "Lane did not reach a ready state (idle/processing/completed) within initialization grace period."
         return "init_failed", error
 
-    # Fallback (should not reach here)
-    return "ready", None
+    # Any other status past grace is not evidence of readiness.
+    return "init_failed", f"Lane terminal status {terminal_status!r} is not a ready state."
 
 
 def _check_usage_limit(session: dict[str, Any], now: float) -> tuple[str, str | None]:
@@ -129,7 +155,11 @@ def _check_usage_limit(session: dict[str, Any], now: float) -> tuple[str, str | 
     if reset_time is None:
         logger.warning("usage-limit reset unparseable; backing off %ss", LIMIT_BACKOFF_S)
         reset_time = now + LIMIT_BACKOFF_S
+    if reset_time <= now:
+        session.pop("blocked_until", None)
+        return "", None  # the refusal's reset already passed: stale, not blocked
     session["blocked_until"] = reset_time
+    session["limit_line"] = line
     return "blocked_usage_limit", None
 
 
@@ -172,9 +202,16 @@ def _parse_reset_time(text: str, now: float | None = None) -> float | None:
                                                   hour=hour, minute=minute, second=0, microsecond=0))
             except ValueError:
                 continue
-        if not candidates:
-            return None
-        target = min(candidates, key=lambda t: abs((t - current).total_seconds()))
+        # A weekly reset is at most 7 days ahead. A date further out is a stale refusal
+        # (or an impossible date, e.g. Feb 29 in a non-leap year): treat it as past.
+        ahead = [t for t in candidates if 0 < (t - current).total_seconds() <= _DATED_MAX_AHEAD_S]
+        if ahead:
+            target = ahead[0]
+        else:
+            past = [t for t in candidates if t <= current]
+            if not past:
+                return None
+            target = max(past)
     else:
         target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= current:

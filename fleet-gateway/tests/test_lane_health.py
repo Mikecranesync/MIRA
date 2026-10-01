@@ -176,18 +176,11 @@ class TestRepositoryTrustPreflight:
     """Tests for preflight check of repository trust configuration."""
 
     def test_trust_preflight_passes_when_trusted(self, service, auth, cao, tmp_path):
-        """Launch should succeed when repo is trusted in ~/.claude.json."""
-        # Create a fake ~/.claude.json with trust accepted
+        """Launch should succeed when the service's REAL repo is trusted in ~/.claude.json."""
+        service._trust_reader = None  # the fixture's always-true reader would skip the file
+        repo = str(service.router.target("bravo").worktrees.repo)
         claude_json = tmp_path / ".claude.json"
-        claude_json.write_text(
-            json.dumps({
-                "projects": {
-                    "/path/to/repo": {
-                        "hasTrustDialogAccepted": True
-                    }
-                }
-            })
-        )
+        claude_json.write_text(json.dumps({"projects": {repo: {"hasTrustDialogAccepted": True}}}))
         with patch("fleet_gateway.lane_health.os.path.expanduser", return_value=str(claude_json)):
             result = service.invoke("launch_worker", dict(LAUNCH_OK), authorization=auth)
             assert result["session_id"]
