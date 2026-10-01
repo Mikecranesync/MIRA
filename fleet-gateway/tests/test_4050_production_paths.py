@@ -288,3 +288,19 @@ def test_feb_29_in_a_non_leap_year_does_not_raise() -> None:
     now = _at(2027, 2, 25, 12)
     got = lane_health._parse_reset_time(f"You've hit your weekly limit · resets Feb 29 at 1am ({NY})", now)
     assert got == _at(2028, 2, 29, 1)
+
+
+def test_stale_dated_refusal_does_not_refuse_the_next_launch(service, auth, cao) -> None:
+    """Behaviour, not the stored value: a lane idle on a weekly refusal dated 19 days ago
+    is polled, and the next launch on that node must still go through."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    stale = datetime.now(ZoneInfo(NY)) - timedelta(days=19)
+    refusal = f"⏺ You've hit your weekly limit · resets {stale:%b} {stale.day} at 12am ({NY})"
+    first = service.invoke("launch_worker", dict(LAUNCH_OK), authorization=auth)
+    sid = first.get("session_id") or next(iter(cao.sessions))
+    cao.sessions[sid]["terminal_output"] = refusal
+    cao.sessions[sid]["terminal_status"] = "idle"
+    service.invoke("task_status", {"task_id": LAUNCH_OK["task_id"]}, authorization=auth)
+    assert service._blocked_until.get("bravo") is None
+    service.invoke("launch_worker", dict(LAUNCH_OK, task_id="issue-3532-stale"), authorization=auth)
