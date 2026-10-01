@@ -565,7 +565,14 @@ describe("manual import: candidate until the document proves itself", () => {
   });
 
   it("#4160 S4: passes the caller's identity through to discoverManual as the second argument", async () => {
-    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    // Fully-typed literal (not the shared importableDiscovery() helper, which
+    // predates quotaExceeded/oemRequestUrl and is out of scope to fix here)
+    // so this NEW test adds no tsc error beyond this file's pre-existing baseline.
+    vi.mocked(discoverManual).mockResolvedValue({
+      ...importableDiscovery(),
+      oemRequestUrl: null,
+      quotaExceeded: false,
+    });
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
     provingText();
     await acquireManualForIdentity(acquireInput);

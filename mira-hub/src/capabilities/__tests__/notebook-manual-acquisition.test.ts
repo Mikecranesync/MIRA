@@ -117,7 +117,7 @@ describe("startManualAcquisition", () => {
       /OR \(manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
     );
     expect(claimQ.sql).toMatch(
-      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\)\)\)/,
+      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\), 'UTC'\)\)\)/,
     );
     // The retries counter itself must NOT increment for search_limit_reached
     // (only for search_unavailable) — else a quota denial would exhaust

@@ -488,7 +488,7 @@ class TestManualDiscoveryQuota:
     def test_no_identity_denial_maps_to_search_unavailable_never_a_blank_quota_exceeded(
         self, monkeypatch
     ):
-        """Defense in depth (Codex review): "no_identity" should be
+        """Defense in depth (code-review follow-up): "no_identity" should be
         structurally unreachable from THIS route (it always opens
         provider_query_quota() with a validated identity — see the real-wiring
         test below), but if a future regression ever removes that wrapper, the
@@ -530,7 +530,7 @@ class TestManualDiscoveryRealQuotaWiring:
     call) and reserve_provider_query (the actual DB round trip) are faked;
     search_manual itself runs for real.
 
-    Mutation-proven (Codex review): deleting the route's
+    Mutation-proven (this file): deleting the route's
     `provider_query_quota(identity)` wrapper makes this go red — the
     identity never reaches _serper_search, every query is refused
     "no_identity", and nothing is ever sent.

@@ -25,6 +25,13 @@ import shared.manual_search.search as search_mod  # noqa: E402
 
 MIRA_BOTS = pathlib.Path(__file__).parent.parent
 
+# Captured at module import, BEFORE any per-test monkeypatch can replace the
+# module attribute — the one true unfaked reserve_provider_query, for the
+# tests below that must exercise quota.py's own real global-cap-unconfigured
+# fail-closed check (not the autouse "ok" stub every other test in this file
+# relies on).
+_REAL_RESERVE = quota_mod.reserve_provider_query
+
 
 @pytest.fixture(autouse=True)
 def _judge_off_and_key_set(monkeypatch):
@@ -233,7 +240,7 @@ async def test_no_identity_refuses_every_query_and_never_sends(monkeypatch):
 async def test_a_denial_mid_call_stops_the_remaining_queries_without_touching_the_db_again(
     monkeypatch,
 ):
-    """Fix B (Codex/advisor review, #4160 S4): once one query in a call is
+    """Fix B (code-review follow-up, #4160 S4): once one query in a call is
     quota-denied, every remaining pass must refuse WITHOUT reserving again —
     a DB outage must not cost up to six round trips inside one 50s caller
     budget. SMC's worst case sends 6 provider queries unbounded; this proves
@@ -287,3 +294,21 @@ async def test_tenant_and_user_never_enter_the_provider_query_text(monkeypatch):
     # Positive control: the query text DOES carry make/model (so this test
     # isn't vacuously passing against an empty/garbled query).
     assert any("SMC" in q for q in sent)
+
+
+async def test_unconfigured_global_cap_sends_no_query_through_the_real_reserver(monkeypatch):
+    """D4 (owner amendment, 2026-09-30): proves "no query sent", not merely
+    "no DB connect" (that narrower claim is test_manual_search_quota.py's
+    job) — this test runs the REAL reserve_provider_query (restored via
+    _REAL_RESERVE, captured before the autouse "ok" stub ever patched it) all
+    the way through _serper_search, with the global cap genuinely unset."""
+    sent = _count_provider_posts(monkeypatch)
+    monkeypatch.setattr(quota_mod, "reserve_provider_query", _REAL_RESERVE)
+    monkeypatch.delenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raising=False)
+    identity = quota_mod.QuotaIdentity(tenant_id="t-d4", user_id="u-d4")
+    with quota_mod.provider_query_quota(identity):
+        with search_mod.provider_query_budget() as budget:
+            await search_mod.search_manual("SMC", "SS5Y3-DUW01302")
+    assert sent == []
+    assert budget.used == 0
+    assert budget.quota_denied == "global_cap_unconfigured"

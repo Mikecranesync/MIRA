@@ -13,14 +13,19 @@ Gated on BOTH, same convention as the Hub integration suites
     TEST_DATABASE_URL          a disposable Postgres connection string
     MIRA_TEST_DB_CONFIRM=DISPOSABLE
 
-Run locally against a throwaway container (never a shared/staging/prod DB):
+Run locally against a throwaway container (never a shared/staging/prod DB).
+MUST run SERIAL, not under pytest-xdist (-n auto): the autouse schema fixture
+TRUNCATEs the one shared table before every test, so parallel workers racing
+TRUNCATE against each other's in-flight reservations would corrupt one
+another's counts. Pass -p no:xdist explicitly if your pytest.ini (or a CI
+wrapper) ever defaults -n auto on:
 
     docker run -d --rm --name mira-quota-pg-test -p 55434:5432 \\
         -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=mira_test postgres:16
     cd mira-bots && \\
     TEST_DATABASE_URL=postgresql://postgres:testpw@localhost:55434/mira_test \\
     MIRA_TEST_DB_CONFIRM=DISPOSABLE \\
-    PATH=/opt/homebrew/bin:$PATH python3 -m pytest tests/test_manual_search_quota_pg.py -v
+    PATH=/opt/homebrew/bin:$PATH python3 -m pytest tests/test_manual_search_quota_pg.py -v -p no:xdist
     docker stop mira-quota-pg-test
 """
 
@@ -49,10 +54,15 @@ pytestmark = pytest.mark.skipif(
     ),
 )
 
-# Imported only once the gate above has decided to run — collection stays
-# safe (no driver import error) when the env is absent, same posture as the
-# historian/Hub integration suites.
-import psycopg2  # noqa: E402
+# NOTE: `pytestmark = pytest.mark.skipif(...)` above only skips the TEST
+# FUNCTIONS at run time — it does not gate module-level code, so this import
+# still executes unconditionally at collection. Use importorskip (not a plain
+# import) so a missing driver degrades to a clean SKIP rather than a
+# collection ERROR — psycopg2 is a direct dependency of quota.py itself, so
+# in practice it is always present wherever this test is importable at all,
+# but importorskip costs nothing and is the honest statement of what actually
+# gates this import.
+psycopg2 = pytest.importorskip("psycopg2")
 
 _MIGRATION = (
     pathlib.Path(__file__).resolve().parents[2]

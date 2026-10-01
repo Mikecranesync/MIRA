@@ -456,7 +456,7 @@ def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBu
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
     """The one place a provider query leaves this process.
 
-    Order matters (Codex, #4160 S4): the per-call ceiling is checked FIRST
+    Order matters (code-review follow-up, #4160 S4): the per-call ceiling is checked FIRST
     (free — no I/O) and does not touch the quota accounting at all. Only a
     query that passes the ceiling spends a Postgres reservation. `used` is
     incremented ONLY on an actual send, so a quota-denied query is never

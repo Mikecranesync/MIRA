@@ -198,7 +198,7 @@ async function claim(tenantId: string, notebookId: string, key: string): Promise
                  -- Uncapped by $6 on purpose — see the 'retries' comment above.
                  OR (manual_acquisition->>'state' = 'search_limit_reached'
                      AND COALESCE((manual_acquisition->>'finished_at')::timestamptz, '-infinity')
-                         < date_trunc('day', now())))
+                         < date_trunc('day', now(), 'UTC')))
           RETURNING manual_acquisition->>'gen' AS gen`,
         [tenantId, notebookId, key, STALE_RUNNING_MINUTES, UNAVAILABLE_RETRY_MINUTES, MAX_AUTOMATIC_RETRIES],
       );
