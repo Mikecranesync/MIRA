@@ -1494,6 +1494,72 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("no longer in this notebook's Sources");
   });
 
+  // #4168 Codex r1 F1: a daily-cap denial promises a retry tomorrow, so the
+  // chat route must send a matching search_limit_reached record back through
+  // the claim (whose SQL predicate enforces the UTC-day boundary).
+  it("#4168 F1: a matching 'search_limit_reached' record goes back through the claim", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_limit_reached",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.startManualAcquisition.mockResolvedValue(true);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.reconcileAcquisition).toHaveBeenCalledWith(expect.any(String), NB, rec);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("looking for the official one now");
+  });
+
+  it("#4168 F1: before the UTC day turns the claim refuses, and the turn keeps the limit message", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_limit_reached",
+      started_at: null,
+      finished_at: new Date().toISOString(),
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    const fr = await ask();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    const msg = String(fr.find((f) => f.kind === "status")?.message);
+    expect(msg).toContain("search limit");
+    expect(msg).not.toContain("looking for the official one now");
+  });
+
+  it("#4168 F1: a search_limit_reached record whose manual the technician removed is NOT retried", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(true);
+    const rec = {
+      key: KEY,
+      state: "search_limit_reached",
+      started_at: null,
+      finished_at: "2026-09-29T06:00:00Z",
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+      doc_id: "d1",
+      linked: true,
+    };
+    acqMock.readAcquisition.mockResolvedValue(rec);
+    acqMock.reconcileAcquisition
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }))
+      .mockImplementationOnce(async () => ({ ...rec, source_removed: true }));
+    domainMock.getNotebook.mockResolvedValue(confirmed() as never);
+    await ask();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
   it("Codex #4118 F1: a matching 'running' record goes back through the claim (which recovers a stale one)", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(true);
     acqMock.readAcquisition.mockResolvedValue({

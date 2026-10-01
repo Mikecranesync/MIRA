@@ -2009,14 +2009,18 @@ async function handleChatTurn(
       // backoff has passed (Codex #4118 r7 F12).
       // A retryable record is reconciled FIRST: a manual its attempt attached
       // and the technician then removed is never re-fetched (Codex #4118 r14 F19).
-      if (acq && acq.key === key && acq.state === "search_unavailable") {
+      // "search_limit_reached" (#4160 S4) is retryable the same way: its claim
+      // predicate only lets it through once a new UTC day has started
+      // (#4168 Codex F1 — without this the promised next-day retry never ran).
+      const retryable = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
+      if (acq && acq.key === key && retryable(acq.state)) {
         acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
       }
       if (
         !acq ||
         acq.key !== key ||
         acq.state === "running" ||
-        (acq.state === "search_unavailable" && !acq.source_removed)
+        (retryable(acq.state) && !acq.source_removed)
       ) {
         started = await startManualAcquisition({
           tenantId: ctx.tenantId,

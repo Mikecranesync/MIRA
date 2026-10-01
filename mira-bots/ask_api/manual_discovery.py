@@ -234,8 +234,15 @@ async def manual_discovery_search(
         result["oem_request_url"] = oem_request_url
         return result
 
-    if candidate is None and budget.quota_denied is not None:
-        # A cap denial must NEVER look like "no manual exists" (PRD R5).
+    interrupted = budget.quota_denied is not None and (
+        candidate is None or candidate.get("reason") == "judged_not_applicable"
+    )
+    if interrupted:
+        # A cap denial must NEVER look like "no manual exists" (PRD R5) — and
+        # that includes a judged rejection of whatever was collected before the
+        # denial stopped the remaining queries (#4168 Codex F2): the search did
+        # not finish, so the honest answer is retryable, not a terminal miss. A
+        # usable (validated or still-reviewable) candidate is still returned.
         result = _NO_RESULT.copy()
         if budget.quota_denied in _QUOTA_CAP_REASONS:
             result["reason"] = "quota_exceeded"

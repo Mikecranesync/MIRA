@@ -567,6 +567,90 @@ class TestManualDiscoveryRealQuotaWiring:
         assert seen_identities[0].user_id == "hdr-user"
 
 
+class TestQuotaDenialInterruptsJudgedSearch:
+    """#4168 Codex r1 F2: a cap denial that stopped the search part-way must
+    not be reported as a completed miss. If the judge rejected what WAS
+    collected, the honest answer is "limit reached" (retryable), not
+    judged_not_applicable (terminal no_manual_found in the Hub)."""
+
+    def _fake(self, monkeypatch, candidate, denial):
+        import ask_api.manual_discovery as md
+        from shared.manual_search import search as _search_mod
+
+        async def fake_search_manual(make, model):
+            budget = _search_mod._provider_budget.get()
+            assert budget is not None
+            if denial:
+                budget.quota_denied = denial
+                budget.refused += 1
+            return candidate
+
+        monkeypatch.setattr(md, "search_manual", fake_search_manual)
+
+    _REJECTED = {
+        "url": "https://linpub.example/news.pdf",
+        "title": "Newspaper",
+        "host": "linpub.example",
+        "validated": False,
+        "is_direct_pdf": True,
+        "reason": "judged_not_applicable",
+        "reason_detail": "Read the PDF: a newspaper article.",
+        "judged_rejected": [{"url": "https://linpub.example/news.pdf", "reason": "newspaper"}],
+    }
+
+    def test_judged_rejection_after_a_cap_denial_reports_quota_exceeded(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), "user_cap")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "quota_exceeded"
+        assert "user" in body["reason_detail"].lower()
+
+    def test_judged_rejection_after_quota_unavailable_reports_search_unavailable(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), "quota_unavailable")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is False
+        assert body["reason"] == "search_unavailable"
+
+    def test_control_judged_rejection_without_denial_stays_judged_not_applicable(self, monkeypatch):
+        self._fake(monkeypatch, dict(self._REJECTED), None)
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["reason"] == "judged_not_applicable"
+
+    def test_control_usable_candidate_survives_a_later_denial(self, monkeypatch):
+        self._fake(monkeypatch, dict(_VALIDATED_CANDIDATE), "user_cap")
+        body = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+        assert body["found"] is True
+        assert body["validated"] is True
+
+
 class TestManualDiscoverySearchErrorHandling:
     """Graceful error handling — never 500."""
 
