@@ -1089,12 +1089,12 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
 // lanes, unconditional on `refused`: a false capability claim is wrong
 // whether or not the rest of the turn also reads as a refusal.
 //
-// #4193 Codex review F1: the first shipped version matched on the bare verb
-// phrase alone, so it also discarded a real, correct maintenance answer —
-// "Contact the manufacturer for warranty service" (an ordinary escalation
-// instruction, nothing to do with MIRA's own browsing) and "The machine does
-// not have internet access" (a statement about the MACHINE, not about MIRA).
-// Both are now excluded structurally, not by a wider keyword list:
+// #4193 Codex review round 1 F1: the first shipped version matched on the
+// bare verb phrase alone, so it also discarded a real, correct maintenance
+// answer — "Contact the manufacturer for warranty service" (an ordinary
+// escalation instruction, nothing to do with MIRA's own browsing) and "The
+// machine does not have internet access" (a statement about the MACHINE, not
+// about MIRA). Both are excluded structurally, not by a wider keyword list:
 //
 //   - CAPABILITY_DENIAL only fires on MIRA's OWN first-person capability
 //     claim — the subject must be "I" (optionally "I'm"/"I am"), immediately
@@ -1108,8 +1108,28 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
 //     "Contact the manufacturer for warranty service" names no document word
 //     before the sentence ends, so it is left alone; "contact SMC support for
 //     the official documentation" is still caught.
-const CAPABILITY_DENIAL =
-  /\bI(?:'m|’m| am)?\s+(?:unable to|can(?:not|'t|’t))\s+(?:browse|search|access)(?:\s+the\s+(?:web|internet))?\b|\bI\s+(?:don'?t|don’t|do not|does not)\s+have\s+(?:internet|web)\s+access\b/i;
+//
+// #4193 Codex review round 2 F1: round 1's "I ... access" branch still had no
+// required object, so "I cannot access your PLC remotely" and "I can't access
+// your private maintenance records" — real, correct answers about a
+// capability manual discovery never claims — were also discarded. The denied
+// capability must now concern PUBLIC WEB / MANUAL DISCOVERY specifically:
+//   - "browse" alone always denies web access (no object needed — nobody
+//     says "browse" to mean anything else).
+//   - "search" / "access" / "look ... up" / "download" / "fetch" require a
+//     web-discovery object (internet, web, online, or the manufacturer's
+//     site/website) SOMEWHERE LATER IN THE SAME SENTENCE. "your PLC remotely"
+//     and "your private maintenance records" name no such object, so those
+//     two sentences can never match, however the verb is phrased.
+const WEB_DISCOVERY_OBJECT_SRC =
+  "(?:\\binternet\\b|\\bweb\\b|\\bonline\\b|\\bmanufacturer'?s?\\s+(?:site|website)\\b)";
+const CAPABILITY_DENIAL = new RegExp(
+  "\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+browse\\b" +
+    "|\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+(?:search|access|look\\s+\\w*\\s*up|download|fetch)\\b" +
+      `(?=(?:(?!\\.).){0,60}?${WEB_DISCOVERY_OBJECT_SRC})` +
+    "|\\bI\\s+(?:don'?t|don’t|do not|does not)\\s+have\\s+(?:internet|web)\\s+access\\b",
+  "i",
+);
 // A document/manual word that must appear SOMEWHERE in the rest of the
 // sentence for a "contact the maker" / "check their website" phrase to count
 // as a deflection about the manual — never crossing a sentence boundary

@@ -156,15 +156,23 @@ export type PartSearchProposalEntry = {
    *  survived, counting the turn it was first proposed on as 1. Absent on a
    *  legacy entry, treated the same as 1. */
   age?: number;
-  /** #4193 Codex F3: a stable identity for this logical offer, minted once
-   *  when it is first proposed and carried UNCHANGED through every re-show
-   *  copy (a re-show persists a NEW turn row with a copy of the proposal, so
-   *  the turn id alone can no longer identify "this offer" once it has been
-   *  re-shown). Claiming is keyed on this id, not on whichever turn row
-   *  happens to hold the copy that gets confirmed — see
-   *  `part-search-claim.ts`. Absent on a legacy entry; such an entry falls
-   *  back to the turn-id-only claim it always had. */
-  id?: string;
+  /** #4193 Codex round 2 F3+F6: the ORIGIN turn — the turn that first
+   *  persisted this proposal. Carried UNCHANGED through every re-show copy
+   *  (a re-show persists a NEW turn row with a copy of the proposal, so the
+   *  turn a given copy lives on can no longer identify "this offer" once it
+   *  has been re-shown even once). Claiming locks and marks consumed on THIS
+   *  row — never on whichever turn happens to hold the copy being confirmed
+   *  — so every copy of one logical offer shares one canonical arbiter. See
+   *  `part-search-claim.ts`.
+   *
+   *  Absent on a proposal that predates this field — a TRUE legacy entry
+   *  (round 1's `id` field, or no identity at all). Round 1's `id` is NOT an
+   *  adequate substitute: it is still per-copy (round 1 minted a fresh
+   *  random id on every re-show of an id-less entry, Codex F6), so it names
+   *  no canonical row at all. Every caller resolves a legacy entry's origin
+   *  as the turn it currently sits on, the FIRST time it is read after this
+   *  fix ships — see `partSearchDecision()`. */
+  originTurnId?: string;
 };
 /** Marker appended to the proposal's own turn when a confirmation spends it
  *  (atomically, before any search) — a proposal authorizes ONE search (F3). */
@@ -201,13 +209,18 @@ export function isPartSearchProposal(entry: unknown): entry is PartSearchProposa
 
 export type PartSearchDecision =
   | { action: "none" }
-  | { action: "propose"; candidate: string; age: number; id: string }
-  | { action: "search"; candidate: string; id?: string }
+  // `originTurnId` is absent on a FRESH propose (age 1): the pure function
+  // computing this decision does not yet know the new turn's own id — the
+  // caller assigns it (this turn IS the origin) when persisting the proposal.
+  // It is always present on a RE-SHOW (age > 1), resolved from the pending
+  // entry that is being re-shown.
+  | { action: "propose"; candidate: string; age: number; originTurnId?: string }
+  | { action: "search"; candidate: string; originTurnId: string }
   | { action: "cancelled"; candidate: string }
   | { action: "mismatch"; candidate: string | null }
-  /** #4193 Codex F2: re-showing one more time would mint an offer past
-   *  `PART_SEARCH_OFFER_TURN_LIMIT` that `pendingPartSearchProposal()` can
-   *  never again treat as valid — an offer the app would render as
+  /** #4193 Codex round 1 F2: re-showing one more time would mint an offer
+   *  past `PART_SEARCH_OFFER_TURN_LIMIT` that `pendingPartSearchProposal()`
+   *  can never again treat as valid — an offer the app would render as
    *  actionable (a chip, "reply exactly: ...") that the very next turn
    *  cannot confirm. The offer stops here instead: no further proposal, no
    *  chip, just a plain statement that it expired. */
@@ -241,11 +254,31 @@ function sameCandidate(a: string | null, b: string | null): boolean {
   return a !== null && b !== null && a.toUpperCase() === b.toUpperCase();
 }
 
+/** #4193 Codex round 2 F3+F6: the origin turn of a pending proposal — the
+ *  canonical row every copy of this logical offer is claimed against.
+ *
+ *  - A round-2 proposal already carries `originTurnId` (set once when first
+ *    proposed, unchanged on every re-show): use it as-is.
+ *  - A TRUE legacy entry (no `originTurnId`, including a round-1 entry whose
+ *    only identity was the per-copy `id` Codex F6 found inadequate) is
+ *    anchored to `previousTurnId` — the turn IT CURRENTLY SITS ON. This is
+ *    safe exactly because it is resolved fresh on every read: a legacy
+ *    proposal is only ever "pending" on the single most-recent turn that
+ *    carries it (an already-consumed or already-superseded copy is excluded
+ *    by `pendingPartSearchProposal()`), so at the moment this function is
+ *    called there is exactly one row to anchor to. */
+function originOf(pending: PartSearchProposalEntry, previousTurnId: string | null): string | undefined {
+  return pending.originTurnId ?? previousTurnId ?? undefined;
+}
+
 /**
  * Decide this turn's photo-part search. `candidate` is the part number the
  * current photo evidence yields (serial/FNSKU exclusions already applied);
  * `previousEvidence` is the evidence stored with the technician's immediately
  * preceding turn in this thread (empty when unknown — fail closed).
+ * `previousTurnId` is that same turn's own id (null when unknown) — used ONLY
+ * to anchor a true-legacy proposal's origin (see `originOf` above); a
+ * round-2 proposal already carries its own `originTurnId`.
  */
 export function partSearchDecision(opts: {
   message: string;
@@ -253,8 +286,10 @@ export function partSearchDecision(opts: {
   /** The maker the current photo yields with that part (null when none). */
   manufacturer?: string | null;
   previousEvidence: readonly unknown[];
+  previousTurnId?: string | null;
 }): PartSearchDecision {
   const pending = pendingPartSearchProposal(opts.previousEvidence);
+  const previousTurnId = opts.previousTurnId ?? null;
   const makerNow = opts.manufacturer ?? null;
   const confirmed = confirmedPartSearchCandidate(opts.message);
   // A bare affirmative only means anything when there is something pending to
@@ -269,21 +304,27 @@ export function partSearchDecision(opts: {
       sameCandidate(pending.candidate, opts.candidate) &&
       (confirmed === null || sameCandidate(confirmed, opts.candidate)) &&
       (pending.manufacturer ?? null) === makerNow;
-    return matches
-      ? { action: "search", candidate: opts.candidate as string, id: pending?.id }
+    if (!matches) return { action: "mismatch", candidate: opts.candidate };
+    // `matches` is true only when `pending !== null`, so an origin always
+    // resolves here (see `originOf` above) — never a bare `null`/`undefined`.
+    const originTurnId = originOf(pending as PartSearchProposalEntry, previousTurnId);
+    return originTurnId
+      ? { action: "search", candidate: opts.candidate as string, originTurnId }
       : { action: "mismatch", candidate: opts.candidate };
   }
   if (pending && opts.message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase()) {
     return { action: "cancelled", candidate: pending.candidate };
   }
   if (opts.candidate && explicitManualLookupRequest(opts.message)) {
-    return { action: "propose", candidate: opts.candidate, age: 1, id: crypto.randomUUID() };
+    // A FRESH propose: no origin yet — the caller assigns one (this turn's
+    // own, about-to-be-persisted id) when it actually persists the proposal.
+    return { action: "propose", candidate: opts.candidate, age: 1 };
   }
   // #4185/#4186: a reply that neither confirms, cancels, nor starts a fresh
   // lookup does not expire a pending offer — it re-shows it, aging it by one
   // turn, until PART_SEARCH_OFFER_TURN_LIMIT is reached.
   //
-  // #4193 Codex F2: but NOT past the limit. `pendingPartSearchProposal()`
+  // #4193 Codex round 1 F2: but NOT past the limit. `pendingPartSearchProposal()`
   // only ever treats age <= PART_SEARCH_OFFER_TURN_LIMIT as valid, so
   // re-showing at age === LIMIT would mint an age === LIMIT + 1 offer that is
   // actionable in THIS turn's reply (a chip, confirmation instructions) but
@@ -295,13 +336,12 @@ export function partSearchDecision(opts: {
     if (age >= PART_SEARCH_OFFER_TURN_LIMIT) {
       return { action: "expired", candidate: pending.candidate };
     }
-    // #4193 Codex F3: the re-shown copy carries the SAME stable id forward —
-    // claiming is keyed on this id (see part-search-claim.ts), not on the
-    // turn id the copy happens to live on, so a confirmation racing a
-    // re-show can consume the offer at most once no matter which physical
-    // turn row ends up holding the copy that gets confirmed. A legacy entry
-    // with no id mints one now rather than leaving the re-show unidentified.
-    return { action: "propose", candidate: pending.candidate, age: age + 1, id: pending.id ?? crypto.randomUUID() };
+    // #4193 Codex round 2 F6: the re-shown copy carries the SAME origin turn
+    // forward (never a freshly minted identity) — claiming locks and marks
+    // consumed on that ONE row (see part-search-claim.ts), so a confirmation
+    // racing a re-show can consume the offer at most once no matter which
+    // physical turn row ends up holding the copy that gets confirmed.
+    return { action: "propose", candidate: pending.candidate, age: age + 1, originTurnId: originOf(pending, previousTurnId) };
   }
   return { action: "none" };
 }

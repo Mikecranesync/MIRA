@@ -408,8 +408,9 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
     // The proposal binds the whole identity it would send (#4171 F4): no maker here.
-    // #4193 Codex F3: a fresh proposal also carries a stable `id`.
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1, id: expect.any(String) });
+    // #4193 Codex round 2 F3+F6: a fresh proposal's `originTurnId` IS this turn
+    // (route.ts's own, about-to-be-persisted turn id — unpredictable here).
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1, originTurnId: expect.any(String) });
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
     expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
@@ -490,8 +491,10 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
     expect(String(f.find((x) => x.kind === "status")?.message)).toContain(`Search the web for "${PART}"`);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
-    // #4193 Codex F3: the re-show mints a stable `id` (the original had none).
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, id: expect.any(String) });
+    // #4193 Codex round 2 F3+F6: `proposalTurn()`'s entry carries no
+    // `originTurnId` (true legacy) — the re-show anchors to the turn it
+    // currently sits on, "prev" (exact, not just any string).
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, originTurnId: "prev" });
   });
 
   it("#4186: the offer stays valid through the 3rd subsequent turn", async () => {
@@ -960,12 +963,14 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     });
   });
 
-  it("F3: the proposal is claimed (by its turn id and owner) before any search", async () => {
+  it("F3: the proposal is claimed (by its origin turn and owner) before any search", async () => {
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask(`Search the web for "${PART}"`);
+    // `proposalTurn()`'s evidence entry carries no `originTurnId` (a true
+    // legacy shape) — its origin resolves to the turn it sits on, "prev".
     expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
-      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1" }),
+      expect.objectContaining({ originTurnId: "prev", ownerUserId: "u1" }),
     );
     expect(claimMock.claimPartSearchProposal.mock.invocationCallOrder[0]).toBeLessThan(
       manualDiscoveryMock.discoverManual.mock.invocationCallOrder[0],
@@ -980,32 +985,35 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(String(f.find((x) => x.kind === "status")?.message)).toContain("already used");
   });
 
-  // #4193 Codex F3: the claim is keyed on the offer's stable `proposalId`,
-  // not only the turn row it lives on — otherwise a re-shown copy (same id,
-  // new turn) could claim independently of the original. A legacy proposal
-  // with no `id` still claims (falling back to turn-id-only), confirming the
-  // widened claim call never breaks the pre-existing behaviour.
-  it("#4193 F3: a legacy proposal with no id still claims by turn id alone", async () => {
+  // #4193 Codex round 2 F3+F6: the claim is keyed on the offer's ORIGIN turn
+  // — the one canonical row every copy of this offer is claimed against —
+  // not a per-copy identity. A true-legacy proposal (no `originTurnId` at
+  // all) anchors to the turn it currently sits on, confirming the redesigned
+  // claim call never breaks the pre-existing behaviour.
+  it("#4193 F3+F6: a legacy proposal with no origin anchors to the turn it sits on", async () => {
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask(`Search the web for "${PART}"`);
     expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
-      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1", proposalId: null }),
+      expect.objectContaining({ originTurnId: "prev", ownerUserId: "u1" }),
     );
   });
 
-  it("#4193 F3: a re-shown proposal's stable id is threaded into the claim call", async () => {
-    const PROPOSAL_ID = "proposal-stable-id-xyz";
+  it("#4193 F3+F6: a re-shown proposal's origin turn (not the copy's own turn) is threaded into the claim call", async () => {
+    const ORIGIN_TURN_ID = "11112222-3333-4444-5555-666677778888";
     domainMock.listTurns.mockResolvedValueOnce([{
+      // The copy being confirmed lives on turn "prev" — a DIFFERENT turn
+      // from its origin — exactly the re-show shape the claim must resolve
+      // past: it must claim ORIGIN_TURN_ID, never "prev".
       id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
       answerText: "proposal",
-      evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, id: PROPOSAL_ID }],
+      evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, originTurnId: ORIGIN_TURN_ID }],
       basis: null, createdAt: "2026-09-30T00:00:00Z", ownerUserId: "u1", sharedLegacy: false,
     }] as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask(`Search the web for "${PART}"`);
     expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
-      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1", proposalId: PROPOSAL_ID }),
+      expect.objectContaining({ originTurnId: ORIGIN_TURN_ID, ownerUserId: "u1" }),
     );
   });
 

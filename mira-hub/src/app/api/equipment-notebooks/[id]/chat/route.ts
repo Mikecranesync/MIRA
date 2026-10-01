@@ -2124,6 +2124,7 @@ async function handleChatTurn(
         candidate: photoPartNumber,
         manufacturer: photoMaker,
         previousEvidence: previousTurnEvidence,
+        previousTurnId,
       })
     : { action: "none" };
   let photoPartLookup: {
@@ -2144,6 +2145,11 @@ async function handleChatTurn(
     // offered. age === 1 is always a fresh proposal from this turn's photo.
     const reshown = partSearch.age > 1 ? pendingPartSearchProposal(previousTurnEvidence) : null;
     const maker = reshown ? (reshown.manufacturer ?? null) : photoMaker;
+    // #4193 Codex round 2 F3+F6: a FRESH propose (age 1) has no origin from
+    // the pure decision yet — THIS turn, about to be persisted, IS the
+    // origin. A re-show (age > 1) already carries the resolved origin
+    // forward from `partSearchDecision()`.
+    const originTurnId = partSearch.originTurnId ?? turnId;
     photoPartLookup = {
       action: "proposed",
       searched: false,
@@ -2151,10 +2157,7 @@ async function handleChatTurn(
       found: false,
       candidate_host: null,
       message: `I can search the web for a manual using only the exact label text \"${c}\"${maker ? ` and the maker name \"${maker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
-      // #4193 Codex F3: carry the offer's stable id forward unchanged on a
-      // re-show so a confirmation against either copy claims the SAME
-      // underlying identity (see part-search-claim.ts).
-      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age, id: partSearch.id },
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age, originTurnId },
     };
   } else if (partSearch.action === "expired") {
     // #4193 Codex F2: one more re-show would have minted an offer the very
@@ -2192,23 +2195,21 @@ async function handleChatTurn(
     };
   } else if (partSearch.action === "search") {
     const confirmedPart = partSearch.candidate;
-    // One proposal authorizes ONE search (#4171 Codex F3; widened #4193 Codex
-    // F3): spend it atomically BEFORE any egress, keyed on the offer's
-    // STABLE id (not just the turn row it lives on) — a re-show persists a
-    // copy of the same logical offer onto a NEW turn, and the id is what
-    // lets the claim recognise "this is the same offer that was already
-    // consumed" even when the confirmation lands on that copy instead of the
-    // original turn. A racing or retried confirmation finds it spent either way.
-    const claimed =
-      previousTurnId !== null && ctx.userId
-        ? await claimPartSearchProposal({
-            tenantId: ctx.tenantId,
-            notebookId,
-            proposalTurnId: previousTurnId,
-            ownerUserId: ctx.userId,
-            proposalId: partSearch.id ?? null,
-          })
-        : false;
+    // One proposal authorizes ONE search (#4171 Codex F3; redesigned #4193
+    // Codex round 2 F3+F6): spend it atomically BEFORE any egress, locked and
+    // marked consumed on the offer's ORIGIN turn row — never on whichever
+    // turn happens to hold the copy actually being confirmed. A re-show
+    // persists a copy of the same logical offer onto a NEW turn, but every
+    // copy shares one origin, so a racing or retried confirmation against
+    // ANY copy finds the SAME row already spent.
+    const claimed = ctx.userId
+      ? await claimPartSearchProposal({
+          tenantId: ctx.tenantId,
+          notebookId,
+          originTurnId: partSearch.originTurnId,
+          ownerUserId: ctx.userId,
+        })
+      : false;
     // Only the confirmed string leaves: no photo, chat or notebook text.
     const result = claimed
       ? await discoverManual(

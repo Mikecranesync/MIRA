@@ -916,6 +916,10 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
     const WARRANTY_CLAIM = "If it's still under warranty, contact the manufacturer for a warranty claim before you open the enclosure.";
     const SERVICE_VISIT = "Contact the manufacturer support line to schedule a service visit for this unit.";
     const PLC_NETWORK = "The PLC doesn't have internet access configured, so check your network switch and cabling first.";
+    // Round 2 (Codex F1): "I ... access" with NO web/internet/online object —
+    // an honest, correct capability statement manual discovery never provides.
+    const PLC_REMOTE_ACCESS = "I cannot access your PLC remotely. Check the network cable and share the fault message.";
+    const PRIVATE_RECORDS = "I can't access your private maintenance records.";
 
     it.each([
       ["warranty + service deflection", WARRANTY_SERVICE],
@@ -923,6 +927,8 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
       ["a service-visit deflection", SERVICE_VISIT],
       ["machine network-advice (no internet access)", NETWORK_ADVICE],
       ["PLC network-advice (no internet access)", PLC_NETWORK],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
     ])("%s is left alone with a candidate search running, general lane", (_label, answerText) => {
       const v = validateAnswer({ ...base, answerText, manualSearchRunning: "candidate" });
       expect(v.ok).toBe(true);
@@ -934,6 +940,8 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
       ["a service-visit deflection", SERVICE_VISIT],
       ["machine network-advice (no internet access)", NETWORK_ADVICE],
       ["PLC network-advice (no internet access)", PLC_NETWORK],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
     ])("%s is left alone with a confirmed search running, general lane", (_label, answerText) => {
       const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
       expect(v.ok).toBe(true);
@@ -942,9 +950,33 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
     it.each([
       ["warranty + service deflection", WARRANTY_SERVICE],
       ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
     ])("%s is left alone with a confirmed search running, grounded lane", (_label, answerText) => {
       const v = validateAnswer({ ...base, answerText, general: false, manualSearchRunning: "confirmed" });
       expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["no remote PLC access", PLC_REMOTE_ACCESS],
+      ["no access to private maintenance records", PRIVATE_RECORDS],
+    ])("%s is left alone with a candidate search running, grounded lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, general: false, manualSearchRunning: "candidate" });
+      expect(v.ok).toBe(true);
+    });
+
+    // The actual #4160 incident text, and its component verbs, must still be
+    // caught — round 2 narrows the OBJECT required, not the verb set.
+    it.each([
+      "I'm unable to browse the web, so I can't look that up.",
+      "I can't browse the internet to find that for you.",
+      "I cannot search the web for this part.",
+      "I don't have internet access, so I can't check that.",
+      "I cannot access the internet to look that up for you.",
+      "I can't look that up online for you.",
+    ])("the real incident denial is still caught: %s", (answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(false);
     });
   });
 });

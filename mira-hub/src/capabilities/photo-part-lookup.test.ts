@@ -126,6 +126,9 @@ describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => 
 
 describe("#4150 owner decision — search only after an exact, one-time confirmation", () => {
   const CANDIDATE = "6ES7214-1AG40-0XB0";
+  // #4193 Codex round 2 F3+F6: a legacy proposal (no `originTurnId`) anchors
+  // its origin to the turn it currently sits on — `previousTurnId` below.
+  const PREV_TURN_ID = "11111111-0000-0000-0000-000000000150";
   const proposed = { kind: "part_search_proposal", candidate: CANDIDATE };
 
   it.each(["AB-1234567 (S/N)", "S.N. AB-1234567", "S/N = AB-1234567", "Serial number is AB-1234567"])(
@@ -140,10 +143,11 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
   });
 
   it("a request only proposes; it never authorizes a search", () => {
-    // #4193 Codex F3: every fresh propose now also mints a stable `id`
-    // (checked precisely elsewhere) — accept any string here.
+    // #4193 Codex round 2 F3+F6: a FRESH propose carries NO origin from the
+    // pure decision — the caller assigns one (this turn's own id) only once
+    // it actually persists the proposal (see route.ts).
     expect(partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] }))
-      .toEqual({ action: "propose", candidate: CANDIDATE, age: 1, id: expect.any(String) });
+      .toEqual({ action: "propose", candidate: CANDIDATE, age: 1 });
   });
 
   it.each([
@@ -156,8 +160,14 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
   });
 
   it("positive control: the exact confirmation after a matching proposal searches that string", () => {
-    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: [proposed] }))
-      .toEqual({ action: "search", candidate: CANDIDATE });
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation(CANDIDATE),
+        candidate: CANDIDATE,
+        previousEvidence: [proposed],
+        previousTurnId: PREV_TURN_ID,
+      }),
+    ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
   });
 
   it("a confirmation with no pending proposal does not search", () => {
@@ -167,15 +177,33 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
 
   it("a confirmation for a different candidate does not search", () => {
     const other = "6ES7214-1AG40-0XB1";
-    expect(partSearchDecision({ message: partSearchConfirmation(other), candidate: CANDIDATE, previousEvidence: [proposed] }).action)
-      .toBe("mismatch");
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation(other),
+        candidate: CANDIDATE,
+        previousEvidence: [proposed],
+        previousTurnId: PREV_TURN_ID,
+      }).action,
+    ).toBe("mismatch");
   });
 
   it("a changed photo candidate invalidates the earlier confirmation", () => {
-    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: "Ni8U-S12-AP6", previousEvidence: [proposed] }).action)
-      .toBe("mismatch");
-    expect(partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: null, previousEvidence: [proposed] }).action)
-      .toBe("mismatch");
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation(CANDIDATE),
+        candidate: "Ni8U-S12-AP6",
+        previousEvidence: [proposed],
+        previousTurnId: PREV_TURN_ID,
+      }).action,
+    ).toBe("mismatch");
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation(CANDIDATE),
+        candidate: null,
+        previousEvidence: [proposed],
+        previousTurnId: PREV_TURN_ID,
+      }).action,
+    ).toBe("mismatch");
   });
 
   it("cancel after a proposal is acknowledged and never searches", () => {
@@ -187,6 +215,15 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
     expect(confirmedPartSearchCandidate(`${partSearchConfirmation(CANDIDATE)} and also the other one`)).toBeNull();
     expect(confirmedPartSearchCandidate(`Don't ${partSearchConfirmation(CANDIDATE)}`)).toBeNull();
   });
+
+  // #4193 Codex round 2 F3: fail closed when the origin cannot be resolved at
+  // all (no `originTurnId` on the proposal AND no known `previousTurnId`) —
+  // a search with nothing to atomically claim against must never run.
+  it("a matching confirmation with no resolvable origin at all does not search", () => {
+    expect(
+      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: [proposed] }).action,
+    ).toBe("mismatch");
+  });
 });
 
 // #4185/#4186: the Pixel walk incident (#4160, c5941295415) — an unquoted or
@@ -195,6 +232,11 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
 // recognised as consent, and a non-matching reply silently dropped the offer.
 describe("#4185/#4186 — tolerant search consent", () => {
   const CANDIDATE = "SS5Y3-DUW01302";
+  // #4193 Codex round 2 F3+F6: these fixtures are TRUE legacy entries (no
+  // `originTurnId`), so every test that expects a search to fire must supply
+  // `previousTurnId` — the turn that fixture currently sits on — exactly as
+  // route.ts always does when a pending proposal exists.
+  const PREV_TURN_ID = "22222222-0000-0000-0000-000000004185";
   const proposed = (age?: number) => [
     { kind: "part_search_proposal", candidate: CANDIDATE, ...(age === undefined ? {} : { age }) },
   ];
@@ -202,22 +244,29 @@ describe("#4185/#4186 — tolerant search consent", () => {
   it("an unquoted confirmation, any case, is accepted", () => {
     expect(confirmedPartSearchCandidate(`search the web for ${CANDIDATE}`)).toBe(CANDIDATE);
     expect(
-      partSearchDecision({ message: `search the web for ${CANDIDATE}`, candidate: CANDIDATE, previousEvidence: proposed() }),
-    ).toEqual({ action: "search", candidate: CANDIDATE });
+      partSearchDecision({
+        message: `search the web for ${CANDIDATE}`,
+        candidate: CANDIDATE,
+        previousEvidence: proposed(),
+        previousTurnId: PREV_TURN_ID,
+      }),
+    ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
   });
 
   it("a curly-quoted confirmation is accepted (pinned control, not a regression)", () => {
     const curly = `Search the web for “${CANDIDATE}”`;
     expect(confirmedPartSearchCandidate(curly)).toBe(CANDIDATE);
-    expect(partSearchDecision({ message: curly, candidate: CANDIDATE, previousEvidence: proposed() }))
-      .toEqual({ action: "search", candidate: CANDIDATE });
+    expect(
+      partSearchDecision({ message: curly, candidate: CANDIDATE, previousEvidence: proposed(), previousTurnId: PREV_TURN_ID }),
+    ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
   });
 
   it.each(["yes", "Yes", "search", "go ahead", "yes search", "yes search."])(
     "a short affirmative right after an offer confirms it: %s",
     (message) => {
-      expect(partSearchDecision({ message, candidate: CANDIDATE, previousEvidence: proposed() }))
-        .toEqual({ action: "search", candidate: CANDIDATE });
+      expect(
+        partSearchDecision({ message, candidate: CANDIDATE, previousEvidence: proposed(), previousTurnId: PREV_TURN_ID }),
+      ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
     },
   );
 
@@ -227,99 +276,156 @@ describe("#4185/#4186 — tolerant search consent", () => {
 
   it("an unquoted confirmation naming a part that was never offered is still refused", () => {
     expect(
-      partSearchDecision({ message: `Search the web for "OTHER-123"`, candidate: CANDIDATE, previousEvidence: proposed() }).action,
+      partSearchDecision({
+        message: `Search the web for "OTHER-123"`,
+        candidate: CANDIDATE,
+        previousEvidence: proposed(),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
     expect(
-      partSearchDecision({ message: `search the web for OTHER-123`, candidate: CANDIDATE, previousEvidence: proposed() }).action,
+      partSearchDecision({
+        message: `search the web for OTHER-123`,
+        candidate: CANDIDATE,
+        previousEvidence: proposed(),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
   });
 
   it("a non-matching reply re-shows the offer instead of expiring it", () => {
-    // #4193 Codex F3: the re-show also carries an `id` forward (a legacy
-    // entry with none mints one — checked precisely elsewhere).
+    // #4193 Codex round 2 F3+F6: the re-show anchors its origin to the turn
+    // the legacy fixture currently sits on (`previousTurnId`).
     expect(
-      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(1) }),
-    ).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, id: expect.any(String) });
+      partSearchDecision({
+        message: "What is the warranty on this?",
+        candidate: CANDIDATE,
+        previousEvidence: proposed(1),
+        previousTurnId: PREV_TURN_ID,
+      }),
+    ).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, originTurnId: PREV_TURN_ID });
   });
 
   it("the offer stays valid for up to 3 subsequent turns — a late confirmation still searches", () => {
     // age:3 means this is the 3rd subsequent turn the offer has survived.
     expect(
-      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: proposed(3) }),
-    ).toEqual({ action: "search", candidate: CANDIDATE });
+      partSearchDecision({
+        message: partSearchConfirmation(CANDIDATE),
+        candidate: CANDIDATE,
+        previousEvidence: proposed(3),
+        previousTurnId: PREV_TURN_ID,
+      }),
+    ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
     expect(
-      partSearchDecision({ message: "yes", candidate: CANDIDATE, previousEvidence: proposed(3) }),
-    ).toEqual({ action: "search", candidate: CANDIDATE });
+      partSearchDecision({ message: "yes", candidate: CANDIDATE, previousEvidence: proposed(3), previousTurnId: PREV_TURN_ID }),
+    ).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: PREV_TURN_ID });
   });
 
   it("the offer does not survive a 4th subsequent turn — neither confirms nor re-shows", () => {
     expect(
-      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: proposed(4) }).action,
+      partSearchDecision({
+        message: partSearchConfirmation(CANDIDATE),
+        candidate: CANDIDATE,
+        previousEvidence: proposed(4),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
     expect(
-      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(4) }),
+      partSearchDecision({
+        message: "What is the warranty on this?",
+        candidate: CANDIDATE,
+        previousEvidence: proposed(4),
+        previousTurnId: PREV_TURN_ID,
+      }),
     ).toEqual({ action: "none" });
   });
 
-  // #4193 Codex F2: the FIRST shipped version re-showed one more time at the
-  // age limit, minting an age: 4 offer that `pendingPartSearchProposal()`
-  // would never again treat as valid — an offer the route rendered as
-  // actionable (a chip, "reply exactly: ...") that the very next turn could
-  // not confirm. The fix stops one turn earlier: no further proposal, just a
-  // plain statement that the offer expired.
+  // #4193 Codex round 1 F2: the FIRST shipped version re-showed one more
+  // time at the age limit, minting an age: 4 offer that
+  // `pendingPartSearchProposal()` would never again treat as valid — an
+  // offer the route rendered as actionable (a chip, "reply exactly: ...")
+  // that the very next turn could not confirm. The fix stops one turn
+  // earlier: no further proposal, just a plain statement that it expired.
   it("a non-matching reply AT the age limit ends the offer instead of re-proposing an unconfirmable one", () => {
     expect(
-      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(3) }),
+      partSearchDecision({
+        message: "What is the warranty on this?",
+        candidate: CANDIDATE,
+        previousEvidence: proposed(3),
+        previousTurnId: PREV_TURN_ID,
+      }),
     ).toEqual({ action: "expired", candidate: CANDIDATE });
   });
 
-  // #4193 Codex F2 + F3: every propose/re-show this function emits must
-  // still be confirmable on the immediately following turn (never minting
-  // an offer the app renders as actionable but the next turn cannot act on),
-  // and every re-show must carry the SAME stable identity forward so the
-  // route's atomic claim (part-search-claim.ts) can recognise two copies of
-  // one logical offer as the same offer.
-  it("every propose/re-show is confirmable on the immediately following turn, under a stable id", () => {
-    // Turn 1: a fresh lookup request mints a stable id.
+  // #4193 Codex round 2 F3+F6: every propose/re-show this function emits
+  // must still be confirmable on the immediately following turn (never
+  // minting an offer the app renders as actionable but the next turn cannot
+  // act on), and every re-show must carry the SAME origin turn forward — NOT
+  // the turn the re-shown COPY happens to live on — so the route's atomic
+  // claim (part-search-claim.ts) locks and marks consumed on one canonical
+  // row no matter which copy a later confirmation reads.
+  it("every propose/re-show is confirmable on the immediately following turn, under one stable origin", () => {
+    // Turn A: a fresh lookup request. No origin yet — the caller (here,
+    // simulating route.ts) assigns one: THIS turn's own id.
+    const ORIGIN = "33333333-0000-0000-0000-00000000000a";
     const fresh = partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] });
-    expect(fresh.action).toBe("propose");
-    if (fresh.action !== "propose") throw new Error("unreachable");
-    expect(typeof fresh.id).toBe("string");
-    expect(fresh.id.length).toBeGreaterThan(0);
+    expect(fresh).toEqual({ action: "propose", candidate: CANDIDATE, age: 1 });
 
-    // Turn 2: an unrelated reply re-shows it — the SAME id, age bumped to 2.
+    // Turn B: an unrelated reply re-shows it. The persisted copy from turn A
+    // already carries `originTurnId: ORIGIN`; the re-show reads it off turn
+    // A (previousTurnId = ORIGIN here, but that's irrelevant — the pending
+    // entry's own originTurnId wins) and persists a NEW copy on turn B.
     const reshown = partSearchDecision({
       message: "What is the warranty on this?",
       candidate: CANDIDATE,
-      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 1, id: fresh.id }],
+      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 1, originTurnId: ORIGIN }],
+      previousTurnId: ORIGIN,
     });
-    expect(reshown).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, id: fresh.id });
+    expect(reshown).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, originTurnId: ORIGIN });
 
-    // Turn 3: confirming the re-shown offer must still work (age 2 <= the
-    // limit of 3), carrying the SAME id forward for the route's claim.
+    // Turn C: confirming the re-shown copy. Critically, `previousTurnId`
+    // here is turn B (where the COPY lives) — a DIFFERENT turn from ORIGIN —
+    // yet the resolved `originTurnId` must still be ORIGIN, because the
+    // pending entry's own `originTurnId` always wins over `previousTurnId`.
+    // This is the exact property that makes claiming correct: the claim
+    // locks turn A regardless of which copy's turn id route.ts last read.
+    const TURN_B = "33333333-0000-0000-0000-00000000000b";
     const confirmed = partSearchDecision({
       message: partSearchConfirmation(CANDIDATE),
       candidate: CANDIDATE,
-      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 2, id: fresh.id }],
+      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 2, originTurnId: ORIGIN }],
+      previousTurnId: TURN_B,
     });
-    expect(confirmed).toEqual({ action: "search", candidate: CANDIDATE, id: fresh.id });
+    expect(confirmed).toEqual({ action: "search", candidate: CANDIDATE, originTurnId: ORIGIN });
   });
 
-  it("a legacy proposal with no id still mints one on re-show, instead of leaving the re-show unidentified", () => {
+  it("a legacy proposal with no origin anchors to the turn it currently sits on, on re-show", () => {
     const reshown = partSearchDecision({
       message: "What is the warranty on this?",
       candidate: CANDIDATE,
       previousEvidence: proposed(1),
+      previousTurnId: PREV_TURN_ID,
     });
-    expect(reshown.action).toBe("propose");
-    if (reshown.action !== "propose") throw new Error("unreachable");
-    expect(typeof reshown.id).toBe("string");
-    expect(reshown.id.length).toBeGreaterThan(0);
+    expect(reshown).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, originTurnId: PREV_TURN_ID });
+  });
+
+  // #4193 Codex round 2 F3: fail closed when the origin cannot be resolved
+  // at all — a search with nothing to atomically claim against must never
+  // run, even when the three-way candidate/maker match otherwise holds.
+  it("a matching confirmation with no resolvable origin at all does not search", () => {
+    expect(
+      partSearchDecision({ message: partSearchConfirmation(CANDIDATE), candidate: CANDIDATE, previousEvidence: proposed() }).action,
+    ).toBe("mismatch");
   });
 
   it("cancelling and confirming both still require the photo to still yield the offered candidate", () => {
     expect(
-      partSearchDecision({ message: "search the web for " + CANDIDATE, candidate: "OTHER-123", previousEvidence: proposed() }).action,
+      partSearchDecision({
+        message: "search the web for " + CANDIDATE,
+        candidate: "OTHER-123",
+        previousEvidence: proposed(),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
   });
 });
@@ -342,38 +448,71 @@ describe("#4150 review r4 F1 — any serial label disables unlabelled extraction
 // sent (part + nullable maker), and a consumed proposal authorizes nothing.
 describe("partSearchDecision — identity binding and one-time use", () => {
   const confirm = 'Search the web for "SS5Y3-DUW01302"';
+  // #4193 Codex round 2 F3+F6: these legacy fixtures carry no `originTurnId`,
+  // so a resolvable search needs `previousTurnId` — the turn they sit on.
+  const PREV_TURN_ID = "44444444-0000-0000-0000-000000004171";
   const proposal = (manufacturer: string | null | undefined) => [
     { kind: "part_search_proposal", candidate: "SS5Y3-DUW01302", ...(manufacturer === undefined ? {} : { manufacturer }) },
   ];
 
   it("searches when part AND maker match the proposal", () => {
     expect(
-      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: proposal("SMC") }),
-    ).toEqual({ action: "search", candidate: "SS5Y3-DUW01302" });
+      partSearchDecision({
+        message: confirm,
+        candidate: "SS5Y3-DUW01302",
+        manufacturer: "SMC",
+        previousEvidence: proposal("SMC"),
+        previousTurnId: PREV_TURN_ID,
+      }),
+    ).toEqual({ action: "search", candidate: "SS5Y3-DUW01302", originTurnId: PREV_TURN_ID });
   });
 
   it("does not search when the maker appeared after a part-only proposal", () => {
     expect(
-      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: proposal(null) }).action,
+      partSearchDecision({
+        message: confirm,
+        candidate: "SS5Y3-DUW01302",
+        manufacturer: "SMC",
+        previousEvidence: proposal(null),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
   });
 
   it("does not search when the maker changed", () => {
     expect(
-      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "FESTO", previousEvidence: proposal("SMC") }).action,
+      partSearchDecision({
+        message: confirm,
+        candidate: "SS5Y3-DUW01302",
+        manufacturer: "FESTO",
+        previousEvidence: proposal("SMC"),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
   });
 
   it("a legacy proposal without a maker field binds a maker-less search only", () => {
     expect(
-      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: null, previousEvidence: proposal(undefined) }).action,
+      partSearchDecision({
+        message: confirm,
+        candidate: "SS5Y3-DUW01302",
+        manufacturer: null,
+        previousEvidence: proposal(undefined),
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("search");
   });
 
   it("a consumed proposal authorizes nothing", () => {
     const consumed = [...proposal("SMC"), { kind: "part_search_proposal_consumed" }];
     expect(
-      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: consumed }).action,
+      partSearchDecision({
+        message: confirm,
+        candidate: "SS5Y3-DUW01302",
+        manufacturer: "SMC",
+        previousEvidence: consumed,
+        previousTurnId: PREV_TURN_ID,
+      }).action,
     ).toBe("mismatch");
   });
 });
