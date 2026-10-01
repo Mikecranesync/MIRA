@@ -313,8 +313,13 @@ function IdentityProposalPart({
     ...(part.catalogNumber ? { catalogNumber: part.catalogNumber } : {}),
   };
   const name = `${part.manufacturer} ${part.model}`;
+  // "confirmed"/"rejected" are terminal — the card has already told the truth
+  // and stays that way. "failed" is NOT terminal (Codex F2, MEDIUM): a
+  // transient network error must leave both actions in place so the
+  // technician can retry (or dismiss) instead of being stuck on a dead card.
+  const settled = outcome === "confirmed" || outcome === "rejected";
   const confirm = () => {
-    if (busy || outcome || !hooks?.onConfirmIdentity) return;
+    if (busy || settled || !hooks?.onConfirmIdentity) return;
     setBusy(true);
     hooks
       .onConfirmIdentity(proposal)
@@ -323,26 +328,28 @@ function IdentityProposalPart({
       .finally(() => setBusy(false));
   };
   const reject = () => {
-    if (busy || outcome) return;
+    if (busy || settled) return;
     hooks?.onRejectIdentity?.(proposal);
     setOutcome("rejected");
   };
   return <Card type="identity_proposal" label="Machine identity" title={`Is this a ${name}?`}>
-    {outcome === null ? <div className="fl-card__actions">
-      <button
-        type="button"
-        aria-busy={busy}
-        disabled={busy || !hooks?.onConfirmIdentity}
-        title={hooks?.onConfirmIdentity ? undefined : "Confirming isn't available on this surface yet"}
-        onClick={confirm}
-      >
-        Use its manuals
-      </button>
-      <button type="button" disabled={busy} onClick={reject}>Not this</button>
-    </div> : outcome === "confirmed" ? <p role="status" className="fl-card__meta">
+    {!settled ? <>
+      {outcome === "failed" ? <p role="alert" className="fl-card__meta">Could not confirm. Try again.</p> : null}
+      <div className="fl-card__actions">
+        <button
+          type="button"
+          aria-busy={busy}
+          disabled={busy || !hooks?.onConfirmIdentity}
+          title={hooks?.onConfirmIdentity ? undefined : "Confirming isn't available on this surface yet"}
+          onClick={confirm}
+        >
+          Use its manuals
+        </button>
+        <button type="button" disabled={busy} onClick={reject}>Not this</button>
+      </div>
+    </> : outcome === "confirmed" ? <p role="status" className="fl-card__meta">
       {result?.message ?? (result?.manualReady ? "Confirmed — its manual is ready to answer from." : "Confirmed.")}
-    </p> : outcome === "rejected" ? <p className="fl-card__meta">Not this machine.</p>
-      : <p role="alert" className="fl-card__meta">Could not confirm. Try again.</p>}
+    </p> : <p className="fl-card__meta">Not this machine.</p>}
   </Card>;
 }
 

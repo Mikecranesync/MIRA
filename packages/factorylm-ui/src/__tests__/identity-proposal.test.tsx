@@ -84,6 +84,45 @@ describe("identity_proposal — the confirm card (#4175)", () => {
     await view.flush();
     expect(view.container.textContent).toContain("Could not confirm. Try again.");
   });
+
+  // Codex F2 (MEDIUM): a failed confirm used to remove BOTH buttons — the
+  // technician had no way to retry or dismiss without remounting the card.
+  it("keeps 'Use its manuals' and 'Not this' available after a failed confirm (retry)", async () => {
+    const view = render({ onConfirmIdentity: async () => { throw new Error("network"); } });
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(view.container.textContent).toContain("Could not confirm. Try again.");
+    expect(view.buttonNamed("Use its manuals")).not.toBeNull();
+    expect(view.buttonNamed("Not this")).not.toBeNull();
+  });
+
+  it("a retry after a failed confirm can succeed", async () => {
+    let calls = 0;
+    const view = render({
+      onConfirmIdentity: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("network");
+        return { manualReady: true, message: "Confirmed — its manual is ready." };
+      },
+    });
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(view.container.textContent).toContain("Could not confirm. Try again.");
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    expect(calls).toBe(2);
+    expect(view.container.textContent).toContain("Confirmed — its manual is ready.");
+    expect(view.buttonNamed("Use its manuals")).toBeNull();
+    expect(view.buttonNamed("Not this")).toBeNull();
+  });
+
+  it("'Not this' still works (dismiss) after a failed confirm", async () => {
+    const view = render({ onConfirmIdentity: async () => { throw new Error("network"); } });
+    view.click(view.buttonNamed("Use its manuals")!);
+    await view.flush();
+    view.click(view.buttonNamed("Not this")!);
+    expect(view.container.textContent).toContain("Not this machine.");
+  });
 });
 
 describe("manual_search_status — searching progress (#4189)", () => {
