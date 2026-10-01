@@ -205,8 +205,12 @@ export async function discoverManual(
     // looked and found nothing". The generic found!==true branch below used
     // to map this to notFound() (serviceAvailable:true), which acquireManualForIdentity
     // then turned into "no_manual_found" — indistinguishable from a genuine
-    // miss. This must read as "could not look".
-    return unavailable(str(body.reason_detail) || UNAVAILABLE);
+    // miss. This must read as "could not look" — but still carry the OEM
+    // request link when the router sent one (every _NO_RESULT-shaped router
+    // response includes oem_request_url; the bare unavailable() default of
+    // null would otherwise silently drop it, same spread pattern as the
+    // notFound() branch below).
+    return { ...unavailable(str(body.reason_detail) || UNAVAILABLE), oemRequestUrl: requestUrl(body) };
   }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;

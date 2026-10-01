@@ -107,6 +107,31 @@ def _used(scope: str, scope_key: str, window_start) -> int | None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Unconfigured global cap (owner decision D4, 2026-09-30) — fail closed, and
+# against a REAL database: confirm the table stays untouched (no row created,
+# no UPDATE attempted) when the reservation never reaches SQL.
+# ---------------------------------------------------------------------------
+
+
+async def test_unconfigured_global_cap_denies_and_writes_nothing(monkeypatch):
+    monkeypatch.delenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raising=False)
+    identity = quota_mod.QuotaIdentity(tenant_id="t-unconfigured", user_id="u-unconfigured")
+    reason = await quota_mod.reserve_provider_query(identity, now=NOW)
+    assert reason == "global_cap_unconfigured"
+    assert _used("user_day", identity.user_key, NOW.date()) is None
+    assert _used("tenant_day", "t-unconfigured", NOW.date()) is None
+    assert _used("global_month", quota_mod.GLOBAL_SCOPE_KEY, NOW.date().replace(day=1)) is None
+
+
+async def test_control_configuring_the_global_cap_restores_the_normal_path(monkeypatch):
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "1000")
+    identity = quota_mod.QuotaIdentity(tenant_id="t-reconfigured", user_id="u-reconfigured")
+    reason = await quota_mod.reserve_provider_query(identity, now=NOW)
+    assert reason == "ok"
+    assert _used("user_day", identity.user_key, NOW.date()) == 1
+
+
 async def test_cap_exactly_reached_then_denied_per_scope(monkeypatch):
     monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "3")
     monkeypatch.setenv("MANUAL_SEARCH_TENANT_DAILY_CAP", "100")
@@ -174,6 +199,7 @@ async def test_rollback_leaves_no_partial_increment_when_one_scope_is_capped(mon
 
 async def test_utc_window_rollover_starts_a_new_row(monkeypatch):
     monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "1")
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "1000")
     identity = quota_mod.QuotaIdentity(tenant_id="t-rollover", user_id="u-rollover")
     day1 = datetime(2026, 9, 30, 23, 59, 0, tzinfo=timezone.utc)
     day2 = datetime(2026, 10, 1, 0, 1, 0, tzinfo=timezone.utc)

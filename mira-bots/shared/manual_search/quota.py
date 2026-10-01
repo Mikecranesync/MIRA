@@ -34,7 +34,6 @@ logger = logging.getLogger("mira.manual_search")
 
 _DEFAULT_USER_DAILY_CAP = 10
 _DEFAULT_TENANT_DAILY_CAP = 50
-_DEFAULT_GLOBAL_MONTHLY_CAP = 3000
 
 # The single system-wide counter's scope_key (migration 103 header).
 GLOBAL_SCOPE_KEY = "*"
@@ -42,7 +41,13 @@ GLOBAL_SCOPE_KEY = "*"
 # Denial reasons reserve_provider_query() may return, in priority order
 # (user -> tenant -> global) when more than one cap is simultaneously at
 # capacity. "ok" (not listed) means the reservation succeeded.
-DENIAL_REASONS = ("user_cap", "tenant_cap", "global_cap", "quota_unavailable")
+DENIAL_REASONS = (
+    "user_cap",
+    "tenant_cap",
+    "global_cap",
+    "global_cap_unconfigured",
+    "quota_unavailable",
+)
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -62,8 +67,25 @@ def tenant_daily_cap() -> int:
     return _positive_int_env("MANUAL_SEARCH_TENANT_DAILY_CAP", _DEFAULT_TENANT_DAILY_CAP)
 
 
-def global_monthly_cap() -> int:
-    return _positive_int_env("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", _DEFAULT_GLOBAL_MONTHLY_CAP)
+def global_monthly_cap() -> int | None:
+    """The system-wide monthly ceiling, or None when unconfigured.
+
+    Owner decision (D4, 2026-09-30): the per-user (10/day) and per-tenant
+    (50/day) caps are accepted, but the global monthly $ ceiling is NOT yet
+    decided. Unlike the other two caps, this one has NO fallback default —
+    unset, blank, invalid, or <=0 all mean "unconfigured", and
+    reserve_provider_query() fails closed on that (reason
+    "global_cap_unconfigured") rather than ever inventing a number. Set this
+    only once the owner has decided the monthly ceiling.
+    """
+    raw = os.environ.get("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "").strip()
+    if not raw:
+        return None
+    try:
+        n = int(raw)
+    except ValueError:
+        return None
+    return n if n > 0 else None
 
 
 @dataclass(frozen=True)
@@ -123,6 +145,15 @@ def _windows(now: datetime) -> tuple[date, date]:
 def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
     """The synchronous (blocking) Postgres round trip. Never raises — any
     import/connection/SQL error maps to "quota_unavailable" (fail closed)."""
+    # Checked FIRST, before any I/O: an unconfigured global cap means there is
+    # no number to reserve against, so no query is sent and no database
+    # connection is even attempted (owner decision D4 pending — see
+    # global_monthly_cap()'s docstring).
+    global_cap = global_monthly_cap()
+    if global_cap is None:
+        logger.warning("MANUAL_SEARCH_QUOTA_GLOBAL_CAP_UNCONFIGURED")
+        return "global_cap_unconfigured"
+
     db_url = os.environ.get("NEON_DATABASE_URL", "").strip()
     if not db_url:
         logger.warning("MANUAL_SEARCH_QUOTA_UNAVAILABLE reason=no_database_url")
@@ -141,7 +172,7 @@ def _reserve_sync(identity: QuotaIdentity, now: datetime) -> str:
     rows: list[tuple[str, str, date, int]] = [
         ("user_day", identity.user_key, today, user_daily_cap()),
         ("tenant_day", identity.tenant_id, today, tenant_daily_cap()),
-        ("global_month", GLOBAL_SCOPE_KEY, month_start, global_monthly_cap()),
+        ("global_month", GLOBAL_SCOPE_KEY, month_start, global_cap),
     ]
     # Fixed lock order (scope, scope_key, window_start) — every reservation
     # (any tenant, any user) takes these three locks in the SAME order, so two
@@ -215,8 +246,9 @@ async def reserve_provider_query(identity: QuotaIdentity, *, now: datetime | Non
     """Reserve ONE provider query against the user/tenant/global caps.
 
     Returns "ok" or a denial reason: "user_cap" | "tenant_cap" | "global_cap"
-    | "quota_unavailable". psycopg2 is synchronous, so the round trip runs in
-    a thread (asyncio.to_thread) — same pattern as wo_evidence.py.
+    | "global_cap_unconfigured" | "quota_unavailable". psycopg2 is
+    synchronous, so the round trip runs in a thread (asyncio.to_thread) —
+    same pattern as wo_evidence.py.
     """
     moment = now or datetime.now(timezone.utc)
     return await asyncio.to_thread(_reserve_sync, identity, moment)

@@ -255,6 +255,26 @@ describe("discoverManual — honest degradation", () => {
     expect(res.quotaExceeded).toBe(false);
   });
 
+  it("preserves oemRequestUrl on a search_unavailable response (the router still sends one with every miss shape)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            found: false,
+            candidate: null,
+            reason: "search_unavailable",
+            oem_request_url: "https://www.harringtonhoists.com/owners-manual-request",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.oemRequestUrl).toBe("https://www.harringtonhoists.com/owners-manual-request");
+  });
+
   it("never calls the service without a manufacturer and a model/catalog", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

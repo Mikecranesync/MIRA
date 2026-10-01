@@ -105,13 +105,26 @@ describe("startManualAcquisition", () => {
     });
     const claimQ = db.queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
     expect(claimQ.params).toEqual(["t", "nb", "SMC|VQ1000FPGC6C6D|", 10, 30, 3]);
-    expect(claimQ.sql).toMatch(/state' IN \('search_unavailable', 'search_limit_reached'\)/);
-    // #4160 S4: anchored to the WHERE-clause retry predicate specifically (not
-    // just "appears somewhere in the query") — a quota-cap denial is retryable
-    // the SAME way a transient search-unavailable outcome is, never cached as
-    // a permanent miss (PRD R5).
+    expect(claimQ.sql).toMatch(/state' = 'search_unavailable'/);
+    // #4160 S4 — anchored to the specific WHERE-clause predicates (not just
+    // "appears somewhere in the query"):
+    //  - search_unavailable keeps its existing 30-min/3-retry backoff.
+    //  - search_limit_reached (a quota-cap denial) is retried once a NEW UTC
+    //    day starts since it finished, and is NOT counted against the
+    //    retries budget — a cap denial costs no Serper query and must never
+    //    become a permanently-cached miss (PRD R5).
     expect(claimQ.sql).toMatch(
-      /OR \(manual_acquisition->>'state' IN \('search_unavailable', 'search_limit_reached'\)\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
+      /OR \(manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) < \$6/,
+    );
+    expect(claimQ.sql).toMatch(
+      /OR \(manual_acquisition->>'state' = 'search_limit_reached'\s*\n\s*AND COALESCE\(\(manual_acquisition->>'finished_at'\)::timestamptz, '-infinity'\)\s*\n\s*< date_trunc\('day', now\(\)\)\)/,
+    );
+    // The retries counter itself must NOT increment for search_limit_reached
+    // (only for search_unavailable) — else a quota denial would exhaust
+    // MAX_AUTOMATIC_RETRIES in ~90 minutes while the real daily/monthly
+    // window is still far from reset.
+    expect(claimQ.sql).toMatch(
+      /'retries', CASE WHEN manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'/,
     );
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     const rec = JSON.parse(finishQ.params[2] as string) as AcquisitionRecord;

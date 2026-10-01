@@ -23,6 +23,18 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 import shared.manual_search.quota as quota_mod  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _global_cap_configured_by_default(monkeypatch):
+    """Owner decision D4 (2026-09-30): MANUAL_SEARCH_GLOBAL_MONTHLY_CAP has NO
+    default — unset/blank/invalid/<=0 all fail closed ("global_cap_unconfigured",
+    see the dedicated tests below). Most tests in this file are about the
+    OTHER caps or the SQL mechanics, not the global-cap-unconfigured path
+    itself, so give them a safe configured value here; a test that needs a
+    specific value (or needs it unset) overrides/removes it in its own body —
+    monkeypatch's last write for a given test wins."""
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "100000")
+
+
 # ---------------------------------------------------------------------------
 # Env-var caps — mirror search.py's max_provider_queries() contract
 # ---------------------------------------------------------------------------
@@ -34,22 +46,34 @@ def test_default_caps(monkeypatch):
     monkeypatch.delenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raising=False)
     assert quota_mod.user_daily_cap() == 10
     assert quota_mod.tenant_daily_cap() == 50
-    assert quota_mod.global_monthly_cap() == 3000
+    # No default for the global cap (D4 not yet decided) — None, not a number.
+    assert quota_mod.global_monthly_cap() is None
 
 
 @pytest.mark.parametrize("raw", ["0", "-3", "lots", ""])
 def test_invalid_or_nonpositive_caps_fall_back_to_default(monkeypatch, raw):
     monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", raw)
     monkeypatch.setenv("MANUAL_SEARCH_TENANT_DAILY_CAP", raw)
-    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raw)
     assert quota_mod.user_daily_cap() == 10
     assert quota_mod.tenant_daily_cap() == 50
-    assert quota_mod.global_monthly_cap() == 3000
+
+
+@pytest.mark.parametrize("raw", ["0", "-3", "lots", ""])
+def test_invalid_or_nonpositive_global_cap_is_unconfigured_not_a_default(monkeypatch, raw):
+    """The global cap has no fallback: an invalid/non-positive value is
+    treated exactly like unset (None), never silently defaulted."""
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raw)
+    assert quota_mod.global_monthly_cap() is None
 
 
 def test_a_valid_override_is_honored(monkeypatch):
     monkeypatch.setenv("MANUAL_SEARCH_USER_DAILY_CAP", "7")
     assert quota_mod.user_daily_cap() == 7
+
+
+def test_a_valid_global_cap_override_is_honored(monkeypatch):
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "42")
+    assert quota_mod.global_monthly_cap() == 42
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +269,48 @@ def _install_fake_psycopg2(monkeypatch, store, connect_spy=None):
 
 
 NOW = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# Unconfigured global cap — fail closed, no DB connection, no query sent
+# (owner decision D4, 2026-09-30: the monthly $ ceiling is not yet decided)
+# ---------------------------------------------------------------------------
+
+
+async def test_unconfigured_global_cap_denies_without_touching_the_database(monkeypatch):
+    monkeypatch.delenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", raising=False)
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    calls: list[tuple] = []
+    import types
+
+    fake_psycopg2 = types.ModuleType("psycopg2")
+    fake_psycopg2.connect = lambda *a, **k: calls.append((a, k)) or _FakeConn({})
+    monkeypatch.setitem(sys.modules, "psycopg2", fake_psycopg2)
+
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    reason = await quota_mod.reserve_provider_query(identity, now=NOW)
+    assert reason == "global_cap_unconfigured"
+    assert calls == [], "an unconfigured global cap must never reach psycopg2.connect"
+
+
+async def test_blank_global_cap_is_also_unconfigured(monkeypatch):
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "   ")
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    assert await quota_mod.reserve_provider_query(identity, now=NOW) == "global_cap_unconfigured"
+
+
+async def test_control_a_configured_global_cap_takes_the_normal_path(monkeypatch):
+    """Positive control: once the global cap IS configured, reservation
+    proceeds normally — the unconfigured check does not misfire when it
+    shouldn't."""
+    monkeypatch.setenv("MANUAL_SEARCH_GLOBAL_MONTHLY_CAP", "5")
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://fake/db")
+    store: dict = {}
+    _install_fake_psycopg2(monkeypatch, store)
+    identity = quota_mod.QuotaIdentity(tenant_id="t1", user_id="u1")
+    reason = await quota_mod.reserve_provider_query(identity, now=NOW)
+    assert reason == "ok"
+    assert store[("global_month", quota_mod.GLOBAL_SCOPE_KEY, NOW.date().replace(day=1))] == 1
 
 
 async def test_all_three_counters_under_cap_reserves_ok(monkeypatch):

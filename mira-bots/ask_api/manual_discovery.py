@@ -60,6 +60,14 @@ _QUOTA_DENIAL_DETAIL = {
     "tenant_cap": "Daily manual-search limit reached for this organization.",
     "global_cap": "Monthly manual-search limit reached system-wide.",
 }
+# Defensive allow-list, not a derived set: only an ACTUAL cap-at-capacity
+# denial is "quota_exceeded". Any other budget.quota_denied value — today
+# that's "quota_unavailable" (DB/env problem) and "no_identity" (should be
+# structurally unreachable here since this route always opens
+# provider_query_quota() with a validated identity, but a future regression
+# that removes that wrapper must degrade to "search_unavailable", never a
+# blank-detail "quota_exceeded") — maps to the infra-miss reason instead.
+_QUOTA_CAP_REASONS = frozenset(_QUOTA_DENIAL_DETAIL)
 
 
 class ManualSearchRequest(BaseModel):
@@ -229,11 +237,14 @@ async def manual_discovery_search(
     if candidate is None and budget.quota_denied is not None:
         # A cap denial must NEVER look like "no manual exists" (PRD R5).
         result = _NO_RESULT.copy()
-        if budget.quota_denied == "quota_unavailable":
-            result["reason"] = "search_unavailable"
-        else:
+        if budget.quota_denied in _QUOTA_CAP_REASONS:
             result["reason"] = "quota_exceeded"
-            result["reason_detail"] = _QUOTA_DENIAL_DETAIL.get(budget.quota_denied, "")
+            result["reason_detail"] = _QUOTA_DENIAL_DETAIL[budget.quota_denied]
+        else:
+            # "quota_unavailable" (DB/env problem) and anything else
+            # (including "no_identity", which should be unreachable here —
+            # see the allow-list comment above) are an infra miss, not a cap.
+            result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
         return result
 

@@ -526,6 +526,55 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
   });
 
+  // #4160 S4 — a quota-cap denial must never look like "no manual exists"
+  // (PRD R5), and the Hub must pass the caller's identity through to the
+  // search so the router can even evaluate the cap in the first place.
+  it("#4160 S4: discovery.quotaExceeded maps to status search_limit_reached, not no_manual_found", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: true,
+      found: false,
+      candidate: null,
+      validated: false,
+      isDirectPdf: false,
+      oemHost: false,
+      trustedDistributorHost: false,
+      reason: "Daily manual-search limit reached for this user.",
+      quotaExceeded: true,
+      oemRequestUrl: null,
+    });
+    const out = await acquireManualForIdentity(acquireInput);
+    expect(out.status).toBe("search_limit_reached");
+    expect(out.payload.message).toBe("Daily manual-search limit reached for this user.");
+  });
+
+  it("control: quotaExceeded:false with no candidate still maps to no_manual_found", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: true,
+      found: false,
+      candidate: null,
+      validated: false,
+      isDirectPdf: false,
+      oemHost: false,
+      trustedDistributorHost: false,
+      reason: "no official manual found",
+      quotaExceeded: false,
+      oemRequestUrl: null,
+    });
+    const out = await acquireManualForIdentity(acquireInput);
+    expect(out.status).toBe("no_manual_found");
+  });
+
+  it("#4160 S4: passes the caller's identity through to discoverManual as the second argument", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    await acquireManualForIdentity(acquireInput);
+    expect(discoverManual).toHaveBeenCalledWith(
+      expect.objectContaining({ manufacturer: "Allen-Bradley", model: "525" }),
+      { tenantId: TENANT_ID, userId: "u1" },
+    );
+  });
+
   it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
