@@ -29,15 +29,58 @@ const DICTIONARY_MAKERS = new Set(["sick", "banner", "parker", "eaton", "emerson
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** How far (in words, same sentence) a TYPED dictionary-word maker may sit
+ *  before the part code it names ("Banner Q4X sensor, part Q4XTBLAF300-Q8"). */
+const TYPED_MAKER_MAX_GAP_WORDS = 4;
+
+/** Words allowed between a typed dictionary-word maker and its part code. */
+const TYPED_MAKER_GAP_WORDS = new Set([
+  "part", "pn", "p/n", "model", "series", "cat", "catalog", "no", "number", "type", "a", "an", "the",
+  "sensor", "sensors", "photo", "eye", "photoeye", "photocell", "prox", "proximity", "switch", "valve",
+  "valves", "cylinder", "regulator", "manifold", "fitting", "relay", "drive", "vfd", "inverter", "motor",
+  "gearmotor", "gearbox", "encoder", "controller", "plc", "module", "hmi", "panel", "pump", "actuator",
+  "light", "curtain", "breaker", "contactor", "starter", "supply", "transmitter", "gauge", "filter",
+  "safety", "pneumatic", "hydraulic",
+]);
+
+/** #4160 gate NO-GO: in a technician's TYPED text a dictionary-word maker
+ *  ("Banner", "Sick") counts when it is capitalised and the part code follows
+ *  in the same sentence within a few words — the way people write a model,
+ *  not the way a label prints one. Lowercase never counts ("a banner"). */
+function typedMakerNamesPart(text: string, matched: string, matchIndex: number, part: string): boolean {
+  if (!/^[A-Z]/.test(matched)) return false;
+  const after = text.slice(matchIndex + matched.length);
+  const at = after.toUpperCase().indexOf(part.toUpperCase());
+  if (at < 0) return false;
+  const gap = after.slice(0, at);
+  if (/[.!?\n]/.test(gap)) return false;
+  const words = gap.split(/[\s,;:()]+/).filter(Boolean);
+  if (words.length > TYPED_MAKER_MAX_GAP_WORDS) return false;
+  // Codex #4184 F1: only a maker-to-part phrase may sit between them — an
+  // equipment word ("valve", "sensor", "part") or a code-like token with a
+  // digit (the family, "Q4X"). Anything else ("Sick of this …", "Banner is
+  // wrong on …") means the word is being used as an ordinary word.
+  return words.every((w) => /\d/.test(w) || TYPED_MAKER_GAP_WORDS.has(w.toLowerCase().replace(/[.#]$/, "")));
+}
+
 /** Every maker group (the OEM table's first domain) named in `text`, mapped to the
- *  longest matched name. Aliases of one maker share a group. */
-function makerGroups(text: string): Map<string, string> {
+ *  longest matched name. Aliases of one maker share a group. `typedPart`: the
+ *  text is the technician's typed message and this is the part it names, which
+ *  enables the typed-text rule for dictionary-word makers above. */
+function makerGroups(text: string, typedPart?: string, loose = false): Map<string, string> {
   const hits = new Map<string, string>(); // group (first domain) -> longest matched name
   for (const { name, domains } of oemMakerTable()) {
     const body = escape(name).replace(/\\-| /g, "[\\s-]+");
     const re = new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "gi");
     const dictionary = DICTIONARY_MAKERS.has(name);
-    const named = [...text.matchAll(re)].some((m) => !dictionary || m[0] === m[0].toUpperCase());
+    const named = [...text.matchAll(re)].some(
+      (m) =>
+        !dictionary ||
+        m[0] === m[0].toUpperCase() ||
+        // `loose` (ambiguity check only): any capitalised mention counts.
+        (loose && /^[A-Z]/.test(m[0])) ||
+        (typedPart !== undefined && typedMakerNamesPart(text, m[0], m.index ?? 0, typedPart)),
+    );
     if (!named) continue;
     const group = domains[0] ?? name;
     const prior = hits.get(group);
@@ -48,9 +91,15 @@ function makerGroups(text: string): Map<string, string> {
 
 /** The maker named in `text`, upper-cased as printed on a label, or null when
  *  none or more than one distinct maker is named. */
-export function makerFromText(text: string): string | null {
-  const hits = makerGroups(text);
+export function makerFromText(text: string, typedPart?: string): string | null {
+  const hits = makerGroups(text, typedPart);
   if (hits.size !== 1) return null;
+  // Codex #4184 F3: in TYPED text, any OTHER maker the technician capitalised
+  // ("Sick or Banner Q4X…") makes the choice ambiguous — never pick one.
+  if (typedPart !== undefined) {
+    const [chosen] = hits.keys();
+    if ([...makerGroups(text, undefined, true).keys()].some((g) => g !== chosen)) return null;
+  }
   return [...hits.values()][0].toUpperCase();
 }
 
@@ -58,8 +107,10 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
   const fromPhoto = unambiguousPartNumber(observation);
   const part = fromPhoto ?? (typed ? unambiguousPartNumber(typed) : null);
   if (!part) return null;
-  const own = makerFromText(fromPhoto ? observation : typed);
-  const other = makerFromText(fromPhoto ? typed : observation);
+  // The typed text gets the typed-maker rule (#4160 gate); a label keeps the
+  // capitals-only rule for dictionary-word makers.
+  const own = fromPhoto ? makerFromText(observation) : makerFromText(typed, part);
+  const other = fromPhoto ? makerFromText(typed, part) : makerFromText(observation);
   const manufacturer = own && other && own !== other ? null : (own ?? other);
   return { manufacturer, part };
 }
@@ -109,7 +160,12 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());
-  const named = texts.flatMap((t) => [...makerGroups(t).keys()]);
+  // Codex #4184 F3: the typed text is read loosely (any capitalised maker
+  // word), so coordinated alternatives ("Sick or Banner") are a contradiction.
+  const named = [
+    ...(photoText ? [...makerGroups(photoText).keys()] : []),
+    ...(typed ? [...makerGroups(typed, undefined, true).keys()] : []),
+  ];
   if (named.some((g) => !proposed.has(g))) return false;
   return namesOnlyThisMachine(texts.join("\n"), part);
 }

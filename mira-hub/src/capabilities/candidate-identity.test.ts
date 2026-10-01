@@ -205,3 +205,55 @@ describe("isSafeCandidateSearchIdentity", () => {
     expect(isSafeCandidateSearchIdentity("Siemens TP700 Comfort 6AV2124-0GC01-0AX0", "", "TP700", "Siemens")).toBe(false);
   });
 });
+
+// #4160 gate NO-GO: "Typed maker+model doesn't trigger the search". Root cause:
+// a maker whose name is also an English word (Banner, Sick, Parker, …) counted
+// only in ALL CAPS — right for a printed LABEL, wrong for a technician TYPING
+// "Banner Q4XTBLAF300-Q8". In typed text such a maker now counts when it is
+// capitalised AND the part code follows within a few words.
+describe("#4160 gate — typed dictionary-word makers next to a part code", () => {
+  it.each([
+    ["I need the manual for a Banner Q4XTBLAF300-Q8", "BANNER", "Q4XTBLAF300-Q8"],
+    ["manual for my Sick WL12-3P2431 photo eye", "SICK", "WL12-3P2431"],
+    ["Parker valve D1VW-001CNJW manual please", "PARKER", "D1VW-001CNJW"],
+  ])("%s → %s / %s", (typed, maker, part) => {
+    expect(extractCandidateIdentity("", typed)).toEqual({ manufacturer: maker, part });
+    expect(isSafeCandidateSearchIdentity("", typed, part, maker)).toBe(true);
+  });
+
+  it.each([
+    ["a banner Q4XTBLAF300-Q8 manual", "lowercase is an ordinary word"],
+    ["Sick of this sensor. Need the manual for Q4XTBLAF300-Q8", "the word is far from the part code"],
+    ["Sick. Manual for Q4XTBLAF300-Q8", "a sentence ends between the word and the part code"],
+    ["Sick of this Q4XTBLAF300-Q8, need the manual", "Codex #4184 F1: an ordinary word sits between them"],
+    ["Banner is wrong on the Q4XTBLAF300-Q8 manual", "a verb sits between them"],
+    ["Manual for Sick or Banner Q4XTBLAF300-Q8", "Codex #4184 F3: two makers named as alternatives"],
+    ["Manual for Banner or Sick Q4XTBLAF300-Q8", "Codex #4184 F3: reversed order"],
+    ["Banner at the gate fell down, so I need the long datasheet for the old Q4XTBLAF300-Q8 again", "more than a few words away"],
+  ])("control: %s → no maker (%s)", (typed) => {
+    expect(extractCandidateIdentity("", typed)?.manufacturer ?? null).toBeNull();
+  });
+
+  it("Codex #4184 F3: the safety gate also declines coordinated typed makers", () => {
+    expect(isSafeCandidateSearchIdentity("", "Manual for Sick or Banner Q4XTBLAF300-Q8", "Q4XTBLAF300-Q8", "BANNER")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("", "Manual for Banner or Sick Q4XTBLAF300-Q8", "Q4XTBLAF300-Q8", "SICK")).toBe(false);
+  });
+
+  it("known limit (unchanged safety gate): naming the family AND the part still declines the automatic search", () => {
+    // The maker is now read, but namesOnlyThisMachine (the strict multi-machine
+    // gate, owner-settled in #4172) does not treat "Q4X" and "Q4XTBLAF300-Q8"
+    // as one machine, so the turn fails closed — no automatic search.
+    const typed = "Find the manual for the Banner Q4X sensor, part Q4XTBLAF300-Q8";
+    expect(extractCandidateIdentity("", typed)).toEqual({ manufacturer: "BANNER", part: "Q4XTBLAF300-Q8" });
+    expect(isSafeCandidateSearchIdentity("", typed, "Q4XTBLAF300-Q8", "BANNER")).toBe(false);
+  });
+
+  it("control: a printed LABEL still needs capitals — the photo rule is unchanged", () => {
+    expect(extractCandidateIdentity("Banner Q4XTBLAF300-Q8", "")?.manufacturer ?? null).toBeNull();
+    expect(extractCandidateIdentity("BANNER Q4XTBLAF300-Q8", "")).toEqual({ manufacturer: "BANNER", part: "Q4XTBLAF300-Q8" });
+  });
+
+  it("control: makerFromText (used for label text) is unchanged", () => {
+    expect(makerFromText("Banner Q4XTBLAF300-Q8")).toBeNull();
+  });
+});
