@@ -1088,10 +1088,43 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
 // offered (a candidate acquisition, unconfirmed) or running (confirmed). Both
 // lanes, unconditional on `refused`: a false capability claim is wrong
 // whether or not the rest of the turn also reads as a refusal.
+//
+// #4193 Codex review F1: the first shipped version matched on the bare verb
+// phrase alone, so it also discarded a real, correct maintenance answer —
+// "Contact the manufacturer for warranty service" (an ordinary escalation
+// instruction, nothing to do with MIRA's own browsing) and "The machine does
+// not have internet access" (a statement about the MACHINE, not about MIRA).
+// Both are now excluded structurally, not by a wider keyword list:
+//
+//   - CAPABILITY_DENIAL only fires on MIRA's OWN first-person capability
+//     claim — the subject must be "I" (optionally "I'm"/"I am"), immediately
+//     followed by the denial verb. "The machine does not have internet
+//     access" has no "I" subject at all, so it can never match, whatever verb
+//     tense follows.
+//   - CONTACT_MAKER_DEFLECTION only fires when the deflection is about
+//     OBTAINING THE MANUAL/DOCUMENT itself: the matched phrase must be
+//     followed, within the same sentence, by a document word (manual,
+//     documentation, datasheet, spec sheet, drawing, print, wiring diagram).
+//     "Contact the manufacturer for warranty service" names no document word
+//     before the sentence ends, so it is left alone; "contact SMC support for
+//     the official documentation" is still caught.
 const CAPABILITY_DENIAL =
-  /\bunable to browse\b|\bcan(?:not|'t|’t) browse\b|\bcan(?:not|'t|’t) search the web\b|\b(?:don'?t|doesn'?t|do not|does not) have internet access\b/i;
-const CONTACT_MAKER_DEFLECTION =
-  /\bcontact the manufacturer\b|\bcontact\s+(?:the\s+)?[\w.&'-]+(?:\s+[\w.&'-]+){0,2}\s+support\b|\bcheck\s+(?:their|its)\s+official\s+website\b/i;
+  /\bI(?:'m|’m| am)?\s+(?:unable to|can(?:not|'t|’t))\s+(?:browse|search|access)(?:\s+the\s+(?:web|internet))?\b|\bI\s+(?:don'?t|don’t|do not|does not)\s+have\s+(?:internet|web)\s+access\b/i;
+// A document/manual word that must appear SOMEWHERE in the rest of the
+// sentence for a "contact the maker" / "check their website" phrase to count
+// as a deflection about the manual — never crossing a sentence boundary
+// (the `(?!\.)` guard), so "Contact the manufacturer for warranty service."
+// cannot reach forward into an unrelated later sentence that happens to
+// mention a manual.
+const DEFLECTION_DOC_WORD_SRC =
+  "manuals?|documentation|datasheets?|spec(?:ification)?\\s*sheets?|drawings?|prints?|wiring\\s+diagrams?";
+const CONTACT_MAKER_DEFLECTION = new RegExp(
+  "\\bcontact\\s+(?:the\\s+)?(?:manufacturer|[\\w.&'-]+(?:\\s+[\\w.&'-]+){0,2}\\s+support)\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)` +
+    "|\\bcheck\\s+(?:their|its)\\s+official\\s+website\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)`,
+  "i",
+);
 
 function falseCapabilityClaim(text: string): string | null {
   const m = CAPABILITY_DENIAL.exec(text) ?? CONTACT_MAKER_DEFLECTION.exec(text);

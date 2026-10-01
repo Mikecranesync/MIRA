@@ -408,7 +408,8 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
     // The proposal binds the whole identity it would send (#4171 F4): no maker here.
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1 });
+    // #4193 Codex F3: a fresh proposal also carries a stable `id`.
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 1, id: expect.any(String) });
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
     expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
@@ -489,7 +490,8 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
     expect(String(f.find((x) => x.kind === "status")?.message)).toContain(`Search the web for "${PART}"`);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2 });
+    // #4193 Codex F3: the re-show mints a stable `id` (the original had none).
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, id: expect.any(String) });
   });
 
   it("#4186: the offer stays valid through the 3rd subsequent turn", async () => {
@@ -511,6 +513,29 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     }] as never);
     await ask(`Search the web for "${PART}"`);
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  // #4193 Codex F2: at the age limit, a non-matching reply must say plainly
+  // that the offer expired — NOT re-show it one more time (the first shipped
+  // version minted an age: 4 offer here, rendered with a chip and "reply
+  // exactly" instructions that the very next turn could never confirm).
+  it("#4193 F2: a non-matching reply AT the age limit says the offer expired, with no chip", async () => {
+    domainMock.listTurns.mockResolvedValueOnce([{
+      id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
+      answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 3 }],
+      basis: null, createdAt: "2026-09-30T00:00:00Z", ownerUserId: "u1", sharedLegacy: false,
+    }] as never);
+    const f = await ask("What is the warranty on this?");
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    const status = f.find((x) => x.kind === "status");
+    expect(String(status?.message)).toContain("expired");
+    expect(String(status?.message)).not.toContain("Search the web for");
+    // No followups frame: nothing left to confirm or cancel.
+    expect(f.find((x) => x.kind === "followups")).toBeUndefined();
+    const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
+    expect(recorded.evidence.some((e: unknown) => (e as { kind?: unknown }).kind === "part_search_proposal")).toBe(false);
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "expired", searched: false });
   });
 
   it("#4185: an unquoted confirmation naming a part that was never offered is still refused (mismatch, no serial/asset-guard regression)", async () => {
@@ -953,6 +978,35 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     const f = await ask(`Search the web for "${PART}"`);
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
     expect(String(f.find((x) => x.kind === "status")?.message)).toContain("already used");
+  });
+
+  // #4193 Codex F3: the claim is keyed on the offer's stable `proposalId`,
+  // not only the turn row it lives on — otherwise a re-shown copy (same id,
+  // new turn) could claim independently of the original. A legacy proposal
+  // with no `id` still claims (falling back to turn-id-only), confirming the
+  // widened claim call never breaks the pre-existing behaviour.
+  it("#4193 F3: a legacy proposal with no id still claims by turn id alone", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask(`Search the web for "${PART}"`);
+    expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1", proposalId: null }),
+    );
+  });
+
+  it("#4193 F3: a re-shown proposal's stable id is threaded into the claim call", async () => {
+    const PROPOSAL_ID = "proposal-stable-id-xyz";
+    domainMock.listTurns.mockResolvedValueOnce([{
+      id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
+      answerText: "proposal",
+      evidence: [{ kind: "part_search_proposal", candidate: PART, manufacturer: null, age: 2, id: PROPOSAL_ID }],
+      basis: null, createdAt: "2026-09-30T00:00:00Z", ownerUserId: "u1", sharedLegacy: false,
+    }] as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask(`Search the web for "${PART}"`);
+    expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1", proposalId: PROPOSAL_ID }),
+    );
   });
 
   it("F1: a quota refusal says the limit stopped it and records no completed search", async () => {

@@ -2127,7 +2127,7 @@ async function handleChatTurn(
       })
     : { action: "none" };
   let photoPartLookup: {
-    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable" | "expired";
     searched: boolean;
     part_number: string | null;
     found: boolean;
@@ -2151,7 +2151,24 @@ async function handleChatTurn(
       found: false,
       candidate_host: null,
       message: `I can search the web for a manual using only the exact label text \"${c}\"${maker ? ` and the maker name \"${maker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
-      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age },
+      // #4193 Codex F3: carry the offer's stable id forward unchanged on a
+      // re-show so a confirmation against either copy claims the SAME
+      // underlying identity (see part-search-claim.ts).
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age, id: partSearch.id },
+    };
+  } else if (partSearch.action === "expired") {
+    // #4193 Codex F2: one more re-show would have minted an offer the very
+    // next turn could never confirm. Say plainly that it expired, with no
+    // chip and no "reply exactly" instructions — `proposal: null` means no
+    // followups frame is emitted below and nothing new is persisted to act on.
+    photoPartLookup = {
+      action: "expired",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: `That search offer has expired. Ask me again to look up the manual for \"${partSearch.candidate}\" and I'll show you exactly what would be sent before searching.`,
+      proposal: null,
     };
   } else if (partSearch.action === "cancelled") {
     photoPartLookup = {
@@ -2175,8 +2192,13 @@ async function handleChatTurn(
     };
   } else if (partSearch.action === "search") {
     const confirmedPart = partSearch.candidate;
-    // One proposal authorizes ONE search (#4171 Codex F3): spend it atomically
-    // BEFORE any egress. A racing or retried confirmation finds it spent.
+    // One proposal authorizes ONE search (#4171 Codex F3; widened #4193 Codex
+    // F3): spend it atomically BEFORE any egress, keyed on the offer's
+    // STABLE id (not just the turn row it lives on) — a re-show persists a
+    // copy of the same logical offer onto a NEW turn, and the id is what
+    // lets the claim recognise "this is the same offer that was already
+    // consumed" even when the confirmation lands on that copy instead of the
+    // original turn. A racing or retried confirmation finds it spent either way.
     const claimed =
       previousTurnId !== null && ctx.userId
         ? await claimPartSearchProposal({
@@ -2184,6 +2206,7 @@ async function handleChatTurn(
             notebookId,
             proposalTurnId: previousTurnId,
             ownerUserId: ctx.userId,
+            proposalId: partSearch.id ?? null,
           })
         : false;
     // Only the confirmed string leaves: no photo, chat or notebook text.

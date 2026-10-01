@@ -156,6 +156,15 @@ export type PartSearchProposalEntry = {
    *  survived, counting the turn it was first proposed on as 1. Absent on a
    *  legacy entry, treated the same as 1. */
   age?: number;
+  /** #4193 Codex F3: a stable identity for this logical offer, minted once
+   *  when it is first proposed and carried UNCHANGED through every re-show
+   *  copy (a re-show persists a NEW turn row with a copy of the proposal, so
+   *  the turn id alone can no longer identify "this offer" once it has been
+   *  re-shown). Claiming is keyed on this id, not on whichever turn row
+   *  happens to hold the copy that gets confirmed — see
+   *  `part-search-claim.ts`. Absent on a legacy entry; such an entry falls
+   *  back to the turn-id-only claim it always had. */
+  id?: string;
 };
 /** Marker appended to the proposal's own turn when a confirmation spends it
  *  (atomically, before any search) — a proposal authorizes ONE search (F3). */
@@ -192,10 +201,17 @@ export function isPartSearchProposal(entry: unknown): entry is PartSearchProposa
 
 export type PartSearchDecision =
   | { action: "none" }
-  | { action: "propose"; candidate: string; age: number }
-  | { action: "search"; candidate: string }
+  | { action: "propose"; candidate: string; age: number; id: string }
+  | { action: "search"; candidate: string; id?: string }
   | { action: "cancelled"; candidate: string }
-  | { action: "mismatch"; candidate: string | null };
+  | { action: "mismatch"; candidate: string | null }
+  /** #4193 Codex F2: re-showing one more time would mint an offer past
+   *  `PART_SEARCH_OFFER_TURN_LIMIT` that `pendingPartSearchProposal()` can
+   *  never again treat as valid — an offer the app would render as
+   *  actionable (a chip, "reply exactly: ...") that the very next turn
+   *  cannot confirm. The offer stops here instead: no further proposal, no
+   *  chip, just a plain statement that it expired. */
+  | { action: "expired"; candidate: string };
 
 /** #4185/#4186: how many of the technician's own turns an offer stays valid
  *  for, when their reply doesn't match it. The offer is kept alive by being
@@ -254,20 +270,38 @@ export function partSearchDecision(opts: {
       (confirmed === null || sameCandidate(confirmed, opts.candidate)) &&
       (pending.manufacturer ?? null) === makerNow;
     return matches
-      ? { action: "search", candidate: opts.candidate as string }
+      ? { action: "search", candidate: opts.candidate as string, id: pending?.id }
       : { action: "mismatch", candidate: opts.candidate };
   }
   if (pending && opts.message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase()) {
     return { action: "cancelled", candidate: pending.candidate };
   }
   if (opts.candidate && explicitManualLookupRequest(opts.message)) {
-    return { action: "propose", candidate: opts.candidate, age: 1 };
+    return { action: "propose", candidate: opts.candidate, age: 1, id: crypto.randomUUID() };
   }
   // #4185/#4186: a reply that neither confirms, cancels, nor starts a fresh
   // lookup does not expire a pending offer — it re-shows it, aging it by one
   // turn, until PART_SEARCH_OFFER_TURN_LIMIT is reached.
+  //
+  // #4193 Codex F2: but NOT past the limit. `pendingPartSearchProposal()`
+  // only ever treats age <= PART_SEARCH_OFFER_TURN_LIMIT as valid, so
+  // re-showing at age === LIMIT would mint an age === LIMIT + 1 offer that is
+  // actionable in THIS turn's reply (a chip, confirmation instructions) but
+  // can never be confirmed in the NEXT one — the offer would already read as
+  // expired the moment it is re-shown. Stop one turn earlier instead: say the
+  // offer expired, with no further proposal to act on.
   if (pending) {
-    return { action: "propose", candidate: pending.candidate, age: (pending.age ?? 1) + 1 };
+    const age = pending.age ?? 1;
+    if (age >= PART_SEARCH_OFFER_TURN_LIMIT) {
+      return { action: "expired", candidate: pending.candidate };
+    }
+    // #4193 Codex F3: the re-shown copy carries the SAME stable id forward —
+    // claiming is keyed on this id (see part-search-claim.ts), not on the
+    // turn id the copy happens to live on, so a confirmation racing a
+    // re-show can consume the offer at most once no matter which physical
+    // turn row ends up holding the copy that gets confirmed. A legacy entry
+    // with no id mints one now rather than leaving the re-show unidentified.
+    return { action: "propose", candidate: pending.candidate, age: age + 1, id: pending.id ?? crypto.randomUUID() };
   }
   return { action: "none" };
 }

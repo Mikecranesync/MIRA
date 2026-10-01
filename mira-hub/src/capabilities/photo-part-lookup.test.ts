@@ -140,8 +140,10 @@ describe("#4150 owner decision — search only after an exact, one-time confirma
   });
 
   it("a request only proposes; it never authorizes a search", () => {
+    // #4193 Codex F3: every fresh propose now also mints a stable `id`
+    // (checked precisely elsewhere) — accept any string here.
     expect(partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] }))
-      .toEqual({ action: "propose", candidate: CANDIDATE, age: 1 });
+      .toEqual({ action: "propose", candidate: CANDIDATE, age: 1, id: expect.any(String) });
   });
 
   it.each([
@@ -233,9 +235,11 @@ describe("#4185/#4186 — tolerant search consent", () => {
   });
 
   it("a non-matching reply re-shows the offer instead of expiring it", () => {
+    // #4193 Codex F3: the re-show also carries an `id` forward (a legacy
+    // entry with none mints one — checked precisely elsewhere).
     expect(
       partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(1) }),
-    ).toEqual({ action: "propose", candidate: CANDIDATE, age: 2 });
+    ).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, id: expect.any(String) });
   });
 
   it("the offer stays valid for up to 3 subsequent turns — a late confirmation still searches", () => {
@@ -255,6 +259,62 @@ describe("#4185/#4186 — tolerant search consent", () => {
     expect(
       partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(4) }),
     ).toEqual({ action: "none" });
+  });
+
+  // #4193 Codex F2: the FIRST shipped version re-showed one more time at the
+  // age limit, minting an age: 4 offer that `pendingPartSearchProposal()`
+  // would never again treat as valid — an offer the route rendered as
+  // actionable (a chip, "reply exactly: ...") that the very next turn could
+  // not confirm. The fix stops one turn earlier: no further proposal, just a
+  // plain statement that the offer expired.
+  it("a non-matching reply AT the age limit ends the offer instead of re-proposing an unconfirmable one", () => {
+    expect(
+      partSearchDecision({ message: "What is the warranty on this?", candidate: CANDIDATE, previousEvidence: proposed(3) }),
+    ).toEqual({ action: "expired", candidate: CANDIDATE });
+  });
+
+  // #4193 Codex F2 + F3: every propose/re-show this function emits must
+  // still be confirmable on the immediately following turn (never minting
+  // an offer the app renders as actionable but the next turn cannot act on),
+  // and every re-show must carry the SAME stable identity forward so the
+  // route's atomic claim (part-search-claim.ts) can recognise two copies of
+  // one logical offer as the same offer.
+  it("every propose/re-show is confirmable on the immediately following turn, under a stable id", () => {
+    // Turn 1: a fresh lookup request mints a stable id.
+    const fresh = partSearchDecision({ message: "Look up the PDF manual", candidate: CANDIDATE, previousEvidence: [] });
+    expect(fresh.action).toBe("propose");
+    if (fresh.action !== "propose") throw new Error("unreachable");
+    expect(typeof fresh.id).toBe("string");
+    expect(fresh.id.length).toBeGreaterThan(0);
+
+    // Turn 2: an unrelated reply re-shows it — the SAME id, age bumped to 2.
+    const reshown = partSearchDecision({
+      message: "What is the warranty on this?",
+      candidate: CANDIDATE,
+      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 1, id: fresh.id }],
+    });
+    expect(reshown).toEqual({ action: "propose", candidate: CANDIDATE, age: 2, id: fresh.id });
+
+    // Turn 3: confirming the re-shown offer must still work (age 2 <= the
+    // limit of 3), carrying the SAME id forward for the route's claim.
+    const confirmed = partSearchDecision({
+      message: partSearchConfirmation(CANDIDATE),
+      candidate: CANDIDATE,
+      previousEvidence: [{ kind: "part_search_proposal", candidate: CANDIDATE, age: 2, id: fresh.id }],
+    });
+    expect(confirmed).toEqual({ action: "search", candidate: CANDIDATE, id: fresh.id });
+  });
+
+  it("a legacy proposal with no id still mints one on re-show, instead of leaving the re-show unidentified", () => {
+    const reshown = partSearchDecision({
+      message: "What is the warranty on this?",
+      candidate: CANDIDATE,
+      previousEvidence: proposed(1),
+    });
+    expect(reshown.action).toBe("propose");
+    if (reshown.action !== "propose") throw new Error("unreachable");
+    expect(typeof reshown.id).toBe("string");
+    expect(reshown.id.length).toBeGreaterThan(0);
   });
 
   it("cancelling and confirming both still require the photo to still yield the offered candidate", () => {

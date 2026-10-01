@@ -901,6 +901,52 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
     });
     expect(v.ok).toBe(true);
   });
+
+  // Codex #4193 F1: the first shipped guard matched on the bare phrase alone
+  // ("contact the manufacturer", "have internet access"), with no requirement
+  // that the subject be MIRA itself or that the deflection be about the
+  // manual — so it also swallowed ordinary, correct maintenance advice that
+  // has nothing to do with MIRA's own browsing capability. Every one of these
+  // must pass through UNCHANGED, whether a search is merely offered
+  // (candidate) or actually running (confirmed), and in both the general and
+  // the grounded (citation) lane.
+  describe("#4193 F1: warranty/service/network advice is never mistaken for a false capability claim", () => {
+    const WARRANTY_SERVICE = "Do not use the damaged unit. Contact the manufacturer for warranty service.";
+    const NETWORK_ADVICE = "The machine does not have internet access; check the network cable.";
+    const WARRANTY_CLAIM = "If it's still under warranty, contact the manufacturer for a warranty claim before you open the enclosure.";
+    const SERVICE_VISIT = "Contact the manufacturer support line to schedule a service visit for this unit.";
+    const PLC_NETWORK = "The PLC doesn't have internet access configured, so check your network switch and cabling first.";
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["a warranty-claim deflection", WARRANTY_CLAIM],
+      ["a service-visit deflection", SERVICE_VISIT],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["PLC network-advice (no internet access)", PLC_NETWORK],
+    ])("%s is left alone with a candidate search running, general lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "candidate" });
+      expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["a warranty-claim deflection", WARRANTY_CLAIM],
+      ["a service-visit deflection", SERVICE_VISIT],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+      ["PLC network-advice (no internet access)", PLC_NETWORK],
+    ])("%s is left alone with a confirmed search running, general lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(true);
+    });
+
+    it.each([
+      ["warranty + service deflection", WARRANTY_SERVICE],
+      ["machine network-advice (no internet access)", NETWORK_ADVICE],
+    ])("%s is left alone with a confirmed search running, grounded lane", (_label, answerText) => {
+      const v = validateAnswer({ ...base, answerText, general: false, manualSearchRunning: "confirmed" });
+      expect(v.ok).toBe(true);
+    });
+  });
 });
 
 describe("#4098 part 2: established RTD definitions in general chat", () => {
