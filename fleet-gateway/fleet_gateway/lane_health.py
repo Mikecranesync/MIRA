@@ -136,8 +136,9 @@ def _check_usage_limit(session: dict[str, Any], now: float) -> tuple[str, str | 
 def _parse_reset_time(text: str, now: float | None = None) -> float | None:
     """Epoch of the reset named in a limit line, or None if it can't be parsed.
 
-    Time-only ("12am") = next occurrence. Dated ("Sep 12 at 12am") = that date this
-    year, or next year if it has already passed (weekly limits render with a date).
+    Time-only ("12am") = next occurrence. Dated ("Sep 12 at 12am") = that date in the
+    nearest year, which may be in the past for a stale refusal (weekly limits render
+    with a date).
     """
     m = _RESET_RE.search(text)
     if not m:
@@ -160,10 +161,20 @@ def _parse_reset_time(text: str, now: float | None = None) -> float | None:
         month = _MONTHS.get(m.group("mon")[:3].lower())
         if month is None:
             return None
-        target = current.replace(month=month, day=int(m.group("day")), hour=hour,
-                                 minute=minute, second=0, microsecond=0)
-        if target <= current:
-            target = target.replace(year=target.year + 1)
+        # The date carries no year: take the nearest valid one. "Jan 2" seen on Dec 30
+        # is next year, but "Sep 12" seen on Oct 1 is a stale refusal from a lane left
+        # idle — it is in the past (no block), not 11 months away. Feb 29 skips
+        # non-leap years instead of raising.
+        candidates = []
+        for year in (current.year - 1, current.year, current.year + 1):
+            try:
+                candidates.append(current.replace(year=year, month=month, day=int(m.group("day")),
+                                                  hour=hour, minute=minute, second=0, microsecond=0))
+            except ValueError:
+                continue
+        if not candidates:
+            return None
+        target = min(candidates, key=lambda t: abs((t - current).total_seconds()))
     else:
         target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= current:

@@ -268,3 +268,23 @@ def test_dated_limit_blocks_until_that_date_end_to_end() -> None:
                "terminal_output": f"❯ remount 3825\n⏺ You've hit your weekly limit · resets Sep 12 at 12am ({NY})\n"}
     assert derive_lane_state(session, now=_at(2026, 9, 10, 15))[0] == "blocked_usage_limit"
     assert session["blocked_until"] == _at(2026, 9, 12, 0)
+
+
+def test_stale_dated_refusal_is_in_the_past_not_next_year() -> None:
+    """A lane left idle on last week's refusal must not block its node for a year."""
+    now = _at(2026, 10, 1, 11)
+    got = lane_health._parse_reset_time(f"You've hit your weekly limit · resets Sep 12 at 12am ({NY})", now)
+    assert got == _at(2026, 9, 12, 0)
+
+
+def test_stale_dated_refusal_does_not_block_the_node() -> None:
+    session = {"terminal_status": "idle", "launched_at": time.time() - 30,
+               "terminal_output": f"⏺ You've hit your weekly limit · resets Sep 12 at 12am ({NY})\n"}
+    derive_lane_state(session, now=_at(2026, 10, 1, 11))
+    assert session["blocked_until"] < _at(2026, 10, 1, 11)
+
+
+def test_feb_29_in_a_non_leap_year_does_not_raise() -> None:
+    now = _at(2027, 2, 25, 12)
+    got = lane_health._parse_reset_time(f"You've hit your weekly limit · resets Feb 29 at 1am ({NY})", now)
+    assert got == _at(2028, 2, 29, 1)
