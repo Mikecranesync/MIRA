@@ -168,6 +168,10 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("control: the proposed maker matching the one the text names is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Label: SMC SS5Y3-DUW01302", "Find the manual for this", "SS5Y3-DUW01302", "SMC")).toBe(true);
   });
+  it("rejects a value under an abbreviated serial label (Codex post-cap 7 F12)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC Ser. No. AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC SER: AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
+  });
   it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
     expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);

@@ -4,7 +4,14 @@
  */
 const PART_CODE = /\b(?=[A-Z0-9/-]{8,}\b)(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+){1,4}\b/gi;
 
-const SERIAL_LABEL = /\b(?:serial(?:\s*(?:no\.?|number|#))?|s\/?n|s\.\s?n)\b\.?/gi;
+// Codex post-cap 7 F12 (#4172): the abbreviated labels a nameplate prints
+// ("SER:", "Ser. No.", "Ser#", "Ser.Nr.") are serial labels too — the same
+// vocabulary identity-proposal.ts's LABEL_WORDS already treats as a label.
+// "SER" counts only in a label shape — a separator, a "no/nr/#" word, a
+// code-shaped value right after it, or a "(SER)" suffix — so "series",
+// "service" and "server" never match.
+const SERIAL_LABEL =
+  /\b(?:(?:serial(?:\s*(?:no\.?|nr\.?|number|#))?|s\/?n|s\.\s?n|ser\.?\s*(?:no\.?|nr\.?|number|#))\b\.?|ser\s*[:#=]|ser(?=\s+[A-Z0-9][A-Z0-9./-]{3,}\b)|(?<=[(\[]\s*)ser(?=\s*[)\]]))/gi;
 const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|1P)\s*[:#]?\s*([A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
