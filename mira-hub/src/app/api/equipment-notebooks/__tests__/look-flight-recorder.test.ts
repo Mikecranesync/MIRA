@@ -61,6 +61,7 @@ const persistMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/persist-usage", () => persistMock);
 
 import { POST } from "../[id]/look/route";
+import { INSPECTION_PROMPT } from "../[id]/look/route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
@@ -120,6 +121,12 @@ beforeEach(() => {
 });
 
 describe("mira.turn (kind=look) span tree", () => {
+  it("transcribes label text without inventing a device class from appearance or codes", () => {
+    expect(INSPECTION_PROMPT).toMatch(/Do not infer a device or component type from its shape, color, wiring, or part-number characters/);
+    expect(INSPECTION_PROMPT).toMatch(/unless that type is explicitly printed on the label/);
+    expect(INSPECTION_PROMPT).toMatch(/Treat every label reading as an unconfirmed transcription/);
+  });
+
   it("root span + attachment.persist + chat <model>, and a persisted kind:look packet — no product-data write", async () => {
     const res = await POST(makeReq() as never, makeParams(NOTEBOOK_ID));
     expect(res.status).toBe(200);

@@ -93,7 +93,7 @@ const MAX_CLIENT_KEY_CHARS = 128;
  */
 export const INSPECTION_PROMPT = `You are looking at a photograph a maintenance technician just took of industrial equipment.
 Describe ONLY what is visible in the image, as a plain-language field observation:
-- components and parts you can see (drives, relays, terminals, motors, sensors, cables, enclosures)
+- the physical objects, shapes, colors, positions, and condition visible in frame
 - connectors, terminals and wiring: seated / loose / disconnected, only if visibly so
 - LEDs, indicators, displays and switches, with the state you can actually see (lit / unlit / colour / text shown)
 - visible wear, damage, corrosion, discoloration, burn marks, debris, moisture, loose hardware
@@ -102,6 +102,8 @@ Rules:
 - NEVER diagnose, NEVER name a root cause, NEVER recommend a repair.
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
+- Do not infer a device or component type from its shape, color, wiring, or part-number characters. Do not call an object a connector, sensor, relay, or other device unless that type is explicitly printed on the label. Otherwise describe its visible shape and quote the label exactly.
+- Treat every label reading as an unconfirmed transcription. Do not explain what a model or suffix means.
 - Keep it concise (short sentences or a short list). Plain text, no markdown headings.
 For safety classification, also report only hazards visibly present now using this bounded vocabulary:
 - arcing: visible electrical arc or flash

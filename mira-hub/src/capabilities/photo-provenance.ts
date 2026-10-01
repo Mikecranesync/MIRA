@@ -12,7 +12,7 @@
  */
 
 export const PHOTO_PROVENANCE_NOTE =
-  "PHOTO LABEL TEXT: when you identify equipment from a photo, first say what the label shows by quoting the exact text you read (for example: The nameplate reads \"<text exactly as printed>\"), then give your identification. Keep what you read separate from what you infer. Name the device type (controller, drive, panel, relay) only if the label or the photo observation names it; otherwise describe what is visible.";
+  "PHOTO LABEL TEXT: when you identify equipment from a photo, first say what the label appears to read, quoting the exact text (for example: The label appears to read \"<text exactly as printed>\"). This is an unconfirmed transcription. Keep label text separate from inference. Do not infer or explain a device type or part-number suffix from shape, color, wiring, or code patterns; name a type only when it is explicitly printed on the label or confirmed by a cited source. Never claim two part numbers are compatible without a cited source that establishes the match.";
 
 /** The system prompt, plus the note when a photo observation is in context. */
 export function withPhotoProvenance(systemPrompt: string, photoContext: string): string {

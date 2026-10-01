@@ -847,6 +847,14 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
     return out
 
 
+class ManualSearchUnavailable(RuntimeError):
+    """Every search pass failed: the search could not run (#4150 F3).
+
+    Distinct from ``None`` (the search ran and found nothing), so a caller can
+    tell a technician "I couldn't search" instead of "there is no manual".
+    """
+
+
 async def search_manual(make: str, model: str) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
@@ -862,23 +870,29 @@ async def search_manual(make: str, model: str) -> dict | None:
         return None
 
     candidates: list[dict] = []
+    attempts = 0
+    failures = 0
 
     # Pass 1: site-scoped PDF — highest precision.
     oem_domains = _oem_domains_for(make)
     if oem_domains:
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
+        attempts += 1
         try:
             candidates.extend(_collect(await _serper_search(q1), make, model))
         except Exception:
+            failures += 1
             logger.exception("Serper q1 (site-scoped) failed")
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
             q2 = f"{make} {variant} manual filetype:pdf"
+            attempts += 1
             try:
                 found = _collect(await _serper_search(q2), make, model)
             except Exception:
+                failures += 1
                 logger.exception("Serper q2 (filetype:pdf) failed")
                 continue
             if i:
@@ -891,12 +905,16 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Pass 3: widest fallback — accept landing pages too if nothing above.
     if not candidates:
         q3 = f"{make} {model} manual pdf"
+        attempts += 1
         try:
             candidates.extend(_collect(await _serper_search(q3), make, model))
         except Exception:
+            failures += 1
             logger.exception("Serper q3 (wide) failed")
 
     if not candidates:
+        if attempts and failures == attempts:
+            raise ManualSearchUnavailable(f"all {attempts} search passes failed")
         return None
 
     # Dedupe on URL while preserving order, then sort by score desc.
@@ -917,7 +935,11 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Any judge failure leaves the legacy HEAD-validate path below untouched.
     judged_any = False
     rejected_out: list[dict] = []
-    if _judge.judge_enabled():
+    # A catalog-only query may be based on text read from a user photo. Keep
+    # that narrowly scoped lookup from sending candidate PDF text to the LLM
+    # judge; the result remains an unconfirmed search candidate.
+    use_judge = bool(make) and _judge.judge_enabled()
+    if use_judge:
         ranked = await _judge.judge_candidates(make, model, deduped)
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
@@ -977,7 +999,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     for c in deduped[:5]:
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
-            if _judge.judge_enabled():
+            if use_judge:
                 # The judge is on but this candidate was never READ (fetch
                 # blocked / too big / no text / model output unparseable).
                 # Canary run 1 (2026-08-26): the only real GS10 hit came back
@@ -1000,7 +1022,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     # caller can hold it for human review. Never promote an unvalidated
     # candidate to a trusted manual link.
     deduped[0]["validated"] = False
-    if _judge.judge_enabled():
+    if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
         deduped[0].setdefault(
             "reason_detail", "Could not read the candidate PDF — review before use."

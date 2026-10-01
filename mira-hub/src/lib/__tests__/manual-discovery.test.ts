@@ -159,6 +159,19 @@ describe("discoverManual — honest degradation", () => {
     expect(res.candidate).toBeNull();
   });
 
+  it("#4150 F3: an HTTP-200 search_unavailable is 'could not look', not 'found nothing'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "search_unavailable" }), { status: 200 }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+
   it("distinguishes 'found nothing' from 'could not look'", async () => {
     vi.stubGlobal(
       "fetch",
@@ -275,13 +288,24 @@ describe("discoverManual — honest degradation", () => {
     expect(res.oemRequestUrl).toBe("https://www.harringtonhoists.com/owners-manual-request");
   });
 
-  it("never calls the service without a manufacturer and a model/catalog", async () => {
+  it("sends a part number without inventing a manufacturer", async () => {
+    const fetchSpy = vi.fn();
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ found: false, reason: "no_result" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual({ catalogNumber: "NI8U-S12-AP6" }, CTX);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ catalog_number: "NI8U-S12-AP6" });
+    expect(res.found).toBe(false);
+  });
+
+  it("does not call the service without any model or part number", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const res = await discoverManual({ manufacturer: "Allen-Bradley" }, CTX);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.found).toBe(false);
-    expect(res.reason).toMatch(/manufacturer and model/i);
+    expect(res.reason).toMatch(/model or part number/i);
   });
 });
 
