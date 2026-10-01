@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidateIdentity, makerFromText } from "./candidate-identity";
+import { extractCandidateIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
 // LOOK observation or typed text WITHOUT consulting the corpus. Makers come
@@ -101,5 +101,35 @@ describe("makerFromText — the shared OEM maker table, corpus-independent", () 
 
   it("a maker name inside another word does not count", () => {
     expect(makerFromText("SMCX-200 adapter")).toBeNull();
+  });
+});
+
+describe("wantsManualDocumentation — #4160 S6 candidate-basis trigger, half 1 of PRD R2", () => {
+  it("recognises an explicit ask for the manual/documentation", () => {
+    expect(wantsManualDocumentation("can you find the manual for this?")).toBe(true);
+    expect(wantsManualDocumentation("do you have documentation for this part?")).toBe(true);
+    expect(wantsManualDocumentation("I need the datasheet")).toBe(true);
+    expect(wantsManualDocumentation("look up the data sheet")).toBe(true);
+    expect(wantsManualDocumentation("any instructions for this valve?")).toBe(true);
+    expect(wantsManualDocumentation("where's the user guide")).toBe(true);
+    expect(wantsManualDocumentation("need the service manual")).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(wantsManualDocumentation("MANUAL please")).toBe(true);
+  });
+
+  it("word-boundary discipline both directions — never a substring hit", () => {
+    // front boundary: "manual" must not match inside a longer word
+    expect(wantsManualDocumentation("manually operated valve")).toBe(false);
+    expect(wantsManualDocumentation("docset is out of date")).toBe(false);
+    // back boundary: the word before "manual"/"docs" must not glue onto it
+    expect(wantsManualDocumentation("aeromanuals are different")).toBe(false);
+    expect(wantsManualDocumentation("thedocs repo")).toBe(false);
+  });
+
+  it("control: an ordinary troubleshooting question never matches", () => {
+    expect(wantsManualDocumentation("why is this valve not actuating")).toBe(false);
+    expect(wantsManualDocumentation("is this part compatible with my cylinder")).toBe(false);
   });
 });

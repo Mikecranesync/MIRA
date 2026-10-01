@@ -55,3 +55,20 @@ export function extractCandidateIdentity(observation: string, typed = ""): Candi
   const manufacturer = own && other && own !== other ? null : (own ?? other);
   return { manufacturer, part };
 }
+
+/**
+ * Does the technician's own typed text ask for the manual/documentation
+ * itself, rather than a troubleshooting question about the part (#4160 S6,
+ * PRD R2)? One half of the trigger for a candidate-basis background manual
+ * search — the other half is the identity having come from a label read (a
+ * photo observation), checked separately by the caller. Deterministic and
+ * narrow by design (zero-token-architecture): this gates a background side
+ * effect, not an answer, so a miss just means the search waits for the next
+ * turn or an explicit ask — never a wrong answer.
+ */
+const MANUAL_INTENT_RE =
+  /\b(?:manuals?|documentation|docs?|datasheet|data\s+sheet|spec\s+sheet|instructions?|user\s+guide|service\s+manual|install(?:ation)?\s+guide)\b/i;
+
+export function wantsManualDocumentation(message: string): boolean {
+  return MANUAL_INTENT_RE.test(message);
+}

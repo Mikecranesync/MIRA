@@ -88,6 +88,27 @@ describe("unconfirmedMachineDirective", () => {
     expect(d).toMatch(/Do NOT state its ratings, specifications/);
     expect(d).toMatch(/firmware or service procedure/);
   });
+
+  // #4160 S6 — PRD R16-lite: the candidate-basis acquisition status rides this
+  // SAME directive as a verbatim-relay instruction (no new SSE frame).
+  describe("acquisitionStatus (#4160 S6)", () => {
+    const p = { manufacturer: "SMC", model: "SS5Y3-DUW01302" };
+
+    it("omitted or null/empty leaves the directive byte-identical to before", () => {
+      const base = unconfirmedMachineDirective(p);
+      expect(unconfirmedMachineDirective(p, null)).toBe(base);
+      expect(unconfirmedMachineDirective(p, "")).toBe(base);
+      expect(unconfirmedMachineDirective(p, undefined)).toBe(base);
+    });
+
+    it("when present, is appended as a verbatim-relay instruction, after the base directive", () => {
+      const status = "I'm looking for the official SMC SS5Y3-DUW01302 manual now.";
+      const d = unconfirmedMachineDirective(p, status);
+      expect(d.startsWith(unconfirmedMachineDirective(p))).toBe(true);
+      expect(d).toContain(status);
+      expect(d).toMatch(/in your own words/i);
+    });
+  });
 });
 
 describe("Codex #4120 review — never a mixed, ambiguous or non-model proposal", () => {

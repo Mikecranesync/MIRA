@@ -59,6 +59,22 @@ export interface ManualAcquisitionInput {
   /** The CONFIRMED identity — never free text. Extra fields ride into match evidence. */
   identity: { manufacturer?: string; model?: string; catalogNumber?: string } & Record<string, string | undefined>;
   /**
+   * "candidate" when this search is for an identity the technician has NOT
+   * yet confirmed — a proposed/label-read maker+part (#4160 S6, PRD R2).
+   * Forces `promote = false` below (never match_state='verified', never
+   * enabled_by_default=true FROM THIS FUNCTION): the deterministic
+   * applicability verdict is still computed and recorded as
+   * `candidateApplicability` on the written evidence (R8 — the judge may only
+   * reject, never auto-approve), but promotion to a citable, enabled source
+   * happens only when the technician confirms this SAME identity — either
+   * migration 104's trigger (the search finished first) or the fenced writer
+   * itself noticing, at write time, that the notebook was ALREADY confirmed
+   * to the matching key (the common case: confirming is near-instant, the
+   * search can take up to a minute). Defaults to "confirmed" — the nameplate
+   * confirm route's existing unconditional-writer behaviour, unchanged.
+   */
+  basis?: "confirmed" | "candidate";
+  /**
    * Write this notebook's source state for the discovered manual and return
    * what is ACTUALLY persisted afterwards: the written state, the untouched
    * existing state when the writer declined (a technician's decision, or lost
@@ -230,7 +246,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   // NOTHING about whether this is the right document, so an unvalidated
   // candidate can never auto-enable — a human confirms it. See the
   // applicability block below.
-  const requiresUserConfirmation = probeUnvalidated;
+  const requiresUserConfirmation = probeUnvalidated || input.basis === "candidate";
 
   const download = await safeDownloadPdf(candidate.url, {
     allowedHosts: allowedHostsForCandidate(identity, candidate),
@@ -486,6 +502,11 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       evidencePages: verdict.evidencePages,
       applicabilityConfidence: verdict.confidence,
       reason: verdict.reason,
+      // #4160 S6 — the real verdict, independent of `promote` below (which is
+      // always forced false for candidate basis): the fenced writer reads
+      // this to decide whether a race (the technician already confirmed this
+      // exact identity by the time this write lands) should promote anyway.
+      ...(input.basis === "candidate" ? { candidateApplicability: verdict.state } : {}),
     };
     // The route writes unconditionally (the technician is confirming right
     // now). A background caller passes a FENCED writer that writes only an

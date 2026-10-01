@@ -170,6 +170,16 @@ function importableDiscovery() {
   };
 }
 
+/**
+ * #4160 S6 — the full `DiscoveryResult` shape (`importableDiscovery()` predates
+ * `oemRequestUrl`/`quotaExceeded`, same pre-existing gap the S4 test above
+ * works around with its own literal). Used only by new S6 tests so they add
+ * no tsc error beyond this file's pre-existing baseline.
+ */
+function importableDiscoveryTyped() {
+  return { ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false };
+}
+
 function pdfDownload() {
   return {
     ok: true as const,
@@ -506,6 +516,70 @@ describe("manual import: candidate until the document proves itself", () => {
     vi.mocked(withTenantContext).mockResolvedValue([
       { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
     ]);
+
+  // #4160 S6 — basis="candidate": acquireManualForIdentity forces promote=false
+  // (extending requiresUserConfirmation, not duplicating it) even when the
+  // document's own text proves the identity, and stamps the REAL verdict
+  // separately as candidateApplicability so the fenced writer (and, after
+  // confirmation, migration 104) can still find it. R8: the judge may only
+  // ever reject — it never upgrades a 'candidate' verdict to 'verified' just
+  // because this is a candidate-basis search.
+  describe("#4160 S6 — basis='candidate' never promotes from this function", () => {
+    it("the document text proves the identity (catalog_number_exact), but the write is forced to candidate/disabled — the REAL verdict rides as candidateApplicability", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      expect(writeSourceState).toHaveBeenCalledTimes(1);
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      // Forced, not the verdict's own verified/true:
+      expect(patch.matchState).toBe("candidate");
+      expect(patch.enabledByDefault).toBe(false);
+      // But the real verdict is NOT lost — it rides separately for the fenced
+      // writer / migration 104 to act on once the technician confirms:
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified");
+      expect((patch.matchEvidence as Record<string, unknown>).decisionMethod).toBe("catalog_number_exact");
+      // The outcome reflects what the (stubbed) writer actually persisted —
+      // never "complete" from a candidate-basis search this function ran.
+      expect(out.status).toBe("candidate_review");
+    });
+
+    it("control: the SAME document/identity under basis='confirmed' (default) promotes normally — proves the forcing is basis-specific, not a general regression", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+      await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      expect(patch.matchState).toBe("verified");
+      expect(patch.enabledByDefault).toBe(true);
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBeUndefined();
+    });
+
+    it("an unproven document (candidate verdict) stays candidate either way, and still stamps candidateApplicability='candidate' for basis='candidate'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      vi.mocked(withTenantContext).mockResolvedValue([{ content: "SEW MOVITRAC B operating instructions", page: 1 }]);
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      expect(patch.matchState).toBe("candidate");
+      expect(patch.enabledByDefault).toBe(false);
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("candidate");
+    });
+
+    it("R4: a candidate-basis identity with no catalogNumber reaches discoverManual as manufacturer + model only", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const noCatalog = { ...acquireInput, identity: { manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: undefined }, basis: "candidate" as const };
+      await acquireManualForIdentity(noCatalog);
+      const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+      expect(calledIdentity).toMatchObject({ manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+      expect((calledIdentity as Record<string, unknown>).catalogNumber).toBeUndefined();
+    });
+  });
 
   it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());

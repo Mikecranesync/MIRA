@@ -379,13 +379,21 @@ export function proposeIdentityFromText(
 /**
  * Appended to the GENERAL system prompt only when a proposal is made, so an
  * unconfirmed machine is never answered as if its manual were loaded.
+ *
+ * `acquisitionStatus` (#4160 S6, PRD R16-lite): when a candidate-basis
+ * background search is already running or finished for this SAME proposed
+ * identity, its honest status line (acquisitionDeclineText, basis
+ * "candidate") is appended as a verbatim-relay instruction — the chat reply
+ * says what is happening in plain words without a new SSE frame or any
+ * client/presentation change. Omitted (default) → unchanged directive.
  */
-export function unconfirmedMachineDirective(p: IdentityProposal): string {
+export function unconfirmedMachineDirective(p: IdentityProposal, acquisitionStatus?: string | null): string {
   const name = `${p.manufacturer} ${p.model}`;
-  return (
+  const base =
     `\n\nUNCONFIRMED MACHINE — the technician named the ${name}, but it is NOT confirmed and none of its manuals are loaded. ` +
     `Do NOT state its ratings, specifications, settings, part numbers, wiring, fault meanings, or any reset, firmware or ` +
     `service procedure as fact. Answer only what is true in general, and say that once they confirm the ${name} you ` +
-    `will look up its manual and show them the page.`
-  );
+    `will look up its manual and show them the page.`;
+  if (!acquisitionStatus) return base;
+  return `${base} MIRA is already searching for its manual in the background — tell the technician, in your own words, this: "${acquisitionStatus}"`;
 }

@@ -15,6 +15,10 @@ const db = vi.hoisted(() => ({
   currentSource: null as unknown,
   sourceRow: null as unknown,
   fileLinked: false,
+  // #4160 S6 — the fencedWriter/fencedAttach owner-row's confirmed_same_key
+  // column. Defaults false so every pre-S6 ("confirmed" basis) test is
+  // unaffected: that basis never reads this field.
+  confirmedSameKey: false,
 }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
@@ -24,7 +28,8 @@ vi.mock("@/lib/tenant-context", () => ({
         if (db.failWith) throw Object.assign(new Error("db"), db.failWith);
         if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: db.readRow ? [{ manual_acquisition: db.readRow }] : [] };
         if (/RETURNING manual_acquisition->>'gen'/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ gen: "g1" }] : [] };
-        if (/FOR UPDATE/.test(sql)) return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb" }] : [] };
+        if (/FOR UPDATE/.test(sql))
+          return { rowCount: db.claimRows, rows: db.claimRows ? [{ id: "nb", confirmed_same_key: db.confirmedSameKey }] : [] };
         if (/RETURNING match_state/.test(sql)) return { rowCount: db.updatedSource ? 1 : 0, rows: db.updatedSource ? [db.updatedSource] : [] };
         if (/FROM workspace_file_links/.test(sql)) return { rowCount: db.fileLinked ? 1 : 0, rows: db.fileLinked ? [{}] : [] };
         if (/^\s*SELECT match_state FROM equipment_notebook_sources/.test(sql)) return { rowCount: db.sourceRow ? 1 : 0, rows: db.sourceRow ? [db.sourceRow] : [] };
@@ -64,6 +69,7 @@ beforeEach(() => {
   db.currentSource = null;
   db.sourceRow = null;
   db.fileLinked = false;
+  db.confirmedSameKey = false;
 });
 
 describe("acquisitionKey — only a technician-confirmed, searchable identity", () => {
@@ -336,6 +342,191 @@ describe("Codex #4118 r3 F5 / r15 F19 — fencedAttach", () => {
     db.claimRows = 0;
     expect(await fencedAttach("K", "g1")("t", "nb", "file", "doc", tgt, null)).toBe(false);
     expect(attachFileToTargetsTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4160 S6 — fencedWriter basis='candidate' never enables before confirmation", () => {
+  it("defaults 'confirmed' is BYTE-IDENTICAL: the ownership SQL still names identity_status = 'user_confirmed' unconditionally for that branch", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "verified", enabledByDefault: true, matchEvidence: {} });
+    const lock = db.queries.at(-2)!;
+    expect(lock.sql).toMatch(/\$5::text = 'confirmed' AND n\.identity_status = 'user_confirmed'/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "confirmed"]);
+  });
+
+  it("NOT yet confirmed: forces match_state='candidate', enabled_by_default=false even though the verdict says verified+enabled", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = false;
+    const res = await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: { candidateApplicability: "verified" },
+    });
+    expect(res).toEqual({ matchState: "verified", enabledByDefault: true }); // db.updatedSource (what the mock reports persisted)
+    const write = db.queries.at(-1)!;
+    // The WRITE statement itself must have asked for candidate/false, not the
+    // verdict's verified/true — this is the actual guard; db.updatedSource
+    // above is just the mock's canned "what got persisted" response.
+    expect(write.params[3]).toBe("candidate");
+    expect(write.params[4]).toBe(false);
+    expect(JSON.parse(write.params[5] as string)).toMatchObject({ autoAcquisitionKey: "K", candidateApplicability: "verified" });
+  });
+
+  it("already confirmed to the SAME key (the common race) + candidateApplicability='verified': promotes, same as a confirmed-basis write", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = true;
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: { candidateApplicability: "verified" },
+    });
+    const write = db.queries.at(-1)!;
+    expect(write.params[3]).toBe("verified");
+    expect(write.params[4]).toBe(true);
+  });
+
+  it("already confirmed to the SAME key but candidateApplicability='candidate' (unproven): still never enables", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = true;
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "candidate",
+      enabledByDefault: false,
+      matchEvidence: { candidateApplicability: "candidate" },
+    });
+    const write = db.queries.at(-1)!;
+    expect(write.params[3]).toBe("candidate");
+    expect(write.params[4]).toBe(false);
+  });
+
+  it("the ownership SQL relaxes identity_status for 'candidate' basis, but still requires the SAME key when confirmed", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    const lock = db.queries.at(-2)!;
+    expect(lock.sql).toMatch(/\$5::text = 'candidate' AND \(n\.identity_status <> 'user_confirmed' OR/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "candidate"]);
+  });
+
+  it("refuses — and writes NOTHING — when the locked check finds no owning notebook, for candidate basis too", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.claimRows = 0;
+    db.currentSource = { match_state: "candidate", enabled_by_default: false };
+    const res = await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", { matchState: "candidate", enabledByDefault: false, matchEvidence: {} });
+    expect(res).toEqual({ matchState: "candidate", enabledByDefault: false });
+    expect(db.queries.some((q) => /UPDATE equipment_notebook_sources/.test(q.sql))).toBe(false);
+  });
+});
+
+describe("#4160 S6 — fencedAttach basis='candidate' relaxes ownership the same way", () => {
+  const tgt = [{ targetType: "equipment_notebook" as const, targetId: "nb", role: "manual" as const, displayLabel: "m.pdf" }];
+  it("attaches while owning (unconfirmed OR confirmed to the SAME key), relaxing identity_status only for 'candidate'", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    db.claimRows = 1;
+    expect(await fencedAttach("K", "g1", "candidate")("t", "nb", "file", "doc", tgt, null)).toBe(true);
+    expect(attachFileToTargetsTx).toHaveBeenCalled();
+    const lock = db.queries.find((q) => /manual_acquisition->>'prior_doc_id'/.test(q.sql))!;
+    expect(lock.sql).toMatch(/\$5::text = 'candidate' AND \(n\.identity_status <> 'user_confirmed' OR/);
+    expect(lock.params).toEqual(["t", "nb", "K", "g1", "candidate"]);
+  });
+
+  it("refuses when ownership is lost, for candidate basis too", async () => {
+    const { fencedAttach } = await import("../notebook-manual-acquisition");
+    const { attachFileToTargetsTx } = await import("@/lib/workspace-files");
+    vi.mocked(attachFileToTargetsTx).mockClear();
+    db.claimRows = 0;
+    expect(await fencedAttach("K", "g1", "candidate")("t", "nb", "file", "doc", tgt, null)).toBe(false);
+    expect(attachFileToTargetsTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4160 S6 — startManualAcquisition basis='candidate' threading", () => {
+  const proposed = { identityStatus: "user_confirmed" as const, manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" };
+  const candidateInput = { tenantId: "t", userId: "u", notebookId: "nb", nodeId: "node", identity: proposed, basis: "candidate" as const };
+
+  it("keys EXACTLY as acquisitionKey() would key the identity a PATCH bind would write", () => {
+    expect(acquisitionKey(proposed)).toBe(acquisitionKey({ ...proposed }));
+    expect(acquisitionKey(proposed)).toBe("SMC|SS5Y3DUW01302|");
+  });
+
+  it("passes basis to the acquire() call, unlike the default 'confirmed' basis (which omits it)", async () => {
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    expect(await startManualAcquisition(candidateInput, { acquire, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    expect(acquire).toHaveBeenCalledWith(expect.objectContaining({ basis: "candidate" }));
+  });
+
+  // R4 — only manufacturer + part (the proposal's model) ever leave; the
+  // synthetic identity's empty catalogNumber is cleaned to undefined, exactly
+  // like the confirmed-basis path, so discoverManual's request body (built
+  // from truthy fields only — manual-discovery.ts) never sends a stray key.
+  it("R4: the synthetic candidate identity reaches acquire() with ONLY manufacturer + model — no catalogNumber", async () => {
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    await startManualAcquisition(candidateInput, { acquire, env: ON });
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    expect(acquire).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: undefined },
+      }),
+    );
+  });
+
+  it("claim idempotency: a second identical candidate (same key) while the first is still running does not start a second search", async () => {
+    db.readRow = { key: "SMC|SS5Y3DUW01302|", state: "running", started_at: new Date().toISOString(), finished_at: null };
+    db.claimRows = 0; // claim()'s WHERE clause would not match a fresh, non-stale 'running' record
+    const acquire = vi.fn(async () => ({ status: "candidate_review" as const, payload: {} }));
+    expect(await startManualAcquisition(candidateInput, { acquire, env: ON })).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("the flag off ⇒ nothing starts, for candidate basis too", async () => {
+    const acquire = vi.fn();
+    expect(await startManualAcquisition(candidateInput, { acquire, env: {} })).toBe(false);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+});
+
+describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
+  const rec = (state: AcquisitionRecord["state"]): AcquisitionRecord => ({
+    key: "K",
+    state,
+    started_at: "2026-01-01T00:00:00Z",
+    finished_at: state === "running" ? null : "2026-01-01T00:01:00Z",
+    candidate_host: null,
+    match_state: null,
+    oem_request_url: null,
+  });
+
+  it("'running' invites confirmation via the proposal chip, not a wait-and-ask-again", () => {
+    const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate");
+    expect(t).toMatch(/Use its manuals/);
+    expect(t).not.toMatch(/ask again in a minute/);
+  });
+
+  it("'candidate_review' invites confirmation rather than pointing at Sources", () => {
+    const t = acquisitionDeclineText(rec("candidate_review"), "K", "SMC SS5Y3-DUW01302", "candidate");
+    expect(t).toMatch(/Use its manuals/);
+    expect(t).not.toMatch(/Sources/);
+  });
+
+  it("'complete' (the confirmed-same-key race) still invites the explicit confirm tap", () => {
+    const t = acquisitionDeclineText(rec("complete"), "K", "SMC SS5Y3-DUW01302", "candidate");
+    expect(t).toMatch(/Use its manuals/);
+  });
+
+  it("default basis ('confirmed') is byte-identical to the pre-S6 copy", () => {
+    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).toBe(
+      acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "confirmed"),
+    );
+    expect(acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302")).not.toMatch(/Use its manuals/);
+  });
+
+  it("terminal honest-fact states (no manual found, a limit, a scan) are shared regardless of basis", () => {
+    expect(acquisitionDeclineText(rec("no_manual_found"), "K", "X", "candidate")).toBe(
+      acquisitionDeclineText(rec("no_manual_found"), "K", "X", "confirmed"),
+    );
+    expect(acquisitionDeclineText(rec("search_limit_reached"), "K", "X", "candidate")).toBe(
+      acquisitionDeclineText(rec("search_limit_reached"), "K", "X", "confirmed"),
+    );
   });
 });
 
