@@ -74,7 +74,16 @@ export function asksPartCompatibility(question: string): boolean {
 // confirmation for that same string, and the photo must still yield it.
 
 export const PART_SEARCH_PROPOSAL_KIND = "part_search_proposal";
-export type PartSearchProposalEntry = { kind: typeof PART_SEARCH_PROPOSAL_KIND; candidate: string };
+/** The proposal binds the WHOLE identity that will be sent: the part and the
+ *  maker printed with it (null when none was recognised) — #4171 Codex F4. */
+export type PartSearchProposalEntry = {
+  kind: typeof PART_SEARCH_PROPOSAL_KIND;
+  candidate: string;
+  manufacturer?: string | null;
+};
+/** Marker appended to the proposal's own turn when a confirmation spends it
+ *  (atomically, before any search) — a proposal authorizes ONE search (F3). */
+export const PART_SEARCH_CONSUMED_KIND = "part_search_proposal_consumed";
 export const PART_SEARCH_CANCEL = "Don't search";
 
 export function partSearchConfirmation(candidate: string): string {
@@ -110,14 +119,24 @@ export type PartSearchDecision =
 export function partSearchDecision(opts: {
   message: string;
   candidate: string | null;
+  /** The maker the current photo yields with that part (null when none). */
+  manufacturer?: string | null;
   previousEvidence: readonly unknown[];
 }): PartSearchDecision {
-  const pending = opts.previousEvidence.find(isPartSearchProposal) ?? null;
+  const consumed = opts.previousEvidence.some(
+    (e) => typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === PART_SEARCH_CONSUMED_KIND,
+  );
+  const pending = consumed ? null : (opts.previousEvidence.find(isPartSearchProposal) ?? null);
+  const makerNow = opts.manufacturer ?? null;
   const confirmed = confirmedPartSearchCandidate(opts.message);
   if (confirmed !== null) {
     // Exact string equality, three ways: what was proposed, what is confirmed,
     // and what the photo yields now. Any difference means no egress.
-    return pending && opts.candidate && confirmed === opts.candidate && pending.candidate === opts.candidate
+    return pending &&
+      opts.candidate &&
+      confirmed === opts.candidate &&
+      pending.candidate === opts.candidate &&
+      (pending.manufacturer ?? null) === makerNow
       ? { action: "search", candidate: opts.candidate }
       : { action: "mismatch", candidate: opts.candidate };
   }

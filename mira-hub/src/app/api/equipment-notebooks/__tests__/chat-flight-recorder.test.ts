@@ -110,6 +110,10 @@ const veMock = vi.hoisted(() => ({
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
 const manualDiscoveryMock = vi.hoisted(() => ({ discoverManual: vi.fn() }));
+// #4171 F3 — the one-time proposal claim is a DB write; claimed by default.
+const claimMock = vi.hoisted(() => ({ claimPartSearchProposal: vi.fn(async () => true) }));
+vi.mock("@/capabilities/part-search-claim", () => claimMock);
+
 // Only the network call is a seam; the pure helpers (e.g. the shared OEM maker
 // table the R1 candidate extractor reads) stay real.
 vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
@@ -369,9 +373,9 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
   // #4150 owner decision: a request only PROPOSES; the exact confirmation of the
   // same candidate on the very next turn is what authorizes the search.
   const PART = "Ni8U-S12-AP6";
-  const proposalTurn = (candidate = PART, ownerUserId: string | null = "u1") => [{
+  const proposalTurn = (candidate = PART, ownerUserId: string | null = "u1", manufacturer: string | null = null) => [{
     id: "prev", threadId: "legacy", question: "Look up the PDF manual", answerStatus: "insufficient_evidence",
-    answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate }], basis: null,
+    answerText: "proposal", evidence: [{ kind: "part_search_proposal", candidate, manufacturer }], basis: null,
     createdAt: "2026-09-30T00:00:00Z", ownerUserId, sharedLegacy: false,
   }];
   const found = {
@@ -395,7 +399,8 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     const chips = f.find((x) => x.kind === "followups");
     expect(chips?.suggestions).toEqual([`Search the web for "${PART}"`, "Don't search"]);
     const recorded = (domainMock.recordTurn.mock.calls.at(-1) as unknown[])[2] as { evidence: unknown[] };
-    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART });
+    // The proposal binds the whole identity it would send (#4171 F4): no maker here.
+    expect(recorded.evidence).toContainEqual({ kind: "part_search_proposal", candidate: PART, manufacturer: null });
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "proposed", searched: false });
     expect(JSON.stringify(firstRecordedPacket())).not.toContain(PART);
@@ -421,7 +426,7 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
 
   it("S5: confirming the SMC proposal searches the maker and the part, nothing else", async () => {
     smcLabel();
-    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART) as never);
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", "SMC") as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask(`Search the web for "${SMC_PART}"`);
     expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
@@ -429,6 +434,50 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       { manufacturer: "SMC", catalogNumber: SMC_PART },
       expect.objectContaining({ tenantId: expect.any(String) }),
     );
+  });
+
+  // #4171 Codex r1 — F1 quota, F3 one-time spend, F4 maker binding.
+  it("F4: a maker that appeared after a part-only proposal does not search", async () => {
+    smcLabel();
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn(SMC_PART, "u1", null) as never);
+    await ask(`Search the web for "${SMC_PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+  });
+
+  it("F3: the proposal is claimed (by its turn id and owner) before any search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask(`Search the web for "${PART}"`);
+    expect(claimMock.claimPartSearchProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ proposalTurnId: "prev", ownerUserId: "u1" }),
+    );
+    expect(claimMock.claimPartSearchProposal.mock.invocationCallOrder[0]).toBeLessThan(
+      manualDiscoveryMock.discoverManual.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("F3: an already-spent proposal does not search again", async () => {
+    claimMock.claimPartSearchProposal.mockResolvedValueOnce(false);
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    const f = await ask(`Search the web for "${PART}"`);
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(String(f.find((x) => x.kind === "status")?.message)).toContain("already used");
+  });
+
+  it("F1: a quota refusal says the limit stopped it and records no completed search", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn() as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce({
+      serviceAvailable: true, found: false, candidate: null, validated: false, isDirectPdf: false,
+      oemHost: false, trustedDistributorHost: false, quotaExceeded: true,
+      reason: "Daily manual-search limit reached for this user.", oemRequestUrl: null,
+    });
+    const f = await ask(`Search the web for "${PART}"`);
+    const msg = String(f.find((x) => x.kind === "status")?.message);
+    expect(msg).toContain("didn't search");
+    expect(msg).toContain("Daily manual-search limit reached");
+    expect(msg).not.toContain("found no candidate");
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(firstRecordedPacket().retrieval.photo_part_manual_lookup).toMatchObject({ action: "limited", searched: false });
   });
 
   it("#4150 positive control: the exact confirmation after the proposal searches ONLY that string", async () => {

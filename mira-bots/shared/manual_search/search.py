@@ -870,31 +870,44 @@ async def search_manual(make: str, model: str) -> dict | None:
         return None
 
     candidates: list[dict] = []
-    attempts = 0
+    # Availability is judged from requests actually SENT (#4171 Codex F2): a
+    # pass refused by the per-call ceiling or the quota returns [] without a
+    # request, and must not count as "searched and found nothing" — otherwise a
+    # total provider outage reads as "no manual exists".
+    sent = 0
     failures = 0
+
+    async def _send(query: str, label: str) -> list[dict] | None:
+        nonlocal sent, failures
+        budget = _provider_budget.get()
+        before = budget.used if budget is not None else None
+        try:
+            hits = await _serper_search(query)
+        except Exception:
+            sent += 1
+            failures += 1
+            logger.exception("Serper %s failed", label)
+            return None
+        if before is None or (budget is not None and budget.used > before):
+            sent += 1
+        return hits
 
     # Pass 1: site-scoped PDF — highest precision.
     oem_domains = _oem_domains_for(make)
     if oem_domains:
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
-        attempts += 1
-        try:
-            candidates.extend(_collect(await _serper_search(q1), make, model))
-        except Exception:
-            failures += 1
-            logger.exception("Serper q1 (site-scoped) failed")
+        hits = await _send(q1, "q1 (site-scoped)")
+        if hits:
+            candidates.extend(_collect(hits, make, model))
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
             q2 = f"{make} {variant} manual filetype:pdf"
-            attempts += 1
-            try:
-                found = _collect(await _serper_search(q2), make, model)
-            except Exception:
-                failures += 1
-                logger.exception("Serper q2 (filetype:pdf) failed")
+            hits = await _send(q2, "q2 (filetype:pdf)")
+            if hits is None:
                 continue
+            found = _collect(hits, make, model)
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -905,16 +918,13 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Pass 3: widest fallback — accept landing pages too if nothing above.
     if not candidates:
         q3 = f"{make} {model} manual pdf"
-        attempts += 1
-        try:
-            candidates.extend(_collect(await _serper_search(q3), make, model))
-        except Exception:
-            failures += 1
-            logger.exception("Serper q3 (wide) failed")
+        hits = await _send(q3, "q3 (wide)")
+        if hits:
+            candidates.extend(_collect(hits, make, model))
 
     if not candidates:
-        if attempts and failures == attempts:
-            raise ManualSearchUnavailable(f"all {attempts} search passes failed")
+        if sent and failures == sent:
+            raise ManualSearchUnavailable(f"all {sent} sent search requests failed")
         return None
 
     # Dedupe on URL while preserving order, then sort by score desc.

@@ -117,6 +117,7 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { extractCandidateIdentity } from "@/capabilities/candidate-identity";
+import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -2004,22 +2005,31 @@ async function handleChatTurn(
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. Read only for a confirm/cancel message; fail closed.
   let previousTurnEvidence: unknown[] = [];
+  let previousTurnId: string | null = null;
   const mayAnswerProposal =
     confirmedPartSearchCandidate(message) !== null ||
     message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase();
   if (partSearchEligible && mayAnswerProposal) {
     try {
       const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
-      if (last && last.ownerUserId === ctx.userId) previousTurnEvidence = last.evidence;
+      if (last && last.ownerUserId === ctx.userId) {
+        previousTurnEvidence = last.evidence;
+        previousTurnId = last.id;
+      }
     } catch (err) {
       console.error("[notebook-chat] part-search proposal lookup failed (no search):", err instanceof Error ? err.message : err);
     }
   }
   const partSearch: PartSearchDecision = partSearchEligible
-    ? partSearchDecision({ message, candidate: photoPartNumber, previousEvidence: previousTurnEvidence })
+    ? partSearchDecision({
+        message,
+        candidate: photoPartNumber,
+        manufacturer: photoMaker,
+        previousEvidence: previousTurnEvidence,
+      })
     : { action: "none" };
   let photoPartLookup: {
-    action: "proposed" | "searched" | "cancelled" | "mismatch";
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited";
     searched: boolean;
     part_number: string | null;
     found: boolean;
@@ -2036,7 +2046,7 @@ async function handleChatTurn(
       found: false,
       candidate_host: null,
       message: `I can search the web for a manual using only the exact label text \"${c}\"${photoMaker ? ` and the maker name \"${photoMaker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
-      proposal: { kind: "part_search_proposal", candidate: c },
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: photoMaker },
     };
   } else if (partSearch.action === "cancelled") {
     photoPartLookup = {
@@ -2060,28 +2070,65 @@ async function handleChatTurn(
     };
   } else if (partSearch.action === "search") {
     const confirmedPart = partSearch.candidate;
+    // One proposal authorizes ONE search (#4171 Codex F3): spend it atomically
+    // BEFORE any egress. A racing or retried confirmation finds it spent.
+    const claimed =
+      previousTurnId !== null && ctx.userId
+        ? await claimPartSearchProposal({
+            tenantId: ctx.tenantId,
+            notebookId,
+            proposalTurnId: previousTurnId,
+            ownerUserId: ctx.userId,
+          })
+        : false;
     // Only the confirmed string leaves: no photo, chat or notebook text.
-    const result = await discoverManual(
-      { ...(photoMaker ? { manufacturer: photoMaker } : {}), catalogNumber: confirmedPart },
-      { tenantId: ctx.tenantId, userId: ctx.userId ?? null },
-    );
-    const candidate = result.candidate;
-    const manualUrl = candidate && /^https:\/\/[^\s"'<>]+$/.test(candidate.url) ? candidate.url : null;
-    const manualHost = manualUrl ? new URL(manualUrl).hostname : null;
-    const messageText = !result.serviceAvailable
-      ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${confirmedPart}\". I have not confirmed what the code identifies.`
-      : candidate && manualUrl && manualHost
-        ? `I searched for a manual using the exact label text \"${confirmedPart}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
-        : `I searched for a manual using the exact label text \"${confirmedPart}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
-    photoPartLookup = {
-      action: "searched",
-      searched: true,
-      part_number: confirmedPart,
-      found: Boolean(candidate),
-      candidate_host: manualHost,
-      message: messageText,
-      proposal: null,
-    };
+    const result = claimed
+      ? await discoverManual(
+          { ...(photoMaker ? { manufacturer: photoMaker } : {}), catalogNumber: confirmedPart },
+          { tenantId: ctx.tenantId, userId: ctx.userId ?? null },
+        )
+      : null;
+    if (!result) {
+      photoPartLookup = {
+        action: "mismatch",
+        searched: false,
+        part_number: confirmedPart,
+        found: false,
+        candidate_host: null,
+        message: `I didn't search. That confirmation for \"${confirmedPart}\" was already used. Ask me to look up the manual again if you want a new search.`,
+        proposal: null,
+      };
+    } else if (result.quotaExceeded) {
+      // A quota refusal is not a completed search (#4171 Codex F1, PRD R5):
+      // say the limit stopped it, and record searched=false.
+      photoPartLookup = {
+        action: "limited",
+        searched: false,
+        part_number: confirmedPart,
+        found: false,
+        candidate_host: null,
+        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Ask again tomorrow, or upload the manual yourself and I'll answer from it.`,
+        proposal: null,
+      };
+    } else {
+      const candidate = result.candidate;
+      const manualUrl = candidate && /^https:\/\/[^\s"'<>]+$/.test(candidate.url) ? candidate.url : null;
+      const manualHost = manualUrl ? new URL(manualUrl).hostname : null;
+      const messageText = !result.serviceAvailable
+        ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${confirmedPart}\". I have not confirmed what the code identifies.`
+        : candidate && manualUrl && manualHost
+          ? `I searched for a manual using the exact label text \"${confirmedPart}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
+          : `I searched for a manual using the exact label text \"${confirmedPart}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
+      photoPartLookup = {
+        action: "searched",
+        searched: true,
+        part_number: confirmedPart,
+        found: Boolean(candidate),
+        candidate_host: manualHost,
+        message: messageText,
+        proposal: null,
+      };
+    }
   }
   const unverifiedPartCompatibility =
     chunks.length === 0 &&

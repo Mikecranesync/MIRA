@@ -199,3 +199,43 @@ describe("#4150 review r4 F1 — any serial label disables unlabelled extraction
     expect(unambiguousPartNumber("AB-1234567 S/N. P/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
   });
 });
+
+// #4171 Codex r1 F3/F4: the proposal binds the WHOLE identity that will be
+// sent (part + nullable maker), and a consumed proposal authorizes nothing.
+describe("partSearchDecision — identity binding and one-time use", () => {
+  const confirm = 'Search the web for "SS5Y3-DUW01302"';
+  const proposal = (manufacturer: string | null | undefined) => [
+    { kind: "part_search_proposal", candidate: "SS5Y3-DUW01302", ...(manufacturer === undefined ? {} : { manufacturer }) },
+  ];
+
+  it("searches when part AND maker match the proposal", () => {
+    expect(
+      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: proposal("SMC") }),
+    ).toEqual({ action: "search", candidate: "SS5Y3-DUW01302" });
+  });
+
+  it("does not search when the maker appeared after a part-only proposal", () => {
+    expect(
+      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: proposal(null) }).action,
+    ).toBe("mismatch");
+  });
+
+  it("does not search when the maker changed", () => {
+    expect(
+      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "FESTO", previousEvidence: proposal("SMC") }).action,
+    ).toBe("mismatch");
+  });
+
+  it("a legacy proposal without a maker field binds a maker-less search only", () => {
+    expect(
+      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: null, previousEvidence: proposal(undefined) }).action,
+    ).toBe("search");
+  });
+
+  it("a consumed proposal authorizes nothing", () => {
+    const consumed = [...proposal("SMC"), { kind: "part_search_proposal_consumed" }];
+    expect(
+      partSearchDecision({ message: confirm, candidate: "SS5Y3-DUW01302", manufacturer: "SMC", previousEvidence: consumed }).action,
+    ).toBe("mismatch");
+  });
+});
