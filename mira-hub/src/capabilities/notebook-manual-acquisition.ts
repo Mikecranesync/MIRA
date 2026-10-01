@@ -31,6 +31,7 @@ import {
   type PersistedSource,
   type SourceStateWriter,
 } from "@/capabilities/manual-acquisition";
+import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 
 /** A running claim older than this is treated as abandoned (container restart). */
 export const STALE_RUNNING_MINUTES = 10;
@@ -764,6 +765,8 @@ export async function reconcileAcquisition(
  * never names a button and never promises anything about confirmation
  * (migration 104 still promotes if a future client confirms the same key).
  */
+export { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY };
+
 export function acquisitionDeclineText(
   rec: AcquisitionRecord | null,
   key: string | null,
@@ -818,9 +821,14 @@ export function acquisitionDeclineText(
       // monthly one (never "in a bit", which the old wording promised and
       // the retry predicate could not keep for a daily backoff).
       // #4160 S7 (owner decision 2026-10-01 §1): never a reset time the backend
-      // does not know — the denial may be the daily or the monthly cap.
-      return `I hit a search limit before I could look for the official ${label} manual. I'll try again automatically — try again later, or upload the manual yourself in the meantime.`;
+      // does not know — the denial may be the daily or the monthly cap. The #4160
+      // gate (NO-GO 2026-10-01) required the approved sentence verbatim and no
+      // "I'll try again automatically": a retry only happens on a later turn.
+      return MANUAL_SEARCH_LIMIT_COPY;
     case "search_unavailable":
+      // #4160 gate NO-GO: an outage had no copy and fell through to a generic
+      // "couldn't find anything" — which reads as "no manual exists".
+      return MANUAL_SEARCH_UNAVAILABLE_COPY;
     case "download_rejected":
     case "manufacturer_model_required":
       return null;

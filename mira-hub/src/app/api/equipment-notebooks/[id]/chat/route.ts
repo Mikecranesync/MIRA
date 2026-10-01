@@ -2259,6 +2259,12 @@ async function handleChatTurn(
   // #4160 S6 PRD R16-lite — the candidate-basis search's honest status line,
   // relayed through unconfirmedMachineDirective below (never a new SSE frame).
   let candidateAcquisitionText: string | null = null;
+  // #4160 gate NO-GO (PRD "Never"): true while MIRA's own official-manual search
+  // for this notebook is running, so a specificity fallback this turn says the
+  // search is underway instead of telling the tech to fetch the manual.
+  // "candidate" wins over "confirmed": its manual lands turned off, so the
+  // fallback must also say to turn it on (Codex #4183 F1).
+  let manualSearchRunning: "confirmed" | "candidate" | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2320,6 +2326,7 @@ async function handleChatTurn(
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
+        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
       }
     }
   }
@@ -2383,6 +2390,7 @@ async function handleChatTurn(
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
+          if (cAcq.state === "running") manualSearchRunning = "candidate";
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
@@ -2439,6 +2447,9 @@ async function handleChatTurn(
       }
     }
   }
+  // Covers the S7 recovery block above too (a source-selected turn that
+  // re-started or found a still-running search).
+  if (manualAcquisition?.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
   rec.stage("retrieval", {
     manual_acquisition: manualAcquisition,
     photo_part_manual_lookup: photoPartLookup
@@ -3403,7 +3414,15 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
-      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
+      const validation = validateAnswer({
+        answerText,
+        question: message,
+        general: !docGrounded,
+        served,
+        refused,
+        evidenceSufficient,
+        manualSearchRunning,
+      });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are

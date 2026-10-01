@@ -12,6 +12,7 @@
  * fetcher; a manual enters chat only when its OWN text verifies it
  * (assessApplicability), otherwise it is attached disabled as a candidate.
  */
+import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { withTenantContext } from "@/lib/tenant-context";
 import { setSourceState } from "@/lib/equipment-notebooks";
 import {
@@ -205,10 +206,12 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   });
   if (discovery.quotaExceeded) {
     // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
-    return outcome("search_limit_reached", { message: discovery.reason });
+    // The service's own reason stays on the payload for diagnostics; the
+    // technician sees the approved sentence (#4160 gate NO-GO).
+    return outcome("search_limit_reached", { message: MANUAL_SEARCH_LIMIT_COPY, reason: discovery.reason });
   }
   if (!discovery.serviceAvailable) {
-    return outcome("search_unavailable", { message: discovery.reason });
+    return outcome("search_unavailable", { message: MANUAL_SEARCH_UNAVAILABLE_COPY, reason: discovery.reason });
   }
   if (!discovery.found || !discovery.candidate) {
     return outcome("no_manual_found", {
