@@ -333,6 +333,9 @@ async def _judge_text_once(
 
 async def _judge_one(make: str, model: str, cand: dict) -> dict:
     """Annotate one candidate in place with ``judge`` = verdict | {"status": ...}."""
+    # Counted as examined the moment the read starts, so a timeout that
+    # cancels the batch keeps the partial count (#4160 R15, Codex #4194 r2 F4).
+    _search._note_examined([cand["url"]])
     data = await fetch_pdf_bytes(cand["url"])
     if data is None:
         cand["judge"] = {"status": "unfetched"}

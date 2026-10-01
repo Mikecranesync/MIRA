@@ -22,6 +22,7 @@
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
+import type { SpanContext } from "@opentelemetry/api";
 import {
   acquireManualForIdentity,
   type ManualAcquisitionOutcome,
@@ -520,6 +521,8 @@ export interface StartInput {
   notebookId: string;
   nodeId: string;
   identity: ConfirmedIdentity;
+  /** R15: the chat turn starting this search (see ManualAcquisitionInput). */
+  turnSpanContext?: SpanContext;
   /**
    * "candidate" starts the search for an identity the technician has not yet
    * confirmed (#4160 S6, PRD R2) — `identity` here is the SYNTHETIC
@@ -554,6 +557,8 @@ export async function startManualAcquisition(
   void (async () => {
     let out: ManualAcquisitionOutcome;
     try {
+      // R15: the run's root span is made inside acquireManualForIdentity,
+      // linked to `turnSpanContext` when a chat turn started it.
       out = await acquire({
         tenantId: input.tenantId,
         userId: input.userId,
@@ -568,6 +573,7 @@ export async function startManualAcquisition(
         // acquire() call payload byte-identical to pre-S6 for every existing
         // (nameplate confirm + confirmed-identity notebook) caller.
         ...(basis === "candidate" ? { basis } : {}),
+        ...(input.turnSpanContext ? { turnSpanContext: input.turnSpanContext } : {}),
         writeSourceState: fencedWriter(key, gen, basis),
         attach: fencedAttach(key, gen, basis),
       });
@@ -626,6 +632,7 @@ export async function runManualAcquisition(
     // attach commits but before `finish`, the stale-running recovery still
     // knows what was attached and honors a removal instead of re-attaching
     // (the r16 F22 invariant). The caller's own source writer stays.
+    // R15: the run's root span is made inside acquireManualForIdentity.
     out = await acquire({ ...input, attach: fencedAttach(key, gen) });
   } catch (err) {
     console.error("[manual-acquisition] confirm-time search failed:", err instanceof Error ? err.message : err);

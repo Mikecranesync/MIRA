@@ -208,6 +208,23 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     );
   });
 
+  // Codex #4194 r3 F1: the route never ACTIVATES its mira.turn, so the
+  // acquisition can only link to it if the route hands the turn's context over.
+  it("hands the route's own mira.turn span context to the acquisition (R15 trace link)", async () => {
+    const { __testing__installInMemoryExporter } = await import("@/capabilities/observability/tracing");
+    const handle = __testing__installInMemoryExporter();
+    handle.reset();
+    const res = await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(handle.finished().some((s) => s.name === "mira.turn")).toBe(true));
+    const turn = handle.finished().find((s) => s.name === "mira.turn")!;
+    const passed = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+      turnSpanContext?: { traceId: string; spanId: string };
+    };
+    expect(passed.turnSpanContext?.traceId).toBe(turn.spanContext().traceId);
+    expect(passed.turnSpanContext?.spanId).toBe(turn.spanContext().spanId);
+  });
+
   it("the flag off ⇒ nothing starts", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(false);
     await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
