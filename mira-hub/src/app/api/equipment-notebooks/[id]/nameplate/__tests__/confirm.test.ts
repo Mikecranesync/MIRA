@@ -1711,7 +1711,7 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
     } as never);
   /** A tenant-context client. `claim` is "won" (gen g1) per mode: always, never (a live
    *  running search), or only for an EXPLICIT confirmation ($7 true — a terminal record). */
-  const lifecycleDb = (mode: "wins" | "running" | "terminal") => {
+  const lifecycleDb = (mode: "wins" | "running" | "terminal", adoptedStamp?: Record<string, unknown>) => {
     const queries: { sql: string; params: unknown[] }[] = [];
     const impl = async (_t: string, fn: (c: unknown) => unknown) =>
       fn({
@@ -1722,6 +1722,8 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
             return { rowCount: wins ? 1 : 0, rows: wins ? [{ gen: "g1" }] : [] };
           }
           if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
+          if (/\? 'adopted_identity'/.test(sql))
+            return { rows: adoptedStamp ? [{ match_evidence: { adopted_identity: adoptedStamp } }] : [] };
           return { rowCount: 1, rows: [] };
         }),
       });
@@ -1791,6 +1793,207 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       expect(finishedState(queries)).toBeNull();
     });
   });
+  // #4178 (Pixel NO-GO, owner goal "easiest for techs"): on a BLANK notebook —
+  // no maker, model or catalog, not confirmed, not bound to an asset — the
+  // nameplate the technician just confirmed IS the machine's identity. It is
+  // adopted, so the search is recorded and the chat's retry recovers it.
+  describe("#4178 — a blank notebook adopts the confirmed nameplate identity", () => {
+    const ASSET_UUID = "a5e70000-0000-4000-8000-000000000001";
+    const blank = (extra: Record<string, unknown> = {}) =>
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...(notebook as object),
+        manufacturer: null, model: null, catalogNumber: null, identityStatus: "unknown", asset: null,
+        ...extra,
+      } as never);
+    const adoption = (queries: { sql: string; params: unknown[] }[]) =>
+      queries.find((q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'/.test(q.sql));
+
+    it("adopts maker/model/catalog (never the serial) and records the confirm-time search for recovery", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        const body = await res.json();
+        const a = adoption(queries);
+        expect(a).toBeDefined();
+        expect(a!.params).toEqual(expect.arrayContaining(["Allen-Bradley", "525", "25B-D010N104"]));
+        expect(JSON.stringify(a!.params)).not.toContain("SN-99");
+        // the WHERE re-checks blankness atomically (a parallel chat cannot be overwritten)
+        expect(a!.sql).toMatch(/identity_status IN \('unknown', 'candidate'\)/);
+        expect(a!.sql).toMatch(/equipment_entity_id IS NULL/);
+        expect(body.status).toBe("search_limit_reached");
+        expect(body.identityAdopted).toBe(true);
+        expect(claimed(queries)).toBe(true);
+        expect(finishedState(queries)).toBe("search_limit_reached");
+      });
+    });
+
+    it("control: a notebook with its own identity is never renamed after a component", async () => {
+      await withFlag(true, async () => {
+        const queries = lifecycleDb("wins"); // default fixture: Nobody Inc / RIDE-1
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(adoption(queries)).toBeUndefined();
+        expect(body.identityAdopted).toBeUndefined();
+        expect(finishedState(queries)).toBeNull();
+      });
+    });
+
+    it("control: a blank notebook BOUND to an asset is not adopted (the asset is the machine)", async () => {
+      await withFlag(true, async () => {
+        blank({ asset: { entityId: ASSET_UUID } });
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(adoption(queries)).toBeUndefined();
+      });
+    });
+
+    it("control: a nameplate with a maker but no model or catalog is not adopted", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await POST(makeReq({ ...baseBody, identity: { manufacturer: "Allen-Bradley" } }), makeParams(NOTEBOOK_ID));
+        expect(adoption(queries)).toBeUndefined();
+      });
+    });
+
+    it("adoption records WHICH photo named the notebook, in the same single UPDATE (no second write)", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        const a = adoption(queries)!;
+        expect(a.sql).toMatch(/identity_source_ref = 'nameplate:' \|\| \$6::text/);
+        expect(a.params[5]).toBe(PHOTO_FILE_ID);
+        // provenance is never a separate, losable write on the source row
+        expect(queries.some((q) => /adopted_identity/.test(q.sql))).toBe(false);
+      });
+    });
+
+    // Codex #4191: correcting the SAME photo after an adoption moves the notebook
+    // (and its recorded search) to the corrected identity. WHICH notebooks qualify
+    // is decided inside the UPDATE (proven on real Postgres in
+    // capabilities/__tests__/nameplate-identity-adoption.pg.test.ts); here the route
+    // must ask, and act on the answer.
+    describe("Codex #4191 — a correction of the adopting photo re-adopts", () => {
+      const ADOPTED = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
+      const CORRECTED = { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" };
+      const adopted = (extra: Record<string, unknown> = {}) =>
+        vi.mocked(getNotebook).mockResolvedValue({
+          ...(notebook as object), ...ADOPTED, identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
+          ...extra,
+        } as never);
+      const correct = () => makeReq({ ...baseBody, identity: { ...CORRECTED, serialNumber: "SN-99" } });
+
+      it("a nameplate-sourced notebook asks the conditional UPDATE; when it moves, ITS search is recorded", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          const a = adoption(queries)!;
+          expect(a.params).toEqual(expect.arrayContaining(["755", "20G11NC022AA0NNNNN", PHOTO_FILE_ID]));
+          expect(JSON.stringify(a.params)).not.toContain("SN-99");
+          expect(body.identityAdopted).toBe(true);
+          expect(finishedState(queries)).toBe("search_limit_reached");
+          const claim = queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+          expect(JSON.stringify(claim.params)).toContain("755");
+        });
+      });
+
+      it("when the UPDATE refuses (another photo, an edit, a binding), the search stays inline and unrecorded", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          const queries = lifecycleDb("wins");
+          const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+          vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+            impl(t, (async (c: unknown) => {
+              const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+              const orig = client.query;
+              client.query = vi.fn(async (sql: string, params: unknown[]) =>
+                /identity_source_ref = 'nameplate:'/.test(sql) ? { rowCount: 0, rows: [] } : orig(sql, params),
+              );
+              return fn(client);
+            }) as never)) as never);
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          expect(body.status).toBe("search_limit_reached");
+          expect(body.identityAdopted).toBeUndefined();
+          expect(finishedState(queries)).toBeNull();
+        });
+      });
+
+      it("control: a notebook whose identity was TYPED is never sent to the adoption UPDATE", async () => {
+        await withFlag(true, async () => {
+          adopted({ identitySourceType: "user" });
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          await POST(correct(), makeParams(NOTEBOOK_ID));
+          expect(adoption(queries)).toBeUndefined();
+        });
+      });
+    });
+
+    // Codex #4191 r3 F4: a failed identity save must not be followed by a search
+    // under an identity that did not save. The phone already turns any non-2xx
+    // into its error state ("Edit the details and try again"), and the same
+    // confirm key replays straight back into this adoption.
+    it("a database failure saving the identity is a retryable 503 — no manual search under an unsaved identity", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+        vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+          impl(t, (async (c: unknown) => {
+            const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+            const orig = client.query;
+            client.query = vi.fn(async (sql: string, params: unknown[]) => {
+              if (/identity_source_ref = 'nameplate:'/.test(sql)) throw new Error("connection reset");
+              return orig(sql, params);
+            });
+            return fn(client);
+          }) as never)) as never);
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        expect(res.status).toBe(503);
+        const body = await res.json();
+        expect(body).toMatchObject({ ok: false, error: "identity_save_failed", retryable: true });
+        expect(discoverManual).not.toHaveBeenCalled();
+        expect(claimed(queries)).toBe(false);
+      });
+    });
+
+    it("a lost adoption race (row no longer blank) falls back to the inline, unrecorded search — never an error", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+        vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+          impl(t, (async (c: unknown) => {
+            const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+            const orig = client.query;
+            client.query = vi.fn(async (sql: string, params: unknown[]) => {
+              if (/identity_source_type = 'nameplate_image'/.test(sql)) {
+                queries.push({ sql, params });
+                return { rowCount: 0, rows: [] };
+              }
+              return orig(sql, params);
+            });
+            return fn(client);
+          }) as never)) as never);
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(body.status).toBe("search_limit_reached");
+        expect(body.identityAdopted).toBeUndefined();
+        expect(finishedState(queries)).toBeNull();
+      });
+    });
+  });
+
   // Codex r1 F1: a COMPONENT nameplate in a notebook whose own identity differs
   // (the default fixture: Nobody Inc / RIDE-1 vs Allen-Bradley / 525) is not
   // recorded on the notebook-level record — the chat's retry could not consume
@@ -1806,9 +2009,12 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
       expect(finishedState(queries)).toBeNull();
     });
   });
-  it("Codex r1 F1: an unbound notebook stays inline and unrecorded too", async () => {
+  // Updated for #4178: a BLANK unbound notebook now adopts the nameplate and IS
+  // recorded (see the #4178 block). An unbound notebook that already names a
+  // DIFFERENT machine still stays inline and unrecorded — Codex r1 F1 holds.
+  it("Codex r1 F1: an unbound notebook naming a different machine stays inline and unrecorded", async () => {
     await withFlag(true, async () => {
-      vi.mocked(getNotebook).mockResolvedValue({ ...(notebook as object), manufacturer: null, model: null, identityStatus: "unknown" } as never);
+      vi.mocked(getNotebook).mockResolvedValue({ ...(notebook as object), manufacturer: "Nobody Inc", model: "RIDE-1", identityStatus: "unknown", asset: null } as never);
       const queries = lifecycleDb("wins");
       vi.mocked(discoverManual).mockResolvedValue(limited() as never);
       await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
