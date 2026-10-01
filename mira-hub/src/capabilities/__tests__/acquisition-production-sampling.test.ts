@@ -35,6 +35,8 @@ const input = {
   identity: { identityStatus: "user_confirmed", manufacturer: "M", model: "TEST-123", catalogNumber: null },
 };
 const ON = { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" };
+// runManualAcquisition takes the narrower confirmed-identity input.
+const inlineInput = { ...input, identity: { manufacturer: "M", model: "TEST-123" } };
 
 const exporter = new InMemorySpanExporter();
 let provider: NodeTracerProvider;
@@ -105,7 +107,7 @@ describe("background acquisition under the production sampler", () => {
 
   it("inline run outside any turn (nameplate confirm): exported with its children", async () => {
     ratio = 1;
-    await underDroppedRequestSpan(() => runManualAcquisition(input, { acquire, env: ON }));
+    await underDroppedRequestSpan(() => runManualAcquisition(inlineInput, { acquire, env: ON }));
     const names = exporter.getFinishedSpans().map((s) => s.name);
     expect(names).toContain("manual_acquisition.run");
     expect(names).toContain("manual_acquisition.search");
@@ -123,7 +125,7 @@ describe("background acquisition under the production sampler", () => {
 
   it("standalone runs honor a zero ratio", async () => {
     ratio = 0;
-    await underDroppedRequestSpan(() => runManualAcquisition(input, { acquire, env: ON }));
+    await underDroppedRequestSpan(() => runManualAcquisition(inlineInput, { acquire, env: ON }));
     await underDroppedRequestSpan(() => startManualAcquisition(input, { acquire, env: ON }));
     await new Promise((r) => setTimeout(r, 50));
     expect(exporter.getFinishedSpans()).toHaveLength(0);
