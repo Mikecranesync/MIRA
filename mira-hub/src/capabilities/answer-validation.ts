@@ -950,10 +950,18 @@ const MANUAL_SELF_SERVE_LINE =
  *  say the search is underway and where the manual will appear. */
 const MANUAL_SEARCH_RUNNING_LINE =
   "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it will show up in this notebook's Sources — ask again then and I'll answer from it with a page reference.";
+/** Codex #4183 F1: a CANDIDATE-basis manual lands turned off pending the
+ *  technician's check (the identity is unconfirmed), so asking again alone
+ *  cannot ground an answer — say to turn it on first. */
+const MANUAL_SEARCH_RUNNING_CANDIDATE_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it with a page reference.";
+
+/** Which automatic manual search is running for this notebook, if any. */
+export type ManualSearchRunning = "confirmed" | "candidate" | null;
 
 export function specificityFallback(
   code: string | null,
-  opts: { manualSearchRunning?: boolean } = {},
+  opts: { manualSearchRunning?: ManualSearchRunning } = {},
 ): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
@@ -962,7 +970,13 @@ export function specificityFallback(
 
 What you can do next:
 - If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-${opts.manualSearchRunning ? MANUAL_SEARCH_RUNNING_LINE : MANUAL_SELF_SERVE_LINE}
+${
+    opts.manualSearchRunning === "candidate"
+      ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE
+      : opts.manualSearchRunning === "confirmed"
+        ? MANUAL_SEARCH_RUNNING_LINE
+        : MANUAL_SELF_SERVE_LINE
+  }
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -1100,11 +1114,11 @@ export function validateAnswer(opts: {
   /** #4160: MIRA's automatic official-manual search is running for this
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
-  manualSearchRunning?: boolean;
+  manualSearchRunning?: ManualSearchRunning;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
-  const fallbackOpts = { manualSearchRunning: opts.manualSearchRunning === true };
+  const fallbackOpts = { manualSearchRunning: opts.manualSearchRunning ?? null };
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so

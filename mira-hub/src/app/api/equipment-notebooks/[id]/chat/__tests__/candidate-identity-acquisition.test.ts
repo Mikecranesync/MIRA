@@ -310,6 +310,10 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
     expect(text).not.toContain("manufacturer's support");
     expect(text).toContain("I'm already searching for the official manual");
+    // Codex #4183 F1: a CANDIDATE manual lands turned off pending review, so
+    // the fallback must say to check it and turn it on before asking again.
+    expect(text).toContain("turned off until you check it");
+    expect(text).toContain("turn it on there");
   });
 
   it("control: no search running (flags off) → the self-serve advice stays", async () => {

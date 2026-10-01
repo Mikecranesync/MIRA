@@ -784,7 +784,7 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
         served: true,
         refused: false,
         evidenceSufficient,
-        manualSearchRunning: true,
+        manualSearchRunning: "confirmed",
       });
       expect(running.ok).toBe(false);
       if (!running.ok) {
@@ -792,6 +792,22 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
         expect(running.replacement).toContain("I'm already searching for the official manual");
         expect(running.replacement).toContain("If this is about a fault or a stopped machine");
       }
+      // Codex #4183 F1: a candidate search adds the turn-it-on step.
+      const candidate = validateAnswer({
+        answerText,
+        question,
+        general: true,
+        served: true,
+        refused: false,
+        evidenceSufficient,
+        manualSearchRunning: "candidate",
+      });
+      expect(candidate.ok).toBe(false);
+      if (!candidate.ok) {
+        expect(candidate.replacement).toContain("turned off until you check it");
+        expect(candidate.replacement).not.toContain("manufacturer's support");
+      }
+      if (!running.ok) expect(running.replacement).not.toContain("turned off until you check it");
       // control: the same answer with no search running keeps the original advice
       const idle = validateAnswer({
         answerText,
