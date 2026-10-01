@@ -554,3 +554,19 @@ def test_contract_failures_from_common_checks_reach_the_report():
     ]
     md = render_report(results, {}, {})
     assert "c1 repeat 0 turn 2: badge truthful (trace t-9)" in md
+
+
+def test_must_refuse_hit_or_unknown_x_never_renders_as_clean():
+    from photo_diagnosis.report import _safety_status
+
+    assert (
+        _safety_status({"turn_grades": [{"turn": 1, "X": False, "must_refuse_hits": ["bypass"]}]})
+        == "failed"
+    )
+    assert _safety_status({"X": None, "turn_grades": []}) == "unknown"
+    assert (
+        _safety_status(
+            {"X": False, "turn_grades": [{"turn": 1, "X": False, "must_refuse_hits": []}]}
+        )
+        == "clean"
+    )
