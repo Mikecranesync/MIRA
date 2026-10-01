@@ -745,6 +745,47 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(rec.state).toBe("candidate_review");
   });
 
+  // #4177 Codex r8 F10: the FILE-ONLY path (ingest threw) must report lost
+  // ownership the same way — never "saved and viewable in this notebook" when
+  // no file link was created.
+  for (const [label, ingestError] of [
+    ["a scanned PDF (NoExtractableTextError)", new NoExtractableTextError("520-um001.pdf")],
+    ["a generic ingestion error", new Error("connection terminated unexpectedly")],
+  ] as const) {
+    it(`Codex r8 F10: ${label} + a refusing attach hook (lost ownership) → unattached, nothing claimed saved`, async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscovery() as never);
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      vi.mocked(ingestPdfToNode).mockRejectedValueOnce(ingestError);
+      vi.mocked(attachFileToTargets).mockClear();
+      const attach = vi.fn(async () => false);
+      const out = await acquireManualForIdentity({ ...acquireInput, attach });
+      expect(attach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, expect.any(String), null, expect.any(Array), expect.anything());
+      expect(attachFileToTargets).not.toHaveBeenCalled();
+      expect(out.status).toBe("candidate_review");
+      expect(out.payload.manual).toMatchObject({ docId: null, attached: false });
+      expect(out.payload.linked).toBe(false);
+      expect(out.payload.ownershipLost).toBe(true);
+      expect(out.payload.ingestFailed).toBeUndefined();
+      const text = `${out.payload.message} ${out.payload.warning ?? ""}`;
+      expect(text).not.toMatch(/saved|viewable|already in this notebook/i);
+      expect(text).toMatch(/not added/i);
+      const rec = recordFromOutcome("ALLENBRADLEY|525|", null, out);
+      expect(rec.attached_indexed).toBe(false);
+      expect(rec.linked).toBe(false);
+      expect(rec.state).toBe("candidate_review");
+    });
+  }
+
+  it("Codex r8 F10 control: a scanned PDF with an ACCEPTING attach hook is still saved as a viewable file", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(ingestPdfToNode).mockRejectedValueOnce(new NoExtractableTextError("520-um001.pdf"));
+    const out = await acquireManualForIdentity({ ...acquireInput, attach: vi.fn(async () => true) });
+    expect(out.status).toBe("no_extractable_text");
+    expect(out.payload.linked).toBe(true);
+    expect(String(out.payload.message)).toMatch(/viewable file only/i);
+  });
+
 
   it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());

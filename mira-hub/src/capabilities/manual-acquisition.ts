@@ -288,6 +288,37 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
           ? "MIRA found the manual but could not attach it just now, and will try again."
           : "This manual was removed from the notebook, so MIRA did not add it back.",
     });
+  // The fenced attach returned `false`: this search no longer owns the notebook
+  // (its identity was changed or cleared mid-fetch). Nothing was linked, so the
+  // outcome must never imply the manual is in Sources or viewable here — and the
+  // record layer must never mark it attached (#4177 Codex r7 F9 / r8 F10).
+  const ownershipLostOutcome = (
+    fileId: string,
+    docId: string | null,
+    filename: string,
+    extra: { chunkCount?: number; reused?: boolean } = {},
+  ) =>
+    outcome("candidate_review", {
+      candidate: candidateView,
+      manual: {
+        fileId,
+        docId,
+        filename,
+        discoveryUrl: candidate.url,
+        finalUrl: download.finalUrl,
+        matchState: null,
+        enabledByDefault: null,
+        chunkCount: extra.chunkCount ?? 0,
+        indexed: docId !== null,
+        ...(extra.reused !== undefined ? { reused: extra.reused } : {}),
+        attachSkipped: true,
+        attached: false,
+      },
+      linked: false,
+      ownershipLost: true,
+      message:
+        "This notebook's identity changed while MIRA was fetching the manual, so it was not added. Confirm the nameplate again if this is still the right machine.",
+    });
   const manualParked = await parkOrReuseFile({
     tenantId: ctx.tenantId,
     filename: manualFilename,
@@ -375,6 +406,11 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
         { targetType: "equipment_notebook", targetId: notebookId, role: "manual", displayLabel: manualFilename },
       ]);
       if (fileGate === "error" || fileGate === "removed") return gateOutcome(fileGate, manualParked.fileId, null);
+      // Lost ownership (the notebook's identity changed mid-fetch; the fenced
+      // attach refused): no file link was created, so nothing is "saved and
+      // viewable in this notebook" — the same explicit unattached outcome as
+      // the indexed-document branch below (#4177 Codex r8 F10).
+      if (fileGate === false) return ownershipLostOutcome(manualParked.fileId, null, manualFilename);
       return outcome(scannedPdf ? "no_extractable_text" : "candidate_review", {
         linked: fileGate === true || fileGate === "resume",
         candidate: candidateView,
@@ -439,27 +475,7 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     // record from recording an attachment, and the reply never says the manual
     // is in Sources (an existing source row is NOT what `false` means — the
     // fence attaches over one so a retry reaches its applicability check).
-    return outcome("candidate_review", {
-      candidate: candidateView,
-      manual: {
-        fileId: manualParked.fileId,
-        docId: manualDocId,
-        filename: manualFilename,
-        discoveryUrl: candidate.url,
-        finalUrl: download.finalUrl,
-        matchState: null,
-        enabledByDefault: null,
-        chunkCount: manualChunks,
-        indexed: manualDocId !== null,
-        reused,
-        attachSkipped: true,
-        attached: false,
-      },
-      linked: false,
-      ownershipLost: true,
-      message:
-        "This notebook's identity changed while MIRA was fetching the manual, so it was not added. Confirm the nameplate again if this is still the right machine.",
-    });
+    return ownershipLostOutcome(manualParked.fileId, manualDocId, manualFilename, { chunkCount: manualChunks, reused });
   }
 
   // Judge applicability from THIS document's own chunks — never from the
