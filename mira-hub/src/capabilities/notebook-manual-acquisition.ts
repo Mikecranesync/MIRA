@@ -197,14 +197,22 @@ async function claim(tenantId: string, notebookId: string, key: string, explicit
                   -- A retry remembers everything an earlier attempt ATTACHED —
                   -- across retries, early failures and stale-running recovery —
                   -- so a manual the technician removed is never put back
-                  -- (Codex #4118 r14/r15 F19/F20).
-                  'prior_doc_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                  -- (Codex #4118 r14/r15 F19/F20). Removal history binds
+                  -- AUTOMATIC attempts only: a fresh EXPLICIT confirmation ($7)
+                  -- is the technician asking for the manual now, so it starts
+                  -- with no prior references and attaches what discovery
+                  -- returns; its OWN attachment is then checkpointed by the
+                  -- fenced attach, so a later removal binds the automatic
+                  -- recovery of THAT attempt (#4177 Codex r6 F8).
+                  'prior_doc_id', CASE WHEN NOT $7::boolean
+                                        AND manual_acquisition->>'key' = $3::text
                                         AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                        THEN COALESCE(
                                               CASE WHEN manual_acquisition->>'linked' = 'true'
                                                    THEN manual_acquisition->'doc_id' END,
                                               manual_acquisition->'prior_doc_id') END,
-                  'prior_file_id', CASE WHEN manual_acquisition->>'key' = $3::text
+                  'prior_file_id', CASE WHEN NOT $7::boolean
+                                         AND manual_acquisition->>'key' = $3::text
                                          AND manual_acquisition->>'state' IN ('search_unavailable', 'search_limit_reached', 'running')
                                         THEN COALESCE(
                                                CASE WHEN manual_acquisition->>'linked' = 'true'

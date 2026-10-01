@@ -193,4 +193,84 @@ run("claim retry accounting on real Postgres (#4177 F4)", () => {
     expect(await recover()).toBe("resume");
     expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1);
   });
+
+  // Codex r6 F8 (#4177): removal history binds AUTOMATIC retries, never a
+  // fresh EXPLICIT request. A retryable record remembers what an earlier
+  // attempt attached; the technician removed that manual; then they confirm
+  // the same nameplate again and ask for the manual — that request attaches
+  // what discovery returns now (the same document or a different one). The
+  // automatic path still honors the removal.
+  const DOC2 = "44444444-4444-4444-8444-444444444444";
+  const FILE2 = "66666666-6666-4666-8666-666666666666";
+  const removedHistory = async () => {
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = jsonb_build_object('key', 'SMC|VQ1000FPGC6C6D|', 'state', 'search_unavailable',
+         'gen', 'g-old', 'retries', 1, 'started_at', to_jsonb((now() - interval '2 hours')::text),
+         'finished_at', to_jsonb((now() - interval '90 minutes')::text), 'prior_doc_id', $2::text, 'prior_file_id', $3::text)
+       WHERE id = $1`,
+      [NB, DOC, FILE],
+    );
+    // No equipment_notebook_sources row for DOC: the technician removed it.
+    vi.mocked(attachFileToTargetsTx).mockImplementation(async () => ({ ok: true, links: [] }) as never);
+  };
+  const explicitAttach = async (fileId: string, docId: string) => {
+    let attached: unknown = null;
+    const inline = vi.fn(async (inp: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> => {
+      attached = await inp.attach!(TENANT, NB, fileId, docId, [], null);
+      return { status: "complete", payload: {} };
+    });
+    expect((await runManualAcquisition(input, { acquire: inline, env: ON })).started).toBe(true);
+    return attached;
+  };
+
+  it("Codex r6 F8: after a removal, an explicit confirmation attaches a DIFFERENT document discovery returns now", async () => {
+    await removedHistory();
+    expect(await explicitAttach(FILE2, DOC2)).toBe(true);
+    expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1);
+    const rec = await record();
+    expect(rec.prior_doc_id).toBe(DOC2);
+    expect(rec.prior_file_id).toBe(FILE2);
+  });
+
+  it("Codex r6 F8: after a removal, an explicit confirmation attaches even the SAME document again", async () => {
+    await removedHistory();
+    expect(await explicitAttach(FILE, DOC)).toBe(true);
+    expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1);
+  });
+
+  it("Codex r6 F8: the new explicit attachment is itself checkpointed — a crash, then a removal, is honored by automatic recovery", async () => {
+    await removedHistory();
+    expect(await explicitAttach(FILE2, DOC2)).toBe(true);
+    await c.query(
+      `INSERT INTO equipment_notebook_sources (tenant_id, notebook_id, doc_id, match_state, enabled_by_default, match_evidence)
+       VALUES ($1, $2, $3, 'candidate', false, '{}'::jsonb)`,
+      [TENANT, NB, DOC2],
+    );
+    await c.query(
+      `UPDATE equipment_notebooks SET manual_acquisition = manual_acquisition || jsonb_build_object('state', 'running',
+         'started_at', to_jsonb((now() - interval '30 minutes')::text), 'finished_at', null) WHERE id = $1`,
+      [NB],
+    );
+    await c.query(`DELETE FROM equipment_notebook_sources WHERE doc_id = $1`, [DOC2]);
+    const seen: unknown[] = [];
+    const bg = vi.fn(async (inp: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> => {
+      seen.push(await inp.attach!(TENANT, NB, FILE2, DOC2, [], null));
+      return { status: "no_manual_found", payload: {} };
+    });
+    expect(await startManualAcquisition({ ...input, identity: bgIdentity }, { acquire: bg, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(seen).toEqual(["removed"]));
+    expect(vi.mocked(attachFileToTargetsTx)).toHaveBeenCalledTimes(1);
+  });
+
+  it("Codex r6 F8 control: the AUTOMATIC retry after a removal is still refused", async () => {
+    await removedHistory();
+    const seen: unknown[] = [];
+    const bg = vi.fn(async (inp: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> => {
+      seen.push(await inp.attach!(TENANT, NB, FILE2, DOC2, [], null));
+      return { status: "no_manual_found", payload: {} };
+    });
+    expect(await startManualAcquisition({ ...input, identity: bgIdentity }, { acquire: bg, env: ON })).toBe(true);
+    await vi.waitFor(() => expect(seen).toEqual(["removed"]));
+    expect(vi.mocked(attachFileToTargetsTx)).not.toHaveBeenCalled();
+  });
 });

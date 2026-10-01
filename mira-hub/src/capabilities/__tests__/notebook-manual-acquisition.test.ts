@@ -853,6 +853,11 @@ describe("runManualAcquisition — the inline, recorded search", () => {
     // retry budget and resets it — the increment is guarded by NOT $7.
     expect(claimQ.sql).toMatch(/'retries', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text\s*\n\s*AND manual_acquisition->>'state' = 'search_unavailable'\s*\n\s*THEN COALESCE\(\(manual_acquisition->>'retries'\)::int, 0\) \+ 1\s*\n\s*ELSE 0 END/);
     expect(claimQ.sql).toMatch(/OR \(\$7::boolean\s*\n?\s*AND manual_acquisition->>'key' = \$3::text\s*\n?\s*AND manual_acquisition->>'state' <> 'running'\)/);
+    // #4177 Codex r6 F8: removal history (prior_doc_id / prior_file_id) is
+    // carried forward for AUTOMATIC claims only — an explicit confirmation
+    // starts with no prior references and attaches what discovery returns now.
+    expect(claimQ.sql).toMatch(/'prior_doc_id', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text/);
+    expect(claimQ.sql).toMatch(/'prior_file_id', CASE WHEN NOT \$7::boolean\s*\n\s*AND manual_acquisition->>'key' = \$3::text/);
     const finishQ = db.queries.find((q) => /jsonb_set/.test(q.sql))!;
     expect(finishQ).toBeDefined();
     expect(JSON.parse(finishQ.params[2] as string)).toMatchObject({ key: "SMC|VQ1000FPGC6C6D|", state: "search_limit_reached", gen: "g1" });
