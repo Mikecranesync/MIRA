@@ -320,3 +320,38 @@ describe("#4160 gate — a typed dictionary-word maker + part starts the candida
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 });
+
+// #4160 gate NO-GO (PRD "Never"): on the turn the candidate search starts, a
+// specificity fallback must not tell the technician to "get it from the
+// manufacturer's support" while MIRA is already searching for it.
+describe("#4160 gate — no 'fetch it yourself' advice while the search runs", () => {
+  const UNSUPPORTED = "Set this machine's relief valve to 250 bar.";
+
+  async function answerText(): Promise<string> {
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    return f
+      .filter((x) => x.kind === "content" || x.kind === "replace")
+      .map((x) => String(x.content ?? x.text ?? ""))
+      .join("");
+  }
+
+  it("the candidate search is running → the fallback says MIRA is already searching", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+    const text = await answerText();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalled();
+    expect(text).not.toContain("manufacturer's support");
+    expect(text).toContain("I'm already searching for the official manual");
+    // Codex #4183 F1: a CANDIDATE manual lands turned off pending review, so
+    // the fallback must say to check it and turn it on before asking again.
+    expect(text).toContain("turned off until you check it");
+    expect(text).toContain("turn it on there");
+  });
+
+  it("control: no search running (flags off) → the self-serve advice stays", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+    const text = await answerText();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(text).toContain("manufacturer's support");
+  });
+});

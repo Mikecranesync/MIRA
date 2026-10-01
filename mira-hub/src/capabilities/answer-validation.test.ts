@@ -767,6 +767,61 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
     }
   });
 
+  // #4160 gate NO-GO (PRD "Never"): while MIRA's own automatic search for the
+  // official manual is running, the fallback must not send the technician off
+  // to fetch it themselves — it says the search is underway instead.
+  it.each([
+    ["exact-rating", "The supply voltage is 480 VAC.", "what voltage does this drive need", false],
+    ["exact-setting", "Set this machine's relief valve to 250 bar.", "what should the relief valve be set to", true],
+    ["code-meaning", "Fault code ZX-9987 means the encoder has lost synchronization.", "What does ZX-9987 mean on my S7-1500?", true],
+  ] as const)(
+    "while a manual search is running, the %s fallback says so instead of 'get it from the manufacturer'",
+    (_kind, answerText, question, evidenceSufficient) => {
+      const running = validateAnswer({
+        answerText,
+        question,
+        general: true,
+        served: true,
+        refused: false,
+        evidenceSufficient,
+        manualSearchRunning: "confirmed",
+      });
+      expect(running.ok).toBe(false);
+      if (!running.ok) {
+        expect(running.replacement).not.toContain("manufacturer's support");
+        expect(running.replacement).toContain("I'm already searching for the official manual");
+        expect(running.replacement).toContain("If this is about a fault or a stopped machine");
+      }
+      // Codex #4183 F1: a candidate search adds the turn-it-on step.
+      const candidate = validateAnswer({
+        answerText,
+        question,
+        general: true,
+        served: true,
+        refused: false,
+        evidenceSufficient,
+        manualSearchRunning: "candidate",
+      });
+      expect(candidate.ok).toBe(false);
+      if (!candidate.ok) {
+        expect(candidate.replacement).toContain("turned off until you check it");
+        expect(candidate.replacement).not.toContain("manufacturer's support");
+      }
+      if (!running.ok) expect(running.replacement).not.toContain("turned off until you check it");
+      // control: the same answer with no search running keeps the original advice
+      const idle = validateAnswer({
+        answerText,
+        question,
+        general: true,
+        served: true,
+        refused: false,
+        evidenceSufficient,
+      });
+      expect(idle.ok).toBe(false);
+      if (!idle.ok) expect(idle.replacement).toContain("manufacturer's support");
+    },
+  );
+
   it("a code-meaning fallback keeps the code-specific head and both steps", () => {
     const t = specificityFallback("F005");
     expect(t).toContain("I can't verify what F005 means");

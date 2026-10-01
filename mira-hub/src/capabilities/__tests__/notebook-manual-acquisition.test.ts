@@ -48,6 +48,8 @@ import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "@/capabil
 
 import {
   acquisitionDeclineText,
+  MANUAL_SEARCH_LIMIT_COPY,
+  MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
   acquisitionKey,
   readAcquisition,
@@ -232,10 +234,29 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
     expect(t.toLowerCase()).toContain("limit");
     expect(t.toLowerCase()).not.toContain("couldn't find");
   });
+  it("#4160 gate NO-GO: the limit copy is the owner-approved sentence VERBATIM, with no retry promise", () => {
+    for (const basis of ["confirmed", "candidate"] as const) {
+      const t = acquisitionDeclineText(rec({ state: "search_limit_reached" }), "K", "SMC VQ1000", basis);
+      expect(t).toBe(MANUAL_SEARCH_LIMIT_COPY);
+      expect(t!.toLowerCase()).not.toContain("automatically");
+    }
+    expect(MANUAL_SEARCH_LIMIT_COPY).toBe(
+      "Manual-search limit reached — try again later, or upload the manual yourself.",
+    );
+  });
+  it("#4160 gate NO-GO: an outage has its own copy — never the generic 'couldn't find anything'", () => {
+    for (const basis of ["confirmed", "candidate"] as const) {
+      const t = acquisitionDeclineText(rec({ state: "search_unavailable" }), "K", "SMC VQ1000", basis);
+      expect(t).toBe(MANUAL_SEARCH_UNAVAILABLE_COPY);
+    }
+    expect(MANUAL_SEARCH_UNAVAILABLE_COPY).toBe(
+      "Manual search is unavailable right now — try again later, or upload the manual yourself.",
+    );
+    expect(MANUAL_SEARCH_UNAVAILABLE_COPY.toLowerCase()).not.toContain("couldn't find");
+  });
   it("adds nothing for a record about a different identity, or for outcomes with nothing to show", () => {
     expect(acquisitionDeclineText(rec({ state: "no_manual_found" }), "OTHER", "X")).toBeNull();
     expect(acquisitionDeclineText(null, "K", "X")).toBeNull();
-    expect(acquisitionDeclineText(rec({ state: "search_unavailable" }), "K", "X")).toBeNull();
     expect(acquisitionDeclineText(rec({ state: "download_rejected" }), "K", "X")).toBeNull();
   });
 });
