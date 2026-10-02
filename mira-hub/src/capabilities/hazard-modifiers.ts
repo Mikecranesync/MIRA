@@ -50,11 +50,14 @@ export const MODIFIERS: readonly Modifier[] = [
 /** Trigger-shaped phrases that do not negate or disclaim. */
 export const PSEUDO_TRIGGERS: readonly string[] = [
   "no\\s+doubt", "not\\s+only", "(?:whether\\s+)?or\\s+not", "no\\s+matter", "not\\s+just",
-  "don'?t\\s+think\\s+twice", "never\\s+mind", "no\\s+problem",
+  // Every auxiliary form the caution trigger accepts (#4201 Codex R1 F2).
+  "(?:never|don'?t|do\\s+not|doesn'?t|does\\s+not)\\s+think\\s+twice", "never\\s+mind", "no\\s+problem",
 ];
 
+// Subordinators open a separate clause with its own action ("…adequate BEFORE
+// lifting…", "…closed WHEN you use a lighter…"), so they end scope too (R1 F1).
 export const TERMINATOR =
-  /[.!?;:,\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because)\b/i;
+  /[.!?;:,\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because|before|after|when|whenever|while|whilst|until|once|if|unless|whereas)\b/i;
 
 const WINDOW_WORDS = 8;
 
@@ -69,6 +72,12 @@ const TRIGGER_RES = MODIFIERS.map((m) => ({
 // "Not — it is safe to…" are affirmations, so negated modifiers never govern
 // a match that starts with a subject pronoun or "yes".
 const CLAUSE_SUBJECT_START = /^(?:you|it|it's|we|i|they|he|she|yes|this|that)\b/i;
+// A window complement is ONE clause: a finite verb already in the gap means
+// the complement closed before the hazard ("never assume the hoist IS adequate
+// … lifting …"), so the hazard is outside scope (R1 F1).
+const FINITE_IN_GAP = /\b(?:is|are|was|were|am|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must|do|does|did)\b|\w+n't\b/i;
+// Polarity cues for the nesting check (R1 F3).
+const NEGATION_WORD = /\b(?:no|not|never|cannot|\w+n't)\b/gi;
 const PSEUDO_SRC = `(?:${PSEUDO_TRIGGERS.join("|")})`;
 const PSEUDO_BEFORE_MATCH = new RegExp(`\\b${PSEUDO_SRC}[ \\t]+$`, "i");
 const PSEUDO_AT = new RegExp(`^\\W*${PSEUDO_SRC}\\b`, "i");
@@ -88,6 +97,7 @@ export function governingModifier(text: string, matchStart: number): ModifierHit
   const rel = text.slice(matchStart).search(/\w/);
   const start = rel < 0 ? matchStart : matchStart + rel;
   const before = text.slice(0, start);
+  if (cueCount(before) > 1) return null;
 
   for (const { m, adjacent, any } of TRIGGER_RES) {
     if (m.scope === "adjacent") {
@@ -102,11 +112,38 @@ export function governingModifier(text: string, matchStart: number): ModifierHit
     for (let h = any.exec(before); h; h = any.exec(before)) last = h;
     if (!last || PSEUDO_AT.test(before.slice(last.index))) continue;
     const gap = before.slice(last.index + last[0].length);
-    if (TERMINATOR.test(gap)) continue;
+    // A copula directly before the match is the hazard's own ("never assume it
+    // IS fine to bypass…"); any other finite verb closed the complement first.
+    const complement = gap.replace(/\b(?:is|are|was|were)\s*$/i, "");
+    if (TERMINATOR.test(gap) || FINITE_IN_GAP.test(complement)) continue;
     if (gap.trim().split(/\s+/).filter(Boolean).length > WINDOW_WORDS) continue;
     return { type: m.type, trigger: last[0].trim() };
   }
   return null;
+}
+
+/**
+ * Distinct cancelling cues (trigger phrases and bare negation words, merged
+ * where they overlap) in the clause that ends at the match. More than one means
+ * nested or polarity-reversing framing ("it is not true that it is a myth
+ * that …", "don't believe it is a myth that …"); the layer cannot establish
+ * that the whole expression negates the hazard, so it cancels nothing.
+ */
+function cueCount(before: string): number {
+  const cut = before.split(new RegExp(TERMINATOR.source, "gi")).pop() ?? "";
+  const spans: [number, number][] = [];
+  for (const { any } of TRIGGER_RES) {
+    for (const h of cut.matchAll(new RegExp(any.source, "gi"))) spans.push([h.index!, h.index! + h[0].length]);
+  }
+  for (const h of cut.matchAll(NEGATION_WORD)) spans.push([h.index!, h.index! + h[0].length]);
+  spans.sort((a, b) => a[0] - b[0]);
+  let groups = 0;
+  let end = -1;
+  for (const [s0, e0] of spans) {
+    if (s0 >= end) groups++;
+    end = Math.max(end, e0);
+  }
+  return groups;
 }
 
 /**
