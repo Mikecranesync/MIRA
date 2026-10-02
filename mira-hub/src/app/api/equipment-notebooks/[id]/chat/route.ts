@@ -2387,6 +2387,7 @@ async function handleChatTurn(
           notebookId,
           nodeId: nb.nodeId,
           identity,
+          turnSpanContext: rootSpan.spanContext(),
         });
         if (started) {
           acq = {
@@ -2453,6 +2454,7 @@ async function handleChatTurn(
             nodeId: nb.nodeId,
             identity: candidateIdentity,
             basis: "candidate",
+            turnSpanContext: rootSpan.spanContext(),
           });
           if (cStarted) {
             cAcq = {
@@ -2517,6 +2519,7 @@ async function handleChatTurn(
             notebookId,
             nodeId: nb.nodeId,
             identity,
+            turnSpanContext: rootSpan.spanContext(),
           });
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }

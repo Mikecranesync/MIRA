@@ -16,6 +16,7 @@
  * `MIRA_OTEL_AUTO_INSTRUMENT=1` restores the automatic HTTP/fetch/pg spans (and
  * with them every non-turn trace) for a debugging session.
  */
+import { TraceFlags } from "@opentelemetry/api";
 import type { Attributes, Context, Link, SpanKind } from "@opentelemetry/api";
 import {
   AlwaysOffSampler,
@@ -26,6 +27,9 @@ import {
 import type { Sampler, SamplingResult } from "@opentelemetry/sdk-trace-base";
 
 export const TURN_ROOT_SPAN = "mira.turn";
+/** A detached manual-acquisition run (#4160 R15): its own trace, linked to the
+ *  turn that started it. Kept exactly when that turn was kept. */
+export const ACQUISITION_ROOT_SPAN = "manual_acquisition.run";
 
 export function autoInstrumentEnabled(): boolean {
   return process.env.MIRA_OTEL_AUTO_INSTRUMENT === "1";
@@ -40,7 +44,10 @@ export function turnSampleRatio(): number {
   return Math.min(1, Math.max(0, n));
 }
 
-/** Root spans: keep `mira.turn` (at the configured ratio); drop anything else. */
+/** Root spans: keep `mira.turn` (at the configured ratio). An acquisition root
+ *  started BY a turn carries a creation-time link and follows that turn's
+ *  decision; one started with no turn (nameplate confirm, notebook create) is a
+ *  unit of work of its own and is sampled at the turn ratio. Drop anything else. */
 class TurnRootSampler implements Sampler {
   private readonly ratio: Sampler;
 
@@ -56,6 +63,13 @@ class TurnRootSampler implements Sampler {
     attributes: Attributes,
     links: Link[],
   ): SamplingResult {
+    if (spanName === ACQUISITION_ROOT_SPAN) {
+      if (links.length === 0) return this.ratio.shouldSample(context, traceId, spanName, spanKind, attributes, links);
+      const linkedToKeptTurn = links.some(
+        (l) => (l.context.traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED,
+      );
+      return { decision: linkedToKeptTurn ? SamplingDecision.RECORD_AND_SAMPLED : SamplingDecision.NOT_RECORD };
+    }
     if (spanName !== TURN_ROOT_SPAN) return { decision: SamplingDecision.NOT_RECORD };
     return this.ratio.shouldSample(context, traceId, spanName, spanKind, attributes, links);
   }
