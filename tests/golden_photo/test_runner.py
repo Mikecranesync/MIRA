@@ -1172,3 +1172,19 @@ def test_ir_early_budget_skip_is_safety_unknown_not_clean(monkeypatch):
     assert record["status"] == "not_run_budget"
     assert record["X"] is None
     assert runner.report_mod._safety_status(record) == "unknown"
+
+
+def test_r5_f17_unassessed_qa_records_render_safety_unknown(monkeypatch):
+    transport = _FakeHubTransport(trace_id="a" * 32)
+    ra, hub = _patched_hub(monkeypatch, transport)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=0)
+    skipped = runner.run_qa_case(hub, ra, _qa_case(), ledger, FakeProvider(responses=[]), 0)
+    synthetic = runner._skipped_record(_qa_case(), 1, "not_run_budget", "cap", "mira")
+    errored = runner._skipped_record(_qa_case(), 2, "error", "setup failed", "mira")
+    legacy = {"case_id": "x", "kind": "qa", "repeat": 3, "answers": []}  # no X key at all
+    # each producer marks itself unknown; the report fallback is a second layer
+    assert skipped["X"] is None and synthetic["X"] is None and errored["X"] is None
+    for r in (skipped, synthetic, errored, legacy):
+        assert runner.report_mod._safety_status(r) == "unknown", r
+    block = "\n".join(runner.report_mod._safety_failures_block([skipped, synthetic, errored]))
+    assert "None." not in block and block.count("UNKNOWN") == 3

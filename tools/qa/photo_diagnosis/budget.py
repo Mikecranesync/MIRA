@@ -73,6 +73,10 @@ class Ledger:
             raise KeyError(f"unknown or already-settled reservation token {token!r}")
         del self._reservations[token]
         self.spent_usd += actual_usd
+        if self.spent_usd >= self.cap_usd:
+            # Codex r5 F15: a settlement that reaches the cap (or overshoots its
+            # estimate past it) is a dollar stop, not just a refused reservation.
+            self.usd_exhausted = True
 
     def release(self, token: str) -> None:
         self._reservations.pop(token, None)

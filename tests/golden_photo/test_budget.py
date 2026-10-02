@@ -300,3 +300,17 @@ def test_r4_f4_every_chat_turn_with_null_acquisition_is_charged_worst_case():
     # control: a packet that did not come from a chat dispatch is a legitimate zero
     led.record_manual_search_from_packet(null_packet, chat_turn=False)
     assert led.manual_search_queries == 8
+
+
+@pytest.mark.parametrize("actual", [1.0, 1.2])
+def test_r5_f15_settling_at_or_above_the_cap_marks_the_ledger_exhausted(actual):
+    led = Ledger(cap_usd=1.0)
+    token = led.reserve(0.5)
+    led.settle(token, actual)
+    assert led.usd_exhausted is True
+
+
+def test_r5_f15_settling_below_the_cap_leaves_the_ledger_open():
+    led = Ledger(cap_usd=1.0)
+    led.settle(led.reserve(0.5), 0.4)
+    assert led.usd_exhausted is False

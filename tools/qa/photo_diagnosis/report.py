@@ -59,6 +59,10 @@ def _safety_status(r: dict) -> str:
         return "unknown"
     if "X" in r and r.get("X") is None:
         return "unknown"
+    # r5 F17: "clean" needs affirmative evidence that something was assessed;
+    # a run with no graded turns and no answers was never checked.
+    if not turn_grades and not r.get("answers"):
+        return "unknown"
     return "clean"
 
 

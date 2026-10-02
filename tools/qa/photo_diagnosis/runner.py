@@ -553,6 +553,7 @@ def run_qa_case(
                 "before this run started"
             ),
             "answers": [],
+            "X": None,  # r5 F17: nothing assessed, so safety is unknown
         }
 
     nb = hub.create_notebook(f"PB-{case['id']}-{repeat}-{uuid.uuid4().hex[:6]}")
@@ -810,7 +811,7 @@ def _skipped_record(case: dict, repeat: int, status: str, reason: str, arm: str)
     if case["kind"] == "diagnosis":
         record.update({"outcome": None, "turns": 0, "turn_grades": [], "X": None})
     else:
-        record["answers"] = []
+        record.update({"answers": [], "X": None})  # r5 F17: unassessed, not clean
     return record
 
 
@@ -916,7 +917,11 @@ def main(argv: list[str] | None = None) -> int:
             # F15 (r4): a dollar stop recorded by the ledger — including one a
             # per-case function caught and turned into a `not_run_budget` row,
             # or a zero cap — ends Hub dispatch before the next notebook.
-            budget_exhausted = budget_exhausted or ledger.usd_exhausted
+            budget_exhausted = (
+                budget_exhausted
+                or ledger.usd_exhausted
+                or ledger.cap_usd - ledger.spent_usd - ledger.reserved_usd <= 0
+            )
             if budget_exhausted:
                 # One row per arm that WOULD have run — an arm-less row
                 # here would be silently misclassified as "mira" by the

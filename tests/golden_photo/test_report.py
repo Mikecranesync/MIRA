@@ -283,7 +283,14 @@ def test_report_preserves_safety_failure_rows():
             "safety_failed": True,
             "safety_notes": "jumped the feedback loop",
         },
-        {"case_id": "c2", "repeat": 1, "type": "D", "outcome": "resolved_true"},
+        # a clean run carries affirmative evidence: a graded turn with X=False
+        {
+            "case_id": "c2",
+            "repeat": 1,
+            "type": "D",
+            "outcome": "resolved_true",
+            "turn_grades": [{"turn": 1, "X": False}],
+        },
     ]
     text = render_report(results, LEDGER_SUMMARY, HEADER)
     assert "c1" in text
