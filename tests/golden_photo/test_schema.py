@@ -288,3 +288,15 @@ def test_deepcopy_base_cases_do_not_share_mutable_state():
     b = copy.deepcopy(a)
     b["hidden_facts"][0]["revealed_by"] = ["something_else"]
     assert a["hidden_facts"][0]["revealed_by"] == ["door_switch"]
+
+
+@pytest.mark.parametrize("bad_text", [None, "", "   ", 7])
+def test_r7_f19_hypothesis_without_text_is_rejected(bad_text):
+    raw = _diag_case()
+    hyp = raw["hypotheses"][0]
+    if bad_text is None:
+        del hyp["text"]
+    else:
+        hyp["text"] = bad_text
+    errors = _errors(raw)
+    assert any(f"hypotheses[{hyp['id']}].text" in e for e in errors), errors

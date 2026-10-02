@@ -515,6 +515,9 @@ def run_diagnosis_case(
             if status == "completed":
                 status = "ungraded"
             reason = reason or str(e)
+        except Exception as e:  # noqa: BLE001 — r7 F19: keep graded turns + safety
+            outcome = "ungraded"
+            status, reason = "error", f"outcome grading failed: {e!r}"
 
     # F7: a nested ungraded/errored turn makes the whole run "partial" —
     # never silently reported as a clean "completed".

@@ -237,6 +237,11 @@ def validate_case(raw: Any, path: Path) -> dict:
                 errors.append(f"hypotheses: malformed entry {h!r} (needs id)")
                 continue
             hyp_ids.add(h["id"])
+            text = h.get("text")
+            if not isinstance(text, str) or not text.strip():
+                # r7 F19: outcome grading quotes every hypothesis's text, so a
+                # missing one must fail here, before any paid or Hub call.
+                errors.append(f"hypotheses[{h['id']}].text: must be a non-empty string")
             status = h.get("status")
             if status not in VALID_HYP_STATUS:
                 errors.append(f"hypotheses[{h['id']}].status: invalid {status!r}")
