@@ -154,27 +154,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // candidate-basis search may have started it before this confirmation —
   // startManualAcquisition's own claim() already refused the duplicate).
   let searching = false;
+  // Codex round 3 F4: the structured `startedAt` the host-side follower keys
+  // its retry budget on (`manual-search-follow.ts`'s generation). Resolved
+  // by reading the record back after claiming it — `claim()`'s `started_at`
+  // is the DB's own `now()`, never a value this route invents.
+  let startedAt: string | null = null;
   if (!manualReady && acquisitionEnabled()) {
-    searching = await startManualAcquisition({
+    const justClaimed = await startManualAcquisition({
       tenantId: ctx.tenantId,
       userId: ctx.userId ?? null,
       notebookId,
       nodeId: notebook.nodeId,
       identity,
     });
-    if (!searching) {
-      try {
-        const rec = await readAcquisition(ctx.tenantId, notebookId);
-        const key = acquisitionKey(identity);
-        searching = rec !== null && key !== null && rec.key === key && rec.state === "running";
-      } catch (err) {
-        // Fail-safe: the identity write already succeeded; an unreadable
-        // record just means this response can't confirm a search is
-        // running — it stays honest and says so below.
-        console.warn(
-          `[identity-confirm] readAcquisition failed notebook=${notebookId}: ${(err as Error).message}`,
-        );
-      }
+    try {
+      const rec = await readAcquisition(ctx.tenantId, notebookId);
+      const key = acquisitionKey(identity);
+      const isThisSearch = rec !== null && key !== null && rec.key === key && rec.state === "running";
+      searching = justClaimed || isThisSearch;
+      if (isThisSearch) startedAt = rec!.started_at;
+    } catch (err) {
+      // Fail-safe: the identity write (and the claim, if this call made one)
+      // already succeeded; an unreadable record just means this response
+      // can't attach a generation or confirm someone ELSE's search is
+      // running — it still honestly reports a search THIS call started.
+      searching = justClaimed;
+      console.warn(
+        `[identity-confirm] readAcquisition failed notebook=${notebookId}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -192,6 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // never set when the flag is off or nothing is searching, so a client
     // never follows a search that was never started.
     searching,
+    ...(startedAt ? { startedAt } : {}),
     message: manualReady
       ? `Confirmed — I found the ${manufacturer} ${model} manual and it's ready to answer from.`
       : searching

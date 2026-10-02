@@ -228,6 +228,17 @@ describe("POST identity/confirm", () => {
     expect((await res.json()).manualReady).toBe(false);
   });
 
+  // Codex F13 (round 3): an OLDER applicable manual still indexing must
+  // never hide a NEWER applicable, ready one for the same confirmed identity.
+  it("reports manualReady:true when an older applicable manual isn't ready yet but a newer one for the SAME identity is (Codex F13)", async () => {
+    vi.mocked(listSources).mockResolvedValue([
+      readySource({ docId: "d-older", readiness: { canChat: false } }),
+      readySource({ docId: "d-newer", readiness: { canChat: true } }),
+    ] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+    expect((await res.json()).manualReady).toBe(true);
+  });
+
   it("never reports manualReady:true for an unrelated enabled+verified source that isn't a manual (e.g. a wiring diagram)", async () => {
     vi.mocked(listSources).mockResolvedValue([readySource({ sourceRole: "drawing" })] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
@@ -326,6 +337,53 @@ describe("POST identity/confirm", () => {
       const body = await res.json();
       expect(body.message).not.toMatch(/look for its manual/);
       expect(body.message).toMatch(/no (automatic )?(search|manual search) (was )?started/i);
+    });
+
+    // Codex round 3 F4 — the response must carry the just-started search's
+    // own generation, so the client follower (`manual-search-follow.ts`)
+    // keys its retry budget on a REAL generation instead of an optimistic,
+    // generation-less one.
+    it("includes the freshly-claimed search's startedAt, read back from the record claim() just wrote", async () => {
+      const claimedAt = "2026-10-01T00:00:00.000Z";
+      acqMock.readAcquisition.mockResolvedValue({
+        key: acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" }),
+        state: "running",
+        started_at: claimedAt,
+        finished_at: null,
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      const body = await res.json();
+      expect(body.searching).toBe(true);
+      expect(body.startedAt).toBe(claimedAt);
+    });
+
+    it("includes startedAt from an ALREADY-running record too (a refused claim for the SAME identity)", async () => {
+      acqMock.startManualAcquisition.mockResolvedValue(false);
+      const alreadyRunningAt = "2026-10-01T00:05:00.000Z";
+      acqMock.readAcquisition.mockResolvedValue({
+        key: acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" }),
+        state: "running",
+        started_at: alreadyRunningAt,
+        finished_at: null,
+        candidate_host: null,
+        match_state: null,
+        oem_request_url: null,
+      });
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      const body = await res.json();
+      expect(body.searching).toBe(true);
+      expect(body.startedAt).toBe(alreadyRunningAt);
+    });
+
+    it("omits startedAt entirely when the record can't be confirmed to be THIS identity's search (no generation to report)", async () => {
+      // Default beforeEach: readAcquisition resolves null.
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      const body = await res.json();
+      expect(body.searching).toBe(true); // this call DID claim it
+      expect("startedAt" in body).toBe(false);
     });
 
     it("never starts a search, and reports honestly, when acquisition is disabled (flag off)", async () => {

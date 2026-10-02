@@ -957,6 +957,27 @@ describe("applicableEnabledSource / applicableReadySource (#4195 F3/F10)", () =>
     expect(applicableReadySource([s], smc)).toBeNull();
   });
 
+  // Codex F13 (round 3): TWO applicable, enabled, trusted sources for the
+  // SAME identity — the older one still indexing, the newer one ready.
+  // applicableReadySource must search ALL of them, not stop at whichever
+  // applicableEnabledSource's `.find()` happens to return first.
+  it("applicableReadySource finds a LATER ready source when an earlier applicable one isn't ready yet (Codex F13)", () => {
+    const olderNotReady = source({ docId: "d-older", readiness: { canChat: false } });
+    const newerReady = source({ docId: "d-newer", readiness: { canChat: true } });
+    const ready = applicableReadySource([olderNotReady, newerReady], smc);
+    expect(ready).not.toBeNull();
+    expect((ready as { docId: string }).docId).toBe("d-newer");
+    // applicableEnabledSource still returns the FIRST applicable match (its
+    // own, narrower contract — "is anything applicable", not "what's ready").
+    expect((applicableEnabledSource([olderNotReady, newerReady], smc) as { docId: string }).docId).toBe("d-older");
+  });
+
+  it("applicableReadySource is still null when NONE of several applicable sources are ready", () => {
+    const a = source({ docId: "a", readiness: { canChat: false } });
+    const b = source({ docId: "b", readiness: { canChat: false } });
+    expect(applicableReadySource([a, b], smc)).toBeNull();
+  });
+
   it("excludes a manual whose stamped key is for a DIFFERENT identity (Codex F3 scenario)", () => {
     const rockwell = source({ matchEvidence: { autoAcquisitionKey: "ROCKWELL|POWERFLEX525|" } });
     expect(applicableEnabledSource([rockwell], smc)).toBeNull();

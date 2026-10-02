@@ -109,3 +109,54 @@ describe("createManualSearchDriver — reset() stops the timer and drops state (
     expect(fetchStatus).not.toHaveBeenCalled();
   });
 });
+
+describe("createManualSearchDriver — Codex round 3 F6: a later authoritative reseed is never permanently masked", () => {
+  it("a settled candidate, then confirm/promotion for the SAME generation replaces the message (no second timer, same driver)", () => {
+    const onStateChange = vi.fn();
+    const onRefreshSources = vi.fn();
+    const driver = createManualSearchDriver({ fetchStatus: vi.fn(), onStateChange, onRefreshSources });
+
+    // Hydration: a candidate search already settled, not yet confirmed.
+    driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found a candidate.", startedAt: "gen-1" });
+    expect(driver.current()?.phase).toBe("resolved");
+    expect(driver.current()?.status.message).toBe("Found a candidate.");
+
+    // Confirm promotes it — SAME generation (gen-1), a new message.
+    driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Confirmed — ready to answer from.", startedAt: "gen-1" });
+    expect(driver.current()?.status.message).toBe("Confirmed — ready to answer from.");
+    expect(onRefreshSources).toHaveBeenCalledTimes(1); // the promotion itself, not the hydration
+  });
+
+  it("a second, different search in the SAME notebook starts polling after the first one already resolved", async () => {
+    const fetchStatus = vi.fn().mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it.", startedAt: "gen-2" });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+
+    // First search (gen-1) already resolved.
+    driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    expect(driver.current()?.phase).toBe("resolved");
+
+    // A technician confirms a DIFFERENT identity in the SAME notebook — a new generation starts running.
+    driver.seed(NB, { manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    expect(driver.current()?.phase).toBe("following"); // F6: this used to stay stuck on gen-1's resolved state
+    expect(driver.current()?.key).toContain("gen-2");
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fetchStatus).toHaveBeenCalledWith(NB); // the SECOND search is actually polled, not silently ignored
+    expect(driver.current()?.phase).toBe("resolved");
+  });
+
+  it("a second, different search in the SAME notebook starts polling even after the first one EXHAUSTED its budget", async () => {
+    const fetchStatus = vi.fn().mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+    driver.seed(NB, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(4000);
+    expect(driver.current()?.phase).toBe("unresolved");
+
+    fetchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it.", startedAt: "gen-2" });
+    driver.seed(NB, { manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    expect(driver.current()?.phase).toBe("following");
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(driver.current()?.phase).toBe("resolved");
+    expect(driver.current()?.status.message).toBe("Found it.");
+  });
+});

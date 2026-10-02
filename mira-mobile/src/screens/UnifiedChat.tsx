@@ -29,8 +29,9 @@ import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
 import {
   advanceManualSearchFollow,
-  startManualSearchFollow,
+  reseedManualSearchFollow,
   type ManualSearchFollowState,
+  type ManualSearchStatus,
 } from "@factorylm/interaction";
 import {
   FactoryLMShell,
@@ -218,15 +219,23 @@ export function UnifiedChat({
     }
   }, [notebookId, attachmentThreadId]);
 
-  // Trigger: a LIVE frame (this session's SSE) reporting a running search
-  // starts following, if nothing else already claimed it (the tick effect
-  // below owns advancing an existing follow — this never re-advances one).
+  // Trigger: a LIVE frame (this session's SSE) reporting a running search.
+  // Codex round 3 F6: `prev ?? startFollow(...)` was a blanket no-op once
+  // ANYTHING was already tracked — a later, different search (a different
+  // confirmed identity) in the same thread never started following once the
+  // first one resolved or exhausted its budget. `reseedManualSearchFollow`
+  // is the one state machine every seed moment goes through; it keeps the
+  // true no-op ONLY for a duplicate seed of an ACTIVELY following
+  // generation (the tick effect below owns advancing that one).
   useEffect(() => {
-    if (follow) return;
     const live = latestManualSearchStatus(baseThread.turns);
     if (!live || !live.running || !notebookId) return;
-    setFollow(startManualSearchFollow(notebookId, live));
-  }, [baseThread, notebookId, follow]);
+    setFollow((prev) => {
+      const result = reseedManualSearchFollow(prev, notebookId, live);
+      if (result.refreshSources) void refreshPromotedScope();
+      return result.state;
+    });
+  }, [baseThread, notebookId, refreshPromotedScope]);
 
   // Trigger: hydration / notebook change. The server never persists this
   // status, so the ONLY way to know "is a search running" after a reload is
@@ -238,7 +247,11 @@ export function UnifiedChat({
     void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
       .then((status) => {
         if (cancelled || !status) return;
-        setFollow((prev) => prev ?? startManualSearchFollow(notebookId, status));
+        setFollow((prev) => {
+          const result = reseedManualSearchFollow(prev, notebookId, status);
+          if (result.refreshSources) void refreshPromotedScope();
+          return result.state;
+        });
       })
       .catch(() => {
         // Best-effort: no status this time just means nothing renders yet.
@@ -247,7 +260,7 @@ export function UnifiedChat({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally NOT `follow`: a one-shot hydration check, not a re-check loop.
-  }, [notebookId, attachmentThreadId]);
+  }, [notebookId, attachmentThreadId, refreshPromotedScope]);
 
   // The bounded re-check itself (NOT a polling framework — one setTimeout
   // chain, capped attempts via the shared follower, cleared on unmount/dep
@@ -541,9 +554,17 @@ export function UnifiedChat({
             // started, so a flag-off or nothing-to-search confirm never
             // follows a search that was never running.
             if (result.searching) {
-              setFollow((prev) =>
-                prev ?? startManualSearchFollow(meta.notebookId, { manufacturer: proposal.manufacturer, model: proposal.model, running: true }),
-              );
+              setFollow((prev) => {
+                const seeded: ManualSearchStatus = {
+                  manufacturer: proposal.manufacturer,
+                  model: proposal.model,
+                  running: true,
+                  ...(result.startedAt ? { startedAt: result.startedAt } : {}),
+                };
+                const seedResult = reseedManualSearchFollow(prev, meta.notebookId, seeded);
+                if (seedResult.refreshSources) void refreshPromotedScope();
+                return seedResult.state;
+              });
             }
             return result;
           },

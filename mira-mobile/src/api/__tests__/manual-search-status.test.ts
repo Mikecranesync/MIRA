@@ -34,6 +34,27 @@ describe("fetchManualSearchStatus", () => {
     expect(request).toHaveBeenCalledWith("/api/equipment-notebooks/nb-1/?threadId=thrd-1");
   });
 
+  it("Codex F12 — includes the search's generation (startedAt) through the real decoder, so the follower's budget keys on it", async () => {
+    request.mockResolvedValue({
+      status: 200,
+      data: { manualSearch: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-2" } },
+      text: "",
+    });
+    const result = await fetchManualSearchStatus("nb-1");
+    expect(result).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-2" });
+  });
+
+  it("omits startedAt when the server didn't send one (an older Hub, or a generation-less record)", async () => {
+    request.mockResolvedValue({
+      status: 200,
+      data: { manualSearch: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true } },
+      text: "",
+    });
+    const result = await fetchManualSearchStatus("nb-1");
+    expect(result).not.toBeNull();
+    expect("startedAt" in (result as object)).toBe(false);
+  });
+
   it("includes message only when the server sent one", async () => {
     request.mockResolvedValue({
       status: 200,

@@ -673,19 +673,31 @@ export function HubShellHost() {
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
-    const data = (await res.json().catch(() => null)) as { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown } | null;
+    const data = (await res.json().catch(() => null)) as
+      | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown }
+      | null;
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
     const sel = selectionRef.current;
     if (sel) void loadDetail(sel);
-    // Codex #4195 round 2 F4: a confirm that STARTED a search is followed the
-    // same way hydration is (F6) — seed the SAME driver, no second timer.
+    // Codex #4195 round 2 F4 + round 3 F4: a confirm that STARTED a search is
+    // followed the same way hydration is (F6) — seed the SAME driver, no
+    // second timer. `startedAt`, when the server sends it, is that search's
+    // own generation — seeding with it (rather than an optimistic,
+    // generation-less read) means the first poll never has to "adopt" it.
     const searching = data.searching === true;
+    const startedAt = typeof data.startedAt === "string" && data.startedAt ? data.startedAt : undefined;
     if (searching && sel) {
-      manualSearchDriverRef.current?.seed(sel.notebookId, { manufacturer: proposal.manufacturer, model: proposal.model, running: true });
+      manualSearchDriverRef.current?.seed(sel.notebookId, {
+        manufacturer: proposal.manufacturer,
+        model: proposal.model,
+        running: true,
+        ...(startedAt ? { startedAt } : {}),
+      });
     }
     return {
       manualReady: data.manualReady === true,
       searching,
+      ...(startedAt ? { startedAt } : {}),
       ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
     };
   }, [loadDetail]);

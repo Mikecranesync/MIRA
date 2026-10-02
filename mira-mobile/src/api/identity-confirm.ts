@@ -25,7 +25,7 @@ export async function confirmIdentityProposal(
     json: body,
   });
   const data = res.status === 200 && typeof res.data === "object" && res.data !== null
-    ? (res.data as { ok?: unknown; manualReady?: unknown; message?: unknown })
+    ? (res.data as { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown })
     : null;
   if (!data || data.ok !== true) {
     throw new Error(`confirm identity failed (status ${res.status})`);
@@ -33,5 +33,11 @@ export async function confirmIdentityProposal(
   return {
     manualReady: data.manualReady === true,
     ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
+    // Codex round 2 F4 + round 3 F4: `searching` is the structured signal
+    // telling the host whether to start following progress; `startedAt` (when
+    // the server sends it) is that search's own generation. Both decoded
+    // here, verbatim — this wrapper never guesses either.
+    ...(data.searching === true ? { searching: true } : {}),
+    ...(typeof data.startedAt === "string" && data.startedAt ? { startedAt: data.startedAt } : {}),
   };
 }

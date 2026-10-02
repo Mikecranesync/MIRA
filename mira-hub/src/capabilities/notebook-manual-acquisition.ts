@@ -160,31 +160,47 @@ function matchEvidenceKey(matchEvidence: unknown): string | null {
  * user_confirmed sources across identity changes, so this predicate is the
  * only thing standing between that preservation and a false "ready".
  */
+/** The shared applicability test both `applicableEnabledSource` and
+ *  `applicableReadySource` filter on — see `applicableEnabledSource`'s own
+ *  doc comment for the fail-closed rationale on a keyless source. */
+function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
+  return (
+    s.sourceRole === "manual" &&
+    s.enabledByDefault &&
+    (s.matchState === "verified" || s.matchState === "user_confirmed") &&
+    matchEvidenceKey(s.matchEvidence) === key
+  );
+}
+
 export function applicableEnabledSource(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
 ): NotebookSource | null {
   const key = acquisitionKey(identity);
   if (!key) return null;
-  return (
-    sources.find(
-      (s) =>
-        s.sourceRole === "manual" &&
-        s.enabledByDefault &&
-        (s.matchState === "verified" || s.matchState === "user_confirmed") &&
-        matchEvidenceKey(s.matchEvidence) === key,
-    ) ?? null
-  );
+  return sources.find((s) => isApplicableEnabledManual(s, key)) ?? null;
 }
 
-/** As `applicableEnabledSource`, additionally requiring `readiness.canChat` —
- *  the manual is not merely applicable and turned on, but ANSWERABLE now. */
+/**
+ * As `applicableEnabledSource`, additionally requiring `readiness.canChat` —
+ * the manual is not merely applicable and turned on, but ANSWERABLE now.
+ *
+ * Codex F13 (round 3): a notebook can have MORE THAN ONE applicable, enabled,
+ * trusted manual for the same confirmed identity (an older one still
+ * indexing, a newer one already ready). Composing `applicableEnabledSource`
+ * — which stops at the FIRST applicable match in `listSources`' own
+ * (created_at) order — and then checking only THAT one's readiness silently
+ * reported "not ready" even when a later applicable source already was.
+ * This searches ALL applicable sources for one that's ready, sharing the
+ * SAME applicability predicate above — never a second matcher.
+ */
 export function applicableReadySource(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
 ): NotebookSource | null {
-  const s = applicableEnabledSource(sources, identity);
-  return s && s.readiness.canChat ? s : null;
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  return sources.find((s) => isApplicableEnabledManual(s, key) && s.readiness.canChat) ?? null;
 }
 
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */

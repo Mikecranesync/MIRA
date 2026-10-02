@@ -28,7 +28,7 @@
 // importable from a plain vitest unit test (see this module's own header).
 import {
   advanceManualSearchFollow,
-  startManualSearchFollow,
+  reseedManualSearchFollow,
   type ManualSearchFollowState,
   type ManualSearchStatus,
 } from "../../../packages/factorylm-interaction/src";
@@ -99,11 +99,24 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
 
   return {
     seed(notebookId, status) {
-      if (state && trackedNotebookId === notebookId) return;
+      // Codex round 3 F6: a blanket "already tracking this notebook, do
+      // nothing" no-op permanently masked a LATER authoritative update —
+      // a promotion after confirm (same generation), or a second, different
+      // search in the same notebook (a new generation) once the first one
+      // resolved or exhausted its budget. `reseedManualSearchFollow` is the
+      // one state machine every seed call now goes through; it keeps the
+      // true no-op ONLY for a duplicate seed of an ACTIVELY following
+      // generation (the tick owns advancing that one).
+      const current = trackedNotebookId === notebookId ? state : null;
+      const result = reseedManualSearchFollow(current, notebookId, status);
+      const changed = current !== result.state;
       trackedNotebookId = notebookId;
-      state = startManualSearchFollow(notebookId, status);
-      deps.onStateChange(state);
-      scheduleTick(notebookId);
+      state = result.state;
+      if (changed) {
+        deps.onStateChange(state);
+        scheduleTick(notebookId);
+      }
+      if (result.refreshSources) deps.onRefreshSources();
     },
     reset() {
       clearTimer();

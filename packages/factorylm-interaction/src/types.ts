@@ -299,11 +299,16 @@ export interface IdentityProposal {
  * (Codex round 2 F4) is a STRUCTURED signal — never scraped from `message`
  * text — telling the host whether a background search actually started, so
  * it knows whether to start following progress (`manual-search-follow.ts`).
+ * `startedAt` (Codex round 3 F4) is the just-started search's own
+ * generation, when the server can report it — lets the host seed the
+ * follower with a REAL generation instead of an optimistic, generation-less
+ * one, so the very first poll never has to "adopt" it mid-follow.
  */
 export interface ConfirmIdentityResult {
   readonly manualReady: boolean;
   readonly message?: string;
   readonly searching?: boolean;
+  readonly startedAt?: string;
 }
 
 /**

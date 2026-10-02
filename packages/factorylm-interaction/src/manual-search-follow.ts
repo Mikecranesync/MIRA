@@ -18,6 +18,21 @@
  * database recovered. One state machine, two hosts wiring timers around it
  * (commodity-before-custom: this is small state logic, not a polling
  * library or a second networking layer).
+ *
+ * Round 3 (Codex F6/F11): two more bugs in the SAME shape. F11 —
+ * `advanceManualSearchFollow`'s generation-change branch reset to a fresh
+ * follow but then unconditionally short-circuited on "not following",
+ * which skipped the running→settled transition (and its `refreshSources`
+ * signal) whenever the very first read of a newly-adopted generation
+ * happened to already be settled. F6 — both hosts' "seed" call sites used
+ * `prev ?? startFollow(...)`, a blanket no-op once ANYTHING was already
+ * tracked for a notebook: a later authoritative update (a promotion after
+ * confirm, or a second, different search in the same notebook) was
+ * permanently ignored once the first follow resolved or exhausted its
+ * budget. `reseedManualSearchFollow` below is the fix: the one entry point
+ * every "seed" moment (hydration, a live frame, a confirm) now goes
+ * through, which can replace a terminal state's content and can adopt a
+ * new generation that arrives after the old one settled.
  */
 import type { ManualSearchStatus } from "./types";
 
@@ -94,13 +109,18 @@ export function advanceManualSearchFollow(
   read: ManualSearchStatus | null,
 ): ManualSearchFollowResult {
   const knownGenerationChanged = Boolean(read?.startedAt) && followKey(notebookId, read!.startedAt) !== state.key;
-  const current = knownGenerationChanged ? startManualSearchFollow(notebookId, read!, state.maxAttempts) : state;
 
-  if (current.phase !== "following") {
-    // Already settled/unresolved for this generation — a stray late read
-    // (e.g. one in flight when the budget ran out) changes nothing.
-    return { state: current, refreshSources: false };
+  if (!knownGenerationChanged && state.phase !== "following") {
+    // Already settled/unresolved for THIS generation, and no new generation
+    // was reported — a stray late read (e.g. one in flight when the budget
+    // ran out) changes nothing. (Codex F11: when a generation DID change,
+    // falling through below is required — a brand-new generation's first
+    // read must never skip the running→settled transition just because it
+    // happens to already be settled.)
+    return { state, refreshSources: false };
   }
+
+  const current = knownGenerationChanged ? startManualSearchFollow(notebookId, read!, state.maxAttempts) : state;
 
   const attempts = current.attempts + 1;
 
@@ -130,6 +150,64 @@ export function advanceManualSearchFollow(
   // is the freshest status to render; a null read keeps showing the last
   // known one (never blanks the card).
   return { state: { ...current, attempts, status: read ?? current.status }, refreshSources: false };
+}
+
+/**
+ * Reconcile a FRESH, authoritative status read against whatever is currently
+ * tracked for `notebookId` (or nothing) — the single entry point for every
+ * "seed" moment: hydration, a live frame first showing `running: true`, and
+ * right after a confirmation that started a search (Codex F6/F11, round 3).
+ * `advanceManualSearchFollow` is for the periodic TICK only (it tolerates a
+ * `null`/inconclusive read); this function always has a concrete read and
+ * is safe to call repeatedly — a duplicate seed for an ACTIVE follow of the
+ * same generation is a pure no-op (`state ===` the input, by reference, so a
+ * caller can skip re-rendering/re-scheduling on it).
+ *
+ * The state machine:
+ *   (a) a NEW generation (a different `startedAt`, or nothing tracked yet)
+ *       — fresh budget.
+ *   (b) the SAME generation, still `following` AND the read confirms it's
+ *       still running — no-op; the tick owns advancing it.
+ *   (c) the SAME generation otherwise (settled/exhausted, OR a genuine
+ *       settle arriving outside the tick) — ANY authoritative update
+ *       replaces what's displayed; `refreshSources` fires again only when
+ *       the content actually changed (a repeat, identical reseed never
+ *       re-triggers it).
+ *   (d) the running→settled transition is never skipped: a (a)-branch read
+ *       that is already settled on first observation still resolves, and
+ *       signals `refreshSources` — UNLESS nothing was tracked before this
+ *       call (a bare first hydration has nothing stale to refresh; that
+ *       very read came from the same fetch that would supply fresh Sources
+ *       anyway).
+ */
+export function reseedManualSearchFollow(
+  current: ManualSearchFollowState | null,
+  notebookId: string,
+  read: ManualSearchStatus,
+  maxAttempts: number = DEFAULT_MANUAL_SEARCH_FOLLOW_ATTEMPTS,
+): ManualSearchFollowResult {
+  const sameGeneration = current !== null && followKey(notebookId, read.startedAt) === current.key;
+
+  if (sameGeneration && current.phase === "following" && read.running) {
+    return { state: current, refreshSources: false };
+  }
+
+  if (sameGeneration) {
+    const wasResolved = current.phase !== "following";
+    const changed = read.running !== current.status.running || read.message !== current.status.message;
+    return {
+      state: {
+        ...current,
+        phase: read.running ? "following" : "resolved",
+        status: read,
+        attempts: read.running ? 0 : current.attempts,
+      },
+      refreshSources: !read.running && (!wasResolved || changed),
+    };
+  }
+
+  const fresh = startManualSearchFollow(notebookId, read, maxAttempts);
+  return { state: fresh, refreshSources: fresh.phase === "resolved" && current !== null };
 }
 
 /** Whether the host should keep scheduling checks for this state. */

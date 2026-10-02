@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test";
 import {
   advanceManualSearchFollow,
   isManualSearchFollowActive,
+  reseedManualSearchFollow,
   startManualSearchFollow,
   MANUAL_SEARCH_UNRESOLVED_MESSAGE,
   type ManualSearchFollowState,
@@ -17,6 +18,8 @@ import type { ManualSearchStatus } from "@factorylm/interaction";
 const NB = "nb-1";
 const RUNNING: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" };
 const SETTLED: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" };
+const SETTLED_GEN2: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it (2).", startedAt: "gen-2" };
+const RUNNING_GEN2: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-2" };
 
 describe("startManualSearchFollow", () => {
   it("starts in 'following' for a running status", () => {
@@ -138,5 +141,123 @@ describe("advanceManualSearchFollow — generation reset (Codex F8)", () => {
     // which is safe (adopts the generation) and still inside budget.
     expect(r.state.phase).toBe("following");
     expect(r.state.key).toContain("gen-1");
+  });
+
+  it("Codex F11 — a brand-new generation observed ALREADY SETTLED on the very first tick still resolves and signals refresh (never skips running→settled)", () => {
+    // The optimistic, generation-less follow a confirm seeds BEFORE the first
+    // real read — exactly F11's reproduction.
+    const noGen: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const s = startManualSearchFollow(NB, noGen, 5);
+    const r = advanceManualSearchFollow(s, NB, SETTLED); // the search finished before the first tick
+    expect(r.state.phase).toBe("resolved");
+    expect(r.state.status).toEqual(SETTLED);
+    expect(r.state.attempts).toBe(1);
+    expect(r.refreshSources).toBe(true); // F11: this was false before the fix
+  });
+
+  it("Codex F11 — a DIFFERENT known generation observed already settled on the first tick also resolves and signals refresh", () => {
+    let s: ManualSearchFollowState = startManualSearchFollow(NB, RUNNING, 3);
+    s = advanceManualSearchFollow(s, NB, RUNNING).state;
+    const r = advanceManualSearchFollow(s, NB, SETTLED_GEN2);
+    expect(r.state.key).toContain("gen-2");
+    expect(r.state.phase).toBe("resolved");
+    expect(r.state.attempts).toBe(1); // fresh budget, one attempt spent on this very read
+    expect(r.refreshSources).toBe(true);
+  });
+});
+
+describe("reseedManualSearchFollow — the state machine every 'seed' moment goes through (Codex round 3 F6/F11)", () => {
+  // (a) a NEW generation (nothing tracked, or a different startedAt) — fresh budget.
+  it("(a) nothing tracked yet + a running read -> fresh 'following' state, no refresh", () => {
+    const r = reseedManualSearchFollow(null, NB, RUNNING);
+    expect(r.state.phase).toBe("following");
+    expect(r.state.attempts).toBe(0);
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("(d) nothing tracked yet + an ALREADY-SETTLED read -> resolved, but refreshSources is FALSE (nothing stale to refresh on a bare first hydration)", () => {
+    const r = reseedManualSearchFollow(null, NB, SETTLED);
+    expect(r.state.phase).toBe("resolved");
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("(a) a DIFFERENT generation than the one tracked -> fresh budget, following", () => {
+    const current = startManualSearchFollow(NB, RUNNING, 5);
+    const r = reseedManualSearchFollow(current, NB, RUNNING_GEN2);
+    expect(r.state.key).toContain("gen-2");
+    expect(r.state.attempts).toBe(0);
+    expect(r.state.phase).toBe("following");
+  });
+
+  it("(d) a DIFFERENT generation than the one tracked, already settled on arrival -> resolved AND refreshSources fires (something WAS tracked before)", () => {
+    const current = startManualSearchFollow(NB, RUNNING, 5);
+    const r = reseedManualSearchFollow(current, NB, SETTLED_GEN2);
+    expect(r.state.key).toContain("gen-2");
+    expect(r.state.phase).toBe("resolved");
+    expect(r.refreshSources).toBe(true);
+  });
+
+  // (b) the SAME generation, still following, confirmed still running -> pure no-op.
+  it("(b) same generation, already following, read confirms still running -> no-op (reference-equal state, tick owns it)", () => {
+    const current = startManualSearchFollow(NB, RUNNING, 5);
+    const r = reseedManualSearchFollow(current, NB, RUNNING);
+    expect(r.state).toBe(current); // reference equality: a true no-op
+    expect(r.refreshSources).toBe(false);
+  });
+
+  // (c) the SAME generation, otherwise -> an authoritative update replaces the display.
+  it("(c) same generation, TERMINAL (resolved) + a DIFFERENT message on reseed (confirmation/promotion) -> replaces the display and refreshes again", () => {
+    const resolved = { ...startManualSearchFollow(NB, RUNNING, 5), phase: "resolved" as const, status: SETTLED };
+    const promoted: ManualSearchStatus = { ...SETTLED, message: "Promoted — ready to answer from." };
+    const r = reseedManualSearchFollow(resolved, NB, promoted);
+    expect(r.state.status).toEqual(promoted);
+    expect(r.state.phase).toBe("resolved");
+    expect(r.refreshSources).toBe(true);
+  });
+
+  it("(c) same generation, TERMINAL (resolved) + an IDENTICAL reseed -> replaces nothing meaningfully and does NOT refresh again", () => {
+    const resolved = { ...startManualSearchFollow(NB, RUNNING, 5), phase: "resolved" as const, status: SETTLED };
+    const r = reseedManualSearchFollow(resolved, NB, SETTLED);
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("(c) same generation, TERMINAL (unresolved/exhausted) + a later settle arrives via reseed -> resolves and refreshes", () => {
+    const unresolved: ManualSearchFollowState = {
+      key: `${NB}|gen-1`, attempts: 5, maxAttempts: 5, phase: "unresolved",
+      status: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: MANUAL_SEARCH_UNRESOLVED_MESSAGE, startedAt: "gen-1" },
+    };
+    const r = reseedManualSearchFollow(unresolved, NB, SETTLED);
+    expect(r.state.phase).toBe("resolved");
+    expect(r.state.status).toEqual(SETTLED);
+    expect(r.refreshSources).toBe(true);
+  });
+
+  it("(c) same generation, ACTIVELY following, but the reseed itself reports already settled -> resolves immediately and refreshes (a settle arriving outside the tick)", () => {
+    const following = startManualSearchFollow(NB, RUNNING, 5);
+    const r = reseedManualSearchFollow(following, NB, SETTLED);
+    expect(r.state.phase).toBe("resolved");
+    expect(r.refreshSources).toBe(true);
+  });
+
+  it("Codex F6 worked example — settled candidate, confirm, promoted readiness replaces the message, then a second (different) search in the SAME notebook is followed", () => {
+    // 1. Hydration: a candidate search already settled with a 'preparing' style message.
+    const candidateDone = reseedManualSearchFollow(null, NB, {
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found a candidate — not yet confirmed.", startedAt: "gen-1",
+    });
+    expect(candidateDone.state.phase).toBe("resolved");
+
+    // 2. Confirm promotes it — SAME generation, new message, now ready.
+    const promoted = reseedManualSearchFollow(candidateDone.state, NB, {
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Confirmed — ready to answer from.", startedAt: "gen-1",
+    });
+    expect(promoted.state.status.message).toBe("Confirmed — ready to answer from.");
+    expect(promoted.refreshSources).toBe(true); // the old decline-style message is gone
+
+    // 3. A second, different confirmed identity starts a NEW search in the same notebook.
+    const secondSearch = reseedManualSearchFollow(promoted.state, NB, {
+      manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2",
+    });
+    expect(secondSearch.state.phase).toBe("following"); // F6: this used to stay stuck on gen-1's resolved state
+    expect(secondSearch.state.key).toContain("gen-2");
   });
 });

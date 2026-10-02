@@ -31,5 +31,11 @@ export async function fetchManualSearchStatus(
     model: r.model,
     running: r.running,
     ...(typeof r.message === "string" && r.message ? { message: r.message } : {}),
+    // Codex round 3 F12: `startedAt` is the search's own GENERATION — the
+    // shared follower keys its retry budget on it (via `reseedManualSearchFollow`
+    // / `advanceManualSearchFollow`) so a later, different search never
+    // inherits an already-spent budget. Dropping it here silently broke that
+    // keying on mobile.
+    ...(typeof r.startedAt === "string" && r.startedAt ? { startedAt: r.startedAt } : {}),
   };
 }
