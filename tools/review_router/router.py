@@ -24,8 +24,10 @@ import fnmatch
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -310,34 +312,54 @@ def pr_facts(pr: int) -> dict:
     }
 
 
+# The review envelope, as scripts/adversarial-review-ledger.mjs validates it
+# (V2 and legacy shapes). A GREEN record that still counts findings is
+# malformed there too, and is dropped the same way.
+_ENVELOPE_RE = re.compile(
+    r"^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\n"
+    r"reviewed_sha: (?P<sha>[0-9a-f]{40})\r?\n"
+    r"(?:reviewed_body_sha256: [0-9a-f]{64}\r?\n)?"
+    r"base_sha: [^\r\n]+\r?\n"
+    r"status: (?P<status>GREEN|ISSUES_FOUND)\r?\n"
+    r"review_iteration: [0-9]+\r?\n"
+    r"(?:post_cap_human_authorized: true\r?\n)?"
+    r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?"
+    r"\r?\nBLOCKER: (?P<b>[0-9]+)\r?\nHIGH: (?P<h>[0-9]+)\r?\nMEDIUM: (?P<m>[0-9]+)\r?\n"
+    r"LOW: (?P<l>[0-9]+)\r?\nFALSE_POSITIVE: [0-9]+\r?\n```(?:\r?\n|$)"
+)
+
+
+def well_formed_review(body: str | None) -> re.Match | None:
+    m = _ENVELOPE_RE.match(body or "")
+    if m and m["status"] == "GREEN" and any(int(m[k]) for k in "bhml"):
+        return None
+    return m
+
+
 def latest_owner_review(comments: list[dict], viewer: str) -> str | None:
-    """Body of the newest review comment the authenticated owner posted as a
-    User, ordered by immutable comment id: the same trust gate the review
-    ledger uses. A comment anyone else posts can't steer routing (#4202 F5)."""
+    """Body of the newest WELL-FORMED review comment the authenticated owner
+    posted as a User, ordered by immutable comment id: the same trust gate and
+    the same envelope validation the review ledger uses. A comment anyone else
+    posts can't steer routing, and neither can a truncated, unfenced, or
+    self-contradictory one the owner posted after a valid review (#4202 F5)."""
     mine = [
         c
         for c in comments
         if isinstance(c.get("id"), int)
         and (c.get("user") or {}).get("login") == viewer
         and (c.get("user") or {}).get("type") == "User"
-        and str(c.get("body", "")).startswith("[CODEX-ADVERSARIAL-REVIEW]")
+        and well_formed_review(str(c.get("body", "")))
     ]
     return max(mine, key=lambda c: c["id"])["body"] if mine else None
 
 
 def parse_review(body: str | None) -> dict:
-    if not body:
+    m = well_formed_review(body)
+    if not m:
         return {}
-
-    def field(key: str) -> str | None:
-        prefix = key + ":"
-        return next(
-            (ln.split(":", 1)[1].strip() for ln in body.splitlines() if ln.startswith(prefix)), None
-        )
-
     return {
-        "status": field("status"),
-        "reviewed_sha": field("reviewed_sha"),
+        "status": m["status"],
+        "reviewed_sha": m["sha"],
         "speculative": body.count("**Confidence:** speculative"),
     }
 
@@ -458,29 +480,49 @@ def untrusted_tooling(base_ref: str) -> list[str]:
     return bad
 
 
-def free_prefilter(pr: int, out_dir: Path) -> dict:
+def free_prefilter(pr: int, out_dir: Path, base_sha: str) -> dict:
     """Stage B: the free-cascade Gate 7 reviewer, advisory. Its verdict and
     finding count are recorded; an unavailable cascade is recorded as such,
     never as a pass. It does not block: free models false-positive (e.g. on
-    their own redaction), so the paid gate still decides."""
+    their own redaction), so the paid gate still decides.
+
+    It executes from a detached checkout of the CAPTURED BASE SHA — the same
+    immutable tree the trusted review entrypoint runs from — never from the
+    caller's checkout, which may be the candidate itself. The candidate is
+    reached only as git objects via `gh pr diff` (#4202 F8). A missing
+    `doppler`/python is advisory unavailability, not a crash (#4202 F9)."""
     out = out_dir / f"gate7-{pr}-{int(time.time())}.md"
-    r = _run(
-        [
-            "doppler",
-            "run",
-            "--project",
-            "factorylm",
-            "--config",
-            "dev",
-            "--",
-            sys.executable,
-            "tools/gate7_review.py",
-            str(pr),
-            "-o",
-            str(out),
-        ],
-        cwd=REPO,
-    )
+    wt = Path(tempfile.mkdtemp(prefix="mira-review-prefilter.")) / "trusted-base"
+    try:
+        add = _run(["git", "worktree", "add", "-q", "--detach", str(wt), base_sha], cwd=REPO)
+        if add.returncode != 0:
+            return {"prefilter": "unavailable", "prefilter_error": add.stderr.strip()[-300:]}
+        try:
+            r = _run(
+                [
+                    "doppler",
+                    "run",
+                    "--project",
+                    "factorylm",
+                    "--config",
+                    "dev",
+                    "--",
+                    sys.executable,
+                    str(wt / "tools" / "gate7_review.py"),
+                    str(pr),
+                    "-o",
+                    str(out),
+                ],
+                cwd=wt,
+            )
+        except OSError as e:  # the executable itself is missing (no Doppler here)
+            return {
+                "prefilter": "unavailable",
+                "prefilter_error": f"{e.filename or 'doppler'}: {e}",
+            }
+    finally:
+        _run(["git", "worktree", "remove", "--force", str(wt)], cwd=REPO)
+        shutil.rmtree(wt.parent, ignore_errors=True)
     if r.returncode != 0 or not out.exists():
         return {"prefilter": "unavailable", "prefilter_rc": r.returncode}
     text = out.read_text()
@@ -568,7 +610,9 @@ def main(argv: list[str] | None = None) -> int:
                 "turn each fixed finding into a regression test first"
             )
 
-    pre = {} if args.no_prefilter else free_prefilter(args.pr, args.ledger.parent)
+    pre = (
+        {} if args.no_prefilter else free_prefilter(args.pr, args.ledger.parent, facts["base_sha"])
+    )
     if pre:
         print(json.dumps(pre))
 
