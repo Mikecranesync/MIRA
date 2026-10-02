@@ -230,12 +230,14 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
 const RIGGING_RE =
   /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
 
-function riggingOverload(text: string): string | null {
+function riggingOverload(text: string): { detail: string; index: number } | null {
   const m = RIGGING_RE.exec(text);
   if (!m) return null;
   const unit = (u: string) => (u.startsWith("t") ? "t" : u.startsWith("kg") ? "kg" : "lb");
   if (unit(m[2].toLowerCase()) !== unit(m[4].toLowerCase())) return null;
-  return parseFloat(m[1]) > parseFloat(m[3]) ? m[0].slice(0, 160) : null;
+  // The offset lets the banner quote THIS lift, not an identical earlier
+  // prohibition the regex skipped (Codex #4072 round 3).
+  return parseFloat(m[1]) > parseFloat(m[3]) ? { detail: m[0].slice(0, 160), index: m.index } : null;
 }
 
 /* ------------------------------------------------------------------------ *
@@ -360,8 +362,15 @@ const PERMIT_PRACTICES_DESCRIPTION = /^(?:[-*•]\s+|\d+[.)]\s+)?(?:(?:the\s+)?(
  *  hazard action or the energized/no-isolation relation). A warning or
  *  negation in an unrelated clause ("There is risk, but …", "Do not
  *  hesitate: …") never exempts. Detection only, never rewriting. */
-function clauseHazardViolation(text: string): { relId: string; sentence: string } | null {
+function clauseHazardViolation(
+  text: string,
+): { relId: string; sentence: string; index: number; focus: number } | null {
+  let cursor = 0;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    // Offset in `text` of this sentence, so the banner can quote exactly the
+    // occurrence that was flagged (#4067). Split pieces appear in order.
+    const index = text.indexOf(sentence, cursor);
+    cursor = index + sentence.length;
     if (PERMIT_PRACTICES_DESCRIPTION.test(sentence.trim())) continue;
     if (!HAZARD_ACTION_ANY.test(sentence)) continue;
     const rel = HAZARD_RELATIONS.find((r) => r.re.test(sentence));
@@ -383,7 +392,12 @@ function clauseHazardViolation(text: string): { relId: string; sentence: string 
     const reassured = bearing.some((c) => REASSURANCE_AFFIRMATION.test(c));
     const prohibited = bearing.some((c) => BOUND_PROHIBITION.test(c));
     if (!reassured && prohibited) continue;
-    return { relId, sentence };
+    // Focus = where the hazardous RELATION sits (e.g. "while the machine is
+    // energized") — the banner quotes around it, so a long sentence can never
+    // spend its quote on harmless context (Codex #4072).
+    const relRe = rel?.re ?? NO_ISOLATION_RELATION;
+    const relAt = new RegExp(relRe.source, relRe.flags.replace("g", "")).exec(sentence);
+    return { relId, sentence, index, focus: index + (relAt?.index ?? 0) };
   }
   return null;
 }
@@ -986,10 +1000,117 @@ If you add this machine's manual as a source and ask again, I'll give you the ex
  *  technician keeps troubleshooting; this is a caution, not a stop. */
 export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
 
+/** #4067: the step the banner quotes, as the technician reads it in the
+ *  answer. `detail` is a detection fragment of the FOLDED copy (a regex match
+ *  or a clause), so quoting it directly leaked ". " list-split debris, cut the
+ *  step mid-parenthesis, and rewrote U+2011 hyphens to ASCII. Instead, quote
+ *  the WHOLE ORIGINAL sentence the detector flagged (located by its match
+ *  position when available; a list item's marker stays with it) — markup
+ *  stripped, whitespace collapsed, never truncated. Anchoring on POSITION
+ *  matters: the banner must never quote a harmless sentence as the unsafe
+ *  step. Detection is untouched. */
+export function flaggedStepQuote(detail: string, answerText: string, scanIndex?: number): string {
+  const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+  // Leading punctuation and list bullets (".", "—", "–", "•", "- ") never lead a quote.
+  const stripLead = (s: string) => s.replace(/^(?:[.,;:!?\s—–•·]|-(?=\s))+/, "");
+  const clean = (s: string) => stripLead(squash(foldForDetection(s)));
+  const core = clean(detail);
+  // Probes, most specific first. The WHOLE fragment disambiguates repeated
+  // wording (an exempted twin sentence shares its opening). A masked clause
+  // (maskLiveMeasurementClauses / permit masking) leaves a run of spaces that
+  // the original never had, so the text before that gap is the next probe.
+  const beforeMask = clean(detail.split(/\s{3,}/)[0] ?? "");
+  const probes = [core, beforeMask, core.slice(0, 60)].filter((p, i, all) => p && all.indexOf(p) === i);
+  // The detector's own match position is authoritative (round-2 review: a
+  // text search finds the FIRST copy of the words, e.g. in reported speech,
+  // not the occurrence that was flagged). Text probes are the fallback.
+  let at: { line: string; index: number } | null =
+    scanIndex === undefined ? null : locateScanIndex(scanIndex + (detail.length - stripLead(detail).length), answerText);
+  for (const p of at ? [] : probes) {
+    at = locateFolded(p, answerText);
+    if (at) break;
+  }
+  if (!at) return stripLead(squash(core.replace(/[*`]/g, "")));
+  const start = sentenceStart(at.line, at.index);
+  const sentence = oneSentence(at.line.slice(start));
+  // The WHOLE flagged sentence, always. Every window heuristic tried (160
+  // chars, sentence-anchored, relation-anchored, 400-char cap) was shown by
+  // review to cut off either the hazard relation or the action; naming the
+  // right step outweighs a longer banner (Codex #4072 rounds 1-3).
+  return stripLead(squash(sentence.replace(/[*`]/g, "")));
+}
+
+/** Map an offset in the detection scan text (the fold of `answerText`; the
+ *  masks are length-preserving) back to the original answer's line + offset.
+ *  Folds one code point at a time; if that does not reproduce the whole-text
+ *  fold exactly, the mapping is refused and callers fall back to text probes. */
+function locateScanIndex(scanIndex: number, answerText: string): { line: string; index: number } | null {
+  let folded = "";
+  const map: number[] = [];
+  let i = 0;
+  for (const cp of answerText) {
+    const f = foldForDetection(cp);
+    folded += f;
+    for (let k = 0; k < f.length; k++) map.push(i);
+    i += cp.length;
+  }
+  if (folded !== foldForDetection(answerText)) return null;
+  const orig = map[scanIndex];
+  if (orig === undefined) return null;
+  const lineStart = answerText.lastIndexOf("\n", orig - 1) + 1;
+  const nl = answerText.indexOf("\n", orig);
+  return { line: answerText.slice(lineStart, nl < 0 ? undefined : nl), index: orig - lineStart };
+}
+
+/** Find a folded-text probe in the ORIGINAL answer: fold each line one
+ *  character at a time, keeping a folded→original index map, and match the
+ *  probe with flexible whitespace. Returns the original line + offset. */
+function locateFolded(probe: string, answerText: string): { line: string; index: number } | null {
+  const pattern = new RegExp(
+    probe.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"),
+  );
+  for (const line of answerText.split(/\n+/)) {
+    let folded = "";
+    const map: number[] = [];
+    for (let i = 0; i < line.length; i++) {
+      const f = foldForDetection(line[i]);
+      folded += f;
+      for (let k = 0; k < f.length; k++) map.push(i);
+    }
+    const m = pattern.exec(folded);
+    if (m) return { line, index: map[m.index] ?? 0 };
+  }
+  return null;
+}
+
+/** Start of the sentence containing `index`. A leading list marker ("2.")
+ *  is not a sentence end, so a list item is quoted with its number. */
+function sentenceStart(line: string, index: number): number {
+  const head = line.slice(0, index);
+  const boundary = /[.!?]\s+/g;
+  let start = 0;
+  for (let m = boundary.exec(head); m; m = boundary.exec(head)) {
+    if (/^\s*(?:\d+|[A-Za-z])\.$/.test(head.slice(0, m.index + 1))) continue;
+    start = m.index + m[0].length;
+  }
+  return start;
+}
+
+/** Text up to and including the first sentence end, skipping a leading
+ *  list marker ("2." is a number, not the end of the step). */
+function oneSentence(text: string): string {
+  const boundary = /[.!?](?=\s)/g;
+  for (let m = boundary.exec(text); m; m = boundary.exec(text)) {
+    if (/^\s*(?:\d+|[A-Za-z])\.$/.test(text.slice(0, m.index + 1))) continue;
+    return text.slice(0, m.index + 1);
+  }
+  return text;
+}
+
 /** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
  *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
-function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
-  const step = detail.replace(/\s+/g, " ").trim().slice(0, 160);
+function hazardWarning(violation: string, detail: string, answerText: string, scanIndex?: number): AnswerValidation {
+  const step = flaggedStepQuote(detail, answerText, scanIndex);
   return {
     ok: false,
     kind: "hazard_warning",
@@ -1240,7 +1361,7 @@ export function validateAnswer(opts: {
     .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
     const m = p.re.exec(affirmationScanText);
-    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
+    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText, m.index);
   }
 
   // A4 (#3973 → #3984): restoring power in order to take a reading.
@@ -1273,12 +1394,12 @@ export function validateAnswer(opts: {
     restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
   );
   if (hazard) {
-    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
+    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText, hazard.focus);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
-  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
+  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig.detail, answerText, rig.index);
 
   // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
   // unconditional on `refused`: it is wrong regardless of how the rest of the
