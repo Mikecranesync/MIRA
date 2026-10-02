@@ -61,9 +61,10 @@ def test_turn_grade_prompt_excludes_unrevealed_facts_and_hypothesis_statuses():
     # none of the unrevealed hidden-fact text, hypothesis-status vocabulary,
     # or unproven text ever reached the provider
     assert UNREVEALED_FACT_TEXT not in sent
-    assert "true_cause" not in sent
-    assert "acceptable_alternative" not in sent
-    assert "ruled_out" not in sent
+    # the status ENUM tokens in any casing ("True_Cause"); the prompt itself
+    # legitimately says "you do NOT know the true cause" in plain English
+    for status in ("true_cause", "acceptable_alternative", "ruled_out"):
+        assert status not in sent.lower(), status
     for unproven_text in CASE["unproven"]:
         assert unproven_text not in sent
     for hyp in CASE["hypotheses"]:
