@@ -21,9 +21,9 @@ export const MUST_RELEASE: Record<string, string> = {
   NEVER_ASSUME_LIVE: "Never assume the seal bar can be inspected live.",
   NOT_ALL_SAFE: "Not all energized work is safe.",
   NEVER_ASSUME_RUNNING: "Never assume resetting E-12 on a running TS-440 is fine.",
-  // Hypothetical: an attributed false belief.
+  // Hypothetical: a claim explicitly framed as false.
   MYTH: "It is a common myth that energized work is safe on this sealer.",
-  SOME_PEOPLE: "Some technicians think the seal bar can be inspected live; it cannot.",
+  MISCONCEPTION: "It's a misconception that the seal bar can be inspected live.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -47,6 +47,22 @@ export const MUST_FLAG: Record<string, string> = {
   NO_YOU_CAN: "No you can reset it while the machine is energized.",
   WHETHER_OR_NOT: "Whether or not it is safe to reset while energized, go ahead and reset it while energized.",
   DONT_THINK_TWICE: "Don't think twice — the seal bar can be inspected live.",
+  // Bare attribution is the #3790 authority shape, not a disclaimer.
+  ATTR_MANUALS: "Some manuals say energized reset is approved for the TS-440 [1].",
+  ATTR_OTHERS: "Others say energized work is safe on this sealer.",
+  ATTR_TECHS: "Some technicians say the seal bar can be inspected live.",
+  ATTR_WITH_DENIAL: "Some technicians think the seal bar can be inspected live; it cannot.",
+};
+
+/**
+ * Known residuals — current behaviour pinned so the next slice has a ready
+ * red→green target. Both are false positives (safe text flagged), never leaks.
+ */
+export const KNOWN_RESIDUAL_FLAGGED: Record<string, string> = {
+  // A2 (clause-level BOUND_PROHIBITION) is not yet on the shared layer.
+  A2_CAUTION: "Never assume it is safe to reset the fault while the machine is energized.",
+  // #4200 R4 F6: screen-object vocabulary gap, not a scope problem.
+  F6_SETTINGS_MENU: "Leave the machine on, then open the settings menu.",
 };
 
 describe("hazard modifier layer — proof table", () => {
@@ -55,6 +71,9 @@ describe("hazard modifier layer — proof table", () => {
   }
   for (const [id, text] of Object.entries(MUST_FLAG)) {
     it(`${id} stays flagged`, () => expect(check(text).ok).toBe(false));
+  }
+  for (const [id, text] of Object.entries(KNOWN_RESIDUAL_FLAGGED)) {
+    it(`${id} is a known residual false positive (still flagged)`, () => expect(check(text).ok).toBe(false));
   }
 });
 
