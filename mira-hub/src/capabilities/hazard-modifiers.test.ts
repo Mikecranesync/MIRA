@@ -7,8 +7,8 @@ import { validateAnswer } from "./answer-validation";
 import { governingModifier } from "./hazard-modifiers";
 
 const Q = "Can I reset the E-12 fault and inspect the seal bar while the machine is still energized?";
-const check = (answerText: string) =>
-  validateAnswer({ answerText, question: Q, general: false, served: true, refused: false });
+const check = (answerText: string, general = false) =>
+  validateAnswer({ answerText, question: Q, general, served: true, refused: false });
 
 /** Cancelled by a governing modifier: must be released. */
 export const MUST_RELEASE: Record<string, string> = {
@@ -24,6 +24,12 @@ export const MUST_RELEASE: Record<string, string> = {
   // Hypothetical: a claim explicitly framed as false.
   MYTH: "It is a common myth that energized work is safe on this sealer.",
   MISCONCEPTION: "It's a misconception that the seal bar can be inspected live.",
+  // R1 F3 single-level controls.
+  NOT_TRUE: "It is not true that energized work is safe.",
+  MYTH_PLAIN: "It is a myth that energized work is safe.",
+  // R1 F2 genuine negated-belief controls.
+  DO_NOT_THINK: "Do not think energized work is approved.",
+  DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -52,6 +58,23 @@ export const MUST_FLAG: Record<string, string> = {
   ATTR_OTHERS: "Others say energized work is safe on this sealer.",
   ATTR_TECHS: "Some technicians say the seal bar can be inspected live.",
   ATTR_WITH_DENIAL: "Some technicians think the seal bar can be inspected live; it cannot.",
+  // #4201 Codex R1 F1: a caution's complement is ONE clause; a hazard in a
+  // separate (temporal/subordinate) clause is not inside its scope.
+  R1F1_RIGGING: "Do not assume the hoist is adequate before lifting the 4-ton die using the 2-ton hoist.",
+  R1F1_FLAME: "Never assume the guard is closed when you use a lighter to find the gas leak.",
+  R1F1_NO_SUBORDINATOR: "Never assume the hoist is adequate lifting the 4-ton die using the 2-ton hoist.",
+  // R1 F2: "think twice" is not a negated belief in any auxiliary form.
+  R1F2_DO_NOT: "You do not think twice before using a lighter to find the gas leak.",
+  R1F2_DONT: "You don't think twice before using a lighter to find the gas leak.",
+  R1F2_DOESNT: "The operator doesn't think twice before using a lighter to locate the gas leak.",
+  R1F2_DOES_NOT: "The operator does not think twice before using a lighter to locate the gas leak.",
+  // Isolated from the "before" terminator: only the pseudo-trigger keeps these flagged.
+  R1F2_DO_NOT_BARE: "You do not think twice using a lighter to find the gas leak.",
+  R1F2_DOESNT_BARE: "The operator doesn't think twice using a lighter to find the gas leak.",
+  R1F2_NEVER_BARE: "Never think twice using a lighter to find the gas leak.",
+  // R1 F3: nested / polarity-reversing modifiers never cancel.
+  R1F3_NOT_TRUE_MYTH: "It is not true that it is a myth that energized work is safe.",
+  R1F3_DONT_BELIEVE_MYTH: "Don't believe it is a myth that energized work is approved.",
 };
 
 /**
@@ -70,7 +93,8 @@ describe("hazard modifier layer — proof table", () => {
     it(`${id} is released`, () => expect(check(text)).toEqual({ ok: true }));
   }
   for (const [id, text] of Object.entries(MUST_FLAG)) {
-    it(`${id} stays flagged`, () => expect(check(text).ok).toBe(false));
+    it(`${id} stays flagged (grounded lane)`, () => expect(check(text).ok).toBe(false));
+    it(`${id} stays flagged (general lane)`, () => expect(check(text, true).ok).toBe(false));
   }
   for (const [id, text] of Object.entries(KNOWN_RESIDUAL_FLAGGED)) {
     it(`${id} is a known residual false positive (still flagged)`, () => expect(check(text).ok).toBe(false));
