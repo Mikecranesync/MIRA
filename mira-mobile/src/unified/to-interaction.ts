@@ -232,7 +232,21 @@ function unknownInteractionPart(raw: unknown): InteractionPart {
       const model = rawString(r, "model");
       if (manufacturer && model && typeof r.running === "boolean") {
         const message = rawString(r, "message");
-        return { type: "manual_search_status", manufacturer, model, running: r.running, ...(message ? { message } : {}) };
+        // Codex round 5 F15 (#4195): `startedAt` is the search's own
+        // GENERATION (the chat route's `manualSearchStatusFrame` now stamps
+        // it on every live frame) — the shared follower's
+        // `observeLiveManualSearchFrame` needs it to tell a genuinely NEW
+        // search apart from a replay of an old one. Dropping it here would
+        // silently reintroduce the F15 bug on mobile.
+        const startedAt = rawString(r, "startedAt");
+        return {
+          type: "manual_search_status",
+          manufacturer,
+          model,
+          running: r.running,
+          ...(message ? { message } : {}),
+          ...(startedAt ? { startedAt } : {}),
+        };
       }
     }
   }
@@ -318,6 +332,11 @@ export function withManualSearchOverride(
     model: override.model,
     running: override.running,
     ...(override.message ? { message: override.message } : {}),
+    // Codex round 5 F15 (#4195): carry the override's own generation through
+    // to the rendered part, same as every other field — `override` already
+    // has it (it comes from a GET/confirm read or the follower's own
+    // status), this just stops silently dropping it on the way to render.
+    ...(override.startedAt ? { startedAt: override.startedAt } : {}),
   };
   const matches = (p: InteractionPart) =>
     p.type === "manual_search_status" && p.manufacturer === override.manufacturer && p.model === override.model;

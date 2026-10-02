@@ -188,19 +188,27 @@ export function advanceManualSearchFollow(
  *       very read came from the same fetch that would supply fresh Sources
  *       anyway).
  *   (e) Codex F14 (round 4, #4195): a GENERATION-LESS read (no `startedAt`)
- *       is never allowed to clobber an ALREADY-KNOWN generation. A stale,
- *       historical live frame (one SSE turn, cached on the client forever,
- *       never carrying `startedAt` — see `manual-search-status.ts`) can be
- *       re-fed into this function by an UNRELATED parent rerender (a new
- *       `meta`/`baseThread` object with the exact same stale content) long
- *       after the real search has settled or exhausted its budget. Without
- *       this guard that replay reads as "a different generation" (the
- *       empty-generation key never matches a known one) and (a)-resets —
- *       reopening a settled search or replenishing a spent budget. A read
- *       that genuinely starts a NEW search always carries its OWN
- *       `startedAt`, so this guard never blocks real progress — it only
- *       blocks uninformative replay of a read that was never a generation
- *       marker to begin with.
+ *       is never allowed to clobber an ALREADY-KNOWN generation. BACKWARD
+ *       COMPAT ONLY as of round 5 (F15): the chat route now stamps every
+ *       live `manual_search_status` frame with its own `startedAt`
+ *       (`manualSearchStatusFrame`, `chat/route.ts`), so this guard's
+ *       original trigger — a historical frame with no generation at all —
+ *       can no longer arise from a CURRENT server. It is kept, unchanged, for
+ *       a server that predates that stamp: a generation-less read still must
+ *       never reopen a settled search or replenish a spent budget. A GET or
+ *       confirm read that genuinely starts a NEW search always carries its
+ *       OWN `startedAt`, so this guard never blocks real progress on a
+ *       current server either — it only blocks uninformative replay of a
+ *       read that was never a generation marker to begin with.
+ *
+ *       This function is for GET/confirm reads ONLY — reads the host already
+ *       knows are a single, authoritative snapshot taken right now. A LIVE
+ *       SSE frame is different: the SAME frame content can be re-delivered
+ *       by an unrelated parent rerender (a new `meta`/`baseThread` object
+ *       cached from a PRIOR point in the search), so a same-generation
+ *       `running: true` replay here is NOT proof the search is still
+ *       running — see `observeLiveManualSearchFrame` below, which a live
+ *       frame consumer (`UnifiedChat.tsx`'s SSE-driven effect) calls instead.
  */
 export function reseedManualSearchFollow(
   current: ManualSearchFollowState | null,
@@ -234,6 +242,70 @@ export function reseedManualSearchFollow(
 
   const fresh = startManualSearchFollow(notebookId, read, maxAttempts);
   return { state: fresh, refreshSources: fresh.phase === "resolved" && current !== null };
+}
+
+/**
+ * Observe ONE live SSE `manual_search_status` frame (Codex round 5, #4195
+ * F15). This is the live-frame counterpart of `reseedManualSearchFollow`
+ * above, and exists because a live frame has a property a GET/confirm read
+ * never has: the SAME frame object can be re-delivered to the follower by an
+ * UNRELATED parent rerender, long after it was first observed (a cached SSE
+ * turn, re-mapped into a new `InteractionPart` by a rerender that has
+ * nothing to do with the search). Feeding that replay through
+ * `reseedManualSearchFollow`'s same-generation branch (c) would read a
+ * stale, still-`running: true` snapshot as "the search is still running" and
+ * reopen a follow that has already settled or exhausted its budget — a
+ * regression `reseedManualSearchFollow` would introduce the moment the live
+ * frame started carrying a real `startedAt`: a same-generation replay
+ * becomes possible for the first time, where it could not occur at all
+ * while every live frame omitted the field (round 4's premise).
+ *
+ * The state machine a live frame gets:
+ *   - SAME generation already tracked (any phase) → ALWAYS a no-op. Only
+ *     the periodic tick (`advanceManualSearchFollow`) and an authoritative
+ *     GET/confirm reseed (`reseedManualSearchFollow`) are allowed to move a
+ *     generation forward or settle it; a live frame can only ever start
+ *     following a generation it has not seen before.
+ *   - DIFFERENT (or newly-known) generation → start following fresh, honoring
+ *     `read.running` (Codex F15's actual fix: a genuinely new candidate
+ *     search, reported live, is no longer suppressed by an older settled
+ *     generation).
+ *   - NO generation at all (`startedAt` missing — an older server that
+ *     predates the chat-route stamp, Codex F14's original backward-compat
+ *     case) → never clobber an already-known generation; otherwise treated
+ *     as a fresh/first-seed follow, same as `reseedManualSearchFollow`'s
+ *     control case.
+ */
+export function observeLiveManualSearchFrame(
+  current: ManualSearchFollowState | null,
+  notebookId: string,
+  read: ManualSearchStatus,
+  maxAttempts: number = DEFAULT_MANUAL_SEARCH_FOLLOW_ATTEMPTS,
+): ManualSearchFollowResult {
+  if (!read.startedAt) {
+    // Backward-compat (Codex F14, round 4): a generation-less live frame
+    // never clobbers an already-known generation.
+    if (current !== null && generationOfKey(current.key) !== "") {
+      return { state: current, refreshSources: false };
+    }
+    // Nothing tracked yet: the optimistic first-seed case — same as
+    // `reseedManualSearchFollow`'s control, never a regression for an older
+    // server with no generation support at all.
+    const fresh = startManualSearchFollow(notebookId, read, maxAttempts);
+    return { state: fresh, refreshSources: false };
+  }
+
+  const sameGeneration = current !== null && followKey(notebookId, read.startedAt) === current.key;
+  if (sameGeneration) {
+    // A live frame can be a STALE replay of a generation already settled or
+    // exhausted (Codex F15) — never treat it as fresh progress. The tick and
+    // the authoritative reseed own advancing/settling this generation.
+    return { state: current, refreshSources: false };
+  }
+
+  // A different (or first-seen) generation: start following fresh.
+  const fresh = startManualSearchFollow(notebookId, read, maxAttempts);
+  return { state: fresh, refreshSources: false };
 }
 
 /** Whether the host should keep scheduling checks for this state. */

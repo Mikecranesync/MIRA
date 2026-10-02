@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
+import { createManualSearchDriver } from "./manual-search-driver";
 import {
+  applyConfirmIdentityResult,
   homeSendPlan,
   isUnboundNotebook,
   landingSelection,
@@ -22,6 +24,7 @@ import {
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
+  type HubSelection,
 } from "./hub-host-logic";
 
 describe("stoppedStreamResult", () => {
@@ -371,5 +374,85 @@ describe("selectionFromSearch / searchForSelection — addressable conversations
     }
     expect(searchForSelection(null)).toBe("");
     expect(searchForSelection({ notebookId: "a b", threadId: "t:1" })).toBe("?notebook=a+b&thread=t%3A1");
+  });
+});
+
+describe("applyConfirmIdentityResult — the post-await confirm race (Codex round 5 F16, #4195)", () => {
+  const A: HubSelection = { notebookId: "nb-a", threadId: "legacy" };
+  const B: HubSelection = { notebookId: "nb-b", threadId: "legacy" };
+
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("the technician having moved to B before the POST resolves: A's confirm seeds NOTHING and refreshes NOTHING", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    const fetchStatus = vi.fn(async () => null); // the driver's own GET seam — never reached
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+
+    await applyConfirmIdentityResult(
+      A.notebookId,
+      { manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+      { searching: true, startedAt: "gen-a" },
+      {
+        loadDetail,
+        seedDriver: (nbId, status) => driver.seed(nbId, status),
+        currentSelection: () => B, // the technician is now on B
+      },
+    );
+
+    expect(loadDetail).not.toHaveBeenCalled();
+    expect(driver.current()).toBeNull();
+
+    // No polling started for A's (discarded) generation — advancing time
+    // triggers zero fetchStatus calls, for either notebook.
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
+  it("control: the technician is STILL on A when the POST resolves — loadDetail refreshes A and the driver follows A's generation", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    const fetchStatus = vi.fn(async () => ({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-a" }));
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+
+    await applyConfirmIdentityResult(
+      A.notebookId,
+      { manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+      { searching: true, startedAt: "gen-a" },
+      {
+        loadDetail,
+        seedDriver: (nbId, status) => driver.seed(nbId, status),
+        currentSelection: () => A,
+      },
+    );
+
+    expect(loadDetail).toHaveBeenCalledWith(A);
+    expect(driver.current()?.phase).toBe("following");
+    expect(driver.current()?.key).toBe("nb-a|gen-a");
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fetchStatus).toHaveBeenCalledWith(A.notebookId);
+    expect(driver.current()?.phase).toBe("resolved");
+  });
+
+  it("returning to A later hydrates normally from A's OWN authoritative GET — never from the discarded confirm", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    const fetchStatus = vi.fn(async () => null);
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: () => {}, onRefreshSources: () => {} });
+
+    // A's confirm is discarded (navigated to B mid-flight — proven above).
+    await applyConfirmIdentityResult(
+      A.notebookId,
+      { manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+      { searching: true, startedAt: "gen-a" },
+      { loadDetail, seedDriver: (nbId, status) => driver.seed(nbId, status), currentSelection: () => B },
+    );
+    expect(driver.current()).toBeNull();
+
+    // The technician returns to A. `hub-host.tsx`'s own `loadDetail` effect
+    // seeds the driver from A's fresh GET — exactly `select(A)` → `loadDetail(A)`
+    // would do, never from anything the discarded confirm computed.
+    driver.seed(A.notebookId, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a-2" });
+    expect(driver.current()?.phase).toBe("following");
+    expect(driver.current()?.key).toBe("nb-a|gen-a-2"); // A's SECOND, independent generation — not gen-a
   });
 });

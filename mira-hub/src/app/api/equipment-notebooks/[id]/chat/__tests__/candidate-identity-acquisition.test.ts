@@ -299,6 +299,38 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
     expect(f.find((x) => x.kind === "manual_search_status")).toBeUndefined();
   });
+
+  // Codex round 5 F15 (#4195): the live `manual_search_status` frame must
+  // carry the search's own GENERATION (`startedAt`) — the SAME value the GET
+  // route (`currentManualSearchStatus`, proven against this identical
+  // DB-record shape in `notebook-manual-acquisition.test.ts`'s
+  // "currentManualSearchStatus" suite) reports for this identity — never a
+  // value this route invents locally. The shared mobile follower
+  // (`observeLiveManualSearchFrame`) needs it to tell a genuinely NEW search
+  // apart from a replay of an old one.
+  it("the manual_search_status frame's startedAt is the DB's own generation — re-read after the claim, matching what the GET route would report for the same record (#4195 F15)", async () => {
+    const DB_GENERATION = "2026-10-02T00:00:00.000Z";
+    // Call 1: the candidate block's own pre-claim check — nothing recorded yet.
+    acqMock.readAcquisition.mockResolvedValueOnce(null);
+    // Call 2 (the fix under test): re-reading the record `claim()` just wrote,
+    // to get its DB-authoritative `started_at` — never this route's own clock.
+    acqMock.readAcquisition.mockResolvedValueOnce({
+      key: "SMC|SS5Y3DUW01302|",
+      state: "running",
+      started_at: DB_GENERATION,
+      finished_at: null,
+      candidate_host: null,
+      match_state: null,
+      oem_request_url: null,
+    });
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    expect(f.find((x) => x.kind === "manual_search_status")).toMatchObject({
+      manufacturer: "SMC",
+      model: "SS5Y3-DUW01302",
+      running: true,
+      startedAt: DB_GENERATION,
+    });
+  });
 });
 
 // Codex r3 F5 (#4172): the corpus-independent fallback keeps the existing

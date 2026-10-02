@@ -29,6 +29,7 @@ import type { ReactNode } from "react";
 import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
 import {
   advanceManualSearchFollow,
+  observeLiveManualSearchFrame,
   reseedManualSearchFollow,
   type ManualSearchFollowState,
   type ManualSearchStatus,
@@ -186,7 +187,31 @@ export function UnifiedChat({
   // appends it to the last assistant turn when no live frame ever carried a
   // matching part (the realistic post-reload case), or replaces one in place.
   const notebookId = meta.notebookId || null;
+  const notebookIdRef = useRef(notebookId);
+  notebookIdRef.current = notebookId;
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  // Codex round 5 F15 (#4195), defense in depth: an unrelated rerender can
+  // re-deliver the EXACT same live frame to the effect below. `observeLiveManualSearchFrame`
+  // is already safe against that (same generation → no-op), but consuming
+  // the identical event twice is still wasted work — skip it outright when
+  // nothing about the live frame has changed since the last observation.
+  const lastLiveFrameKeyRef = useRef<string | null>(null);
+  // Codex round 5 F16 (#4195): a notebook switch that keeps THIS component
+  // mounted (`NotebooksTab.tsx`'s `onOpenNotebook` — a Sensor READ resolving
+  // a different machine changes the `id`/`notebookId` prop in place, with no
+  // `key`-forced remount; only `UnifiedRoot.tsx`'s mount site keys by
+  // notebook) must not let the PREVIOUS notebook's follow state survive into
+  // the new one. Without this, a leftover `follow` for A — especially one
+  // still mid-search — renders as a stray `manual_search_status` card on B's
+  // thread the first time B reports no search of its own (the
+  // hydration-fetch effect below silently no-ops on a `null` status, so it
+  // alone never clears a leftover). Mirrors the Hub's own `select()`, which
+  // does `setFollow(null)` + the driver's `reset()` on every selection change.
+  useEffect(() => {
+    setFollow(null);
+    lastLiveFrameKeyRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally ONLY notebookId: reset-on-change, not reset-on-every-render.
+  }, [notebookId]);
   const resolvedThread = useMemo(
     () => withManualSearchOverride(baseThread, follow?.status ?? null),
     [baseThread, follow?.status],
@@ -223,15 +248,29 @@ export function UnifiedChat({
   // Codex round 3 F6: `prev ?? startFollow(...)` was a blanket no-op once
   // ANYTHING was already tracked — a later, different search (a different
   // confirmed identity) in the same thread never started following once the
-  // first one resolved or exhausted its budget. `reseedManualSearchFollow`
-  // is the one state machine every seed moment goes through; it keeps the
-  // true no-op ONLY for a duplicate seed of an ACTIVELY following
-  // generation (the tick effect below owns advancing that one).
+  // first one resolved or exhausted its budget.
+  //
+  // Codex round 5 F15 (#4195): this is `observeLiveManualSearchFrame`, NOT
+  // `reseedManualSearchFollow` — a live frame is a DIFFERENT shape of input
+  // than a GET/confirm read. `baseThread.turns` can re-deliver the SAME
+  // historical frame to this effect on an UNRELATED rerender (a new `meta`
+  // object with identical content), and now that the chat route stamps a
+  // real generation on every live frame (round 5), a same-generation replay
+  // that still says `running: true` would read as "still running" under
+  // `reseedManualSearchFollow` and reopen an already-settled/exhausted
+  // follow. `observeLiveManualSearchFrame` treats any same-generation live
+  // read as a no-op and only starts following a generation this effect has
+  // not seen before — which is exactly what lets a genuinely NEW candidate
+  // search (a different generation) start following even though an older
+  // one already settled.
   useEffect(() => {
     const live = latestManualSearchStatus(baseThread.turns);
     if (!live || !live.running || !notebookId) return;
+    const liveKey = `${notebookId}|${live.manufacturer}|${live.model}|${live.startedAt ?? ""}`;
+    if (lastLiveFrameKeyRef.current === liveKey) return;
+    lastLiveFrameKeyRef.current = liveKey;
     setFollow((prev) => {
-      const result = reseedManualSearchFollow(prev, notebookId, live);
+      const result = observeLiveManualSearchFrame(prev, notebookId, live);
       if (result.refreshSources) void refreshPromotedScope();
       return result.state;
     });
@@ -539,7 +578,23 @@ export function UnifiedChat({
     ...(meta.notebookId
       ? {
           onConfirmIdentity: async (proposal) => {
-            const result = await confirmIdentityProposal(meta.notebookId, proposal);
+            const requestedNotebookId = meta.notebookId;
+            const result = await confirmIdentityProposal(requestedNotebookId, proposal);
+            // Codex round 5 F16 (#4195): the SAME race as the Hub's own
+            // `hub-host.tsx` onConfirmIdentity — a notebook switch that
+            // routes through `NotebooksTab.tsx`'s `onOpenNotebook` (a Sensor
+            // READ resolving a DIFFERENT machine) changes this component's
+            // `notebookId` prop IN PLACE, with no `key`-forced remount (only
+            // `UnifiedRoot.tsx`'s mount site keys by notebook — `NotebooksTab`
+            // does not). A confirm started on A, resolving after the
+            // technician has moved to B, must not seed B's follower or
+            // refresh B's scope under A's identity. `notebookIdRef` tracks
+            // the LATEST committed `meta.notebookId` across renders of this
+            // SAME instance; bind every side effect below to the notebookId
+            // THIS request was for, and discard them if it no longer matches.
+            // The confirm's own return value is returned either way — its
+            // caller is the specific proposal card that made this call.
+            if (notebookIdRef.current !== requestedNotebookId) return result;
             // Codex F1 (HIGH): confirming may have just promoted a candidate
             // manual into an enabled source (migration 104) — re-read the
             // authoritative detail and stash its scope so the NEXT question
@@ -559,13 +614,16 @@ export function UnifiedChat({
             // must never overwrite a fresh authoritative settle.
             let authoritative: ManualSearchStatus | null = null;
             try {
-              authoritative = await fetchManualSearchStatus(meta.notebookId, { threadId: attachmentThreadId ?? undefined });
+              authoritative = await fetchManualSearchStatus(requestedNotebookId, { threadId: attachmentThreadId ?? undefined });
             } catch {
               authoritative = null;
             }
+            // F16, same check: the scope refresh above may have taken long
+            // enough for the technician to have moved on too.
+            if (notebookIdRef.current !== requestedNotebookId) return result;
             if (authoritative) {
               setFollow((prev) => {
-                const seedResult = reseedManualSearchFollow(prev, meta.notebookId, authoritative!);
+                const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, authoritative!);
                 if (seedResult.refreshSources) void refreshPromotedScope();
                 return seedResult.state;
               });
@@ -582,7 +640,7 @@ export function UnifiedChat({
                   running: true,
                   ...(result.startedAt ? { startedAt: result.startedAt } : {}),
                 };
-                const seedResult = reseedManualSearchFollow(prev, meta.notebookId, seeded);
+                const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, seeded);
                 if (seedResult.refreshSources) void refreshPromotedScope();
                 return seedResult.state;
               });

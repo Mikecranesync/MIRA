@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
+import type { ManualSearchStatus, ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -322,4 +322,52 @@ export function latestRequestGate(): LatestRequestGate {
 /** A fresh client-minted thread id for "New chat" (server accepts [A-Za-z0-9][A-Za-z0-9._:-]{0,119}). */
 export function newThreadId(random: () => string = () => globalThis.crypto.randomUUID()): string {
   return random().replace(/[^A-Za-z0-9._:-]/g, "").slice(0, 120) || `t${Date.now()}`;
+}
+
+/** What `applyConfirmIdentityResult` needs to apply a confirm's side
+ *  effects — the same seams `hub-host.tsx` already owns (`loadDetail`, the
+ *  manual-search driver's `seed`, and a read of the LATEST selection). */
+export interface ConfirmIdentityEffects {
+  readonly loadDetail: (sel: HubSelection) => Promise<void> | void;
+  readonly seedDriver: (notebookId: string, status: ManualSearchStatus) => void;
+  /** The CURRENT selection, read fresh — never the one captured when the
+   *  confirm request was made. */
+  readonly currentSelection: () => HubSelection | null;
+}
+
+/**
+ * Codex round 5 F16 (#4195) — `onConfirmIdentity`'s post-await completion,
+ * extracted so the race is testable without mounting `hub-host.tsx` (no
+ * jsdom/@testing-library/react here — same reasoning as
+ * `manual-search-driver.ts`'s own extraction, see its header).
+ *
+ * The bug: `onConfirmIdentity` captures `notebookId` from the selection
+ * BEFORE awaiting the POST, but used to reread `selectionRef.current` AFTER
+ * the await to decide what to `loadDetail`/seed — so a technician who
+ * confirmed on notebook A, then navigated to notebook B before A's response
+ * arrived, had A's manufacturer/model/generation silently seeded onto B's
+ * follower (and B's detail re-fetched under A's identity). The fix: bind
+ * completion to `requestedNotebookId` (the notebook THIS confirm was
+ * actually for), and discard both side effects — never partially apply one
+ * — when the CURRENT selection no longer matches it. Returning to A later
+ * is unaffected: it hydrates from its own fresh `loadDetail`/GET, never from
+ * this discarded completion.
+ */
+export async function applyConfirmIdentityResult(
+  requestedNotebookId: string,
+  proposal: { readonly manufacturer: string; readonly model: string },
+  data: { readonly searching: boolean; readonly startedAt?: string },
+  effects: ConfirmIdentityEffects,
+): Promise<void> {
+  const sel = effects.currentSelection();
+  if (!sel || sel.notebookId !== requestedNotebookId) return;
+  void effects.loadDetail(sel);
+  if (data.searching) {
+    effects.seedDriver(requestedNotebookId, {
+      manufacturer: proposal.manufacturer,
+      model: proposal.model,
+      running: true,
+      ...(data.startedAt ? { startedAt: data.startedAt } : {}),
+    });
+  }
 }

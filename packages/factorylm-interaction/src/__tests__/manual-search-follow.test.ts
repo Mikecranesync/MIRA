@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test";
 import {
   advanceManualSearchFollow,
   isManualSearchFollowActive,
+  observeLiveManualSearchFrame,
   reseedManualSearchFollow,
   startManualSearchFollow,
   MANUAL_SEARCH_UNRESOLVED_MESSAGE,
@@ -309,5 +310,74 @@ describe("reseedManualSearchFollow — a generation-less read never clobbers a k
     const r = reseedManualSearchFollow(null, NB, noGen);
     expect(r.state.phase).toBe("following");
     expect(r.state.key).toBe(`${NB}|`);
+  });
+});
+
+describe("observeLiveManualSearchFrame — the LIVE-SSE-frame counterpart of reseedManualSearchFollow (Codex round 5 F15)", () => {
+  // F15's actual bug: the chat route now stamps `startedAt` on every live
+  // frame (round 5), but the mobile live-frame effect was still calling
+  // `reseedManualSearchFollow` — whose same-generation branch treats a
+  // `running: true` read as "still running", so a second, genuinely NEW
+  // candidate search (different manufacturer/model, DIFFERENT generation)
+  // was silently ignored once the first one had already settled or
+  // exhausted its budget.
+  it("a DIFFERENT generation reported live, running, starts following — even though an OLDER generation already settled (THE F15 fix)", () => {
+    const resolved = reseedManualSearchFollow(null, NB, SETTLED).state; // "gen-1", resolved
+    const rockwell: ManualSearchStatus = { manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" };
+    const r = observeLiveManualSearchFrame(resolved, NB, rockwell);
+    expect(r.state.phase).toBe("following");
+    expect(r.state.key).toContain("gen-2");
+    expect(r.state.status.manufacturer).toBe("Rockwell");
+  });
+
+  // The regression `reseedManualSearchFollow` would introduce for this same
+  // scenario if used for live frames: a SAME-generation replay (a cached SSE
+  // turn, re-delivered by an unrelated rerender) that still says
+  // `running: true` must NOT reopen a settled/exhausted follow of that exact
+  // generation. Unlike a GET/confirm read, a live frame's content can be
+  // re-delivered without the search having changed at all.
+  it("a SAME-generation replay, still saying running:true, is a no-op against an already-settled follow", () => {
+    const resolved = reseedManualSearchFollow(null, NB, SETTLED).state; // "gen-1", resolved
+    const staleRunningReplay: ManualSearchStatus = { ...RUNNING }; // same "gen-1", running:true
+    const r = observeLiveManualSearchFrame(resolved, NB, staleRunningReplay);
+    expect(r.state).toBe(resolved); // reference equality: a true no-op
+    expect(r.state.phase).toBe("resolved");
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("a SAME-generation replay against an already-exhausted (unresolved) follow does not reopen it either", () => {
+    const exhausted: ManualSearchFollowState = {
+      key: `${NB}|gen-1`, attempts: 5, maxAttempts: 5, phase: "unresolved",
+      status: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: MANUAL_SEARCH_UNRESOLVED_MESSAGE, startedAt: "gen-1" },
+    };
+    const staleRunningReplay: ManualSearchStatus = { ...RUNNING };
+    const r = observeLiveManualSearchFrame(exhausted, NB, staleRunningReplay);
+    expect(r.state).toBe(exhausted);
+    expect(r.state.attempts).toBe(5);
+    expect(r.refreshSources).toBe(false);
+  });
+
+  // Backward-compat (Codex F14, round 4 — preserved, not re-derived): an
+  // OLDER server's live frame carries no generation at all. It must still
+  // never clobber an already-known generation.
+  it("backward-compat: a generation-less live frame never clobbers an already-known generation", () => {
+    const resolved = reseedManualSearchFollow(null, NB, SETTLED).state; // "gen-1"
+    const staleReplay: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = observeLiveManualSearchFrame(resolved, NB, staleReplay);
+    expect(r.state).toBe(resolved);
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("backward-compat control: a generation-less live frame is still honored as a first seed when NOTHING is tracked yet", () => {
+    const noGen: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = observeLiveManualSearchFrame(null, NB, noGen);
+    expect(r.state.phase).toBe("following");
+    expect(r.state.key).toBe(`${NB}|`);
+  });
+
+  it("nothing tracked yet + a real generation: starts following (the ordinary first-live-frame case)", () => {
+    const r = observeLiveManualSearchFrame(null, NB, RUNNING);
+    expect(r.state.phase).toBe("following");
+    expect(r.state.key).toContain("gen-1");
   });
 });

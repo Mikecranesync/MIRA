@@ -1,20 +1,27 @@
 // @vitest-environment jsdom
-// Codex round 4 F14 (#4195): a live SSE `manual_search_status` frame NEVER
-// carries `startedAt` — chat/route.ts's own frame builder omits it (see the
-// Codex F14 doc comment on `reseedManualSearchFollow` in
-// `packages/factorylm-interaction/src/manual-search-follow.ts`), and the
-// mobile adapter's `unknownInteractionPart` (`../../unified/to-interaction.ts`)
-// does not carry one through even if it existed. An UNRELATED parent
-// rerender that rebuilds `meta`/`liveTurns` with equivalent-but-new object
-// identity re-feeds that SAME historical, generation-less frame into the
-// live-status effect (`UnifiedChat.tsx` ~L230) on every render. Before the
-// fix this read as "a different generation" (the empty-generation key never
-// matches a known one) and (a)-reset: reopening a settled search or
-// replenishing an exhausted budget on every unrelated rerender. This file
-// proves the HOST WIRING stays settled across that replay, while a
-// genuinely new search (which always arrives with its OWN `startedAt`, via
-// the authoritative confirm/GET paths — never via this live-frame path)
-// still starts following.
+// Codex round 4 F14 (#4195): a live SSE `manual_search_status` frame used to
+// NEVER carry `startedAt` — chat/route.ts's own frame builder omitted it —
+// and an UNRELATED parent rerender that rebuilds `meta`/`liveTurns` with
+// equivalent-but-new object identity could re-feed that SAME historical,
+// generation-less frame into the live-status effect (`UnifiedChat.tsx`'s
+// effect over `latestManualSearchStatus`) on every render. Before the fix
+// this read as "a different generation" and reset: reopening a settled
+// search or replenishing an exhausted budget on every unrelated rerender.
+//
+// Round 5 F15: the chat route NOW stamps a real `startedAt` on every live
+// frame (`manualSearchStatusFrame`), and the mobile decoder
+// (`../../unified/to-interaction.ts`'s `unknownInteractionPart`) carries it
+// through. The generation-less scenario below is KEPT as a backward-compat
+// case (an older server that predates the stamp) — see
+// `observeLiveManualSearchFrame`'s own header
+// (`packages/factorylm-interaction/src/manual-search-follow.ts`) for the
+// full state machine. This file now ALSO proves the two things that change
+// once a live frame carries a generation: (1) a SAME-generation replay that
+// still says `running: true` must stay a no-op even though it now carries a
+// real generation (the regression `reseedManualSearchFollow` would introduce
+// for live frames), and (2) a genuinely NEW search reported purely via a
+// live frame — no confirm, no GET — starts following immediately, even
+// right after an older generation already settled.
 //
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/unified-chat-live-frame-replay
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -61,10 +68,11 @@ import type { ChatTurn } from "../../lib/sse";
 
 const NB = "nb-1";
 
-/** A STALE, historical live frame — exactly the shape chat/route.ts emits:
- *  NO `startedAt`, ever. A FRESH object literal on every call, matching an
- *  unrelated parent rerender that rebuilds `liveTurns` with
- *  equivalent-but-new content (not the same reference). */
+/** A STALE, historical live frame carrying NO `startedAt` — the backward-
+ *  compat case (an older server that predates the chat-route stamp). A
+ *  FRESH object literal on every call, matching an unrelated parent
+ *  rerender that rebuilds `liveTurns` with equivalent-but-new content (not
+ *  the same reference). */
 function staleLiveFrame(): { q: string; a: ChatTurn } {
   return {
     q: "is this an SMC SS5Y3-DUW01302?",
@@ -73,6 +81,25 @@ function staleLiveFrame(): { q: string; a: ChatTurn } {
       citations: [],
       status: "answered",
       unknownFrames: [{ kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true }],
+    },
+  };
+}
+
+/** Round 5 (#4195 F15): the SAME shape, but WITH a generation — what a
+ *  current server actually sends. A fresh object literal on every call. */
+function liveFrame(
+  manufacturer: string,
+  model: string,
+  running: boolean,
+  startedAt: string,
+): { q: string; a: ChatTurn } {
+  return {
+    q: `is this a ${manufacturer} ${model}?`,
+    a: {
+      answer: "Looking into it.",
+      citations: [],
+      status: "answered",
+      unknownFrames: [{ kind: "manual_search_status", manufacturer, model, running, startedAt }],
     },
   };
 }
@@ -201,5 +228,56 @@ describe("UnifiedChat — a generation-less live frame replay never reopens a se
     });
 
     expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+  });
+});
+
+describe("UnifiedChat — a live frame WITH a generation (#4195 round 5 F15)", () => {
+  it("a SAME-generation live frame replay, still saying running:true, stays settled — no new request (the regression a current server's stamp could introduce)", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    const callsAtSettle = fetchManualSearchStatus.mock.calls.length;
+
+    // An unrelated rerender re-delivers the EXACT same gen-1 frame, still
+    // `running: true` (a stale snapshot cached from before the search
+    // settled). Rerendering the old turn alone must make ZERO new requests
+    // and must NOT reopen the settled search.
+    view.rerender(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtSettle);
+  });
+
+  it("a genuinely NEW search reported purely via a LIVE FRAME (its own, different generation) starts following and resolves — no confirm needed (THE F15 fix)", async () => {
+    vi.useFakeTimers();
+    // gen-1's search is already settled on hydration.
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    const callsAtSmcSettle = fetchManualSearchStatus.mock.calls.length;
+
+    // A genuinely new candidate search for a DIFFERENT part (Rockwell),
+    // reported live with its OWN gen-2 — no confirm click, no GET yet. The
+    // "Searching…" message renders directly from the live frame itself,
+    // with no fetch — proving the OLD gen-1 settle never suppressed it.
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtSmcSettle); // no fetch yet — the live frame alone started it
+
+    // Polling starts: the periodic tick (not the live frame) issues the next
+    // GET, keyed to gen-2, and that's what resolves it.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it (2).", startedAt: "gen-2" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtSmcSettle + 1);
+    expect(screen.getByText("Found it (2).")).toBeTruthy();
   });
 });

@@ -59,6 +59,7 @@ import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
+  applyConfirmIdentityResult,
   chatBodyFor,
   detailQueryFor,
   enabledDocIds,
@@ -677,8 +678,6 @@ export function HubShellHost() {
       | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown }
       | null;
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
-    const sel = selectionRef.current;
-    if (sel) void loadDetail(sel);
     // Codex #4195 round 2 F4 + round 3 F4: a confirm that STARTED a search is
     // followed the same way hydration is (F6) — seed the SAME driver, no
     // second timer. `startedAt`, when the server sends it, is that search's
@@ -686,14 +685,22 @@ export function HubShellHost() {
     // generation-less read) means the first poll never has to "adopt" it.
     const searching = data.searching === true;
     const startedAt = typeof data.startedAt === "string" && data.startedAt ? data.startedAt : undefined;
-    if (searching && sel) {
-      manualSearchDriverRef.current?.seed(sel.notebookId, {
-        manufacturer: proposal.manufacturer,
-        model: proposal.model,
-        running: true,
-        ...(startedAt ? { startedAt } : {}),
-      });
-    }
+    // Codex round 5 F16 (#4195): bind completion to `notebookId` — the
+    // notebook THIS confirm was for, captured BEFORE the await — never to
+    // whatever `selectionRef.current` is NOW. A technician who navigated to
+    // a different notebook while this POST was in flight must get neither a
+    // `loadDetail` refresh nor a follower seed under A's identity; see
+    // `applyConfirmIdentityResult`'s own header for the full race.
+    await applyConfirmIdentityResult(
+      notebookId,
+      proposal,
+      { searching, ...(startedAt ? { startedAt } : {}) },
+      {
+        loadDetail,
+        seedDriver: (nbId, status) => manualSearchDriverRef.current?.seed(nbId, status),
+        currentSelection: () => selectionRef.current,
+      },
+    );
     return {
       manualReady: data.manualReady === true,
       searching,

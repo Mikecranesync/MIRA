@@ -685,11 +685,19 @@ function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame
  * CANDIDATE basis only: the confirmed-identity search
  * (`manualSearchRunning === "confirmed"`) has no proposal to pair a card
  * with and keeps its existing (prose-only) UX, unchanged.
+ *
+ * Codex round 5 F15 (#4195): `startedAt` — the search's own generation, the
+ * SAME DB value the GET route (`currentManualSearchStatus`) reports for this
+ * identity — rides on EVERY frame (running or settled), never only the
+ * running one. Without it, a live SSE frame carries no way to tell a
+ * genuinely NEW candidate search apart from a replay of an old one; see
+ * `manual-search-follow.ts`'s `observeLiveManualSearchFrame`.
  */
 function manualSearchStatusFrame(
   identityProposal: IdentityProposal | null,
   manualSearchRunning: "confirmed" | "candidate" | null,
   candidateAcquisitionText: string | null,
+  candidateSearchStartedAt?: string,
 ): Record<string, unknown> | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
@@ -700,6 +708,7 @@ function manualSearchStatusFrame(
     model: identityProposal.model,
     running,
     ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
+    ...(candidateSearchStartedAt ? { startedAt: candidateSearchStartedAt } : {}),
   };
 }
 
@@ -2343,6 +2352,12 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // Codex round 5 F15 (#4195) — the candidate search's own generation (the
+  // DB's `started_at`, never this route's local clock), threaded onto the
+  // LIVE `manual_search_status` SSE frame below so the shared mobile/Hub
+  // follower can tell a genuinely NEW search apart from a replay of an old
+  // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
+  let candidateSearchStartedAt: string | undefined;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2477,6 +2492,24 @@ async function handleChatTurn(
             `${identityProposal.manufacturer} ${identityProposal.model}`,
             "candidate",
           );
+          // Codex round 5 F15 (#4195): `cAcq.started_at` above is EITHER the
+          // DB's own value (the initial `readAcquisition`/`reconcileAcquisition`
+          // read, never synthesized) OR, when THIS call just claimed the
+          // search, the local placeholder set a few lines up — which is NOT
+          // the DB's `now()` (`claim()`'s own clock) and would drift from
+          // what the GET route (`currentManualSearchStatus`) reports for the
+          // SAME search. Only in that freshly-claimed case, re-read the
+          // record `claim()` actually wrote; every other path already holds
+          // an authoritative value. A failed/mismatched re-read just omits
+          // `startedAt` from the frame (never invents one, never blocks the
+          // reply — same fail-open posture as the rest of this capability).
+          if (cStarted) {
+            const authoritative = await readAcquisition(ctx.tenantId, notebookId);
+            candidateSearchStartedAt =
+              authoritative && authoritative.key === candidateKey ? authoritative.started_at ?? undefined : undefined;
+          } else {
+            candidateSearchStartedAt = cAcq.started_at ?? undefined;
+          }
         }
       }
     }
@@ -2697,7 +2730,7 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
@@ -3958,7 +3991,7 @@ async function handleChatTurn(
       }
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
