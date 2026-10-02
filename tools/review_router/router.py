@@ -27,7 +27,20 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+
+
+def _checkout_root() -> Path:
+    """The checkout being reviewed is the one you run from (it must be at the
+    PR head), not the one this file lives in."""
+    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True)
+    return (
+        Path(out.stdout.strip())
+        if out.returncode == 0 and out.stdout.strip()
+        else HERE.parent.parent
+    )
+
+
+REPO = _checkout_root()
 PRICES = json.loads((HERE / "prices.json").read_text())["usd_per_mtok"]
 
 TIERS = ("low", "standard", "critical")
