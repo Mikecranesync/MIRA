@@ -274,3 +274,67 @@ def test_prices_file_is_dated_and_sourced():
     assert meta["source"].startswith("https://") and meta["fetched"]
     for model, _effort in router.ROUTES.values():
         assert model in meta["usd_per_mtok"]
+
+
+# ---------------------------------------------------------------------------
+# Stage A = required CI at the exact head (never executes candidate code)
+
+REQUIRED = ["CI Gate", "staging-gate", "hold-gate"]
+
+
+def test_all_required_green_or_skipped_passes():
+    reported = [
+        {"name": "CI Gate", "bucket": "pass"},
+        {"name": "staging-gate", "bucket": "skipping"},
+        {"name": "hold-gate", "bucket": "pass"},
+        {"name": "Docker Build Check", "bucket": "fail"},  # not required: ignored
+    ]
+    assert router.required_checks_state(REQUIRED, reported) == ([], [])
+
+
+def test_failed_and_cancelled_required_checks_fail():
+    reported = [
+        {"name": "CI Gate", "bucket": "fail"},
+        {"name": "staging-gate", "bucket": "cancel"},
+        {"name": "hold-gate", "bucket": "pass"},
+    ]
+    assert router.required_checks_state(REQUIRED, reported) == (["CI Gate", "staging-gate"], [])
+
+
+def test_a_required_check_that_never_reported_is_pending_not_green():
+    reported = [{"name": "CI Gate", "bucket": "pass"}, {"name": "hold-gate", "bucket": "pending"}]
+    assert router.required_checks_state(REQUIRED, reported) == ([], ["staging-gate", "hold-gate"])
+
+
+# ---------------------------------------------------------------------------
+# The router itself is authoritative only as committed on the base branch
+
+
+def _fake_git(base_blobs, here_blobs, monkeypatch):
+    def run(cmd, **kw):
+        if cmd[:2] == ["git", "rev-parse"]:
+            out = base_blobs.get(cmd[2].split(":", 1)[1], "")
+        else:  # git hash-object <abs path>
+            out = here_blobs.get(next(r for r in router.TOOLING if cmd[2].endswith(r)), "")
+        return subprocess.CompletedProcess(cmd, 0, out + "\n", "")
+
+    monkeypatch.setattr(router, "_run", run)
+
+
+def test_tooling_matching_the_base_is_trusted(monkeypatch):
+    blobs = {r: f"sha-{i}" for i, r in enumerate(router.TOOLING)}
+    _fake_git(blobs, dict(blobs), monkeypatch)
+    assert router.untrusted_tooling("main") == []
+
+
+def test_a_candidate_local_shim_is_refused(monkeypatch):
+    base = {r: f"sha-{i}" for i, r in enumerate(router.TOOLING)}
+    here = dict(base, **{"tools/review_router/codex_shim.sh": "tampered"})
+    _fake_git(base, here, monkeypatch)
+    assert router.untrusted_tooling("main") == ["tools/review_router/codex_shim.sh"]
+
+
+def test_tooling_absent_from_the_base_is_untrusted(monkeypatch):
+    here = {r: f"sha-{i}" for i, r in enumerate(router.TOOLING)}
+    _fake_git({}, here, monkeypatch)
+    assert router.untrusted_tooling("main") == list(router.TOOLING)

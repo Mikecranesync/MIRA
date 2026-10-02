@@ -234,16 +234,19 @@ def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
 
 
 def pr_facts(pr: int) -> dict:
+    _run(["git", "fetch", "-q", "origin", f"pull/{pr}/head"], cwd=REPO)
     j = json.loads(
         _run(
             ["gh", "pr", "view", str(pr), "--json", "headRefOid,baseRefName,files"], check=True
         ).stdout
     )
+    _run(["git", "fetch", "-q", "origin", j["baseRefName"]], cwd=REPO)
     base = _run(
         ["git", "merge-base", f"origin/{j['baseRefName']}", j["headRefOid"]], check=True
     ).stdout.strip()
     diff_chars = len(_run(["git", "diff", f"{base}..{j['headRefOid']}"], check=True).stdout)
     return {
+        "base_ref": j["baseRefName"],
         "head": j["headRefOid"],
         "merge_base": base,
         "paths": [f["path"] for f in j["files"]],
@@ -281,19 +284,55 @@ def prior_round(pr: int) -> dict:
     }
 
 
-def deterministic_stage(paths: list[str]) -> list[str]:
-    """Stage A on the changed Python files. Returns failures (empty = pass).
-    The caller must be checked out at the PR head."""
-    py = [p for p in paths if p.endswith(".py") and (REPO / p).exists()]
-    failures = []
-    if py:
-        for cmd in (["ruff", "check", *py], ["ruff", "format", "--check", *py]):
-            if _run(cmd, cwd=REPO).returncode:
-                failures.append(" ".join(cmd[:2]))
-        tests = [p for p in py if _match(p, TEST_GLOBS)]
-        if tests and _run([sys.executable, "-m", "pytest", "-q", *tests], cwd=REPO).returncode:
-            failures.append("pytest " + " ".join(tests))
-    return failures
+def required_checks_state(required: list[str], reported: list[dict]) -> tuple[list[str], list[str]]:
+    """Stage A verdict from CI at the exact head: (failed, pending). A required
+    context that never reported is PENDING, never OK: it is invisible to a scan
+    of reported checks alone."""
+    bucket = {c.get("name"): c.get("bucket") for c in reported}
+    failed = [n for n in required if bucket.get(n) in ("fail", "cancel")]
+    pending = [n for n in required if bucket.get(n) not in ("pass", "skipping", "fail", "cancel")]
+    return failed, pending
+
+
+def deterministic_stage(pr: int, base_ref: str) -> tuple[list[str], list[str]]:
+    """Stage A = the PR's required CI checks (lint, tests, guards) at its head.
+    CI executes the candidate's code; this operator process never does."""
+    required = json.loads(
+        _run(
+            [
+                "gh",
+                "api",
+                f"repos/{{owner}}/{{repo}}/branches/{base_ref}/protection/required_status_checks",
+                "--jq",
+                ".contexts",
+            ],
+            check=True,
+        ).stdout
+    )
+    reported = json.loads(
+        _run(["gh", "pr", "checks", str(pr), "--required", "--json", "name,bucket"]).stdout or "[]"
+    )
+    return required_checks_state(required, reported)
+
+
+TOOLING = (
+    "tools/review_router/router.py",
+    "tools/review_router/codex_shim.sh",
+    "tools/review_router/prices.json",
+)
+
+
+def untrusted_tooling(base_ref: str) -> list[str]:
+    """Files of THIS router that differ from the base branch. Like the trusted
+    review script, routing tooling is authoritative only as committed on the
+    base; a candidate-local copy (e.g. a PR's own shim) must not run."""
+    bad = []
+    for rel in TOOLING:
+        base_blob = _run(["git", "rev-parse", f"origin/{base_ref}:{rel}"], cwd=REPO).stdout.strip()
+        here_blob = _run(["git", "hash-object", str(HERE.parent.parent / rel)]).stdout.strip()
+        if not base_blob or base_blob != here_blob:
+            bad.append(rel)
+    return bad
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -318,6 +357,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--authorized", action="store_true", help="post-cap round the owner explicitly authorized"
+    )
+    ap.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="allow router files that differ from the base (only before the router is on main)",
     )
     args = ap.parse_args(argv)
 
@@ -353,16 +397,21 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: " + why, file=sys.stderr)
         return 3
 
-    head_now = _run(["git", "rev-parse", "HEAD"], cwd=REPO).stdout.strip()
-    if head_now != facts["head"]:
+    if (drift := untrusted_tooling(facts["base_ref"])) and not args.bootstrap:
         print(
-            f"REFUSED: checkout is at {head_now[:9]}, PR head is {facts['head'][:9]}",
+            "REFUSED: router tooling differs from origin/"
+            + facts["base_ref"]
+            + ": "
+            + ", ".join(drift)
+            + " (run it from a checkout of the base branch)",
             file=sys.stderr,
         )
         return 3
-    if fails := deterministic_stage(facts["paths"]):
+    failed, pending = deterministic_stage(args.pr, facts["base_ref"])
+    if failed or pending:
         print(
-            "REFUSED: deterministic stage failed (fix these for $0 first): " + "; ".join(fails),
+            "REFUSED: required CI is not green at this head ($0 checks first) "
+            f"failed={failed} pending={pending}",
             file=sys.stderr,
         )
         return 3
@@ -392,7 +441,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.authorized:
         env["ADV_REVIEW_HUMAN_AUTHORIZED"] = "1"
     trusted = _run(
-        ["git", "show", "origin/main:scripts/adversarial-review-trusted.sh"], cwd=REPO, check=True
+        ["git", "show", f"origin/{facts['base_ref']}:scripts/adversarial-review-trusted.sh"],
+        cwd=REPO,
+        check=True,
     ).stdout
     rc = subprocess.run(
         ["bash", "-s", "--", str(args.pr), "--review-only"],

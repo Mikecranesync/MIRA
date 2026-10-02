@@ -39,7 +39,7 @@ Prices: <https://developers.openai.com/api/docs/pricing>, Standard tier, fetched
 
 | Stage | What | Cost | Model / effort |
 |---|---|---|---|
-| **A. Deterministic** | `ruff check`, `ruff format --check` and `pytest` on the PR's changed Python. Plus the **finding→test rule**: after a round with findings, the next paid round is refused until a test file changed. | $0 | none |
+| **A. Deterministic** | Every **required CI check** must be green at the exact head (lint, tests, guards). A required check that never reported counts as pending. Plus the **finding→test rule**: after a round with findings, the next paid round is refused until a test file changed. CI executes the candidate's code; the router never does. | $0 | none |
 | **B. Free pre-filter** | `tools/gate7_review.py --paths <one file>` (Groq/Together free cascade). Scope it per file so it reads whole files instead of a truncated slice. | $0 | free cascade |
 | **C. Codex gate, low tier** | Only tests, docs, `*.md` or `tools/qa/` changed | ≈ $0.25 | `gpt-5.4-mini`, effort `low` |
 | **C. Codex gate, standard tier** | Product code outside the critical list | ≈ $0.56 | `gpt-6.1-sol`, effort `medium` |
@@ -69,7 +69,12 @@ lane, at the exact head, with the full-diff `files_reviewed` coverage check, the
 ## 3. Cost per round, current vs proposed
 
 Estimates scale the measured $2.80 by each model's most expensive price ratio,
-which is conservative. Real numbers come from the ledger after the first routed run.
+which is conservative.
+
+**First measured run (#4182 r9, standard tier, `gpt-6.1-sol` medium, 236k-char diff):**
+2,835,472 input tokens (96% cached), 11,293 output + 2,446 reasoning = **$0.64**
+(estimate $0.84). The same tokens on `gpt-6-astra` would cost about $4.57. Codex
+re-read about 48× the diff, which is why delta review (§5) is the biggest saving left.
 
 | PR kind | Current (`gpt-6-astra`, every round) | Proposed |
 |---|---|---|
@@ -99,8 +104,10 @@ coverage. It is not implemented.
 
 ## 6. Tests
 
-`tests/review_router/test_router.py` has 36 hermetic tests, run in CI by a named
+`tests/review_router/test_router.py` has 42 hermetic tests, run in CI by a named
 `ci.yml` step. They cover:
+- the CI-based stage A (green/skipped pass; fail/cancel fail; never-reported is pending);
+- trusted tooling (base match, a tampered shim refused, absent-from-base refused);
 - tiering, including that a single critical path wins and an empty set fails closed;
 - one-step escalation that never goes down;
 - routes, and refusal of an unpriced model;
@@ -120,5 +127,9 @@ python3 tools/review_router/router.py <PR> --plan        # route + estimate, spe
 python3 tools/review_router/router.py <PR> [--authorized] # stages A → C, inside the budget
 ```
 
-Run it from a checkout at the PR head. The Codex login comes from `CODEX_HOME`
-(see the API-key fallback in memory `reference_codex_via_api_key_fallback`).
+Run it from a checkout of the **base branch**; it fetches the PR objects
+itself. It refuses when its own files (`router.py`, `codex_shim.sh`,
+`prices.json`) differ from `origin/<base>`, because a PR must not be able to
+supply its own routing or shim. `--bootstrap` overrides that only before the
+router exists on main. The Codex login comes from `CODEX_HOME`; on an API key,
+see the memory `reference_codex_via_api_key_fallback`.
