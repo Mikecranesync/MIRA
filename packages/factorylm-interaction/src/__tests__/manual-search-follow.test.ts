@@ -261,3 +261,53 @@ describe("reseedManualSearchFollow — the state machine every 'seed' moment goe
     expect(secondSearch.state.key).toContain("gen-2");
   });
 });
+
+describe("reseedManualSearchFollow — a generation-less read never clobbers a known generation (Codex round 4 F14)", () => {
+  // A live SSE `manual_search_status` frame never carries `startedAt` (the
+  // Hub's chat/route.ts frame builder omits it). An unrelated rerender can
+  // re-feed that SAME historical, generation-less frame long after the real
+  // search has settled or exhausted its budget — this must be a pure no-op,
+  // not a reset.
+  it("a generation-less RUNNING replay against an already-RESOLVED known generation is a no-op (reference-equal, no refresh)", () => {
+    const resolved = reseedManualSearchFollow(null, NB, SETTLED).state; // key contains "gen-1"
+    expect(resolved.phase).toBe("resolved");
+    const staleReplay: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = reseedManualSearchFollow(resolved, NB, staleReplay);
+    expect(r.state).toBe(resolved); // reference equality: a true no-op
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("a generation-less RUNNING replay against an already-UNRESOLVED (budget-exhausted) known generation is a no-op — never replenishes", () => {
+    const exhausted: ManualSearchFollowState = {
+      key: `${NB}|gen-1`, attempts: 5, maxAttempts: 5, phase: "unresolved",
+      status: { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: MANUAL_SEARCH_UNRESOLVED_MESSAGE, startedAt: "gen-1" },
+    };
+    const staleReplay: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = reseedManualSearchFollow(exhausted, NB, staleReplay);
+    expect(r.state).toBe(exhausted);
+    expect(r.state.attempts).toBe(5); // not replenished
+    expect(r.refreshSources).toBe(false);
+  });
+
+  it("a generation-less RUNNING replay against an ACTIVELY FOLLOWING known generation does not erase it either", () => {
+    const following = startManualSearchFollow(NB, RUNNING, 5); // key contains "gen-1"
+    const staleReplay: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = reseedManualSearchFollow(following, NB, staleReplay);
+    expect(r.state.key).toContain("gen-1"); // not reset to the empty-generation key
+    expect(r.state.attempts).toBe(following.attempts);
+  });
+
+  it("control: a read that DOES carry its own startedAt still starts a genuinely new search, even right after a settled one", () => {
+    const resolved = reseedManualSearchFollow(null, NB, SETTLED).state; // "gen-1", resolved
+    const r = reseedManualSearchFollow(resolved, NB, RUNNING_GEN2); // real generation, "gen-2"
+    expect(r.state.phase).toBe("following");
+    expect(r.state.key).toContain("gen-2");
+  });
+
+  it("control: a generation-less read is still honored when NOTHING is tracked yet (the optimistic first-seed case)", () => {
+    const noGen: ManualSearchStatus = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true };
+    const r = reseedManualSearchFollow(null, NB, noGen);
+    expect(r.state.phase).toBe("following");
+    expect(r.state.key).toBe(`${NB}|`);
+  });
+});

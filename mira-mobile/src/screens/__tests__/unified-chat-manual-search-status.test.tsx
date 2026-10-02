@@ -172,6 +172,39 @@ describe("UnifiedChat — a confirmation that starts a search is followed (#4195
   });
 });
 
+describe("UnifiedChat — confirm reconciles against the AUTHORITATIVE status regardless of `searching` (#4195 round 4 F6)", () => {
+  it("a settled candidate-review decline disappears after a confirm that promotes WITHOUT starting a new search (manualReady:true, searching:false)", async () => {
+    // Hydration settles on a NEGATIVE candidate-review outcome for a KNOWN generation.
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false,
+      message: "Candidate: not turned on.", startedAt: "gen-1",
+    });
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    mount();
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Candidate: not turned on.")).toBeTruthy();
+
+    // The authoritative re-read AFTER confirm reports the SAME generation,
+    // now ready — this is what the confirm handler must now fetch even
+    // though `searching` is false.
+    fetchManualSearchStatus.mockResolvedValue({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false,
+      message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
+    await act(async () => {
+      fireEvent.click(confirmButton);
+      await Promise.resolve();
+    });
+
+    // The old decline is gone, replaced by the authoritative ready status —
+    // with no further send and no remount.
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText("Candidate: not turned on.")).toBeNull();
+    expect(confirmIdentityProposal).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("UnifiedChat — the attempt budget (Codex F8) and inconclusive reads (Codex F9)", () => {
   it("does not reset the budget on repeated running responses, and terminates unresolved at the fixed cap", async () => {
     vi.useFakeTimers();

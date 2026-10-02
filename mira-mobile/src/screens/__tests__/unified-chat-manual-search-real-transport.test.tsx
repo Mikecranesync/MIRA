@@ -109,6 +109,11 @@ describe("UnifiedChat + REAL confirmIdentityProposal/fetchManualSearchStatus wra
       data: { ok: true, manualReady: false, searching: true, message: "Confirmed. I'll look for its manual." },
       text: "",
     }));
+    // Codex round 4 F6: the confirm handler now ALSO fetches the
+    // authoritative status right away (regardless of `searching`) — the
+    // search row isn't visible on this immediate re-read yet, so the
+    // optimistic seed below is still the one that takes effect.
+    request.mockImplementationOnce(async () => ({ status: 200, data: { manualSearch: null }, text: "" }));
     const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
     await act(async () => {
       fireEvent.click(confirmButton);

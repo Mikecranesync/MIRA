@@ -72,6 +72,14 @@ function followKey(notebookId: string, generation: string | undefined): string {
   return `${notebookId}|${generation ?? ""}`;
 }
 
+/** The generation portion of a follow key (the substring after the FIRST
+ *  `|`), or `""` when none is known yet. Used ONLY to tell "nothing known"
+ *  apart from "a real generation is known" — see Codex F14 (round 4) below. */
+function generationOfKey(key: string): string {
+  const i = key.indexOf("|");
+  return i === -1 ? "" : key.slice(i + 1);
+}
+
 /** Start following a notebook's search. Call once — on hydration, when a
  *  live frame first shows `running: true`, or right after a confirmation
  *  that started a search (optimistically, before the first real read). */
@@ -179,6 +187,20 @@ export function advanceManualSearchFollow(
  *       call (a bare first hydration has nothing stale to refresh; that
  *       very read came from the same fetch that would supply fresh Sources
  *       anyway).
+ *   (e) Codex F14 (round 4, #4195): a GENERATION-LESS read (no `startedAt`)
+ *       is never allowed to clobber an ALREADY-KNOWN generation. A stale,
+ *       historical live frame (one SSE turn, cached on the client forever,
+ *       never carrying `startedAt` — see `manual-search-status.ts`) can be
+ *       re-fed into this function by an UNRELATED parent rerender (a new
+ *       `meta`/`baseThread` object with the exact same stale content) long
+ *       after the real search has settled or exhausted its budget. Without
+ *       this guard that replay reads as "a different generation" (the
+ *       empty-generation key never matches a known one) and (a)-resets —
+ *       reopening a settled search or replenishing a spent budget. A read
+ *       that genuinely starts a NEW search always carries its OWN
+ *       `startedAt`, so this guard never blocks real progress — it only
+ *       blocks uninformative replay of a read that was never a generation
+ *       marker to begin with.
  */
 export function reseedManualSearchFollow(
   current: ManualSearchFollowState | null,
@@ -186,6 +208,10 @@ export function reseedManualSearchFollow(
   read: ManualSearchStatus,
   maxAttempts: number = DEFAULT_MANUAL_SEARCH_FOLLOW_ATTEMPTS,
 ): ManualSearchFollowResult {
+  if (!read.startedAt && current !== null && generationOfKey(current.key) !== "") {
+    return { state: current, refreshSources: false };
+  }
+
   const sameGeneration = current !== null && followKey(notebookId, read.startedAt) === current.key;
 
   if (sameGeneration && current.phase === "following" && read.running) {

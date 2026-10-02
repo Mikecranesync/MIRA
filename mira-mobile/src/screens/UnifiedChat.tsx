@@ -548,12 +548,33 @@ export function UnifiedChat({
             // confirm. Mirrors the Hub's own `loadDetail` call after confirm
             // (`hub-host.tsx`'s `onConfirmIdentity`).
             await refreshPromotedScope();
-            // Codex round 2 F4: `searching` is the STRUCTURED signal the
-            // confirm route now returns (never scraped from `message` text)
-            // — start following progress ONLY when a search genuinely
-            // started, so a flag-off or nothing-to-search confirm never
-            // follows a search that was never running.
-            if (result.searching) {
+            // Codex round 4 F6: reconcile the follower against the
+            // AUTHORITATIVE status regardless of `searching` — a settled
+            // candidate-review message (e.g. "not turned on") must not
+            // survive a confirm that just promoted the manual via a path
+            // that never started a NEW search (manualReady:true,
+            // searching:false). The round-2 optimistic `running:true` seed
+            // below is a fallback used ONLY when the authoritative read is
+            // unavailable (a transient failure right after confirm) — it
+            // must never overwrite a fresh authoritative settle.
+            let authoritative: ManualSearchStatus | null = null;
+            try {
+              authoritative = await fetchManualSearchStatus(meta.notebookId, { threadId: attachmentThreadId ?? undefined });
+            } catch {
+              authoritative = null;
+            }
+            if (authoritative) {
+              setFollow((prev) => {
+                const seedResult = reseedManualSearchFollow(prev, meta.notebookId, authoritative!);
+                if (seedResult.refreshSources) void refreshPromotedScope();
+                return seedResult.state;
+              });
+            } else if (result.searching) {
+              // Codex round 2 F4: `searching` is the STRUCTURED signal the
+              // confirm route now returns (never scraped from `message` text)
+              // — start following progress ONLY when a search genuinely
+              // started, so a flag-off or nothing-to-search confirm never
+              // follows a search that was never running.
               setFollow((prev) => {
                 const seeded: ManualSearchStatus = {
                   manufacturer: proposal.manufacturer,
