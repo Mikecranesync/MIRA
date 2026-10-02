@@ -40,7 +40,7 @@ Prices: <https://developers.openai.com/api/docs/pricing>, Standard tier, fetched
 | Stage | What | Cost | Model / effort |
 |---|---|---|---|
 | **A. Deterministic** | Every **required CI check** must be green at the exact head (lint, tests, guards). A required check that never reported counts as pending. Plus the **finding→test rule**: after a round with findings, the next paid round is refused until a test file changed. CI executes the candidate's code; the router never does. | $0 | none |
-| **B. Free pre-filter** | `tools/gate7_review.py --paths <one file>` (Groq/Together free cascade). Scope it per file so it reads whole files instead of a truncated slice. | $0 | free cascade |
+| **B. Free pre-filter** | `tools/gate7_review.py` (Groq/Together free cascade) runs inside the route, **advisory**: its verdict and finding count are recorded with the run, and an unavailable cascade is recorded as `unavailable`, never as a pass. It does not block, because free models false-positive (#4182: one flagged its own redaction as a syntax error). For a whole-file read, run it by hand with `--paths <file>`. | $0 | free cascade |
 | **C. Codex gate, low tier** | Only tests, docs, `*.md` or `tools/qa/` changed | ≈ $0.25 | `gpt-5.4-mini`, effort `low` |
 | **C. Codex gate, standard tier** | Product code outside the critical list | ≈ $0.56 | `gpt-6.1-sol`, effort `medium` |
 | **C. Codex gate, critical tier** | Engine, guardrails, inference, hazard and answer validation, session/middleware, migrations, auth/security/safety/secret paths, workflows, hooks, the review tooling, relay, plc | ≈ $2.80 | `gpt-6-astra`, **today's defaults**, never cheapened |
@@ -49,11 +49,29 @@ Prices: <https://developers.openai.com/api/docs/pricing>, Standard tier, fetched
 `speculative` finding, an operator-flagged disagreement between reviewers, or a
 change spanning 3 or more top-level modules each escalate. Critical stays critical.
 
+**Integrity guarantees (from the #4202 round-1 review):**
+- **Snapshot binding:** CI is read for the routed commit SHA, not "the PR's current
+  head". The shim refuses (exit 65, before any paid call) unless the base and head
+  the trusted wrapper captured (`ADV_REVIEW_TRUSTED_BASE_SHA` /
+  `ADV_REVIEW_CANDIDATE_SHA`) equal the ones that were routed and CI-checked.
+- **Killable spend:** the shim `exec`s Codex, so the trusted watchdog's kill hits
+  the paid process itself.
+- **No unproven zeros:** a launched run with no usage record is charged its
+  estimate and flagged `usage_unknown`. A run the shim refused is a proven zero.
+- **Concurrent runs:** the budget check and a reservation of the estimate happen
+  atomically under an exclusive `flock`. The run settles to its actual cost, and
+  a crashed run stays charged at the estimate.
+- **Trusted routing evidence:** prior-round evidence comes only from review
+  comments the authenticated owner posted as a `User`, newest by comment id. A
+  forged comment can neither suppress escalation nor skip the finding→test rule.
+
 **Budget:**
 - **Pre-run:** refuse when the worst-case estimate exceeds the per-round ceiling
   (default $3), or when spent plus estimate exceeds the budget (default $20). The
-  estimate is the model's worst observed $/diff-char once one exists; before that,
-  the astra calibration scaled by price; ×1.5 either way.
+  estimate is the larger of a fixed-plus-per-character calibration, fitted to two
+  measured astra runs and scaled by price, and the worst cost this model has
+  actually run at; ×1.5 either way. The fixed term matters: #4202 r1 cost $1.60
+  on a 44.7k-char diff, about twice a per-character-only estimate.
 - **Post-run:** record exact usage per call (`codex --json` → `turn.completed.usage`:
   input, cached input, output, reasoning) and the cost to
   `.planning/review-costs.jsonl`.
@@ -104,10 +122,13 @@ coverage. It is not implemented.
 
 ## 6. Tests
 
-`tests/review_router/test_router.py` has 42 hermetic tests, run in CI by a named
+`tests/review_router/test_router.py` has 56 hermetic tests, run in CI by a named
 `ci.yml` step. They cover:
 - the CI-based stage A (green/skipped pass; fail/cancel fail; never-reported is pending);
 - trusted tooling (base match, a tampered shim refused, absent-from-base refused);
+- spend accounting, a blocking-lock proof, a 6-process reservation race, run-cost
+  rules, CI buckets by SHA, forged/bot/older review comments ignored;
+- shim snapshot refusal before launch, and a SIGTERM to the shim killing Codex itself;
 - tiering, including that a single critical path wins and an empty set fails closed;
 - one-step escalation that never goes down;
 - routes, and refusal of an unpriced model;

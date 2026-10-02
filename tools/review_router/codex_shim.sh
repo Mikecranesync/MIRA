@@ -4,9 +4,15 @@
 # two inserted flags, so the trusted review lane itself is never edited:
 #   --json                              -> token usage per turn (turn.completed.usage)
 #   -c model_reasoning_effort=<effort>  -> only when REVIEW_EFFORT is set
-# The event stream is copied to REVIEW_USAGE_FILE for cost accounting. The
-# trusted script reads its verdict from --output-last-message, never from this
-# stdout, so the extra JSON lines change nothing it consumes.
+#
+# Snapshot binding (Codex #4202 F1): the trusted wrapper exports the base/head
+# it captured (ADV_REVIEW_TRUSTED_BASE_SHA / ADV_REVIEW_CANDIDATE_SHA). When the
+# router set REVIEW_EXPECTED_BASE/HEAD, a mismatch means the PR moved after it
+# was routed and CI-checked, so this refuses before any paid request.
+#
+# Termination (Codex #4202 F2): codex is exec'd, so it IS the process the
+# watchdog kills; the usage copy is a process substitution that ends when
+# codex's stdout closes. No paid descendant can outlive a kill of this PID.
 set -euo pipefail
 
 REAL_CODEX="${REVIEW_REAL_CODEX:-$(command -v codex)}"
@@ -17,6 +23,15 @@ if [ "${1:-}" != "exec" ]; then
 fi
 shift
 
+for pair in "REVIEW_EXPECTED_HEAD:ADV_REVIEW_CANDIDATE_SHA" "REVIEW_EXPECTED_BASE:ADV_REVIEW_TRUSTED_BASE_SHA"; do
+  want_var="${pair%%:*}"; got_var="${pair##*:}"
+  want="${!want_var:-}"; got="${!got_var:-}"
+  if [ -n "$want" ] && [ "$want" != "$got" ]; then
+    echo "codex_shim: $got_var '$got' != routed $want_var '$want'; refusing (PR moved after routing)" >&2
+    exit 65
+  fi
+done
+
 extra=(--json)
 if [ -n "${REVIEW_EFFORT:-}" ]; then
   case "$REVIEW_EFFORT" in
@@ -25,5 +40,5 @@ if [ -n "${REVIEW_EFFORT:-}" ]; then
   esac
 fi
 
-"$REAL_CODEX" exec "${extra[@]}" "$@" | tee -a "$REVIEW_USAGE_FILE"
-exit "${PIPESTATUS[0]}"
+echo "launched" > "$REVIEW_USAGE_FILE.started"
+exec "$REAL_CODEX" exec "${extra[@]}" "$@" > >(tee -a "$REVIEW_USAGE_FILE")

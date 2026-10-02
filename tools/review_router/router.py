@@ -2,9 +2,10 @@
 """Cost-aware routing for the Codex adversarial review lane.
 
 The review ladder (docs/review-cost-ladder.md):
-  A. deterministic, $0: lint + tests on the PR's changed files, plus the
-     finding->test rule. A known-detectable failure never reaches an LLM.
-  B. free pre-filter, $0: tools/gate7_review.py (free cascade), scoped per file.
+  A. deterministic, $0: every required CI check green at the EXACT head SHA,
+     plus the finding->test rule. A known-detectable failure never reaches an LLM.
+  B. free pre-filter, $0: tools/gate7_review.py (free cascade), advisory and
+     recorded; "unavailable" is recorded too, never silently skipped.
   C. the trusted Codex lane (scripts/adversarial-review-trusted.sh), unchanged,
      on a model chosen by risk tier, escalated only on evidence, inside a
      dollar budget. Usage is captured by codex_shim.sh and priced from
@@ -18,12 +19,15 @@ default settings. Stdlib only, so it runs on a clean CI runner.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -91,9 +95,10 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     "critical": ("gpt-6-astra", None),
 }
 
-# Calibration: PR #4182 round 7 on gpt-6-astra cost ~$2.80 (account balance
-# delta 24.92 -> 22.10, minus two sub-cent probes) for a 236,205-char diff.
-_ASTRA_USD_PER_DIFF_CHAR = 2.80 / 236_205
+# Calibration from two measured gpt-6-astra runs (fixed per-run cost + per char):
+#   #4182 r7: $2.80 for a 236,205-char diff;  #4202 r1: $1.60 for 44,700 chars.
+_ASTRA_USD_PER_DIFF_CHAR = (2.80 - 1.60) / (236_205 - 44_700)
+_ASTRA_FIXED_USD = 1.60 - 44_700 * _ASTRA_USD_PER_DIFF_CHAR
 _ESTIMATE_SAFETY = 1.5
 _ESTIMATE_FLOOR_USD = 0.05
 CROSS_MODULE_THRESHOLD = 3  # distinct top-level dirs of non-test changes
@@ -182,16 +187,13 @@ def _price_ratio(model: str) -> float:
 
 
 def estimate_usd(model: str, diff_chars: int, ledger: list[dict]) -> float:
-    """Pre-run worst-case estimate. Uses this model's own observed $/diff-char
-    (worst seen) once the ledger has one; else the astra calibration scaled by
-    the most expensive price ratio. Always padded by a safety factor."""
-    seen = [
-        r["cost_usd"] / r["diff_chars"]
-        for r in ledger
-        if r.get("model") == model and r.get("diff_chars")
-    ]
-    per_char = max(seen) if seen else _ASTRA_USD_PER_DIFF_CHAR * _price_ratio(model)
-    return max(_ESTIMATE_FLOOR_USD, per_char * diff_chars * _ESTIMATE_SAFETY)
+    """Pre-run worst-case estimate: the larger of the price-scaled astra
+    calibration (fixed + per-char) and the worst cost this model has actually
+    run at, padded by a safety factor. A fixed term matters: a small diff still
+    pays the agent's exploration overhead (#4202 r1 cost $1.60 on 44.7k chars)."""
+    calibrated = (_ASTRA_FIXED_USD + _ASTRA_USD_PER_DIFF_CHAR * diff_chars) * _price_ratio(model)
+    seen = [r["cost_usd"] for r in _runs(ledger) if r.get("model") == model]
+    return max(_ESTIMATE_FLOOR_USD, max([calibrated, *seen]) * _ESTIMATE_SAFETY)
 
 
 def read_ledger(path: Path) -> list[dict]:
@@ -200,10 +202,22 @@ def read_ledger(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def _runs(ledger: list[dict]) -> list[dict]:
+    return [r for r in ledger if r.get("kind", "run") == "run"]
+
+
+def spent_usd(ledger: list[dict]) -> float:
+    """Settled runs plus every reservation with no settling run: an interrupted
+    or concurrent run stays charged at its estimate (Codex #4202 F3/F4)."""
+    settled = {r.get("reservation") for r in _runs(ledger)}
+    open_res = [r for r in ledger if r.get("kind") == "reservation" and r.get("id") not in settled]
+    return sum(r.get("cost_usd", 0.0) for r in _runs(ledger)) + sum(r["cost_usd"] for r in open_res)
+
+
 def check_budget(
     estimate: float, ledger: list[dict], budget_usd: float, round_ceiling_usd: float
 ) -> tuple[bool, str]:
-    spent = sum(r.get("cost_usd", 0.0) for r in ledger)
+    spent = spent_usd(ledger)
     if estimate > round_ceiling_usd:
         return (
             False,
@@ -215,6 +229,46 @@ def check_budget(
             f"spent ${spent:.2f} + estimate ${estimate:.2f} exceeds the budget ${budget_usd:.2f}",
         )
     return True, f"ok: spent ${spent:.2f}, estimate ${estimate:.2f}, budget ${budget_usd:.2f}"
+
+
+def reserve(
+    path: Path, estimate: float, budget_usd: float, round_ceiling_usd: float
+) -> tuple[bool, str, str | None]:
+    """Atomically check the budget AND append a reservation, under an exclusive
+    lock, so two concurrent reviews cannot both pass the same balance."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(path) + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        ok, why = check_budget(estimate, read_ledger(path), budget_usd, round_ceiling_usd)
+        if not ok:
+            return False, why, None
+        rid = uuid.uuid4().hex
+        with path.open("a") as f:
+            f.write(
+                json.dumps({"kind": "reservation", "id": rid, "cost_usd": round(estimate, 4)})
+                + "\n"
+            )
+        return True, why, rid
+
+
+def settle(path: Path, rid: str, record: dict) -> None:
+    with open(str(path) + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with path.open("a") as f:
+            f.write(json.dumps({"kind": "run", "reservation": rid, **record}) + "\n")
+
+
+def run_cost(
+    model: str, usage: dict[str, int], launched: bool, estimate: float
+) -> tuple[float, bool]:
+    """(cost, usage_unknown). A launched run with no usage record may still
+    have spent: charge the estimate rather than a fake zero (Codex #4202 F3).
+    A run the shim never launched made no paid call: a proven zero."""
+    if not launched:
+        return 0.0, False
+    if not any(usage.values()):
+        return estimate, True
+    return cost_usd(model, usage), False
 
 
 def needs_regression_test(prior_status: str | None, changed_since_prior: list[str]) -> bool:
@@ -237,7 +291,8 @@ def pr_facts(pr: int) -> dict:
     _run(["git", "fetch", "-q", "origin", f"pull/{pr}/head"], cwd=REPO)
     j = json.loads(
         _run(
-            ["gh", "pr", "view", str(pr), "--json", "headRefOid,baseRefName,files"], check=True
+            ["gh", "pr", "view", str(pr), "--json", "headRefOid,baseRefName,baseRefOid,files"],
+            check=True,
         ).stdout
     )
     _run(["git", "fetch", "-q", "origin", j["baseRefName"]], cwd=REPO)
@@ -247,6 +302,7 @@ def pr_facts(pr: int) -> dict:
     diff_chars = len(_run(["git", "diff", f"{base}..{j['headRefOid']}"], check=True).stdout)
     return {
         "base_ref": j["baseRefName"],
+        "base_sha": j["baseRefOid"],
         "head": j["headRefOid"],
         "merge_base": base,
         "paths": [f["path"] for f in j["files"]],
@@ -254,22 +310,24 @@ def pr_facts(pr: int) -> dict:
     }
 
 
-def prior_round(pr: int) -> dict:
-    """The newest Codex review comment: status, reviewed sha, speculative count."""
-    bodies = _run(
-        [
-            "gh",
-            "api",
-            f"repos/{{owner}}/{{repo}}/issues/{pr}/comments",
-            "--paginate",
-            "--jq",
-            '.[] | select(.body|startswith("[CODEX-ADVERSARIAL-REVIEW]")) | .body | @json',
-        ],
-        check=True,
-    ).stdout.splitlines()
-    if not bodies:
+def latest_owner_review(comments: list[dict], viewer: str) -> str | None:
+    """Body of the newest review comment the authenticated owner posted as a
+    User, ordered by immutable comment id: the same trust gate the review
+    ledger uses. A comment anyone else posts can't steer routing (#4202 F5)."""
+    mine = [
+        c
+        for c in comments
+        if isinstance(c.get("id"), int)
+        and (c.get("user") or {}).get("login") == viewer
+        and (c.get("user") or {}).get("type") == "User"
+        and str(c.get("body", "")).startswith("[CODEX-ADVERSARIAL-REVIEW]")
+    ]
+    return max(mine, key=lambda c: c["id"])["body"] if mine else None
+
+
+def parse_review(body: str | None) -> dict:
+    if not body:
         return {}
-    body = json.loads(bodies[-1])
 
     def field(key: str) -> str | None:
         prefix = key + ":"
@@ -284,6 +342,42 @@ def prior_round(pr: int) -> dict:
     }
 
 
+def prior_round(pr: int) -> dict:
+    viewer = _run(["gh", "api", "user", "--jq", ".login"], check=True).stdout.strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]+", viewer):
+        raise RuntimeError(f"unexpected GitHub login {viewer!r}")
+    lines = _run(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            f"repos/{{owner}}/{{repo}}/issues/{pr}/comments",
+            "--jq",
+            ".[] | {id, body, user: {login: .user.login, type: .user.type}}",
+        ],
+        check=True,
+    ).stdout.splitlines()
+    return parse_review(latest_owner_review([json.loads(x) for x in lines if x.strip()], viewer))
+
+
+_RUN_BUCKET = {"success": "pass", "neutral": "pass", "skipped": "skipping", "cancelled": "cancel"}
+_STATUS_BUCKET = {"success": "pass", "failure": "fail", "error": "fail", "pending": "pending"}
+
+
+def buckets_for_sha(check_runs: list[dict], statuses: list[dict]) -> list[dict]:
+    """Map the commit's check runs and commit statuses to name/bucket. The
+    newest run per name wins (re-runs); an incomplete run is pending."""
+    out: dict[str, str] = {}
+    for r in sorted(check_runs, key=lambda r: r.get("id", 0)):
+        if r.get("status") != "completed":
+            out[r["name"]] = "pending"
+        else:
+            out[r["name"]] = _RUN_BUCKET.get(r.get("conclusion") or "", "fail")
+    for st in statuses:  # the combined-status API already returns the latest per context
+        out[st["context"]] = _STATUS_BUCKET.get(st.get("state") or "", "pending")
+    return [{"name": n, "bucket": b} for n, b in out.items()]
+
+
 def required_checks_state(required: list[str], reported: list[dict]) -> tuple[list[str], list[str]]:
     """Stage A verdict from CI at the exact head: (failed, pending). A required
     context that never reported is PENDING, never OK: it is invisible to a scan
@@ -294,31 +388,60 @@ def required_checks_state(required: list[str], reported: list[dict]) -> tuple[li
     return failed, pending
 
 
-def deterministic_stage(pr: int, base_ref: str) -> tuple[list[str], list[str]]:
-    """Stage A = the PR's required CI checks (lint, tests, guards) at its head.
-    CI executes the candidate's code; this operator process never does."""
+def deterministic_stage(head_sha: str, base_ref: str) -> tuple[list[str], list[str]]:
+    """Stage A = the required CI checks for THIS commit (Codex #4202 F1: never
+    "the PR's current head", which can move after routing). CI executes the
+    candidate's code; this operator process never does."""
+    gh = "repos/{owner}/{repo}"
     required = json.loads(
         _run(
             [
                 "gh",
                 "api",
-                f"repos/{{owner}}/{{repo}}/branches/{base_ref}/protection/required_status_checks",
+                f"{gh}/branches/{base_ref}/protection/required_status_checks",
                 "--jq",
                 ".contexts",
             ],
             check=True,
         ).stdout
     )
-    reported = json.loads(
-        _run(["gh", "pr", "checks", str(pr), "--required", "--json", "name,bucket"]).stdout or "[]"
-    )
-    return required_checks_state(required, reported)
+    runs = [
+        json.loads(x)
+        for x in _run(
+            [
+                "gh",
+                "api",
+                "--paginate",
+                f"{gh}/commits/{head_sha}/check-runs",
+                "--jq",
+                ".check_runs[] | {id, name, status, conclusion}",
+            ],
+            check=True,
+        ).stdout.splitlines()
+        if x.strip()
+    ]
+    statuses = [
+        json.loads(x)
+        for x in _run(
+            [
+                "gh",
+                "api",
+                f"{gh}/commits/{head_sha}/status",
+                "--jq",
+                ".statuses[] | {context, state}",
+            ],
+            check=True,
+        ).stdout.splitlines()
+        if x.strip()
+    ]
+    return required_checks_state(required, buckets_for_sha(runs, statuses))
 
 
 TOOLING = (
     "tools/review_router/router.py",
     "tools/review_router/codex_shim.sh",
     "tools/review_router/prices.json",
+    "tools/gate7_review.py",
 )
 
 
@@ -333,6 +456,40 @@ def untrusted_tooling(base_ref: str) -> list[str]:
         if not base_blob or base_blob != here_blob:
             bad.append(rel)
     return bad
+
+
+def free_prefilter(pr: int, out_dir: Path) -> dict:
+    """Stage B: the free-cascade Gate 7 reviewer, advisory. Its verdict and
+    finding count are recorded; an unavailable cascade is recorded as such,
+    never as a pass. It does not block: free models false-positive (e.g. on
+    their own redaction), so the paid gate still decides."""
+    out = out_dir / f"gate7-{pr}-{int(time.time())}.md"
+    r = _run(
+        [
+            "doppler",
+            "run",
+            "--project",
+            "factorylm",
+            "--config",
+            "dev",
+            "--",
+            sys.executable,
+            "tools/gate7_review.py",
+            str(pr),
+            "-o",
+            str(out),
+        ],
+        cwd=REPO,
+    )
+    if r.returncode != 0 or not out.exists():
+        return {"prefilter": "unavailable", "prefilter_rc": r.returncode}
+    text = out.read_text()
+    verdict = "BLOCK" if "**Verdict:** BLOCK" in text else "PASS"
+    return {
+        "prefilter": verdict,
+        "prefilter_findings": text.count("\n- **["),
+        "prefilter_report": str(out),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -351,13 +508,10 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.getenv("REVIEW_COST_LEDGER", REPO / ".planning/review-costs.jsonl")),
     )
     ap.add_argument(
-        "--disagreement",
-        action="store_true",
-        help="pre-filter and prior verdict conflict: escalate",
+        "--disagreement", action="store_true", help="reviewers conflict: escalate one tier"
     )
-    ap.add_argument(
-        "--authorized", action="store_true", help="post-cap round the owner explicitly authorized"
-    )
+    ap.add_argument("--authorized", action="store_true", help="owner-authorized post-cap round")
+    ap.add_argument("--no-prefilter", action="store_true", help="skip the free stage-B pre-filter")
     ap.add_argument(
         "--bootstrap",
         action="store_true",
@@ -373,70 +527,63 @@ def main(argv: list[str] | None = None) -> int:
         cross_module_change=cross_module(facts["paths"]),
     )
     model, effort = route(tier)
-    ledger = read_ledger(args.ledger)
-    est = estimate_usd(model, facts["diff_chars"], ledger)
-    ok, why = check_budget(est, ledger, args.budget_usd, args.round_ceiling_usd)
-    print(
-        json.dumps(
-            {
-                "pr": args.pr,
-                "head": facts["head"][:9],
-                "tier": tier,
-                "escalation": reasons,
-                "model": model,
-                "effort": effort or "default",
-                "diff_chars": facts["diff_chars"],
-                "estimate_usd": round(est, 2),
-                "budget": why,
-            }
-        )
-    )
+    est = estimate_usd(model, facts["diff_chars"], read_ledger(args.ledger))
+    _ok, why = check_budget(est, read_ledger(args.ledger), args.budget_usd, args.round_ceiling_usd)
+    plan = {
+        "pr": args.pr,
+        "head": facts["head"][:9],
+        "tier": tier,
+        "escalation": reasons,
+        "model": model,
+        "effort": effort or "default",
+        "diff_chars": facts["diff_chars"],
+        "estimate_usd": round(est, 2),
+        "budget": why,
+    }
+    print(json.dumps(plan))
     if args.plan:
         return 0
-    if not ok:
-        print("REFUSED: " + why, file=sys.stderr)
+
+    def refuse(msg: str) -> int:
+        print("REFUSED: " + msg, file=sys.stderr)
         return 3
 
     if (drift := untrusted_tooling(facts["base_ref"])) and not args.bootstrap:
-        print(
-            "REFUSED: router tooling differs from origin/"
-            + facts["base_ref"]
-            + ": "
-            + ", ".join(drift)
-            + " (run it from a checkout of the base branch)",
-            file=sys.stderr,
+        return refuse(
+            f"router tooling differs from origin/{facts['base_ref']}: {', '.join(drift)} "
+            "(run it from a checkout of the base branch)"
         )
-        return 3
-    failed, pending = deterministic_stage(args.pr, facts["base_ref"])
+    failed, pending = deterministic_stage(facts["head"], facts["base_ref"])
     if failed or pending:
-        print(
-            "REFUSED: required CI is not green at this head ($0 checks first) "
-            f"failed={failed} pending={pending}",
-            file=sys.stderr,
+        return refuse(
+            f"required CI is not green at {facts['head'][:9]} failed={failed} pending={pending}"
         )
-        return 3
     if prior.get("reviewed_sha") and prior["reviewed_sha"] != facts["head"]:
         since = _run(
             ["git", "diff", "--name-only", f"{prior['reviewed_sha']}..{facts['head']}"], cwd=REPO
         ).stdout.split()
         if needs_regression_test(prior.get("status"), since):
-            print(
-                "REFUSED: the previous round found issues and no test changed since; "
-                "turn each fixed finding into a regression test first",
-                file=sys.stderr,
+            return refuse(
+                "the previous round found issues and no test changed since; "
+                "turn each fixed finding into a regression test first"
             )
-            return 3
 
-    usage_file = (
-        args.ledger.parent / f"usage-{args.pr}-{facts['head'][:9]}-{int(time.time())}.jsonl"
-    )
-    usage_file.parent.mkdir(parents=True, exist_ok=True)
+    pre = {} if args.no_prefilter else free_prefilter(args.pr, args.ledger.parent)
+    if pre:
+        print(json.dumps(pre))
+
+    ok, why, rid = reserve(args.ledger, est, args.budget_usd, args.round_ceiling_usd)
+    if not ok:
+        return refuse(why)
+    usage_file = args.ledger.parent / f"usage-{args.pr}-{facts['head'][:9]}-{rid[:8]}.jsonl"
     env = dict(
         os.environ,
         CODEX_BIN=str(HERE / "codex_shim.sh"),
         CODEX_MODEL=model,
         REVIEW_USAGE_FILE=str(usage_file),
         REVIEW_EFFORT=effort or "",
+        REVIEW_EXPECTED_HEAD=facts["head"],
+        REVIEW_EXPECTED_BASE=facts["base_sha"],
     )
     if args.authorized:
         env["ADV_REVIEW_HUMAN_AUTHORIZED"] = "1"
@@ -454,21 +601,26 @@ def main(argv: list[str] | None = None) -> int:
     ).returncode
 
     usage = usage_from_events(usage_file.read_text() if usage_file.exists() else "")
+    launched = Path(str(usage_file) + ".started").exists()
+    cost, unknown = run_cost(model, usage, launched, est)
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "pr": args.pr,
         "head": facts["head"],
+        "base": facts["base_sha"],
         "tier": tier,
         "model": model,
         "effort": effort or "default",
         "diff_chars": facts["diff_chars"],
         **usage,
         "estimate_usd": round(est, 4),
-        "cost_usd": round(cost_usd(model, usage), 4),
+        "cost_usd": round(cost, 4),
+        "usage_unknown": unknown,
+        "launched": launched,
         "review_rc": rc,
+        **{k: v for k, v in pre.items() if k != "prefilter_report"},
     }
-    with args.ledger.open("a") as f:
-        f.write(json.dumps(record) + "\n")
+    settle(args.ledger, rid, record)
     print(
         json.dumps(
             {
@@ -480,6 +632,7 @@ def main(argv: list[str] | None = None) -> int:
                     "output_tokens",
                     "reasoning_output_tokens",
                     "cost_usd",
+                    "usage_unknown",
                 )
             }
         )
