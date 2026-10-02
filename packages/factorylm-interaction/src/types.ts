@@ -297,6 +297,31 @@ export interface InteractionError {
   readonly retryable: boolean;
 }
 
+/**
+ * The door offered when a turn ended without an answer because the visitor has
+ * no account — not because anything broke.
+ *
+ * The public demo asks its questions through the SAME chat route the product
+ * ships, and that route begins with `sessionOr401`. So an anonymous turn
+ * genuinely cannot be served, and the truthful end of that turn is an
+ * invitation, not a red error. Rendering it as an error would teach the visitor
+ * the product is broken at the exact moment they showed the most intent.
+ *
+ * `reason` is the plain sentence the visitor reads. It must state what is
+ * missing, never imply an answer was withheld arbitrarily and never imply one
+ * was produced. `intents` are the doors the HOST can actually open; an empty
+ * list means the host has none, and the shell says so instead of rendering
+ * buttons that go nowhere.
+ *
+ * This part is NOT a general-purpose error substitute. A network failure, a
+ * 500, or an unreadable stream stays an `error` part: dressing a fault up as a
+ * sign-up prompt both misleads the visitor and hides the bug from us.
+ */
+export interface ConversionPrompt {
+  readonly reason: string;
+  readonly intents: readonly ConversionIntent[];
+}
+
 export type InteractionPart =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "attachment"; readonly attachment: Attachment }
@@ -323,6 +348,9 @@ export type InteractionPart =
    *  match the confirmed binding, so no machine history was used. Presence-only; ids stay
    *  server-side. Mirrors the mobile chat-adapter's `identity_dispute`. */
   | { readonly type: "identity_dispute" }
+  /** The turn ended without an answer because this surface has no account, and the
+   *  visitor is offered the doors the host can open. Never used for a fault. */
+  | { readonly type: "conversion_prompt"; readonly prompt: ConversionPrompt }
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {

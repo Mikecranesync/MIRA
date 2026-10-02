@@ -12,6 +12,7 @@ import {
 import { FactoryLMShell, type ConversationSurface } from "@factorylm/ui";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createLabAdapter } from "./fake-adapter";
+import { PublicDemo, parseDemoConfig } from "./PublicDemo";
 
 export const LAB_SURFACES = ["public", "web", "mobile", "hub"] as const satisfies readonly SurfaceKind[];
 export const LAB_THEMES = ["light", "dark"] as const satisfies readonly ThemeName[];
@@ -28,9 +29,11 @@ export interface LabState {
   readonly embed: boolean;
   /** Which conversation surface renders the turns (blueprint: classic list vs assistant-ui primitives). */
   readonly thread: ConversationSurface;
+  /** `simlab` runs the public demo against a local SimLab instead of a fixture. */
+  readonly demo: "off" | "simlab";
 }
 
-const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" };
+const DEFAULT_LAB: LabState = { surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", demo: "off" };
 
 function pick<T extends string>(allowed: readonly T[], value: string | null, fallback: T): T {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -46,12 +49,14 @@ export function parseLabState(search: string): LabState {
     viewport: pick(LAB_VIEWPORTS, params.get("viewport"), DEFAULT_LAB.viewport),
     embed: params.get("embed") === "1",
     thread: pick(LAB_THREADS, params.get("thread"), DEFAULT_LAB.thread),
+    demo: pick(["off", "simlab"] as const, params.get("demo"), DEFAULT_LAB.demo),
   };
 }
 
 export function labSearch(lab: LabState, options: { readonly embed?: boolean } = {}): string {
   const params = new URLSearchParams({ surface: lab.surface, scenario: lab.scenario, theme: lab.theme });
   if (lab.thread !== "classic") params.set("thread", lab.thread);
+  if (lab.demo !== "off") params.set("demo", lab.demo);
   if (!options.embed && lab.viewport !== "fluid") params.set("viewport", lab.viewport);
   if (options.embed) params.set("embed", "1");
   return `?${params.toString()}`;
@@ -105,9 +110,15 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
     if (patch.theme !== undefined) dispatch({ type: "set-theme", theme: next.theme });
   };
 
+  // The public demo is a different HOST, not a different shell: it owns the two
+  // clients and the polling loop, and renders the same FactoryLMShell.
+  const demoOn = lab.demo === "simlab" && lab.surface === "public";
+
   // The lab is the host here: Retry is offered only because a host can re-send,
   // and the mock host records the request in the adapter log.
-  const shell = <FactoryLMShell
+  const shell = demoOn
+    ? <PublicDemo config={parseDemoConfig(search)} />
+    : <FactoryLMShell
     state={state}
     dispatch={dispatch}
     adapter={adapter}

@@ -126,6 +126,20 @@
 .fl-error p { margin: 0 0 var(--fl-workspace-space-2); }
 .fl-error button { padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-fault-line); }
 
+/* --- Conversion prompt ------------------------------------------------------
+   The turn ended without an answer because the visitor has no account. Nothing
+   broke, so this must NOT wear the fault tokens .fl-error wears: muted-normal
+   container (colour stays reserved for machine state, ui-style.md rule 3), and
+   the accent marks the intended next ACTION, which is what the accent is for.
+   The host orders `intents`; the first one is the primary. */
+.fl-conversion { padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-raised, var(--fl-workspace-bg)); color: var(--fl-workspace-ink); }
+.fl-conversion__reason { margin: 0 0 var(--fl-workspace-space-3); line-height: 1.5; }
+.fl-conversion__actions { display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); }
+.fl-conversion__action { padding-inline: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); font: inherit; cursor: pointer; }
+.fl-conversion__action:first-of-type { border-color: var(--fl-workspace-accent); color: var(--fl-workspace-accent); font-weight: 600; }
+.fl-conversion__action:hover { border-color: var(--fl-workspace-accent); }
+.fl-conversion__hint { margin: 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
+
 .fl-followups { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--fl-workspace-space-2); }
 .fl-followups button { padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-pill); }
 

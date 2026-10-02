@@ -74,16 +74,17 @@ function must<T>(value: T | null | undefined, what: string): T {
 
 describe("lab state from the URL", () => {
   it("defaults to the web surface, grounded answer, light theme, fluid viewport", () => {
-    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
+    expect(parseLabState("")).toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", demo: "off" });
   });
 
   it("reads every control from the query string and rejects unknown values", () => {
     expect(parseLabState("?surface=hub&scenario=work-run&theme=dark&viewport=412x915&embed=1"))
-      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true, thread: "classic" });
+      .toEqual({ surface: "hub", scenario: "work-run", theme: "dark", viewport: "412x915", embed: true, thread: "classic", demo: "off" });
     expect(parseLabState("?thread=assistant").thread).toBe("assistant");
     expect(parseLabState("?thread=nope").thread).toBe("classic");
-    expect(parseLabState("?surface=nope&scenario=nope&theme=nope&viewport=nope"))
-      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic" });
+    expect(parseLabState("?surface=nope&scenario=nope&theme=nope&viewport=nope&demo=nope"))
+      .toEqual({ surface: "web", scenario: "grounded-answer", theme: "light", viewport: "fluid", embed: false, thread: "classic", demo: "off" });
+    expect(parseLabState("?demo=simlab").demo).toBe("simlab");
   });
 
   it("offers exactly the plan's viewport set", () => {
