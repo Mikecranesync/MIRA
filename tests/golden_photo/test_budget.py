@@ -314,3 +314,10 @@ def test_r5_f15_settling_below_the_cap_leaves_the_ledger_open():
     led = Ledger(cap_usd=1.0)
     led.settle(led.reserve(0.5), 0.4)
     assert led.usd_exhausted is False
+
+
+def test_r6_f15_an_in_flight_reservation_holding_the_cap_stops_dispatch():
+    led = Ledger(cap_usd=1.0)
+    led.reserve(1.0)  # not settled yet, so usd_exhausted is still False
+    assert led.usd_exhausted is False
+    assert led.usd_stopped() is True

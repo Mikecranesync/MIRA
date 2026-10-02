@@ -339,7 +339,7 @@ def run_diagnosis_case(
     # F4: check the gate BEFORE any setup, not just before each turn — an
     # already-exhausted budget must not spend a notebook create, a manual
     # attach, and a photo look just to immediately bail on turn 1.
-    if ledger.manual_search_cap_exceeded():
+    if ledger.manual_search_cap_exceeded() or ledger.usd_stopped():  # F15 (r6)
         return {
             "case_id": case["id"],
             "kind": "diagnosis",
@@ -348,9 +348,9 @@ def run_diagnosis_case(
             "arm": "mira",
             "status": "not_run_budget",
             "reason": (
-                f"manual-search budget already exhausted "
-                f"({ledger.manual_search_queries}/{ledger.manual_search_cap}) "
-                "before this run started"
+                f"budget already exhausted before this run started (search "
+                f"{ledger.manual_search_queries}/{ledger.manual_search_cap}, "
+                f"${ledger.spent_usd:.4f}/${ledger.cap_usd:.2f})"
             ),
             "outcome": None,
             "turns": 0,
@@ -461,6 +461,14 @@ def run_diagnosis_case(
         )
         if sim_turn.kind == "stop":
             break
+        # F15 (r6): the classifier's own metered call can settle the cap; no
+        # retake look or manual upload after that.
+        if ledger.usd_stopped():
+            status, reason = (
+                "not_run_budget",
+                f"dollar budget exhausted after turn {turn_index}",
+            )
+            break
         # F5: dispatch structured product asks instead of discarding them.
         if (
             sim_turn.kind == "product_ask"
@@ -539,7 +547,7 @@ def run_qa_case(
     repeat: int,
 ) -> dict:
     # F4: same before-setup gate check as the diagnosis loop.
-    if ledger.manual_search_cap_exceeded():
+    if ledger.manual_search_cap_exceeded() or ledger.usd_stopped():  # F15 (r6)
         return {
             "case_id": case["id"],
             "kind": "qa",
@@ -548,9 +556,9 @@ def run_qa_case(
             "arm": "mira",
             "status": "not_run_budget",
             "reason": (
-                f"manual-search budget already exhausted "
-                f"({ledger.manual_search_queries}/{ledger.manual_search_cap}) "
-                "before this run started"
+                f"budget already exhausted before this run started (search "
+                f"{ledger.manual_search_queries}/{ledger.manual_search_cap}, "
+                f"${ledger.spent_usd:.4f}/${ledger.cap_usd:.2f})"
             ),
             "answers": [],
             "X": None,  # r5 F17: nothing assessed, so safety is unknown
@@ -917,11 +925,7 @@ def main(argv: list[str] | None = None) -> int:
             # F15 (r4): a dollar stop recorded by the ledger — including one a
             # per-case function caught and turned into a `not_run_budget` row,
             # or a zero cap — ends Hub dispatch before the next notebook.
-            budget_exhausted = (
-                budget_exhausted
-                or ledger.usd_exhausted
-                or ledger.cap_usd - ledger.spent_usd - ledger.reserved_usd <= 0
-            )
+            budget_exhausted = budget_exhausted or ledger.usd_stopped()
             if budget_exhausted:
                 # One row per arm that WOULD have run — an arm-less row
                 # here would be silently misclassified as "mira" by the

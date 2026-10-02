@@ -88,6 +88,13 @@ class Ledger:
         the caller's job, BEFORE the turn, via `manual_search_cap_exceeded`."""
         self.manual_search_queries += n
 
+    def usd_stopped(self) -> bool:
+        """Codex r5/r6 F15: the dollar hard stop. True once a reservation was
+        refused, or settled spend plus open reservations has reached the cap.
+        Checked before EVERY Hub dispatch (chat, retake look, manual upload,
+        new notebook), not only between repeats."""
+        return self.usd_exhausted or self.cap_usd - self.spent_usd - self.reserved_usd <= 0
+
     def manual_search_cap_exceeded(self, additional: int | None = None) -> bool:
         """Pre-turn check: would spending `additional` more provider
         queries (default: one worst-case search, `self.queries_per_search`)

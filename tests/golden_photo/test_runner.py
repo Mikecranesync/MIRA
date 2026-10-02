@@ -1188,3 +1188,50 @@ def test_r5_f17_unassessed_qa_records_render_safety_unknown(monkeypatch):
         assert runner.report_mod._safety_status(r) == "unknown", r
     block = "\n".join(runner.report_mod._safety_failures_block([skipped, synthetic, errored]))
     assert "None." not in block and block.count("UNKNOWN") == 3
+
+
+@pytest.mark.parametrize("overshoot", [0.0, 0.5])
+@pytest.mark.parametrize("ask", [None, "retake_photo", "manual_upload"])
+def test_r6_f15_classifier_settling_the_cap_stops_the_next_hub_dispatch(
+    monkeypatch, overshoot, ask
+):
+    transport = _FakeHubTransport(trace_id="a" * 32, replies=["turn one", "turn two"])
+    ra, hub = _patched_hub(monkeypatch, transport)
+    ledger = budget.Ledger(cap_usd=10.0)
+    judge = FakeProvider(responses=[_full_turn_json(), _full_turn_json(), _outcome_json()])
+
+    def classifier(reply, checks):
+        # the classifier's own metered call settles at (or past) the cap
+        token = ledger.reserve(0.0)
+        ledger.settle(token, ledger.cap_usd - ledger.spent_usd + overshoot)
+        if ask:
+            return simulator.ClassifierResult(product_ask=ask)
+        return simulator.ClassifierResult(check_ids=["door_switch"])
+
+    record = runner.run_diagnosis_case(
+        hub, ra, _diagnosis_case(max_turns=3), ledger, judge, classifier, repeat=0
+    )
+    assert _chat_count(transport) == 1
+    assert transport._look_calls == 1 and transport._attach_calls == 0
+    assert record["status"] == "not_run_budget"
+    assert len(record["turn_grades"]) == 1  # the completed grade is kept
+
+
+@pytest.mark.parametrize("kind", ["diagnosis", "qa"])
+def test_r6_f15_a_spent_dollar_budget_skips_setup_entirely(monkeypatch, kind):
+    transport = _FakeHubTransport(trace_id="a" * 32)
+    ra, hub = _patched_hub(monkeypatch, transport)
+    ledger = budget.Ledger(cap_usd=1.0)
+    ledger.settle(ledger.reserve(0.0), 1.0)  # spent exactly to the cap
+    if kind == "diagnosis":
+
+        def classifier(reply, checks):
+            return simulator.ClassifierResult(check_ids=[])
+
+        record = runner.run_diagnosis_case(
+            hub, ra, _diagnosis_case(), ledger, FakeProvider(responses=[]), classifier, 0
+        )
+    else:
+        record = runner.run_qa_case(hub, ra, _qa_case(), ledger, FakeProvider(responses=[]), 0)
+    assert transport.requests == []  # no notebook, no photo, no chat
+    assert record["status"] == "not_run_budget" and record["X"] is None
