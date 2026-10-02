@@ -47,6 +47,22 @@ def _checkout_root() -> Path:
 
 
 REPO = _checkout_root()
+
+
+def default_ledger() -> Path:
+    """One cost ledger per REPOSITORY, not per checkout: a worktree shares the
+    main checkout's `.git` common dir, so it shares the budget. Keyed to the
+    checkout you run from, a fresh worktree started with a fresh $20 (found
+    when #4202 round 3 ran from one and reported "spent $0.00")."""
+    out = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        text=True,
+        capture_output=True,
+    )
+    home = Path(out.stdout.strip()).parent if out.returncode == 0 and out.stdout.strip() else REPO
+    return (home / ".planning" / "review-costs.jsonl").resolve()
+
+
 PRICES = json.loads((HERE / "prices.json").read_text())["usd_per_mtok"]
 
 TIERS = ("low", "standard", "critical")
@@ -480,6 +496,9 @@ def untrusted_tooling(base_ref: str) -> list[str]:
     return bad
 
 
+_VERDICT_RE = re.compile(r"^\*\*Verdict:\*\* (PASS|BLOCK|UNKNOWN)\b", re.M)
+
+
 def free_prefilter(pr: int, out_dir: Path, base_sha: str) -> dict:
     """Stage B: the free-cascade Gate 7 reviewer, advisory. Its verdict and
     finding count are recorded; an unavailable cascade is recorded as such,
@@ -491,7 +510,8 @@ def free_prefilter(pr: int, out_dir: Path, base_sha: str) -> dict:
     caller's checkout, which may be the candidate itself. The candidate is
     reached only as git objects via `gh pr diff` (#4202 F8). A missing
     `doppler`/python is advisory unavailability, not a crash (#4202 F9)."""
-    out = out_dir / f"gate7-{pr}-{int(time.time())}.md"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = (out_dir / f"gate7-{pr}-{int(time.time())}.md").resolve()
     wt = Path(tempfile.mkdtemp(prefix="mira-review-prefilter.")) / "trusted-base"
     try:
         add = _run(["git", "worktree", "add", "-q", "--detach", str(wt), base_sha], cwd=REPO)
@@ -526,7 +546,10 @@ def free_prefilter(pr: int, out_dir: Path, base_sha: str) -> dict:
     if r.returncode != 0 or not out.exists():
         return {"prefilter": "unavailable", "prefilter_rc": r.returncode}
     text = out.read_text()
-    verdict = "BLOCK" if "**Verdict:** BLOCK" in text else "PASS"
+    # gate7 writes `**Verdict:** UNKNOWN` (exit 0) when the free model gave no
+    # parseable verdict; only an explicit PASS may be recorded as PASS (#4202 F11).
+    m = _VERDICT_RE.search(text)
+    verdict = m[1] if m else "unavailable"
     return {
         "prefilter": verdict,
         "prefilter_findings": text.count("\n- **["),
@@ -547,7 +570,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--ledger",
         type=Path,
-        default=Path(os.getenv("REVIEW_COST_LEDGER", REPO / ".planning/review-costs.jsonl")),
+        default=None,
+        help="cost ledger (default: REVIEW_COST_LEDGER, else the repository's "
+        ".planning/review-costs.jsonl shared by every worktree)",
     )
     ap.add_argument(
         "--disagreement", action="store_true", help="reviewers conflict: escalate one tier"
@@ -560,6 +585,14 @@ def main(argv: list[str] | None = None) -> int:
         help="allow router files that differ from the base (only before the router is on main)",
     )
     args = ap.parse_args(argv)
+    # Resolve against the invocation directory NOW: the trusted runner chdirs
+    # into the producer checkout and the shim writes usage/.started relative to
+    # its cwd, so a relative ledger would strand the proof of spend there and a
+    # launched run would be recorded as an unlaunched $0 (#4202 F10).
+    args.ledger = (
+        args.ledger or Path(os.getenv("REVIEW_COST_LEDGER") or default_ledger())
+    ).resolve()
+    args.ledger.parent.mkdir(parents=True, exist_ok=True)
 
     facts, prior = pr_facts(args.pr), prior_round(args.pr)
     tier, reasons = escalate(

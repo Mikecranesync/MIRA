@@ -675,3 +675,129 @@ def test_main_continues_past_an_unavailable_prefilter_to_the_trusted_runner(tmp_
     assert rc == 0 and launched, "the paid runner was never reached"
     rec = [json.loads(ln) for ln in ledger.read_text().splitlines()][-1]
     assert rec["prefilter"] == "unavailable" and rec["launched"] is False
+
+
+# ---------------------------------------------------------------------------
+# Codex #4202 r3: relative ledger paths crossing working directories (F10),
+# UNKNOWN pre-filter verdicts never become PASS (F11), and the ledger is one
+# per repository, not one per checkout (found by round 3 itself: run from a
+# worktree, the router reported "spent $0.00")
+
+
+def _patch_main(monkeypatch, prefilter):
+    monkeypatch.setattr(
+        router,
+        "pr_facts",
+        lambda pr: {
+            "base_ref": "main",
+            "base_sha": BASE_SHA,
+            "head": HEAD_SHA,
+            "merge_base": BASE_SHA,
+            "paths": ["docs/x.md"],
+            "diff_chars": 100,
+        },
+    )
+    monkeypatch.setattr(router, "prior_round", lambda pr: {})
+    monkeypatch.setattr(router, "untrusted_tooling", lambda base: [])
+    monkeypatch.setattr(router, "deterministic_stage", lambda head, base: ([], []))
+    monkeypatch.setattr(router, "free_prefilter", prefilter)
+    monkeypatch.setattr(
+        router, "_run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "#!/bin/bash\n", "")
+    )
+
+
+def test_a_relative_ledger_is_resolved_before_the_runner_changes_directory(tmp_path, monkeypatch):
+    """F10: the trusted runner chdirs into the producer checkout; the shim writes
+    usage + `.started` at REVIEW_USAGE_FILE from there. A relative --ledger
+    therefore lands the artifacts in the producer tree and the router, reading
+    from the caller's directory, records a launched run as an unlaunched $0."""
+    invoke = tmp_path / "invoke"
+    producer = tmp_path / "producer"
+    invoke.mkdir()
+    producer.mkdir()
+    monkeypatch.chdir(invoke)
+    seen = {}
+    _patch_main(monkeypatch, lambda pr, d, base: {"prefilter": "unavailable"})
+
+    def runner(cmd, **kw):  # the trusted entrypoint, as seen from the producer cwd
+        uf = Path(kw["env"]["REVIEW_USAGE_FILE"])
+        seen["usage_file"] = uf
+        target = uf if uf.is_absolute() else producer / uf
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            '{"type": "turn.completed", "usage": {"input_tokens": 1000000,'
+            ' "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}}\n'
+        )
+        Path(str(target) + ".started").write_text("launched")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(router.subprocess, "run", runner)
+    assert router.main(["4202", "--ledger", "costs/ledger.jsonl"]) == 0
+    assert seen["usage_file"].is_absolute()
+    assert str(seen["usage_file"]).startswith(str(invoke))
+    assert not list(producer.rglob("*")), "artifacts leaked into the producer checkout"
+    rec = [json.loads(ln) for ln in (invoke / "costs" / "ledger.jsonl").read_text().splitlines()][
+        -1
+    ]
+    assert rec["launched"] is True and rec["usage_unknown"] is False and rec["cost_usd"] > 0
+
+
+def test_the_prefilter_report_dir_is_created_before_the_stage_runs(tmp_path, monkeypatch):
+    calls = []
+
+    def run(cmd, **kw):
+        if cmd[:3] == ["git", "worktree", "add"]:
+            Path(cmd[-2]).mkdir(parents=True)
+        if cmd[0] == "doppler":
+            out = Path(cmd[cmd.index("-o") + 1])
+            calls.append(out.parent.is_dir())
+            out.write_text("**Verdict:** PASS · x\n")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(router, "_run", run)
+    assert router.free_prefilter(1, tmp_path / "missing" / "dir", BASE_SHA)["prefilter"] == "PASS"
+    assert calls == [True]
+
+
+@pytest.mark.parametrize(
+    "report, expected",
+    [
+        ("**Verdict:** PASS · **Effort:** low · **Reviewer:** groq\n", "PASS"),
+        ("**Verdict:** BLOCK · **Effort:** low\n- **[high]** x\n", "BLOCK"),
+        ("**Verdict:** UNKNOWN · **Effort:** low\n", "UNKNOWN"),
+        ("# Gate 7 review\nno verdict line at all\n", "unavailable"),
+        ("", "unavailable"),
+        ("**Verdict:** PASSING\n", "unavailable"),
+    ],
+)
+def test_only_an_explicit_pass_verdict_is_recorded_as_pass(tmp_path, monkeypatch, report, expected):
+    """F11: gate7 writes `**Verdict:** UNKNOWN` (exit 0) when the free model gave
+    no parseable verdict; that must never be recorded as a successful PASS."""
+
+    def run(cmd, **kw):
+        if cmd[:3] == ["git", "worktree", "add"]:
+            Path(cmd[-2]).mkdir(parents=True)
+        if cmd[0] == "doppler":
+            Path(cmd[cmd.index("-o") + 1]).write_text(report)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(router, "_run", run)
+    assert router.free_prefilter(1, tmp_path, BASE_SHA)["prefilter"] == expected
+
+
+def test_the_default_ledger_is_shared_by_every_worktree_of_the_repository(tmp_path, monkeypatch):
+    """The budget is per repository. A worktree must not start with a fresh $20."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x")
+    wt = tmp_path / "wt"
+    g("worktree", "add", "-q", "--detach", str(wt))
+    monkeypatch.chdir(wt)
+    assert router.default_ledger() == (repo / ".planning" / "review-costs.jsonl").resolve()
+    monkeypatch.chdir(repo)
+    assert router.default_ledger() == (repo / ".planning" / "review-costs.jsonl").resolve()
