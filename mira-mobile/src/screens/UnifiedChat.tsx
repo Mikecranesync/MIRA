@@ -26,7 +26,12 @@ import {
   type ShellState,
 } from "@factorylm/interaction";
 import type { ReactNode } from "react";
-import type { Attachment, InteractionPart, InteractionTurn, ManualSearchStatus } from "@factorylm/interaction";
+import type { Attachment, InteractionPart, InteractionTurn } from "@factorylm/interaction";
+import {
+  advanceManualSearchFollow,
+  startManualSearchFollow,
+  type ManualSearchFollowState,
+} from "@factorylm/interaction";
 import {
   FactoryLMShell,
   closeLayerAction,
@@ -170,18 +175,20 @@ export function UnifiedChat({
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
 
-  // Codex F4 (HIGH, #4189): "Searching…" must resolve once the background
-  // search settles. NotebookScreen (frozen) keeps a COMPLETED turn's parts
-  // verbatim in `liveTurns` forever — nothing else ever revisits them — so a
-  // `manual_search_status` part baked at stream-close time with running:true
-  // would otherwise stay "Searching…" indefinitely. `manualSearchOverride`
-  // holds the latest settled outcome, applied on top of `baseThread` by
-  // `withManualSearchOverride` (matching by manufacturer+model, not by turn
-  // id, since the part's identity IS the proposed machine).
-  const [manualSearchOverride, setManualSearchOverride] = useState<ManualSearchStatus | null>(null);
+  // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
+  // background search settles, must NOT poll forever on a stuck/orphaned
+  // search (the shared `manual-search-follow.ts` state machine keeps a FIXED
+  // attempt budget that `running`/inconclusive reads never reset), and must
+  // survive a reload (the server never persists the status — `follow` is
+  // (re)seeded from a direct fetch on hydration, not from thread content
+  // alone). `follow.status` is the one thing rendered; `withManualSearchOverride`
+  // appends it to the last assistant turn when no live frame ever carried a
+  // matching part (the realistic post-reload case), or replaces one in place.
+  const notebookId = meta.notebookId || null;
+  const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
   const resolvedThread = useMemo(
-    () => withManualSearchOverride(baseThread, manualSearchOverride),
-    [baseThread, manualSearchOverride],
+    () => withManualSearchOverride(baseThread, follow?.status ?? null),
+    [baseThread, follow?.status],
   );
 
   useEffect(() => {
@@ -196,46 +203,82 @@ export function UnifiedChat({
     });
   }, [resolvedThread, messages, fullMeta, host]);
 
-  // Bounded re-check (NOT a polling framework — one setTimeout chain, capped
-  // attempts, cleared on unmount/dep change): while the thread's latest
-  // manual_search_status part is still running, re-fetch the notebook's
-  // CURRENT status (reusing the existing detail-fetch seam,
-  // `fetchManualSearchStatus` — the SAME GET route `getNotebookDetail` already
-  // calls) a few times, a few seconds apart, and stop as soon as it settles.
-  const notebookId = meta.notebookId || null;
-  useEffect(() => {
-    const running = latestManualSearchStatus(baseThread.turns);
-    if (!running || !running.running || !notebookId) return;
-    // Already resolved for this exact identity — nothing left to check.
-    if (manualSearchOverride && !manualSearchOverride.running
-      && manualSearchOverride.manufacturer === running.manufacturer
-      && manualSearchOverride.model === running.model) {
-      return;
+  // Re-read notebook detail and stash its scope for the NEXT send — the SAME
+  // seam F1's onConfirmIdentity uses, now ALSO the follower's "refresh
+  // sources" signal on a successful settle (the manual may just have become
+  // citable). Best-effort: a failed re-read here never fails anything else —
+  // the next send falls back to the host's own eventually-refreshed scope.
+  const refreshPromotedScope = useCallback(async () => {
+    if (!notebookId) return;
+    try {
+      const after = await getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? undefined });
+      confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+    } catch {
+      confirmedScopeRef.current = null;
     }
+  }, [notebookId, attachmentThreadId]);
+
+  // Trigger: a LIVE frame (this session's SSE) reporting a running search
+  // starts following, if nothing else already claimed it (the tick effect
+  // below owns advancing an existing follow — this never re-advances one).
+  useEffect(() => {
+    if (follow) return;
+    const live = latestManualSearchStatus(baseThread.turns);
+    if (!live || !live.running || !notebookId) return;
+    setFollow(startManualSearchFollow(notebookId, live));
+  }, [baseThread, notebookId, follow]);
+
+  // Trigger: hydration / notebook change. The server never persists this
+  // status, so the ONLY way to know "is a search running" after a reload is
+  // to ask — reusing the existing detail-fetch seam (`fetchManualSearchStatus`,
+  // the SAME GET route `getNotebookDetail` already calls), once.
+  useEffect(() => {
+    if (!notebookId) return;
     let cancelled = false;
-    let attempts = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const MAX_ATTEMPTS = 5;
-    const DELAY_MS = 4000;
-    const tick = () => {
-      attempts += 1;
-      void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
-        .then((status) => {
-          if (cancelled || !status) return;
-          if (status.manufacturer !== running.manufacturer || status.model !== running.model) return;
-          setManualSearchOverride(status);
-          if (status.running && attempts < MAX_ATTEMPTS) timer = setTimeout(tick, DELAY_MS);
-        })
-        .catch(() => {
-          if (!cancelled && attempts < MAX_ATTEMPTS) timer = setTimeout(tick, DELAY_MS);
-        });
-    };
-    timer = setTimeout(tick, DELAY_MS);
+    void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
+      .then((status) => {
+        if (cancelled || !status) return;
+        setFollow((prev) => prev ?? startManualSearchFollow(notebookId, status));
+      })
+      .catch(() => {
+        // Best-effort: no status this time just means nothing renders yet.
+      });
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
     };
-  }, [baseThread, manualSearchOverride, notebookId, attachmentThreadId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally NOT `follow`: a one-shot hydration check, not a re-check loop.
+  }, [notebookId, attachmentThreadId]);
+
+  // The bounded re-check itself (NOT a polling framework — one setTimeout
+  // chain, capped attempts via the shared follower, cleared on unmount/dep
+  // change). Dependencies are PRIMITIVES ONLY (key/attempts/phase, never
+  // `baseThread`): an unrelated rerender must never cancel an in-flight read
+  // without consuming the attempt it was about to spend (Codex F8's "at most
+  // five requests across unrelated rerenders").
+  useEffect(() => {
+    if (!follow || follow.phase !== "following" || !notebookId) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
+        .then((status) => {
+          if (cancelled) return;
+          setFollow((prev) => {
+            if (!prev) return prev;
+            const result = advanceManualSearchFollow(prev, notebookId, status);
+            if (result.refreshSources) void refreshPromotedScope();
+            return result.state;
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFollow((prev) => (prev ? advanceManualSearchFollow(prev, notebookId, null).state : prev));
+        });
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [follow?.key, follow?.attempts, follow?.phase, notebookId, attachmentThreadId, refreshPromotedScope]);
 
   // Open shell layers join the app's one BACK stack (lib/transient-layer.ts):
   // hardware BACK closes the top layer before any tab navigation happens.
@@ -490,17 +533,17 @@ export function UnifiedChat({
             // rides notebook retrieval with the promoted doc, rather than the
             // stale (possibly empty) scope the host computed before this
             // confirm. Mirrors the Hub's own `loadDetail` call after confirm
-            // (`hub-host.tsx`'s `onConfirmIdentity`). Best-effort: the confirm
-            // itself already succeeded, so a failed re-read here never fails
-            // the card — the next send simply falls back to the host's own
-            // (eventually refreshed, via its OWN `refresh()`) scope.
-            try {
-              const after = await getNotebookDetail(meta.notebookId, {
-                threadId: attachmentThreadId ?? undefined,
-              });
-              confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
-            } catch {
-              confirmedScopeRef.current = null;
+            // (`hub-host.tsx`'s `onConfirmIdentity`).
+            await refreshPromotedScope();
+            // Codex round 2 F4: `searching` is the STRUCTURED signal the
+            // confirm route now returns (never scraped from `message` text)
+            // — start following progress ONLY when a search genuinely
+            // started, so a flag-off or nothing-to-search confirm never
+            // follows a search that was never running.
+            if (result.searching) {
+              setFollow((prev) =>
+                prev ?? startManualSearchFollow(meta.notebookId, { manufacturer: proposal.manufacturer, model: proposal.model, running: true }),
+              );
             }
             return result;
           },

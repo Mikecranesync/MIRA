@@ -169,54 +169,86 @@ describe("POST identity/confirm", () => {
     expect(body.message).toMatch(/look for its manual/);
   });
 
-  it("reports manualReady:true once migration 104 has promoted a matching candidate (verified)", async () => {
+  // Codex F3 round 2 (MEDIUM): manualReady must represent a manual that
+  // APPLIES to the CONFIRMED identity — role "manual", enabled, trusted
+  // (verified|user_confirmed), readiness.canChat, AND evidence it was
+  // matched/searched for EXACTLY this identity: `matchEvidence.
+  // autoAcquisitionKey === acquisitionKey(confirmed)`. This is the SAME
+  // evidence `fencedWriter` stamps on every search-attached manual and
+  // `reconcileAcquisition` already reads (`auto_key`) — not a new matcher.
+  // A source with NO key (e.g. hand-attached via POST /sources, never
+  // through a search) is NOT assumed applicable: the cost of a false
+  // negative is one idempotent background search; the cost of a false
+  // positive is the bug Codex reported (an unrelated ready manual silently
+  // satisfying — and silently suppressing the search for — a DIFFERENT
+  // confirmed identity).
+  function readySource(over: Record<string, unknown> = {}) {
+    return {
+      docId: "d1",
+      enabledByDefault: true,
+      matchState: "verified",
+      sourceRole: "manual",
+      readiness: { canChat: true },
+      matchEvidence: { autoAcquisitionKey: "SMC|SS5Y3DUW01302|" },
+      ...over,
+    };
+  }
+
+  it("reports manualReady:true once migration 104 has promoted a matching candidate (verified, matching key)", async () => {
     // This is what the migration 104 trigger leaves behind on the SAME row
-    // (verified + enabled_by_default=true) once the identity write commits —
-    // asserted here by its real column semantics, not re-derived.
-    vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true } },
-    ] as never);
+    // (verified + enabled_by_default=true, autoAcquisitionKey stamped by
+    // fencedWriter) once the identity write commits.
+    vi.mocked(listSources).mockResolvedValue([readySource()] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, manualReady: true });
     expect(body.message).toMatch(/ready to answer from/);
   });
 
-  // Codex F3 (MEDIUM): manualReady must represent an APPLICABLE, ANSWERABLE
-  // manual — sourceRole "manual", readiness.canChat true, and matchState
-  // verified OR user_confirmed (mirrors validateChatSources' own trust bar).
-  it("reports manualReady:true for a ready user_confirmed manual (not only 'verified')", async () => {
-    vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: true, matchState: "user_confirmed", sourceRole: "manual", readiness: { canChat: true } },
-    ] as never);
+  it("reports manualReady:true for a ready user_confirmed manual with a matching key (not only 'verified')", async () => {
+    vi.mocked(listSources).mockResolvedValue([readySource({ matchState: "user_confirmed" })] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     expect((await res.json()).manualReady).toBe(true);
   });
 
   it("never reports manualReady:true for a merely-found, unverified candidate (a human still reviews it)", async () => {
     vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: false, matchState: "candidate", sourceRole: "manual", readiness: { canChat: true } },
+      readySource({ enabledByDefault: false, matchState: "candidate" }),
       // Enabled but NOT verified should never happen post-104, but the route
       // must not treat "enabled" alone as ready — both conditions are required.
-      { docId: "d2", enabledByDefault: true, matchState: "candidate", sourceRole: "manual", readiness: { canChat: true } },
+      readySource({ docId: "d2", matchState: "candidate" }),
     ] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
     expect((await res.json()).manualReady).toBe(false);
   });
 
   it("never reports manualReady:true for an enabled+verified manual that failed materialization (readiness.canChat false)", async () => {
-    vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: false } },
-    ] as never);
+    vi.mocked(listSources).mockResolvedValue([readySource({ readiness: { canChat: false } })] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
     expect((await res.json()).manualReady).toBe(false);
   });
 
   it("never reports manualReady:true for an unrelated enabled+verified source that isn't a manual (e.g. a wiring diagram)", async () => {
-    vi.mocked(listSources).mockResolvedValue([
-      { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "drawing", readiness: { canChat: true } },
-    ] as never);
+    vi.mocked(listSources).mockResolvedValue([readySource({ sourceRole: "drawing" })] as never);
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3" }), params);
+    expect((await res.json()).manualReady).toBe(false);
+  });
+
+  it("never reports manualReady:true for an unrelated manual whose OWN key proves it is for a DIFFERENT identity (Codex F3 round 2)", async () => {
+    // An enabled, answerable, user-confirmed ROCKWELL manual (migration 104
+    // deliberately preserves user_confirmed sources across identity changes)
+    // must not satisfy — or suppress the search for — a confirmed SMC identity.
+    vi.mocked(listSources).mockResolvedValue([
+      readySource({ matchState: "user_confirmed", matchEvidence: { autoAcquisitionKey: "ROCKWELL|POWERFLEX525|" } }),
+    ] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+    expect((await res.json()).manualReady).toBe(false);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reports manualReady:true for an enabled+verified manual with NO stored acquisition-key evidence (hand-attached, not search-matched)", async () => {
+    vi.mocked(listSources).mockResolvedValue([readySource({ matchEvidence: null })] as never);
+    const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     expect((await res.json()).manualReady).toBe(false);
   });
 
@@ -306,9 +338,16 @@ describe("POST identity/confirm", () => {
       expect(body.message).toMatch(/no (automatic )?(search|manual search) (was )?started/i);
     });
 
-    it("never starts a search when a manual is already ready — nothing to search for", async () => {
+    it("never starts a search when an applicable manual is already ready — nothing to search for", async () => {
       vi.mocked(listSources).mockResolvedValue([
-        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true } },
+        {
+          docId: "d1",
+          enabledByDefault: true,
+          matchState: "verified",
+          sourceRole: "manual",
+          readiness: { canChat: true },
+          matchEvidence: { autoAcquisitionKey: "SMC|SS5Y3DUW01302|" },
+        },
       ] as never);
       await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();

@@ -115,6 +115,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         catalogNumber: notebook.catalogNumber,
       },
       latestIdentityProposal(turns),
+      sources,
     );
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);

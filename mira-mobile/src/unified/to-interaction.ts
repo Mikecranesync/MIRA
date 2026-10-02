@@ -296,28 +296,44 @@ export function latestManualSearchStatus(
 }
 
 /**
- * Codex F4 (#4189) — once the running search this turn reported has settled,
- * overlay the real outcome onto the SAME part (by manufacturer+model) rather
- * than leaving "Searching…" frozen forever in `liveTurns` (NotebookScreen
- * keeps completed answers verbatim; nothing else ever revisits them). Thread
- * identity (ids, lifecycle, other parts) is untouched — only a matching
- * `manual_search_status` part's `running`/`message` fields are replaced.
+ * Codex F4 round 2 (#4189/#4195) — render the CURRENT manual-search status,
+ * whether or not a live frame ever carried one. The server never persists
+ * `manual_search_status` (deliberately transient — chat/route.ts's own
+ * comment), so after a reload, or for a hydration-time GET check, there is
+ * NO existing part to replace — the realistic case, not the exception. If a
+ * matching part (same manufacturer+model) already exists — a live frame
+ * arrived this session — it is replaced in place; otherwise the status is
+ * APPENDED to the last assistant turn, mirroring the Hub's own
+ * `withManualSearchStatus`. Thread identity (ids, lifecycle, other parts) is
+ * untouched either way.
  */
 export function withManualSearchOverride(
   thread: InteractionThread,
   override: ManualSearchStatus | null,
 ): InteractionThread {
   if (!override) return thread;
+  const part: InteractionPart = {
+    type: "manual_search_status",
+    manufacturer: override.manufacturer,
+    model: override.model,
+    running: override.running,
+    ...(override.message ? { message: override.message } : {}),
+  };
+  const matches = (p: InteractionPart) =>
+    p.type === "manual_search_status" && p.manufacturer === override.manufacturer && p.model === override.model;
+  let replaced = false;
+  const replacedTurns = thread.turns.map((t) => {
+    if (!t.parts.some(matches)) return t;
+    replaced = true;
+    return { ...t, parts: t.parts.map((p) => (matches(p) ? part : p)) };
+  });
+  if (replaced) return { ...thread, turns: replacedTurns };
+  let lastAssistantIndex = -1;
+  for (let i = 0; i < replacedTurns.length; i++) if (replacedTurns[i]!.role === "assistant") lastAssistantIndex = i;
+  if (lastAssistantIndex === -1) return thread;
   return {
     ...thread,
-    turns: thread.turns.map((t) => ({
-      ...t,
-      parts: t.parts.map((p) =>
-        p.type === "manual_search_status" && p.manufacturer === override.manufacturer && p.model === override.model
-          ? { type: "manual_search_status" as const, manufacturer: override.manufacturer, model: override.model, running: override.running, ...(override.message ? { message: override.message } : {}) }
-          : p,
-      ),
-    })),
+    turns: replacedTurns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t)),
   };
 }
 

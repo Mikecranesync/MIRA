@@ -295,17 +295,24 @@ export interface IdentityProposal {
  * The outcome of confirming an `IdentityProposal` (`HostHooks.onConfirmIdentity`).
  * `manualReady` is server-owned truth (migration 104's promotion trigger, via
  * the Hub confirm route) — never inferred client-side. `message` is optional,
- * human-readable server copy for the card's result state.
+ * human-readable server copy for the card's result state. `searching`
+ * (Codex round 2 F4) is a STRUCTURED signal — never scraped from `message`
+ * text — telling the host whether a background search actually started, so
+ * it knows whether to start following progress (`manual-search-follow.ts`).
  */
 export interface ConfirmIdentityResult {
   readonly manualReady: boolean;
   readonly message?: string;
+  readonly searching?: boolean;
 }
 
 /**
  * Background manual-search progress for a proposed (not yet confirmed)
  * identity (#4160 S6 candidate-basis acquisition). Purely informational —
  * never implies the manual is usable; that is `ConfirmIdentityResult.manualReady`.
+ * `startedAt` (Codex round 2 F4/F8) identifies the search GENERATION — the
+ * shared follower keys its retry budget on it so a later, different search
+ * never inherits an already-spent budget.
  */
 export interface ManualSearchStatus {
   readonly manufacturer: string;
@@ -313,6 +320,7 @@ export interface ManualSearchStatus {
   readonly running: boolean;
   /** Human-readable outcome once the search is no longer running. Server copy — never invented client-side. */
   readonly message?: string;
+  readonly startedAt?: string;
 }
 
 export interface ContextSnapshot {

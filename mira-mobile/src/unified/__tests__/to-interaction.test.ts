@@ -216,14 +216,44 @@ describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () =>
     expect(resolved.turns[0]).toEqual(thread.turns[0]);
   });
 
-  it("does nothing when the override is for a different identity", () => {
-    const thread = toThread(searching, META);
-    const out = withManualSearchOverride(thread, { manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
-    expect(out).toEqual(thread);
-  });
-
   it("does nothing when the override is null", () => {
     const thread = toThread(searching, META);
     expect(withManualSearchOverride(thread, null)).toBe(thread);
+  });
+
+  // Codex round 2 F4: the server NEVER persists manual_search_status (the
+  // SSE frame is deliberately transient — see chat/route.ts's own comment),
+  // so after a reload (or for an identity the live frame never covered —
+  // e.g. the hydration-time GET check, which has no live frame to overlay
+  // onto at all) there is NO existing part to replace. The override must
+  // still render — appended to the last assistant turn — exactly like the
+  // Hub's `withManualSearchStatus`.
+  it("APPENDS a rendered part to the last assistant turn when none exists yet (the realistic post-reload case)", () => {
+    const noFrame: AdapterMessage[] = [
+      { id: "q", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+      { id: "a", role: "assistant", parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } }], lifecycle: "completed", status: "insufficient_evidence" },
+    ];
+    const thread = toThread(noFrame, META);
+    expect(latestManualSearchStatus(thread.turns)).toBeNull();
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(out.turns[1].parts).toContainEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+    // The identity_proposal part is untouched, not replaced.
+    expect(out.turns[1].parts).toContainEqual(thread.turns[1].parts[0]);
+  });
+
+  it("appends for an unrelated (different) identity too — the override is the current truth, not a conditional guess", () => {
+    const thread = toThread(searching, META);
+    const out = withManualSearchOverride(thread, { manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
+    // The EXISTING SMC part is untouched (no match to replace)...
+    expect(out.turns[1].parts).toContainEqual(thread.turns[1].parts[1]);
+    // ...and the Rockwell status is appended.
+    expect(out.turns[1].parts).toContainEqual({ type: "manual_search_status", manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
+  });
+
+  it("returns the thread unchanged when there is no assistant turn to append to", () => {
+    const userOnly: AdapterMessage[] = [{ id: "q", role: "user", parts: [{ type: "text", text: "hi", knownCitationIds: [] }], lifecycle: "completed", status: null }];
+    const thread = toThread(userOnly, META);
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(out).toEqual(thread);
   });
 });

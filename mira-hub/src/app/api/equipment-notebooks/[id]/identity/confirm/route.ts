@@ -42,6 +42,7 @@ import { getNotebook, listSources, updateNotebook } from "@/lib/equipment-notebo
 import {
   acquisitionEnabled,
   acquisitionKey,
+  applicableReadySource,
   readAcquisition,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
@@ -112,28 +113,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
   }
 
+  const identity = {
+    identityStatus: "user_confirmed" as const,
+    manufacturer,
+    model,
+    catalogNumber,
+  };
+
   // Migration 104's promotion trigger runs inside the UPDATE's own
   // transaction (commit-synchronous), so this read already sees the
   // post-promotion state — never a window where the identity is confirmed
   // but an already-verified candidate manual isn't yet usable.
-  // Codex F3 (MEDIUM): "ready" means an APPLICABLE, ANSWERABLE manual — not
-  // merely "any enabled+verified row". Mirrors validateChatSources' own trust
-  // bar (matchState IN ('verified','user_confirmed') AND enabled) plus two
-  // checks that route lacks a reason to make (it only ever validates
-  // requested docs, never claims "a manual exists"): sourceRole === "manual"
-  // (an enabled, verified wiring diagram is not the manual the card promised)
-  // and readiness.canChat (a verified row that failed materialization has no
-  // citable text yet, however trusted its match state is).
+  // Codex F3 (MEDIUM, round 2): "ready" means a manual that APPLIES to THIS
+  // confirmed identity — not merely "any enabled+verified row", which let an
+  // unrelated ready manual (e.g. a Rockwell manual while SMC is confirmed)
+  // falsely satisfy readiness AND suppress the search. `applicableReadySource`
+  // requires the SAME evidence `fencedWriter`/`reconcileAcquisition` already
+  // use (`matchEvidence.autoAcquisitionKey === acquisitionKey(identity)`),
+  // plus role "manual" and `readiness.canChat` — never a new matcher.
   let manualReady = false;
   try {
     const sources = await listSources(ctx.tenantId, notebookId);
-    manualReady = sources.some(
-      (s) =>
-        s.sourceRole === "manual" &&
-        s.enabledByDefault &&
-        (s.matchState === "verified" || s.matchState === "user_confirmed") &&
-        s.readiness.canChat,
-    );
+    manualReady = applicableReadySource(sources, identity) !== null;
   } catch (err) {
     // Fail-safe, not fail-closed: the identity write already succeeded. A
     // Sources read failure must not report a 500 for a confirm that worked —
@@ -154,12 +155,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // startManualAcquisition's own claim() already refused the duplicate).
   let searching = false;
   if (!manualReady && acquisitionEnabled()) {
-    const identity = {
-      identityStatus: "user_confirmed" as const,
-      manufacturer,
-      model,
-      catalogNumber,
-    };
     searching = await startManualAcquisition({
       tenantId: ctx.tenantId,
       userId: ctx.userId ?? null,
@@ -190,6 +185,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     model,
     catalogNumber,
     manualReady,
+    // Codex F4 round 2 (MEDIUM): a structured signal — not scraped from
+    // `message` text — telling the canonical adapters (`UnifiedChat.tsx`,
+    // `hub-host.tsx`) whether to START following search progress. Only
+    // `true` when a search is honestly underway (see `searching` above);
+    // never set when the flag is off or nothing is searching, so a client
+    // never follows a search that was never started.
+    searching,
     message: manualReady
       ? `Confirmed — I found the ${manufacturer} ${model} manual and it's ready to answer from.`
       : searching

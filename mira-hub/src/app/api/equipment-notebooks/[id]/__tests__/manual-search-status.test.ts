@@ -76,6 +76,7 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
       NB,
       { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" },
       null,
+      [],
     );
   });
 
@@ -93,7 +94,17 @@ describe("GET /api/equipment-notebooks/[id] — manualSearch (T2 #4189)", () => 
   it("passes null for the proposed identity when no turn carries one", async () => {
     vi.mocked(listTurns).mockResolvedValue([{ id: "t1", evidence: [{ kind: "identity_dispute" }] }] as never);
     await GET(req, params);
-    expect(currentManualSearchStatus).toHaveBeenCalledWith(TENANT, NB, expect.anything(), null);
+    expect(currentManualSearchStatus).toHaveBeenCalledWith(TENANT, NB, expect.anything(), null, []);
+  });
+
+  // Codex round 2 F10: currentManualSearchStatus derives its outcome from the
+  // sources' CURRENT state — the GET route must pass the SAME sources it just
+  // listed (not re-query, not pass an empty array).
+  it("passes the SAME sources list it just read via listSources", async () => {
+    const sources = [{ docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual" }];
+    vi.mocked(listSources).mockResolvedValue(sources as never);
+    await GET(req, params);
+    expect(currentManualSearchStatus).toHaveBeenCalledWith(TENANT, NB, expect.anything(), null, sources);
   });
 
   it("degrades to manualSearch:null (not a 500) when the computation throws", async () => {

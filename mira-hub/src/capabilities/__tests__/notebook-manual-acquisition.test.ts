@@ -52,6 +52,8 @@ import {
   MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
   acquisitionKey,
+  applicableEnabledSource,
+  applicableReadySource,
   currentManualSearchStatus,
   readAcquisition,
   reconcileAcquisition,
@@ -925,6 +927,62 @@ describe("limit copy claims no reset time", () => {
   });
 });
 
+// Codex F3 round 2 (MEDIUM) — "ready" means a manual that APPLIES to the
+// given identity: role "manual", enabled, trusted, and a stamped
+// autoAcquisitionKey matching acquisitionKey(identity) exactly. Reused by
+// F10's currentManualSearchStatus fix below — ONE matcher, not two.
+describe("applicableEnabledSource / applicableReadySource (#4195 F3/F10)", () => {
+  const smc = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" };
+  const smcKey = acquisitionKey(smc)!;
+  function source(over: Record<string, unknown> = {}) {
+    return {
+      docId: "d1",
+      enabledByDefault: true,
+      matchState: "verified",
+      sourceRole: "manual",
+      readiness: { canChat: true },
+      matchEvidence: { autoAcquisitionKey: smcKey },
+      ...over,
+    } as never;
+  }
+
+  it("finds an applicable, enabled, ready manual", () => {
+    expect(applicableEnabledSource([source()], smc)).not.toBeNull();
+    expect(applicableReadySource([source()], smc)).not.toBeNull();
+  });
+
+  it("applicableReadySource is null when the manual is enabled+applicable but not yet readable", () => {
+    const s = source({ readiness: { canChat: false } });
+    expect(applicableEnabledSource([s], smc)).not.toBeNull();
+    expect(applicableReadySource([s], smc)).toBeNull();
+  });
+
+  it("excludes a manual whose stamped key is for a DIFFERENT identity (Codex F3 scenario)", () => {
+    const rockwell = source({ matchEvidence: { autoAcquisitionKey: "ROCKWELL|POWERFLEX525|" } });
+    expect(applicableEnabledSource([rockwell], smc)).toBeNull();
+    expect(applicableReadySource([rockwell], smc)).toBeNull();
+  });
+
+  it("excludes a manual with no stamped key at all (hand-attached, not search-matched)", () => {
+    expect(applicableEnabledSource([source({ matchEvidence: null })], smc)).toBeNull();
+  });
+
+  it("excludes a disabled, a candidate, and a non-manual source", () => {
+    expect(applicableEnabledSource([source({ enabledByDefault: false })], smc)).toBeNull();
+    expect(applicableEnabledSource([source({ matchState: "candidate" })], smc)).toBeNull();
+    expect(applicableEnabledSource([source({ sourceRole: "drawing" })], smc)).toBeNull();
+  });
+
+  it("accepts user_confirmed the same as verified", () => {
+    expect(applicableEnabledSource([source({ matchState: "user_confirmed" })], smc)).not.toBeNull();
+  });
+
+  it("returns null when the identity itself has no acquisition key", () => {
+    const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+    expect(applicableEnabledSource([source()], unconfirmed)).toBeNull();
+  });
+});
+
 // T2 (#4189 F4/F6) — the notebook GET route's current (never-stale) status,
 // recomputed on every call instead of read from a persisted "running"
 // snapshot captured at some earlier point in time.
@@ -935,25 +993,25 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
 
   it("returns null when acquisition is disabled", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: {} });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: {} });
     expect(r).toBeNull();
   });
 
   it("returns null when there is no acquisition record at all", async () => {
     db.readRow = null;
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
     expect(r).toBeNull();
   });
 
   it("reports running:true for the notebook's own confirmed identity while the search is live", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
-    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "2026-01-01T00:00:00Z" });
   });
 
-  it("reports running:false with the real outcome once the confirmed-identity search finishes", async () => {
+  it("reports running:false with the real outcome once the confirmed-identity search finishes (no applicable source attached)", async () => {
     db.readRow = { key: confirmedKey, state: "no_manual_found", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z", candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, { env: ON });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
     expect(r?.running).toBe(false);
     expect(r?.message).toMatch(/couldn't find/i);
   });
@@ -961,13 +1019,56 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
   it("falls back to the PROPOSED (unconfirmed) identity when the notebook has none of its own", async () => {
     const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
     db.readRow = { key: candidateKey, state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", unconfirmed, { manufacturer: "SMC", model: "SS5Y3-DUW01302" }, { env: ON });
-    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true });
+    const r = await currentManualSearchStatus("t", "nb", unconfirmed, { manufacturer: "SMC", model: "SS5Y3-DUW01302" }, [], { env: ON });
+    expect(r).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "2026-01-01T00:00:00Z" });
   });
 
   it("returns null when the record's key matches neither the confirmed nor the proposed identity", async () => {
     db.readRow = { key: "SOMETHING|ELSE|", state: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, { manufacturer: "Other", model: "X" }, { env: ON });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, { manufacturer: "Other", model: "X" }, [], { env: ON });
     expect(r).toBeNull();
+  });
+
+  // Codex F10 (MEDIUM): a candidate-basis search can finish `candidate_review`
+  // in the acquisition RECORD, then identity confirmation promotes its
+  // source to verified+enabled (migration 104) in a DIFFERENT table — the
+  // record's own `state` is never updated by that promotion. Reading the
+  // record's historical state alone (the old behaviour) kept saying "I
+  // couldn't confirm it, it isn't turned on" for a manual that is, in fact,
+  // now ready. The fix checks the ACQUIRED SOURCE'S CURRENT state first.
+  describe("F10 — derives the outcome from the source's CURRENT state, not the historical record", () => {
+    const candidateReviewRec = {
+      key: confirmedKey, state: "candidate_review", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z",
+      candidate_host: "www.smcworld.com", match_state: "candidate", oem_request_url: null, attached_indexed: true,
+    };
+
+    it("reports the manual as found+ready once promoted, instead of the stale candidate_review decline", async () => {
+      db.readRow = candidateReviewRec;
+      const sources = [
+        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: true }, matchEvidence: { autoAcquisitionKey: confirmedKey } },
+      ];
+      const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
+      expect(r?.running).toBe(false);
+      expect(r?.message).not.toMatch(/couldn't confirm|isn't turned on/i);
+      expect(r?.message).toMatch(/ready/i);
+    });
+
+    it("reports 'added, still preparing' for an applicable+enabled manual that has not finished materializing yet — never 'turn it on'", async () => {
+      db.readRow = candidateReviewRec;
+      const sources = [
+        { docId: "d1", enabledByDefault: true, matchState: "verified", sourceRole: "manual", readiness: { canChat: false }, matchEvidence: { autoAcquisitionKey: confirmedKey } },
+      ];
+      const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, sources as never, { env: ON });
+      expect(r?.running).toBe(false);
+      expect(r?.message).not.toMatch(/turn it on/i);
+      expect(r?.message).not.toMatch(/couldn't confirm/i);
+    });
+
+    it("falls back to the historical decline copy when NO applicable source was ever attached", async () => {
+      db.readRow = candidateReviewRec;
+      const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+      expect(r?.running).toBe(false);
+      expect(r?.message).toMatch(/couldn't confirm|isn't turned on/i);
+    });
   });
 });

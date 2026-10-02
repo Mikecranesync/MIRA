@@ -28,6 +28,7 @@ import {
   type IdentityProposal,
   type InteractionPart,
   type InteractionTurn,
+  type ManualSearchFollowState,
   type ManualSearchStatus,
   type ProjectItem,
   type ShellState,
@@ -53,6 +54,7 @@ import {
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
+import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
@@ -223,6 +225,9 @@ export function HubShellHost() {
     if (res.status === 401) { setSignedOut(true); return; }
     if (!res.data) return;
     setDetail(res.data);
+    // Codex #4195 round 2 F6: hydration follows a running search to completion —
+    // seed the SAME driver a confirm uses, keyed on this notebook's status.
+    if (res.data.manualSearch) manualSearchDriverRef.current?.seed(sel.notebookId, res.data.manualSearch);
   }, [detailGate]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
@@ -239,10 +244,42 @@ export function HubShellHost() {
     setDetail(null);
     setLive(null);
     setFailedBody(null);
+    manualSearchDriverRef.current?.reset();
+    setFollow(null);
     syncThread(sel);
     setSelection(sel);
     writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
+
+  // Codex #4195 round 2 (F4/F6/F8/F9): the Hub side of the ONE shared,
+  // framework-free follower (`manual-search-follow.ts`, packages/factorylm-interaction).
+  // Mobile wires the same state machine directly inside UnifiedChat.tsx's own
+  // effects; the Hub's timer-scheduling is extracted into `manual-search-driver.ts`
+  // (see its header for why — no jsdom/@testing-library/react here). `fetchStatus`
+  // reuses the SAME notebook-detail GET `loadDetail` uses — never a second endpoint.
+  // No `HubShellHost` mount test is attempted for this wiring: this file has no
+  // jsdom/@testing-library/react test here either, so the timer-scheduling
+  // behaviour is proven once, framework-free, in `manual-search-driver.test.ts`;
+  // this block's job is only to plumb that proven driver into useState/loadDetail
+  // (lazy `useRef` init, reset-on-select, seed-on-hydrate, seed-on-confirm),
+  // which `tsc --noEmit` + the driver's own tests cover between them.
+  const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
+  if (!manualSearchDriverRef.current) {
+    manualSearchDriverRef.current = createManualSearchDriver({
+      fetchStatus: async (notebookId) => {
+        const sel = selectionRef.current;
+        if (!sel || sel.notebookId !== notebookId) return null;
+        const res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`);
+        return res.data?.manualSearch ?? null;
+      },
+      onStateChange: setFollow,
+      onRefreshSources: () => {
+        const sel = selectionRef.current;
+        if (sel) void loadDetail(sel);
+      },
+    });
+  }
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -300,11 +337,14 @@ export function HubShellHost() {
     // frame, so this appears only once `loadDetail` has re-fetched.
     const turns = withManualSearchStatus(
       [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns],
-      detail.manualSearch ?? null,
+      // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
+      // ticking toward resolution) takes precedence over the raw per-render
+      // read, so an idle Hub still updates once a backgrounded search settles.
+      follow?.status ?? detail.manualSearch ?? null,
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks, follow]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
@@ -633,12 +673,19 @@ export function HubShellHost() {
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
-    const data = (await res.json().catch(() => null)) as { ok?: unknown; manualReady?: unknown; message?: unknown } | null;
+    const data = (await res.json().catch(() => null)) as { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown } | null;
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
     const sel = selectionRef.current;
     if (sel) void loadDetail(sel);
+    // Codex #4195 round 2 F4: a confirm that STARTED a search is followed the
+    // same way hydration is (F6) — seed the SAME driver, no second timer.
+    const searching = data.searching === true;
+    if (searching && sel) {
+      manualSearchDriverRef.current?.seed(sel.notebookId, { manufacturer: proposal.manufacturer, model: proposal.model, running: true });
+    }
     return {
       manualReady: data.manualReady === true,
+      searching,
       ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
     };
   }, [loadDetail]);
