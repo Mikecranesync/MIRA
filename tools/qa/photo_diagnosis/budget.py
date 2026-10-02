@@ -46,6 +46,7 @@ class Ledger:
         self.manual_search_cap = manual_search_cap
         self.queries_per_search = queries_per_search
         self.call_log: list[dict[str, Any]] = []
+        self.usd_exhausted = cap_usd <= 0
         self._reservations: dict[str, float] = {}
         self._next_token = 0
 
@@ -55,6 +56,9 @@ class Ledger:
 
     def reserve(self, est_usd: float) -> str:
         if self.spent_usd + self.reserved_usd + est_usd > self.cap_usd:
+            # Codex r4 F15: remembered, so the runner stops dispatching Hub
+            # work even when a per-case function caught the exception.
+            self.usd_exhausted = True
             raise BudgetExhausted(
                 f"reserving ${est_usd:.4f} would exceed cap ${self.cap_usd:.2f} "
                 f"(spent=${self.spent_usd:.4f} reserved=${self.reserved_usd:.4f})"
@@ -91,7 +95,7 @@ class Ledger:
         return self.manual_search_queries + n > self.manual_search_cap
 
     def record_manual_search_from_packet(
-        self, packet: dict | None, *, photo_turn: bool = False
+        self, packet: dict | None, *, chat_turn: bool = True
     ) -> None:
         """Fed from the turn evidence packet's `retrieval.manual_acquisition`
         and `retrieval.photo_part_manual_lookup` — the REAL packet shape is
@@ -117,11 +121,14 @@ class Ledger:
         provider spend, maintained outside this harness) is the
         authoritative source if the two ever disagree.
 
-        `photo_turn` (Codex r2 F4): a turn that carried a photo can start a
+        `chat_turn` (Codex r2/r4 F4): any chat turn — a photo turn, or a
+        typed manual request naming a manufacturer and model — can start a
         CANDIDATE-identity acquisition (chat route, basis="candidate") that
-        neither counted field reports. So a photo turn with no explicitly
-        counted start is charged one worst-case search anyway — an over-count,
-        never an under-count, so the hard stop stays a hard stop."""
+        neither counted field reports. So a chat turn with no explicitly
+        counted start is charged one worst-case search anyway: an over-count,
+        never an under-count, so the hard stop stays a hard stop. Pass
+        `chat_turn=False` only for a packet that did not come from a chat
+        dispatch."""
         if not isinstance(packet, dict):
             self.record_manual_search(self.queries_per_search)
             return
@@ -145,7 +152,7 @@ class Ledger:
                 continue
             if value.get(started_flag) is True:
                 starts += 1
-        if photo_turn and starts == 0:
+        if chat_turn and starts == 0:
             starts = 1  # unattributable candidate acquisition -> worst case
         if starts:
             self.record_manual_search(starts * self.queries_per_search)

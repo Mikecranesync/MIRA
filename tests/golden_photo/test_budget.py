@@ -137,7 +137,8 @@ def test_manual_search_cap_exceeded_is_the_pre_turn_gate():
 def test_manual_search_from_packet_null_fields_are_legitimate_no_search():
     ledger = Ledger(cap_usd=10.0, queries_per_search=4)
     ledger.record_manual_search_from_packet(
-        {"retrieval": {"manual_acquisition": None, "photo_part_manual_lookup": None}}
+        {"retrieval": {"manual_acquisition": None, "photo_part_manual_lookup": None}},
+        chat_turn=False,  # packet parsing alone; chat-turn charging is tested below
     )
     assert ledger.manual_search_queries == 0
 
@@ -177,7 +178,8 @@ def test_manual_search_from_packet_not_started_charges_nothing():
                     "candidate_host": None,
                 },
             }
-        }
+        },
+        chat_turn=False,
     )
     assert ledger.manual_search_queries == 0
 
@@ -287,12 +289,14 @@ def test_openai_provider_cost_uses_the_operator_rates():
     assert p.est_cost(1_000_000, 500_000) == pytest.approx(6.0)
 
 
-def test_r2_f4_photo_turn_with_null_acquisition_is_charged_worst_case():
-    # A photo can start a CANDIDATE acquisition that neither counted field reports.
+def test_r4_f4_every_chat_turn_with_null_acquisition_is_charged_worst_case():
+    # A photo OR a typed manual request can start a CANDIDATE acquisition that
+    # neither counted field reports, so each chat turn is charged worst case.
     led = Ledger(cap_usd=1.0, manual_search_cap=100, queries_per_search=4)
     null_packet = {"retrieval": {"manual_acquisition": None, "photo_part_manual_lookup": None}}
-    led.record_manual_search_from_packet(null_packet, photo_turn=True)
-    assert led.manual_search_queries == 4
-    # control: the same packet on a text-only turn is a legitimate zero
-    led.record_manual_search_from_packet(null_packet, photo_turn=False)
-    assert led.manual_search_queries == 4
+    led.record_manual_search_from_packet(null_packet)
+    led.record_manual_search_from_packet(null_packet)
+    assert led.manual_search_queries == 8
+    # control: a packet that did not come from a chat dispatch is a legitimate zero
+    led.record_manual_search_from_packet(null_packet, chat_turn=False)
+    assert led.manual_search_queries == 8

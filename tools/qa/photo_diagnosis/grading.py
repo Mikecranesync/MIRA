@@ -17,6 +17,8 @@ import json
 import re
 from typing import Any
 
+from .budget import BudgetExhausted
+
 TURN_FIELDS = ("H", "D", "S", "R", "U", "X", "N")
 OUTCOME_LABELS = (
     "resolved_true",
@@ -37,7 +39,9 @@ class GraderError(Exception):
 def _call_judge(provider: Any, messages: list[dict], max_tokens: int) -> tuple[str, dict]:
     try:
         return provider.complete(messages, max_tokens=max_tokens)
-    except GraderError:
+    except (GraderError, BudgetExhausted):
+        # Codex r4 F15: a dollar-budget stop is not a grading failure — it
+        # must reach the runner, which stops dispatching further Hub work.
         raise
     except Exception as e:  # provider transport/parse errors, anything
         raise GraderError(f"judge provider call failed: {e}") from e
