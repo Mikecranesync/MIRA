@@ -29,7 +29,7 @@
  */
 
 import { stepEnergyContradiction } from "./step-energy";
-import { firstUngovernedMatch } from "./hazard-modifiers";
+import { firstUngovernedMatch, type HazardKind } from "./hazard-modifiers";
 
 export type AnswerValidation =
   | { ok: true }
@@ -78,11 +78,15 @@ const ENERGIZED_LINK = "(?:while|whilst|when|with|during)";
 const NO_ISOLATION =
   "without\\s+(?:first\\s+)?(?:de[-\\s]?energiz\\w+|shutting\\s+(?:down|off)|powering\\s+(?:down|off)|turning\\s+(?:off|down)|lock(?:ing)?[-\\s]?(?:out|it\\s+out)|tag(?:ging)?[-\\s]?out|isolat\\w+|disconnect\\w+|verifying\\s+zero[-\\s]?energy|loto)";
 
-const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }[] = [
+// `kind` (data, not regex) tells the shared modifier layer what a match IS:
+// a complete proposition a caution/myth frame can negate, or an action only an
+// adjacent negation can cancel. See HazardKind in hazard-modifiers.ts.
+const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly kind: HazardKind; readonly re: RegExp }[] = [
   // "yes, you can reset it while the machine is energized" /
   // "it is safe to work on the contactor while live"
   {
     id: "affirm-energized-work",
+    kind: "propositional",
     re: new RegExp(
       "\\b(?:yes,?\\s+)?(?:you\\s+(?:can|may)|it(?:'s|\\s+is)\\s+(?:safe|permitted|acceptable|fine|ok(?:ay)?)|safe(?:ly)?\\s+to)\\b[^.!?\\n]{0,50}\\b" +
         HAZARD_ACTIONS +
@@ -96,6 +100,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // energized" — the exact #3790 shape (equipment-as-authority).
   {
     id: "permits-energized",
+    kind: "propositional",
     re: new RegExp(
       "\\b(?:permits?|allows?|supports?|is\\s+designed\\s+(?:for|to))\\b[^.!?\\n]{0,50}\\b" +
         HAZARD_ACTIONS +
@@ -109,16 +114,19 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // "without first performing lockout"
   {
     id: "loto-skippable",
+    kind: "propositional",
     re: /\b(?:no\s+need\s+to|not\s+(?:necessary|needed|required)\s+to|(?:don'?t|do\s+not|doesn'?t|does\s+not|won'?t)\s+(?:need|have|require)(?:\s+to)?|without\s+(?:first\s+)?(?:performing|following|doing|applying|completing))\b[^.!?\n]{0,50}\b(?:lock[-\s]?out|loto|tag[-\s]?out|de[-\s]?energiz\w+|isolat\w+|power(?:ing)?\s+(?:down|off)|shut(?:ting)?\s+(?:down|off)|zero[-\s]?energy)\b/i,
   },
   // "lockout is not required" / "LOTO isn't necessary"
   {
     id: "loto-not-required",
+    kind: "propositional",
     re: /\b(?:lock[-\s]?out(?:\/tag[-\s]?out)?|loto|tag[-\s]?out|de[-\s]?energiz\w+|isolation)\b[^.!?\n]{0,30}\b(?:is|are)(?:n'?t|\s+not)\s+(?:required|necessary|needed|mandatory)\b/i,
   },
   // "it's fine to bypass the interlock" / "you can jumper the light curtain"
   {
     id: "bypass-safety-device",
+    kind: "propositional",
     re: /\b(?:safe|fine|ok(?:ay)?|acceptable|permitted|you\s+(?:can|may)|go\s+ahead)\b[^.!?\n]{0,50}\b(?:bypass|defeat|jumper|disable|overrid\w+)\w*\b[^.!?\n]{0,40}\b(?:interlock|guard|safety|light\s+curtain|e[-\s]?stop)\b/i,
   },
   // F1 (Codex adversarial review, iteration 1 — BLOCKER): the unsafe
@@ -131,6 +139,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // pattern structurally.
   {
     id: "imperative-energized-action",
+    kind: "action",
     // Clause boundaries include ':' ';' and dashes (iteration-2 blocker:
     // "Follow these steps: Reset … while energized" / "…; then reset …").
     // Verb set includes the perform/conduct/carry-out maintenance
@@ -145,6 +154,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // ("do not keep…", "never leave…") are the shared modifier layer's job.
   {
     id: "imperative-stay-energized",
+    kind: "action",
     re: /\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
   // "the machine must/should/can remain energized … during the reset" — the
@@ -152,6 +162,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // the same hazard-context tail keeps normal-operation statements out (F2).
   {
     id: "must-remain-energized",
+    kind: "propositional",
     re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|for|when)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
   // #3902 (the #3790 retest paraphrases the semantic judge alone caught). The
@@ -165,6 +176,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // out.
   {
     id: "energized-work-approved",
+    kind: "propositional",
     // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
     // noun→predicate gap is at most four plain words — no clause punctuation,
     // no negation — so "energized reset, which is never safe, ... is approved"
@@ -180,6 +192,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // BOUND_PROHIBITION.
   {
     id: "energized-action-affirmed",
+    kind: "propositional",
     re: /\b(?:reset(?:ting)?|work(?:ing)?|servic\w+|repair(?:ing)?|inspect(?:ing|ion)?|clear(?:ing)?|adjust(?:ing)?|touch(?:ing)?|open(?:ing)?)\b[^.!?\n]{0,40}?\b(?:on|with|while|when)\s+(?:an?\s+|the\s+|it\s+(?:is\s+)?)?(?:[\w-]+\s+){0,2}?(?:energi[sz]ed|live|running|hot|powered)\b(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are)\s+(?:fine|ok(?:ay)?|safe|acceptable|allowed|permitted|approved)\b/i,
   },
   // S6: passive permission with the energized state as a manner adverb —
@@ -188,6 +201,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // absence of voltage is a legitimate qualified-person step.
   {
     id: "passive-energized-permission",
+    kind: "propositional",
     // "never/don't assume … can be inspected live" (Codex F5) is caution, not
     // permission — decided by the shared modifier layer, scoped to one clause.
     re: /\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
@@ -200,6 +214,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // watch the HMI") have no hazard verb in the imperative slot.
   {
     id: "leave-on-then-act",
+    kind: "action",
     re: /\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
   },
   // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
@@ -208,6 +223,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // modal ("you should NOT reset") fails the head→verb adjacency naturally.
   {
     id: "modal-energized-action",
+    kind: "propositional",
     re: new RegExp(
       "\\b(?:you\\s+(?:should|must|need\\s+to|have\\s+to|can|may|could|will\\s+want\\s+to)|it\\s+is\\s+(?:advisable|recommended|best|easiest|fastest|fine|acceptable|ok(?:ay)?)\\s+to|be\\s+sure\\s+to|make\\s+sure\\s+(?:to|you))\\s+(?:simply\\s+|just\\s+)?" +
         HAZARD_ACTIONS +
@@ -228,6 +244,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // the clause-initial slot ("Never reset without locking out…").
   {
     id: "imperative-no-isolation",
+    kind: "action",
     re: new RegExp(
       "(?:^|[.!?:;]\\s+|[—–]\\s*|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|go\\s+ahead\\s+and\\s+)?(?:reset|clear|open|remove|replace|repair|service|adjust|probe|test|measure|proceed|continue|work|perform|conduct|carry(?:\\s+out)?|complete|begin|start)\\b[^.!?\\n]{0,60}\\b" +
         NO_ISOLATION +
@@ -242,6 +259,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // occupy the clause-initial slot ("Never disable…").
   {
     id: "disable-safety-device",
+    kind: "action",
     re: /(?:^|[.!?:;]\s+|[—–]\s*|\n)\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:then\s+|next\s+|now\s+|first\s+|simply\s+|just\s+|go\s+ahead\s+and\s+)?(?:disable|bypass|defeat|jumper|remove|override|tape|block|cheat|pull)\b[^.!?\n]{0,40}\b(?:interlock|guard(?!\s+rail)|light\s+curtain|e[-\s]?stop|emergency\s+stop|safety\s+(?:switch|relay|gate|device|mat)|door\s+switch)\b/im,
   },
   // Confined space — atmospheric testing declared skippable, or entry
@@ -249,6 +267,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // unnecessary", "enter the vessel without testing").
   {
     id: "confined-entry-untested",
+    kind: "action",
     re: /\b(?:atmosphere|atmospheric|air|gas)\s+(?:test\w*|monitor\w*|sampl\w*|check\w*)\b[^.!?\n]{0,30}\b(?:is|are)?\s*(?:unnecessary|not\s+(?:required|needed|necessary)|optional|a\s+formality)\b|\b(?:skip|forgo|omit)\s+(?:the\s+)?(?:atmosphere|atmospheric|air|gas)\s+(?:test\w*|monitor\w*|check\w*)\b|\b(?:enter\w*|go(?:ing)?\s+in(?:to)?|climb\w*\s+in(?:to)?)\b[^.!?\n]{0,40}\b(?:tank|vessel|silo|pit|manhole|sump|confined\s+space)\b[^.!?\n]{0,40}\bwithout\b/i,
   },
   // Ignition source as a gas-leak detector — "Use a lighter to locate the
@@ -257,6 +276,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // correction.
   {
     id: "flame-near-gas",
+    kind: "action",
     re: /\b(?:use|using|strike|light|hold)\b[^.!?\n,;]{0,30}\b(?:lighter|match(?:es)?|open\s+flame|flame|torch|candle)\b[^.!?\n,;]{0,50}\b(?:gas|leak|fuel|propane|methane|vapou?r)\b|\b(?:locate|find|detect|check(?:ing)?|test(?:ing)?|trace)\b[^.!?\n,;]{0,40}\bleak\b[^.!?\n,;]{0,40}\b(?:with|using)\s+(?:a\s+|an\s+)?(?:lighter|match|open\s+flame|flame|torch)\b/i,
   },
   // Gravity — body position under a load that is raised or held only by a
@@ -264,6 +284,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // suspended die", "… supported only by …").
   {
     id: "under-unsupported-load",
+    kind: "action",
     re: /\b(?:work(?:ing)?|stand(?:ing)?|reach(?:ing)?|crawl(?:ing)?|position(?:ing)?|get|go(?:ing)?)\b[^.!?\n,;]{0,20}\b(?:under|beneath|below)\b[^.!?\n]{0,40}\b(?:raised|suspended|elevated|lifted|jacked)\b|\b(?:under|beneath|below)\b[^.!?\n]{0,60}\bsupported\s+only\s+by\b/i,
   },
   // MIRA claiming to have verified an isolation/safety state it cannot
@@ -272,6 +293,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // forms ("once you have verified…") do not match.
   {
     id: "claims-verified-safety",
+    kind: "action",
     re: /\b(?:I|we)(?:\s+have|'ve)?\s+(?:verified|confirmed)\b[^.!?\n]{0,40}\b(?:zero[-\s]?energy|de[-\s]?energiz\w+|isolat\w+|safe\s+to\s+(?:work|touch|proceed|enter))\b/i,
   },
 ];
@@ -284,7 +306,7 @@ const RIGGING_RE =
   /\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
 
 function riggingOverload(text: string): string | null {
-  const m = firstUngovernedMatch(RIGGING_RE, text);
+  const m = firstUngovernedMatch(RIGGING_RE, text, "action");
   if (!m) return null;
   const unit = (u: string) => (u.startsWith("t") ? "t" : u.startsWith("kg") ? "kg" : "lb");
   if (unit(m[2].toLowerCase()) !== unit(m[4].toLowerCase())) return null;
@@ -1294,7 +1316,7 @@ export function validateAnswer(opts: {
   for (const p of HAZARD_AFFIRMATIONS) {
     // Negation / caution / hypothetical scope is decided once, by the shared
     // ConText-style modifier table (hazard-modifiers.ts), not per rule.
-    const m = firstUngovernedMatch(p.re, affirmationScanText);
+    const m = firstUngovernedMatch(p.re, affirmationScanText, p.kind);
     if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
   }
 
