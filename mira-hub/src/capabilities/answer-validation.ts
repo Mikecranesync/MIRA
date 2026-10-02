@@ -163,8 +163,9 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
     // noun→predicate gap is at most four plain words — no clause punctuation,
     // no negation — so "energized reset, which is never safe, ... is approved"
-    // cannot bridge two clauses.
-    re: /(?<![\w-])(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
+    // cannot bridge two clauses. R3 (Codex F5): a governing "No" / "Not all" /
+    // "Never" directly before the noun phrase negates the approval.
+    re: /(?<![\w-])(?<!\b(?:no|not\s+all|never)\s+)(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
   },
   // R2 (Codex): the predicate gap is bounded like energized-work-approved —
   // ≤4 plain words, no clause punctuation, no not/never/no.
@@ -182,7 +183,9 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // absence of voltage is a legitimate qualified-person step.
   {
     id: "passive-energized-permission",
-    re: /\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
+    // R3 (Codex F5): "never/don't assume … can be inspected live" is caution,
+    // not permission. The lookbehind stays inside one clause (no ; : . ! ?).
+    re: /(?<!\b(?:never|don't|do\s+not)\s+(?:assume|think|believe|expect)\b[^.!?\n;:]{0,40})\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
   },
   // R2 (Codex): the gap may not cross ; or : or pass an isolation word
   // ("leave it on for monitoring; lock out, then repair" is the safe sequence).
@@ -192,7 +195,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // watch the HMI") have no hazard verb in the imperative slot.
   {
     id: "leave-on-then-act",
-    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
+    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
   },
   // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
   // reset … while energized" / "It is advisable to perform maintenance while

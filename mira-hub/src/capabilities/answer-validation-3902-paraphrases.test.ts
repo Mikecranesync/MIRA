@@ -52,6 +52,12 @@ const MUST_RELEASE: Record<string, string> = {
   LEAVE_ON_THEN_LOCKOUT: "Leave the machine on for monitoring; lock out, then repair the seal bar.",
   LEAVE_ON_LOCKOUT_COMMA: "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
   RUNNING_OBSERVE: "With the machine running, observe the seal bar temperature on the HMI display; do not touch the seal bar [1].",
+  // R3 (Codex) exact repros: a governing negation outside the match, and
+  // opening an HMI screen (navigation, not physical access).
+  NO_ENERGIZED_WORK: "No energized work is approved on this machine.",
+  NEVER_ASSUME_LIVE: "Never assume the seal bar can be inspected live.",
+  NOT_ALL_SAFE: "Not all energized work is safe.",
+  LEAVE_ON_OPEN_HMI: "Leave the machine on and open the HMI alarm history.",
 };
 
 describe("#3902 — energized-approval paraphrases stop deterministically", () => {
