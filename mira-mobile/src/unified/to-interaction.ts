@@ -315,17 +315,28 @@ export function latestManualSearchStatus(
  * `manual_search_status` (deliberately transient — chat/route.ts's own
  * comment), so after a reload, or for a hydration-time GET check, there is
  * NO existing part to replace — the realistic case, not the exception. If a
- * matching part (same manufacturer+model) already exists — a live frame
- * arrived this session — it is replaced in place; otherwise the status is
- * APPENDED to the last assistant turn, mirroring the Hub's own
+ * matching part already exists — a live frame arrived this session — it is
+ * replaced in place; otherwise the status is APPENDED to the last assistant
+ * turn (unless `options.allowAppend` is `false` — see
+ * `withManualSearchOverrides` below), mirroring the Hub's own
  * `withManualSearchStatus`. Thread identity (ids, lifecycle, other parts) is
  * untouched either way.
+ *
+ * Codex round 6 F17 (#4195): matching is keyed on GENERATION (`startedAt`)
+ * first, whenever BOTH the candidate part and the override carry one — two
+ * DIFFERENT searches for the identical manufacturer/model (a retry) must
+ * never be conflated into the same rendered card. Falls back to
+ * manufacturer+model identity only when either side lacks a generation (an
+ * older server, or the optimistic pre-first-read override right after a
+ * confirm) — unchanged from before F17.
  */
 export function withManualSearchOverride(
   thread: InteractionThread,
   override: ManualSearchStatus | null,
+  options: { readonly allowAppend?: boolean } = {},
 ): InteractionThread {
   if (!override) return thread;
+  const allowAppend = options.allowAppend ?? true;
   const part: InteractionPart = {
     type: "manual_search_status",
     manufacturer: override.manufacturer,
@@ -338,8 +349,11 @@ export function withManualSearchOverride(
     // status), this just stops silently dropping it on the way to render.
     ...(override.startedAt ? { startedAt: override.startedAt } : {}),
   };
-  const matches = (p: InteractionPart) =>
-    p.type === "manual_search_status" && p.manufacturer === override.manufacturer && p.model === override.model;
+  const matches = (p: InteractionPart) => {
+    if (p.type !== "manual_search_status") return false;
+    if (override.startedAt && p.startedAt) return p.startedAt === override.startedAt;
+    return p.manufacturer === override.manufacturer && p.model === override.model;
+  };
   let replaced = false;
   const replacedTurns = thread.turns.map((t) => {
     if (!t.parts.some(matches)) return t;
@@ -347,6 +361,7 @@ export function withManualSearchOverride(
     return { ...t, parts: t.parts.map((p) => (matches(p) ? part : p)) };
   });
   if (replaced) return { ...thread, turns: replacedTurns };
+  if (!allowAppend) return thread;
   let lastAssistantIndex = -1;
   for (let i = 0; i < replacedTurns.length; i++) if (replacedTurns[i]!.role === "assistant") lastAssistantIndex = i;
   if (lastAssistantIndex === -1) return thread;
@@ -354,6 +369,43 @@ export function withManualSearchOverride(
     ...thread,
     turns: replacedTurns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t)),
   };
+}
+
+/**
+ * Codex round 6 F17 (#4195): apply EVERY known outcome onto the thread, not
+ * just the single most-recently-active search. Before this, `UnifiedChat`
+ * held exactly ONE `follow` state; the moment a SECOND, different search
+ * (SMC resolves, then a different Rockwell search starts and resolves) took
+ * over that single slot, the first search's turn had nothing left overlaying
+ * it and reverted to whatever raw (possibly still `running: true`) frame is
+ * baked into `baseThread`, indefinitely — the search had genuinely settled,
+ * but its outcome was only ever remembered in the one slot that a later
+ * search then overwrote.
+ *
+ * `historical` is every OTHER generation's settled/unresolved outcome
+ * (`UnifiedChat`'s `settledManualSearches` map, keyed by generation) — each
+ * may only REPLACE a matching part, never append (`allowAppend: false`): an
+ * append targets "the last assistant turn" in the CURRENT thread, which
+ * after a notebook switch or a newer turn is a turn that has nothing to do
+ * with that historical search; appending it there would render one
+ * notebook's old status under an unrelated turn.
+ *
+ * `active` is the CURRENTLY-followed generation's status (or `null`) and is
+ * applied LAST, with the normal match-or-append behavior — so it always
+ * wins for its own generation even if a stale `historical` entry for the
+ * SAME key is still present (e.g. `reseedManualSearchFollow` reopening an
+ * already-settled generation to `following` on a fresh authoritative read).
+ */
+export function withManualSearchOverrides(
+  thread: InteractionThread,
+  historical: readonly ManualSearchStatus[],
+  active: ManualSearchStatus | null,
+): InteractionThread {
+  const afterHistorical = historical.reduce(
+    (acc, status) => withManualSearchOverride(acc, status, { allowAppend: false }),
+    thread,
+  );
+  return withManualSearchOverride(afterHistorical, active);
 }
 
 /** Citation lookup so the host's own viewer opens the real `ChatCitation` behind a shell `source`. */

@@ -281,3 +281,120 @@ describe("UnifiedChat — a live frame WITH a generation (#4195 round 5 F15)", (
     expect(screen.getByText("Found it (2).")).toBeTruthy();
   });
 });
+
+// Codex round 6 F17 (#4195): `UnifiedChat` tracked exactly ONE active search
+// (`follow`) and overlaid only ITS status onto the thread
+// (`withManualSearchOverride(baseThread, follow?.status ?? null)`). The
+// moment a SECOND, different search took over that one slot, the FIRST
+// search's settled outcome had nothing left overlaying it, and its turn
+// reverted to the raw, still-`running: true` frame baked into `baseThread`
+// (the server never updates a historical SSE frame after the fact) —
+// indefinitely, since nothing ever re-checks it again. Fixed by
+// `settledManualSearches` (a per-generation outcome map) +
+// `withManualSearchOverrides` (apply every known outcome, not just the
+// active one) — see `UnifiedChat.tsx` and `to-interaction.ts`.
+describe("UnifiedChat — a second, different search must not erase the first search's resolved outcome (#4195 round 6 F17)", () => {
+  it("SMC resolves, then Rockwell starts and resolves — neither shows Searching, and SMC's resolved outcome survives across unrelated rerenders", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // SMC's search settles.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it (SMC).", startedAt: "gen-1" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+
+    // A SECOND, different search starts — Rockwell's OWN live frame, its
+    // own generation (gen-2). SMC's RAW frame is STILL present in
+    // `liveTurns` (still `running: true` — this is exactly where SMC's turn
+    // would revert without the fix).
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    view.rerender(
+      <UnifiedChat
+        {...props([
+          liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"),
+          liveFrame("Rockwell", "1756-L71", true, "gen-2"),
+        ])}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+
+    // Rockwell's search settles too.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it (Rockwell).", startedAt: "gen-2" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+    expect(screen.getByText("Found it (Rockwell).")).toBeTruthy();
+    expect(screen.queryByText(/Searching/)).toBeNull();
+
+    // Several unrelated rerenders with EQUIVALENT-but-new live-frame
+    // objects: both outcomes stay exactly as settled, and the replay makes
+    // no new requests.
+    const callsAtBothSettled = fetchManualSearchStatus.mock.calls.length;
+    for (let i = 0; i < 3; i++) {
+      view.rerender(
+        <UnifiedChat
+          {...props([
+            liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"),
+            liveFrame("Rockwell", "1756-L71", true, "gen-2"),
+          ])}
+        />,
+      );
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+    expect(screen.getByText("Found it (Rockwell).")).toBeTruthy();
+    expect(screen.queryByText(/Searching/)).toBeNull();
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtBothSettled);
+  });
+
+  // The "orphan" half of F17: a generation ABANDONED mid-flight by a newer
+  // live frame before it ever settled is in neither the settled map (it
+  // never reached phase !== "following") nor the active follow — without
+  // handling, it would spin "Searching…" forever too, just via a different
+  // path than the settled case above.
+  it("a search dropped by a THIRD generation before it ever settled renders the shared neutral fallback, not a perpetual spinner", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it (SMC).", startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+
+    // gen-2 (Rockwell) starts via its own live frame and never settles.
+    view.rerender(
+      <UnifiedChat
+        {...props([
+          liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"),
+          liveFrame("Rockwell", "1756-L71", true, "gen-2"),
+        ])}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // gen-3 (Siemens) arrives via a THIRD live frame BEFORE gen-2 ever
+    // settles — the follower abandons gen-2 outright, mid-flight.
+    view.rerender(
+      <UnifiedChat
+        {...props([
+          liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"),
+          liveFrame("Rockwell", "1756-L71", true, "gen-2"),
+          liveFrame("Siemens", "6ES7", true, "gen-3"),
+        ])}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    // gen-2 (Rockwell) never gets a perpetual spinner — the shared
+    // renderer's OWN existing non-running fallback, not invented copy.
+    expect(screen.queryByText(/Searching Rockwell's documentation/)).toBeNull();
+    expect(screen.getByText("Finished searching for the Rockwell 1756-L71 manual.")).toBeTruthy();
+    // gen-3 (Siemens), the new active follow, is actually "Searching…".
+    expect(screen.getByText(/Searching Siemens's documentation for 6ES7…/)).toBeTruthy();
+    // gen-1 (SMC) is untouched throughout.
+    expect(screen.getByText("Found it (SMC).")).toBeTruthy();
+  });
+});

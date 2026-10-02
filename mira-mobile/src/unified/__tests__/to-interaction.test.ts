@@ -14,6 +14,7 @@ import {
   toThread,
   toTurn,
   withManualSearchOverride,
+  withManualSearchOverrides,
   type UnifiedNotebookMeta,
 } from "../to-interaction";
 
@@ -255,5 +256,82 @@ describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () =>
     const thread = toThread(userOnly, META);
     const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: true });
     expect(out).toEqual(thread);
+  });
+});
+
+// Codex round 6 F17 (#4195): a SECOND, different search must not erase the
+// first search's resolved outcome. The root cause had two parts — matching
+// by manufacturer/model identity alone (conflates a retry's two different
+// generations), and `UnifiedChat` keeping only ONE override at a time (see
+// its own `settledManualSearches` map). This file proves the pure-function
+// half: generation-aware matching, and applying several overrides at once.
+describe("withManualSearchOverride / withManualSearchOverrides — generation-aware matching (#4195 round 6 F17)", () => {
+  const twoGenerations: AdapterMessage[] = [
+    { id: "q1", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a1",
+      role: "assistant",
+      parts: [{ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-1" } }],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+    { id: "q2", role: "user", parts: [{ type: "text", text: "retry?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a2",
+      role: "assistant",
+      parts: [{ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2" } }],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+  ];
+
+  it("a generation-stamped override replaces ONLY its own generation's part, even when another part shares the same manufacturer/model (a retry)", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverride(thread, {
+      manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+    expect(out.turns[1].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-1",
+    });
+    expect(out.turns[3].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+  });
+
+  it("withManualSearchOverrides applies every historical outcome (replace-only) plus the active one (replace-or-append)", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (1).", startedAt: "gen-1" }],
+      { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2" },
+    );
+    expect(out.turns[1].parts).toContainEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (1).", startedAt: "gen-1",
+    });
+    expect(out.turns[3].parts).toContainEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+  });
+
+  it("a historical (replace-only) override never appends when no matching generation exists in the thread — would otherwise leak onto an unrelated turn", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "Siemens", model: "6ES7", running: false, message: "Found it (3).", startedAt: "gen-3" }],
+      null,
+    );
+    expect(out).toEqual(thread);
+  });
+
+  it("the active override wins for its own generation even when a stale historical entry shares the same key", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "SMC", model: "SS5Y3", running: false, message: "STALE.", startedAt: "gen-2" }],
+      { manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2" },
+    );
+    expect(out.turns[3].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2",
+    });
   });
 });

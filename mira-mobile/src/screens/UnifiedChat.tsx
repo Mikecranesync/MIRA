@@ -64,7 +64,7 @@ import {
   machinesFor,
   projectsFor,
   toThread,
-  withManualSearchOverride,
+  withManualSearchOverrides,
   type UnifiedNotebookMeta,
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
@@ -183,13 +183,25 @@ export function UnifiedChat({
   // attempt budget that `running`/inconclusive reads never reset), and must
   // survive a reload (the server never persists the status — `follow` is
   // (re)seeded from a direct fetch on hydration, not from thread content
-  // alone). `follow.status` is the one thing rendered; `withManualSearchOverride`
-  // appends it to the last assistant turn when no live frame ever carried a
-  // matching part (the realistic post-reload case), or replaces one in place.
+  // alone). `follow.status` is the one thing rendered for the ACTIVE
+  // generation; `withManualSearchOverrides` appends it to the last assistant
+  // turn when no live frame ever carried a matching part (the realistic
+  // post-reload case), or replaces one in place.
   const notebookId = meta.notebookId || null;
   const notebookIdRef = useRef(notebookId);
   notebookIdRef.current = notebookId;
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  // Codex round 6 F17 (#4195): `follow` tracks exactly ONE generation at a
+  // time (by design — see `manual-search-follow.ts`'s header). Once a
+  // SECOND, different search takes over that one slot, the FIRST search's
+  // settled/unresolved outcome would otherwise be gone — nothing left to
+  // overlay it, so its turn reverts to whatever raw (possibly still
+  // `running: true`) frame is baked into `baseThread`, forever. This map
+  // remembers every generation's outcome, keyed the same way `follow.key`
+  // is (`${notebookId}|${startedAt}`), for as long as this notebook is open.
+  const [settledManualSearches, setSettledManualSearches] = useState<ReadonlyMap<string, ManualSearchStatus>>(
+    () => new Map(),
+  );
   // Codex round 5 F15 (#4195), defense in depth: an unrelated rerender can
   // re-deliver the EXACT same live frame to the effect below. `observeLiveManualSearchFrame`
   // is already safe against that (same generation → no-op), but consuming
@@ -207,15 +219,71 @@ export function UnifiedChat({
   // hydration-fetch effect below silently no-ops on a `null` status, so it
   // alone never clears a leftover). Mirrors the Hub's own `select()`, which
   // does `setFollow(null)` + the driver's `reset()` on every selection change.
+  // Round 6 F17: the settled-outcomes map above is PER-NOTEBOOK history, so
+  // it resets here too — a leftover outcome from notebook A must never
+  // overlay a turn on notebook B's thread.
   useEffect(() => {
     setFollow(null);
+    setSettledManualSearches(new Map());
     lastLiveFrameKeyRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally ONLY notebookId: reset-on-change, not reset-on-every-render.
   }, [notebookId]);
-  const resolvedThread = useMemo(
-    () => withManualSearchOverride(baseThread, follow?.status ?? null),
-    [baseThread, follow?.status],
-  );
+  // Codex round 6 F17 (#4195): record a generation's outcome into the map
+  // the MOMENT `follow` settles (phase leaves "following") — the ONE place
+  // every settle happens, regardless of which effect drove it (a live
+  // frame, the hydration reseed, or the periodic tick). A generation with no
+  // `startedAt` is never recorded (there is nothing stable to key it by —
+  // it can only ever be the CURRENTLY active follow, which is applied
+  // separately and always wins for its own key).
+  useEffect(() => {
+    if (!follow || follow.phase === "following" || !follow.status.startedAt) return;
+    setSettledManualSearches((prev) => {
+      if (prev.get(follow.key) === follow.status) return prev;
+      const next = new Map(prev);
+      next.set(follow.key, follow.status);
+      return next;
+    });
+  }, [follow]);
+  const resolvedThread = useMemo(() => {
+    const activeKey = follow?.key ?? null;
+    const historical: ManualSearchStatus[] = [];
+    const knownGenerations = new Set<string>();
+    for (const [key, status] of settledManualSearches) {
+      if (key === activeKey) continue; // the active follow's own status (below) always wins for its own key.
+      historical.push(status);
+      if (status.startedAt) knownGenerations.add(status.startedAt);
+    }
+    if (follow?.status.startedAt) knownGenerations.add(follow.status.startedAt);
+    // Codex round 6 F17, the orphan case: a generation ABANDONED mid-flight
+    // by a newer live frame before it ever reached "following" long enough
+    // to settle (the follower only ever tracks ONE generation — a second,
+    // different live frame immediately starts following the NEW one,
+    // discarding the old one's state outright; see
+    // `observeLiveManualSearchFrame`). Such a generation is in neither
+    // `settledManualSearches` (it never settled) nor the active follow, so
+    // without this it would render its raw, still-`running: true` frame
+    // forever — the same perpetual-spinner symptom F17 fixes for the
+    // settled case. Render it with the shared `PartRenderer`'s OWN existing
+    // non-running fallback (`packages/factorylm-ui/src/parts.tsx`'s
+    // `ManualSearchStatusPart`: "Finished searching for the X Y manual.")
+    // instead of inventing new copy here. The MOST RECENT
+    // `manual_search_status` part is exempt — it may be a brand-new
+    // generation this render's live-frame effect has not adopted into
+    // `follow` yet (effects run after render); neutralizing it one render
+    // early would flicker it to "Finished" and immediately back to
+    // "Searching" once the effect fires.
+    const latest = latestManualSearchStatus(baseThread.turns);
+    const orphaned: ManualSearchStatus[] = [];
+    for (const turn of baseThread.turns) {
+      for (const part of turn.parts) {
+        if (part.type !== "manual_search_status" || !part.running || !part.startedAt) continue;
+        if (part === latest || knownGenerations.has(part.startedAt)) continue;
+        knownGenerations.add(part.startedAt); // one neutral override per orphaned generation, not one per repeated part.
+        orphaned.push({ manufacturer: part.manufacturer, model: part.model, running: false, startedAt: part.startedAt });
+      }
+    }
+    return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null);
+  }, [baseThread, settledManualSearches, follow?.key, follow?.status]);
 
   useEffect(() => {
     dispatch({
