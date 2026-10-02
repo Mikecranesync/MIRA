@@ -86,6 +86,19 @@ def _resolve_path(raw: str, case_file: Path) -> Path:
     return p if p.is_absolute() else (case_file.parent / p)
 
 
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
+DOC_SUFFIXES = {".pdf"}
+
+
+def _check_suffix(raw: Any, field: str, allowed: set[str], kind: str, errors: list[str]) -> None:
+    """Gate 7: a path the harness uploads to staging (and the judge) must have
+    the expected file type, so a case can never point it at, e.g., a secrets
+    file. Paths may be absolute or use `..` on purpose (the private photo
+    catalog lives outside the repo), so the guard is the type, not the location."""
+    if isinstance(raw, str) and raw.strip() and Path(raw).suffix.lower() not in allowed:
+        errors.append(f"{field}: must be {kind} ({', '.join(sorted(allowed))}), got {raw!r}")
+
+
 def _check_text_list(value: Any, field: str, errors: list[str]) -> None:
     """Codex r8: a list the runner consumes as text must hold only non-empty
     strings, rejected here, before any Hub or paid call."""
@@ -152,6 +165,7 @@ def validate_case(raw: Any, path: Path) -> dict:
     if not photo_raw or not isinstance(photo_raw, str):
         errors.append("photo missing: field not present")
     else:
+        _check_suffix(photo_raw, "photo", IMAGE_SUFFIXES, "an image file", errors)
         photo_path = _resolve_path(photo_raw, path)
         if not photo_path.exists():
             errors.append(f"photo missing: file not found at {photo_path}")
@@ -166,6 +180,8 @@ def validate_case(raw: Any, path: Path) -> dict:
     if visible_facts is not None and not isinstance(visible_facts, list):
         errors.append("visible_facts: must be a list")
     _check_text_list(sources, "sources", errors)
+    for i, src in enumerate(sources if isinstance(sources, list) else []):
+        _check_suffix(src, f"sources[{i}]", DOC_SUFFIXES, "a .pdf", errors)
     _check_text_list(visible_facts, "visible_facts", errors)
 
     safety = raw.get("safety") or []
@@ -294,6 +310,20 @@ def validate_case(raw: Any, path: Path) -> dict:
             for k in legit:
                 if k not in VALID_PRODUCT_ASK_KEYS:
                     errors.append(f"legit_product_asks: unknown field {k!r}")
+            _check_suffix(
+                legit.get("retake_photo"),
+                "legit_product_asks.retake_photo",
+                IMAGE_SUFFIXES,
+                "an image file",
+                errors,
+            )
+            _check_suffix(
+                legit.get("manual_upload"),
+                "legit_product_asks.manual_upload",
+                DOC_SUFFIXES,
+                "a .pdf",
+                errors,
+            )
 
         max_turns = raw.get("max_turns", DEFAULT_MAX_TURNS)
         if not isinstance(max_turns, int) or isinstance(max_turns, bool) or max_turns <= 0:
@@ -351,6 +381,7 @@ def load_cases(cases_dir: Path) -> tuple[list[dict], list[CaseError]]:
     NOT skipped; they must validate too). Returns (valid_cases, errors)."""
     valid: list[dict] = []
     errors: list[CaseError] = []
+    seen_ids: dict[str, Path] = {}
     for yml in sorted(cases_dir.glob("*.yaml")):
         try:
             raws = load_case_file(yml)
@@ -359,9 +390,25 @@ def load_cases(cases_dir: Path) -> tuple[list[dict], list[CaseError]]:
             continue
         for raw in raws:
             try:
-                valid.append(validate_case(raw, yml))
+                case = validate_case(raw, yml)
             except CaseError as ce:
                 errors.append(ce)
+                continue
+            # Gate 7: the report groups by case id, so a duplicate would merge
+            # two cases' results silently. First one wins; the rest are errors.
+            if case["id"] in seen_ids:
+                errors.append(
+                    CaseError(
+                        yml,
+                        [
+                            f"duplicate case id {case['id']!r} (first in {seen_ids[case['id']].name})"
+                        ],
+                        case_id=case["id"],
+                    )
+                )
+                continue
+            seen_ids[case["id"]] = yml
+            valid.append(case)
     return valid, errors
 
 

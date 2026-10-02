@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 TOOLS_QA = Path(__file__).resolve().parents[2] / "tools" / "qa"
 if str(TOOLS_QA) not in sys.path:
@@ -332,3 +333,39 @@ def test_r8_exactly_one_true_cause():
     raw["hypotheses"].append(dict(raw["hypotheses"][0], id="h-dup", text="Another cause"))
     errors = _errors(raw)
     assert any("exactly one true_cause" in e for e in errors), errors
+
+
+# Gate 7 (free pre-filter) on the r8 fix: file-type guards, so a case cannot point
+# a photo/manual field at e.g. a secrets file that would then be uploaded.
+@pytest.mark.parametrize("bad_photo", ["../../../.env", "notes.txt"])
+def test_g7_photo_must_be_an_image_file(bad_photo, tmp_path):
+    target = tmp_path / Path(bad_photo).name
+    target.write_text("SECRET=1")
+    raw = _diag_case(photo=str(target))
+    errors = _errors(raw)
+    assert any(e.startswith("photo: must be an image file") for e in errors), errors
+
+
+def test_g7_sources_and_product_ask_paths_must_have_the_right_type():
+    raw = _diag_case(sources=["manual.txt"])
+    raw["legit_product_asks"] = {
+        "identity_confirm": None,
+        "retake_photo": "creds.json",
+        "manual_upload": "manual.docx",
+    }
+    errors = _errors(raw)
+    assert any(e.startswith("sources[0]: must be a .pdf") for e in errors), errors
+    assert any(e.startswith("legit_product_asks.retake_photo: must be an image") for e in errors)
+    assert any(e.startswith("legit_product_asks.manual_upload: must be a .pdf") for e in errors)
+
+
+def test_g7_duplicate_case_ids_across_files_are_rejected(tmp_path):
+    photo = (FAKE_CASE_FILE.parent / REAL_PHOTO).resolve()
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    body = yaml.safe_dump(_qa_case(id="dup-1", photo=str(photo)))
+    (cases_dir / "a.yaml").write_text(body)
+    (cases_dir / "b.yaml").write_text(body)
+    valid, errors = schema.load_cases(cases_dir)
+    assert [c["id"] for c in valid] == ["dup-1"]
+    assert len(errors) == 1 and "duplicate case id 'dup-1'" in errors[0].errors[0]
