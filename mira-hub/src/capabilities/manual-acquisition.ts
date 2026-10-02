@@ -12,6 +12,7 @@
  * fetcher; a manual enters chat only when its OWN text verifies it
  * (assessApplicability), otherwise it is attached disabled as a candidate.
  */
+import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { withTenantContext } from "@/lib/tenant-context";
 import { setSourceState } from "@/lib/equipment-notebooks";
 import {
@@ -26,12 +27,26 @@ import { ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from 
 import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import type { SpanContext } from "@opentelemetry/api";
+import { safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
 /** Manuals are big; 80 MB is generous for an OEM PDF and still bounded. */
 const MAX_MANUAL_BYTES = 80 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 /** Identity evidence lives near the front of a manual — bound the scan. */
 const APPLICABILITY_CHUNK_LIMIT = 80;
+/** $0.001/provider-query default (docs/env-vars.md MANUAL_SEARCH_GLOBAL_MONTHLY_CAP
+ * sizing: $10/month -> 10,000 queries). Overridable; a non-numeric env value
+ * falls back to this default rather than producing a NaN cost (#4160 gate R15). */
+const DEFAULT_PROVIDER_QUERY_COST_USD = 0.001;
+
+function providerQueryCostUsd(): number {
+  const raw = process.env.MANUAL_SEARCH_COST_PER_QUERY_USD;
+  const n = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_PROVIDER_QUERY_COST_USD;
+}
+
+const CAP_SCOPES = new Set(["user_cap", "tenant_cap", "global_cap"]);
 
 export type ManualAcquisitionStatus =
   | "complete"
@@ -74,6 +89,14 @@ export interface ManualAcquisitionInput {
    * confirm route's existing unconditional-writer behaviour, unchanged.
    */
   basis?: "confirmed" | "candidate";
+  /**
+   * R15: the chat turn that started this acquisition, passed EXPLICITLY (the
+   * chat route never activates its `mira.turn`). The run root links to it and
+   * follows its sampling decision — kept turn, kept run; dropped turn, dropped
+   * run. Absent for a standalone acquisition (nameplate confirm, notebook
+   * create), whose run root is sampled on its own at the turn ratio.
+   */
+  turnSpanContext?: SpanContext;
   /**
    * Write this notebook's source state for the discovered manual and return
    * what is ACTUALLY persisted afterwards: the written state, the untouched
@@ -158,7 +181,34 @@ async function chunksForDoc(
   }
 }
 
+/**
+ * R15: EVERY acquisition — chat background run, nameplate-confirm inline run,
+ * the confirm route's direct component search, notebook create — passes
+ * through here, so this is the one place its `manual_acquisition.run` root is
+ * made (Codex #4194 r3 F1/F5). Always a root of its own: never a child of an
+ * ambient framework span the turn-only sampler drops.
+ */
 export async function acquireManualForIdentity(input: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> {
+  const turn = input.turnSpanContext;
+  return safeSpan(
+    "manual_acquisition.run",
+    {
+      "mira.acquisition.basis": input.basis ?? "confirmed",
+      "mira.acquisition.started_this_turn": turn !== undefined,
+    },
+    async () => {
+      const out = await acquireInner(input);
+      setActiveSpanAttrs({ "mira.acquisition.outcome": out.status });
+      return out;
+    },
+    {
+      root: true,
+      link: turn ? { traceId: turn.traceId, spanId: turn.spanId, traceFlags: turn.traceFlags } : undefined,
+    },
+  );
+}
+
+async function acquireInner(input: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> {
   const { identity, notebookId } = input;
   const ctx = { tenantId: input.tenantId, userId: input.userId };
   const notebook = { nodeId: input.nodeId };
@@ -169,20 +219,41 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
     });
   }
 
-  const discovery = await discoverManual(
-    {
-      manufacturer: identity.manufacturer,
-      model: identity.model,
-      catalogNumber: identity.catalogNumber,
-    },
-    ctx,
-  );
+  // R15 span: provider-query accounting, cap state and candidates considered
+  // — set from the discovery result itself, never invented when mira-ask
+  // didn't carry search_stats (an old version, or a malformed response).
+  const discovery = await safeSpan("manual_acquisition.search", {}, async () => {
+    const d = await discoverManual(
+      {
+        manufacturer: identity.manufacturer,
+        model: identity.model,
+        catalogNumber: identity.catalogNumber,
+      },
+      ctx,
+    );
+    const providerQueries = d.searchStats?.providerQueries ?? null;
+    setActiveSpanAttrs({
+      "mira.acquisition.provider_queries": providerQueries,
+      "mira.acquisition.candidates": d.searchStats?.candidates ?? null,
+      // Codex #4194 F3: a usable candidate can survive a later cap denial
+      // (discovery returns found with quota_denied set) — that is still a cap
+      // hit. quota_unavailable / no_identity are infrastructure, not caps.
+      "mira.acquisition.cap_hit":
+        d.quotaExceeded || CAP_SCOPES.has(d.searchStats?.quotaDenied ?? ""),
+      "mira.acquisition.cap_scope": d.searchStats?.quotaDenied ?? null,
+      "mira.acquisition.cost_usd":
+        providerQueries === null ? null : Math.round(providerQueries * providerQueryCostUsd() * 1e6) / 1e6,
+    });
+    return d;
+  });
   if (discovery.quotaExceeded) {
     // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
-    return outcome("search_limit_reached", { message: discovery.reason });
+    // The service's own reason stays on the payload for diagnostics; the
+    // technician sees the approved sentence (#4160 gate NO-GO).
+    return outcome("search_limit_reached", { message: MANUAL_SEARCH_LIMIT_COPY, reason: discovery.reason });
   }
   if (!discovery.serviceAvailable) {
-    return outcome("search_unavailable", { message: discovery.reason });
+    return outcome("search_unavailable", { message: MANUAL_SEARCH_UNAVAILABLE_COPY, reason: discovery.reason });
   }
   if (!discovery.found || !discovery.candidate) {
     return outcome("no_manual_found", {
@@ -248,10 +319,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   // applicability block below.
   const requiresUserConfirmation = probeUnvalidated || input.basis === "candidate";
 
-  const download = await safeDownloadPdf(candidate.url, {
-    allowedHosts: allowedHostsForCandidate(identity, candidate),
-    maxBytes: MAX_MANUAL_BYTES,
-    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+  const downloadStartedAt = Date.now();
+  const download = await safeSpan("manual_acquisition.download", {}, async () => {
+    const d = await safeDownloadPdf(candidate.url, {
+      allowedHosts: allowedHostsForCandidate(identity, candidate),
+      maxBytes: MAX_MANUAL_BYTES,
+      timeoutMs: DOWNLOAD_TIMEOUT_MS,
+    });
+    setActiveSpanAttrs({
+      "mira.acquisition.download_bytes": d.ok ? d.buffer.length : null,
+      "mira.acquisition.download_ms": Date.now() - downloadStartedAt,
+    });
+    return d;
   });
   if (!download.ok) {
     return outcome("download_rejected", {
@@ -337,6 +416,11 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   let scannedPdf = false;
   let manualClaimToken: string | null = null;
   let reused = manualParked.reused && manualParked.uploadId !== null;
+  // R15 span: exact-byte dedup is the only "recall" this pipeline has — an
+  // existing indexed manual for these bytes being reused instead of a fresh
+  // ingest. A concurrent-request claim collision below is a race, not a
+  // recall, so it is deliberately not folded into this attribute.
+  await safeSpan("manual_acquisition.recall", { "mira.acquisition.recall_hit": reused }, async () => {});
 
   if (!reused && manualDocId === null) {
     // Atomic ingestion claim (Codex P1, 2026-08-16): a concurrent identical
@@ -373,14 +457,25 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
 
   if (!reused && manualDocId === null) {
     try {
-      const ing = await ingestPdfToNode({
-        tenantId: ctx.tenantId,
-        nodeId: notebook.nodeId,
-        unsPath: null,
-        filename: manualFilename,
-        mimeType: "application/pdf",
-        sizeBytes: download.buffer.length,
-        buffer: download.buffer,
+      const ingestStartedAt = Date.now();
+      const ing = await safeSpan("manual_acquisition.ingest", {}, async () => {
+        const r = await ingestPdfToNode({
+          tenantId: ctx.tenantId,
+          nodeId: notebook.nodeId,
+          unsPath: null,
+          filename: manualFilename,
+          mimeType: "application/pdf",
+          sizeBytes: download.buffer.length,
+          buffer: download.buffer,
+        });
+        setActiveSpanAttrs({
+          // NodeIngestResult carries no page count — never invented (R15: "pages
+          // may be null if unknown, never invented").
+          "mira.acquisition.ingest_pages": null,
+          "mira.acquisition.ingest_chunks": r.chunkCount,
+          "mira.acquisition.ingest_ms": Date.now() - ingestStartedAt,
+        });
+        return r;
       });
       manualChunks = ing.chunkCount;
       // Token-fenced finalize (see nameplate section): if the claim was stolen
@@ -515,14 +610,18 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     if (chunks === null) return retryLater();
-    verdict = assessApplicability({
-      identity: {
-        manufacturer: identity.manufacturer,
-        model: identity.model,
-        catalogNumber: identity.catalogNumber,
-      },
-      chunks,
-      oemHost: discovery.oemHost,
+    verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
+      const v = assessApplicability({
+        identity: {
+          manufacturer: identity.manufacturer,
+          model: identity.model,
+          catalogNumber: identity.catalogNumber,
+        },
+        chunks,
+        oemHost: discovery.oemHost,
+      });
+      setActiveSpanAttrs({ "mira.acquisition.match_state": v.state });
+      return v;
     });
     const verifiedEvidence = {
       ...baseEvidence,

@@ -228,4 +228,39 @@ describe("Sensor READ (S3)", () => {
     expect(await screen.findByRole("dialog", { name: "Scan FactoryLM QR" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "READ" })).toBeTruthy();
   });
+
+  // #4187: the Pixel walk's shell "Add attachment → Scan machine" action
+  // mounts Sensor directly into the viewfinder (initialSensorStart="read-scan",
+  // mode and read-state set in the SAME render, unlike the click-through path
+  // above). BACK from that entry must unwind one rung at a time — viewfinder
+  // → READ mode (where "Photograph a nameplate" lives) → Sensor mode picker
+  // → notebook — never straight out of the sheet.
+  it("BACK from the shell's direct Scan-machine entry unwinds one rung at a time, not out of the sheet", async () => {
+    render(
+      <NotebookScreen
+        id="nb1"
+        backRef={{ current: null }}
+        onExit={() => {}}
+        onOpenNotebook={() => {}}
+        initialSensorStart="read-scan"
+      />,
+    );
+    await screen.findByRole("dialog", { name: "Scan FactoryLM QR" });
+
+    await act(async () => {
+      expect(closeTopTransientLayer()).toBe(true);
+    });
+    // Viewfinder closed — still inside READ, where "Photograph a nameplate" is.
+    expect(screen.queryByRole("dialog", { name: "Scan FactoryLM QR" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "READ" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Photograph a nameplate/ })).toBeTruthy();
+
+    await act(async () => {
+      expect(closeTopTransientLayer()).toBe(true);
+    });
+    // Back at the mode picker, sheet still open.
+    expect(screen.getByRole("dialog", { name: "Sensor" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "LOOK" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "READ" })).toBeNull();
+  });
 });

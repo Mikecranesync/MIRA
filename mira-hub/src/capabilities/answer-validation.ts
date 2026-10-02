@@ -943,7 +943,26 @@ function codeMeaningViolation(
  *  triage; "I lost the manual" gained it). So nothing is classified: the
  *  fallback offers both next steps, each labelled with when it applies.
  *  Copy only — what is withheld is unchanged. */
-export function specificityFallback(code: string | null): string {
+const MANUAL_SELF_SERVE_LINE =
+  "- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.";
+/** #4160 gate NO-GO (PRD "Never"): while MIRA's own automatic search for the
+ *  official manual is running, never send the technician off to fetch it —
+ *  say the search is underway and where the manual will appear. */
+const MANUAL_SEARCH_RUNNING_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it will show up in this notebook's Sources — ask again then and I'll answer from it with a page reference.";
+/** Codex #4183 F1: a CANDIDATE-basis manual lands turned off pending the
+ *  technician's check (the identity is unconfirmed), so asking again alone
+ *  cannot ground an answer — say to turn it on first. */
+const MANUAL_SEARCH_RUNNING_CANDIDATE_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it with a page reference.";
+
+/** Which automatic manual search is running for this notebook, if any. */
+export type ManualSearchRunning = "confirmed" | "candidate" | null;
+
+export function specificityFallback(
+  code: string | null,
+  opts: { manualSearchRunning?: ManualSearchRunning } = {},
+): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
@@ -951,7 +970,13 @@ export function specificityFallback(code: string | null): string {
 
 What you can do next:
 - If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.
+${
+    opts.manualSearchRunning === "candidate"
+      ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE
+      : opts.manualSearchRunning === "confirmed"
+        ? MANUAL_SEARCH_RUNNING_LINE
+        : MANUAL_SELF_SERVE_LINE
+  }
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -1056,6 +1081,80 @@ function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
   };
 }
 
+// #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
+// sometimes answers a manual-search question from its own training instead
+// of MIRA's real capability — "I'm unable to browse the web…contact the
+// manufacturer (SMC)" — even while MIRA's own search for this identity is
+// offered (a candidate acquisition, unconfirmed) or running (confirmed). Both
+// lanes, unconditional on `refused`: a false capability claim is wrong
+// whether or not the rest of the turn also reads as a refusal.
+//
+// #4193 Codex review round 1 F1: the first shipped version matched on the
+// bare verb phrase alone, so it also discarded a real, correct maintenance
+// answer — "Contact the manufacturer for warranty service" (an ordinary
+// escalation instruction, nothing to do with MIRA's own browsing) and "The
+// machine does not have internet access" (a statement about the MACHINE, not
+// about MIRA). Both are excluded structurally, not by a wider keyword list:
+//
+//   - CAPABILITY_DENIAL only fires on MIRA's OWN first-person capability
+//     claim — the subject must be "I" (optionally "I'm"/"I am"), immediately
+//     followed by the denial verb. "The machine does not have internet
+//     access" has no "I" subject at all, so it can never match, whatever verb
+//     tense follows.
+//   - CONTACT_MAKER_DEFLECTION only fires when the deflection is about
+//     OBTAINING THE MANUAL/DOCUMENT itself: the matched phrase must be
+//     followed, within the same sentence, by a document word (manual,
+//     documentation, datasheet, spec sheet, drawing, print, wiring diagram).
+//     "Contact the manufacturer for warranty service" names no document word
+//     before the sentence ends, so it is left alone; "contact SMC support for
+//     the official documentation" is still caught.
+//
+// #4193 Codex review round 2 F1: round 1's "I ... access" branch still had no
+// required object, so "I cannot access your PLC remotely" and "I can't access
+// your private maintenance records" — real, correct answers about a
+// capability manual discovery never claims — were also discarded. The denied
+// capability must now concern PUBLIC WEB / MANUAL DISCOVERY specifically:
+//   - "browse" alone always denies web access (no object needed — nobody
+//     says "browse" to mean anything else).
+//   - "search" / "access" / "look ... up" / "download" / "fetch" require a
+//     web-discovery object (internet, web, online, or the manufacturer's
+//     site/website) SOMEWHERE LATER IN THE SAME SENTENCE. "your PLC remotely"
+//     and "your private maintenance records" name no such object, so those
+//     two sentences can never match, however the verb is phrased.
+const WEB_DISCOVERY_OBJECT_SRC =
+  "(?:\\binternet\\b|\\bweb\\b|\\bonline\\b|\\bmanufacturer'?s?\\s+(?:site|website)\\b)";
+const CAPABILITY_DENIAL = new RegExp(
+  "\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+browse\\b" +
+    "|\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+(?:search|access|look\\s+\\w*\\s*up|download|fetch)\\b" +
+      `(?=(?:(?!\\.).){0,60}?${WEB_DISCOVERY_OBJECT_SRC})` +
+    "|\\bI\\s+(?:don'?t|don’t|do not|does not)\\s+have\\s+(?:internet|web)\\s+access\\b",
+  "i",
+);
+// A document/manual word that must appear SOMEWHERE in the rest of the
+// sentence for a "contact the maker" / "check their website" phrase to count
+// as a deflection about the manual — never crossing a sentence boundary
+// (the `(?!\.)` guard), so "Contact the manufacturer for warranty service."
+// cannot reach forward into an unrelated later sentence that happens to
+// mention a manual.
+const DEFLECTION_DOC_WORD_SRC =
+  "manuals?|documentation|datasheets?|spec(?:ification)?\\s*sheets?|drawings?|prints?|wiring\\s+diagrams?";
+const CONTACT_MAKER_DEFLECTION = new RegExp(
+  "\\bcontact\\s+(?:the\\s+)?(?:manufacturer|[\\w.&'-]+(?:\\s+[\\w.&'-]+){0,2}\\s+support)\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)` +
+    "|\\bcheck\\s+(?:their|its)\\s+official\\s+website\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)`,
+  "i",
+);
+
+function falseCapabilityClaim(text: string): string | null {
+  const m = CAPABILITY_DENIAL.exec(text) ?? CONTACT_MAKER_DEFLECTION.exec(text);
+  return m ? m[0] : null;
+}
+
+/** The bulleted fallback lines above are written as a list item; this guard
+ *  replaces a whole answer, so it needs the same sentence standing alone. */
+const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
@@ -1086,9 +1185,14 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
+  /** #4160: MIRA's automatic official-manual search is running for this
+   *  notebook (this turn started it, or a recorded one is still running), so a
+   *  specificity fallback must not tell the technician to fetch it themselves. */
+  manualSearchRunning?: ManualSearchRunning;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
+  const fallbackOpts = { manualSearchRunning: opts.manualSearchRunning ?? null };
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -1176,6 +1280,26 @@ export function validateAnswer(opts: {
   const rig = riggingOverload(scanText);
   if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
 
+  // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
+  // unconditional on `refused`: it is wrong regardless of how the rest of the
+  // turn is classified. Only fires while MIRA's own part-search is actually
+  // offered or running for this identity — an idle notebook may legitimately
+  // tell the technician to fetch the manual themselves (MANUAL_SELF_SERVE_LINE).
+  if (opts.manualSearchRunning) {
+    const denial = falseCapabilityClaim(scanText);
+    if (denial) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:capability-denial",
+        detail: denial.slice(0, 160),
+        replacement: toStandaloneSentence(
+          opts.manualSearchRunning === "candidate" ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE : MANUAL_SEARCH_RUNNING_LINE,
+        ),
+      };
+    }
+  }
+
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
   if (!general || refused) return energizedWarningOr(restore, answerText);
@@ -1188,7 +1312,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: `fabricated-doc:${p.id}`,
         detail: m[0].slice(0, 160),
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, fallbackOpts),
       };
     }
   }
@@ -1200,7 +1324,7 @@ export function validateAnswer(opts: {
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:exact-setting",
       detail: es[0].slice(0, 160),
-      replacement: specificityFallback(null),
+      replacement: specificityFallback(null, fallbackOpts),
     };
   }
 
@@ -1212,7 +1336,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
         detail: er.excerpt,
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, fallbackOpts),
         match: { term: er.term, unit: er.unit },
       };
     }
@@ -1228,7 +1352,7 @@ export function validateAnswer(opts: {
       // The ONLY visible string in this module built from a matched token, so
       // it is the one place the fold could leak into what a technician reads.
       // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText)),
+      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
     };
   }
 

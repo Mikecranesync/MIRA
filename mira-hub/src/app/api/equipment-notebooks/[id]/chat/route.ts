@@ -109,10 +109,10 @@ import { withRetailCodeNote } from "@/capabilities/retail-codes";
 import {
   PART_SEARCH_CANCEL,
   asksPartCompatibility,
-  confirmedPartSearchCandidate,
   isPartSearchProposal,
   partSearchConfirmation,
   partSearchDecision,
+  pendingPartSearchProposal,
   unambiguousPartNumber,
   type PartSearchDecision,
   type PartSearchProposalEntry,
@@ -2100,13 +2100,14 @@ async function handleChatTurn(
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
   const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any
-  // pending proposal. Read only for a confirm/cancel message; fail closed.
+  // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
+  // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a
+  // short affirmative, an unquoted confirmation, or an unrelated reply can
+  // never see a pending offer, and it silently expires instead of staying
+  // valid or being re-shown. Fail closed on any read error.
   let previousTurnEvidence: unknown[] = [];
   let previousTurnId: string | null = null;
-  const mayAnswerProposal =
-    confirmedPartSearchCandidate(message) !== null ||
-    message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase();
-  if (partSearchEligible && mayAnswerProposal) {
+  if (partSearchEligible) {
     try {
       const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
       if (last && last.ownerUserId === ctx.userId) {
@@ -2123,10 +2124,11 @@ async function handleChatTurn(
         candidate: photoPartNumber,
         manufacturer: photoMaker,
         previousEvidence: previousTurnEvidence,
+        previousTurnId,
       })
     : { action: "none" };
   let photoPartLookup: {
-    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable";
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable" | "expired";
     searched: boolean;
     part_number: string | null;
     found: boolean;
@@ -2136,14 +2138,54 @@ async function handleChatTurn(
   } | null = null;
   if (partSearch.action === "propose") {
     const c = partSearch.candidate;
+    // #4185/#4186: age > 1 means this is a RE-SHOW of an offer that a
+    // non-matching reply didn't expire — keep the ORIGINAL maker it was bound
+    // to (never re-derive from this turn's photo, which may carry none) so a
+    // later confirmation is still checked against the identity actually
+    // offered. age === 1 is always a fresh proposal from this turn's photo.
+    const reshown = partSearch.age > 1 ? pendingPartSearchProposal(previousTurnEvidence) : null;
+    const maker = reshown ? (reshown.manufacturer ?? null) : photoMaker;
+    // #4193 Codex round 3 F7: a FRESH propose (age 1) has no origin from the
+    // pure decision yet, and must NOT fall back to `turnId` — `turnId` is
+    // the client-request/tracing id (line ~912: `clientRequestId ??
+    // crypto.randomUUID()`), never the row this turn is about to be
+    // persisted under (that id comes from the database's own
+    // `gen_random_uuid()` default, migration 073 — recordTurn's INSERT never
+    // supplies `id`). Falling back to it persisted an origin that matched no
+    // real row, so claimPartSearchProposal's `WHERE id = originTurnId`
+    // always missed and even a technician's first, never-claimed
+    // confirmation was refused as "already used" (Codex round 3 F7).
+    //
+    // The fix needs no new plumbing: a fresh propose simply omits
+    // `originTurnId` (exactly the true-legacy shape F6 already handles).
+    // The very next read of this entry — a confirmation or a re-show —
+    // resolves its origin from `previousTurnId`, which by then IS the real
+    // persisted row id (it comes from `listTurns()`, reading an
+    // already-written row). A re-show (age > 1) still carries the resolved
+    // origin forward unchanged from `partSearchDecision()`.
+    const originTurnId = partSearch.originTurnId;
     photoPartLookup = {
       action: "proposed",
       searched: false,
       part_number: c,
       found: false,
       candidate_host: null,
-      message: `I can search the web for a manual using only the exact label text \"${c}\"${photoMaker ? ` and the maker name \"${photoMaker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
-      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: photoMaker },
+      message: `I can search the web for a manual using only the exact label text \"${c}\"${maker ? ` and the maker name \"${maker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age, originTurnId },
+    };
+  } else if (partSearch.action === "expired") {
+    // #4193 Codex F2: one more re-show would have minted an offer the very
+    // next turn could never confirm. Say plainly that it expired, with no
+    // chip and no "reply exactly" instructions — `proposal: null` means no
+    // followups frame is emitted below and nothing new is persisted to act on.
+    photoPartLookup = {
+      action: "expired",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: `That search offer has expired. Ask me again to look up the manual for \"${partSearch.candidate}\" and I'll show you exactly what would be sent before searching.`,
+      proposal: null,
     };
   } else if (partSearch.action === "cancelled") {
     photoPartLookup = {
@@ -2167,17 +2209,21 @@ async function handleChatTurn(
     };
   } else if (partSearch.action === "search") {
     const confirmedPart = partSearch.candidate;
-    // One proposal authorizes ONE search (#4171 Codex F3): spend it atomically
-    // BEFORE any egress. A racing or retried confirmation finds it spent.
-    const claimed =
-      previousTurnId !== null && ctx.userId
-        ? await claimPartSearchProposal({
-            tenantId: ctx.tenantId,
-            notebookId,
-            proposalTurnId: previousTurnId,
-            ownerUserId: ctx.userId,
-          })
-        : false;
+    // One proposal authorizes ONE search (#4171 Codex F3; redesigned #4193
+    // Codex round 2 F3+F6): spend it atomically BEFORE any egress, locked and
+    // marked consumed on the offer's ORIGIN turn row — never on whichever
+    // turn happens to hold the copy actually being confirmed. A re-show
+    // persists a copy of the same logical offer onto a NEW turn, but every
+    // copy shares one origin, so a racing or retried confirmation against
+    // ANY copy finds the SAME row already spent.
+    const claimed = ctx.userId
+      ? await claimPartSearchProposal({
+          tenantId: ctx.tenantId,
+          notebookId,
+          originTurnId: partSearch.originTurnId,
+          ownerUserId: ctx.userId,
+        })
+      : false;
     // Only the confirmed string leaves: no photo, chat or notebook text.
     const result = claimed
       ? await discoverManual(
@@ -2259,6 +2305,12 @@ async function handleChatTurn(
   // #4160 S6 PRD R16-lite — the candidate-basis search's honest status line,
   // relayed through unconfirmedMachineDirective below (never a new SSE frame).
   let candidateAcquisitionText: string | null = null;
+  // #4160 gate NO-GO (PRD "Never"): true while MIRA's own official-manual search
+  // for this notebook is running, so a specificity fallback this turn says the
+  // search is underway instead of telling the tech to fetch the manual.
+  // "candidate" wins over "confirmed": its manual lands turned off, so the
+  // fallback must also say to turn it on (Codex #4183 F1).
+  let manualSearchRunning: "confirmed" | "candidate" | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2303,6 +2355,7 @@ async function handleChatTurn(
           notebookId,
           nodeId: nb.nodeId,
           identity,
+          turnSpanContext: rootSpan.spanContext(),
         });
         if (started) {
           acq = {
@@ -2320,6 +2373,7 @@ async function handleChatTurn(
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
+        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
       }
     }
   }
@@ -2368,6 +2422,7 @@ async function handleChatTurn(
             nodeId: nb.nodeId,
             identity: candidateIdentity,
             basis: "candidate",
+            turnSpanContext: rootSpan.spanContext(),
           });
           if (cStarted) {
             cAcq = {
@@ -2383,6 +2438,7 @@ async function handleChatTurn(
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
+          if (cAcq.state === "running") manualSearchRunning = "candidate";
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
@@ -2431,6 +2487,7 @@ async function handleChatTurn(
             notebookId,
             nodeId: nb.nodeId,
             identity,
+            turnSpanContext: rootSpan.spanContext(),
           });
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
@@ -2439,6 +2496,9 @@ async function handleChatTurn(
       }
     }
   }
+  // Covers the S7 recovery block above too (a source-selected turn that
+  // re-started or found a still-running search).
+  if (manualAcquisition?.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
   rec.stage("retrieval", {
     manual_acquisition: manualAcquisition,
     photo_part_manual_lookup: photoPartLookup
@@ -3403,7 +3463,15 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
-      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
+      const validation = validateAnswer({
+        answerText,
+        question: message,
+        general: !docGrounded,
+        served,
+        refused,
+        evidenceSufficient,
+        manualSearchRunning,
+      });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are

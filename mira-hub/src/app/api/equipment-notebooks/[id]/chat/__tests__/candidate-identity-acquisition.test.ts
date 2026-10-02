@@ -208,6 +208,23 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     );
   });
 
+  // Codex #4194 r3 F1: the route never ACTIVATES its mira.turn, so the
+  // acquisition can only link to it if the route hands the turn's context over.
+  it("hands the route's own mira.turn span context to the acquisition (R15 trace link)", async () => {
+    const { __testing__installInMemoryExporter } = await import("@/capabilities/observability/tracing");
+    const handle = __testing__installInMemoryExporter();
+    handle.reset();
+    const res = await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
+    await res.text();
+    await vi.waitFor(() => expect(handle.finished().some((s) => s.name === "mira.turn")).toBe(true));
+    const turn = handle.finished().find((s) => s.name === "mira.turn")!;
+    const passed = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+      turnSpanContext?: { traceId: string; spanId: string };
+    };
+    expect(passed.turnSpanContext?.traceId).toBe(turn.spanContext().traceId);
+    expect(passed.turnSpanContext?.spanId).toBe(turn.spanContext().spanId);
+  });
+
   it("the flag off ⇒ nothing starts", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(false);
     await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
@@ -287,5 +304,71 @@ describe("#4175 — candidate takeover gated behind MIRA_NOTEBOOK_CANDIDATE_ACQU
     const f = await frames(res);
     expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+});
+
+// #4160 gate NO-GO: "Typed maker+model doesn't trigger the search" (Banner).
+describe("#4160 gate — a typed dictionary-word maker + part starts the candidate search", () => {
+  it("'I need the manual for a Banner Q4XTBLAF300-Q8' starts a candidate search for BANNER", async () => {
+    await (await POST(req({ message: "I need the manual for a Banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: { identityStatus: "user_confirmed", manufacturer: "BANNER", model: "Q4XTBLAF300-Q8", catalogNumber: "" },
+        basis: "candidate",
+      }),
+    );
+  });
+
+  it("Codex #4184 F1: 'Sick of this Q4XTBLAF300-Q8, need the manual' starts no search for SICK", async () => {
+    await (await POST(req({ message: "Sick of this Q4XTBLAF300-Q8, need the manual", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it.each(["Manual for Sick or Banner Q4XTBLAF300-Q8", "Manual for Banner or Sick Q4XTBLAF300-Q8"])(
+    "Codex #4184 F3: '%s' names two makers — no search",
+    async (message) => {
+      await (await POST(req({ message, mode: "general" }), params)).text();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+
+  it("control: lowercase 'banner' is an ordinary word — no search", async () => {
+    await (await POST(req({ message: "I need the manual for a banner Q4XTBLAF300-Q8", mode: "general" }), params)).text();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+});
+
+// #4160 gate NO-GO (PRD "Never"): on the turn the candidate search starts, a
+// specificity fallback must not tell the technician to "get it from the
+// manufacturer's support" while MIRA is already searching for it.
+describe("#4160 gate — no 'fetch it yourself' advice while the search runs", () => {
+  const UNSUPPORTED = "Set this machine's relief valve to 250 bar.";
+
+  async function answerText(): Promise<string> {
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    return f
+      .filter((x) => x.kind === "content" || x.kind === "replace")
+      .map((x) => String(x.content ?? x.text ?? ""))
+      .join("");
+  }
+
+  it("the candidate search is running → the fallback says MIRA is already searching", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+    const text = await answerText();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalled();
+    expect(text).not.toContain("manufacturer's support");
+    expect(text).toContain("I'm already searching for the official manual");
+    // Codex #4183 F1: a CANDIDATE manual lands turned off pending review, so
+    // the fallback must say to check it and turn it on before asking again.
+    expect(text).toContain("turned off until you check it");
+    expect(text).toContain("turn it on there");
+  });
+
+  it("control: no search running (flags off) → the self-serve advice stays", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
+    const text = await answerText();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    expect(text).toContain("manufacturer's support");
   });
 });

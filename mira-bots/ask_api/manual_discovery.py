@@ -43,6 +43,7 @@ from shared.manual_search.quota import QuotaIdentity, provider_query_quota
 from shared.manual_search.search import (
     OEM_DOMAINS,
     TRUSTED_DOMAINS,
+    ProviderQueryBudget,
     oem_request_link,
     provider_query_budget,
     search_manual,
@@ -96,6 +97,32 @@ _NO_RESULT = {
     "trusted_distributor_host": False,
     "reason": "no_result",
 }
+
+
+def _search_stats(budget: ProviderQueryBudget | None, *, searched: bool = True) -> dict:
+    """Additive `search_stats` block for EVERY response (#4160 gate R15, PRD
+    v1.7.1 R15). No identity strings, URLs, or serials — provider-query
+    accounting plus the number of candidate documents search_manual() actually
+    examined (read by the judge or HEAD-validated; Codex #4194 F4).
+
+    `searched=False` is the early `invalid_query` return: no search ran, so the
+    zeros are real. A missing budget after a search was attempted means the
+    numbers are unknown — reported as null, never an invented zero."""
+    if budget is None:
+        if searched:
+            return {
+                "provider_queries": None,
+                "refused_queries": None,
+                "quota_denied": None,
+                "candidates": None,
+            }
+        return {"provider_queries": 0, "refused_queries": 0, "quota_denied": None, "candidates": 0}
+    return {
+        "provider_queries": budget.used,
+        "refused_queries": budget.refused,
+        "quota_denied": budget.quota_denied,
+        "candidates": len(budget.examined),
+    }
 
 
 def is_oem_host(manufacturer: str, host: str) -> bool:
@@ -186,6 +213,7 @@ async def manual_discovery_search(
     if not (model or catalog_number):
         result = _NO_RESULT.copy()
         result["reason"] = "invalid_query"
+        result["search_stats"] = _search_stats(None, searched=False)
         return result
 
     # Strongest identifier wins: catalog_number over model, when supplied.
@@ -206,6 +234,9 @@ async def manual_discovery_search(
     timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
     identity = QuotaIdentity(tenant_id=tenant_id, user_id=user_id)
+    # Bound even if a TimeoutError/Exception below fires before the `with`
+    # block assigns it (defensive — see _search_stats's None branch).
+    budget: ProviderQueryBudget | None = None
     try:
         # Every provider query this call sends is counted and capped (PRD R13)
         # AND reserved against the per-user/tenant/global Postgres caps (S4).
@@ -232,12 +263,14 @@ async def manual_discovery_search(
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
     except Exception as e:  # noqa: BLE001
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     interrupted = budget.quota_denied is not None and (
@@ -259,11 +292,13 @@ async def manual_discovery_search(
             # see the allow-list comment above) are an infra miss, not a cap.
             result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     if candidate is None:
         result = _NO_RESULT.copy()
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
     if candidate.get("reason") == "judged_not_applicable":
         # Every relevant candidate was READ and rejected. Owner canary rule
@@ -275,6 +310,7 @@ async def manual_discovery_search(
         result["reason_detail"] = candidate.get("reason_detail") or ""
         result["judged_rejected"] = candidate.get("judged_rejected") or []
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     validated = bool(candidate.get("validated"))
@@ -300,4 +336,5 @@ async def manual_discovery_search(
         "judge": candidate.get("judge") or None,
         "judged_rejected": candidate.get("judged_rejected") or [],
         "oem_request_url": oem_request_url,
+        "search_stats": _search_stats(budget),
     }
