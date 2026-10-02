@@ -38,9 +38,10 @@ export const MODIFIERS: readonly Modifier[] = [
   // caution: the complement is a false belief the technician is warned against.
   { type: "caution", scope: "window", trigger: "(?:never|don'?t|do\\s+not|doesn'?t|does\\s+not)\\s+(?:assume|think|believe|expect|presume|suppose)(?:\\s+that)?" },
   { type: "caution", scope: "window", trigger: "(?:it\\s+is|it'?s)\\s+(?:never|not)\\s+(?:true|the\\s+case)\\s+that" },
-  // hypothetical: an attributed claim, not an instruction. No bare "if" — it
-  // conditions instructions as often as it disclaims them.
-  { type: "hypothetical", scope: "window", trigger: "(?:some\\s+(?:people|techs?|technicians|manuals)|others?|you\\s+may\\s+hear|you\\s+might\\s+hear)\\s+(?:say|says|think|thinks|claim|claims|believe|believes|that)(?:\\s+that)?" },
+  // hypothetical: only frames that explicitly mark the claim FALSE. Bare
+  // attribution ("some manuals say …", "others say …") is NOT a modifier: it
+  // is the #3790 authority shape, and nothing in it says the claim is wrong.
+  // No bare "if" either — it conditions instructions as often as it disclaims.
   { type: "hypothetical", scope: "window", trigger: "(?:it\\s+is|it'?s)\\s+a\\s+(?:common\\s+)?(?:myth|misconception)\\s+that" },
   // negated: binds the head directly ("not safe to", "never keep", "No energized work").
   { type: "negated", scope: "adjacent", trigger: "not\\s+all|no|not|never|cannot|\\w+n't" },

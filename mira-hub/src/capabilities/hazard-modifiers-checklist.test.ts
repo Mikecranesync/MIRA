@@ -40,7 +40,7 @@ const IMPERATIVE_CORES: Record<string, string> = {
 };
 
 const CAUTION_OPENERS = ["Never assume", "Never assume that", "Don't think", "Do not assume that", "Don't believe that"];
-const HYPOTHETICAL_OPENERS = ["It is a myth that", "It's a common misconception that", "Some people say"];
+const HYPOTHETICAL_OPENERS = ["It is a myth that", "It's a common misconception that"];
 const NP_NEGATIONS = ["No", "Not all"];
 const IMPERATIVE_NEGATIONS = ["Never", "Do not", "Don't"];
 const TERMINATORS = [", but", "; however,", ";", ":", "."];
