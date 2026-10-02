@@ -160,7 +160,11 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // out.
   {
     id: "energized-work-approved",
-    re: /\b(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?![^.!?\n]{0,15}\bpermits?\b)[^.!?\n]{0,40}?\b(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
+    // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
+    // noun→predicate gap is at most four plain words — no clause punctuation,
+    // no negation — so "energized reset, which is never safe, ... is approved"
+    // cannot bridge two clauses.
+    re: /(?<![\w-])(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
   },
   // S3: the hazard action, coupled to an energized/running machine, then
   // affirmed by a predicate — "Resetting E-12 on a running TS-440 is fine".

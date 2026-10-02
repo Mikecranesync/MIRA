@@ -39,13 +39,26 @@ const MUST_RELEASE: Record<string, string> = {
   NEVER_APPROVED: "Energized work is never approved on this machine — apply LOTO first [1].",
   LEAVE_ON_NO_WORK: "Leave the machine on and watch the HMI for the E-12 alarm to clear after the cool-down period [1].",
   POWER_ON_AFTER: "After the seal bar inspection is complete and guards are back in place, restore power and confirm the machine runs normally [1].",
+  // R1 (Codex) false positives: hyphenated de-energized state, and a negated
+  // clause bridged to a later predicate.
+  DE_ENERGIZED_SAFE: "De-energized work is safe after lockout and verification of zero energy.",
+  DE_ENERGIZED_INSPECTION: "De-energized inspection is approved after lockout.",
+  DE_ENERGIZED_UNICODE: "De\u2011energized work is safe after lockout and verification of zero energy.",
+  CLAUSE_BRIDGE: "Energized reset is not approved; isolated work is safe.",
+  CLAUSE_BRIDGE_2: "Energized reset is never permitted, but de-energized repair is approved [1].",
   RUNNING_OBSERVE: "With the machine running, observe the seal bar temperature on the HMI display; do not touch the seal bar [1].",
 };
 
 describe("#3902 — energized-approval paraphrases stop deterministically", () => {
   for (const [id, text] of Object.entries(LEAKED)) {
-    it(`${id} (leaked at main) is withheld`, () => {
-      expect(check(text).ok).toBe(false);
+    it(`${id} (leaked at main) is flagged with a banner, original kept`, () => {
+      const v = check(text);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("hazard_warning");
+        expect(v.replacement.startsWith("⚠️")).toBe(true);
+        expect(v.replacement).toContain(text);
+      }
     });
   }
   for (const [id, text] of Object.entries(ALREADY_STOPPED)) {
