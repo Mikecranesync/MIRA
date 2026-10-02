@@ -152,6 +152,27 @@ export type PartSearchProposalEntry = {
   kind: typeof PART_SEARCH_PROPOSAL_KIND;
   candidate: string;
   manufacturer?: string | null;
+  /** #4185/#4186: how many of the technician's own turns this offer has
+   *  survived, counting the turn it was first proposed on as 1. Absent on a
+   *  legacy entry, treated the same as 1. */
+  age?: number;
+  /** #4193 Codex round 2 F3+F6: the ORIGIN turn — the turn that first
+   *  persisted this proposal. Carried UNCHANGED through every re-show copy
+   *  (a re-show persists a NEW turn row with a copy of the proposal, so the
+   *  turn a given copy lives on can no longer identify "this offer" once it
+   *  has been re-shown even once). Claiming locks and marks consumed on THIS
+   *  row — never on whichever turn happens to hold the copy being confirmed
+   *  — so every copy of one logical offer shares one canonical arbiter. See
+   *  `part-search-claim.ts`.
+   *
+   *  Absent on a proposal that predates this field — a TRUE legacy entry
+   *  (round 1's `id` field, or no identity at all). Round 1's `id` is NOT an
+   *  adequate substitute: it is still per-copy (round 1 minted a fresh
+   *  random id on every re-show of an id-less entry, Codex F6), so it names
+   *  no canonical row at all. Every caller resolves a legacy entry's origin
+   *  as the turn it currently sits on, the FIRST time it is read after this
+   *  fix ships — see `partSearchDecision()`. */
+  originTurnId?: string;
 };
 /** Marker appended to the proposal's own turn when a confirmation spends it
  *  (atomically, before any search) — a proposal authorizes ONE search (F3). */
@@ -163,11 +184,22 @@ export function partSearchConfirmation(candidate: string): string {
 }
 
 /** The candidate named by an exact confirmation message, or null. Nothing else
- *  in the message is allowed: extra words are not a confirmation. */
+ *  in the message is allowed: extra words are not a confirmation. Quotes are
+ *  OPTIONAL (#4185: "search the web for X" with no quotes at all \u2014 the shape
+ *  the #4160 Pixel walk incident actually typed \u2014 must still count); straight
+ *  or curly quotes are accepted when present. */
 export function confirmedPartSearchCandidate(message: string): string | null {
-  const m = message.trim().match(/^search the web for ["\u201c]([^"\u201c\u201d\n]{1,80})["\u201d]\.?$/i);
-  return m ? m[1] : null;
+  const m = message
+    .trim()
+    .match(/^search the web for (?:["\u201c]([^"\u201c\u201d\n]{1,80})["\u201d]|([^"\u201c\u201d\n]{1,80}?))\.?$/i);
+  return m ? (m[1] ?? m[2]) : null;
 }
+
+/** #4185/#4186: a bare affirmative right after an offer confirms it without
+ *  re-typing the candidate string. Only meaningful when a proposal is
+ *  actually pending (checked by the caller) \u2014 "yes" on its own is never a
+ *  lookup request. */
+const SHORT_AFFIRMATIVE = /^(?:yes(?:\s+search)?|search|go\s+ahead)[.!]?$/i;
 
 export function isPartSearchProposal(entry: unknown): entry is PartSearchProposalEntry {
   if (typeof entry !== "object" || entry === null) return false;
@@ -177,16 +209,76 @@ export function isPartSearchProposal(entry: unknown): entry is PartSearchProposa
 
 export type PartSearchDecision =
   | { action: "none" }
-  | { action: "propose"; candidate: string }
-  | { action: "search"; candidate: string }
+  // `originTurnId` is absent on a FRESH propose (age 1): the pure function
+  // computing this decision does not yet know the new turn's own id — the
+  // caller assigns it (this turn IS the origin) when persisting the proposal.
+  // It is always present on a RE-SHOW (age > 1), resolved from the pending
+  // entry that is being re-shown.
+  | { action: "propose"; candidate: string; age: number; originTurnId?: string }
+  | { action: "search"; candidate: string; originTurnId: string }
   | { action: "cancelled"; candidate: string }
-  | { action: "mismatch"; candidate: string | null };
+  | { action: "mismatch"; candidate: string | null }
+  /** #4193 Codex round 1 F2: re-showing one more time would mint an offer
+   *  past `PART_SEARCH_OFFER_TURN_LIMIT` that `pendingPartSearchProposal()`
+   *  can never again treat as valid — an offer the app would render as
+   *  actionable (a chip, "reply exactly: ...") that the very next turn
+   *  cannot confirm. The offer stops here instead: no further proposal, no
+   *  chip, just a plain statement that it expired. */
+  | { action: "expired"; candidate: string };
+
+/** #4185/#4186: how many of the technician's own turns an offer stays valid
+ *  for, when their reply doesn't match it. The offer is kept alive by being
+ *  re-proposed on each non-matching turn (see `partSearchDecision` below), so
+ *  a caller only ever needs the evidence of the single immediately-preceding
+ *  turn — the age travels forward with it. */
+const PART_SEARCH_OFFER_TURN_LIMIT = 3;
+
+/** The still-valid pending proposal in `previousEvidence` — not yet consumed,
+ *  and not older than `PART_SEARCH_OFFER_TURN_LIMIT` — or null. A proposal
+ *  past the limit is treated exactly like no proposal at all: it cannot be
+ *  confirmed, cancelled, or re-shown. Exported so a caller that re-persists a
+ *  re-shown offer can read its bound manufacturer back out. */
+export function pendingPartSearchProposal(previousEvidence: readonly unknown[]): PartSearchProposalEntry | null {
+  const consumed = previousEvidence.some(
+    (e) => typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === PART_SEARCH_CONSUMED_KIND,
+  );
+  const raw = consumed ? null : (previousEvidence.find(isPartSearchProposal) ?? null);
+  return raw && (raw.age ?? 1) <= PART_SEARCH_OFFER_TURN_LIMIT ? raw : null;
+}
+
+/** Case-insensitive identity match — a technician confirming by typing a
+ *  slightly different case ("ss5y3-duw01302") still names the same string;
+ *  the string that actually leaves is always the canonical `opts.candidate`,
+ *  never what was typed. */
+function sameCandidate(a: string | null, b: string | null): boolean {
+  return a !== null && b !== null && a.toUpperCase() === b.toUpperCase();
+}
+
+/** #4193 Codex round 2 F3+F6: the origin turn of a pending proposal — the
+ *  canonical row every copy of this logical offer is claimed against.
+ *
+ *  - A round-2 proposal already carries `originTurnId` (set once when first
+ *    proposed, unchanged on every re-show): use it as-is.
+ *  - A TRUE legacy entry (no `originTurnId`, including a round-1 entry whose
+ *    only identity was the per-copy `id` Codex F6 found inadequate) is
+ *    anchored to `previousTurnId` — the turn IT CURRENTLY SITS ON. This is
+ *    safe exactly because it is resolved fresh on every read: a legacy
+ *    proposal is only ever "pending" on the single most-recent turn that
+ *    carries it (an already-consumed or already-superseded copy is excluded
+ *    by `pendingPartSearchProposal()`), so at the moment this function is
+ *    called there is exactly one row to anchor to. */
+function originOf(pending: PartSearchProposalEntry, previousTurnId: string | null): string | undefined {
+  return pending.originTurnId ?? previousTurnId ?? undefined;
+}
 
 /**
  * Decide this turn's photo-part search. `candidate` is the part number the
  * current photo evidence yields (serial/FNSKU exclusions already applied);
  * `previousEvidence` is the evidence stored with the technician's immediately
  * preceding turn in this thread (empty when unknown — fail closed).
+ * `previousTurnId` is that same turn's own id (null when unknown) — used ONLY
+ * to anchor a true-legacy proposal's origin (see `originOf` above); a
+ * round-2 proposal already carries its own `originTurnId`.
  */
 export function partSearchDecision(opts: {
   message: string;
@@ -194,29 +286,62 @@ export function partSearchDecision(opts: {
   /** The maker the current photo yields with that part (null when none). */
   manufacturer?: string | null;
   previousEvidence: readonly unknown[];
+  previousTurnId?: string | null;
 }): PartSearchDecision {
-  const consumed = opts.previousEvidence.some(
-    (e) => typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === PART_SEARCH_CONSUMED_KIND,
-  );
-  const pending = consumed ? null : (opts.previousEvidence.find(isPartSearchProposal) ?? null);
+  const pending = pendingPartSearchProposal(opts.previousEvidence);
+  const previousTurnId = opts.previousTurnId ?? null;
   const makerNow = opts.manufacturer ?? null;
   const confirmed = confirmedPartSearchCandidate(opts.message);
-  if (confirmed !== null) {
-    // Exact string equality, three ways: what was proposed, what is confirmed,
+  // A bare affirmative only means anything when there is something pending to
+  // affirm — otherwise it is not a lookup request at all (falls through below).
+  const shortAffirmative = pending !== null && SHORT_AFFIRMATIVE.test(opts.message.trim());
+  if (confirmed !== null || shortAffirmative) {
+    // Three-way match: what was proposed, what (if anything) was typed back,
     // and what the photo yields now. Any difference means no egress.
-    return pending &&
-      opts.candidate &&
-      confirmed === opts.candidate &&
-      pending.candidate === opts.candidate &&
-      (pending.manufacturer ?? null) === makerNow
-      ? { action: "search", candidate: opts.candidate }
+    const matches =
+      pending !== null &&
+      opts.candidate !== null &&
+      sameCandidate(pending.candidate, opts.candidate) &&
+      (confirmed === null || sameCandidate(confirmed, opts.candidate)) &&
+      (pending.manufacturer ?? null) === makerNow;
+    if (!matches) return { action: "mismatch", candidate: opts.candidate };
+    // `matches` is true only when `pending !== null`, so an origin always
+    // resolves here (see `originOf` above) — never a bare `null`/`undefined`.
+    const originTurnId = originOf(pending as PartSearchProposalEntry, previousTurnId);
+    return originTurnId
+      ? { action: "search", candidate: opts.candidate as string, originTurnId }
       : { action: "mismatch", candidate: opts.candidate };
   }
   if (pending && opts.message.trim().replace(/[.!]$/, "").toLowerCase() === PART_SEARCH_CANCEL.toLowerCase()) {
     return { action: "cancelled", candidate: pending.candidate };
   }
   if (opts.candidate && explicitManualLookupRequest(opts.message)) {
-    return { action: "propose", candidate: opts.candidate };
+    // A FRESH propose: no origin yet — the caller assigns one (this turn's
+    // own, about-to-be-persisted id) when it actually persists the proposal.
+    return { action: "propose", candidate: opts.candidate, age: 1 };
+  }
+  // #4185/#4186: a reply that neither confirms, cancels, nor starts a fresh
+  // lookup does not expire a pending offer — it re-shows it, aging it by one
+  // turn, until PART_SEARCH_OFFER_TURN_LIMIT is reached.
+  //
+  // #4193 Codex round 1 F2: but NOT past the limit. `pendingPartSearchProposal()`
+  // only ever treats age <= PART_SEARCH_OFFER_TURN_LIMIT as valid, so
+  // re-showing at age === LIMIT would mint an age === LIMIT + 1 offer that is
+  // actionable in THIS turn's reply (a chip, confirmation instructions) but
+  // can never be confirmed in the NEXT one — the offer would already read as
+  // expired the moment it is re-shown. Stop one turn earlier instead: say the
+  // offer expired, with no further proposal to act on.
+  if (pending) {
+    const age = pending.age ?? 1;
+    if (age >= PART_SEARCH_OFFER_TURN_LIMIT) {
+      return { action: "expired", candidate: pending.candidate };
+    }
+    // #4193 Codex round 2 F6: the re-shown copy carries the SAME origin turn
+    // forward (never a freshly minted identity) — claiming locks and marks
+    // consumed on that ONE row (see part-search-claim.ts), so a confirmation
+    // racing a re-show can consume the offer at most once no matter which
+    // physical turn row ends up holding the copy that gets confirmed.
+    return { action: "propose", candidate: pending.candidate, age: age + 1, originTurnId: originOf(pending, previousTurnId) };
   }
   return { action: "none" };
 }

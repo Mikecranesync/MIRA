@@ -426,9 +426,14 @@ textarea {
 .replay-ingested { grid-column: 2 / -1; font-size: 11px; }
 
 /* Sensor camera overlay: the QR viewfinder is NOT a sheet (80% max-height);
-   it takes the screen and registers its own BACK layer above the sheet. */
+   it takes the screen and registers its own BACK layer above the sheet.
+   `position: fixed` draws edge-to-edge and escapes `.shell`'s own
+   safe-area padding (line 16), so the "← Sensor" cancel button rendered
+   inside the status bar's input frame and was untappable (#4187). Same
+   contract MediaViewer already carries for its toolbar (#3439). */
 .sensor-overlay {
   position: fixed; inset: 0; z-index: 70;
+  padding-top: env(safe-area-inset-top);
   background: var(--fl-bg); display: flex; flex-direction: column;
 }
 

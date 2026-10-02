@@ -429,3 +429,91 @@ describe("discoverManual — judge rejections disappear honestly", () => {
     expect(r.oemRequestUrl).toBeNull();
   });
 });
+
+// #4160 gate R15 — search_stats: additive provider-query accounting parsed
+// into the OPTIONAL DiscoveryResult.searchStats. Absent/malformed -> null,
+// never throws, and an old mira-ask version (no search_stats key at all)
+// must keep working exactly as before.
+describe("discoverManual — searchStats parsing (#4160 gate R15)", () => {
+  const respond = (body: Record<string, unknown>) =>
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })));
+
+  it("parses a well-formed search_stats block on a found response", async () => {
+    respond({
+      ...FOUND_BODY,
+      search_stats: { provider_queries: 4, refused_queries: 1, quota_denied: null, candidates: 3 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toEqual({ providerQueries: 4, refusedQueries: 1, quotaDenied: null, candidates: 3 });
+  });
+
+  it("parses the quota_denied scope string on a quota_exceeded response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "quota_exceeded",
+      reason_detail: "Daily manual-search limit reached for this user.",
+      search_stats: { provider_queries: 1, refused_queries: 1, quota_denied: "user_cap", candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.quotaExceeded).toBe(true);
+    expect(r.searchStats).toEqual({ providerQueries: 1, refusedQueries: 1, quotaDenied: "user_cap", candidates: 0 });
+  });
+
+  it("parses search_stats on a search_unavailable response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "search_unavailable",
+      search_stats: { provider_queries: 2, refused_queries: 0, quota_denied: null, candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.serviceAvailable).toBe(false);
+    expect(r.searchStats).toEqual({ providerQueries: 2, refusedQueries: 0, quotaDenied: null, candidates: 0 });
+  });
+
+  it("parses search_stats on a plain no-result response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "no_result",
+      search_stats: { provider_queries: 3, refused_queries: 0, quota_denied: null, candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(false);
+    expect(r.searchStats).toEqual({ providerQueries: 3, refusedQueries: 0, quotaDenied: null, candidates: 0 });
+  });
+
+  it("is null when the router (an old mira-ask version) sends no search_stats at all", async () => {
+    respond(FOUND_BODY);
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toBeNull();
+  });
+
+  it("is null, never throws, and never fabricates a 0 when search_stats is malformed", async () => {
+    respond({ ...FOUND_BODY, search_stats: "not-an-object" });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toBeNull();
+  });
+
+  it("is null when search_stats is present but every field is the wrong type", async () => {
+    respond({
+      ...FOUND_BODY,
+      search_stats: { provider_queries: "4", refused_queries: null, quota_denied: 7, candidates: "three" },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    // The object itself parses (it IS an object), but each field that fails
+    // its own type check reads null — never a fabricated number.
+    expect(r.searchStats).toEqual({ providerQueries: null, refusedQueries: null, quotaDenied: null, candidates: null });
+  });
+
+  it("never throws when the HTTP response has no body at all (service unavailable)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.serviceAvailable).toBe(false);
+    expect(r.searchStats).toBeNull();
+  });
+});
