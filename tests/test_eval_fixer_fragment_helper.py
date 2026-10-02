@@ -439,6 +439,7 @@ def test_cli_uses_a_distinct_code_for_no_fragment_vs_a_real_failure(
     """Clean-eval nights write no fragment. That is normal, not a delivery failure."""
     _, clone = origin_and_clone
     monkeypatch.setenv(efp.WORKER_ENV, "charlie")
+    monkeypatch.setenv("EVAL_FIXER_PUBLISH_WIKI", "1")
 
     assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
     assert "no fragment to publish" in capsys.readouterr().err
@@ -455,3 +456,23 @@ def test_wrapper_canary_detects_an_unpushed_local_eval_fixer_branch() -> None:
     ).read_text(encoding="utf-8")
     assert "refs/heads/docs/eval-fixer-*" in wrapper, "canary must look for unpushed run branches"
     assert "refs/remotes/origin/" in wrapper, "canary must compare against what reached origin"
+
+
+def test_publish_is_opt_in_and_a_written_fragment_is_not_pushed_by_default(
+    capsys: pytest.CaptureFixture[str], monkeypatch, origin_and_clone
+) -> None:
+    """2026-10-01: nightly wiki-fragment PRs are off unless EVAL_FIXER_PUBLISH_WIKI=1."""
+    origin, clone = origin_and_clone
+    monkeypatch.setenv(efp.WORKER_ENV, "charlie")
+    monkeypatch.delenv("EVAL_FIXER_PUBLISH_WIKI", raising=False)
+    _write_fragment(clone, "2026-08-30", "charlie")
+    branch = efp.publish_branch("2026-08-30", "charlie")
+
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
+    assert "opt-in" in capsys.readouterr().err
+    assert _run("git", "ls-remote", str(origin), branch, cwd=clone).stdout.strip() == ""
+
+    # Control: with the flag set, the same fragment IS published.
+    monkeypatch.setenv("EVAL_FIXER_PUBLISH_WIKI", "1")
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 0
+    assert _run("git", "ls-remote", str(origin), branch, cwd=clone).stdout.strip() != ""
