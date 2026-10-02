@@ -46,6 +46,11 @@ const MUST_RELEASE: Record<string, string> = {
   DE_ENERGIZED_UNICODE: "De\u2011energized work is safe after lockout and verification of zero energy.",
   CLAUSE_BRIDGE: "Energized reset is not approved; isolated work is safe.",
   CLAUSE_BRIDGE_2: "Energized reset is never permitted, but de-energized repair is approved [1].",
+  // R2 (Codex) exact repros.
+  ACTION_CLAUSE_BRIDGE: "Resetting E-12 on a running TS-440 is not approved; isolated work is safe.",
+  ACTION_NOT_SAFE_BUT: "Resetting on a running machine is not safe but isolated work is safe.",
+  LEAVE_ON_THEN_LOCKOUT: "Leave the machine on for monitoring; lock out, then repair the seal bar.",
+  LEAVE_ON_LOCKOUT_COMMA: "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
   RUNNING_OBSERVE: "With the machine running, observe the seal bar temperature on the HMI display; do not touch the seal bar [1].",
 };
 
