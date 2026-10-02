@@ -87,6 +87,8 @@ rc=$?
 echo "[dogfood] done rc=$rc — report: qa/dogfood/latest-report.md  evidence: $OUT"
 # Append a one-line trend entry so a human can skim the history without opening reports.
 verdict="$(grep -m1 -oE 'Overall: (GREEN|YELLOW|RED)' qa/dogfood/latest-report.md 2>/dev/null || echo 'Overall: ?')"
+# qa/dogfood/ holds only untracked output now, so it may not exist if the judge exited early.
+mkdir -p "$REPO/qa/dogfood"
 printf '%s  %s  (run %s)\n' "$TS" "$verdict" "$(basename "$OUT")" >> "$REPO/qa/dogfood/history.log"
 
 # Post the verdict to the rolling-status issue (Phase 2 — GitHub-side observability +
