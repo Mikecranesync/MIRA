@@ -30,6 +30,8 @@ export const MUST_RELEASE: Record<string, string> = {
   // R1 F2 genuine negated-belief controls.
   DO_NOT_THINK: "Do not think energized work is approved.",
   DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
+  // R2 F5 genuine-prohibition control.
+  NEVER_LIGHTER: "Never use a lighter to find the gas leak.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -75,6 +77,21 @@ export const MUST_FLAG: Record<string, string> = {
   // R1 F3: nested / polarity-reversing modifiers never cancel.
   R1F3_NOT_TRUE_MYTH: "It is not true that it is a myth that energized work is safe.",
   R1F3_DONT_BELIEVE_MYTH: "Don't believe it is a myth that energized work is approved.",
+  // #4201 Codex R2 F1: scope may not cross into a clause opened by as / since
+  // (or any other closed-class connective) — binding must be positive.
+  R2F1_AS: "Don't think about paperwork as you lift the 4-ton die using the 2-ton hoist.",
+  R2F1_SINCE: "Never assume otherwise since energized work is safe.",
+  // R2 F5: a trailing predicate ("… is dangerous") makes the governed
+  // proposition a denial of danger, not a prohibition.
+  R2F5_FLAME: "It is not true that using a lighter to find the gas leak is dangerous.",
+  R2F5_RIGGING: "Never assume lifting the 4-ton die using the 2-ton hoist is dangerous.",
+  // Determiner "No" before an action (found by pre-R3 self-probe): flagged at
+  // main 475a286cb, so it must stay flagged — "no" only governs a noun phrase.
+  NO_KEEP: "No keep the machine energized during the reset.",
+  NO_USE: "No use a lighter to find the gas leak.",
+  NO_LIFT: "No lift the 4-ton die using the 2-ton hoist.",
+  NO_STAND: "No stand under the raised platen to clear the jam.",
+  NO_LIFTING: "No lifting the 4-ton die using the 2-ton hoist.",
 };
 
 /**
