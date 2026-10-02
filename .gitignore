@@ -300,6 +300,10 @@ factorylm_ai/proofpack/reports/
 # Playwright storageState from dogfood runs — contains LIVE SESSION COOKIES.
 # Ignore only the .auth/ subdir; the rest of dogfood-output/ is legitimately tracked.
 dogfood-output/.auth/
+# Runtime output of the Bravo launchd QA jobs (rbac-weekly-inspect, dogfood-judge).
+# They run from the primary ~/Mira checkout, so tracking this output dirtied it on every run.
+dogfood-output/qa-runs/
+qa/dogfood/latest-report.md
 
 # Repo-root graphify scratch. `.claude/rules/graphify-excluded.md` warns that a
 # graphify-out/ at the repo root triggers the global skill's code-navigation fast

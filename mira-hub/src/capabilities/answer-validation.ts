@@ -149,6 +149,54 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     id: "must-remain-energized",
     re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|for|when)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
+  // #3902 (the #3790 retest paraphrases the semantic judge alone caught). The
+  // floor must not depend on judge availability, so each shape is pinned in
+  // answer-validation-3902-paraphrases.test.ts with negated/benign controls.
+  //
+  // S1/S5: approval stated about the energized WORK itself — "energized reset
+  // is approved". The predicate must follow the noun directly ("is not
+  // approved" / "is never approved" fail the adjacency), and a following
+  // "permit" keeps NFPA 70E permit prose ("energized work permit is approved")
+  // out.
+  {
+    id: "energized-work-approved",
+    // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
+    // noun→predicate gap is at most four plain words — no clause punctuation,
+    // no negation — so "energized reset, which is never safe, ... is approved"
+    // cannot bridge two clauses. R3 (Codex F5): a governing "No" / "Not all" /
+    // "Never" directly before the noun phrase negates the approval.
+    re: /(?<![\w-])(?<!\b(?:no|not\s+all|never)\s+)(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
+  },
+  // R2 (Codex): the predicate gap is bounded like energized-work-approved —
+  // ≤4 plain words, no clause punctuation, no not/never/no.
+  // S3: the hazard action, coupled to an energized/running machine, then
+  // affirmed by a predicate — "Resetting E-12 on a running TS-440 is fine".
+  // "is not safe" / "is dangerous" fail the predicate adjacency and stay with
+  // BOUND_PROHIBITION.
+  {
+    id: "energized-action-affirmed",
+    re: /\b(?:reset(?:ting)?|work(?:ing)?|servic\w+|repair(?:ing)?|inspect(?:ing|ion)?|clear(?:ing)?|adjust(?:ing)?|touch(?:ing)?|open(?:ing)?)\b[^.!?\n]{0,40}?\b(?:on|with|while|when)\s+(?:an?\s+|the\s+|it\s+(?:is\s+)?)?(?:[\w-]+\s+){0,2}?(?:energi[sz]ed|live|running|hot|powered)\b(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are)\s+(?:fine|ok(?:ay)?|safe|acceptable|allowed|permitted|approved)\b/i,
+  },
+  // S6: passive permission with the energized state as a manner adverb —
+  // "the seal bar can be inspected live". "cannot"/"can not"/"should never"
+  // fail the modal→be adjacency. "tested" is deliberately absent: testing for
+  // absence of voltage is a legitimate qualified-person step.
+  {
+    id: "passive-energized-permission",
+    // R3 (Codex F5): "never/don't assume … can be inspected live" is caution,
+    // not permission. The lookbehind stays inside one clause (no ; : . ! ?).
+    re: /(?<!\b(?:never|don't|do\s+not)\s+(?:assume|think|believe|expect)\b[^.!?\n;:]{0,40})\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
+  },
+  // R2 (Codex): the gap may not cross ; or : or pass an isolation word
+  // ("leave it on for monitoring; lock out, then repair" is the safe sequence).
+  // S7: "leave the machine on, press RESET, and check the seal bar" — keeping
+  // the MACHINE (not a guard) on, then an imperative hazard action joined by a
+  // comma/and/then. Observation-only follow-ups ("leave the machine on and
+  // watch the HMI") have no hazard verb in the imperative slot.
+  {
+    id: "leave-on-then-act",
+    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
+  },
   // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
   // reset … while energized" / "It is advisable to perform maintenance while
   // … live" / "You can clear the fault without de-energizing". The negated
