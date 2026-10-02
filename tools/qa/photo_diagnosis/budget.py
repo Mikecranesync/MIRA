@@ -8,6 +8,7 @@ whole point of reserving first.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,6 +45,22 @@ class Ledger:
         manual_search_cap: int = DEFAULT_MANUAL_SEARCH_CAP,
         queries_per_search: int = DEFAULT_QUERIES_PER_SEARCH,
     ):
+        # r10 F4: NaN/inf/negative caps or a non-positive query multiplier
+        # silently defeat every hard-stop comparison below.
+        if not (isinstance(cap_usd, (int, float)) and math.isfinite(cap_usd) and cap_usd >= 0):
+            raise ValueError(f"cap_usd must be a finite, non-negative number, got {cap_usd!r}")
+        if not (
+            isinstance(manual_search_cap, int)
+            and not isinstance(manual_search_cap, bool)
+            and manual_search_cap >= 0
+        ):
+            raise ValueError(f"manual_search_cap must be an int >= 0, got {manual_search_cap!r}")
+        if not (
+            isinstance(queries_per_search, int)
+            and not isinstance(queries_per_search, bool)
+            and queries_per_search >= 1
+        ):
+            raise ValueError(f"queries_per_search must be an int >= 1, got {queries_per_search!r}")
         self.cap_usd = cap_usd
         self.spent_usd = 0.0
         self.manual_search_queries = 0

@@ -22,6 +22,7 @@ import argparse
 import base64
 import importlib.util
 import json
+import math
 import os
 import re
 import sys
@@ -378,11 +379,13 @@ def run_diagnosis_case(
     turn_index = 0
     status = "completed"
     reason = ""
-    # Carried from the PREVIOUS turn's product-ask fulfillment (F5) — the
-    # photo/manual attached by a retake/manual-upload only rides the very
-    # next chat turn, same as the opening photo rides only turn 1.
+    # Carried from the PREVIOUS turn's product-ask fulfillment (F5): a
+    # retake photo rides only the very next chat turn, same as the opening
+    # photo rides only turn 1. Manuals are different; see below.
     pending_visual_evidence: dict | None = visual_evidence
-    pending_source_doc_ids: list[str] | None = source_doc_ids or None
+    # r10 F3: manual selection is PERSISTENT for the whole case (the Hub
+    # validates the selection on every request); only the photo is transient.
+    selected_source_doc_ids: list[str] = list(source_doc_ids)
 
     while turn_index < case.get("max_turns", schema.DEFAULT_MAX_TURNS):
         # F4: enforce the manual-search cap BEFORE each turn, not after —
@@ -409,7 +412,7 @@ def run_diagnosis_case(
                 thread_id=thread_id,
                 visual_evidence=pending_visual_evidence,
                 history=history if turn_index > 1 else None,
-                source_doc_ids=pending_source_doc_ids,
+                source_doc_ids=selected_source_doc_ids or None,
             )
         except Exception as e:  # noqa: BLE001 — recorded as a failed run, not silently dropped
             # F12: the request may have reached the server; charge worst case.
@@ -417,7 +420,6 @@ def run_diagnosis_case(
             status, reason = "error", f"mira turn failed: {e}"
             break
         pending_visual_evidence = None
-        pending_source_doc_ids = None
         ledger.record_manual_search_from_packet(p)
         contract = _contract_record(row, w)
         mira_reply = w["content"]
@@ -494,7 +496,8 @@ def run_diagnosis_case(
             try:
                 manual_path = _resolve_source(sim_turn.product_ask_path, case["_source_file"])
                 doc_id = hub.attach_manual(nb, manual_path)
-                pending_source_doc_ids = [doc_id]
+                if doc_id not in selected_source_doc_ids:
+                    selected_source_doc_ids.append(doc_id)  # added, never swapped in
             except Exception as e:  # noqa: BLE001
                 status, reason = "error", f"manual upload failed: {e}"
                 break
@@ -597,7 +600,7 @@ def run_qa_case(
                 f"{case['id']} q{i}",
                 q["q"],
                 visual_evidence=visual_evidence if i == 0 else None,
-                source_doc_ids=source_doc_ids if i == 0 else None,
+                source_doc_ids=source_doc_ids or None,  # r10 F3: every question
             )
         except Exception as e:  # noqa: BLE001
             # F12: the request may have reached the server; charge worst case.
@@ -885,6 +888,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not args.cookie:
         print("ACCEPT_COOKIE / BETA_GATE_COOKIE is required for a live run", file=sys.stderr)
+        return 2
+    # r10 F4: reject settings that would defeat a hard stop BEFORE any client,
+    # Hub request or paid call exists.
+    try:
+        budget_mod.Ledger(args.budget_usd, args.manual_search_cap, args.queries_per_search)
+        for arm in ("judge", "baseline"):
+            for side in ("in", "out"):
+                rate = getattr(args, f"{arm}_price_{side}")
+                if rate is not None and (not math.isfinite(rate) or rate < 0):
+                    raise ValueError(f"--{arm}-price-{side} must be finite and >= 0, got {rate!r}")
+    except ValueError as e:
+        print(f"invalid setting: {e}", file=sys.stderr)
         return 2
 
     ra = load_retrieval_acceptance()

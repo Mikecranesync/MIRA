@@ -8,6 +8,7 @@ run rather than spend invisibly (`.claude/rules/zero-token-architecture.md`).
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -56,6 +57,13 @@ class OpenAIProvider:
             )
         self.price_in_per_mtok = float(price_in_per_mtok)
         self.price_out_per_mtok = float(price_out_per_mtok)
+        for label, rate in (("input", self.price_in_per_mtok), ("output", self.price_out_per_mtok)):
+            if (
+                not math.isfinite(rate) or rate < 0
+            ):  # r10 F4: NaN/inf/negative breaks cost accounting
+                raise ValueError(
+                    f"{label} price must be a finite, non-negative $/Mtok, got {rate!r}"
+                )
         self.model = model
         self.name = "openai"
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")

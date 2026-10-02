@@ -1271,3 +1271,88 @@ def test_r9_f1_runner_refuses_a_turn_that_could_start_both_lanes_past_the_cap(mo
     roomy = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     runner.run_qa_case(hub2, ra2, _qa_case(), roomy, FakeProvider(responses=[]), repeat=0)
     assert _chat_count(transport2) == 1 and roomy.manual_search_queries == 8
+
+
+# ---------------------------------------------------------------------------
+# Codex r10 (#4182)
+
+
+def test_r10_f3_a_supplied_manual_stays_selected_on_every_diagnosis_turn(monkeypatch):
+    transport = _FakeHubTransport(trace_id="a" * 32, replies=["one.", "two.", "three."])
+    ra, hub = _patched_hub(monkeypatch, transport)
+    judge = FakeProvider(responses=[_full_turn_json()] * 3 + [_outcome_json()])
+    case = _diagnosis_case(max_turns=3, sources=[str(MANUAL_PDF)])
+    runner.run_diagnosis_case(
+        hub,
+        ra,
+        case,
+        budget.Ledger(cap_usd=10.0),
+        judge,
+        lambda r, c: simulator.ClassifierResult(check_ids=["door_switch"]),
+        repeat=0,
+    )
+    assert [b.get("sourceDocIds") for b in transport.chat_bodies] == [["doc-1"]] * 3
+
+
+def test_r10_f3_an_uploaded_manual_is_added_and_kept_not_swapped_in_once(monkeypatch):
+    transport = _FakeHubTransport(trace_id="a" * 32, replies=["send the manual?", "ok.", "ok."])
+    ra, hub = _patched_hub(monkeypatch, transport)
+    judge = FakeProvider(responses=[_full_turn_json()] * 3 + [_outcome_json()])
+    asks = [
+        simulator.ClassifierResult(product_ask="manual_upload"),
+        simulator.ClassifierResult(check_ids=["door_switch"]),
+    ]
+    case = _diagnosis_case(max_turns=3, sources=[str(MANUAL_PDF)])
+    runner.run_diagnosis_case(
+        hub, ra, case, budget.Ledger(cap_usd=10.0), judge, lambda r, c: asks.pop(0), repeat=0
+    )
+    selections = [b.get("sourceDocIds") for b in transport.chat_bodies]
+    assert selections == [["doc-1"], ["doc-1", "doc-2"], ["doc-1", "doc-2"]]
+
+
+def test_r10_f3_qa_sends_the_manual_with_every_question(monkeypatch):
+    transport = _FakeHubTransport(trace_id="a" * 32, replies=["PNOZ X3.", "24 V."])
+    ra, hub = _patched_hub(monkeypatch, transport)
+    case = _qa_case(sources=[str(MANUAL_PDF)])
+    runner.run_qa_case(hub, ra, case, budget.Ledger(cap_usd=10.0), FakeProvider(responses=[]), 0)
+    assert [b.get("sourceDocIds") for b in transport.chat_bodies] == [["doc-1"], ["doc-1"]]
+
+
+@pytest.mark.parametrize(
+    "flag, value",
+    [
+        ("--budget-usd", "nan"),
+        ("--budget-usd", "inf"),
+        ("--budget-usd", "-1"),
+        ("--queries-per-search", "0"),
+        ("--queries-per-search", "-4"),
+        ("--manual-search-cap", "-1"),
+        ("--judge-price-in", "-1"),
+        ("--judge-price-out", "nan"),
+    ],
+)
+def test_r10_f4_invalid_numeric_settings_fail_before_any_request(
+    monkeypatch, tmp_path, flag, value
+):
+    ra = runner.load_retrieval_acceptance()
+    monkeypatch.setattr(runner, "load_retrieval_acceptance", lambda: ra)
+
+    def no_requests(*a, **kw):
+        raise AssertionError("a Hub request was made with an invalid setting")
+
+    monkeypatch.setattr(ra.Hub, "_req", no_requests)
+    rc = runner.main(
+        [
+            "--cases",
+            str(tmp_path),
+            "--base",
+            "https://app-staging.factorylm.com",
+            "--cookie",
+            "c",
+            "--out",
+            str(tmp_path / "o"),
+            flag,
+            value,
+        ]
+    )
+    assert rc == 2

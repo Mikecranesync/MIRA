@@ -337,3 +337,37 @@ def test_r9_f1_unknown_telemetry_is_charged_for_both_lanes():
     led = Ledger(cap_usd=1.0, manual_search_cap=100, queries_per_search=4)
     led.record_manual_search_from_packet(None)
     assert led.manual_search_queries == 8
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"cap_usd": float("nan")},
+        {"cap_usd": float("inf")},
+        {"cap_usd": -1.0},
+        {"cap_usd": 1.0, "queries_per_search": 0},
+        {"cap_usd": 1.0, "queries_per_search": -4},
+        {"cap_usd": 1.0, "queries_per_search": 2.5},
+        {"cap_usd": 1.0, "manual_search_cap": -1},
+    ],
+)
+def test_r10_f4_ledger_rejects_settings_that_defeat_the_hard_stops(kw):
+    with pytest.raises(ValueError):
+        Ledger(**kw)
+
+
+def test_r10_f4_valid_settings_and_a_zero_dollar_cap_still_construct():
+    assert Ledger(cap_usd=0.0).usd_stopped() is True
+    assert Ledger(cap_usd=5.0, manual_search_cap=0, queries_per_search=1).manual_search_cap == 0
+
+
+@pytest.mark.parametrize("price", [float("nan"), float("inf"), -1.0])
+def test_r10_f4_provider_rejects_non_finite_or_negative_prices(price):
+    with pytest.raises(ValueError):
+        OpenAIProvider(
+            "m", api_key="sk-test-not-real", price_in_per_mtok=price, price_out_per_mtok=1.0
+        )
+    with pytest.raises(ValueError):
+        OpenAIProvider(
+            "m", api_key="sk-test-not-real", price_in_per_mtok=1.0, price_out_per_mtok=price
+        )
