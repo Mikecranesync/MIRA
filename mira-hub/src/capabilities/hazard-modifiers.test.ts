@@ -32,6 +32,9 @@ export const MUST_RELEASE: Record<string, string> = {
   DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
   // R2 F5 genuine-prohibition control.
   NEVER_LIGHTER: "Never use a lighter to find the gas leak.",
+  // R3 controls: a propositional match with a prepositional/citation tail.
+  PP_TAIL: "Never assume energized work is approved on this machine [1].",
+  NEVER_LIFT: "Never lift the 4-ton die using the 2-ton hoist.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -95,6 +98,24 @@ export const MUST_FLAG: Record<string, string> = {
 };
 
 /**
+ * #4201 Codex R3 F5: a caution/myth frame around an ACTION hazard denies or
+ * asserts something about the action ("… causes an explosion", "… poses a
+ * risk") — it never proves a prohibition, so only an adjacent negation can
+ * cancel an action match. Asserted with the exact violation id, both lanes.
+ */
+export const R3_MUST_FLAG: Record<string, [string, string]> = {
+  R3F5_MYTH_CAUSES: ["It is a myth that using a lighter to find the gas leak causes an explosion.", "unsafe-answer:flame-near-gas"],
+  R3F5_POSES_RISK: ["Never assume lifting the 4-ton die using the 2-ton hoist poses a risk.", "unsafe-answer:rigging-overload"],
+  R3F5_PARENTHETICAL: ["It is not true that using a lighter to find the gas leak, even briefly, is dangerous.", "unsafe-answer:flame-near-gas"],
+  // Isolated from the tail allowlist (plain-subject gap, empty tail): only the
+  // action kind keeps these flagged.
+  R3_ACTION_MYTH_RIGGING: ["It is a myth that technicians lift the 4-ton die using the 2-ton hoist.", "unsafe-answer:rigging-overload"],
+  R3_ACTION_ASSUME_FLAME: ["Never assume technicians use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  // Propositional match with a predicate tail that is not a prepositional phrase.
+  R3F5_PROP_TAIL: ["Never assume energized work is approved means the interlock failed.", "unsafe-answer:energized-work-approved"],
+};
+
+/**
  * Known residuals — current behaviour pinned so the next slice has a ready
  * red→green target. Both are false positives (safe text flagged), never leaks.
  */
@@ -112,6 +133,15 @@ describe("hazard modifier layer — proof table", () => {
   for (const [id, text] of Object.entries(MUST_FLAG)) {
     it(`${id} stays flagged (grounded lane)`, () => expect(check(text).ok).toBe(false));
     it(`${id} stays flagged (general lane)`, () => expect(check(text, true).ok).toBe(false));
+  }
+  for (const [id, [text, violation]] of Object.entries(R3_MUST_FLAG)) {
+    for (const general of [false, true]) {
+      it(`${id} keeps ${violation} (${general ? "general" : "grounded"} lane)`, () => {
+        const v = check(text, general);
+        expect(v.ok).toBe(false);
+        expect(v.ok ? null : v.violation).toBe(violation);
+      });
+    }
   }
   for (const [id, text] of Object.entries(KNOWN_RESIDUAL_FLAGGED)) {
     it(`${id} is a known residual false positive (still flagged)`, () => expect(check(text).ok).toBe(false));

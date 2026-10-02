@@ -25,6 +25,17 @@
 
 export type ModifierType = "negated" | "caution" | "hypothetical";
 export type ModifierScope = "adjacent" | "window";
+/**
+ * What a hazard rule's match IS (#4201 Codex R3). A `propositional` match
+ * carries its own complete predicate ("energized work IS APPROVED", "can BE
+ * INSPECTED LIVE", "it is FINE TO bypass") — a caution/myth frame around it
+ * negates exactly that proposition. An `action` match is an instruction or
+ * activity ("use a lighter…", "lift the 4-ton die…"); a frame around it says
+ * something ABOUT the action ("… causes an explosion", "… poses a risk") and
+ * never proves a prohibition, so only an adjacent negation ("Never use…") can
+ * cancel it — the same binding main had.
+ */
+export type HazardKind = "propositional" | "action";
 
 export interface Modifier {
   readonly type: ModifierType;
@@ -82,9 +93,14 @@ const FINITE_IN_GAP = /\b(?:is|are|was|were|am|be|been|being|has|have|had|can|co
 // clause, so the binding is unproven and nothing is cancelled. Closed-class
 // lists are finite, unlike the open set of clause grammars.
 const CONNECTIVE_IN_GAP = /\b(?:about|above|across|after|against|along|among|around|as|at|before|behind|below|beneath|beside|between|beyond|by|despite|down|during|except|for|from|in|inside|into|like|near|of|off|on|onto|out|outside|over|past|since|through|throughout|till|to|toward|towards|under|until|up|upon|via|with|within|without|and|or|nor|but|so|yet|because|while|whilst|when|whenever|where|wherever|whether|if|unless|though|although|once|than|whereas|lest|otherwise|who|whom|whose|which|what|how|why)\b/i;
-// Positive binding (R2 F5): the governed proposition must END with the match.
-// A finite verb after the match in the same clause ("… using a lighter … IS
-// DANGEROUS") makes the modifier deny something else — keep the flag.
+// Positive binding (R3): after a propositional match, the rest of its clause
+// may only be nothing, a short prepositional phrase ("on this machine", "for
+// the TS-440"), "here"/"today", and/or a citation. Anything else (a verb, a
+// parenthetical, a relative clause) is unproven — keep the flag. An allowlist,
+// not a verb blocklist: Codex R2/R3 showed blocklists do not converge.
+const PROPOSITION_TAIL = /^\s*(?:(?:on|for|at|in|with|within|across|throughout)\s+(?:(?:this|that|the|a|an|any|all|our|your|its|these|those)\s+)?[\w-]+(?:\s+[\w-]+){0,2}|here|today|now)?\s*(?:\[\d+\]\s*)*$/i;
+// Positive binding (R2 F5): an adjacent negation's governed instruction must
+// END with the match; a finite verb after it in the same clause keeps the flag.
 const TRAILING_PREDICATE = /\b(?:is|are|was|were|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must|does|did|seems?|remains?|becomes?|counts?)\b|\w+n't\b/i;
 // Polarity cues for the nesting check (R1 F3).
 const NEGATION_WORD = /\b(?:no|not|never|cannot|\w+n't)\b/gi;
@@ -111,15 +127,20 @@ export interface ModifierHit {
  * clause-anchored match (which begins with its own ". " or "; ") cannot hide
  * the terminator inside the match.
  */
-export function governingModifier(text: string, matchStart: number, matchEnd?: number): ModifierHit | null {
+export function governingModifier(
+  text: string,
+  matchStart: number,
+  matchEnd?: number,
+  kind: HazardKind = "propositional",
+): ModifierHit | null {
   const rel = text.slice(matchStart).search(/\w/);
   const start = rel < 0 ? matchStart : matchStart + rel;
   const before = text.slice(0, start);
   if (cueCount(before) > 1) return null;
-  if (matchEnd !== undefined) {
-    const after = text.slice(matchEnd).split(TERMINATOR)[0] ?? "";
-    if (TRAILING_PREDICATE.test(after)) return null;
-  }
+  // The clause tail after the match — cut at a sentence end or ; : only, so a
+  // parenthetical comma ("…, even briefly, is dangerous") stays visible.
+  const tail = matchEnd === undefined ? "" : (text.slice(matchEnd).split(/[.!?;:\n]/)[0] ?? "");
+  if (TRAILING_PREDICATE.test(tail.split(TERMINATOR)[0] ?? "")) return null;
 
   for (const { m, adjacent, any } of TRIGGER_RES) {
     if (m.scope === "adjacent") {
@@ -129,7 +150,9 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
       if (DETERMINER_NEGATION.test(hit[1].trim()) && !NP_HEAD.test(text.slice(start))) continue;
       return { type: m.type, trigger: hit[1] };
     }
-    // window: the LAST occurrence of the trigger before the match.
+    // window: propositional matches only, and only with a proven tail.
+    if (kind === "action" || !PROPOSITION_TAIL.test(tail)) continue;
+    // the LAST occurrence of the trigger before the match.
     let last: RegExpExecArray | null = null;
     any.lastIndex = 0;
     for (let h = any.exec(before); h; h = any.exec(before)) last = h;
@@ -174,10 +197,14 @@ function cueCount(before: string): number {
  * candidate start is tried, so a cancelled clause never hides a later
  * affirmative one ("Never assume X; energized work is approved").
  */
-export function firstUngovernedMatch(re: RegExp, text: string): RegExpExecArray | null {
+export function firstUngovernedMatch(
+  re: RegExp,
+  text: string,
+  kind: HazardKind = "propositional",
+): RegExpExecArray | null {
   const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   for (let m = g.exec(text); m; m = g.exec(text)) {
-    if (!governingModifier(text, m.index, m.index + m[0].length)) return m;
+    if (!governingModifier(text, m.index, m.index + m[0].length, kind)) return m;
     g.lastIndex = m.index + 1;
   }
   return null;
