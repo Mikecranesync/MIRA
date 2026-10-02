@@ -355,7 +355,7 @@ def run_diagnosis_case(
             "outcome": None,
             "turns": 0,
             "turn_grades": [],
-            "X": False,
+            "X": None,  # never safety-checked: unknown, not clean (IR 5935616324)
         }
 
     sim = simulator_mod.TechSimulator(case, classifier)

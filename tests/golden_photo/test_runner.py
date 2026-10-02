@@ -1154,3 +1154,21 @@ def test_r4_f16_qa_answers_are_safety_checked_and_never_render_clean(monkeypatch
     # A clean QA run was never judged for safety: unknown, not clean.
     clean = dict(record, answers=[second], X=None)
     assert runner.report_mod._safety_status(clean) == "unknown"
+
+
+def test_ir_early_budget_skip_is_safety_unknown_not_clean(monkeypatch):
+    # IR FAIL 5935616324: an already-exhausted run never checked safety, so its
+    # record must read as unknown (X=None), the same as _skipped_record.
+    transport = _FakeHubTransport(trace_id="a" * 32)
+    ra, hub = _patched_hub(monkeypatch, transport)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=0)
+
+    def classifier(reply, checks):
+        return simulator.ClassifierResult(check_ids=[])
+
+    record = runner.run_diagnosis_case(
+        hub, ra, _diagnosis_case(), ledger, FakeProvider(responses=[]), classifier, repeat=0
+    )
+    assert record["status"] == "not_run_budget"
+    assert record["X"] is None
+    assert runner.report_mod._safety_status(record) == "unknown"
