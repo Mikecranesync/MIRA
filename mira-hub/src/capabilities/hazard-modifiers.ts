@@ -76,8 +76,26 @@ const CLAUSE_SUBJECT_START = /^(?:you|it|it's|we|i|they|he|she|yes|this|that)\b/
 // the complement closed before the hazard ("never assume the hoist IS adequate
 // … lifting …"), so the hazard is outside scope (R1 F1).
 const FINITE_IN_GAP = /\b(?:is|are|was|were|am|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must|do|does|did)\b|\w+n't\b/i;
+// Positive binding (#4201 Codex R2 F1): a window gap must be a plain subject
+// ("the seal bar", "that it"). Any closed-class connective — preposition,
+// conjunction, subordinator, wh-word — means the hazard may sit in another
+// clause, so the binding is unproven and nothing is cancelled. Closed-class
+// lists are finite, unlike the open set of clause grammars.
+const CONNECTIVE_IN_GAP = /\b(?:about|above|across|after|against|along|among|around|as|at|before|behind|below|beneath|beside|between|beyond|by|despite|down|during|except|for|from|in|inside|into|like|near|of|off|on|onto|out|outside|over|past|since|through|throughout|till|to|toward|towards|under|until|up|upon|via|with|within|without|and|or|nor|but|so|yet|because|while|whilst|when|whenever|where|wherever|whether|if|unless|though|although|once|than|whereas|lest|otherwise|who|whom|whose|which|what|how|why)\b/i;
+// Positive binding (R2 F5): the governed proposition must END with the match.
+// A finite verb after the match in the same clause ("… using a lighter … IS
+// DANGEROUS") makes the modifier deny something else — keep the flag.
+const TRAILING_PREDICATE = /\b(?:is|are|was|were|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must|does|did|seems?|remains?|becomes?|counts?)\b|\w+n't\b/i;
 // Polarity cues for the nesting check (R1 F3).
 const NEGATION_WORD = /\b(?:no|not|never|cannot|\w+n't)\b/gi;
+// Determiner negations ("no", "not all") negate a noun phrase, never a verb:
+// "No keep the machine energized…" / "No lifting … 2-ton hoist" are not
+// prohibitions the layer can prove. They govern only a match that opens with
+// an energized-state noun phrase — exactly the binding the removed per-rule
+// lookbehinds gave "no" (energized-work-approved only). Widening it needs
+// evidence, not a default.
+const DETERMINER_NEGATION = /^(?:no|not\s+all)$/i;
+const NP_HEAD = /^(?:energi[sz]ed|live|hot|power(?:ed)?)\b/i;
 const PSEUDO_SRC = `(?:${PSEUDO_TRIGGERS.join("|")})`;
 const PSEUDO_BEFORE_MATCH = new RegExp(`\\b${PSEUDO_SRC}[ \\t]+$`, "i");
 const PSEUDO_AT = new RegExp(`^\\W*${PSEUDO_SRC}\\b`, "i");
@@ -93,17 +111,22 @@ export interface ModifierHit {
  * clause-anchored match (which begins with its own ". " or "; ") cannot hide
  * the terminator inside the match.
  */
-export function governingModifier(text: string, matchStart: number): ModifierHit | null {
+export function governingModifier(text: string, matchStart: number, matchEnd?: number): ModifierHit | null {
   const rel = text.slice(matchStart).search(/\w/);
   const start = rel < 0 ? matchStart : matchStart + rel;
   const before = text.slice(0, start);
   if (cueCount(before) > 1) return null;
+  if (matchEnd !== undefined) {
+    const after = text.slice(matchEnd).split(TERMINATOR)[0] ?? "";
+    if (TRAILING_PREDICATE.test(after)) return null;
+  }
 
   for (const { m, adjacent, any } of TRIGGER_RES) {
     if (m.scope === "adjacent") {
       const hit = adjacent.exec(before);
       if (!hit || PSEUDO_BEFORE_MATCH.test(before)) continue;
       if (CLAUSE_SUBJECT_START.test(text.slice(start))) continue;
+      if (DETERMINER_NEGATION.test(hit[1].trim()) && !NP_HEAD.test(text.slice(start))) continue;
       return { type: m.type, trigger: hit[1] };
     }
     // window: the LAST occurrence of the trigger before the match.
@@ -115,7 +138,7 @@ export function governingModifier(text: string, matchStart: number): ModifierHit
     // A copula directly before the match is the hazard's own ("never assume it
     // IS fine to bypass…"); any other finite verb closed the complement first.
     const complement = gap.replace(/\b(?:is|are|was|were)\s*$/i, "");
-    if (TERMINATOR.test(gap) || FINITE_IN_GAP.test(complement)) continue;
+    if (TERMINATOR.test(gap) || FINITE_IN_GAP.test(complement) || CONNECTIVE_IN_GAP.test(gap)) continue;
     if (gap.trim().split(/\s+/).filter(Boolean).length > WINDOW_WORDS) continue;
     return { type: m.type, trigger: last[0].trim() };
   }
@@ -154,7 +177,7 @@ function cueCount(before: string): number {
 export function firstUngovernedMatch(re: RegExp, text: string): RegExpExecArray | null {
   const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   for (let m = g.exec(text); m; m = g.exec(text)) {
-    if (!governingModifier(text, m.index)) return m;
+    if (!governingModifier(text, m.index, m.index + m[0].length)) return m;
     g.lastIndex = m.index + 1;
   }
   return null;
