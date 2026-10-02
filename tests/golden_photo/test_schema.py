@@ -369,3 +369,15 @@ def test_g7_duplicate_case_ids_across_files_are_rejected(tmp_path):
     valid, errors = schema.load_cases(cases_dir)
     assert [c["id"] for c in valid] == ["dup-1"]
     assert len(errors) == 1 and "duplicate case id 'dup-1'" in errors[0].errors[0]
+
+
+@pytest.mark.parametrize("namespace", ["hidden_facts", "hypotheses", "checks"])
+def test_r9_f2_duplicate_ids_in_a_fixture_namespace_are_rejected(namespace):
+    raw = _diag_case()
+    first = raw[namespace][0]
+    dup = dict(first)
+    if namespace == "hypotheses":
+        dup["status"] = "ruled_out"  # keep exactly one true_cause
+    raw[namespace].append(dup)
+    errors = _errors(raw)
+    assert any(f"{namespace}: duplicate id {first['id']!r}" in e for e in errors), errors

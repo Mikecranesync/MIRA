@@ -118,11 +118,11 @@ def test_manual_search_record_never_raises_past_cap():
 
 
 def test_manual_search_cap_exceeded_is_the_pre_turn_gate():
-    ledger = Ledger(cap_usd=10.0, manual_search_cap=5, queries_per_search=4)
-    assert ledger.manual_search_cap_exceeded() is False  # 0 + 4 <= 5
+    ledger = Ledger(cap_usd=10.0, manual_search_cap=9, queries_per_search=4)
+    assert ledger.manual_search_cap_exceeded() is False  # 0 + 2 lanes*4 <= 9
     ledger.record_manual_search(2)
-    assert ledger.manual_search_cap_exceeded() is True  # 2 + 4 > 5
-    assert ledger.manual_search_cap_exceeded(additional=2) is False  # 2 + 2 <= 5
+    assert ledger.manual_search_cap_exceeded() is True  # 2 + 8 > 9
+    assert ledger.manual_search_cap_exceeded(additional=2) is False  # 2 + 2 <= 9
 
 
 # ---------------------------------------------------------------------------
@@ -208,14 +208,16 @@ def test_manual_search_from_packet_missing_retrieval_or_packet_fails_closed():
     ledger.record_manual_search_from_packet({})  # no 'retrieval' key at all
     ledger.record_manual_search_from_packet(None)
     ledger.record_manual_search_from_packet({"retrieval": "not-a-dict"})
-    assert ledger.manual_search_queries == 12  # 3 x one worst-case search
+    assert (
+        ledger.manual_search_queries == 24
+    )  # 3 x unknown telemetry, charged for both lanes (r9 F1)
 
 
 def test_manual_search_from_packet_integration_small_cap_stops_further_work():
     # The "Test to prove" from the review: feed real packet shapes through
     # the pre-turn gate and prove a small configured cap actually stops
     # further work rather than silently staying at zero.
-    ledger = Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger = Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     assert ledger.manual_search_cap_exceeded() is False
     ledger.record_manual_search_from_packet(
         {
@@ -226,7 +228,7 @@ def test_manual_search_from_packet_integration_small_cap_stops_further_work():
         }
     )
     assert ledger.manual_search_queries == 4
-    assert ledger.manual_search_cap_exceeded() is True  # 4 + 4 > 4 -- next turn must stop
+    assert ledger.manual_search_cap_exceeded() is True  # 4 + 2 lanes*4 > 8 -- next turn must stop
 
 
 # ---------------------------------------------------------------------------
@@ -321,3 +323,17 @@ def test_r6_f15_an_in_flight_reservation_holding_the_cap_stops_dispatch():
     led.reserve(1.0)  # not settled yet, so usd_exhausted is still False
     assert led.usd_exhausted is False
     assert led.usd_stopped() is True
+
+
+def test_r9_f1_pre_turn_gate_needs_headroom_for_both_search_lanes():
+    # One chat dispatch can start the acquisition lane AND the photo-lookup lane.
+    led = Ledger(cap_usd=1.0, manual_search_cap=4, queries_per_search=4)
+    assert led.manual_search_cap_exceeded() is True  # 0 + 2*4 > 4: refuse
+    roomy = Ledger(cap_usd=1.0, manual_search_cap=8, queries_per_search=4)
+    assert roomy.manual_search_cap_exceeded() is False  # control: 0 + 8 <= 8
+
+
+def test_r9_f1_unknown_telemetry_is_charged_for_both_lanes():
+    led = Ledger(cap_usd=1.0, manual_search_cap=100, queries_per_search=4)
+    led.record_manual_search_from_packet(None)
+    assert led.manual_search_queries == 8

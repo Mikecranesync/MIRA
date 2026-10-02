@@ -19,6 +19,10 @@ DEFAULT_MANUAL_SEARCH_CAP = 40
 # (pass 1 + up to 4 pass-2 model-variant queries + pass 3). The CLI's
 # `--queries-per-search` overrides this when the real ceiling changes.
 DEFAULT_QUERIES_PER_SEARCH = 4
+# Independent search lanes ONE chat dispatch can start: manual acquisition and
+# the photo part-number lookup (Codex r9 F1). The pre-turn gate needs headroom
+# for all of them, and unknown telemetry is charged for all of them.
+SEARCH_LANES_PER_TURN = 2
 
 
 class BudgetExhausted(Exception):
@@ -102,7 +106,7 @@ class Ledger:
         each turn and, if true, stops new work for that run (status
         `not_run_budget`) rather than running the turn and discovering only
         afterward that it can't be recorded."""
-        n = self.queries_per_search if additional is None else additional
+        n = self.queries_per_search * SEARCH_LANES_PER_TURN if additional is None else additional
         return self.manual_search_queries + n > self.manual_search_cap
 
     def record_manual_search_from_packet(
@@ -141,11 +145,11 @@ class Ledger:
         `chat_turn=False` only for a packet that did not come from a chat
         dispatch."""
         if not isinstance(packet, dict):
-            self.record_manual_search(self.queries_per_search)
+            self.record_manual_search(self.queries_per_search * SEARCH_LANES_PER_TURN)
             return
         retrieval = packet.get("retrieval")
         if not isinstance(retrieval, dict):
-            self.record_manual_search(self.queries_per_search)
+            self.record_manual_search(self.queries_per_search * SEARCH_LANES_PER_TURN)
             return
         starts = 0
         for key, started_flag in (

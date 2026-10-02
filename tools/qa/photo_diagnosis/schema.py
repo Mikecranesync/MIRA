@@ -237,6 +237,8 @@ def validate_case(raw: Any, path: Path) -> dict:
             if not isinstance(c, dict) or "id" not in c:
                 errors.append(f"checks: malformed entry {c!r} (needs id)")
                 continue
+            if c["id"] in check_ids:
+                errors.append(f"checks: duplicate id {c['id']!r}")
             check_ids.add(c["id"])
 
         hidden_facts = raw.get("hidden_facts") or []
@@ -251,6 +253,10 @@ def validate_case(raw: Any, path: Path) -> dict:
             if not isinstance(f["text"], str) or not f["text"].strip():
                 errors.append(f"hidden_facts[{f['id']}].text: must be a non-empty string")
                 continue
+            if f["id"] in fact_ids:
+                # r9 F2: the runner expands revealed ids against every fact
+                # with that id, so a duplicate leaks an unrevealed fact.
+                errors.append(f"hidden_facts: duplicate id {f['id']!r}")
             fact_ids.add(f["id"])
             for rb in f.get("revealed_by") or []:
                 if rb not in check_ids:
@@ -268,6 +274,8 @@ def validate_case(raw: Any, path: Path) -> dict:
             if not isinstance(h, dict) or "id" not in h:
                 errors.append(f"hypotheses: malformed entry {h!r} (needs id)")
                 continue
+            if h["id"] in hyp_ids:
+                errors.append(f"hypotheses: duplicate id {h['id']!r}")
             hyp_ids.add(h["id"])
             text = h.get("text")
             if not isinstance(text, str) or not text.strip():

@@ -687,7 +687,7 @@ def test_f4_pre_turn_gate_stops_further_turns_when_cap_would_be_exceeded(monkeyp
     monkeypatch.setattr(ra.time, "sleep", lambda s: None)
 
     case = _diagnosis_case(max_turns=3)
-    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     judge = FakeProvider(responses=[_full_turn_json(), _outcome_json()])
 
     def classifier(reply, checks):
@@ -956,7 +956,7 @@ def _patched_hub(monkeypatch, transport):
 def test_r3_f4_qa_photo_turns_consume_the_search_cap_across_cases(monkeypatch):
     transport = _FakeHubTransport(trace_id="a" * 32)
     ra, hub = _patched_hub(monkeypatch, transport)
-    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     records = [
         runner.run_qa_case(hub, ra, _qa_case(), ledger, FakeProvider(responses=[]), repeat=r)
         for r in range(3)
@@ -969,11 +969,11 @@ def test_r3_f4_qa_photo_turns_consume_the_search_cap_across_cases(monkeypatch):
 def test_r3_f12_qa_diagnostics_failure_still_charges_and_keeps_the_answer(monkeypatch):
     transport = _DiagFailTransport(trace_id="a" * 32, replies=["first answer"])
     ra, hub = _patched_hub(monkeypatch, transport)
-    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     case = _qa_case()
     case["questions"] = case["questions"] + [dict(case["questions"][0], q="second question")]
     record = runner.run_qa_case(hub, ra, case, ledger, FakeProvider(responses=[]), repeat=0)
-    assert ledger.manual_search_queries == 4
+    assert ledger.manual_search_queries == 8  # no packet: both lanes
     assert _chat_count(transport) == 1  # the second question is blocked by the cap
     first = record["answers"][0]
     assert "diagnostics packet available" in first["contract"]["failed"]
@@ -982,7 +982,7 @@ def test_r3_f12_qa_diagnostics_failure_still_charges_and_keeps_the_answer(monkey
 def test_r3_f12_diagnosis_diagnostics_failure_charges_and_blocks_next_turn(monkeypatch):
     transport = _DiagFailTransport(trace_id="a" * 32, replies=["turn one"])
     ra, hub = _patched_hub(monkeypatch, transport)
-    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
     judge = FakeProvider(responses=[_full_turn_json(), _outcome_json()])
 
     def classifier(reply, checks):
@@ -991,7 +991,7 @@ def test_r3_f12_diagnosis_diagnostics_failure_charges_and_blocks_next_turn(monke
     record = runner.run_diagnosis_case(
         hub, ra, _diagnosis_case(max_turns=3), ledger, judge, classifier, repeat=0
     )
-    assert ledger.manual_search_queries == 4
+    assert ledger.manual_search_queries == 8  # no packet: both lanes
     assert _chat_count(transport) == 1
     assert record["turns"] == 1 and record["status"] == "not_run_budget"
     assert "diagnostics packet available" in record["turn_grades"][0]["contract"]["failed"]
@@ -1031,8 +1031,8 @@ def test_r3_f12_chat_transport_failure_is_charged_worst_case(monkeypatch):
     assert record["answers"][0]["status"] == "error"
     dispatched = _chat_count(transport)
     assert dispatched >= 1
-    # every dispatch that died mid-flight is charged a worst-case search
-    assert ledger.manual_search_queries == 4 * dispatched
+    # every dispatch that died mid-flight is charged both lanes, worst case
+    assert ledger.manual_search_queries == 8 * dispatched
 
 
 # ---------------------------------------------------------------------------
@@ -1044,7 +1044,7 @@ def test_r4_f4_text_only_turns_after_an_unreadable_photo_consume_the_cap(monkeyp
     # never reports, so every chat turn with no counted start is charged.
     transport = _FakeHubTransport(trace_id="a" * 32)
     ra, hub = _patched_hub(monkeypatch, transport)
-    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
+    ledger = budget.Ledger(cap_usd=10.0, manual_search_cap=12, queries_per_search=4)
     case = _qa_case()
     case["questions"] = [
         dict(case["questions"][0], q=f"Find the manual for Banner Q4X model {n}") for n in range(4)
@@ -1254,3 +1254,20 @@ def test_r7_f19_unexpected_outcome_failure_keeps_graded_turns_and_safety(monkeyp
     assert record["status"] == "error" and "outcome grading failed" in record["reason"]
     assert record["turns"] == 1 and len(record["turn_grades"]) == 1
     assert record["X"] is True
+
+
+def test_r9_f1_runner_refuses_a_turn_that_could_start_both_lanes_past_the_cap(monkeypatch):
+    both = _default_packet()
+    both["retrieval"]["manual_acquisition"] = {"started_this_turn": True}
+    both["retrieval"]["photo_part_manual_lookup"] = {"searched": True}
+    transport = _FakeHubTransport(trace_id="a" * 32, packets=[both])
+    ra, hub = _patched_hub(monkeypatch, transport)
+    tight = budget.Ledger(cap_usd=10.0, manual_search_cap=4, queries_per_search=4)
+    record = runner.run_qa_case(hub, ra, _qa_case(), tight, FakeProvider(responses=[]), repeat=0)
+    assert _chat_count(transport) == 0 and record["status"] == "not_run_budget"
+    # control: headroom for both lanes lets the turn run and records both
+    transport2 = _FakeHubTransport(trace_id="a" * 32, packets=[both])
+    ra2, hub2 = _patched_hub(monkeypatch, transport2)
+    roomy = budget.Ledger(cap_usd=10.0, manual_search_cap=8, queries_per_search=4)
+    runner.run_qa_case(hub2, ra2, _qa_case(), roomy, FakeProvider(responses=[]), repeat=0)
+    assert _chat_count(transport2) == 1 and roomy.manual_search_queries == 8
