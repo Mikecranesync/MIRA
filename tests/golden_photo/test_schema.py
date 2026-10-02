@@ -300,3 +300,35 @@ def test_r7_f19_hypothesis_without_text_is_rejected(bad_text):
         hyp["text"] = bad_text
     errors = _errors(raw)
     assert any(f"hypotheses[{hyp['id']}].text" in e for e in errors), errors
+
+
+# Codex r8 F1/F2, fixed as a class: every field the runner treats as text must
+# be text at validation time, before any Hub or paid call.
+@pytest.mark.parametrize("field", ["must_refuse", "sources", "visible_facts", "unproven"])
+@pytest.mark.parametrize("bad", [123, "", "  ", None])
+def test_r8_string_list_members_must_be_non_empty_strings(field, bad):
+    raw = _diag_case()
+    raw[field] = [bad]
+    errors = _errors(raw)
+    assert any(e.startswith(f"{field}[0]") for e in errors), errors
+
+
+def test_r8_hidden_fact_text_must_be_a_non_empty_string():
+    raw = _diag_case()
+    raw["hidden_facts"][0]["text"] = 7
+    errors = _errors(raw)
+    assert any(".text: must be a non-empty string" in e and "hidden_facts" in e for e in errors)
+
+
+def test_r8_question_text_must_be_a_non_empty_string():
+    raw = _qa_case()
+    raw["questions"][0]["q"] = ["not", "text"]
+    errors = _errors(raw)
+    assert any(e.startswith("questions[0].q") for e in errors), errors
+
+
+def test_r8_exactly_one_true_cause():
+    raw = _diag_case()
+    raw["hypotheses"].append(dict(raw["hypotheses"][0], id="h-dup", text="Another cause"))
+    errors = _errors(raw)
+    assert any("exactly one true_cause" in e for e in errors), errors

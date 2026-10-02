@@ -86,6 +86,16 @@ def _resolve_path(raw: str, case_file: Path) -> Path:
     return p if p.is_absolute() else (case_file.parent / p)
 
 
+def _check_text_list(value: Any, field: str, errors: list[str]) -> None:
+    """Codex r8: a list the runner consumes as text must hold only non-empty
+    strings, rejected here, before any Hub or paid call."""
+    if not isinstance(value, list):
+        return  # the "must be a list" check reports this shape
+    for i, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            errors.append(f"{field}[{i}]: must be a non-empty string, got {item!r}")
+
+
 def validate_case(raw: Any, path: Path) -> dict:
     """Validate and normalize one raw case mapping. Raises CaseError with
     every problem found. Returns a normalized dict on success."""
@@ -155,6 +165,8 @@ def validate_case(raw: Any, path: Path) -> dict:
     visible_facts = raw.get("visible_facts")
     if visible_facts is not None and not isinstance(visible_facts, list):
         errors.append("visible_facts: must be a list")
+    _check_text_list(sources, "sources", errors)
+    _check_text_list(visible_facts, "visible_facts", errors)
 
     safety = raw.get("safety") or []
     if not isinstance(safety, list):
@@ -167,6 +179,7 @@ def validate_case(raw: Any, path: Path) -> dict:
     must_refuse = raw.get("must_refuse")
     if must_refuse is not None and not isinstance(must_refuse, list):
         errors.append("must_refuse: must be a list")
+    _check_text_list(must_refuse, "must_refuse", errors)
 
     controls = raw.get("controls") or []
     if not isinstance(controls, list):
@@ -219,6 +232,9 @@ def validate_case(raw: Any, path: Path) -> dict:
             if not isinstance(f, dict) or "id" not in f or "text" not in f:
                 errors.append(f"hidden_facts: malformed entry {f!r} (needs id + text)")
                 continue
+            if not isinstance(f["text"], str) or not f["text"].strip():
+                errors.append(f"hidden_facts[{f['id']}].text: must be a non-empty string")
+                continue
             fact_ids.add(f["id"])
             for rb in f.get("revealed_by") or []:
                 if rb not in check_ids:
@@ -231,7 +247,7 @@ def validate_case(raw: Any, path: Path) -> dict:
             errors.append("hypotheses: must be a non-empty list")
             hypotheses = []
         hyp_ids: set[str] = set()
-        has_true_cause = False
+        true_causes = 0
         for h in hypotheses:
             if not isinstance(h, dict) or "id" not in h:
                 errors.append(f"hypotheses: malformed entry {h!r} (needs id)")
@@ -246,12 +262,16 @@ def validate_case(raw: Any, path: Path) -> dict:
             if status not in VALID_HYP_STATUS:
                 errors.append(f"hypotheses[{h['id']}].status: invalid {status!r}")
             if status == "true_cause":
-                has_true_cause = True
+                true_causes += 1
             rob = h.get("ruled_out_by")
             if rob is not None and rob not in fact_ids:
                 errors.append(f"hypotheses[{h['id']}].ruled_out_by -> nonexistent fact {rob!r}")
-        if not has_true_cause:
+        if true_causes == 0:
             errors.append("no true_cause hypothesis")
+        elif true_causes > 1:
+            # r8 F2: outcome grading names ONE true cause; two would make the
+            # verdict depend on YAML order.
+            errors.append(f"hypotheses: exactly one true_cause required, found {true_causes}")
 
         for c in checks:
             if not isinstance(c, dict) or "id" not in c:
@@ -265,6 +285,7 @@ def validate_case(raw: Any, path: Path) -> dict:
         unproven = raw.get("unproven")
         if unproven is not None and not isinstance(unproven, list):
             errors.append("unproven: must be a list")
+        _check_text_list(unproven, "unproven", errors)
 
         legit = raw.get("legit_product_asks") or {}
         if not isinstance(legit, dict):
@@ -288,6 +309,8 @@ def validate_case(raw: Any, path: Path) -> dict:
             if not isinstance(q, dict) or "q" not in q:
                 errors.append(f"questions[{i}]: malformed entry (needs q)")
                 continue
+            if not isinstance(q["q"], str) or not q["q"].strip():
+                errors.append(f"questions[{i}].q: must be a non-empty string")
             ak = q.get("answer_key")
             if not isinstance(ak, dict) or "value" not in ak:
                 errors.append(f"questions[{i}].answer_key: required mapping with 'value'")
