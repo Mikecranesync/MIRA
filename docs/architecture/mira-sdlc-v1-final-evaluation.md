@@ -646,9 +646,14 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
     "repo moves to an organization or GitHub changes eligibility", and note the unresolved
     candidate-SHA-vs-exact-head-review conflict for that future (§10/§11).
 14. **§3.6 / §3.7** — name the mechanism: a hotfix's rollback target needs a fresh (≤168h) staging +
-    acceptance receipt *before* the incident, not re-acquired during it; add a scheduled (e.g. daily)
-    re-run of `deploy-staging.yml` + `retrieval-acceptance.yml` against the current production SHA so a
-    rolling ≤168h-fresh receipt for the known-good rollback target always exists.
+    acceptance receipt *before* the incident, not re-acquired during it. Designate, per service, an
+    explicit **recovery candidate** (normally the previous production SHA for that service, recorded in
+    the production receipt as `rollback_candidate`), and run a scheduled re-deploy-to-staging +
+    re-acceptance of **the recovery candidate(s)**, not only the current production SHA, so their
+    evidence stays ≤168h fresh while they remain recovery targets; define compatibility (a candidate is
+    valid only while no contracting migration has been applied since it ran) and refresh failure (a
+    stale or failed candidate refresh opens an `incident`-labelled issue, because recovery readiness is
+    lost). Refreshing current production alone does not preserve the rollback target.
 15. **§5 / §8 (implementation sequence)** — add two omitted REPAIR items: pin
     `actions/checkout@v6`/`oven-sh/setup-bun@v2` in `apply-migrations.yml`/`retrieval-acceptance.yml`
     (J6); fix `apply-ingest-migrations.yml`'s shared `environment: production` for staging (J5).
@@ -670,7 +675,7 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
 | 7 | CONNECT | Gitleaks/Trivy into `ci-gate`; ast-grep output captured; license allowlist | `ci.yml`, `code-review.yml` | One week of observed green on `main` for the two jobs | `ci.yml` diff + a week of green | Revert `ci.yml` | Y |
 | 8 | REPAIR | Dependabot roots + pip-audit status handling + `bun audit` | `.github/dependabot.yml`, `dependency-check.yml` | Step 7 | Diff + a scanner run | Revert | Y |
 | 9 | ADD (settings) | `production` Environment gets **a required reviewer only — not `prevent_self_review`** (§10's deadlock caveat), with the friction-not-separation framing stated in docs | GitHub repo settings | Step 1 (doctrine named in text first) | `gh api .../environments/production` showing the rule; one exercised dispatch | Remove the rule | Y (this *is* the admin action) |
-| 10 | REPAIR+DOC | Rollback runbook rewrite + one authorization-exercising drill against the real gate from step 5; add a scheduled re-acceptance keeping the production SHA's rollback evidence ≤168h fresh (§13 ch. 14) | `docs/runbooks/rollback.md`, two dispatches, one new scheduled workflow | Step 5 | Drill run ids recorded in the runbook; the scheduled job's first green run | n/a | Y (dispatches the drill + the schedule) |
+| 10 | REPAIR+DOC | Rollback runbook rewrite + one authorization-exercising drill against the real gate from step 5; add a scheduled re-staging + re-acceptance of the **designated per-service recovery candidates** (previous production SHA per service, recorded in the production receipt), with compatibility and refresh-failure rules (§13 ch. 14) — not merely of the current production SHA | `docs/runbooks/rollback.md`, two dispatches, one new scheduled workflow, `production-receipt` schema gains `rollback_candidate` | Step 5 | Drill run ids recorded in the runbook; the scheduled job's first green run against a prior candidate; an A→B→rollback-to-A walkthrough with B current >168h | n/a | Y (dispatches the drill + the schedule) |
 | 11 | ADD | `tools/dora.py` with corrected denominators (§13 ch. 12) — swap-step-based CFR, 65-fixture eval rate, controller-vs-deployed-SHA distinction | `tools/dora.py`, `tests/test_dora.py` | Step 3 (≥2 weeks of `incident` records) + step 5 (receipts to join) | `tests/test_dora.py`; first run in `wiki/hot.md` | n/a (read-only) | N |
 | 12 | Review | 30-day review of `Risk:` lines + metrics → v1.1 decisions (R3 sub-profiles, `test-eval-offline` promotion, R0-exemption evidence, Merge Queue eligibility check) | `wiki/hot.md` | Steps 1–11 running 30 days | `wiki/hot.md` metrics table + `Risk:` line sample | n/a | Y (policy) |
 
@@ -699,7 +704,7 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
 
 | Metric | Exact definition | Source | Computable now? |
 |---|---|---|---|
-| Change lead time | PR `mergedAt` → first production receipt whose deployed Hub/Web SHA is a descendant of the merge commit (median/p90), reported only while the receipt is retained; reverted changes excluded and counted separately | Merged PRs; `production-receipt-<sha>`; `git merge-base --is-ancestor` | **Partially** — a run's `headSha` is the *controller-checkout* ref, not the deployed SHA (G:105); must join via receipts, never `headSha` alone |
+| Change lead time | PR `mergedAt` → first production receipt that **proves inclusion of each component the PR touched** (the receipt's per-service runtime SHA for that component is a descendant of the merge commit; ancestry of an unrelated service does not count — a Web-only deploy does not ship an Ask change); median/p90; reported only while the receipt is retained; non-shipping (governance/docs) PRs excluded; reverted changes excluded and counted separately (aligned with Appendix B.9) | Merged PRs; `production-receipt-<sha>`; `git merge-base --is-ancestor` | **Partially** — a run's `headSha` is the *controller-checkout* ref, not the deployed SHA (G:105); must join via receipts, never `headSha` alone |
 | Deployment frequency | Successful `deploy-vps.yml` runs per week that reached the swap step, not every workflow conclusion | Run history; production receipts | **Yes**, once the swap-step distinction is applied — today's raw run count (22/30 "failed" over 17 days) is mostly pre-swap authorization/build exits (J11), not deployment-frequency evidence |
 | Change failure rate | **Distinct failed deployment events** (identified by `deploy-vps.yml` run id + attempt + service set, not by SHA) that have ≥1 attributable `incident` linked ÷ deployment events that reached the swap step; three incidents on one deployment count once; two attempts of the same SHA stay distinct; `external-cause` reported separately (aligned with Appendix B.9) | ADD-2 fields (`deploy_run:` added alongside `deploy_sha:`); run history filtered to post-swap conclusions | **No** — requires ADD-2 first; explicitly not derivable today per the proposal's own baseline (`:425`) |
 | Failed-deployment recovery time | `first_seen:` → `restored_at:` from the incident record | ADD-2 fields | **No** — same prerequisite |
@@ -1053,4 +1058,15 @@ the next commit:
 | F2 MEDIUM — §14 step 1 adopted the document after only changes 1, 4, 6, 9, 10, 13, leaving several MUST-FIX-BEFORE-RATIFICATION rules to later steps | **Fixed**: step 1 now applies all §13 changes 1–15 before adoption; code repairs remain in later steps |
 | F3 LOW — §16 change failure rate counted incident issues keyed by `deploy_sha`, so one deployment with three incidents counted three, and same-SHA attempts were indistinguishable | **Fixed**: numerator is distinct failed deployment events (run id + attempt + service set) with incidents linked; §13 change 12 aligned with Appendix B.9 |
 
-Round 2 result is recorded below when available.
+Round 2 reviewed `3ef7d8bfcad60ca27692c89c23fb40fec6a696cf`: `ISSUES_FOUND` — 0 blocker, 0 high,
+**1 medium, 1 low**; confirmed F1–F3 fixed
+(https://github.com/Mikecranesync/MIRA/pull/4210#issuecomment-5969854421). Dispositions, applied in the
+next commit:
+
+| Finding | Disposition |
+|---|---|
+| F4 MEDIUM — refreshing only the *current* production SHA does not keep the *rollback target's* receipts fresh (A→B, B current >168 h, outage, rollback to A finds A expired) | **Fixed**: §13 change 14 and §14 step 10 now designate per-service recovery candidates (previous production SHA, recorded in the production receipt), refresh *their* evidence on the schedule, and define compatibility and refresh-failure handling |
+| F5 LOW — lead time used Hub/Web ancestry, so a Web-only deploy at a descendant SHA would count as shipping an Ask-only PR | **Fixed**: §16 lead time requires receipt-proven inclusion of each component the PR touched; non-shipping PRs excluded |
+
+Round 3 result is recorded below when available (three autonomous rounds is the protocol cap; anything
+still open after it is escalated to Mike).
