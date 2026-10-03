@@ -1,0 +1,12 @@
+--- a/tools/review/ledger.py
++++ b/tools/review/ledger.py
+@@ -1,4 +1,5 @@
+-def add_row(ledger: Path, row: dict) -> None:
+-    ledger.parent.mkdir(parents=True, exist_ok=True)
+-    with ledger.open("a", encoding="utf-8") as fh:
+-        fh.write(json.dumps(row) + "\n")
++def add_row(ledger: Path, row: dict) -> None:
++    """Append one JSON line; the caller holds the lock."""
++    ledger.parent.mkdir(parents=True, exist_ok=True)
++    with ledger.open("a", encoding="utf-8") as fh:
++        fh.write(json.dumps(row, sort_keys=True) + "\n")

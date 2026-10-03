@@ -1,0 +1,13 @@
+{
+ "planted": "host\\.lower\\(\\) not in ALLOWED_BASE_HOSTS\\n",
+ "keywords_any": [
+  "http",
+  "plaintext",
+  "tls",
+  "https",
+  "scheme",
+  "cleartext"
+ ],
+ "min_severity": "medium",
+ "provenance": "#4182 cheap lane 2026-10-03 (148f5f904): hostname allowlist lets http://app-staging through; cookie without TLS"
+}

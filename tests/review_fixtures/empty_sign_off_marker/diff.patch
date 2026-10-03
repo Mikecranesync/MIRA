@@ -1,0 +1,10 @@
+--- a/tools/qa/schema.py
++++ b/tools/qa/schema.py
+@@ -1,4 +1,3 @@
+-def scorable(case: dict) -> bool:
+-    """A case is scored only once a NAMED human has validated it."""
+-    v = case.get("validated_by")
+-    return isinstance(v, str) and bool(v.strip())
++def scorable(case: dict) -> bool:
++    """A case is scored only once a human has validated it."""
++    return case.get("validated_by") is not None

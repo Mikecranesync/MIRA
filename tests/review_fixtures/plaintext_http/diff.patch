@@ -1,0 +1,13 @@
+--- a/tools/qa/runner.py
++++ b/tools/qa/runner.py
+@@ -1,6 +1,4 @@
+-def _refuses_prod(base: str) -> bool:
+-    u = urlparse(base)
+-    host = (u.hostname or "").lower()
+-    if host not in ALLOWED_BASE_HOSTS:
+-        return True
+-    return host not in LOOPBACK and u.scheme != "https"
++def _refuses_prod(base: str) -> bool:
++    u = urlparse(base)
++    host = (u.hostname or "").lower()
++    return host.lower() not in ALLOWED_BASE_HOSTS
