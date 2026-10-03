@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # read the triggering staging run's receipt artifact (generation binding, SDLC v1 §6.2)
 
 concurrency:
   group: retrieval-acceptance-staging
@@ -75,6 +76,23 @@ jobs:
           esac
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "staging is running $sha — auditing that tree" >> "$GITHUB_STEP_SUMMARY"
+
+      # SDLC v1 §5.2 (Part B step 4): the steps below check out the DEPLOYED tree
+      # and execute its provisioner and harness with the staging DOPPLER_TOKEN. A
+      # candidate-tree validator is acceptable only for a commit that has passed
+      # the merge gates, i.e. one reachable from main. `main...<sha>` is
+      # `identical` or `behind` exactly then; `ahead`, `diverged`, or any API error
+      # refuses, BEFORE anything from that tree runs.
+      - name: The deployed SHA must be on main before any of its code runs here
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+        run: |
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$DEPLOYED_SHA" --jq '.status' 2>/dev/null || true)"
+          case "$status" in
+            identical|behind) echo "$DEPLOYED_SHA is on main (compare: $status)" ;;
+            *) echo "::error::deployed SHA $DEPLOYED_SHA is not on main (compare status: ${status:-api error}) — refusing to execute its code with staging credentials (SDLC v1 §5.2)"; exit 1 ;;
+          esac
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -144,6 +162,7 @@ jobs:
           python3 tools/qa/make_notebook.py >> "$GITHUB_OUTPUT"
 
       - name: Capture acceptance - every attempt accounted for
+        id: capture
         if: steps.capnb.outputs.skipped != 'true'
         run: |
           python3 tools/qa/capture_acceptance.py \
@@ -162,17 +181,94 @@ jobs:
       # A SHA is a contract: re-confirm it at VERDICT time, not only at start.
       # A deploy that lands mid-run means this verdict describes a tree that is
       # no longer serving, which is worse than no verdict at all.
+      # SDLC v1 §6.2 (step 4): a failed re-read is INFRA_UNASSESSED, never success.
+      # The identity is recorded as an output either way so the receipt below can
+      # say what happened; the step still fails the job.
       - name: The deploy must not have moved under the audit
+        id: identity_end
         if: always()
+        env:
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
         run: |
           now="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/" \
-                 | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')" || {
-            echo "::warning::could not re-read health at verdict time"; exit 0; }
-          if [ "$now" != "${{ steps.deployed.outputs.sha }}" ]; then
-            echo "::error::staging moved ${{ steps.deployed.outputs.sha }} -> $now during the run; this verdict is SUPERSEDED"
+                 | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')" || now=""
+          case "$now" in
+            ????????????????????????????????????????) ;;
+            *) now="" ;;
+          esac
+          if [ -z "$now" ]; then
+            echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
+            echo "::error::could not re-read health at verdict time — INFRA_UNASSESSED; this run authorizes nothing (SDLC v1 §6.2)"
+            exit 1
+          fi
+          echo "identity_end=$now" >> "$GITHUB_OUTPUT"
+          if [ "$now" != "$DEPLOYED_SHA" ]; then
+            echo "::error::staging moved $DEPLOYED_SHA -> $now during the run; this verdict is SUPERSEDED"
             exit 1
           fi
           echo "verdict pinned to $now" >> "$GITHUB_STEP_SUMMARY"
+
+      # The generation this verdict belongs to is the staging deploy that
+      # triggered it. Its receipt (deployed_at + running image ids) is copied into
+      # the acceptance receipt so step 5 can refuse a same-SHA rebuild (§6.2
+      # "Same-SHA redeploy"). A manual dispatch has no triggering run → no
+      # generation → the receipt records `authorizes: false`.
+      - name: Fetch the triggering staging receipt (generation binding)
+        id: staging_receipt
+        if: always() && github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_RUN_ID: ${{ github.event.workflow_run.id }}
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+        run: |
+          if gh run download "$STAGING_RUN_ID" -n "staging-receipt-$DEPLOYED_SHA" -D "$RUNNER_TEMP/staging-receipt" 2>/dev/null \
+             && [ -s "$RUNNER_TEMP/staging-receipt/staging-receipt.json" ]; then
+            echo "path=$RUNNER_TEMP/staging-receipt/staging-receipt.json" >> "$GITHUB_OUTPUT"
+            echo "generation bound to staging run $STAGING_RUN_ID"
+          else
+            echo "::warning::staging run $STAGING_RUN_ID has no staging-receipt-$DEPLOYED_SHA artifact — the acceptance receipt will not authorize"
+          fi
+
+      # The receipt is the artifact §6.2 names; everything else here is evidence
+      # for humans. Built from the trusted-base copy of the writer (the tree we
+      # checked out above is the deployed one, which may predate the tool).
+      - name: Write the acceptance receipt
+        id: receipt
+        if: always() && steps.deployed.outputs.sha != ''
+        env:
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+          IDENTITY_END: ${{ steps.identity_end.outputs.identity_end || 'INFRA_UNASSESSED' }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          CAPTURE_SKIPPED: ${{ steps.capnb.outputs.skipped }}
+          STAGING_RUN_ID: ${{ github.event.workflow_run.id }}
+          STAGING_RECEIPT: ${{ steps.staging_receipt.outputs.path }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # the writer comes from the TRUSTED BASE (origin/main), not the deployed tree
+          git fetch --depth=1 origin main
+          git show origin/main:tools/acceptance_receipt.py > "$RUNNER_TEMP/acceptance_receipt.py"
+          if [ "$CAPTURE_SKIPPED" = "true" ]; then capture=SKIPPED
+          elif [ "$CAPTURE_OUTCOME" = "success" ]; then capture=PASS
+          elif [ "$CAPTURE_OUTCOME" = "failure" ]; then capture=FAIL
+          else capture=SKIPPED; fi
+          args=( build --repository "$GITHUB_REPOSITORY" --base-url "$ACCEPT_BASE" --deployed-sha "$DEPLOYED_SHA"
+                 --rows /tmp/retrieval-acceptance.json --capture-status "$capture" --identity-end "$IDENTITY_END"
+                 --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-url "$RUN_URL"
+                 --out "$RUNNER_TEMP/acceptance-receipt.json" )
+          [ -n "$STAGING_RUN_ID" ] && args+=( --staging-run-id "$STAGING_RUN_ID" )
+          [ -n "$STAGING_RECEIPT" ] && args+=( --staging-receipt "$STAGING_RECEIPT" )
+          python3 "$RUNNER_TEMP/acceptance_receipt.py" "${args[@]}"
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("acceptance receipt: overall=%s authorizes=%s capture=%s identity_end=%s" % (r["overall"], r["authorizes"], r["capture_status"], r["identity_end"]))' "$RUNNER_TEMP/acceptance-receipt.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the acceptance receipt (90-day retention)
+        if: always() && steps.receipt.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: acceptance-receipt-${{ steps.deployed.outputs.sha }}
+          path: ${{ runner.temp }}/acceptance-receipt.json
+          retention-days: 90
+          if-no-files-found: error
 
       - name: Upload the evidence artifact (trace ids + packets, no content)
         if: always()

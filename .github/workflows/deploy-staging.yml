@@ -77,6 +77,18 @@ jobs:
             fail "SHA $APPROVED_RC_SHA not present in the repository"
           fi
 
+          # SDLC v1 §5.2 (Part B step 4): the acceptance run executes the DEPLOYED
+          # tree's provisioner and harness with staging credentials, so a staged
+          # commit must be one that has passed the merge gates — reachable from
+          # main. This job has no checkout, so ask the API: for `main...<sha>`,
+          # `identical` or `behind` means <sha> is an ancestor of main; `ahead`,
+          # `diverged`, or any error (404, rate limit, empty) FAILS CLOSED.
+          ANCESTRY="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$APPROVED_RC_SHA" --jq '.status' 2>/dev/null || true)"
+          case "$ANCESTRY" in
+            identical|behind) ;;
+            *) fail "approved_rc_sha $APPROVED_RC_SHA is not on main (compare status: ${ANCESTRY:-api error}); stage only merged commits (SDLC v1 §5.2)" ;;
+          esac
+
           if [ -n "$SERVICES_INPUT" ]; then
             SERVICE_LIST_PATTERN='^[a-z0-9-]+( [a-z0-9-]+)*$'
             [[ "$SERVICES_INPUT" =~ $SERVICE_LIST_PATTERN ]] || \
