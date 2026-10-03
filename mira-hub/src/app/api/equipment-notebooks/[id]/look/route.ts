@@ -46,6 +46,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { context, trace, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
+import { recordTurnContent } from "@/capabilities/observability/content-capture";
 import { startTurnRecorder } from "@/capabilities/observability/turn-recorder";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import {
@@ -222,6 +223,7 @@ async function handleLookTurn(
     { "mira.turn.kind": "look", "mira.turn.id": turnId, "mira.notebook.id": notebookId, "mira.file.mime": mime, "mira.file.bytes": buffer.length },
     rootSpan,
   );
+  recordTurnContent(rootSpan, { question });
   let rootEnded = false;
   const endRoot = (extra?: SpanAttrs): void => {
     if (rootEnded) return;
@@ -468,6 +470,7 @@ async function handleLookTurn(
       model: reply.model,
       ok: true,
     });
+    recordTurnContent(rootSpan, { answer: inspection.text });
     endRoot();
     return NextResponse.json({
       ...retained,

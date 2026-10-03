@@ -85,11 +85,23 @@ export function redactAttributeValue(key: string, value: unknown): unknown {
 const MAX_STRING_LEN = 512;
 const MAX_ARRAY_LEN = 32;
 
-function clampString(value: string): string {
-  return value.length > MAX_STRING_LEN ? value.slice(0, MAX_STRING_LEN) : value;
+/** Budget for the opt-in content keys (MIRA_OTEL_CAPTURE_CONTENT=1 only). At
+ *  512 a captured prompt was all system prompt and the typed message never
+ *  reached the trace. Every other key keeps MAX_STRING_LEN. */
+export const CONTENT_MAX_LEN = 4096;
+const CONTENT_ATTRIBUTE_KEYS = new Set([
+  "mira.content.question",
+  "mira.content.answer",
+  "gen_ai.input.messages",
+  "gen_ai.output.messages",
+]);
+
+function clampString(value: string, max = MAX_STRING_LEN): string {
+  return value.length > max ? value.slice(0, max) : value;
 }
 
-function clampValue(value: SpanAttrs[string]): AttributeValue | undefined {
+function clampValue(value: SpanAttrs[string], key?: string): AttributeValue | undefined {
+  if (typeof value === "string" && key && CONTENT_ATTRIBUTE_KEYS.has(key)) return clampString(value, CONTENT_MAX_LEN);
   if (value === null || value === undefined) return undefined;
   if (Array.isArray(value)) {
     // An empty array reaches Langfuse as the literal `{"arrayValue":{}}` (the
@@ -109,7 +121,7 @@ function sanitizeAttrs(attrs: SpanAttrs): Attributes {
   const out: Attributes = {};
   for (const [key, rawValue] of Object.entries(attrs)) {
     if (!isAllowedAttributeKey(key)) continue;
-    const clamped = clampValue(rawValue);
+    const clamped = clampValue(rawValue, key);
     if (clamped === undefined) continue;
     out[key] = redactAttributeValue(key, clamped) as AttributeValue;
   }
@@ -200,7 +212,7 @@ export function scrubInPlace(attrs: Record<string, unknown>): void {
       delete attrs[key];
       continue;
     }
-    const clamped = clampValue(attrs[key] as SpanAttrs[string]);
+    const clamped = clampValue(attrs[key] as SpanAttrs[string], key);
     if (clamped === undefined) {
       delete attrs[key];
       continue;
