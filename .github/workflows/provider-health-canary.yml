@@ -153,7 +153,12 @@ jobs:
             --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
-            gh issue edit "$existing" --add-label incident >/dev/null 2>&1 || true
+            # Fail closed: an existing failure record without the `incident` label is an
+            # incomplete record, and the observation window / metrics key on that label
+            # (SDLC v1 §9, §12.3). The comment above is already delivered; a red run here
+            # is the visible signal, never a silently dropped label.
+            gh issue edit "$existing" --add-label incident \
+              || { echo "::error::could not add the incident label to #$existing"; exit 1; }
             echo "commented on existing incident #$existing"
           else
             gh issue create --title "$title" --body "$body" --label provider-incident --label incident
