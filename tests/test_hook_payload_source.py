@@ -285,6 +285,103 @@ def test_prod_guard_does_not_fire_on_prose_or_regex_text(command, should_deny):
     )
 
 
+# SDLC v1 Part B step 2 (docs/architecture/mira-sdlc-v1.md §11.1, drift item D14):
+# production moved to the OVH VPS on 2026-09-15, and until 2026-10-03 PROD_HOST knew
+# only the dead DigitalOcean address, so every mutation against the real prod host
+# was allowed. The IP and hostname are the prod markers; a bare `ubuntu@` is NOT
+# (that user exists on every stock Ubuntu box), so the non-prod ubuntu@ case is
+# pinned as allowed.
+_OVH_IP = "40.160.141.61"
+_OVH_HOST = "vps-2d884531.vps.ovh.us"
+
+
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        (f"ssh ubuntu@{_OVH_IP} {_D} {_C} down", True),
+        (f"ssh ubuntu@{_OVH_IP} sudo systemctl restart nginx", True),
+        (f"ssh ubuntu@{_OVH_HOST} {_D} {_C} up -d", True),
+        (f"scp artifact.tar ubuntu@{_OVH_IP}:/opt/mira/", True),
+        (f"rsync -a dist/ ubuntu@{_OVH_HOST}:/opt/mira/", True),
+        # read-only inspection of the OVH host stays allowed
+        (f"ssh ubuntu@{_OVH_IP} {_D} ps", False),
+        (f"ssh ubuntu@{_OVH_HOST} tail -n 50 /var/log/nginx/error.log", False),
+        # a bare ubuntu@ on a non-prod host is not a prod marker
+        (f"ssh ubuntu@192.168.1.11 {_D} {_C} up -d", False),
+        ("scp x.tar ubuntu@bravo:/tmp/", False),
+    ],
+)
+def test_prod_guard_covers_ovh_production_host(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r} "
+        f"(stdout={proc.stdout.strip()[:120]!r})"
+    )
+
+
+# docs/environments.md hard rule #1 ("NEVER run psql / raw SQL against prod NeonDB
+# from a code session") had no enforcer until SDLC v1 step 2: prod-guard only knew
+# SSH hosts. The prod compute endpoint is `ep-purple-hall-ahimeyn0` (factorylm/prd);
+# staging/dev are on other endpoints. Either a libpq URL carrying that endpoint, or a
+# SQL client *invoked* (command start / after `--` / after a postgres image) together
+# with the endpoint or a Doppler `prd` config, denies. Reading a secret value,
+# mentioning the endpoint or client in prose/grep, and staging/dev SQL stay allowed.
+# Tokens are split so this file's own text does not trip the guard while being
+# written or grepped (same trick as `_D`/`_C` above).
+_EP = "ep-purple-" + "hall-ahimeyn0"
+_SQL = "ps" + "ql"
+_DUMP = "pg_" + "dump"
+_PRD = "pr" + "d"
+_PGURL = "postgres" + "ql://"
+
+
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        (
+            f'{_D} run --rm -i postgres:16 {_SQL} "{_PGURL}u:p@{_EP}.us-east-1.aws.neon.tech/neondb"',
+            True,
+        ),
+        (f"node -e \"new (require('pg').Client)('{_PGURL}u:p@{_EP}.neon.tech/db')\"", True),
+        (f'doppler run --project factorylm --config {_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
+        (f'doppler run -p factorylm -c {_PRD} -- {_DUMP} "$NEON_DATABASE_URL" > dump.sql', True),
+        (f'{_SQL} "host={_EP}.us-east-1.aws.neon.tech dbname=neondb"', True),
+        # allowed: reading the secret, prose, grep, and non-prod configs
+        (
+            f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
+            False,
+        ),
+        (f"grep -rn {_EP} docs/", False),
+        (f'doppler run -p factorylm -c stg -- {_SQL} "$NEON_DATABASE_URL"', False),
+        (f'doppler run -p factorylm -c dev -- {_SQL} "$NEON_DATABASE_URL"', False),
+        (f'git commit -m "{_SQL} recipe for the {_PRD} ledger ({_EP})"', False),
+        (f"doppler run -c {_PRD} -- {_D} ps", False),
+    ],
+)
+def test_prod_guard_blocks_sql_against_production_neon(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r} "
+        f"(stdout={proc.stdout.strip()[:120]!r})"
+    )
+
+
 def test_prod_guard_anchor_excludes_backtick_and_pipe():
     """Pin the anchor itself, so the fix is not silently undone by 'restoring' the
     two characters that look like they belong in a list of shell separators."""

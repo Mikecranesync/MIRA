@@ -31,7 +31,7 @@ on:
         default: true
 
 permissions:
-  contents: write    # for nightly audit commits to docs/audits/
+  contents: read     # the nightly direct push to main was removed (SDLC v1 §11.1); reports ship as artifacts
   pull-requests: write
 
 concurrency:
@@ -128,16 +128,3 @@ jobs:
           name: hub-audit-${{ github.run_id }}
           path: docs/audits/*.md
           if-no-files-found: ignore
-      - name: Commit nightly audit (cron only)
-        if: github.event_name == 'schedule'
-        run: |
-          cd ..
-          git config user.name "factorylm-bot"
-          git config user.email "bot@factorylm.com"
-          if [ -n "$(git status --porcelain docs/audits/)" ]; then
-            git add docs/audits/
-            git commit -m "chore(audits): nightly hub audit $(date -u +%Y-%m-%d)"
-            git push origin HEAD:main || echo "nightly audit push failed (non-fatal)"
-          else
-            echo "no audit changes to commit"
-          fi

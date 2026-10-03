@@ -83,7 +83,36 @@ EOF
 # invocation at a command position (see §2 below), so the loose `prod` alternative
 # cannot fire on unrelated text; and a false positive here fails CLOSED, which is
 # the correct direction for this guard (override: MIRA_ALLOW_PROD=1).
-PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120\.99|[[:space:]]prod(-public)?([[:space:]]|$))'
+# 2026-10-03 (SDLC v1 §11.1, Part B step 2): production moved to the OVH VPS on
+# 2026-09-15 (#3800/#3803) — `40.160.141.61`, hostname `vps-2d884531.vps.ovh.us`,
+# deploy user `ubuntu`. Until this line was added the guard knew only the dead
+# DigitalOcean address, so `ssh ubuntu@40.160.141.61 docker compose down` sailed
+# through. Deliberately NOT a bare `ubuntu@`: that user exists on every stock
+# Ubuntu box (BRAVO, lab VMs), and a bare match would teach the operator to reach
+# for MIRA_ALLOW_PROD=1 by reflex. The IP and hostname identify prod; the user
+# does not. The old DO address stays so a stale alias still fails closed.
+PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120\.99|40\.160\.141\.61|vps-2d884531\.vps\.ovh\.us|[[:space:]]prod(-public)?([[:space:]]|$))'
+
+# Production NeonDB (docs/environments.md hard rule #1: never run psql / raw SQL
+# against prod Neon from a session). The prod compute endpoint is
+# `ep-purple-hall-ahimeyn0` (Doppler factorylm/prd); staging and dev live on other
+# endpoints, so this names prod and only prod. Two signals, either denies:
+#   (a) a libpq URL carrying the prod endpoint anywhere in the command — a
+#       connection string is a connection attempt, whatever client wraps it
+#       (`docker run … postgres:16 psql "$URL"`, `node -e … new Client(url)`);
+#   (b) a SQL client INVOKED (command position, after a `--` separator as in
+#       `doppler run -c prd -- psql …`, or right after a `postgres…` image as in
+#       `docker run … postgres:16 psql …`) together with the prod endpoint OR a
+#       Doppler `prd` config in the same command.
+# `doppler secrets get … --config prd` without a SQL client is NOT matched —
+# reading a secret value is standing-authorized; connecting with it is not.
+# Mentioning the endpoint or a client name in prose/grep/commit messages is not
+# matched: the client verb must sit at an invocation position (same reasoning as
+# CMDSTART below — a guard that fires on commit messages gets switched off).
+NEON_PROD_ENDPOINT='ep-purple-hall-ahimeyn0'
+NEON_PROD_URL='postgres(ql)?://[^[:space:]"'"'"']*'"$NEON_PROD_ENDPOINT"
+SQL_CLIENT='(^|[;&(]|--|postgres[^[:space:]]*)[[:space:]]+(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b|^(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
+DOPPLER_PRD='doppler[^|;&]*(--config|-c)[[:space:]]+prd([[:space:]]|$)'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
 # at the start of a line or right after a shell separator (; & ( ). This stops
@@ -124,6 +153,16 @@ HARD_DENY=''"$CMDSTART"'scp[^|;&]*'"$PROD_HOST"'|'"$CMDSTART"'rsync[^|;&]*'"$PRO
 
 if printf '%s' "$cmd" | grep -qiE "$HARD_DENY"; then
   deny "Production-mutating command blocked by tools/hooks/prod-guard.sh. Commit + push to a branch instead. Human deploys with MIRA_ALLOW_PROD=1 after morning review."
+fi
+
+# 1b. Production NeonDB — connection string or SQL client aimed at prod (see
+#     NEON_PROD_* above). Use staging / dev / the read-only db-inspect.yml workflow.
+if printf '%s' "$cmd" | grep -qiE "$NEON_PROD_URL"; then
+  deny "Connection to the PRODUCTION NeonDB endpoint blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1: no prod SQL from a session). Use staging/dev or db-inspect.yml."
+fi
+if printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" \
+   && { printf '%s' "$cmd" | grep -qiE "$NEON_PROD_ENDPOINT" || printf '%s' "$cmd" | grep -qiE "$DOPPLER_PRD"; }; then
+  deny "SQL client against the PRODUCTION NeonDB blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
 fi
 
 # 2. SSH/scp/rsync INVOKED against a prod host: allow read-only, deny mutations.
