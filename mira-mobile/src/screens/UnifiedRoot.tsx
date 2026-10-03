@@ -24,6 +24,7 @@ import { resolveScan } from "../lib/scan-landing";
 import {
   LEGACY_THREAD_ID,
   notebookIdFromProject,
+  projectIdForNotebook,
   sourcesRefFromItem,
   notebookMachines,
   notebookProjects,
@@ -34,6 +35,7 @@ import type { UnifiedShellHost } from "./UnifiedChat";
 import { UnifiedChat } from "./UnifiedChat";
 import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
 import { UnifiedCreateProject } from "../unified/UnifiedCreateProject";
+import { UnifiedProjectRoot } from "../unified/UnifiedProjectRoot";
 
 const LAST_NOTEBOOK_KEY = "flm.unified.notebook.v1";
 const LAST_THREAD_KEY = (notebookId: string) => `flm.unified.thread.v1.${notebookId}`;
@@ -70,6 +72,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [draftThreadId, setDraftThreadId] = useState<string | null>(null);
   const [homeVisible, setHomeVisible] = useState(true);
+  // #4188: where hardware BACK out of a notebook's chat thread lands — that
+  // project's recent-threads list — rather than falling straight through to
+  // `homeVisible`'s empty global composer. Mutually exclusive with
+  // `homeVisible`; every funnel that opens a thread (`open`, `startNewThread`)
+  // clears this the same way it already clears `homeVisible`.
+  const [projectRootVisible, setProjectRootVisible] = useState(false);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
@@ -117,6 +125,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     setDraftThreadId(null);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
+    setProjectRootVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
       await preferencesStore.set(LAST_THREAD_KEY(id), activeThread);
@@ -178,6 +187,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     setDraftThreadId(threadId);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
+    setProjectRootVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
       await preferencesStore.set(LAST_THREAD_KEY(id), threadId);
@@ -281,11 +291,29 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigationNotebooks, notebooks, me.email, signingOut, open]);
 
+  // #4188: the project root's title + recent-threads list — the SAME
+  // `Project` the drawer's ProjectTree renders (`host.projects`), so the
+  // title matches exactly (tag · name for a bound machine, display name
+  // otherwise) and the thread rows are the SAME `ProjectItem`s `onOpenItem`
+  // already knows how to open. `threadRows()` (inside `notebookProjects`)
+  // orders by server `updated_at DESC`, so this is already most-recent-first;
+  // the just-left thread is always present because every thread the project
+  // has is listed, not just a recent subset.
+  const currentProject = useMemo(
+    () => host?.projects.find((project) => project.id === projectIdForNotebook(selected ?? "")) ?? null,
+    [host, selected],
+  );
+  const currentProjectThreads = useMemo<readonly ProjectItem[]>(
+    () => currentProject?.children.filter((node): node is ProjectItem => node.kind === "thread") ?? [],
+    [currentProject],
+  );
+
   // NotebookScreen owns Android Back while a conversation is mounted. Every
   // root-owned state must replace that handler explicitly: otherwise the
   // unmounted notebook leaves its last callback behind and About can minimize
   // the app instead of returning to the conversation.
-  const rootOwnsBack = homeVisible || showAbout || showCreateProject || Boolean(error) || !notebooks || !host || !selected;
+  const rootOwnsBack =
+    homeVisible || projectRootVisible || showAbout || showCreateProject || Boolean(error) || !notebooks || !host || !selected;
   useEffect(() => {
     if (!rootOwnsBack) return;
     const previous = backRef.current;
@@ -298,6 +326,13 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         setShowAbout(false);
         return true;
       }
+      // Project root → global home (the next rung of the BACK ladder below
+      // NotebookScreen's own "thread → project root", #4188).
+      if (projectRootVisible) {
+        setProjectRootVisible(false);
+        setHomeVisible(true);
+        return true;
+      }
       if (homeVisible) return true;
       return false;
     };
@@ -305,7 +340,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return () => {
       if (backRef.current === handleBack) backRef.current = previous;
     };
-  }, [backRef, rootOwnsBack, homeVisible, showAbout, showCreateProject]);
+  }, [backRef, rootOwnsBack, homeVisible, projectRootVisible, showAbout, showCreateProject]);
 
   if (showCreateProject) {
     return (
@@ -412,6 +447,21 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     );
   }
 
+  if (projectRootVisible) {
+    return (
+      <UnifiedProjectRoot
+        title={currentProject?.name ?? "FactoryLM"}
+        threads={currentProjectThreads}
+        onOpenThread={(item) => host.onOpenItem(item)}
+        onNewChat={() => startNewThread(selected)}
+        onBack={() => {
+          setProjectRootVisible(false);
+          setHomeVisible(true);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="unified-root" data-testid="unified-root" data-notebook-id={selected}>
       {notice}
@@ -423,7 +473,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         openAddSources={queuedOpenAddSources}
         unifiedShell={host}
         backRef={backRef}
-        onExit={() => setHomeVisible(true)}
+        onExit={() => setProjectRootVisible(true)}
         onOpenNotebook={open}
         initialQuestion={queuedQuestion}
         onInitialQuestionSent={() => setQueuedQuestion(null)}

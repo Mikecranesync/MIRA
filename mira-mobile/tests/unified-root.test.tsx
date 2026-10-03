@@ -188,13 +188,16 @@ describe("UnifiedRoot", () => {
     expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(firstThread).toMatch(/^thrd_/);
 
+    // #4188: BACK out of the thread now lands on nb-b's project root, not
+    // straight back to HOME — and its own "New chat" (no drawer needed)
+    // still starts a fresh thread in the SAME project.
     await act(async () => {
       backRef.current?.();
     });
-    await waitFor(() => screen.getByTestId("unified-home"));
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-thread-id")).toMatch(/^thrd_/));
+    expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-b");
     expect(screen.getByTestId("nb").getAttribute("data-thread-id")).not.toBe(firstThread);
   });
 
@@ -356,22 +359,116 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("nb"))).toBeTruthy();
   });
 
-  it("hardware Back from a conversation root returns to the in-app composer home", async () => {
+  // #4188: hardware BACK out of a notebook's chat thread used to fall straight
+  // through to the empty global-home composer ("What can I help you with?",
+  // titled "FactoryLM"), with no visible way back to the thread just left —
+  // only hamburger → project → "… Chat". The four tests below are the fixed
+  // BACK ladder: thread → project root (title + the just-left thread, tapping
+  // a thread reopens it, New chat stays in the same project) → global home.
+  it("hardware Back from a notebook thread lands on that project's root — real title, and the thread just left is listed (#4188)", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    const { container } = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
+
+    let consumed = false;
+    await act(async () => {
+      consumed = backRef.current?.() ?? false;
+    });
+    expect(consumed).toBe(true);
+
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    // The real project title ("Drive A"), never the HOME composer's "FactoryLM".
+    expect(root.querySelector("h1")?.textContent).toBe("Drive A");
+    // The thread just left (thrd-a2, "Startup checks") is visible — not only
+    // the OTHER thread the project happens to have.
+    expect(
+      container.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a2"]')?.textContent,
+    ).toContain("Startup checks");
+    expect(
+      container.querySelector('[data-item-id="notebook-nb-a:thread-thrd-a1"]')?.textContent,
+    ).toContain("Intermittent fault");
+  });
+
+  it("tapping a recent thread in the project root reopens that exact thread (#4188)", async () => {
     const backRef = { current: null as (() => boolean) | null };
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
 
     await waitFor(() => screen.getByTestId("unified-home"));
-    fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "open" } });
-    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+
+    // Reopen the OTHER thread of the same project — proves the tap reaches
+    // the drawer's own open path (host.onOpenItem → open()), not a new one.
+    fireEvent.click(screen.getByRole("button", { name: "Intermittent fault" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-a1");
+  });
+
+  it("New chat from the project root starts a new thread in the SAME project (#4188)", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-a");
+    expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+  });
+
+  it("BACK again from the project root goes to the global home (#4188)", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
     await waitFor(() => screen.getByTestId("nb"));
 
     let consumed = false;
     await act(async () => {
       consumed = backRef.current?.() ?? false;
     });
+    expect(consumed).toBe(true);
+    await waitFor(() => screen.getByTestId("unified-project-root"));
 
+    await act(async () => {
+      consumed = backRef.current?.() ?? false;
+    });
     expect(consumed).toBe(true);
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
+  });
+
+  it("#4188 control: a cold start with no notebooks is unchanged — the empty-workspace create prompt, not a project root or home composer", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("No projects yet. Create one to start a conversation.")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("unified-home")).toBeNull();
+    expect(screen.queryByTestId("unified-project-root")).toBeNull();
+    expect(screen.queryByTestId("nb")).toBeNull();
   });
 
   it("hardware Back on the composer home stays inside the unified root", async () => {
@@ -518,6 +615,11 @@ describe("UnifiedRoot", () => {
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-b");
     expect(nb.getAttribute("data-thread-id")).toMatch(/^thrd_/);
+    // #4188: the first BACK now lands on nb-b's project root, not HOME — a
+    // second BACK is the rung that reaches HOME, from which the drawer's
+    // "General notes" row re-triggers open() against the server list.
+    await act(async () => { backRef.current?.(); });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
     await act(async () => { backRef.current?.(); });
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
