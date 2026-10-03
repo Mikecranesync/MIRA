@@ -414,6 +414,67 @@ describe("UnifiedRoot", () => {
     expect(container).toBeTruthy();
   });
 
+  it("#4188 Codex F1: a chat started this session stays in the project root after it is reopened and left again", async () => {
+    // The new chat is not in the boot-time server list. Reopening it from the
+    // project root used to clear the only record of it, so the second BACK
+    // landed on a list without it — the conversation looked lost again.
+    const backRef = { current: null as (() => boolean) | null };
+    render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
+    const newThreadId = (await waitFor(() => screen.getByTestId("nb"))).getAttribute("data-thread-id") ?? "";
+    expect(newThreadId).toMatch(/^thrd_/);
+    const newRow = `notebook-nb-a:thread-${newThreadId}`;
+
+    await act(async () => {
+      backRef.current?.();
+    });
+    let root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    const row = root.querySelector(`[data-item-id="${newRow}"]`) as HTMLElement | null;
+    expect(row).not.toBeNull();
+    fireEvent.click(row!);
+    expect((await waitFor(() => screen.getByTestId("nb"))).getAttribute("data-thread-id")).toBe(newThreadId);
+
+    await act(async () => {
+      backRef.current?.();
+    });
+    root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    expect(root.querySelector(`[data-item-id="${newRow}"]`)).not.toBeNull();
+  });
+
+  it("#4188 Codex F2: a failed deep link that arrives while the project root is showing surfaces its notice there", async () => {
+    const backRef = { current: null as (() => boolean) | null };
+    const view = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    await waitFor(() => screen.getByTestId("unified-project-root"));
+
+    view.rerender(
+      <UnifiedRoot
+        me={ME}
+        backRef={backRef}
+        onSignOut={async () => {}}
+        deepLink={{ tag: null, raw: "factorylm://garbage" }}
+        onDeepLinkConsumed={() => {}}
+      />,
+    );
+    const alert = await waitFor(() => screen.getByRole("alert"));
+    expect(alert.textContent).toContain("Unrecognized link: factorylm://garbage");
+    expect(screen.getByTestId("unified-project-root")).toBeTruthy();
+  });
+
   it("tapping a recent thread in the project root reopens that exact thread (#4188)", async () => {
     const backRef = { current: null as (() => boolean) | null };
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);

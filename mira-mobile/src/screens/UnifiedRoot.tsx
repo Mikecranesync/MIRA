@@ -71,7 +71,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [draftThreadId, setDraftThreadId] = useState<string | null>(null);
+  // Every chat started this session, per notebook (newest first). The server
+  // list is a boot-time snapshot, so these would otherwise vanish from the
+  // drawer and the project root as soon as another thread is opened (#4188).
+  const [localThreads, setLocalThreads] = useState<Readonly<Record<string, readonly string[]>>>({});
   const [homeVisible, setHomeVisible] = useState(true);
   // #4188: where hardware BACK out of a notebook's chat thread lands — that
   // project's recent-threads list — rather than falling straight through to
@@ -123,7 +126,6 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     const activeThread = threadId ?? restored ?? latestThreadId(notebook);
     setSelected(id);
     setSelectedThreadId(activeThread);
-    setDraftThreadId(null);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
     setProjectRootVisible(false);
@@ -204,7 +206,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     const threadId = createThreadId();
     setSelected(id);
     setSelectedThreadId(threadId);
-    setDraftThreadId(threadId);
+    setLocalThreads((current) => ({ ...current, [id]: [threadId, ...(current[id] ?? [])] }));
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
     setProjectRootVisible(false);
@@ -251,25 +253,27 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const navigationNotebooks = useMemo<Notebook[]>(() => {
     if (!notebooks) return [];
     return notebooks.map((notebook) => {
-      if (notebook.id !== selected || !draftThreadId) return notebook;
-      if (notebook.threads?.some((thread) => thread.id === draftThreadId)) return notebook;
+      const missing = (localThreads[notebook.id] ?? []).filter(
+        (threadId) => !notebook.threads?.some((thread) => thread.id === threadId),
+      );
+      if (missing.length === 0) return notebook;
       return {
         ...notebook,
         threads: [
-          {
-            id: draftThreadId,
+          ...missing.map((threadId) => ({
+            id: threadId,
             notebookId: notebook.id,
             title: "New chat",
             createdAt: "",
             updatedAt: "",
             turnCount: 0,
             sharedLegacy: false,
-          },
+          })),
           ...(notebook.threads ?? []),
         ],
       };
     });
-  }, [draftThreadId, notebooks, selected]);
+  }, [localThreads, notebooks]);
 
   const host = useMemo<UnifiedShellHost | null>(() => {
     if (!notebooks) return null;
@@ -475,6 +479,8 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
 
   if (projectRootVisible) {
     return (
+      <>
+      {notice}
       <UnifiedProjectRoot
         title={currentProject?.name ?? "FactoryLM"}
         threads={currentProjectThreads}
@@ -485,6 +491,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           setHomeVisible(true);
         }}
       />
+      </>
     );
   }
 
