@@ -148,7 +148,13 @@ function initialState(messages: ReturnType<typeof threadMessages>, meta: Unified
   return shellReducer(created, { type: "set-navigation-visible", visible: false });
 }
 
-export function UnifiedChat({
+/**
+ * The real screen. Renamed off `UnifiedChat` (light review, #4195
+ * notebook-switch class) so the exported `UnifiedChat` below can force a
+ * remount of this component on every notebook change — see that wrapper's
+ * doc comment for why remounting, not another per-field guard, is the fix.
+ */
+function UnifiedChatForNotebook({
   turns,
   liveTurns,
   pending,
@@ -171,6 +177,18 @@ export function UnifiedChat({
   // Codex F1 (HIGH, #4175/#4189): the re-read scope a confirmed identity just
   // promoted, consumed one-shot by the next send (see `onSend` below).
   const confirmedScopeRef = useRef<string[] | null>(null);
+  // Light review (#4195, notebook-switch class): true until THIS instance
+  // unmounts. The wrapper below remounts a fresh instance per notebook, so an
+  // in-flight async continuation (confirm / compose / refresh) that settles
+  // AFTER the technician has switched notebooks is running on a dead
+  // instance. `notebookIdRef` (below) can no longer detect that case once
+  // notebookId is constant for an instance's whole life — checked wherever a
+  // continuation would otherwise call a parent handler or spend a network
+  // call on behalf of a notebook this instance no longer represents.
+  const aliveRef = useRef(true);
+  useEffect(() => () => {
+    aliveRef.current = false;
+  }, []);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
@@ -305,17 +323,18 @@ export function UnifiedChat({
   // citable). Best-effort: a failed re-read here never fails anything else —
   // the next send falls back to the host's own eventually-refreshed scope.
   const refreshPromotedScope = useCallback(async () => {
-    if (!notebookId) return;
-    // The re-read is async; the notebook can change in place before it
-    // returns (NotebooksTab switches without remounting). Only the notebook
-    // it was fetched for may store a scope, or A's docs ride B's next send.
+    if (!notebookId || !aliveRef.current) return;
+    // The re-read is async; this instance can unmount before it returns (the
+    // technician switched notebooks — see the `UnifiedChat` wrapper's remount
+    // doc comment). Only a STILL-MOUNTED instance, for the notebook it was
+    // fetched for, may store a scope, or A's docs ride B's next send.
     const fetchedFor = notebookId;
     try {
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
-      if (notebookIdRef.current !== fetchedFor) return;
+      if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
     } catch {
-      if (notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
+      if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
     }
   }, [notebookId, attachmentThreadId]);
 
@@ -535,6 +554,15 @@ export function UnifiedChat({
       return;
     }
     void attachments.compose(text, pending, opts).then((composed) => {
+      // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
+      // was captured BEFORE this await, on THIS notebook. If the technician
+      // switched notebooks while compose was pending, this instance is now
+      // unmounted (see the `UnifiedChat` wrapper) and `handlers.onSend` is
+      // the OLD notebook's callback — calling it would send text, or A's
+      // scope, into whichever notebook the host now treats that stale
+      // callback as bound to. There is no safe notebook to deliver this
+      // send to, so it is DROPPED entirely (not sent to A, not sent to B).
+      if (!aliveRef.current) return;
       if (composed.failure) {
         // Do not send: a photo question with no photo would answer from nothing.
         dispatch({ type: "set-send-error", error: composed.failure });
@@ -551,6 +579,7 @@ export function UnifiedChat({
       // Uploaded but not searchable stays visible rather than being swallowed.
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
+      if (!aliveRef.current) return;
       const message = error instanceof Error ? error.message : String(error);
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
       dispatch({ type: "set-draft", draft: text });
@@ -669,7 +698,14 @@ export function UnifiedChat({
             // THIS request was for, and discard them if it no longer matches.
             // The confirm's own return value is returned either way — its
             // caller is the specific proposal card that made this call.
-            if (notebookIdRef.current !== requestedNotebookId) return result;
+            // Light review (#4195, notebook-switch class): remounting (see
+            // the `UnifiedChat` wrapper) makes `notebookId` constant for this
+            // instance's whole life, so `notebookIdRef` alone can no longer
+            // detect "the technician switched notebooks" — it now only
+            // detects an impossible case. `aliveRef` detects the real one:
+            // this instance got unmounted (a fresh one for the new notebook
+            // took its place), so there's nothing left here to seed/refresh.
+            if (!aliveRef.current || notebookIdRef.current !== requestedNotebookId) return result;
             // Codex F1 (HIGH): confirming may have just promoted a candidate
             // manual into an enabled source (migration 104) — re-read the
             // authoritative detail and stash its scope so the NEXT question
@@ -695,7 +731,7 @@ export function UnifiedChat({
             }
             // F16, same check: the scope refresh above may have taken long
             // enough for the technician to have moved on too.
-            if (notebookIdRef.current !== requestedNotebookId) return result;
+            if (!aliveRef.current || notebookIdRef.current !== requestedNotebookId) return result;
             if (authoritative) {
               setFollow((prev) => {
                 const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, authoritative!);
@@ -741,4 +777,36 @@ export function UnifiedChat({
       navigationFooter={host?.navigationFooter}
     />
   </div>;
+}
+
+/**
+ * Remount boundary (light review, #4195 notebook-switch class). Every round
+ * of review found another per-notebook `useState`/`useRef` inside
+ * `UnifiedChatForNotebook` (the confirm seed, the scope refresh, the manual-
+ * search follower, the attachments controller, the shell reducer…) that
+ * leaked across a notebook switch, because `NotebooksTab.tsx`'s
+ * `onOpenNotebook` changes `meta.notebookId` IN PLACE on this SAME component
+ * instance — no `key`-forced remount (only `UnifiedRoot.tsx`'s own mount
+ * site keys by notebook+thread; see its `key={`${selected}:${selectedThreadId
+ * ...}`}`). Patching leaks one field at a time is how that became a
+ * multi-round class of bugs instead of one fix: EVERY current and future
+ * per-notebook field is exposed to the same race unless something makes
+ * carrying state across a switch structurally impossible.
+ *
+ * Forcing React to tear down and recreate `UnifiedChatForNotebook` on a
+ * notebook change does that in one place: every hook inside it starts fresh
+ * for the new notebook, by construction, with no per-field reset effect to
+ * remember to write. The `aliveRef` guards inside `UnifiedChatForNotebook`
+ * cover the other half — an OLD instance's in-flight promise (confirm /
+ * compose / refresh) resolving AFTER it has already been unmounted.
+ *
+ * Keyed on `notebookId` ONLY, not `threadId`: a thread switch within the
+ * SAME notebook must keep today's behavior. Today, `NotebooksTab` never
+ * remounts on a thread change either, and `UnifiedChatForNotebook`'s own
+ * notebookId-only reset effect (kept below as defense in depth, now mostly
+ * redundant with this remount) already proves per-notebook state is meant to
+ * survive a thread change — only a notebook change resets it.
+ */
+export function UnifiedChat(props: UnifiedChatProps) {
+  return <UnifiedChatForNotebook key={props.meta.notebookId || "none"} {...props} />;
 }
