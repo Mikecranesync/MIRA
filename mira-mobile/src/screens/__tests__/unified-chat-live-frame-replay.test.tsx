@@ -481,6 +481,25 @@ describe("UnifiedChat — a delayed hydration read never replaces a newer live s
     expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
   });
 
+  it("Codex r10 F25: empty polls do not discard a delayed but valid settled hydration result", async () => {
+    vi.useFakeTimers();
+    let resolveHydration!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveHydration = r; }));
+    fetchManualSearchStatus.mockResolvedValue(null); // transient: polls return no status
+    render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+
+    await act(async () => {
+      resolveHydration({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+  });
+
   it("control: a hydration read with no newer input still seeds the follower", async () => {
     fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
     render(<UnifiedChat {...props([], [SMC_TURN])} />);

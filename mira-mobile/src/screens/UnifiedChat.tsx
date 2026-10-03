@@ -440,10 +440,12 @@ function UnifiedChatForNotebook({
       void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
         .then((status) => {
           if (cancelled) return;
-          // Codex r9 (#4195 F23): a poll that lands is newer than any status
-          // read started before it, so it supersedes in-flight hydration and
-          // confirm reads exactly as a live frame does.
-          searchInputEpochRef.current += 1;
+          // Codex r9 (#4195 F23): a poll that returns a concrete status is
+          // newer than any status read started before it, so it supersedes
+          // in-flight hydration and confirm reads exactly as a live frame
+          // does. A null poll carries no information (Codex r10 F25): it
+          // spends budget but must not discard a valid delayed result.
+          if (status) searchInputEpochRef.current += 1;
           setFollow((prev) => {
             if (!prev) return prev;
             const result = advanceManualSearchFollow(prev, notebookId, status);
