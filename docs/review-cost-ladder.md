@@ -151,6 +151,7 @@ python3 tools/review_router/router.py <PR> [--authorized] # stages A → C, insi
 Run it from a checkout of the **base branch**; it fetches the PR objects
 itself. It refuses when its own files (`router.py`, `codex_shim.sh`,
 `prices.json`) differ from `origin/<base>`, because a PR must not be able to
-supply its own routing or shim. `--bootstrap` overrides that only before the
-router exists on main. The Codex login comes from `CODEX_HOME`; on an API key,
+supply its own routing or shim. `--bootstrap` overrides that only while the
+base branch has no router at all — the router checks `origin/<base>` itself and
+refuses the flag once it is on main. The Codex login comes from `CODEX_HOME`; on an API key,
 see the memory `reference_codex_via_api_key_fallback`.
