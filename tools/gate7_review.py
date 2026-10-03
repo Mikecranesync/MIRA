@@ -612,6 +612,19 @@ PROVIDERS = [
 ]
 
 
+def _gh_text(args: list[str], stdin: Optional[str] = None) -> str:
+    out = subprocess.run(
+        ["gh", *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return out.stdout.strip()
+
+
 def _gh_json(args: list[str]) -> dict:
     # encoding= is load-bearing on Windows: text=True alone decodes with the
     # console codepage (cp1252) on a READER THREAD — a single non-cp1252 byte
@@ -1019,8 +1032,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="review-cost ledger for --paid (default: the repository's "
         ".planning/review-costs.jsonl, shared with the router)",
     )
+    p.add_argument(
+        "--post",
+        action="store_true",
+        help="with --paid: post the report to the PR as one [CHEAP-REVIEW] comment "
+        "(head, verdict, measured cost, findings) — GitHub is the durable store",
+    )
     a = p.parse_args(argv)
 
+    if a.post and not a.paid:
+        p.error("--post requires --paid")
     if bool(a.adjudicate) != bool(a.rebuttal):
         p.error("--adjudicate and --rebuttal must be used together")
 
@@ -1249,6 +1270,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"Gate 7: {review.verdict} — written to {a.out}", file=sys.stderr)
     else:
         sys.stdout.write(report)
+    if a.post:
+        cost = paid_cost_usd(model, usage)
+        body = (
+            "[CHEAP-REVIEW]\n\n```\n"
+            f"head: {head_sha}\nverdict: {review.verdict}\nmodel: {model}\n"
+            f"cost_usd: {cost:.4f}\nrun_id: {run_id}\n```\n\n" + report
+        )
+        url = _gh_text(["pr", "comment", str(a.pr), "--body-file", "-"], stdin=body)
+        print(f"Gate 7: posted {url}", file=sys.stderr)
     return 0
 
 

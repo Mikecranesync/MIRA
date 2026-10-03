@@ -941,3 +941,41 @@ def test_an_unwritable_ledger_does_not_lose_a_paid_review(tmp_path, monkeypatch,
     rc = g7.main(["7", "--paid", "--ledger", str(bad / "c.jsonl"), "-o", str(out)])
     assert rc == 0 and "**Verdict:** PASS" in out.read_text()
     assert "LEDGER WRITE FAILED" in capsys.readouterr().err
+
+
+def test_post_puts_the_verdict_cost_and_head_on_the_pr_thread(tmp_path, monkeypatch):
+    """GitHub is the durable store: with --post the rendered report goes to the PR
+    as one comment headed [CHEAP-REVIEW] with head, verdict and measured cost."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    posted = []
+    monkeypatch.setattr(
+        g7, "_gh_text", lambda args, stdin=None: posted.append((args, stdin)) or "https://x/1"
+    )
+    rc = g7.main(
+        [
+            "7",
+            "--paid",
+            "--post",
+            "--ledger",
+            str(tmp_path / "c.jsonl"),
+            "-o",
+            str(tmp_path / "r.md"),
+        ]
+    )
+    assert rc == 0 and len(posted) == 1
+    args, body = posted[0]
+    assert args[:3] == ["pr", "comment", "7"] and "--body-file" in args
+    assert body.startswith("[CHEAP-REVIEW]") and "verdict: PASS" in body
+    assert "head: " + "c" * 40 in body and "cost_usd: 0.0" in body and "## Findings" in body
+
+
+def test_post_without_paid_is_refused(monkeypatch):
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", {})
+    with pytest.raises(SystemExit):
+        g7.main(["7", "--post"])
