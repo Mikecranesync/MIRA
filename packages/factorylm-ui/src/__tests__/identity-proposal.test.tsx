@@ -11,7 +11,7 @@
  * Run: cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/identity-proposal.test.tsx
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { IdentityAlreadyConfirmedError, type ConfirmIdentityResult, type IdentityProposal, type ShellFixture } from "@factorylm/interaction";
+import { getFixture, IdentityAlreadyConfirmedError, type ConfirmIdentityResult, type IdentityProposal, type ShellFixture } from "@factorylm/interaction";
 import { renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -155,6 +155,20 @@ describe("identity_proposal — settled against the notebook's CURRENT identity 
 
   it("renders settled/superseded, with no live Confirm or Reject, when the adapter flags priorOutcome:'superseded'", () => {
     const view = render({}, withPriorOutcome("superseded"));
+    expect(view.container.textContent).toContain("A different machine is now confirmed for this notebook.");
+    expect(view.buttonNamed("Use its manuals")).toBeNull();
+    expect(view.buttonNamed("Not this")).toBeNull();
+  });
+
+  it("cheap-review r5 (#4195): a card already mounted settles when the adapter later flags priorOutcome:'superseded'", () => {
+    // The same card stays mounted while the notebook's identity changes (a
+    // second card in the same thread was confirmed). The host re-hydrates
+    // with the new priorOutcome; the card must drop its live actions then,
+    // not only on a fresh mount.
+    const view = render();
+    expect(view.buttonNamed("Use its manuals")).not.toBeNull();
+    const base = getFixture("identity-proposal");
+    view.dispatch({ type: "hydrate", data: { thread: withPriorOutcome("superseded")(base).thread } });
     expect(view.container.textContent).toContain("A different machine is now confirmed for this notebook.");
     expect(view.buttonNamed("Use its manuals")).toBeNull();
     expect(view.buttonNamed("Not this")).toBeNull();

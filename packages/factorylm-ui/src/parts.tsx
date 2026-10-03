@@ -14,7 +14,7 @@ import type {
   SourceReference,
 } from "@factorylm/interaction";
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
-import { useState, type Dispatch, type ReactNode } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode } from "react";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
@@ -323,6 +323,15 @@ function IdentityProposalPart({
   const [outcome, setOutcome] = useState<"confirmed" | "rejected" | "failed" | "superseded" | null>(
     part.priorOutcome === "confirmed" ? "confirmed" : part.priorOutcome === "superseded" ? "superseded" : null,
   );
+  // The card can stay mounted while the notebook's identity changes (another
+  // card in the same thread was confirmed). The seed above runs only on
+  // mount, so follow a later adapter flag too; never overwrite an outcome
+  // this card already reached itself.
+  useEffect(() => {
+    if (part.priorOutcome !== "confirmed" && part.priorOutcome !== "superseded") return;
+    const next = part.priorOutcome;
+    setOutcome((current) => (current === "confirmed" || current === "rejected" || current === "superseded" ? current : next));
+  }, [part.priorOutcome]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConfirmIdentityResult | null>(null);
   // Set only on a LIVE 409 refusal (see header); the adapter-seeded
