@@ -22,6 +22,12 @@ completion over the full diff costs diff tokens only.
 
 ## Run it
 
+`--paid` is explicit on purpose. Without it, `tools/gate7_review.py` still runs the legacy
+**free** Groq/Together cascade (40k-char cap, advisory) — that is what the cost router's
+stage B (#4202) invokes, and it must keep spending nothing. The required gate is the
+command below, with `--paid`; a run without it is not the gate.
+
+
 ```bash
 doppler run --project factorylm --config dev -- \
   python3 tools/gate7_review.py <PR> --paid --post -o .planning/cheap-<PR>-<head>.md
