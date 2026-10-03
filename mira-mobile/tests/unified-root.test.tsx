@@ -477,13 +477,17 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
   });
 
-  it("#4188: BACK from a notebook the list does not (yet) contain — a QR deep link to a just-created machine notebook — goes to the global home, never an empty 'FactoryLM' project root", async () => {
-    // openAssetNotebook can create the notebook; the drawer refresh that would
-    // list it is allowed to fail or lag (UnifiedRoot's deep-link effect). Until
-    // it lands there is no project to show, so a project root here would be a
-    // fabricated, empty page.
+  it("#4188: a QR deep link to a just-created machine notebook gets ITS project root on BACK — the opened notebook joins the list at once, it never waits for the drawer refresh", async () => {
+    // openAssetNotebook can create the notebook, and the drawer refresh that
+    // would list it may fail or lag (the listNotebooks mock never includes it).
+    // The root keeps the notebook openAssetNotebook returned, so BACK lands on
+    // that project's real root, not the global home or an empty page.
     scanApi.getAssetByTag.mockResolvedValue({ id: "asset-new" });
-    scanApi.openAssetNotebook.mockResolvedValue({ id: "nb-new" });
+    scanApi.openAssetNotebook.mockResolvedValue({
+      id: "nb-new", displayName: "Line 7 conveyor", manufacturer: null, model: null, equipmentType: null,
+      identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null,
+      threads: [{ id: "thrd-n1", notebookId: "nb-new", title: "Belt slipping", createdAt: "", updatedAt: "", turnCount: 1, sharedLegacy: false }],
+    });
     const backRef = { current: null as (() => boolean) | null };
     render(
       <UnifiedRoot
@@ -502,8 +506,9 @@ describe("UnifiedRoot", () => {
       consumed = backRef.current?.() ?? false;
     });
     expect(consumed).toBe(true);
-    await waitFor(() => screen.getByTestId("unified-home"));
-    expect(screen.queryByTestId("unified-project-root")).toBeNull();
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    expect(root.querySelector("h1")?.textContent).toBe("Line 7 conveyor");
+    expect(root.querySelector('[data-item-id="notebook-nb-new:thread-thrd-n1"]')?.textContent).toContain("Belt slipping");
   });
 
   it("#4188 control: a cold start with no notebooks is unchanged — the empty-workspace create prompt, not a project root or home composer", async () => {

@@ -146,16 +146,35 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           if (live) setDeepLinkNotice(`Unrecognized link: ${deepLink.raw}`);
           return;
         }
-        const outcome = await resolveScan(deepLink.tag, { getAssetByTag, openAssetNotebook }, "qr");
+        // Keep the notebook openAssetNotebook returns: it may be brand new and
+        // absent from the list until the refresh below lands (or fails), and
+        // without it there is no project to return to on BACK (#4188).
+        const captured: { notebook: Notebook | null } = { notebook: null };
+        const outcome = await resolveScan(
+          deepLink.tag,
+          {
+            getAssetByTag,
+            openAssetNotebook: async (...args: Parameters<typeof openAssetNotebook>) => {
+              captured.notebook = await openAssetNotebook(...args);
+              return captured.notebook;
+            },
+          },
+          "qr",
+        );
         if (!live) return;
         if (outcome.kind === "notebook") {
           setDeepLinkNotice(null);
+          const opened = captured.notebook;
+          const withOpened = (list: Notebook[]): Notebook[] =>
+            opened && !list.some((nb) => nb.id === opened.id) ? [opened, ...list] : list;
+          if (opened) setNotebooks((current) => withOpened(current ?? []));
           open(outcome.notebookId);
           // The notebook may be new (openAssetNotebook can create it); refresh
-          // the drawer so it lists what the technician is now inside.
+          // the drawer so it lists what the technician is now inside. A refresh
+          // that lags the create must not drop the notebook just opened.
           try {
             const list = await listNotebooks();
-            if (live) setNotebooks(list);
+            if (live) setNotebooks(withOpened(list));
           } catch {
             // The conversation is already open; a stale drawer is tolerable.
           }
