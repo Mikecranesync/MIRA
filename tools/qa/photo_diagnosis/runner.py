@@ -74,10 +74,18 @@ def load_retrieval_acceptance() -> Any:
 ALLOWED_BASE_HOSTS = frozenset({"app-staging.factorylm.com", "localhost", "127.0.0.1"})
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
 def _refuses_prod(base: str) -> bool:
-    """True unless the base URL's hostname is an allowlisted non-production host."""
-    host = (urlparse(base).hostname or "").lower()
-    return host not in ALLOWED_BASE_HOSTS
+    """True unless the base URL's hostname is an allowlisted non-production host
+    AND, for any non-loopback host, the scheme is https — the session cookie
+    never travels in plaintext (cheap-lane review, 2026-10-03)."""
+    u = urlparse(base)
+    host = (u.hostname or "").lower()
+    if host not in ALLOWED_BASE_HOSTS:
+        return True
+    return host not in _LOOPBACK_HOSTS and u.scheme.lower() != "https"
 
 
 # ---------------------------------------------------------------------------

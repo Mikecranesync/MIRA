@@ -1451,3 +1451,13 @@ def test_r11_f21_a_supported_but_non_terminal_turn_continues():
         _diagnosis_case(max_turns=3), baseline_provider, judge, classifier, repeat=0
     )
     assert len(calls) >= 1
+
+
+def test_the_session_cookie_never_travels_over_plaintext_http():
+    """Cheap-lane review of 148f5f904 ($0.008): the hostname allowlist let
+    `http://app-staging.factorylm.com` through, and the runner would have
+    sent the operator's cookie without TLS. Remote hosts require https;
+    loopback may stay http."""
+    assert runner._refuses_prod("http://app-staging.factorylm.com") is True
+    assert runner._refuses_prod("https://app-staging.factorylm.com") is False
+    assert runner._refuses_prod("http://localhost:3101") is False
