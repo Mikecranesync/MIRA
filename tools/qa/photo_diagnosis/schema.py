@@ -106,6 +106,9 @@ def _check_identity(p: Path, field: str, kind: str, errors: list[str]) -> None:
     if p.is_symlink():
         errors.append(f"{field}: symlinks are not allowed ({p})")
         return
+    if not p.is_file():
+        errors.append(f"{field}: not a regular file ({p})")
+        return
     try:
         head = p.open("rb").read(16)
     except OSError as e:
@@ -148,7 +151,9 @@ def validate_case(raw: Any, path: Path) -> dict:
         errors.append("id: required string field missing")
 
     kind = raw.get("kind")
-    kind_known: str | None = kind if kind in VALID_KINDS else None
+    # A list/dict value is unhashable: `kind in VALID_KINDS` would raise
+    # TypeError out of validation (cheap-lane review of dd006072f).
+    kind_known: str | None = kind if isinstance(kind, str) and kind in VALID_KINDS else None
     if kind_known is None:
         errors.append(
             f"kind: invalid or missing (got {kind!r}, expected one of {sorted(VALID_KINDS)})"

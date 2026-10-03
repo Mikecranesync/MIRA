@@ -425,3 +425,31 @@ def test_an_existing_source_must_be_a_pdf_by_content(tmp_path):
     real = tmp_path / "ok.pdf"
     real.write_bytes(b"%PDF-1.4\n%fake\n")
     schema.validate_case(_diag_case(sources=[str(real)]), FAKE_CASE_FILE)  # raises on any error
+
+
+# --- cheap-lane 2026-10-03 (dd006072f): malformed value types are errors, not crashes
+
+
+@pytest.mark.parametrize("bad_kind", [[], {}, ["qa"]])
+def test_an_unhashable_kind_is_a_validation_error_not_a_type_error(bad_kind):
+    raw = _qa_case()
+    raw["kind"] = bad_kind
+    errors = _errors(raw)
+    assert any(e.startswith("kind:") for e in errors), errors
+
+
+def test_load_cases_reports_an_unhashable_kind_instead_of_crashing(tmp_path):
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    raw = _qa_case(photo=str((FAKE_CASE_FILE.parent / REAL_PHOTO).resolve()))
+    raw["kind"] = []
+    (cases_dir / "bad.yaml").write_text(yaml.safe_dump(raw))
+    valid, errors = schema.load_cases(cases_dir)
+    assert valid == [] and len(errors) == 1 and "kind:" in errors[0].errors[0]
+
+
+def test_a_directory_or_device_with_an_image_suffix_is_not_a_photo(tmp_path):
+    d = tmp_path / "photo.jpg"
+    d.mkdir()
+    errors = _errors(_qa_case(photo=str(d)))
+    assert any(e.startswith("photo: not a regular file") for e in errors), errors
