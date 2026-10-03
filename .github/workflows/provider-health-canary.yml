@@ -111,7 +111,20 @@ jobs:
           title="LLM provider coverage ${sev}: ${summary}"
           # printf so each line has NO leading whitespace (4+ spaces => code block)
           # and NO backticks (avoids bash command substitution in the body).
+          # SDLC v1 §10.3 fixed fields first (one per line, exactly these keys; the
+          # body is the record of truth). A canary cannot attribute a deploy, so
+          # deploy_run/deploy_sha are "none"; restored_at stays "open" until a
+          # human edits the body; restoring_action starts as "none".
+          first_seen="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           body=$(printf '%s\n' \
+            "first_seen: ${first_seen}" \
+            "deploy_run: none" \
+            "deploy_sha: none" \
+            "services: mira-bots (LLM cascade providers: ${down})" \
+            "impact: reduced LLM provider coverage — ${summary}" \
+            "restored_at: open" \
+            "restoring_action: none" \
+            "" \
             "The provider-health canary found one or more LLM cascade providers DOWN." \
             "" \
             "Status: ${summary}" \

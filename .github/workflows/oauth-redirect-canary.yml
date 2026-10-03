@@ -91,7 +91,20 @@ jobs:
           # Build the body via printf so each line has NO leading whitespace —
           # 4+ leading spaces would render the whole issue as a code block. No
           # backticks anywhere (avoids bash command substitution in the body).
+          # SDLC v1 §10.3 fixed fields first (one per line, exactly these keys; the
+          # body is the record of truth). A canary cannot attribute a deploy, so
+          # deploy_run/deploy_sha are "none"; restored_at stays "open" until a
+          # human edits the body; restoring_action starts as "none".
+          first_seen="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           body=$(printf '%s\n' \
+            "first_seen: ${first_seen}" \
+            "deploy_run: none" \
+            "deploy_sha: none" \
+            "services: mira-hub (Google OAuth sign-in on app.factorylm.com)" \
+            "impact: Google sign-in rejected with redirect_uri_mismatch" \
+            "restored_at: open" \
+            "restoring_action: none" \
+            "" \
             "The hourly OAuth redirect canary detected a Google redirect_uri_mismatch." \
             "**Google sign-in is broken on https://app.factorylm.com right now.**" \
             "" \

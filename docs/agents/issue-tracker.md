@@ -38,11 +38,13 @@ restoring_action: <deploy | config | provider recovery | none>
 ```
 
 - Canary-opened `*-incident` issues (`provider-incident`, `oauth-incident`) carry the `incident`
-  label as well; the canaries add it on creation and on every update. The canary-written body does
-  not contain the fixed fields — whoever triages the issue **edits the body** to add them
-  (`gh issue edit <number> --body-file …`). Fields placed only in a comment are not part of the
-  record and are not parsed. Until the body carries all seven keys the incident counts as
-  `restored_at: open` for the metrics.
+  label as well; the canaries add it on creation and on every update. On creation the canary
+  writes the seven keys at the top of the body with what it can know (`first_seen`, `services`,
+  `impact`; `deploy_run`/`deploy_sha` are `none` because a canary cannot attribute a deploy;
+  `restored_at: open`; `restoring_action: none`). Whoever triages the issue **edits the body**
+  to complete them (`gh issue edit <number> --body-file …`); recurrences are comments and do
+  not touch the fields. Fields placed only in a comment are not part of the record and are not
+  parsed. An issue opened before this convention has no field block until a human adds one.
 - Closing an `incident` requires a **regression disposition** comment using one of:
   `new-test:<path>` (docstring cites the issue), `existing-coverage:<path>`, `guard:<workflow or hook>`,
   `eval-fixture:<path>`, or `external-cause:<reason>`. An incident without a disposition stays open.
