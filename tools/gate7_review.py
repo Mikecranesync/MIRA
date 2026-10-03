@@ -226,10 +226,11 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
             # literal — five reviews reported the redaction itself as a bug.
             # Quoted value: a literal, redacted whatever it contains (Codex r2 F1:
             # a `(` inside the quotes used to look like a call). Unquoted value:
-            # an opaque token unless it runs into `(`/identifier chars or is a
-            # known-root attribute path — then it is code.
+            # an opaque token unless it is a known-root attribute path (with or
+            # without a call) — a bare `get_secret(` or a token followed by `(`
+            # is redacted: over-redaction is the safe side of this boundary.
             r"(\s*[:=]\s*)"
-            r"(?:([\"'])((?:(?!\3)[^\r\n]){12,})\3|([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(]))"
+            r"(?:([\"'])((?:(?!\3)[^\r\n]){12,})\3|([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=]))"
         ),
         lambda m: (
             f"{m.group(1)}{m.group(2)}{m.group(3)}[SECRET]{m.group(3)}"

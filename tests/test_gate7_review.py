@@ -1157,8 +1157,24 @@ def test_r2_f1_a_quoted_literal_is_redacted_whatever_it_contains(line, expected)
     assert redact(line) == expected
 
 
-def test_r2_f1_an_unquoted_call_is_still_code():
-    assert redact("api_key = get_secret_value(PAID_ENV)") == "api_key = get_secret_value(PAID_ENV)"
+def test_r2_f1_an_unquoted_rooted_call_is_still_code():
+    assert redact('key = os.environ.get(PAID_ENV, "")') == 'key = os.environ.get(PAID_ENV, "")'
+    assert redact("token = settings.get_token()") == "token = settings.get_token()"
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("api_key=abcdefghijklmnop(", "api_key=[SECRET]("),
+        ("api_key = get_secret_value(PAID_ENV)", "api_key = [SECRET](PAID_ENV)"),
+        ("PASSWORD=abcdefghijklmnop_extra", "PASSWORD=[SECRET]"),
+    ],
+)
+def test_an_unquoted_value_followed_by_a_paren_is_code_only_when_rooted(line, expected):
+    """Cheap gate on 777b54432: an unquoted 16-char token followed by `(` was
+    exempted as a call. Only a known-root attribute path is code; a bare call
+    is redacted — over-redaction on the safe side of a security boundary."""
+    assert redact(line) == expected
 
 
 @pytest.mark.parametrize("reason", ["content_filter", "tool_calls", "function_call", "weird"])
