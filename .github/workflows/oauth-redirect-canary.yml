@@ -123,8 +123,17 @@ jobs:
             --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
           # Dedup by a stable title marker so a multi-hour outage updates ONE
           # issue instead of opening a new one every hour.
-          existing=$(gh issue list --state open --search 'in:title redirect_uri_mismatch' \
-            --json number --jq '.[0].number // empty')
+          # Narrow the dedup target to this canary's own label and refuse an ambiguous
+          # match (Codex F1, PR #4212): a title substring alone could pick a stale or
+          # hand-renamed issue and leave the live incident un-updated.
+          matches=$(gh issue list --state open --label oauth-incident --search 'in:title redirect_uri_mismatch' \
+            --json number --jq '[.[].number]')
+          count=$(printf '%s' "$matches" | jq 'length')
+          if [ "$count" -gt 1 ]; then
+            echo "::error::ambiguous incident dedup: $count open issues match ($matches); close or retitle the stale ones"
+            exit 1
+          fi
+          existing=$(printf '%s' "$matches" | jq -r '.[0] // empty')
           if [ -n "$existing" ]; then
             # Label FIRST, then comment (Codex F1, PR #4212): if the label add fails the
             # run goes red without leaving a half-updated record (comment present, label
