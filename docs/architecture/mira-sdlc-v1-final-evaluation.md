@@ -1,6 +1,6 @@
 # MIRA / FactoryLM SDLC v1 — Final Independent Evaluation
 
-**Status:** EVALUATION — complete, pending verifier pass and Codex adversarial round on PR #4210. Nothing in this document changes CI, branch protection, environments,
+**Status:** EVALUATION — complete; verifier pass applied (58 PASS / 2 PARTIAL fixed / 1 FAIL fixed of claims checked); Codex adversarial round on PR #4210 recorded in Appendix C when complete. Nothing in this document changes CI, branch protection, environments,
 workflows, rulesets, CLAUDE.md, staging, production, or release behavior. It recommends; it does not
 implement.
 **Subject:** draft PR #4208 — `docs/architecture/mira-sdlc-v1.md` @ `6eecb1507ecea6c9d13db8f0c8979e4f685270dc`
@@ -55,7 +55,7 @@ Codex as adversarial challenger. To avoid self-review, this evaluation splits ro
 **Replacement does not win.** None of the five is evidence GitHub-native primitives cannot express the
 same contract — they are drafting gaps in identity/scope/provenance, and #4208's own §4 matrix already
 names most as REPAIR/CONNECT work (`:462-511`). Replacing the control plane trades a working,
-zero-new-infra system — 1,119 version tags, 90-day receipts, two already-run adversarial rounds — for a
+zero-new-infra system — 1,120 `v*` tags and 1,078 `rollback/*` tags at `a54c4c88b` (`git tag -l`), 90-day receipts, two already-run adversarial rounds — for a
 durable-orchestration dependency with **no SDLC installation in this repo today**
 (`research-orchestration.md` §1: "no Temporal server/worker container exists in this repo's compose
 files"), one that would need to survive the very outage it exists to coordinate recovery from, whose
@@ -92,10 +92,7 @@ waved through on the strength of the parts already right.
   independence claim, the missing R2 mechanical floor, and the cheap-lane consumer (§12, §13).
 - `environment: production` has no GitHub-enforced protection today — "Mike authorizes" is pure
   doctrine (fact-pack B:33, D:61) — the single highest-leverage, zero-cost fix available (§10, §13.10).
-- Merge Queue's org-ownership gate is not cleanly settled: this repo's own ruleset already grants a
-  `RepositoryRole 5` bypass actor despite `owner.type: User` (D:60), contradicting the same source's
-  separate claim that bypass actors require an organization — classify **DEFER**, trigger = a direct
-  eligibility check, not REJECT.
+- Merge Queue is **not eligible** for this repository today: GitHub's own statement limits it to Enterprise Cloud and "all public repos owned by organizations" (fact pack K1) and `owner.type` is `User`. Final classification **REJECT for v1**, trigger = the repo moves to an organization or GitHub changes eligibility; even then the queue's candidate SHA ≠ PR head conflicts with exact-head Codex binding. (The drafter's original DEFER reasoning is retained in §1b/§10 for transparency.)
 - The authority matrix (§8) shows the biggest gap is not any agent role — branch protection doesn't
   distinguish risk class at all, so "Mike merges R3" and "Mike authorizes production" stay doctrine,
   not mechanism, unless §13's changes land.
@@ -178,7 +175,7 @@ Facts discovered during this evaluation that #4208 did not record (not drift —
 | `apply-ingest-migrations.yml` uses `environment: production` for both targets | `apply-ingest-migrations.yml:59` | §3.3 G3 migrations row |
 | Mutable action tags in secret-bearing jobs (`actions/checkout@v6` in `apply-migrations.yml:72`; `oven-sh/setup-bun@v2` in `retrieval-acceptance.yml:90`) | files | §3.10 |
 | The Codex attestation is trusted by **owner-account authorship** of the comment; the review lane runs under that account | `tools/ui_surface_lifecycle_guard.py:1405-1416` | §3.1 principle 6, §3.12 |
-| `gate7_review.py` exit codes: 0 for rendered PASS/BLOCK/UNKNOWN and post failure; 2 provider failure; 3 budget refusal; 4 oversized diff (#4208 §1.2/G-22 says "0 for every outcome") | `tools/gate7_review.py:1180,1214,1296,1309,1362` | §1.2, G-22 |
+| `gate7_review.py` exit codes: #4208 §1.2 correctly says 0 for PASS/BLOCK/UNKNOWN/post-failure, but its G-22 ("exit 0 for every outcome") is overbroad — the lane returns 2 on provider failure, 3 on budget refusal, 4 on an oversized diff | `tools/gate7_review.py:1180,1214,1296,1309,1362` | §1.2, G-22 |
 | Eval fixtures: 67 files, 65 matched by the loader globs (#4208 says 67 executed) | `tests/eval/run_eval.py:190-191` | §1.2, D21, §3.11 |
 | `docs/GATE_AND_BLOCKER_REGISTER.md:174` already records strict up-to-date as "structural" with mitigations at `:176-190`; its line 172 (`ci.yml` `branches:[main]`) is stale since `ci.yml:33-41` | file | §3.9, merge-queue question |
 
@@ -481,7 +478,7 @@ compared against `deploy-vps.yml`'s dispatch `services` input rather than today'
 | Control | Repo state today (fact pack) | Classification | Why |
 |---|---|---|---|
 | **Rulesets** | One ruleset (17097034): `deletion`, `non_fast_forward`, `pull_request` (0 approvals), `required_status_checks=[staging-gate]`; coexists with classic protection (6 contexts, `strict:true`) — the two stack, neither overrides (`docs.github.com/.../about-protected-branches`: "Only a single branch protection rule can apply at a time... This restriction does not apply to rulesets," per `research-github-native.md` §3) | BORROW PATTERN | Document the union of both mechanisms explicitly as the real required-check set; don't consolidate into one ruleset until org-ownership (below) is settled |
-| **Merge Queue** | `0/62` workflows use `merge_group`; repo `owner.type` confirmed **`User`** live. The strict-up-to-date friction Merge Queue would target is real and documented (`docs/GATE_AND_BLOCKER_REGISTER.md:174-190`: "Structural, not fixable here" + mitigation ideas at `:176-190`) | **DEFER**, with an explicit eligibility check as the trigger | The research file's claim that Merge Queue requires org ownership is sourced from GitHub's changelog, but its *separate* claim that bypass actors require org ownership is empirically **false** on this exact repo — the live ruleset already grants a `RepositoryRole 5` bypass actor on a `User`-owned repo (fact-pack D:60). One org-only claim failing here means the other should not be treated as settled without a direct Settings-UI or dispatch-attempt check. Even if eligible, none of `GATE_AND_BLOCKER_REGISTER.md`'s own mitigations were confirmed to preserve Codex's exact-head binding (candidate SHA ≠ PR head, `research-github-native.md` §1) — that redesign question is independent of eligibility and unresolved either way |
+| **Merge Queue** | `0/62` workflows use `merge_group`; repo `owner.type` confirmed **`User`** live. The strict-up-to-date friction Merge Queue would target is real and documented (`docs/GATE_AND_BLOCKER_REGISTER.md:174-190`: "Structural, not fixable here" + mitigation ideas at `:176-190`) | **REJECT for v1 (not eligible)** — drafter proposed DEFER | GitHub: merge queue is available on Enterprise Cloud and "all public repos owned by organizations" (fact pack K1); this repo's `owner.type` is `User`. The drafter noted the ruleset's `RepositoryRole 5` bypass actor on this User-owned repo as a reason to doubt org-only claims; bypass actors are a different feature and do not bear on merge-queue eligibility. Even if eligible later, none of `GATE_AND_BLOCKER_REGISTER.md`'s mitigations preserve Codex's exact-head binding (candidate SHA ≠ PR head, `research-github-native.md` §1) |
 | **Environments / deployment protection rules** | `production`/`staging`/`staging-deploy` exist with **no protection rules** — no required reviewers, no `prevent_self_review`, no branch policy (fact-pack D, B:33) | **REUSE NOW** | Free on public repos, zero migration cost, directly converts "Mike authorizes production" from doctrine to a GitHub-enforced gate (§8, §13 change 10) — but see the caveat below |
 | **Reusable workflows** | No `workflow_call` composition found for the staging-gate logic | BORROW PATTERN | Would unify "what counts as green" into one definition; no urgency, no security exposure from deferring |
 | **Artifact attestations** | `0` workflows reference `attest-build-provenance` or the attestations API (fact-pack J2, corrected from an earlier zero-digest-404 overclaim) | **DEFER** | No build-artifact-publish step exists to attest; deploys reference a source SHA and rebuild, not a published artifact pulled by digest |
@@ -526,9 +523,7 @@ audit, not identity separation.
 | Lock-in | Low (GitHub-native) | Low | Low | Low | Low | Medium (GitHub App) | Low | Moderate (SDK/service-coupled) |
 | Expected reduction in Mike intervention | Unproven — eligibility unconfirmed and candidate-SHA/Codex-binding conflict unresolved | Unproven — a deliberate click, not identity separation (§10 caveat) | None | None | None | None (duplicates roles MIRA already fills) | None (duplicates roles MIRA already fills) | Unproven; no SDLC installation exists to measure |
 
-**Classifications:** Merge Queue **DEFER** (org-eligibility unconfirmed — one of the research file's
-two org-only claims is already empirically false here, D:60 — plus the unresolved candidate-SHA-vs.-
-Codex-binding conflict regardless of eligibility). Environments **REUSE NOW** (no-`prevent_self_review`
+**Classifications:** Merge Queue **REJECT for v1** (not eligible: User-owned repo per GitHub's changelog, fact pack K1; the drafter's DEFER is recorded in §1b; the candidate-SHA-vs-Codex-binding conflict stands regardless). Environments **REUSE NOW** (no-`prevent_self_review`
 caveat above). Attestations **DEFER**. Dependency Review **REUSE NOW**. Scorecard **BORROW PATTERN**.
 Claude Code Action **REJECT** (review) / **DEFER** (@mention implement) — MIRA's local split already
 covers both roles without the disclosed CVE class (`research-agent-workers.md` §1,§6). Codex Action
@@ -642,9 +637,10 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
     (not every workflow run, J11); correct the eval-fixture denominator from 67 to 65 (J7); note
     `headSha` on a `deploy-vps.yml` run is the controller-checkout ref, not the deployed SHA (G:105).
 13. **New subsection near §3.3/§3.9** — the proposal text has zero mentions of "Merge Queue" or
-    `merge_group` despite PRD §4.B requiring this; add one with the confirmed `owner.type: User` fact
-    and the empirically-false org-only-bypass-actor contradiction (D:60); classify **DEFER** with a
-    direct eligibility check as the trigger (§10/§11).
+    `merge_group` despite PRD §4.B requiring this; add one recording the confirmed `owner.type: User`
+    fact and GitHub's eligibility statement (fact pack K1); classify **REJECT for v1** with the trigger
+    "repo moves to an organization or GitHub changes eligibility", and note the unresolved
+    candidate-SHA-vs-exact-head-review conflict for that future (§10/§11).
 14. **§3.6 / §3.7** — name the mechanism: a hotfix's rollback target needs a fresh (≤168h) staging +
     acceptance receipt *before* the incident, not re-acquired during it; add a scheduled (e.g. daily)
     re-run of `deploy-staging.yml` + `retrieval-acceptance.yml` against the current production SHA so a
@@ -785,7 +781,7 @@ absence still leaves a live self-approval path (reasoned, not exercised — vali
    3. State the validator trust boundary: drift and acceptance validators run from the candidate tree with credentials, and `deploy-staging.yml` accepts any repository commit, so an unmerged branch can be staged and its provisioner run with staging credentials today.
    4. Make classification and the cheap lane mechanical: effective risk = max(declared, trusted-path floor, reviewer findings); the `[CHEAP-REVIEW]` verdict becomes a head-bound check-run or is relabelled advisory.
    5. Put a required reviewer on the `production` environment (without `prevent_self_review`, which deadlocks a one-owner repo and already blocks `ota-production`), and say plainly that this buys a recorded click, not identity separation; also state that the Codex attestation is authenticated as an owner-account comment.
-3. **Top three explicitly rejected ideas:** (a) FactoryLM Forge / Temporal-Restate-DBOS / Backstage / Argo / LangGraph / SWE-agent / OpenHands as SDLC machinery — rejected or deferred with triggers (§15); (b) hosted `claude-code-action` or the ChatGPT Codex app as the reviewer — duplicates the local lane and reintroduces the disclosed secrets-plus-untrusted-PR-text failure class; (c) GitHub Merge Queue for v1 — the repo is User-owned and not eligible, and the candidate-SHA model conflicts with exact-head review regardless.
+3. **Top three explicitly rejected ideas:** (a) FactoryLM Forge / Temporal-Restate-DBOS / Backstage / Argo / LangGraph / SWE-agent / OpenHands as SDLC machinery — rejected or deferred with triggers (§15); (b) a hosted reviewer — `claude-code-action` in review mode, or the ChatGPT Codex cloud review app (distinct from `openai/codex-action`, which §11 rates BORROW PATTERN) — duplicates the local lane and reintroduces the disclosed secrets-plus-untrusted-PR-text failure class; (c) GitHub Merge Queue for v1 — the repo is User-owned and not eligible, and the candidate-SHA model conflicts with exact-head review regardless.
 4. **Unresolved owner decisions (§17):** Codex mandatory for all R3 (recommend YES); keep required approvals at 0 (recommend YES, conditional on the environment reviewer); `test-eval-offline` blocking (recommend NO, measure 30 days); R0 cheap-lane exemption (recommend NO in v1); delete the `auto-fix` job (recommend DELETE); whether a recorded click without identity separation is an acceptable interim production control (risk-tolerance call).
 5. **Ready for ratification after those changes?** **Yes.** PRD §21 reads 6/10 TRUE today (drafter) — the four FALSE conditions are all rule-text defects in #4208, not code; after §13 changes 1–8 and 10 land in the document, all ten conditions are met. Ratification adopts rules, not completed repairs; the code-level items are sequenced in §14.
 6. **Path:** `docs/architecture/mira-sdlc-v1-final-evaluation.md` (this document), branch `docs/sdlc-v1-evaluation`, draft PR #4210.
