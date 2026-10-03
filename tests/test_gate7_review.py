@@ -849,6 +849,8 @@ def test_call_paid_without_a_key_or_with_an_empty_completion_is_no_review(monkey
 
 def _patch_main(monkeypatch, diff, paid_text, usage):
     monkeypatch.setattr(g7, "fetch_pr", lambda n: ("t", "b", ["docs/a.md"], diff, "c" * 40))
+    # the post-time head re-read agrees with the fetch-time head unless a test says otherwise
+    monkeypatch.setattr(g7, "current_head", lambda n: "c" * 40)
     seen = {}
 
     def call_paid(prompt, model, **kw):
@@ -1017,6 +1019,66 @@ def test_post_puts_the_verdict_cost_and_head_on_the_pr_thread(tmp_path, monkeypa
     assert "head: " + "c" * 40 in body and "cost_usd: 0.0" in body
     # the comment carries the EXACT rendered report, byte for byte, after the header
     assert body.endswith((tmp_path / "r.md").read_text())
+
+
+def _post_body(tmp_path, monkeypatch, live_head):
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    monkeypatch.setattr(g7, "current_head", lambda n: live_head)
+    posted = []
+    monkeypatch.setattr(
+        g7, "_gh_text", lambda args, stdin=None: posted.append((args, stdin)) or "https://x/1"
+    )
+    rc = g7.main(
+        [
+            "7",
+            "--paid",
+            "--post",
+            "--ledger",
+            str(tmp_path / "c.jsonl"),
+            "-o",
+            str(tmp_path / "r.md"),
+        ]
+    )
+    assert rc == 0 and len(posted) == 1
+    return posted[0][1]
+
+
+def test_post_rereads_the_head_and_marks_a_moved_head_stale(tmp_path, monkeypatch):
+    """SDLC v1 §4.2 / Part B step 6: the head is fetched once with the diff; a push
+    during the review would otherwise be stamped with a verdict for bytes nobody can
+    see any more. The envelope must say STALE, keep the reviewed verdict on its own
+    line, and name both SHAs so the merger can see exactly what drifted."""
+    body = _post_body(tmp_path, monkeypatch, "d" * 40)
+    head, envelope = body.split("```")[1].strip().splitlines(), body
+    assert "\nverdict: STALE\n" in envelope and "\nverdict: PASS\n" not in envelope
+    assert "reviewed_verdict: PASS" in envelope
+    assert "head: " + "c" * 40 in envelope and "current_head: " + "d" * 40 in envelope
+    assert head[0] == "head: " + "c" * 40 and head[1] == "verdict: STALE"
+
+
+def test_post_treats_a_failed_head_reread_as_stale_not_as_held(tmp_path, monkeypatch):
+    """A re-read that fails is not evidence the head held — fail closed."""
+    body = _post_body(tmp_path, monkeypatch, "")
+    assert "verdict: STALE" in body and "current_head: unknown (re-read failed)" in body
+
+
+def test_post_keeps_the_plain_verdict_when_the_head_held(tmp_path, monkeypatch):
+    body = _post_body(tmp_path, monkeypatch, "c" * 40)
+    assert "verdict: PASS" in body and "STALE" not in body and "current_head" not in body
+
+
+def test_current_head_returns_empty_when_gh_fails(monkeypatch):
+    def boom(args):
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(g7, "_gh_json", boom)
+    assert g7.current_head(7) == ""
 
 
 def test_post_without_paid_is_refused(monkeypatch):
