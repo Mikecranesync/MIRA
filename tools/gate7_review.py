@@ -36,6 +36,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -757,6 +758,142 @@ def call_cascade(
     return None, "", attempts
 
 
+# --- The <$0.10 lane: a single-shot PAID review --------------------------------
+# Owner goal (Mike, 2026-10-03): a review that costs less than $0.10. The agentic
+# Codex lane re-reads the repository (2.6M input tokens for a 246k-char diff —
+# #4182 round 11, $0.70 at standard tier, $2–3 at critical); the diff itself is a
+# few tens of thousands of tokens. One non-agentic chat completion over the FULL
+# diff costs diff tokens only. The model is chosen by a worst-case estimate (no
+# cache, the whole output cap) against the budget, strongest first, and the real
+# cost is recorded from the API's usage field into the shared review ledger.
+PAID_URL = "https://api.openai.com/v1/chat/completions"
+PAID_ENV = "OPENAI_API_KEY"
+PAID_LADDER = ("gpt-6.1-sol", "gpt-5.4-mini", "gpt-6-luna")  # strongest first
+PAID_MAX_OUTPUT_TOKENS = 6000
+PAID_DIFF_CAP = 400_000  # the budget bounds it below this in practice
+PAID_REASONING_EFFORT = "medium"
+_PRICES_FILE = Path(__file__).resolve().parent / "review_router" / "prices.json"
+
+
+def prices() -> dict[str, dict[str, float]]:
+    """USD per 1M tokens, from the router's single price table (never a second one)."""
+    return json.loads(_PRICES_FILE.read_text(encoding="utf-8"))["usd_per_mtok"]
+
+
+def paid_cost_usd(model: str, usage: dict, table: Optional[dict] = None) -> float:
+    p = (table or prices())[model]
+    cached = min(int(usage.get("cached_input_tokens", 0)), int(usage.get("input_tokens", 0)))
+    uncached = int(usage.get("input_tokens", 0)) - cached
+    out = int(usage.get("output_tokens", 0))
+    return (uncached * p["input"] + cached * p["cached_input"] + out * p["output"]) / 1e6
+
+
+def paid_estimate_usd(
+    model: str,
+    prompt_chars: int,
+    max_output: int = PAID_MAX_OUTPUT_TOKENS,
+    table: Optional[dict] = None,
+) -> float:
+    """Worst case: no cache hit, the full output cap, ~4 chars per token."""
+    usage = {
+        "input_tokens": prompt_chars // 4 + 1,
+        "cached_input_tokens": 0,
+        "output_tokens": max_output,
+    }
+    return paid_cost_usd(model, usage, table)
+
+
+def pick_paid_model(
+    prompt_chars: int,
+    budget_usd: float,
+    ladder: tuple[str, ...] = PAID_LADDER,
+    table: Optional[dict] = None,
+) -> Optional[str]:
+    """The strongest model whose worst-case estimate fits the budget; None if none does."""
+    for model in ladder:
+        if paid_estimate_usd(model, prompt_chars, table=table) <= budget_usd:
+            return model
+    return None
+
+
+def call_paid(
+    prompt: str,
+    model: str,
+    max_output: int = PAID_MAX_OUTPUT_TOKENS,
+    reasoning_effort: str = PAID_REASONING_EFFORT,
+) -> tuple[Optional[str], str, list[str], dict]:
+    """ONE chat completion, no tools, no retries. Returns (text|None, provider,
+    attempts, usage). A missing key, a failed call, or an empty completion is
+    `None` — no review, never a PASS."""
+    import httpx
+
+    key = os.environ.get(PAID_ENV, "")
+    if not key:
+        return None, "", [f"openai: skipped (no {PAID_ENV})"], {}
+    payload = {
+        "model": model,
+        "max_completion_tokens": max_output,
+        "reasoning_effort": reasoning_effort,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    try:
+        r = httpx.post(
+            PAID_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=300.0,
+        )
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:  # noqa: BLE001 — any failure is "no review"
+        return None, "", [f"openai ({model}): {type(e).__name__} — {str(e)[:120]}"], {}
+    u = j.get("usage") or {}
+    usage = {
+        "input_tokens": int(u.get("prompt_tokens", 0)),
+        "cached_input_tokens": int((u.get("prompt_tokens_details") or {}).get("cached_tokens", 0)),
+        "output_tokens": int(u.get("completion_tokens", 0)),
+        "reasoning_output_tokens": int(
+            (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
+        ),
+    }
+    content = (j.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    if not content.strip():
+        return (
+            None,
+            "",
+            [f"openai ({model}): empty completion (reasoning consumed the budget?)"],
+            usage,
+        )
+    return (
+        content,
+        f"openai ({model}, single-shot)",
+        [f"openai ({model}): ok (reasoning_effort={reasoning_effort})"],
+        usage,
+    )
+
+
+def default_ledger() -> Path:
+    """The repository's review-cost ledger (one per repo, shared by every worktree —
+    the same file tools/review_router/router.py settles into)."""
+    out = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        text=True,
+        capture_output=True,
+    )
+    home = (
+        Path(out.stdout.strip()).parent
+        if out.returncode == 0 and out.stdout.strip()
+        else Path(__file__).resolve().parents[1]
+    )
+    return (home / ".planning" / "review-costs.jsonl").resolve()
+
+
+def record_paid_run(ledger: Path, row: dict) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
+
+
 def render(review: Review, number: int, level: str, reasons: list[str], receipts: list[str]) -> str:
     """The evidence shape a units/CU-*.md record cites."""
     lines = [
@@ -833,14 +970,30 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="the author's per-finding rebuttal (verbatim quoted evidence); "
         "required with --adjudicate",
     )
+    p.add_argument(
+        "--paid",
+        action="store_true",
+        help="the <$0.10 lane: ONE non-agentic OpenAI completion over the FULL diff, "
+        "model chosen by a worst-case estimate against --budget-usd (strongest "
+        "first), real cost recorded to --ledger. Refuses (exit 3) when no model fits.",
+    )
+    p.add_argument("--budget-usd", type=float, default=0.10, help="per-review cap for --paid")
+    p.add_argument(
+        "--ledger",
+        type=Path,
+        default=None,
+        help="review-cost ledger for --paid (default: the repository's "
+        ".planning/review-costs.jsonl, shared with the router)",
+    )
     a = p.parse_args(argv)
 
     if bool(a.adjudicate) != bool(a.rebuttal):
         p.error("--adjudicate and --rebuttal must be used together")
 
-    if a.diff_cap:
+    if a.diff_cap or a.paid:
         global MAX_DIFF_CHARS  # noqa: PLW0603 -- single-run CLI override
-        MAX_DIFF_CHARS = a.diff_cap
+        # The paid lane sends the whole diff; the budget, not a char cap, bounds it.
+        MAX_DIFF_CHARS = a.diff_cap or PAID_DIFF_CAP
 
     try:
         title, body, paths, diff, head_sha = fetch_pr(a.pr)
@@ -985,10 +1138,28 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"Gate 7: PR classified as {kind} — briefing the reviewer accordingly.", file=sys.stderr
         )
 
-    text, provider, attempts = call_cascade(
-        build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind),
-        max_tokens=32000 if level == "xhigh" else 24000,
-    )
+    prompt = build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind)
+    usage: dict = {}
+    model = ""
+    if a.paid:
+        model = pick_paid_model(len(prompt), a.budget_usd) or ""
+        if not model:
+            print(
+                f"Gate 7: REFUSED — no model in {PAID_LADDER} fits ${a.budget_usd:.2f} for a "
+                f"{len(prompt):,}-char brief; nothing was sent or spent.",
+                file=sys.stderr,
+            )
+            return 3
+        print(
+            f"Gate 7: single-shot paid lane · {model} · worst-case "
+            f"${paid_estimate_usd(model, len(prompt)):.4f} ≤ ${a.budget_usd:.2f}",
+            file=sys.stderr,
+        )
+        text, provider, attempts, usage = call_paid(prompt, model)
+    else:
+        text, provider, attempts = call_cascade(
+            prompt, max_tokens=32000 if level == "xhigh" else 24000
+        )
     if text is None:
         print("Gate 7: ENTIRE CASCADE FAILED — no review produced.", file=sys.stderr)
         for at in attempts:
@@ -998,6 +1169,35 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     findings = parse_findings(text)
     review = Review(verdict_of(text, findings), findings, provider, text, attempts)
+    if a.paid:
+        cost = paid_cost_usd(model, usage)
+        receipts = [
+            *receipts,
+            f"- lane: single-shot paid · model `{model}` · tokens in/cached/out/reasoning "
+            f"{usage.get('input_tokens', 0):,}/{usage.get('cached_input_tokens', 0):,}/"
+            f"{usage.get('output_tokens', 0):,}/{usage.get('reasoning_output_tokens', 0):,} "
+            f"· cost ${cost:.4f} (budget ${a.budget_usd:.2f})",
+        ]
+        record_paid_run(
+            a.ledger or default_ledger(),
+            {
+                "kind": "run",
+                "lane": "single-shot",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "pr": a.pr,
+                "head": head_sha,
+                "model": model,
+                "effort": PAID_REASONING_EFFORT,
+                "diff_chars": len(diff),
+                **usage,
+                "estimate_usd": round(paid_estimate_usd(model, len(prompt)), 4),
+                "cost_usd": round(cost, 4),
+                "usage_unknown": False,
+                "launched": True,
+                "verdict": review.verdict,
+            },
+        )
+        print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
     report = render(review, a.pr, level, reasons, receipts)
 
     if a.out:

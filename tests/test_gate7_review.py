@@ -730,3 +730,153 @@ def test_build_prompt_default_is_unchanged_for_a_code_round_one():
     prompt = build_prompt("t", "b", "diff", "high", [])
     assert "SETTLED FROM EARLIER ROUNDS" not in prompt
     assert "WHAT KIND OF CHANGE THIS IS" not in prompt
+
+
+# --- the <$0.10 lane: single-shot PAID review ------------------------------
+# Owner goal (Mike, 2026-10-03): a review that costs less than $0.10. Codex is
+# agentic and re-reads the repo (2.6M input tokens for a 246k-char diff); a
+# single-shot call costs diff tokens only. Model is chosen by a worst-case
+# estimate against the budget; cost is recorded from the API's usage field.
+
+import json  # noqa: E402
+
+import gate7_review as g7  # noqa: E402
+
+PRICES = {
+    "gpt-6.1-sol": {"input": 2.0, "cached_input": 0.1, "output": 10.0},
+    "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.5},
+    "gpt-6-luna": {"input": 0.1, "cached_input": 0.01, "output": 0.5},
+}
+
+
+def test_paid_estimate_is_worst_case_no_cache_full_output_cap():
+    # 40,000 chars ≈ 10,001 tokens in; 6,000 out at the cap
+    est = g7.paid_estimate_usd("gpt-6.1-sol", 40_000, table=PRICES)
+    assert est == pytest.approx((10_001 * 2.0 + 6000 * 10.0) / 1e6, rel=1e-6)
+
+
+def test_pick_paid_model_steps_down_the_ladder_to_stay_under_budget():
+    assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-6.1-sol"  # ~$0.07
+    assert g7.pick_paid_model(100_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol ≈ $0.11
+    assert g7.pick_paid_model(600_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.14
+    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.15
+    assert g7.PAID_LADDER[0] == "gpt-6.1-sol", "strongest model first"
+
+
+def test_paid_cost_counts_cached_input_at_the_cached_rate():
+    usage = {"input_tokens": 1_000_000, "cached_input_tokens": 400_000, "output_tokens": 10_000}
+    cost = g7.paid_cost_usd("gpt-5.4-mini", usage, table=PRICES)
+    assert cost == pytest.approx(600_000 * 0.75 / 1e6 + 400_000 * 0.075 / 1e6 + 10_000 * 4.5 / 1e6)
+
+
+class _Resp:
+    def __init__(self, body):
+        self._body = body
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._body
+
+
+def _fake_httpx(monkeypatch, body, calls):
+    import types
+
+    def post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "json": json, "auth": headers.get("Authorization", "")})
+        return _Resp(body)
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=post))
+
+
+def test_call_paid_sends_one_non_agentic_request_and_parses_usage(monkeypatch):
+    calls = []
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}}],
+        "usage": {
+            "prompt_tokens": 12_000,
+            "prompt_tokens_details": {"cached_tokens": 2_000},
+            "completion_tokens": 900,
+            "completion_tokens_details": {"reasoning_tokens": 300},
+        },
+    }
+    _fake_httpx(monkeypatch, body, calls)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, provider, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text.startswith("## VERDICT") and "gpt-5.4-mini" in provider
+    assert len(calls) == 1 and calls[0]["url"] == g7.PAID_URL
+    assert calls[0]["auth"] == "Bearer sk-test"
+    sent = calls[0]["json"]
+    assert sent["model"] == "gpt-5.4-mini" and "tools" not in sent
+    assert sent["max_completion_tokens"] == g7.PAID_MAX_OUTPUT_TOKENS and "max_tokens" not in sent
+    assert usage == {
+        "input_tokens": 12_000,
+        "cached_input_tokens": 2_000,
+        "output_tokens": 900,
+        "reasoning_output_tokens": 300,
+    }
+
+
+def test_call_paid_without_a_key_or_with_an_empty_completion_is_no_review(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "OPENAI_API_KEY" in attempts[0]
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    _fake_httpx(monkeypatch, {"choices": [{"message": {"content": "  "}}], "usage": {}}, [])
+    text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "empty" in attempts[0]
+
+
+def _patch_main(monkeypatch, diff, paid_text, usage):
+    monkeypatch.setattr(g7, "fetch_pr", lambda n: ("t", "b", ["docs/a.md"], diff, "c" * 40))
+    seen = {}
+
+    def call_paid(prompt, model, **kw):
+        seen["model"], seen["prompt_len"] = model, len(prompt)
+        return paid_text, f"openai ({model}, single-shot)", ["openai: ok"], usage
+
+    monkeypatch.setattr(g7, "call_paid", call_paid)
+    monkeypatch.setattr(g7, "prices", lambda: PRICES)
+    monkeypatch.setattr(g7, "call_cascade", lambda *a, **k: pytest.fail("free cascade used"))
+    return seen
+
+
+def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypatch):
+    diff = "+" + "x" * 60_000 + "\n"  # ~15k tokens: sol ≈ $0.09 worst case
+    usage = {
+        "input_tokens": 16_000,
+        "cached_input_tokens": 0,
+        "output_tokens": 800,
+        "reasoning_output_tokens": 200,
+    }
+    seen = _patch_main(monkeypatch, diff, "## VERDICT\nPASS\n", usage)
+    ledger, out = tmp_path / "costs.jsonl", tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--budget-usd", "0.10", "--ledger", str(ledger), "-o", str(out)])
+    assert rc == 0 and seen["model"] == "gpt-6.1-sol"
+    assert seen["prompt_len"] > 60_000, "the full diff was sent, not the 40k free-lane cap"
+    report = out.read_text()
+    assert "**Verdict:** PASS" in report and "single-shot" in report
+    expected = (16_000 * 2.0 + 800 * 10.0) / 1e6
+    assert f"cost ${expected:.4f}" in report
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["kind"] == "run" and row["lane"] == "single-shot" and row["pr"] == 7
+    assert row["model"] == "gpt-6.1-sol" and row["cost_usd"] == pytest.approx(expected)
+    assert row["launched"] is True and row["usage_unknown"] is False
+    assert row["cost_usd"] < 0.10
+
+
+def test_main_paid_refuses_when_no_model_fits_the_budget_and_spends_nothing(tmp_path, monkeypatch):
+    seen = _patch_main(monkeypatch, "+" + "x" * 60_000, "## VERDICT\nPASS\n", {})
+    ledger = tmp_path / "costs.jsonl"
+    rc = g7.main(["7", "--paid", "--budget-usd", "0.001", "--ledger", str(ledger)])
+    assert rc == 3 and not seen and not ledger.exists()
+
+
+def test_main_paid_with_no_review_is_exit_2_never_pass(tmp_path, monkeypatch, capsys):
+    _patch_main(monkeypatch, "+x\n", None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai: HTTPStatusError — 429"], {})
+    )
+    rc = g7.main(["7", "--paid", "--ledger", str(tmp_path / "c.jsonl")])
+    assert rc == 2 and "PASS" not in capsys.readouterr().out
