@@ -880,3 +880,11 @@ def test_main_paid_with_no_review_is_exit_2_never_pass(tmp_path, monkeypatch, ca
     )
     rc = g7.main(["7", "--paid", "--ledger", str(tmp_path / "c.jsonl")])
     assert rc == 2 and "PASS" not in capsys.readouterr().out
+
+
+def test_the_real_price_table_exists_and_prices_every_ladder_model():
+    """Tests above stub prices(); this one reads the committed file, so a missing
+    or incomplete table fails here instead of at the first live run."""
+    table = g7.prices()
+    for model in g7.PAID_LADDER:
+        assert {"input", "cached_input", "output"} <= set(table[model]), model
