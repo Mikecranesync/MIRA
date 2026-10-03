@@ -1,0 +1,22 @@
+/* #4188: the project root a chat thread's hardware BACK lands on. Same
+   workspace token vocabulary as the sibling unified routes (unified.css) —
+   this file is new, so it does not touch that one. Tokens only
+   (.claude/rules/ui-style.md); 44px minimum tap targets throughout. */
+.unified-project-root { overflow-y: auto; background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); }
+.unified-project-root__header { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); border-block-end: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
+.unified-project-root__header h1 { margin: 0; font-size: var(--fl-workspace-fs-title); line-height: 1.2; }
+.unified-project-root__back { flex: 0 0 auto; inline-size: auto; width: auto; min-block-size: 2.75rem; border: 1px solid var(--fl-workspace-line-strong); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); font: inherit; font-weight: 650; }
+.unified-project-root__back:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.unified-project-root__content { inline-size: min(100%, 44rem); margin-inline: auto; display: grid; gap: var(--fl-workspace-space-3); padding: var(--fl-workspace-space-4); padding-block-end: calc(var(--fl-workspace-space-6) + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+.unified-project-root__new-chat { min-block-size: 2.75rem; width: 100%; border: 1px solid var(--fl-workspace-accent); border-radius: var(--fl-workspace-radius-sm); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-4); background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); font: inherit; font-weight: 650; }
+.unified-project-root__new-chat:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.unified-project-root__threads { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--fl-workspace-space-1); }
+/* .fl-tree__row's own 44px rule lives on `.fl-shell button` (shell.css), which
+   does not apply here — this screen is not inside .fl-shell. Restate it. */
+.unified-project-root__thread { width: 100%; min-block-size: 2.75rem; text-align: start; border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-sm); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); }
+.unified-project-root__thread:focus-visible { outline: 3px solid var(--fl-workspace-accent); outline-offset: 2px; }
+.unified-project-root__empty { padding: var(--fl-workspace-space-3) 0; color: var(--fl-workspace-muted); }
+
+@media (max-width: 30rem) {
+  .unified-project-root__header, .unified-project-root__content { padding-inline: var(--fl-workspace-space-3); }
+}
