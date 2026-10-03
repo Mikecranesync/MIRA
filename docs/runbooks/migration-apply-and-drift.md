@@ -23,7 +23,10 @@ sets — that's fine, the ledger keys on the whole basename.
 Both workflows take the same inputs: `target` (staging | prod), `migrations`
 (`all`, or a comma list like `012,013`), and `mode`:
 
-- **`dry-run`** — print the plan + SQL headers; executes **no migration SQL**. (It does run the idempotent `CREATE TABLE IF NOT EXISTS schema_migrations …` ledger bootstrap first, so a fresh target gains the empty ledger table.) Always run this first.
+- **`dry-run`** — print the plan + SQL headers; executes **no migration SQL**. **It is not side-effect-free:** the
+  idempotent `CREATE TABLE IF NOT EXISTS schema_migrations …` ledger bootstrap runs before both modes, so a
+  dry-run against a fresh target leaves an empty `schema_migrations` table behind (expected; on an existing
+  target it changes nothing). Always run this first.
 - **`apply`** — run each un-applied file (single transaction; ingest splits
   `-- Block 1` / `-- Block 2` for `CONCURRENTLY` indexes) and **record it in the
   ledger**. `migrations=all` auto-skips files already in the ledger.

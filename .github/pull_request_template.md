@@ -15,10 +15,14 @@ trace why this code looks the way it does.
 Risk: R_ — <one-line reason>
 
 <!--
-REQUIRED (SDLC v1 §2, docs/architecture/mira-sdlc-v1.md). One of R0 (inert docs), R1 (low-risk product),
-R2 (behavioral / retrieval / model / data), R3 (safety / security / auth / tenant / migration /
-production-control / governance). Effective risk = max(declared, trusted-path floor, reviewer findings);
-a declared class never lowers it. R3 needs an exact-head Codex GREEN before merge.
+REQUIRED on every PR, including docs-only (SDLC v1 §2.2, docs/architecture/mira-sdlc-v1.md). Replace
+`R_` with exactly one of R0 (inert docs), R1 (low-risk product), R2 (behavioral / retrieval / model /
+data), R3 (safety / security / auth / tenant / migration / production-control / governance), and give
+the one-line reason. A line left as `R_`, blank, or missing is NOT a valid declaration: the merger
+treats it as a merge blocker (doctrine today — no check validates it yet; the lifecycle-guard rules
+about blank/placeholder values below apply to THAT section, not to this line). Effective risk =
+max(declared, trusted-path floor, reviewer findings); a declared class never lowers it; any reviewer
+may raise it with a reason. R3 needs an exact-head Codex GREEN before merge.
 -->
 
 ## Spec reference
