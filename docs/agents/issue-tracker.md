@@ -23,8 +23,9 @@ Run `gh issue view <number> --comments`.
 
 ## Failure records: the `incident` label (SDLC v1 §10.3)
 
-One production failure = one issue labelled `incident`, with these fixed fields in the body, one per
-line, exactly these keys (a reader and `tools/dora.py` parse them; free prose goes below them):
+One production failure = one issue labelled `incident`, with these fixed fields **in the issue body**,
+one per line, exactly these keys (a reader and `tools/dora.py` parse the body, never the comments; free
+prose goes below the fields):
 
 ```
 first_seen: <ISO-8601 UTC>
@@ -37,8 +38,11 @@ restoring_action: <deploy | config | provider recovery | none>
 ```
 
 - Canary-opened `*-incident` issues (`provider-incident`, `oauth-incident`) carry the `incident`
-  label as well; the canaries add it on creation and on every update. The canary body does not
-  contain the fixed fields — whoever triages the issue adds them in a comment or edits the body.
+  label as well; the canaries add it on creation and on every update. The canary-written body does
+  not contain the fixed fields — whoever triages the issue **edits the body** to add them
+  (`gh issue edit <number> --body-file …`). Fields placed only in a comment are not part of the
+  record and are not parsed. Until the body carries all seven keys the incident counts as
+  `restored_at: open` for the metrics.
 - Closing an `incident` requires a **regression disposition** comment using one of:
   `new-test:<path>` (docstring cites the issue), `existing-coverage:<path>`, `guard:<workflow or hook>`,
   `eval-fixture:<path>`, or `external-cause:<reason>`. An incident without a disposition stays open.
