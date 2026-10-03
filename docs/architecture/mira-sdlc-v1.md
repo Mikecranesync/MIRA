@@ -1,688 +1,779 @@
-# MIRA / FactoryLM SDLC v1 — Proposal
+# MIRA / FactoryLM SDLC v1 — Canonical Specification
 
-**Status:** PROPOSAL — not ratified. Nothing in this document changes CI, branch protection,
-CLAUDE.md, environments, or repository policy until Mike approves it. Where this document and a
-live workflow disagree, the live workflow on `main` wins until the change is made deliberately.
-**Date:** 2026-10-03 · **Reconnaissance base:** `origin/main` @ `32bcaa67e88fc2338103dd0b77b61e9ad3d76e57`
-**Authors:** Claude (design + recon), Codex (two independent adversarial rounds, §7) · **Owner:** Mike
-**Related:** `docs/environments.md`, `docs/adversarial-review-workflow.md`, `docs/review-cheap-lane.md`,
-`docs/versioning.md`, `.claude/rules/multi-session-protocol.md`, `.claude/skills/defect-workflow/SKILL.md`,
-`docs/agents/subagent-development-handbook.md`, `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`,
-`docs/architecture/convergence/{CAPABILITY_CLOSURE,RELEASE_TRAIN,REGISTRY}.yaml`
-
----
-
-## 0. One-paragraph summary
-
-MIRA already runs a PR-gated, trunk-based lifecycle with an unusually strict production path: six
-required status contexts with strict up-to-date, an exact-SHA staging deploy that leaves a receipt
-artifact, and a production deploy that refuses to run without that receipt, a passing Staging Gate on
-the PR head, and zero migration drift. Lifecycle doctrine also exists, but **fragmented across six
-documents** (defect-workflow skill, subagent handbook, convergence gates, multi-session protocol,
-environments, versioning) that partly contradict the live workflows. What is missing is one shape:
-a risk tiering (today's only classifier is the binary "substantial"), gates whose passage is a named
-artifact for an exact SHA rather than prose, staging *acceptance* consumed by production
-authorization, an incident record, and any lifecycle metric. SDLC v1 therefore **names** the lifecycle
-that is already running, assigns each step an existing mechanism and an evidence artifact, adds four
-risk classes so a documentation change stops inheriting deployment ceremony while **never letting a
-class waive an existing enforced gate**, and proposes a short list of small repairs and connections.
-New code is limited to one read-only metrics script, one acceptance-receipt producer step, and a
-few-line fix to the cheap review lane. Everything else is REUSE, CONNECT, or REPAIR.
+**Status:** CANONICAL SPECIFICATION, implementation-ready, **awaiting Mike's ratification**. This
+document defines the rules. It implements nothing: CI, branch protection, environments, workflows,
+repository security settings, staging and production are unchanged by it. Where a rule below says
+"required" and Part B says the mechanism does not yet exist, the rule is the target and Part B names
+the implementation step that closes the gap. Until that step lands, the rule is **doctrine**, and
+this document says so in place.
+**Version:** v1.0 (2026-10-03) · **Owner:** Mike · **Authors:** Claude (specification), Codex
+(adversarial review of #4208 and of the evaluation #4210) · **Fact base:** `origin/main` @
+`a54c4c88bd4f349c14884ff5701375f644bd7c31`; live GitHub settings read 2026-10-03.
+**History:** proposal (PR #4208, two Codex rounds) → independent evaluation (PR #4210,
+`docs/architecture/mira-sdlc-v1-final-evaluation.md`, verdict **ADOPT WITH CHANGES**, Codex GREEN at
+`67fc0b913`) → this canonical revision, which applies the evaluation's fifteen rule-text changes
+(Appendix C traces each) and records the six owner decisions (§0.1).
+**Precedence:** this document governs SDLC process. It does not override `docs/environments.md`
+hard rules, `.claude/rules/*` safety/security doctrine, or Mike's explicit instructions; where it and
+a live workflow disagree, the live workflow wins until changed through the process defined here.
 
 ---
 
-## 1. Current-state lifecycle map (what actually runs on `main` today)
+## 0. Decisions and principles
 
-Legend: **ENFORCED** = a workflow, hook, branch rule, or test fails when violated. **DOCTRINE** = a
-written rule relying on human/agent discipline. **STALE** = the doc describes something the code no
-longer does. File references are to `origin/main` @ `32bcaa67e`. Counts are filesystem enumerations
-on that SHA; GitHub-side facts were read live with `gh api` on 2026-10-03.
+### 0.1 Owner decisions encoded in v1
 
-### 1.1 Intake → design
-
-| Step | Mechanism today | Status | Evidence artifact |
+| # | Decision | Resolution in v1 | Where it applies |
 |---|---|---|---|
-| Idea / defect intake | GitHub Issues via `gh` (`docs/agents/issue-tracker.md`); 5 triage labels live (`needs-triage` 220, `ready-for-agent` 98, `ready-for-human` 38, `needs-info` 5 issues) | ENFORCED (tracker) / DOCTRINE (triage) | Issue number |
-| Defect procedure | `.claude/skills/defect-workflow/SKILL.md` (intake → investigator → contracts → red tests → implementer → mutation check → review → verification → PR → release-verifier); explicitly covers "production incident" | DOCTRINE (operational checklist, agents consume it) | PR body per its §9 |
-| Mission | One program uses a mission ID (`FACTORYLM-UNIFIED-UI-CUTOVER-001`, issue #3626); a second name (`FLM-UI-4000`) exists for related work. No general scheme | DOCTRINE, one-off | — |
-| PRD + acceptance criteria | Two tracks: `docs/prd/` (16 top-level files, 21 recursively; header convention drifted after 2026-09; no template file) and 14 issues titled `PRD: …` (e.g. #4160 accumulates owner decisions as numbered comments). 4 PRD files carry explicit acceptance-criteria sections; the PR template has an "Acceptance criteria verified" checkbox nothing parses | DOCTRINE; criteria exist in places, not consistently, and nothing consumes them | PRD file or issue thread |
-| ADR when required | 39 numbered MADR files in `docs/adr/`; README index lists 13; ~9 are Draft/Proposed ("awaiting Mike"); numbering collisions at 0014 and 0037. Convergence doc defines Gates 0–11 + pre/post-change checkpoints (called R0/R1 there); nothing mechanical checks "ADR exists" or "checkpoint recorded" | DOCTRINE | ADR file, `CU-*.md` unit record (8 exist) |
-| Risk classification | Binary "substantial" (`.claude/rules/multi-session-protocol.md` §5); `tools/gate7_review.py:61-112` escalates review effort on DB/auth/tenant/guardrails/deploy signals; S0–S5 is a *safety consequence* scale (handbook §16.2), not change risk | DOCTRINE + effort heuristic | None durable |
-| Work claim | `[WORK-CLAIM]` block, post-claim re-read, earliest-ACTIVE wins (protocol §2); a PR carrying the work is itself a valid claim. Only `tools/ui_surface_lifecycle_guard.py:1662` reads the literal, as a text boundary | DOCTRINE | Issue/PR comment |
+| D1 | Independent exact-head Codex review for every R3 change | **YES.** Mandatory for all R3, including governance prose. | §4.3 |
+| D2 | Required GitHub PR approvals | **Stay at 0 for v1.** A human approval count on every PR would be Mike approving his own agents; independence comes from the reviewer lane and deterministic checks, human intent from the production checkpoint (D6). | §3.1, §7 |
+| D3 | `test-eval-offline` merge-blocking | **NO in v1.** Observe for 30 days (runtime, flake rate, false-block rate, unique failures, overlap) before any promotion decision. | §3.2, §13 |
+| D4 | R0 exemption from the cheap review lane | **NO in v1.** Every PR gets the cheap lane; `changes.code == false` is a build signal, not a semantic-inertness proof. Revisit only with 30 days of `Risk:` data and the R2 mechanical floor in place. | §4.2 |
+| D5 | Privileged `auto-fix` job (`pull_request_target`) | **DELETE / retired from the target architecture.** The human `/autofix-pr` path remains. | §11.2 |
+| D6 | A recorded production click without identity separation | **ACCEPTED as an interim control.** It is **human deployment intent/confirmation**, never "independent approval". No `prevent_self_review` on `production` (it deadlocks a one-owner repo and already blocks `ota-production`). | §7 |
 
-### 1.2 Implementation → review
+### 0.2 Principles
 
-| Step | Mechanism today | Status | Evidence artifact |
-|---|---|---|---|
-| Short-lived branch off current main | `.claude/rules/session-discipline.md`; `feat/fix/chore/ops` prefixes | DOCTRINE (reality: 40 open PRs, ~25 drafts, oldest 2026-09-13) | Branch |
-| Local gates | `ruff format --check && ruff check && pytest` (global CLAUDE.md asks for the full suite); `.githooks/pre-commit` (shellcheck, gitleaks, debug-artifact, actionlint; agent-symbol check warn-only). `core.hooksPath` is per-clone and was found unset 2026-08-09; every tool check degrades to a warning when the binary is missing | DOCTRINE (opt-in, fails open) | None durable |
-| Developer verification | PR template `Test plan` + checkbox; defect-workflow §8 ordered verification; hazard ledger (global CLAUDE.md; 1 repo hit) | DOCTRINE | PR body prose |
-| Property / mutation / adversarial / eval | Hypothesis: 2 files (`tests/test_fsm_properties.py`, `tests/test_guardrails_properties.py`). Source-mutation tooling: **none**; manual "break the fix, confirm red, restore" is defect-workflow step 6. Eval: 67 fixture files under `tests/eval/fixtures/` (README says 51 — stale), run by Celery on the VPS hourly/nightly; `deepeval-ci.yml` on PR (path-filtered); `eval-replay-gate.yml` **inert** (replay store never recorded) | Mixed; eval-on-PR is path-gated; mutation is manual | CI logs, `tests/eval/runs/*.md` |
-| Cheap review lane (required on every PR by owner decision 2026-10-03) | `tools/gate7_review.py <PR> --paid --post` → `[CHEAP-REVIEW]` comment (`head`, `verdict`, `model`, `cost_usd`, `run_id`); cost to `.planning/review-costs.jsonl` (gitignored, per host). Head SHA and diff are fetched separately and not re-read before posting; exit code is 0 for PASS, BLOCK, UNKNOWN and post-failure | DOCTRINE (not a status context; the comment is the artifact, never the exit code) | PR comment |
-| Independent exact-head Codex review | `git show origin/main:scripts/adversarial-review-trusted.sh \| bash -s -- <PR> --review-only`; exact-SHA re-verify before review and before GREEN; 3-round budget counted from the GitHub ledger; `ADV_REVIEW_HUMAN_AUTHORIZED=1` post-cap | ENFORCED when run; *running it* is owner say-so | `[CODEX-ADVERSARIAL-REVIEW]` comments (`reviewed_sha`, `reviewed_body_sha256`, `status`), `scripts/adversarial-review-ledger.mjs` |
-| Guarded-path attestation | Any PR touching a guarded legacy/control-plane path needs a body-bound `[CODEX-ADVERSARIAL-REVIEW] … status: GREEN` matching head **and** PR body digest; a later body edit invalidates it | ENFORCED as a status (not required, see 1.3) | Comment + body digest |
-| Claude-reviews-Claude carve-out | `.claude/rules/multi-session-protocol.md:152-180`, self-expired **2026-09-13**, still present verbatim | STALE | — |
-
-### 1.3 Merge
-
-| Step | Mechanism today | Status | Evidence artifact |
-|---|---|---|---|
-| Required status contexts | Classic protection on `main`: `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests`, `CI Gate`, `hold-gate`, `Shared UI contract (bun 1.4.0)`; `strict: true`; `enforce_admins: true`; required approving reviews **0**; ruleset 17097034 adds PR-required + non-fast-forward and requires only `staging-gate`, bypassable by repository role 5 | ENFORCED (classic layer carries the weight) | Check runs on the head SHA |
-| `CI Gate` aggregator (`ci.yml` `ci-gate`) | 16 jobs must literally `success`; `test-unit`/`bench-harness-tests` required only when `changes.code == true` (success or skipped allowed on docs-only). `ci.yml` deliberately runs on stacked PRs (`ci.yml:33-41`). **Not gated:** `secrets-scan` (gitleaks), `docker-build-check` (Trivy), `test-eval-offline` (the broadest `pytest tests/` sweep), `simlab-gate`, `module-suites` (in `needs`, echoed only), `ocr-recall-gate`, `drive-pack-extract-tests` | ENFORCED (listed set) | `ci-gate` check |
-| Legacy UI lifecycle guard | `tools/ui_surface_lifecycle_guard.py` via `ui-lifecycle-guard.yml` (trusted-base evaluation, isolated status posting); registry-driven path allowlist incl. `.claude/**`, `AGENTS.md`, workflows, review producers, guard tests, `pytest.ini`/`tests/conftest.py`; rejects placeholder rationale | ENFORCED as a status, **not** in the required set (binding to a non-spoofable source is an unperformed admin action, #3657) | Check status + PR body field |
-| Conventional Commit title | No commitlint; `tools/release/next_version.py:89-96` returns **patch** for an unparseable subject (tested in `tests/test_next_version.py`); the tag workflow only fails when no tag can be computed at all | DOCTRINE (compliance is by eye; a bad subject costs a wrong bump, not a red run) | Tag |
-| Human merge | 0 required approvals; merge authority is a standing owner decision (strict up-to-date serialises one PR per sitting); a `sha`-conditioned merge is available via `gh pr merge --match-head-commit` | DOCTRINE | Merge commit |
-| Label escape hatches | `shared-line-ok` (Shared-Line Guard), `auto-fix` (privileged self-fix), hold labels (`hold-gate`); the lifecycle guard has **no** label bypass | ENFORCED as designed | Labels |
-
-### 1.4 Release → staging → production → observation
-
-| Step | Mechanism today | Status | Evidence artifact |
-|---|---|---|---|
-| Version + rollback checkpoint | `version-tag.yml` on every push to `main`: `v<X.Y.Z>` from the Conventional Commit type + `rollback/<date>-v<X.Y.Z>` + GitHub Release (release creation best-effort). 1,119 `v*` tags, 1,077 rollback tags; tags are unprotected. A tag marks the merged commit's *address*, not a verified-good production state. `release.yml` (component tags) dormant since 2026-04-10 | ENFORCED (tagging) | Tag, Release |
-| Staging deploy | `deploy-staging.yml`, `workflow_dispatch` only, `approved_rc_sha` (40-hex) validated against the API, `environment: staging-deploy`; co-hosted on the prod host (#3930) with 7 safeguards; asserts runtime `gitSha == approved_rc_sha` **for the Hub/Web targets selected**; writes `staging-receipt-<sha>` (schema `factorylm.deploy-receipt/1`, 90-day retention) | ENFORCED | Receipt artifact |
-| Staging acceptance | `retrieval-acceptance.yml` fires after a successful staging deploy; resolves the SHA **actually serving** from `/api/health`, provisions a stranger tenant, runs 6 live Hub retrieval scenarios + capture accounting (capture skips historical deployments and exits 0), re-reads the SHA at verdict time (SUPERSEDED on drift, but **exit 0 with a warning if the re-read fails**), uploads trace-bearing JSON (`base`, `ran_at`, `rows`; no pinned SHA, no run identity; 30-day retention) | ENFORCED as an asynchronous *measurement*; **not consumed** by prod authorization | JSON artifact + Langfuse trace ids |
-| PR-time Staging Gate | `staging-gate.yml` on every PR: engine in-process against staging Neon, 10–15 rubric questions; scope-skips (reports success) for docs/wiki/.github/.claude-only PRs and Dependabot; retries once; result comment is best-effort | ENFORCED (required context) | Check run |
-| Migrations | `migration-verify.yml` auto-applies PR migrations to staging; `apply-migrations.yml` (`dry-run`/`apply`/`seed-ledger`, `content_sha256` check that skips absent columns/missing hashes); sister `apply-ingest-migrations.yml` shares the ledger; `deploy-vps.yml` `migration-drift` fails prod deploy when a **repo filename** is absent from the ledger (`tools/migration_drift.py`: filename-level, repo→ledger only). Staging-before-prod ordering is DOCTRINE | ENFORCED at the prod boundary (filename level) | Ledger rows, drift job log |
-| Production deploy | `deploy-vps.yml`, `workflow_dispatch` only ("AUTO-DEPLOY stays DISABLED (#3800)"). `authorize-source` rejects any `skip_*` input, requires Staging Gate `completed:success` on the PR head of the merge (falls back to the **first** associated PR when exact merge-commit match fails), requires an unexpired (≤168 h) verified `staging-receipt-<sha>` with workflow provenance; separate jobs hold DB vs SSH credentials; `deploy` records `PRIOR_SHA/PRIOR_TAG`, asserts zero tree drift, built-image == running-image, runtime `gitSha == approved_rc_sha` for selected Hub/Web, writes `production-receipt-<sha>` (90 d), strict nginx `sites-enabled` allowlist. Default rebuild set `mira-hub mira-web mira-ask`. On a failed health-gated swap it deliberately leaves the new containers in place | ENFORCED | Production receipt artifact |
-| Hotfix path | Docs describe `skip_staging_gate=true` / `skip_reason` dispatch + 24 h follow-up PR (`docs/environments.md:87-90`, `docs/runbooks/deploy-to-production.md:126-145`). The live workflow **rejects** those inputs. 24 h rule enforced nowhere | STALE + DOCTRINE | — |
-| Rollback | Redeploy a prior SHA through the same gated `deploy-vps.yml` (its staging receipt must be ≤168 h old); `rollback/*` tags are address anchors; `apply-migrations.yml` has no down mode (Neon snapshot or in-file rollback block); `docs/runbooks/hubv3-rollback.md` uses a `-f ref=` input that does not exist. **No recorded exercise** of a VPS rollback found (June incident was fix-forward). OTA has signed-pointer rollback tooling (`mira-mobile/scripts/ota-rollback.mjs`) | ENFORCED path exists; STALE runbook; no recorded drill | Tag + receipt |
-| Production observation | Canaries: provider-health (6 h → `provider-incident` issue; probe failures do not page), oauth-redirect (hourly → `oauth-incident` issue), embedding-coverage (daily → Telegram), proposal-state (nightly → failure email), web-review (daily → wiki report), dogfood-judge-heartbeat (6 h → Telegram + red). `smoke-test.yml` on push to `main`/PR/dispatch against live prod (advisory on PR; alerts muted 10 min around any prod deploy; **not triggered by a prod deploy**). `beta-probe-prod.yml` manual; doc says Mike owns dispatch, nothing enforces actor identity. `mira-ops/` listed in the repo map **does not exist** | ENFORCED (cadence) / three disjoint alert channels | Issues, Telegram, wiki |
-| Failure → regression | defect-workflow covers production incidents; 118 test files cite 142 distinct `#NNNN` issues; `tests/bot_regression.py` is the named "never break" file; nightly active-learning opens draft fixture PRs from 👎 feedback; `qa-regression.yml` and `mira-benchmark-weekly.yml` file labelled issues. No durable incident record links deploy SHA → failure → restoring action → regression evidence. `docs/incidents/` has one file (2026-06-02) | DOCTRINE + partial automation | Test docstring citing the issue |
-| Capability closure / release identity | `CAPABILITY_CLOSURE.yaml` (12 capabilities; `review_by` expiry and provenance **CI-enforced**, an expired date fails `ci-gate` repo-wide); `RELEASE_TRAIN.yaml` (`DEV→RC→STAGING_PARITY→DEVICE_PARITY→RELEASED`; CI validates the manifest **without `--drift`**; `--drift` is a deploy-path tool; blockers block the `RELEASED` label only; currently `RC` with blocker #3984) | ENFORCED (repo invariants) / DOCTRINE (live parity) | YAML + CI job |
-
-### 1.5 Where the docs and the automation disagree (all verified against the files)
-
-| # | Doc says | Code does | Files |
-|---|---|---|---|
-| D1 | Merge → smoke → auto prod deploy via `workflow_run` | `deploy-vps.yml` is `workflow_dispatch` only; auto-deploy disabled by design | `docs/environments.md:84`, `docs/runbooks/deploy-to-production.md:45-58`, `docs/specs/staging-environment-spec.md:164`, `smoke-test.yml:27,182-185` vs `deploy-vps.yml:23-41` |
-| D2 | Hotfix via `skip_staging_gate=true -f skip_reason=…` | Inputs rejected: "Gate-bypass input … is no longer allowed" | `docs/environments.md:87-90`, `deploy-to-production.md:126-140`, `staging-environment-spec.md:171` vs `deploy-vps.yml:71-81` |
-| D3 | Default rebuild set is 7 services | Default is `mira-hub mira-web mira-ask` | `deploy-to-production.md:74-77` vs `deploy-vps.yml:478` |
-| D4 | Rollback dispatch uses `-f ref=<tag>`; a `VERSION` bump | Only `approved_rc_sha` exists; `/VERSION` is gone | `docs/runbooks/hubv3-rollback.md:52-61,94-105` |
-| D5 | `docs/review-cheap-lane.md` routes the agentic lane through `tools/review_router/router.py` | File not on `main` (PR #4202 open); only `prices.json` present | `docs/review-cheap-lane.md:5-6,61` |
-| D6 | Gate 7 default provider is the free Groq→Cerebras→Together cascade / "No OpenAI" | Required gate is the paid OpenAI lane; Cerebras archived 2026-09-29; `--adjudicate` still calls only the free cascade | `FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md:331`, `.claude/commands/gate7-review.md` vs `docs/review-cheap-lane.md`, `tools/gate7_review.py:1206` |
-| D7 | `CLAUDE.md:3` "Version: see `/VERSION`" | `/VERSION` deleted 2026-08-02 (#3064); same file says so at lines 247 and 332 | `CLAUDE.md` |
-| D8 | Claude-reviews-Claude carve-out "expires 2026-09-13" | Still present verbatim on 2026-10-03 | `.claude/rules/multi-session-protocol.md:152-180` |
-| D9 | CI step named "ast-grep" runs the `.ast-grep-rules/` set (5 rules; `sgconfig.yml` configured) | Step installs `@ast-grep/cli` then runs hand-written `rg` regexes for IPs/secrets only; no `sg scan` anywhere in CI | `.github/workflows/code-review.yml:85-156` |
-| D10 | Repo map lists `mira-ops/` (Prometheus/Grafana) | Directory absent | `CLAUDE.md` repo map |
-| D11 | `docs/agents/domain.md` "16 ADRs"; monday.com scope lock through 2026-07-19 | 39 ADRs; lock date passed | `docs/agents/domain.md:44` |
-| D12 | `docs/environments.md:38` "No bypass inputs" vs `staging-environment-spec.md:171` "`skip_staging_gate=true` preserved" | Code matches the first | both docs |
-| D13 | `staging-environment-spec.md:24` "No staging mira-hub, no staging Atlas" | `deploy-staging.yml` health-checks Hub, Atlas and Web and emits receipts (nginx not thereby proven) | `deploy-staging.yml:413-490` |
-| D14 | `CLAUDE.md` "prod-guard.sh enforces #1–#3" (prod SQL, VPS compose, prod bot token) | `PROD_HOST` lists old VPS IPs and `.factorylm.com`, not the OVH host `40.160.141.61`; no prod-DB-URL or bot-token pattern; allows (with a stderr line) on an empty payload | `tools/hooks/prod-guard.sh:62-66,86,123-136` vs `deploy-vps.yml:383-384` |
-| D15 | Peer runbook accepts a `[CODEX-REVIEW] PASS` packet | Only the `[CODEX-ADVERSARIAL-REVIEW]` envelope (SHA + body digest + `status: GREEN`) satisfies the guard; `[CHEAP-REVIEW]` satisfies neither | `docs/runbooks/charlie-codex-claude-peer-review.md:123-130` vs `tools/ui_surface_lifecycle_guard.py:635-646` |
-| D16 | `CLAUDE.md:28` "Apache 2.0 or MIT ONLY" | `license-check` allowlists only `asyncpg`; the general check is a denylist (GPLv3/AGPLv3/UNKNOWN) | `ci.yml:1304-1313` |
-| D17 | PR template checklist "CHANGELOG entry added" | `docs/CHANGELOG.md` frozen; Shared-Line Guard rejects edits without `shared-line-ok` | `pull_request_template.md:91` vs `ci.yml:185-203` |
-| D18 | `apply-migrations.yml` dry-run "no execution" | Dry-run executes `CREATE TABLE IF NOT EXISTS schema_migrations` before the preview (idempotent ledger bootstrap) | `apply-migrations.yml:149-170` |
-| D19 | `.githooks/pre-commit:327-328` calls the CI symbol check a "blocking backstop" | `code-review.yml` folds the result into a comment and never fails | `code-review.yml:153-169` |
-| D20 | `enforcement-audit.yml` nightly job commits and pushes directly to `main` | Push outcome swallowed as "non-fatal"; contradicts "PR-gated main" whether or not protection rejects it (bot bypass permissions not verified) | `enforcement-audit.yml:131-140` |
-| D21 | `tests/eval/README.md:7` "51 fixtures" | 67 fixture files present | `tests/eval/fixtures/` |
-| D22 | `.claude/agents/safety-reviewer.md:15` "IMMEDIATE always stops" | Owner decision 2026-09-27: safety-classified turns are answered with a banner (`guardrails.py:1463-1467`) | both files |
-
----
-
-## 2. Gaps (what the lifecycle requires that nothing provides today)
-
-Each gap is a fact about what is absent or disconnected, with evidence, classified by closure type:
-**DOC** (write it down), **CONNECT** (wire two existing things), **REPAIR** (fix a broken or stale
-existing thing), **ADD** (does not exist; requirement genuinely unenforced).
-
-| # | Gap | Evidence | Closure |
-|---|---|---|---|
-| G-01 | Lifecycle doctrine is fragmented across six documents with no single gate map; the one end-to-end promotion narrative (`environments.md`) is stale | §1.5 D1–D4; defect-workflow, handbook §14/§16, convergence gates, protocol | DOC (this document indexes them) |
-| G-02 | No change-risk tiering; "substantial" is binary, so written ceremony is uniform and in practice skipped ad hoc | protocol §5; 0/15 sampled merged PRs carry any label | DOC + tiny ADD (one PR-body line) |
-| G-03 | Acceptance criteria exist in some PRDs and as a template checkbox, but nothing links a PR to the criterion it satisfies; evidence pointers are prose | 4/21 PRD files; template checkbox unparsed; 0/15 PRs cite a spec path | DOC (criterion → evidence line in the PR body) |
-| G-04 | Cheap-lane verdict is not SHA-rebound before posting, has no merge consumer, and is not a status context; exit 0 ≠ PASS | `gate7_review.py:705-721,1364-1401` | REPAIR (small) + DOC (consumer = human reading `verdict:` on the current head) |
-| G-05 | Codex lane trigger is owner say-so with no written rule per risk class | `docs/review-cheap-lane.md:5-8` | DOC (+ open decision) |
-| G-06 | Staging acceptance is produced but **not consumed** by `deploy-vps.yml`; its artifact lacks the SHA/run identity a consumer would need | `deploy-vps.yml:132-227`; `retrieval_acceptance.py:590-615` | CONNECT (needs an acceptance receipt first) |
-| G-07 | Hotfix exists only in stale docs; the live workflow's only fast lever is a narrower `services` list; 24 h rule unenforced | D2 | DOC |
-| G-08 | No recorded rollback exercise; migration rollback is manual; runbook inputs stale; `PRIOR_SHA` is the host checkout, not a per-service runtime snapshot | §1.4 | DOC + drill |
-| G-09 | Incident taxonomy is per-canary (`provider-incident`, `oauth-incident`, `qa-regression`, `benchmark-regression`, `bug`, `security`); no common `incident` record carrying deploy SHA, first-seen, restored-at | `gh label list` (103 labels); canary issue bodies carry run URLs, not SHAs | ADD (labels + fixed body fields) |
-| G-10 | No DORA computation; ingredients partly exist (runs, receipts, PR timestamps); joins and definitions absent | `grep -rli dora` = 0 | ADD (read-only script) after G-09 |
-| G-11 | Security tooling present but not gating or not running: `secrets-scan`/Trivy outside `ci-gate`; `.ast-grep-rules/` never executed; AI review comment-only; pip-audit 3 roots with `\|\| true`; Dependabot omits `mira-hub`, `mira-mobile`, `mira-cmms`, `mira-pipeline`, `mira-bridge`; no JS/TS CVE audit; no `SECURITY.md`; no SBOM | `ci.yml:275-340,1393-1463`, `code-review.yml:85-156`, `dependency-check.yml`, `.github/dependabot.yml` | CONNECT + REPAIR + DOC |
-| G-12 | Mutation testing is manual; property tests cover 2 modules; `eval-replay-gate.yml` inert | §1.2 | DOC (scope by class); no tooling in v1 |
-| G-13 | Local pre-commit layer is opt-in and fails open when a tool is missing | `.githooks/pre-commit`, `.claude/settings.json` gitleaks hook | DOC (CI is the gate; local is convenience) |
-| G-14 | Governance text has expired or contradictory blocks (D5–D8, D11–D22) | §1.5 | REPAIR (docs) + two workflow repairs (D16, D20) |
-| G-15 | `Legacy UI Lifecycle Guard` not in required contexts; ruleset weaker than classic protection | live protection read | CONNECT (admin, #3657) |
-| G-16 | Claims and closeouts are prose; no PR in the sample emitted the SESSION CLOSEOUT block | protocol §9; grep = rule file only | DOC (scope closeout to unresolved-ownership cases) |
-| G-17 | Branch longevity: 40 open PRs, ~25 drafts, oldest 2026-09-13 | `gh pr list` 2026-10-03 | DOC (WIP policy) + metric |
-| G-18 | `deploy-vps.yml` PR association falls back to the first associated PR | `deploy-vps.yml:144-148` | REPAIR (small) |
-| G-19 | `retrieval-acceptance.yml` verdict-time SHA re-read fails open | `retrieval-acceptance.yml:165-174` | REPAIR (small) |
-| G-20 | `code-review.yml` `auto-fix` uses `pull_request_target`, checks out the head repo, runs `scripts/pr_self_fix.sh` (reads local `HEAD~1..HEAD`, pushes the local branch) with provider secrets and a write token; label-gated only | `code-review.yml:16-56`; `scripts/pr_self_fix.sh:49,154` | REPAIR (security) |
-| G-21 | `prod-guard.sh` host matcher predates the OVH move | `prod-guard.sh:86` | REPAIR (small) |
-| G-22 | `gate7_review.py` exit 0 for every outcome | `tools/gate7_review.py:1364-1401` | DOC |
-| G-23 | `RELEASE_TRAIN.yaml` blockers stop the `RELEASED` label, not `deploy-vps.yml` | `tools/release_train.py:81-88`, `deploy-vps.yml:305-310` | DOC in v1 (G3 criterion), CONNECT later |
-| G-24 | Smoke alerts muted 10 min around any deploy; smoke is not triggered by a prod deploy; missing alert secrets only warn | `smoke-test.yml:30-45,159-179` | DOC (G4 requires an explicit post-deploy smoke dispatch) |
-| G-25 | Staging and production rebuild images separately with `--no-cache --pull`; source identity proven, binary identity not | `deploy-staging.yml:372-379`, `deploy-vps.yml:525-540` | DOC (narrow the claim; SLSA-era fix deferred) |
-| G-26 | `TenantScopedSession` checks that SQL *mentions* `tenant_id` for a fixed table set (not `knowledge_entries`); hybrid reads intentionally bypass RLS with explicit predicates | `mira-bots/shared/tenant/session.py:53-66`; `knowledge-entries-tenant-scoping.md` | DOC (narrow the PW.9 claim) |
-| G-27 | Safety-reviewer agent text contradicts the 2026-09-27 owner decision (D22) | `.claude/agents/safety-reviewer.md:15` | REPAIR (one line) |
-
----
-
-## 3. SDLC v1 — the proposal
-
-### 3.1 Principles
-
-1. **Formalize, don't re-tool.** Every gate names the existing mechanism that satisfies it. No Jira,
-   GitFlow, new CI platform, new agent framework, second registry, or second reviewer fleet.
-2. **A gate is passed when a named artifact exists for the exact SHA.** Prose in a PR body *points*
-   at evidence (a check run, a `[CHEAP-REVIEW]` or `[CODEX-ADVERSARIAL-REVIEW]` comment, a tag, a
-   receipt artifact, a YAML registry row, a test path). Where v1 still accepts a declaration (hazard
-   ledger, mutation check), it says so and names the reader who consumes it.
-3. **Two independent dimensions, not one.** *Review risk* (R0–R3, §3.2) decides what review and
-   testing a change needs. *Deployment applicability* (does this change ship to staging/production
-   at all?) decides whether G3/G4 apply. A governance-only R3 change gets rigorous review and no
-   production receipt; a one-line R1 UI fix gets light review and the full deploy evidence when it
-   ships.
+1. **Formalize, don't re-tool.** Every rule names the existing GitHub/Actions/Codex mechanism that
+   carries it. No Jira, GitFlow, new CI platform, new agent framework, second registry, new store.
+2. **A gate is passed when a named artifact exists for the exact identity that gate certifies.**
+   §12 defines which identity (PR head, merge commit, deployed runtime SHA, receipt) each artifact
+   proves. Prose in a PR body points at evidence; it is evidence only where this document says so
+   (hazard ledger, mutation-check declaration) and then names the reader who consumes it.
+3. **Two independent dimensions.** *Review risk* (R0–R3, §2) decides review and test obligations.
+   *Deployment applicability* decides whether staging, production and observation stages apply
+   (§1.3). A governance-only R3 change gets rigorous review and no production receipt.
 4. **A risk class never waives an enforced obligation.** Branch protection, `ci-gate`, the lifecycle
-   guard, the Shared-Line Guard, the cheap review lane (owner mandate: every PR), and the guarded-path
-   Codex attestation run regardless of the class written in the PR. Classes only *add* obligations.
-5. **Live automation outranks doctrine.** A documented rule with no enforcer is a *target*, labelled
-   DOCTRINE, and is either connected to an enforcer or deleted.
-6. **Claude implements, Codex reviews read-only, CI decides, Mike authorizes.** Unchanged from
-   `.claude/rules/multi-session-protocol.md` §6 and `docs/review-cheap-lane.md`.
-7. **Trunk-based, short-lived.** One branch per slice, cut from a freshly fetched `origin/main`,
-   merged or closed within the WIP policy (§3.9); stacked PRs get `ci.yml` but not every required
-   context, so they are not merge candidates until re-based on `main`.
+   guard, the Shared-Line Guard, the cheap lane and the guarded-path Codex attestation run regardless
+   of the declared class. Classes only add obligations. **Effective risk = max(declared risk,
+   trusted-path floor, reviewer findings)** (§2.3).
+5. **Live automation outranks doctrine.** A rule with no enforcer is labelled DOCTRINE here and is
+   either connected to an enforcer (Part B) or deleted; it is never described as enforced.
+6. **Claude implements, Codex reviews read-only, CI decides, Mike authorizes.** The Codex verdict is
+   today authenticated as a comment posted under the **repository owner account**; its independence
+   is organizational (who runs the trusted script), not a separate technical identity (§4.4).
+7. **Trunk-based, short-lived.** One branch per slice from a freshly fetched `origin/main`; merged or
+   closed under the WIP policy (§1.5).
 
-### 3.2 Risk classes (review-risk dimension)
+---
 
-Assigned at G0 by the implementer on the issue/claim (copied into the PR body as one line:
-`Risk: R2 — retrieval ranking change`), challengeable by any reviewer, **escalated one class on any
-disagreement**. The path signals are classification *aids* drawn from existing automation
-(`tools/ui_surface_lifecycle_guard.py:70-124` trusted control-path list, `ci.yml` `changes` filter,
-`tools/gate7_review.py:61-112` escalation reasons, `kg-write-guard.yml` and `migration-verify.yml`
-path filters, the `safety-reviewer`/`security-reviewer` trigger lists). The written class is
-authoritative for *added* obligations only (principle 4).
+# Part A — Normative rules
 
-| Class | Scope | Path / content signals (existing) | Explicitly **not** in this class |
-|---|---|---|---|
-| **R0 — inert documentation** | Prose under `docs/**` and `wiki/**` that does not define process or policy; screenshots and promo assets outside guarded trees; comments; `.planning/` fragments | `ci.yml` `changes.code == false` AND not a control-path file | Anything in the **governance floor** below; any file under `mira-web/public/**` or `mira-hub/public/**` (guarded legacy trees) |
-| **R1 — low-risk product** | Isolated UI copy/layout inside canonical shells; a single-module bug fix with a red→green test; new non-shared code behind an off flag; non-retrieval API additions; `tools/` scripts that run in neither CI nor deploy; test additions that add coverage without changing collection or enforcement | Code change outside every R2/R3 signal | Concurrency, idempotency, reliability or data-integrity fixes (R2 minimum — protocol §5 "substantial") |
-| **R2 — behavioral / retrieval / model / data** | `mira-bots/shared/**` answer path incl. `engine.py`, `inference/router.py`, prompts (`mira-bots/prompts/**`), retrieval (`neon_recall.py`, `mira-hub/src/lib/manual-rag.ts`, BM25/embedding), ingest writers, KG writers, eval fixtures/graders/golden CSVs, classifier/intent, Hub notebook turn pipeline, mobile unified-shell behavior, runtime dependency bumps, concurrency/idempotency/data-integrity fixes | `deepeval-ci.yml`, `eval-replay-gate.yml`, `kg-write-guard.yml`, `beta-gate.yml`, `prompt-guard.yml`, `photo-e2e-verify.yml`, `enforcement-audit.yml` path filters | Anything that changes **who may see what** (tenant/private data) or **what is said about hazards** — those are R3 |
-| **R3 — safety / security / auth / tenant / migration / production-control / governance** | Safety: `guardrails.py`, `SAFETY_KEYWORDS`, hazard/safety banners and judges, `mira-hub/src/lib/safety-classifier.ts`, answer-validation. Security/auth: sessions, NextAuth, middleware, secrets handling. Tenant: `knowledge_entries` read/write filters, RLS, `TenantScopedSession`, ingest of private customer documents. Migrations: `mira-hub/db/migrations/**`, `mira-core/mira-ingest/db/migrations/**`. Production control: `.github/**`, `tools/hooks/**`, `.githooks/**`, deploy/receipt/drift scripts, `docker-compose*.yml`, nginx, OTA/native release, PLC/fieldbus/Ignition. **Governance floor:** `CLAUDE.md`, `AGENTS.md`, all of `.claude/**` (rules, agents, skills, settings), review producers and consumers (`tools/gate7_review.py`, `scripts/adversarial-review*`, `tools/ui_surface_lifecycle_guard.py`, `tools/ci/**`, `tools/capability_closure.py`, `tools/release_train.py`, `tools/migration_drift.py`, `tools/staging_receipt.py`), registries and allowlists (`docs/contracts/contract-index.yaml`, `.ast-grep-rules/**`, `sgconfig.yml`, `scripts/kg_write_guard_allowlist.txt`, `docs/architecture/convergence/*.yaml`), test collection/config (`pytest.ini`, `pyproject.toml`, `tests/conftest.py`, tests of any guard), process docs (`docs/adversarial-review-workflow.md`, `docs/environments.md`, `docs/versioning.md`, this document), guarded legacy UI paths | `REGISTRY.yaml` LEGACY entries; the lifecycle guard's trusted control-path list; `migration-verify.yml` paths; reviewer trigger lists | — |
+## 1. Lifecycle and state machine
 
-**Relationship to existing vocabulary.** "Substantial" (protocol §5) = R2 ∪ R3. S0–S5 (handbook
-§16.2) remains the *safety-consequence* scale used inside R3 safety reviews. The convergence doc's
-R0/R1 *checkpoints* are referred to here as **CP-before / CP-after**; the convergence doc is not
-edited in v1. R3 is one review class with **family-specific evidence rows** in §3.3 (safety, auth,
-tenant, migration, mobile/OTA, governance); v1.1 may split it formally once data exists.
-
-### 3.3 Lifecycle and gates
+### 1.1 Lifecycle
 
 ```
-Idea/defect ─► Issue (+ PRD for new behavior) ─► [ADR]* ─► Risk class on the issue/claim
-   ═══ G0 Ready to Build ═══
-fetch + branch off origin/main ─► implement test-first ─► relevant suites + lint ─► cheap lane to a clean verdict
-   ═══ G1 Ready for Review ═══
-required contexts green on head ─► [specialist findings]* ─► [Codex exact-head GREEN]* ─► sha-conditioned merge
-   ═══ G2 Ready to Merge ═══   (version-tag.yml tags + rollback checkpoint automatically)
+Issue (+PRD for new behavior, +ADR if architectural) ─ Risk class on the issue/claim ─► G0 Ready to Build
+  fetch + branch off origin/main ─ implement test-first ─ relevant suites + lint ─ cheap lane clean ─► G1 Ready for Review
+  required contexts green on head ─ [specialist findings] ─ [Codex exact-head GREEN] ─► G2 Ready to Merge
+  SHA-conditioned merge ─ version-tag.yml tags + rollback checkpoint (automatic)
             │ (only if the change ships)
-deploy-staging(approved_rc_sha) ─► staging receipt ─► retrieval-acceptance receipt ─► [migrations]*
-   ═══ G3 Ready for Production ═══
-deploy-vps(approved_rc_sha) ─► production receipt ─► smoke dispatch ─► observation window ─► closure records
-   ═══ G4 Closed / Observed ═══
-production failure ─► `incident` issue (SHA, first-seen, restored-at) ─► regression disposition ─► back to G0
+  deploy-staging(approved_rc_sha) ─ staging receipt ─ acceptance receipt (capability-bound) ─ [migrations] ─► G3 Ready for Production
+  recorded human intent ─ deploy-vps(approved_rc_sha) ─ production receipt ─ explicit post-deploy smoke ─ observation window ─► G4 Closed
+  (failure) ─► `incident` issue (deploy run, first-seen, restored-at) ─ regression disposition ─► new G0
 ```
-`*` = required only for some classes/families (tables below). Columns: R0 / R1 / R2 / R3.
 
-#### G0 — Ready to Build
+### 1.2 States (the unit of state is the owning issue; one issue, one append-only timeline)
+
+| State | Meaning | GitHub home (no new store) | Terminal? |
+|---|---|---|---|
+| `OPEN` | Issue/PR exists, G0 not passed | Issue or PR | no |
+| `READY` | G0 passed | `Risk:` line on the issue/claim, copied to the PR body | no |
+| `IN_REVIEW` | G1 in progress | PR checks; `[CHEAP-REVIEW]` / `[CODEX-ADVERSARIAL-REVIEW]` comments | no |
+| `MERGED` (non-shipping) | G2 passed; governance/docs-only, nothing deploys | Merge commit; `v*`/`rollback/*` tags | **yes** |
+| `MERGED_NOT_DEPLOYED` | G2 passed; the change ships but no release candidate (RC) has carried it to production | Comment on the owning issue naming the RC it is batched into | **no — never Done** |
+| `STAGED` | Staging receipt and acceptance receipt exist for the RC SHA | `staging-receipt-<sha>`, `acceptance-receipt-<sha>` artifacts, linked from the issue | no |
+| `AUTHORIZED` | Recorded human deployment intent exists for the RC (§7) | `deploy-vps.yml` dispatch (actor) + authorizing comment link | no |
+| `DEPLOYED` | Production receipt exists for the RC and service set | `production-receipt-<sha>` | no |
+| `DEPLOY_FAILED` | The swap step ran and may have mutated runtime without reaching a receipt | Run conclusion + restoration note on the issue | no |
+| `OBSERVING` | Explicit post-deploy smoke dispatched; window running | Smoke run id on the issue | no |
+| `OBSERVATION_INCOMPLETE` | A later deploy superseded the window before it elapsed | Note on the issue; evidence carried only with an explicit equivalence record | no |
+| `CLOSED` | Window elapsed clean; every DoD item met | Issue closed with a final comment pointing at every artifact | **yes** |
+| `FAILED_OBSERVED` | Attributable failure during the window | `incident` issue linked from the owning issue | no (until the disposition lands) |
+
+**`MERGED_NOT_DEPLOYED` is non-terminal.** Merged code that ships is **never Done** until the RC that
+carries it has a production receipt, an explicit post-deploy smoke run, and a clean observation window
+(or a filed incident with a merged regression disposition). Reporting a shipping change as "done" at
+merge is a process violation.
+
+Transitions:
+```
+OPEN → READY → IN_REVIEW → MERGED ────────────────────────────────────────────────► CLOSED  (non-shipping)
+                        → MERGED_NOT_DEPLOYED → STAGED → AUTHORIZED → DEPLOYED → OBSERVING → CLOSED
+                                                                       │            ├──► OBSERVATION_INCOMPLETE → (next RC's window)
+                                                                       ▼            ▼
+                                                                 DEPLOY_FAILED  FAILED_OBSERVED
+                                                                       └──► INCIDENT → restoring action → disposition → new OPEN (the fix)
+```
+The original change stays `FAILED_OBSERVED` until its disposition comment lands; it does not inherit the
+fix's success. One RC may batch N issues; each issue links the shared RC artifacts, so closing one
+issue says nothing about another on the same RC.
+
+### 1.3 Deployment applicability
+
+| Change type | Applies | Done at |
+|---|---|---|
+| Governance / docs / rules / specs (no runtime artifact) | G0–G2 only | `MERGED` |
+| Code that ships (any service, mobile, OTA, migrations) | G0–G4 | `CLOSED` |
+| Batched change | G0–G2 now; G3–G4 when its named RC deploys | `CLOSED` of that RC |
+
+### 1.4 Definition of Ready (G0) and Definition of Done
+
+**Ready** when: (1) a durable requirement record exists — an issue for R1+; for *new behavior* at
+R2/R3 a PRD (either `docs/prd/YYYY-MM-DD-slug.md` or a `PRD:` issue) with numbered, checkable
+acceptance criteria; for *defects*, the issue + contract ID(s) + the planned red test
+(`.claude/skills/defect-workflow/SKILL.md` §1–§4) suffice; (2) the risk class is written on the issue or
+claim and no reader disagrees (or it was escalated, §2.3); (3) R3 architecture changes have an ADR
+(Proposed is acceptable; Proposed ≠ authorized) and, for convergence units, a `CU-*.md` with a
+CP-before record; (4) the slice is claimed when overlap is plausible (`[WORK-CLAIM]`, protocol §2; the
+PR itself counts); (5) the implementer can name the test that goes red first and, for R2, the eval case.
+
+**Done** when, for the exact merged SHA: (1) merged through the required contexts with the review
+evidence its class requires; (2) `v*` and `rollback/*` tags exist; (3) per §1.3 — non-shipping:
+`MERGED`; shipping: `CLOSED` (staging receipt + acceptance receipt + production receipt + explicit smoke
+run + clean window), or a filed `incident` with a merged regression disposition; (4) every acceptance
+criterion is marked met with a pointer (test name, check run, screenshot path, receipt, trace id);
+(5) the hazard ledger has no undispositioned row; (6) the named new tests appear in the CI log.
+
+### 1.5 Branch and WIP policy
+
+One branch per slice. Target: merged or closed within **5 working days**; a draft older than **14
+days** is rebased and re-scoped or closed with a note on its issue. Stacked PRs receive `ci.yml` but
+not every required context (`staging-gate.yml` and others filter on `branches: [main]`); they are not
+merge candidates until re-based on `main`. Rebase onto `origin/main` before requesting Codex review;
+strict up-to-date voids a GREEN otherwise. GitHub Merge Queue is **not used in v1** (§13).
+
+---
+
+## 2. Risk classification
+
+### 2.1 Classes (review-risk dimension)
+
+| Class | Scope | Path / content signals (existing aids) | Explicitly **not** in this class |
+|---|---|---|---|
+| **R0 — inert documentation** | Prose under `docs/**` and `wiki/**` that does not define process or policy; screenshots and promo assets outside guarded trees; comments; `.planning/` fragments | `ci.yml` `changes.code == false` AND not a governance-floor path | Anything in the **governance floor** (R3); any file under `mira-web/public/**` or `mira-hub/public/**` (guarded legacy trees) |
+| **R1 — low-risk product** | Isolated UI copy/layout inside canonical shells; a single-module bug fix with a red→green test; new non-shared code behind an off flag; non-retrieval API additions; `tools/` scripts that run in neither CI nor deploy; test additions that do not change collection or enforcement | Code change outside every R2/R3 signal | Concurrency, idempotency, reliability or data-integrity fixes (R2 minimum — protocol §5 "substantial") |
+| **R2 — behavioral / retrieval / model / data** | `mira-bots/shared/**` answer path incl. `engine.py`, `inference/router.py`, prompts, retrieval (`neon_recall.py`, `mira-hub/src/lib/manual-rag.ts`, BM25/embedding), ingest writers, KG writers, eval fixtures/graders/golden CSVs, classifier/intent, Hub notebook turn pipeline, mobile unified-shell behavior, runtime dependency bumps, concurrency/idempotency/data-integrity fixes | `deepeval-ci.yml`, `eval-replay-gate.yml`, `kg-write-guard.yml`, `beta-gate.yml`, `prompt-guard.yml`, `photo-e2e-verify.yml`, `enforcement-audit.yml` path filters | Anything that changes **who may see what** (tenant/private data) or **what is said about hazards** — R3 |
+| **R3 — safety / security / auth / tenant / migration / production-control / governance** | Safety: `guardrails.py`, `SAFETY_KEYWORDS`, hazard/safety banners and judges, `mira-hub/src/lib/safety-classifier.ts`, answer-validation. Security/auth: sessions, NextAuth, middleware, secrets handling. Tenant: `knowledge_entries` read/write filters, RLS, `TenantScopedSession`, ingest of private customer documents. Migrations: `mira-hub/db/migrations/**`, `mira-core/mira-ingest/db/migrations/**`. Production control: `.github/**`, `tools/hooks/**`, `.githooks/**`, deploy/receipt/drift/acceptance scripts (`tools/staging_receipt.py`, `tools/migration_drift.py`, `tools/qa/retrieval_acceptance.py` and the acceptance-receipt writer/verifier), `docker-compose*.yml`, nginx, OTA/native release, PLC/fieldbus/Ignition. **Governance floor:** `CLAUDE.md`, `AGENTS.md`, all of `.claude/**`, review producers/consumers (`tools/gate7_review.py`, `scripts/adversarial-review*`, `tools/ui_surface_lifecycle_guard.py`, `tools/ci/**`, `tools/capability_closure.py`, `tools/release_train.py`), registries and allowlists (`docs/contracts/contract-index.yaml`, `.ast-grep-rules/**`, `sgconfig.yml`, `scripts/kg_write_guard_allowlist.txt`, `docs/architecture/convergence/*.yaml`), test collection/config (`pytest.ini`, `pyproject.toml`, `tests/conftest.py`, tests of any guard), **process documents and runbooks** (`docs/adversarial-review-workflow.md`, `docs/environments.md`, `docs/versioning.md`, `docs/runbooks/**` including the rollback and hotfix runbooks, this document), guarded legacy UI paths | `REGISTRY.yaml` LEGACY entries; the lifecycle guard's trusted control-path list (`tools/ui_surface_lifecycle_guard.py:70-124`); `migration-verify.yml` paths; reviewer trigger lists | — |
+
+"Substantial" (protocol §5) = R2 ∪ R3. S0–S5 (handbook §16.2) remains the *safety-consequence* scale
+used inside R3 safety reviews. The convergence doc's R0/R1 *checkpoints* are called **CP-before /
+CP-after** here. R3 is one review class with family-specific evidence rows (§3.3, §5–§9).
+
+### 2.2 Assignment
+
+Written by the implementer at G0 on the issue or claim and copied into the PR body as one line:
+`Risk: R2 — retrieval ranking change`. Any reviewer may challenge it. The path signals are aids; the
+**effective risk** rule below is authoritative.
+
+### 2.3 Effective risk (the floor rule)
+
+```
+effective_risk = max( declared_risk,
+                      trusted_path_floor,     # R3 for any governance-floor / production-control path; R2 minimum for the R2 signal list
+                      reviewer_findings )     # the class any reviewer (specialist agent, cheap lane, Codex, Mike) asserts with a reason
+```
+
+- A declared class can **never lower** the effective class. Lowering requires an explicit owner
+  decision recorded as a PR comment.
+- Recompute on every candidate change (new commits can move a PR into a higher floor).
+- **Today** the only mechanical floor is the lifecycle guard's control-path list (R3 governance
+  paths). The R2 signal floor (tenant / safety / migration / retrieval paths) is **DOCTRINE until
+  Part B step 5 lands** (a narrow companion check reusing the guard's shape). Until then, an
+  under-classified R2 change outside the guarded list is caught only by a reviewer.
+
+---
+
+## 3. Required checks (G1 → G2)
+
+### 3.1 Required contexts (enforced today by branch protection)
+
+Classic protection on `main`: `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack
+tests`, `CI Gate`, `hold-gate`, `Shared UI contract (bun 1.4.0)`; `strict: true`; `enforce_admins:
+true`; **required approving reviews: 0 (decision D2)**. Ruleset `main-branch-protection` (17097034)
+adds PR-required + non-fast-forward and requires `staging-gate` (bypassable by repository role 5).
+`CI Gate` (`ci.yml` `ci-gate`) requires 16 jobs to `success`; `test-unit`/`bench-harness-tests` only
+when `changes.code == true`.
+
+**Not gated today** (facts, not rules): `secrets-scan` (gitleaks), `docker-build-check` (Trivy),
+`test-eval-offline` (the broadest `pytest tests/` sweep), `simlab-gate`, `module-suites`,
+`ocr-recall-gate`, `drive-pack-extract-tests`; `Legacy UI Lifecycle Guard` posts a status but is not
+required (binding is an unperformed admin action, #3657). `staging-gate` success can mean the evaluation
+was **skipped** (docs/.github/.claude-only PRs and Dependabot), so it does not distinguish ran-and-passed
+from skipped; a Dependabot runtime bump (R2) skips evaluation yet reports success.
+
+### 3.2 v1 required state
+
+| Check | v1 rule | State today | Closed by |
+|---|---|---|---|
+| Six required contexts, strict, admins | Keep | Enforced | — |
+| `secrets-scan`, `docker-build-check` | Gated in `ci-gate` with the same `code == true` conditional as `test-unit` (success or skipped on docs-only) | Not gated | Part B step 7 |
+| `Legacy UI Lifecycle Guard` | Required context once a non-spoofable status source exists | Advisory | Part B step 11 (#3657, Mike) |
+| `test-eval-offline` | **Advisory for v1 (D3)**; measure 30 days, then decide | Advisory | Part B step 12 |
+| `.ast-grep-rules/` | Executed by `sg scan` in `code-review.yml`, output captured into the existing comment, step never fails (advisory first) | Never executed | Part B step 7 |
+| `license-check` | Allowlist `Apache-2.0;MIT` (plus explicitly justified exceptions), matching the hard constraint | Denylist | Part B step 7 |
+| Conventional Commit title | Checked by the merger; `next_version.py` returns a patch bump for an unparseable subject, so a bad subject costs a wrong bump, not a red run | Doctrine | — (no commitlint in v1) |
+| Merge | `gh pr merge --match-head-commit <reviewed sha>`; R3 merges by Mike or an explicitly delegated session; branch protection carries no risk-class concept, so this is **doctrine** | Doctrine | — (documented, D2) |
+
+### 3.3 Verification per class (G1)
 
 | Criterion | R0 | R1 | R2 | R3 | Mechanism / evidence |
 |---|---|---|---|---|---|
-| Requirement record: an issue (the PR may be the issue for R0/R1 one-liners) | opt | ✔ | ✔ | ✔ | GitHub Issues; triage labels |
-| Checkable acceptance criteria exist for **new behavior** (defects: the issue + red test + contract ID suffice, as `defect-workflow` already provides) | — | 1+ numbered outcome | numbered criteria in the PRD (file or `PRD:` issue) | same | `docs/prd/`, `PRD:` issues, `docs/contracts/contract-index.yaml` |
-| ADR when the change alters a dependency direction, canonical identity, shared contract, or module boundary | — | — | if architectural | if architectural | `docs/adr/`; convergence Gates 1–3; `CU-*.md` |
-| Risk class recorded on the issue or claim, copied into the PR body | implicit | ✔ | ✔ | ✔ | `Risk:` line (ADD-1) |
-| Work claim when overlap is plausible | — | opt | ✔ | ✔ | `[WORK-CLAIM]` (protocol §2); the PR itself counts |
-| Branch cut after `git fetch origin`, from `origin/main` | ✔ | ✔ | ✔ | ✔ | session-discipline; strict up-to-date catches staleness at merge |
-| CP-before for architecture/data changes: base SHA, baseline test result, schema/ledger state, Neon snapshot or branch id for migrations, rollback SQL block | — | — | if architectural | ✔ for migrations/architecture | Convergence doc §7 (unchanged); recorded in the PR body / `CU-*.md`. Auto `rollback/*` tags provide *addressability* only |
-
-#### G1 — Ready for Review
-
-| Criterion | R0 | R1 | R2 | R3 | Mechanism / evidence |
-|---|---|---|---|---|---|
-| Lint + the suites CI will run for the touched packages, as separate invocations where collection collides (`tests/` vs `mira-bots/tests/`), plus any suite the change could pollute | — | ✔ | ✔ | ✔ (behavioral changes) | `defect-workflow` §8 order; global CLAUDE.md local-gates rule |
-| Red→green test whose docstring cites the issue | — | ✔ | ✔ | ✔ for behavioral changes; n/a for governance prose | Existing practice (142 issues cited); `tests/bot_regression.py` pattern |
+| Lint + the suites CI runs for the touched packages (separate invocations where collection collides: `tests/` vs `mira-bots/tests/`) plus any suite the change could pollute | — | ✔ | ✔ | ✔ (behavioral changes) | `defect-workflow` §8; global local-gates rule |
+| Red→green test whose docstring cites the issue | — | ✔ | ✔ | ✔ behavioral; n/a governance prose | existing practice (142 issues cited from `tests/`) |
 | Eval / golden case when the answer path changes | — | — | ✔ | ✔ if applicable | `tests/eval/fixtures/`, `tests/golden_*.csv`, `deepeval-ci.yml` |
-| Property test for a **new** state machine, parser, or invariant | — | — | ✔ | ✔ | hypothesis pattern (`tests/test_fsm_properties.py`) |
-| Mutation check (break the fix, confirm red, restore) **for the defect test** | — | — | ✔ when a defect test exists | ✔ when a defect test exists | `defect-workflow` step 6; declared in the PR body with the red output |
-| Specialist review **findings** attached (not attendance): `conversation-reviewer` for answer-path changes; `safety-reviewer` for safety family; `security-reviewer` for auth/tenant/deploy/secrets | — | — | conversation | safety and/or security | `.claude/agents/*.md`; findings pasted or linked in the PR, each dispositioned |
-| Hazard ledger (noticed-but-unfixed items each dispositioned) | — | — | ✔ | ✔ | PR body; consumer = the merger |
-| Cheap review lane on the current head with `verdict: PASS`, or every remaining finding dispositioned (fixed / false-positive with reason / deferred to issue #) | ✔ (owner mandate) | ✔ | ✔ | ✔ | `[CHEAP-REVIEW]` comment whose `head:` equals the current head (REPAIR-6) |
-| PR body: Summary, `Risk:`, criterion → evidence mapping, test evidence, hazard ledger | Summary + Risk | ✔ | ✔ | ✔ | `.github/pull_request_template.md` (REPAIR-3 trims it) |
+| Property test for a **new** state machine, parser or invariant | — | — | ✔ | ✔ | hypothesis pattern (`tests/test_fsm_properties.py`) |
+| Mutation check for the defect test (break the fix, confirm red, restore), declared with the red output | — | — | ✔ when a defect test exists | ✔ when a defect test exists | `defect-workflow` step 6 (manual) |
+| Specialist review **findings** attached and dispositioned (not attendance): `conversation-reviewer` for answer-path; `safety-reviewer` for the safety family; `security-reviewer` for auth/tenant/deploy/secrets | — | — | conversation | safety and/or security | `.claude/agents/*.md` |
+| Hazard ledger (each noticed-but-unfixed item dispositioned) | — | — | ✔ | ✔ | PR body; consumer = the merger |
+| Cheap review lane on the current head (§4.2) | ✔ (D4) | ✔ | ✔ | ✔ | `[CHEAP-REVIEW]` comment |
+| PR body: Summary, `Risk:`, criterion → evidence mapping, test evidence, hazard ledger | Summary + Risk | ✔ | ✔ | ✔ | PR template |
 
-#### G2 — Ready to Merge
+---
 
-| Criterion | R0 | R1 | R2 | R3 | Mechanism / evidence |
-|---|---|---|---|---|---|
-| Six required contexts green on the current head, strict up-to-date | ✔ | ✔ | ✔ | ✔ | Branch protection; `tools/pr-merge-blocker.sh` |
-| `Legacy UI Lifecycle Guard` green (and its body-bound Codex GREEN when the PR touches a guarded path, whatever the class) | ✔ | ✔ | ✔ | ✔ | `ui-lifecycle-guard.yml` (advisory today → CONNECT-2) |
-| Independent exact-head Codex review | — | — | when Mike names it or a cheap-lane finding is disputed (**current policy**) | **always** (proposed; open decision 1) | `adversarial-review-trusted.sh … --review-only`; ≤3 rounds |
-| When a Codex review is required: `status: GREEN`, `reviewed_sha` == head, `reviewed_body_sha256` == current body | — | — | if required | ✔ | `[CODEX-ADVERSARIAL-REVIEW]` comment |
-| Merge is SHA-conditioned (`gh pr merge --match-head-commit <sha>`), performed by the standing authority; R3 by Mike or an explicitly delegated session | ✔ | ✔ | ✔ | ✔ (Mike/delegate) | GitHub merge API `sha` condition |
-| Conventional Commit title (checked by the merger; a bad subject yields a wrong bump, not a red run) | ✔ | ✔ | ✔ | ✔ | `tools/release/next_version.py` |
-| Exceptions to any gate recorded as a **comment** (not a body edit) linking Mike's approval | — | ✔ | ✔ | ✔ | §3.13 |
+## 4. AI review and attestation
 
-#### G3 — Ready for Production (applies only to changes that ship)
+### 4.1 Roles
+
+Claude implements and remediates. Specialist Claude agents produce findings (read-only). The cheap
+lane produces a single-shot verdict. Codex produces the independent exact-head verdict (read-only
+sandbox, trusted-base launcher). Deterministic CI decides facts. Mike authorizes consequential
+transitions. No agent may self-award a PASS on work it authored.
+
+### 4.2 Cheap review lane — **advisory in v1** (decision D4 keeps it on every PR)
+
+- Mechanism: `tools/gate7_review.py <PR> --paid --post` posts `[CHEAP-REVIEW]` with `head`, `verdict`,
+  `model`, `cost_usd`, `run_id`. Required on **every PR including R0** (owner mandate 2026-10-03; D4).
+- **Classification: ADVISORY, not a blocking attestation**, until it is posted as a **commit/head-bound
+  GitHub check-run** that a required context consumes (Part B step 6). Reasons, all facts today: the
+  head SHA and the diff are fetched separately and the head is not re-read before posting; the exit code
+  is 0 for rendered PASS, BLOCK and UNKNOWN and for a failed post (2/3/4 only for provider failure,
+  budget refusal, oversized diff); the only consumer is the merger reading `head:` and `verdict:`.
+- Rule for the merger (doctrine until the check-run exists): merge only when the latest
+  `[CHEAP-REVIEW]` `head:` equals the current head and `verdict: PASS`, or every remaining finding is
+  dispositioned in a PR comment (fixed / false-positive with reason / deferred to issue #). "No new
+  findings" is not PASS.
+- Cost is recorded in `.planning/review-costs.jsonl` (gitignored, per host) and in the comment.
+
+### 4.3 Independent exact-head Codex review — **authoritative where required**
+
+- Launch only from the trusted base: `git show origin/main:scripts/adversarial-review-trusted.sh | bash -s -- <PR> --review-only`
+  (a candidate-local run exits 0 and reviews nothing). Read-only sandbox, isolated `CODEX_HOME`.
+- Verdict envelope `[CODEX-ADVERSARIAL-REVIEW]` carries `reviewed_sha`, `reviewed_body_sha256`,
+  `base_sha`, `status GREEN|ISSUES_FOUND`, `review_iteration`, counts; the script re-verifies the head
+  before review and before GREEN. **GREEN binds to the exact head and the exact PR body**: any push or
+  body edit makes it stale. Maximum three autonomous rounds, then escalate to Mike with the open findings.
+- **Required (D1):** every **R3** change; every PR touching a guarded path (the lifecycle guard
+  demands the body-bound GREEN regardless of class). **R2:** when Mike names it or a cheap-lane finding is
+  disputed. R0/R1: not required.
+- Hotfix deferral (§10.1) is allowed only when the PR touches no guarded control-plane path.
+
+### 4.4 Trust limitation of the attestation (stated plainly)
+
+The lifecycle guard and the ledger count a `[CODEX-ADVERSARIAL-REVIEW]` comment only when posted by the
+**repository owner account** (`user.type == User`); the review lane runs under that account. So the
+attestation authenticates **the account that posted it**, not a separate reviewer identity: a session
+holding the owner's `gh` token could post a syntactically valid envelope. Independence is therefore
+**organizational** (only the trusted script, run from `origin/main`, is permitted to post it) and
+**auditable** (ledger comments, run ids), not cryptographic. v1 accepts this and does not claim
+otherwise; a separate reviewer identity (second GitHub App/account) is a deferred improvement (§13).
+
+### 4.5 Advisory vs authoritative — the unambiguous list
+
+| Artifact | Status in v1 |
+|---|---|
+| `[CODEX-ADVERSARIAL-REVIEW] status: GREEN` on the exact head + body | **Authoritative** for the gates that require it (§4.3) |
+| `[CHEAP-REVIEW]` comment | **Advisory** (until a head-bound check-run exists) |
+| Specialist agent findings | **Advisory input**; their dispositions are evidence in the PR |
+| `code-review.yml` AI review comment | **Advisory** (comment-only, never fails) |
+| Required status contexts | **Authoritative** (deterministic) |
+| Human merge / human dispatch | **Authoritative** for authority, **not** independent review (§7) |
+
+---
+
+## 5. Staging
+
+### 5.1 Mechanism (enforced today)
+
+`deploy-staging.yml` is `workflow_dispatch` only, from `refs/heads/main`, with `approved_rc_sha`
+(40-hex) validated by `gh api repos/…/commits/<sha>`; co-hosted on the production host with seven
+safeguards; asserts runtime `gitSha == approved_rc_sha` **for the Hub/Web targets selected**; images are
+rebuilt `--no-cache --pull`; writes `staging-receipt-<sha>` (`factorylm.deploy-receipt/1`, 90 days).
+
+### 5.2 Validator trust boundary (explicit)
+
+Facts: (a) the SHA check accepts **any commit present in the repository**, including an unmerged
+PR-branch commit — descent from `main` is not required; (b) once staged, `retrieval-acceptance.yml`
+fires automatically on the successful staging run, checks out the **deployed** SHA and runs that tree's
+`mira-hub/scripts/provision-beta-gate.ts` with the staging `DOPPLER_TOKEN` and its
+`tools/qa/retrieval_acceptance.py`; (c) `deploy-vps.yml`'s `migration-drift` job checks out
+`approved_rc_sha` and runs **that tree's** `tools/migration_drift.py` with the production DB URL
+(`env -i`, `python3 -I`, URL-only handoff). The validators therefore come from the **candidate tree**,
+not from a pinned trusted base as the review lane does. Consequence: today an unmerged, unreviewed
+branch can be staged and have its provisioning script executed with staging credentials, with no merge,
+no Codex review and no cheap-lane verdict in between.
+
+**v1 rule.** Candidate-tree validators are acceptable **only** for commits reachable from `main`
+(merged). Required state: `deploy-staging.yml` `authorize-target` verifies
+`git merge-base --is-ancestor <sha> origin/main` (or the API equivalent) and **fails closed** otherwise;
+`retrieval-acceptance.yml` runs the provisioner and harness from the **trusted base** (`origin/main`
+checkout) against the deployed URL, or verifies the deployed SHA is an ancestor of `main` before executing
+anything from it; `migration-drift` runs `tools/migration_drift.py` from the trusted base. Until Part B
+step 4 lands this is **DOCTRINE**: do not dispatch `deploy-staging.yml` for a SHA that is not on `main`.
+
+### 5.3 Environment facts
+
+GitHub environments `production`, `staging`, `staging-deploy` exist with **zero protection rules**
+(no required reviewers, wait timers or branch policies); `environment:` on a job grants secrets only.
+`apply-ingest-migrations.yml` uses `environment: production` for **both** targets, so a staging ingest
+migration runs under production secrets scope — v1 required state: a `staging` environment for the
+staging target (Part B step 6).
+
+---
+
+## 6. Acceptance receipts (capability-bound)
+
+### 6.1 Today
+
+`retrieval-acceptance.yml` resolves the SHA **actually serving** from `/api/health`, provisions a
+stranger tenant, runs six live Hub retrieval scenarios plus capture accounting (capture skips historical
+deployments and exits 0), re-reads the SHA at verdict time (SUPERSEDED on drift, **exit 0 with a warning
+if the re-read fails**), and uploads JSON `{base, ran_at, rows}` with **no pinned SHA, no run id, no
+service list** (30-day retention). **Nothing downstream consumes it.** The staging receipt verifier uses a
+fixed `DEFAULT_REQUIRED_SERVICES = ("mira-hub", "mira-web")` and is never given the dispatched
+`services`; the production default target set is `mira-hub mira-web mira-ask`, so **`mira-ask` deploys
+with no receipt-proven staging identity**, and a narrow (e.g. web-only) staging receipt fails the fixed
+Hub/Web requirement.
+
+### 6.2 v1 rule — binding model
+
+`production delta → affected capabilities → actual deployed service set (the real services input, never
+a hardcoded default) → required acceptance suites tagged to those capabilities → one generation-bound
+receipt`. A generic "staging passed" receipt certifies **only** the services and revisions it proves.
+
+**`acceptance-receipt-<sha>` must contain:** schema id; repository; pinned deployed `gitSha` **per
+service** it certifies; the triggering `staging-receipt` run id and the acceptance run id (+ attempt);
+environment generation; the **actual services list covered**; the capability set exercised; per-scenario
+verdicts tagged by capability; capture status; start/end identity probes; `ran_at`; expiry.
+**`staging-receipt-<sha>` verification must compare against the dispatch's `services`**, not the
+fixed default; every service in the production target set — explicitly including **`mira-ask`** — needs
+a receipt-proven staging runtime identity or an explicit, recorded `NOT_APPLICABLE` with a reason.
+
+| Concern | Rule |
+|---|---|
+| Scope | Suites required for the capabilities the delta touches; a Web-only release with no retrieval capability changed makes the retrieval suite `NOT_APPLICABLE`; a changed Hub retrieval path requires it. Unknown impact → broader coverage, never an empty suite set |
+| Universal checks | Runtime identity, basic health, essential auth/tenant isolation, receipt integrity always apply to affected surfaces |
+| `NOT_APPLICABLE` | Scenario outside the deployed capability set; recorded, never silently absent |
+| `SKIPPED` | Scenario **inside** scope that did not run (capture skip, historical deploy) — **blocks** authorization for that capability |
+| `SUPERSEDED` | Deployment generation changed during assessment → the receipt does not authorize; no fallback to an older passing receipt |
+| `INFRA_UNASSESSED` | Provider/infra failure (fetch failed, tool error) — retried within one bounded re-run, then **blocks** the affected capability; never recorded as a product regression and never reduced to exit 0 |
+| Same-SHA redeploy | A rebuild (`--no-cache --pull`) or recreation is a **new generation**; reuse requires the new generation's runtime identity to equal the receipt's pinned SHA **and** the receipt's triggering staging run id to match the **current** staging receipt presented at authorization **and** no migration/config/provider change since acceptance completed — never "SHA unchanged within 168 h" alone |
+| Expiry | 168 h from acceptance completion (one system-wide freshness constant, shared with the staging receipt); not refreshed by copying |
+| Fail-closed | Missing, malformed, unparseable, stale, ambiguous or scope-mismatched receipts block; a failed verdict-time identity re-read is `INFRA_UNASSESSED`, not success |
+
+State today: the receipt does not exist; the fail-open re-read exists. **DOCTRINE until Part B steps 4–5**
+(producer first, then the `deploy-vps.yml` consumer).
+
+---
+
+## 7. Production authorization (G3)
+
+### 7.1 Mechanical checks (enforced today)
+
+`deploy-vps.yml` is `workflow_dispatch` only ("AUTO-DEPLOY stays DISABLED"); `authorize-source` rejects
+every `skip_*` input, requires Staging Gate `completed:success` on the PR head mapped from the merge
+commit, requires an unexpired (≤168 h) verified `staging-receipt-<sha>` with workflow provenance, and
+`migration-drift` requires zero repo→ledger filename drift. Credentials are split by job (DB URL only in
+`migration-drift`, SSH key only in `deploy`).
+
+### 7.2 v1 required state
+
+| Criterion | Rule | Today | Closed by |
+|---|---|---|---|
+| Staging receipt covers the dispatched `services` | Verifier compares against the real input; `mira-ask` included | Fixed Hub/Web default | Part B step 5 |
+| Acceptance receipt | Required for every capability in scope, PASS, not SUPERSEDED/SKIPPED/INFRA_UNASSESSED, ≤168 h, generation-matched (§6.2) | No consumer | Part B step 5 |
+| PR association | Exactly one **merged** PR into `main` whose `merge_commit_sha` matches; otherwise STOP (no first-associated-PR fallback) | Fallback exists | Part B step 5 |
+| Migrations (Hub **and** ingest) | Applied staging → prod via the ledgered workflows, `dry-run` then `apply`; content check has fail-open branches (absent hashes) — recorded, not relied on | Filename-level drift gate | — (documented) |
+| Release holds | No open `RELEASE_TRAIN.yaml` blocker for the component deployed, or Mike's written waiver (manual check in v1) | Blockers stop the `RELEASED` label only | §13 |
+| Device evidence | When native/OTA mobile is in the release | Present in `ota-release.yml`; `ota-*` environments absent | §13 |
+| **Human deployment intent** | See §7.3 | No environment rule | Part B step 9 (Mike) |
+
+### 7.3 Human deployment intent (decision D6) — stated accurately
+
+- **Today:** `environment: production` has **no protection rules**; "Mike authorizes" is doctrine; any
+  actor with Actions write access can dispatch production once the mechanical checks pass.
+- **v1 required state:** a **required reviewer (Mike) on the `production` environment, WITHOUT
+  `prevent_self_review`**. What this is: a **recorded human deployment intent/confirmation checkpoint** —
+  a deliberate click, logged with actor and time. What it is **not**: independent review or identity
+  separation. In a one-owner repository the dispatcher and the approver are the same account, and an
+  agent operating with the owner's token could in principle both dispatch and approve; the control's
+  value is friction plus an audit record. `prevent_self_review` is **not** enabled: with one authorized
+  human it deadlocks every dispatch (the exact failure `ota-release.yml` encodes for the non-existent
+  `ota-production` environment). Mike has **accepted this interim control (D6)**; a genuinely separate
+  authorized reviewer identity is a deferred improvement (§13).
+- Authorization is recorded on the owning issue: the dispatch actor/run URL or a linked authorizing
+  comment by Mike.
+
+---
+
+## 8. Deployment
+
+### 8.1 Mechanism (enforced today)
+
+`deploy-vps.yml` `deploy` job: records `PRIOR_SHA/PRIOR_TAG` from the host checkout as the rollback
+anchor; asserts zero tree drift in `/opt/mira`; rebuilds the selected services `--no-cache --pull`
+(default `mira-hub mira-web mira-ask`); health-gated swap (`--wait`); asserts built image id == running
+image id; asserts runtime `gitSha == approved_rc_sha` for the selected Hub/Web; writes
+`production-receipt-<sha>` (90 days); strict nginx `sites-enabled` allowlist. On a failed health-gated
+swap it **deliberately leaves the new containers in place** (tearing down would deepen the outage).
+
+### 8.2 Identity the receipt proves — and does not
+
+Source identity is proven (runtime `gitSha` for selected Hub/Web); binary identity is **not** (staging
+and production rebuild separately; receipts carry local image ids, not registry digests; no
+attestations exist). v1 states this narrowly and does not claim "the accepted artifact was promoted".
+v1 required additions to the production receipt: the **actual services list** deployed, the per-service
+runtime SHA, and a `rollback_candidate` per service (§10.2). Build-once/promote-by-digest and
+attestations are deferred (§13).
+
+### 8.3 Version and rollback address
+
+`version-tag.yml` tags every push to `main`: `v<X.Y.Z>` (type-derived; unparseable subject → patch)
+and `rollback/<date>-v<X.Y.Z>`; Release creation is best-effort; tags are unprotected. A tag is an
+**address**, not proof of a verified-good production state.
+
+---
+
+## 9. Post-deployment verification (G4)
 
 | Criterion | R1 | R2 | R3 | Mechanism / evidence |
 |---|---|---|---|---|
-| `v*` and `rollback/*` tags exist for the merge | ✔ | ✔ | ✔ | `version-tag.yml` (automatic) |
-| Staging deploy of the exact RC SHA succeeded; receipt verified (≤168 h old at prod time) | ✔ (batched into an RC) | ✔ | ✔ | `deploy-staging.yml` → `staging-receipt-<sha>` |
-| Staging **acceptance receipt** for that SHA and that deploy run: all scenario verdicts PASS, none SUPERSEDED/skipped; required whenever `mira-hub` is in the deployed service set; reusable for an unchanged SHA within 168 h | ✔ | ✔ | ✔ | `retrieval-acceptance.yml` → `acceptance-receipt-<sha>` (CONNECT-1 producer + consumer) |
-| Migrations (Hub **and** ingest) applied to staging then prod via the ledgered workflows, `dry-run` then `apply`; prod drift job = 0 missing files; content check reported no mismatch | n/a | n/a | ✔ when present | `migration-verify.yml`, `apply-migrations.yml`, `apply-ingest-migrations.yml`, `deploy-vps.yml` `migration-drift` |
-| No open `RELEASE_TRAIN.yaml` blocker for the component being deployed, or Mike's written waiver | — | ✔ | ✔ | `RELEASE_TRAIN.yaml` `blockers:` (manual check in v1; G-23) |
-| Device evidence when native/OTA mobile is in the release | ✔ if mobile | ✔ if mobile | ✔ if mobile | `RELEASE_TRAIN.yaml` `device_parity` receipts; `ota-release.yml` handset-evidence job |
-| Production dispatch authorized by Mike: he dispatches, or his authorizing comment is linked in the dispatch summary | ✔ | ✔ | ✔ | `deploy-vps.yml` `workflow_dispatch` (`environment: production`) |
-
-#### G4 — Closed / Observed (applies only to changes that shipped)
-
-| Criterion | R1 | R2 | R3 | Mechanism / evidence |
-|---|---|---|---|---|
-| Production receipt exists for the SHA and the deployed service set | ✔ | ✔ | ✔ | `production-receipt-<sha>` |
-| **Explicit post-deploy smoke**: `smoke-test.yml` dispatched after the deploy completes (outside the 10-min mute), run id recorded | ✔ | ✔ | ✔ | `smoke-test.yml` `workflow_dispatch`; screenshots per the Screenshot Rule when UI changed |
-| Observation window, starting at the smoke run: no `incident` issue created **or updated** attributing this SHA, and canary runs completed (not infra-failed) | 24 h | 24 h | 72 h | Canaries (§1.4) + `incident` label (ADD-2) |
-| Feature proven on where a capability/flag is involved; `CAPABILITY_CLOSURE.yaml` advanced from a Doppler read (this is an evidence-record commit, distinct from the deployed SHA) | — | ✔ | ✔ | `finish-capability` skill; `tools/capability_closure.py` |
+| Production receipt for the SHA **and the actual service set** | ✔ | ✔ | ✔ | `production-receipt-<sha>` |
+| **Explicit post-deploy smoke**: `smoke-test.yml` dispatched after the deploy completes (outside the 10-minute alert mute), run id on the issue. Push-time smoke does not count — it runs at merge, before the manual deploy | ✔ | ✔ | ✔ | `smoke-test.yml` `workflow_dispatch`; screenshots per the Screenshot Rule when UI changed |
+| Observation window, starting at the smoke run: no `incident` issue **created or updated** attributing this deployment, and canary runs **completed** (an infra-failed canary is `unassessed`, not clean) | 24 h | 24 h | 72 h | Canaries; `incident` label (Part B step 3). Windows are provisional defaults; do not hold other releases for a window; a superseding deploy marks the window `OBSERVATION_INCOMPLETE` |
+| Capability/flag changes: `CAPABILITY_CLOSURE.yaml` advanced from a Doppler read (an evidence-record commit, distinct from the deployed SHA) | — | ✔ | ✔ | `finish-capability` skill |
 | Release identity recorded when the release train applies | — | — | ✔ | `RELEASE_TRAIN.yaml` observed_* + `tools/release_train.py --drift` |
-| Tenant-touching changes: the BRAVO RBAC inspection run after the deploy is linked | — | — | ✔ (tenant family) | `tools/qa/rbac/*` run (launchd on BRAVO) |
-| Any attributable failure → `incident` issue → regression disposition (§3.8); the change is **FAILED-OBSERVED**, not closed, until the disposition is merged | ✔ | ✔ | ✔ | §3.8 |
-| Handoff comment only when ownership, blockers, or authorization remain unresolved (the full SESSION CLOSEOUT block is not required for a merged, deployed PR) | — | — | if unresolved | protocol §9 |
+| Tenant-touching changes: the BRAVO RBAC inspection run after the deploy is linked | — | — | ✔ (tenant family) | `tools/qa/rbac/*` (launchd on BRAVO) |
+| Attributable failure → `incident` → regression disposition; the change is `FAILED_OBSERVED` until the disposition merges | ✔ | ✔ | ✔ | §10.3 |
+| Handoff comment only when ownership, blockers or authorization remain unresolved | — | — | if unresolved | protocol §9 |
 
-### 3.4 Definition of Ready (= G0 passed)
+---
 
-1. A durable requirement record exists: an issue (R1+); for **new behavior** at R2/R3 a PRD in either
-   accepted form (`docs/prd/YYYY-MM-DD-slug.md` or a `PRD:` issue) with numbered, checkable
-   acceptance criteria. For **defects** the issue, the contract ID(s) and the planned red test are
-   the record (`defect-workflow` §1–§4).
-2. The risk class is written on the issue/claim and no reader of the plan disagrees (or it was escalated).
-3. Design is settled at the level the class needs: R3 architecture changes have an ADR (Proposed is
-   acceptable; "Proposed ≠ authorized" stands) and, for convergence units, a `CU-*.md` with CP-before.
-4. The slice is claimed when overlap is plausible and the post-claim re-read confirmed it.
-5. The implementer can name the test that goes red first and, for R2, the eval/golden case.
+## 10. Failure, hotfix and rollback
 
-### 3.5 Definition of Done (= G4 passed, or an explicit non-deploy state)
+### 10.1 Hotfix (production degraded, normal flow too slow)
 
-A change is Done — and may be reported as done — only when, for the exact merged SHA:
-
-1. Merged through the required contexts with the review evidence its class requires (G2).
-2. `v*` and `rollback/*` tags exist.
-3. One of: **(a) Deployed** — staging receipt + acceptance receipt + production receipt + post-deploy
-   smoke run exist and the observation window elapsed clean; **(b) Merged-not-deployed** — the
-   change is explicitly recorded on its issue as batched into a named RC, and that RC's deployment
-   closes it; **(c) Not deployable** — governance/docs-only; Done at G2.
-4. Each acceptance criterion in the requirement record is marked met with a pointer (test name, check
-   run, screenshot path, receipt, trace id).
-5. The hazard ledger has no undispositioned row.
-6. "Merged" is not "done" for anything that ships (`CLAUDE.md` § Capability closure). "Green CI" is
-   not "the new tests ran": the named tests appear in the CI log.
-
-### 3.6 Hotfix path (production degraded, normal flow too slow)
-
-The live `deploy-vps.yml` has **no gate bypass**, and v1 keeps it that way. A hotfix is the normal
-path with the queue cleared:
-
-1. Open the fix PR as **R3 (production-control)** regardless of diff size, title `fix(hotfix): …`,
-   and open an `incident` issue first (ADD-2) linking the PR.
-2. G1: cheap lane one round. Codex review may be **deferred post-merge only** when the PR touches no
-   guarded control-plane path (the body-bound attestation cannot be deferred) and Mike says so on
-   the PR; it must complete within 24 h and its `[CODEX-ADVERSARIAL-REVIEW]` comment is the
-   follow-up artifact.
-3. G2: required contexts green (strict up-to-date applies; nothing else merges meanwhile).
-4. G3: `deploy-staging.yml`, then `retrieval-acceptance` (wait for it when `mira-hub` is in the set),
-   then `deploy-vps.yml` with the narrowest `services` list containing the fix.
+The live `deploy-vps.yml` has **no gate bypass** and v1 keeps it that way. A hotfix is the normal path
+with the queue cleared and the emergency mode recorded:
+1. Open an `incident` issue first; open the fix PR as **R3 (production-control)**, title `fix(hotfix): …`.
+2. G1: cheap lane one round. Codex may be **deferred post-merge only** when the PR touches no guarded
+   control-plane path (the body-bound attestation cannot be deferred) and Mike says so on the PR; it must
+   complete within 24 h and its `[CODEX-ADVERSARIAL-REVIEW]` is the follow-up artifact.
+3. G2: required contexts green (strict up-to-date; nothing else merges meanwhile).
+4. G3: `deploy-staging.yml`, acceptance for the capabilities in scope, then `deploy-vps.yml` with the
+   narrowest `services` list containing the fix. Receipt, acceptance and drift gates apply unchanged.
 5. G4 as normal; the regression disposition lands in the hotfix PR or a follow-up within 24 h.
-6. The stale `skip_staging_gate` / `skip_reason` prose is removed (REPAIR-3).
 
-### 3.7 Rollback path
+### 10.2 Rollback
 
 Rollback is a **forward deploy of a known-good SHA** through the same gates, plus a data decision.
 
-| Layer | Mechanism (exists) | v1 rule |
-|---|---|---|
-| Code / containers | Re-dispatch `deploy-vps.yml` with `approved_rc_sha=<PRIOR_SHA>` (printed as the rollback anchor by the failed run); `rollback/*` tags name candidates | The prior SHA needs a staging receipt **≤168 h old** and an acceptance receipt; if expired, re-run `deploy-staging.yml` (and acceptance) first. Never bypass. `PRIOR_SHA` is the host checkout, so confirm the per-service runtime SHAs from the last production receipt before choosing the anchor. |
-| Database | No down mode. Options: the in-file rollback block, or restore the Neon snapshot/branch (loses writes since the snapshot) | R3 migration PRs record the Neon snapshot/branch id and rollback SQL at G0 (CP-before). Expand/contract migrations so code rollback never needs schema rollback within the observation window. |
-| Mobile / OTA | `mira-mobile/scripts/ota-rollback.mjs`, `ota-release.yml promote` re-points the signed manifest; native via `mobile-release-distribute.yml` | Roll back by promoting the previous signed manifest; the handset-evidence job applies to the rollback too. |
-| Docs | `docs/runbooks/hubv3-rollback.md` (stale) | REPAIR-2: `docs/runbooks/rollback.md` with the real inputs and the receipt-refresh rule. |
-| Drill | None recorded | One drill before v1 is declared adopted: deploy the **previous** RC to staging, run acceptance, then exercise `deploy-vps.yml` `authorize-source` against it with `services` set to the smallest safe target, and record the run ids. A receipt-only staging drill does not count. |
+| Layer | v1 rule |
+|---|---|
+| Recovery candidates | Each production receipt records, **per service**, a `rollback_candidate` (normally that service's previous production SHA). Candidates are explicit, not inferred from `PRIOR_SHA` (which is the host checkout, not the per-service runtime set) and not inferred from tags. |
+| Fresh evidence **before** the incident | A scheduled job re-deploys the **designated recovery candidate(s)** to staging and re-runs acceptance so their staging and acceptance receipts stay ≤168 h fresh **while they remain recovery targets**. Refreshing only the current production SHA does **not** preserve the rollback target (A→B, B current >168 h, outage: A's receipts have expired). |
+| Compatibility | A candidate is valid only while no **contracting** migration has been applied since it ran (expand/contract discipline: code rollback within the window never needs schema rollback). |
+| Refresh failure | A stale or failed candidate refresh opens an `incident`-labelled issue: recovery readiness is lost. |
+| Executing a rollback | Re-dispatch `deploy-vps.yml` with `approved_rc_sha=<candidate>`; the receipt, acceptance and drift gates apply unchanged — never bypass. If evidence is expired, re-stage and re-accept first; this is the failure the refresh schedule exists to prevent. |
+| Database | `apply-migrations.yml` has no down mode. R3 migration PRs record the Neon snapshot/branch id and the rollback SQL at G0 (CP-before). |
+| Mobile / OTA | `mira-mobile/scripts/ota-rollback.mjs` and `ota-release.yml promote` re-point the signed manifest; the handset-evidence job applies to the rollback too (the `ota-*` environments must exist first, §13). |
+| Drill | One drill before v1 is declared adopted: deploy the designated candidate to staging, run acceptance, exercise `deploy-vps.yml` `authorize-source` against it with the smallest safe `services`, and walk A→B→rollback-to-A with B current >168 h; record run ids in the runbook. A receipt-only staging drill does not count. |
+| Runbook | `docs/runbooks/rollback.md` (R3 governance doc) replaces `hubv3-rollback.md`, whose `-f ref=` input no longer exists. |
 
-### 3.8 Failure → regression workflow
+State today: no `rollback_candidate` field, no refresh schedule, no recorded drill. **DOCTRINE until
+Part B step 10.**
+
+### 10.3 Failure → regression
 
 1. **Detect**: canary issue, smoke alert, Telegram heartbeat, user report, eval regression.
-2. **Record**: one issue labelled **`incident`** (ADD-2) whose body carries fixed fields the metrics
-   script can parse: `first_seen:`, `deploy_sha:` (from the latest `production-receipt-*` or
-   `/api/version`), `impact:`, `restored_at:`, `restoring_action:` (deploy SHA / Doppler change /
-   provider recovery / none). Canary-opened `*-incident` issues get the `incident` label added rather
-   than a second issue; `docs/incidents/` stays for narrative RCAs.
-3. **Restore**: §3.6 or §3.7, or an operational action (config, provider) recorded in `restoring_action:`.
-4. **Regression disposition** (required to close the issue), one of: `new-test:<path>` (docstring
-   cites the issue), `existing-coverage:<path>`, `guard:<workflow/hook>`, `eval-fixture:<path>`
-   (promote the active-learning draft rather than duplicate), or `external-cause:<reason>` (provider
-   outage with no code change). The disposition is a comment on the issue.
-5. **Rule**: second occurrence of the same class = a new rule or guard, not only a test (Cluster Law 6).
+2. **Record**: one issue labelled `incident` with fixed fields: `first_seen:`, `deploy_run:` (the
+   `deploy-vps.yml` run id + attempt), `deploy_sha:`, `services:`, `impact:`, `restored_at:`,
+   `restoring_action:` (deploy / config / provider recovery / none). Canary-opened `*-incident` issues get
+   the `incident` label added; `docs/incidents/` holds narrative RCAs.
+3. **Restore**: §10.1, §10.2, or an operational action recorded in `restoring_action:`.
+4. **Regression disposition** (required to close): `new-test:<path>` (docstring cites the issue),
+   `existing-coverage:<path>`, `guard:<workflow/hook>`, `eval-fixture:<path>` (promote the
+   active-learning draft), or `external-cause:<reason>`.
+5. Second occurrence of the same class = a new rule or guard, not only a test (Cluster Law 6).
 
-### 3.9 Branch and WIP policy
+---
 
-- One branch per slice. Target: merged or closed within **5 working days**; a draft older than
-  **14 days** is rebased and re-scoped or closed with a note on its issue. Baseline: 40 open, oldest
-  2026-09-13.
-- Stacked PRs receive `ci.yml` but not the other required contexts; rebase onto `main` before review.
-- Rebase onto `origin/main` before requesting Codex review; strict up-to-date voids a GREEN otherwise.
+## 11. Security and trust boundaries
 
-### 3.10 Security and safety integration (NIST SSDF + IEC 62443-4-1, mapped to what exists)
+### 11.1 Boundaries this document defines
 
-Only existing controls are listed as satisfied; "Enforced" means a workflow, branch rule, or runtime
-check fails on violation; hooks are **harness-scoped** (Claude Code sessions only) and are listed as
-such. Nothing here introduces a new platform.
+| Boundary | Rule | Today | Closed by |
+|---|---|---|---|
+| Candidate code with credentials | Candidate-tree validators only for commits on `main`; trusted-base validators preferred (§5.2) | Any repo commit can be staged; validators from the candidate | Part B step 4 |
+| Privileged `pull_request_target` | **No job may check out and execute PR-head code with secrets or a write token.** The `auto-fix` job is **retired (D5)**; `ui-lifecycle-guard.yml`'s trusted-base evaluation is the permitted pattern | `code-review.yml` `auto-fix` exists (label-gated) | Part B step 2 |
+| Review producers/consumers and agent rules | Governance floor (R3): Codex GREEN required; lifecycle guard status (advisory today) | Guard not required | Part B step 11 |
+| Attestation identity | Owner-account comment authentication; organizational independence (§4.4) | As stated | §13 (separate identity) |
+| Body-bound attestation | Any PR body edit invalidates GREEN by design; exceptions and closeouts are **comments**, not body edits | Enforced by the guard parser | — |
+| Direct push to `main` | Forbidden; `enforcement-audit.yml`'s nightly push attempt is removed or turned into a PR | Attempt exists, non-fatal | Part B step 2 |
+| Prod mutation from a Claude session | `tools/hooks/prod-guard.sh` (harness hook, convenience boundary, not authority); host list must include the OVH host and a prod Neon pattern | Host list stale | Part B step 2 |
+| Deployment credentials | DB URL only in `migration-drift`; SSH key only in `deploy` (keep) | Enforced | — |
+| Secret-bearing control jobs | Pin actions by SHA (`actions/checkout@v6` in `apply-migrations.yml`, `oven-sh/setup-bun@v2` in `retrieval-acceptance.yml` are mutable today) | Mutable | Part B step 6 |
+| Environments | `staging` target of `apply-ingest-migrations.yml` uses a staging environment, not `production` | Both use `production` | Part B step 6 |
 
-| SSDF | 62443-4-1 | Control today | Status | v1 action |
+### 11.2 Repository security settings — current state vs v1 required vs future
+
+| Control | Current state (live, 2026-10-03) | v1 required | Future |
+|---|---|---|---|
+| Environment protection (`production`, `staging`, `staging-deploy`) | **0 rules** on all three | Required reviewer on `production`, no `prevent_self_review` (D6) | Separate reviewer identity |
+| `ota-signing` / `ota-canary` / `ota-production` environments | **Do not exist** (referenced by `ota-release.yml`; the promote job's self-check fails closed) | Create them before any OTA promotion; preserve the fail-closed check | — |
+| Secret scanning | **disabled** | Enable (free on public repos) | — |
+| Push protection | **disabled** | Enable | — |
+| Dependabot alerts / security updates | **not enabled / disabled** | Enable; extend `dependabot.yml` to `mira-hub`, `mira-mobile`, `mira-cmms`, `mira-pipeline`, `mira-bridge`, root `pyproject.toml` | Dependency review action on PRs |
+| Code scanning (default setup) | **not-configured** | Keep Semgrep/Bandit in CI (gated); decide default-setup after an OpenSSF Scorecard report | Scorecard as a gate |
+| `secrets-scan` / Trivy in CI | run, **not gated** | Gated with docs-only skip semantics | — |
+| `.ast-grep-rules/` | **never executed** | `sg scan` advisory in `code-review.yml` | Gate if warranted |
+| pip-audit | 3 roots, `\|\| true`, parse errors swallowed | Status per scanner; fail on scanner error; still reach issue creation on vulnerabilities; add `bun audit` | — |
+| `SECURITY.md` | absent | Add: intake channel, triage owner, response expectation, supported versions | — |
+| SBOM / attestations / signed images | none | not in v1 | §13 |
+
+None of the "v1 required" cells is implemented by this document; Part B sequences them. **Product
+safety controls** are unchanged: `SAFETY_KEYWORDS` phrase tests, hazard banner tests, the 2026-09-27
+owner decision that safety flags never withhold an answer, S0–S5 inside safety reviews; the
+`safety-reviewer` agent text must be aligned with that decision (Part B step 1).
+
+---
+
+## 12. Evidence and audit requirements
+
+### 12.1 Identity contract (which identity each artifact proves)
+
+| Stage | Authoritative identity | Produced by | Verified by | Invalidated when |
 |---|---|---|---|---|
-| PO.1 / PO.3 | SM, SR | `.claude/rules/security-boundaries.md`, Doppler-only secrets, env separation (`docs/environments.md`), `prod-guard.sh` | Doctrine + harness hook | Keep; this document becomes the SM index |
-| PS.1 | SM | Branch protection (strict, admins enforced, no force-push); `git-state-guard.sh`, `rm-guard.sh` | Enforced (GitHub) / harness-scoped (hooks, overridable) | Tighten ruleset to match the classic layer (CONNECT-3) |
-| PS.2 | SI | gitleaks pre-commit (fail-open locally); `secrets-scan` CI job (**not gated**) | Partial | CONNECT-4 |
-| PS.3 | SUM | `version-tag.yml` tags (unprotected) + best-effort Release; receipts record built vs running image ids for selected services | Partial | Keep; SBOM/SLSA/signing deferred (out of v1 by the brief) |
-| PW.1 | SD | `docs/mira-ignition-secure-architecture.md`, `fieldbus-readonly.md`, read-only OT tests (`test_drive_packs_readonly.py`, `test_no_customer_write_paths.py`); CLF threat/privacy analysis (`docs/specs/continuous-learning-factory/threat-privacy.md`, scoped) | Doctrine + tests | Keep; R3 routes these paths to `security-reviewer`/`safety-reviewer`; product-wide threat model deferred |
-| PW.4 / SUM | SUM | Dependabot (pip ×4 dirs, npm `mira-web`, docker, actions); `dependency-check.yml` pip-audit ×3 roots weekly, `\|\| true`, parse errors swallowed | Partial | REPAIR-4 |
-| PW.6 | SI, SVV | Semgrep ERROR (required), Bandit high (required), Trivy image scan (not gated), `.ast-grep-rules/` 5 rules (never executed), AI review (comment-only) | Mixed | CONNECT-4, CONNECT-5 |
-| PW.7 | SVV | `security-reviewer` / `safety-reviewer` agents; Codex exact-head review; trusted-base lifecycle guard with isolated status posting | Doctrine / enforced-as-status | R3 makes specialist findings mandatory (§3.3 G1); REPAIR-11 fixes the safety-reviewer text |
-| PW.9 | SD | RLS on tenant tables; `knowledge_entries` read law (explicit predicate on a BYPASSRLS pool, by design); `TenantScopedSession` (regex: query mentions `tenant_id`, fixed table set); `kg-write-guard.yml` (runs on PRs, allowlisted, **not** in `ci-gate`); RBAC deny-grid on BRAVO (outside CI) | Runtime-enforced where RLS applies; detection elsewhere | Keep; G4 tenant-family row links the BRAVO run |
-| RV.1 / RV.2 | DM | Canaries → issues (probe failures do not page); `dependency-check.yml` → `security` issue (conditional) | Partial | ADD-2 unifies incident records; DOC-1 `SECURITY.md` with intake channel, triage owner, response expectation |
-| RV.3 | DM | Cluster Laws 6/7; `docs/incidents/`; defect-workflow | Doctrine | §3.8 step 5 |
-| — | SG | Customer-facing security guidance for the Ignition module | Absent | Out of v1; tracked in the secure-architecture doc |
+| Classified | `Risk:` line on issue/claim + PR body; effective risk per §2.3 | implementer; floors | reviewer; guard (R3 paths) | any candidate change |
+| Cheap review | PR head SHA stamped in `[CHEAP-REVIEW]` (advisory) | `gate7_review.py` | merger (doctrine) | head moves |
+| Codex review | `reviewed_sha` + `reviewed_body_sha256` + `base_sha` | trusted-base script, owner account | guard parser (guarded paths), ledger | head or body changes |
+| Merge candidate | PR head containing current `main` | GitHub (strict) | branch protection | any push to `main` |
+| Merged | merge commit SHA ↔ exactly one merged PR (`merge_commit_sha`) | GitHub | `deploy-vps.yml` mapping (v1: no fallback) | — |
+| Tagged | `v*`, `rollback/*` at the merge commit (address only) | `version-tag.yml` | none (tags unprotected) | tag moved |
+| Staged | `approved_rc_sha` on `main`; per-service runtime SHA for the **dispatched services**; local image ids; staging run id | `deploy-staging.yml` | `tools/staging_receipt.py verify` against the real `services` | > 168 h; new generation |
+| Accepted | pinned per-service `gitSha`, triggering staging run id, acceptance run id + attempt, capability set, services covered, per-scenario verdicts | `retrieval-acceptance.yml` (receipt producer) | `deploy-vps.yml` `authorize-source` | SUPERSEDED; > 168 h; generation/migration/config change |
+| Authorized | recorded human intent: dispatch actor + run URL / authorizing comment | Mike (environment reviewer when present) | issue record | — |
+| Deployed | per-service runtime SHA for the **actual services**, local image ids, `rollback_candidate` per service | `deploy-vps.yml` | `production-receipt-<sha>` | — |
+| Observed | production receipt + explicit smoke run id + window start/end | smoke dispatch, canaries | closure comment | attributable incident; superseding deploy |
+| Artifact digest | **not proven** (separate rebuilds, no attestations) | — | — | — |
 
-**Existing controls to credit, not rebuild:** production credential separation (`deploy-vps.yml`
-DB job vs SSH job), receipt provenance verification (`deploy-vps.yml:185-226`), co-host staging
-isolation checks (`deploy-staging.yml:249-259`), OTA signatures + protected-environment verification +
-physical-handset evidence (`ota-release.yml:579-727`), OT serial-bus hazard handling
-(`fieldbus-readonly.md`). **Safety (product) controls** are part of R3 and unchanged: `SAFETY_KEYWORDS`
-phrase tests, hazard banner tests (`mira-bots/tests/test_safety_flag_banner.py`), the 2026-09-27
-owner decision that safety flags never withhold an answer, and the S0–S5 consequence scale.
+### 12.2 Evidence rules
 
-### 3.11 Metrics — DORA plus MIRA-specific
+1. Every gate artifact is a GitHub-native object (check run, comment with a fixed envelope, tag,
+   artifact, issue with fixed fields). No external store. Retention differs (receipts and acceptance
+   artifacts 90/30 days; comments and issues indefinite): durable facts (SHA, run ids, verdicts) are
+   copied into the owning issue when the artifact is produced.
+2. Exceptions are **comments** (`Exception: <gate> — <reason> — approved by Mike <link>`), never body
+   edits. Label bypasses exist only where a workflow already defines one (`shared-line-ok`, hold labels);
+   the lifecycle guard has none and v1 adds none.
+3. Cost is recorded per review (`cost_usd` in `[CHEAP-REVIEW]`; the Codex envelope has no cost field —
+   a known metric gap).
+4. Standing authorizations (Appendix B) are not re-asked.
 
-Definitions are written around **deployment events** and **explicit incident records**, not tags
-(tags are merge events) and not SHA de-duplication alone (that erases restores). ADD-3 is one
-read-only script, `tools/dora.py`, whose inputs are: `gh api` run history for `deploy-vps.yml` and
-`deploy-staging.yml`, receipt artifacts (while retained, 90 d), merged PR data, `incident` issues
-(ADD-2 fields), the local `.planning/review-costs.jsonl` **if present** (reported with a completeness
-flag), and the committed YAML registries. Missing data is reported as missing, never interpolated.
+### 12.3 Metrics (definitions; `tools/dora.py` is read-only and reports missing data as missing)
 
-| Metric | Definition for MIRA | Source |
+| Metric | Definition | Computable today |
 |---|---|---|
-| Deployment frequency | Successful `deploy-vps.yml` runs per week (events, with `services` scope); separately: distinct `approved_rc_sha` values and failed attempts that reached the swap step | Run history; production receipts |
-| Lead time for changes | PR `mergedAt` → first production receipt whose deployed Hub/Web SHA is a descendant of the merge commit (median, p90) for the component the PR touched; reported only where the receipt is still retained; reverted changes excluded and counted separately | Merged PRs; receipts; `git merge-base --is-ancestor` |
-| Change failure rate | `incident` issues whose `deploy_sha:` names a deployment ÷ deployments in the period; `external-cause` dispositions reported separately, not in the numerator | ADD-2 fields; run history |
-| Time to restore | `first_seen:` → `restored_at:` from the incident record, whatever the restoring action | ADD-2 fields |
-| **MIRA: review rounds** | Codex `review_iteration` to GREEN per PR (ledger); cheap-lane runs per PR to a `verdict: PASS` or fully dispositioned round | `scripts/adversarial-review-ledger.mjs`; `[CHEAP-REVIEW]` comments |
-| **MIRA: review cost** | USD per PR from posted `cost_usd:` fields; local ledger totals shown with a host/completeness note | `[CHEAP-REVIEW]` comments; `.planning/review-costs.jsonl` |
-| **MIRA: eval pass rate** | Pass count ÷ fixture count for the named suite, with suite id, fixture denominator (currently 67 files), source SHA and judge mode recorded; compare like with like | `tests/eval/runs/*.md` |
-| **MIRA: staging acceptance** | Per **deployment generation** (staging receipt run id): acceptance receipt PASS / FAIL / SUPERSEDED / skipped-capture / infra | `acceptance-receipt-<sha>` (CONNECT-1) |
-| **MIRA: regression promotion** | Closed `incident` issues by disposition type (`new-test`, `existing-coverage`, `guard`, `eval-fixture`, `external-cause`) | Issue comments |
-| **MIRA: WIP** | Open PR count, median age, drafts > 14 days | `gh pr list` |
-| **MIRA: capability closure** | Capabilities per state; `review_by` dates within 14 days | `tools/capability_closure.py` |
-
-Baseline captured 2026-10-03: **PR open→merge** interval median 0.51 h, mean 2.55 h (n=30 merged
-PRs — not the merge→production lead time, which cannot yet be joined); prod deploy runs over 17
-days: 7 success / 22 failure / 1 skipped, 4 distinct successful days; staging deploy runs 29/30
-success; 20 releases in <2 days. Change failure rate and MTTR: not derivable until ADD-2 exists.
-
-### 3.12 Responsibility split
-
-| Responsibility | Mike | Claude (implementer sessions) | Codex (reviewer) | CI / automation |
-|---|---|---|---|---|
-| Risk-class disputes, R3 merges, prod dispatch authorization, ADR acceptance, exceptions, open decisions | **Owner** | proposes | may object | — |
-| PRD/acceptance criteria, ADR drafts, claims, CP-before records | reviews | **does** | — | — |
-| Implement, red→green tests, eval fixtures, hazard ledger, PR body | — | **does** | never edits the branch | — |
-| Cheap lane run to a clean verdict | — | **runs** | — | posts `[CHEAP-REVIEW]` |
-| Independent exact-head review, evidence-backed findings, GREEN bound to SHA + body | authorizes agentic rounds | remediates findings | **does (read-only)** | ledger in PR comments |
-| Required contexts, SAST, license, architecture contracts, capability-closure validity, lifecycle guard, staging gate | — | fixes red | — | **decides** (branch protection) |
-| Staging deploy, acceptance, migrations dry-run/apply | authorizes `apply` to prod | dispatches staging; assembles the prod evidence packet | — | receipts, drift checks, acceptance receipt |
-| Production deploy | **dispatches** or links an authorizing comment | prepares exact SHA + packet | — | `authorize-source` enforces |
-| Post-deploy smoke, observation, incident filing, regression disposition | triages | dispatches smoke, files `incident`, writes the disposition | — | canaries open/update issues |
-| Metrics | reads | runs `tools/dora.py` weekly, pastes into `wiki/hot.md` | — | — |
-
-### 3.13 Exceptions and escalation
-
-1. **Exceptions are recorded, never silent.** A waived gate is recorded as a PR **comment**
-   (`Exception: <gate> — <reason> — approved by Mike <link>`), not a body edit, so a body-bound
-   attestation is not invalidated. Label bypasses exist only where a workflow already defines one
-   (`shared-line-ok` for the Shared-Line Guard; hold labels); the lifecycle guard has none and v1 adds
-   none.
-2. **Who may grant**: Mike, in a GitHub comment. Standing authorizations (Appendix A) are not re-asked.
-3. **Escalate to Mike when**: a risk-class disagreement survives one exchange; Codex reaches 3 rounds;
-   a required context is red for a reason outside the PR (compare against `main` head and report,
-   never bypass); an `incident` is open longer than 4 h; a `review_by` expiry is within 14 days; a
-   rollback would require a schema rollback.
-4. **Never**: merge through red required checks, dispatch prod without a staging receipt and
-   acceptance receipt, edit another session's branch, simulate a review, rewrite shared history, run
-   prod SQL from a session, or weaken a gate to pass it.
-5. **Carve-outs expire.** Any time-boxed exception carries an end date and is deleted on that date or
-   re-decided in writing.
+| Deployment frequency | Successful `deploy-vps.yml` runs per week **that reached the swap step**, with service scope; distinct `approved_rc_sha` reported separately | Yes once the swap-step filter is applied (raw run failures are mostly pre-swap exits) |
+| Change lead time | PR `mergedAt` → first production receipt proving inclusion of **each component the PR touched** (per-service runtime SHA is a descendant of the merge; unrelated-service ancestry does not count; non-shipping PRs excluded; reverts counted separately) | Partially (receipts retained 90 d; a run's `headSha` is the controller ref, never use it) |
+| Change failure rate | **Distinct failed deployment events** (run id + attempt + service set) with ≥1 attributable `incident` ÷ deployment events that reached the swap step; three incidents on one deployment count once; `external-cause` separate | No until the `incident` record exists |
+| Time to restore | `first_seen:` → `restored_at:` from the incident record | No until the record exists |
+| Deployment rework | Same-service redeploy of a different SHA within a week ÷ deployments (swap-step filtered) | Partially |
+| Review rounds / cost | Codex `review_iteration` to GREEN; cheap-lane runs to PASS or full disposition; `cost_usd` sums | Yes (Codex cost not computable: no field) |
+| Eval pass rate | pass ÷ **executed** fixtures (loader globs match 65 of 67 files), with suite id, SHA, judge mode | Yes with the 65 denominator |
+| Staging acceptance / superseded rate | Per deployment generation: PASS / FAIL / SUPERSEDED / SKIPPED / INFRA_UNASSESSED | No until the receipt exists |
+| Regression promotion | Closed incidents by disposition type | No until the record exists |
+| WIP | Open PRs, median age, drafts > 14 days | Yes |
+| **Human interventions per completed change** (primary autonomy metric) | Attributable Mike actions (PR comments by the owner, dispatch actor, label events, authorizing comments) ÷ changes reaching `CLOSED` or non-shipping `MERGED`. **Neither an upper nor a lower bound**: agent actions under the owner account inflate it; Mike's out-of-GitHub instructions deflate it. Report with both caveats | Partially |
 
 ---
 
-## 4. REUSE / CONNECT / REPAIR / ADD matrix
+## 13. Controls deferred beyond v1 (and what is explicitly not built)
 
-**REUSE** = satisfies the requirement as-is (limitations stated). **CONNECT** = exists but is not
-wired to the step that should consume it. **REPAIR** = exists and is wrong, stale, or fails open.
-**ADD** = does not exist and the requirement is genuinely unenforced; every ADD is small.
-
-| Lifecycle requirement | Existing mechanism | Verdict | Action |
-|---|---|---|---|
-| Intake + triage | GitHub Issues, 5 triage labels, `gh` conventions | REUSE | — |
-| Defect procedure | `defect-workflow` skill + handbook §14 | REUSE | v1 cites it as the per-defect procedure |
-| Requirement record with acceptance criteria | `docs/prd/` files and `PRD:` issues (criteria present in 4 files, unstructured elsewhere) | REUSE + DOC | Numbered criteria for new behavior; criterion → evidence line in the PR body; no literal-heading rule |
-| Architecture decision | `docs/adr/` MADR, convergence gates, `CU-*.md` | REUSE + REPAIR | REPAIR-5: regenerate `docs/adr/README.md` (39 ADRs; Proposed vs Accepted) |
-| Risk classification | "substantial" (binary); lifecycle-guard control-path list; gate7 escalation reasons | ADD (tiny) | ADD-1: `Risk:` line in the PR template; human-assigned; no automation in v1 |
-| Work claim | `[WORK-CLAIM]` protocol; PR-as-claim | REUSE | — |
-| Short-lived branches | session-discipline, strict up-to-date | REUSE + DOC | §3.9 policy + metric |
-| Local gates | ruff/pytest, `.githooks/pre-commit`, Stop hook | REUSE | Convenience layer; CI is the gate |
-| Unit/contract/architecture tests | `ci.yml` 16 gated jobs | REUSE | — |
-| gitleaks / Trivy in CI | `secrets-scan`, `docker-build-check` outside `ci-gate` | CONNECT | CONNECT-4: add both to `needs`; `require_success secrets-scan`; `docker-build-check` gated with the same `code == true` conditional as `test-unit` (success\|skipped on docs-only) |
-| Broad offline suite / SimLab / OCR | `test-eval-offline`, `simlab-gate`, `ocr-recall-gate` (advisory by design) | REUSE (advisory) | Open decision 3 before any promotion |
-| Static analysis | Semgrep/Bandit (gated); `.ast-grep-rules/` (never run); AI review (comment) | CONNECT | CONNECT-5: run `sg scan` in the static step, **capture output into the existing comment, never fail the step** (so the dependent AI-review job still runs); gate later if findings warrant |
-| Dependency hygiene | Dependabot (partial); pip-audit 3 roots, `\|\| true`, parse errors swallowed | REPAIR | REPAIR-4: extend Dependabot roots; capture each scanner's exit status separately, fail on **scanner error**, and still reach the issue-creation step on **vulnerabilities**; add `bun audit` for Hub/mobile |
-| Eval / grounding regression | `deepeval-ci.yml`, `tests/eval/`, `staging-gate.yml`, nightly VPS evals | REUSE | `eval-replay-gate.yml` stays inert until the replay store exists |
-| Property-based tests | hypothesis in 2 files | REUSE + DOC | Required for new state machines/parsers in R2/R3 |
-| Mutation check | manual step in `defect-workflow` | REUSE (manual) | Scoped to defect tests; no tooling in v1 |
-| Specialist review | `.claude/agents/{safety,security,conversation}-reviewer` | REUSE + REPAIR | Findings (not attendance) required per class; REPAIR-11: safety-reviewer text vs the 2026-09-27 decision |
-| Cheap review lane | `tools/gate7_review.py --paid --post` | REPAIR | REPAIR-6: re-read the head immediately before posting; on drift post `verdict: STALE` naming both SHAs; document exit-code semantics. (Metadata/diff snapshot immutability and a mechanical merge consumer remain out of scope: the consumer is the merger reading `head:`/`verdict:`.) |
-| Independent exact-head review | `adversarial-review-trusted.sh` + ledger | REUSE | Trigger rule per class; open decision 1 |
-| Review envelopes | `[CHEAP-REVIEW]` (G1 artifact), `[CODEX-ADVERSARIAL-REVIEW] GREEN` (G2 artifact where required; **always** for guarded paths) | DOC | `[CODEX-REVIEW] PASS` wording retired (REPAIR-3) |
-| Merge gate | branch protection (6 contexts, strict, admins); `gh pr merge --match-head-commit` | REUSE + CONNECT | CONNECT-2: require `Legacy UI Lifecycle Guard` once a non-spoofable status source exists (#3657); CONNECT-3: reconcile ruleset 17097034 |
-| Human approval on merge | 0 required reviews; standing authority | REUSE | Keep 0 (open decision 2) |
-| Conventional Commit | `next_version.py` patch fallback | REUSE (doctrine) | Checked by the merger; no commitlint in v1 |
-| Version + rollback address | `version-tag.yml` | REUSE | Tags = addressability; CP-before for architecture/data stays manual |
-| Staging deploy exact-SHA | `deploy-staging.yml` + receipt | REUSE | — |
-| Staging acceptance → prod | `retrieval-acceptance.yml` artifact (no SHA/run identity) | CONNECT (two-step) | CONNECT-1a: acceptance job writes `acceptance-receipt-<sha>` (`schema`, pinned `gitSha`, acceptance run id, triggering staging run id, per-scenario verdicts, capture status, `ran_at`; 90 d). CONNECT-1b: `deploy-vps.yml` `authorize-source` requires it (same provenance pattern as the staging receipt) **when `mira-hub` is in `services`**, age ≤168 h, all verdicts PASS, none SUPERSEDED; same-SHA redeploy may reuse it; expired → re-run acceptance via dispatch (fail closed) |
-| Acceptance SHA binding | verdict re-read warns + exit 0 on fetch failure | REPAIR | REPAIR-7: fail closed |
-| PR association for the Staging Gate check | first-associated-PR fallback | REPAIR | REPAIR-8: require exactly one **merged** PR into `main` whose `merge_commit_sha` matches; otherwise STOP |
-| Migrations dev→staging→prod | `migration-verify.yml`, `apply-migrations.yml`, `apply-ingest-migrations.yml`, prod drift job | REUSE (with limits: filename-level drift; content check has fail-open branches; ordering is doctrine) | Rollback SQL/snapshot id at G0 for R3 |
-| Production deploy | `deploy-vps.yml` | REUSE | — |
-| Hotfix | stale doc path | DOC | §3.6 |
-| Rollback | tags + redeploy; stale runbook; no drill | REPAIR + DOC | REPAIR-2 + drill (§3.7) |
-| Release holds | `RELEASE_TRAIN.yaml` blockers | DOC now, CONNECT later | G3 row (manual) |
-| Production observation | canaries, smoke (dispatchable), heartbeat | REUSE + DOC | G4 requires an explicit post-deploy smoke dispatch |
-| Incident record | per-canary labels; `docs/incidents/` | ADD (labels + fields) | ADD-2: `incident`, `hotfix` labels; fixed body fields; canary workflows add the label |
-| Failure → regression | tests citing `#NNNN`, active-learning drafts, defect-workflow | REUSE + DOC | §3.8 disposition types |
-| Capability closure / release identity | `CAPABILITY_CLOSURE.yaml`, `RELEASE_TRAIN.yaml` | REUSE | G4 evidence |
-| Metrics | none | ADD (read-only) | ADD-3: `tools/dora.py` + test, run by hand weekly |
-| Prod mutation guard | `prod-guard.sh` | REPAIR | REPAIR-9: add the OVH host IP/hostname (not a bare `ubuntu@`); add the prod Neon host pattern for `psql`; keep staging co-host excluded |
-| Privileged auto-fix | `code-review.yml` `pull_request_target` path | REPAIR (security) | REPAIR-10: **delete the `auto-fix` job** (the human `/autofix-pr` path remains); if kept, it must run the trusted base's script against the PR diff and push through a separate, candidate-scoped token |
-| Governance text drift | D1–D22 | REPAIR | REPAIR-3 (docs), REPAIR-12 (`enforcement-audit.yml` push step → PR or removal), REPAIR-13 (license allowlist in CI to match the hard constraint) |
-| Vulnerability intake | `security` issues from the audit | DOC | DOC-1: `SECURITY.md` — intake channel, triage owner, response expectation, supported versions statement |
-
----
-
-## 5. Minimal changes required to adopt v1 (nothing here is implemented)
-
-Every item is a normal PR through the gates above; items touching `.github/workflows/`,
-`tools/hooks/`, review producers, or `.claude/` are **R3** and need Mike's merge.
-
-| Id | Change | Files | Class | Size |
-|---|---|---|---|---|
-| DOC-0 | Adopt this document; pointer lines in `CLAUDE.md` § Release / PR Workflow and `docs/environments.md` | this file + 2 lines | R3 (governance) | S |
-| DOC-1 | `SECURITY.md` | new file | R3 (governance) | XS |
-| REPAIR-3 | Docs drift D1–D8, D10–D15, D17–D19, D21–D22; delete the expired carve-out; PR template: add `Risk:`, drop the CHANGELOG checkbox (= ADD-1) | ~10 docs + template | R3 (governance, docs-only) | M |
-| REPAIR-11 | `safety-reviewer.md` line 15 aligned with the 2026-09-27 decision | `.claude/agents/safety-reviewer.md` | R3 | XS |
-| REPAIR-12 | `enforcement-audit.yml` nightly direct push → open a PR or remove | `.github/workflows/enforcement-audit.yml` | R3 | XS |
-| REPAIR-13 | `license-check` → `--allow-only="Apache-2.0;MIT"` (plus explicitly justified exceptions) | `.github/workflows/ci.yml` | R3 | XS |
-| ADD-2 | Labels `incident`, `hotfix`; fixed body fields documented in `docs/agents/issue-tracker.md`; `--label incident` in the two canary workflows that open issues | labels; `provider-health-canary.yml`, `oauth-redirect-canary.yml`; one doc | R3 | XS |
-| REPAIR-10 | Remove (or re-architect) the `pull_request_target` auto-fix job | `.github/workflows/code-review.yml` | R3 (security) | S |
-| REPAIR-9 | `prod-guard.sh` host and DB patterns + tests | `tools/hooks/prod-guard.sh`, `tests/` | R3 | XS |
-| CONNECT-1a | Acceptance receipt producer step | `.github/workflows/retrieval-acceptance.yml`, small writer in `tools/qa/` + test | R3 | S |
-| REPAIR-7 | Acceptance verdict re-read fails closed | `.github/workflows/retrieval-acceptance.yml` | R3 | XS |
-| CONNECT-1b | `deploy-vps.yml` consumes the acceptance receipt (scope, age, reuse, fail-closed rules in §4) | `.github/workflows/deploy-vps.yml`, `tools/staging_receipt.py` (verify mode) + test | R3 | S |
-| REPAIR-8 | Exact merged-PR match only | `.github/workflows/deploy-vps.yml` | R3 | XS |
-| REPAIR-6 | Cheap lane head re-read before posting; `STALE` verdict on drift; exit-code docs | `tools/gate7_review.py`, `tests/test_gate7_review.py`, `docs/review-cheap-lane.md` | R3 (review producer) | S |
-| CONNECT-4 | `secrets-scan` + `docker-build-check` into `ci-gate` with correct skip semantics | `.github/workflows/ci.yml` | R3 | XS |
-| CONNECT-5 | `sg scan` output captured into the static-analysis comment | `.github/workflows/code-review.yml` | R3 | XS |
-| REPAIR-4 | Dependabot roots; pip-audit status handling; `bun audit` | `.github/dependabot.yml`, `dependency-check.yml` | R3 | S |
-| REPAIR-2 | `docs/runbooks/rollback.md` + one authorization-exercising drill (run ids recorded here) | docs + two dispatches | R0 docs + operation | S |
-| REPAIR-5 | ADR index regeneration | `docs/adr/README.md` | R0 | S |
-| ADD-3 | `tools/dora.py` + `tests/test_dora.py` (read-only; inputs and missing-data behavior per §3.11) | 2 files | R1 | S–M |
-| CONNECT-2/3 | Required `Legacy UI Lifecycle Guard` once non-spoofable (#3657); reconcile ruleset 17097034 | GitHub settings (Mike) | Admin | XS |
-
-New code: one metrics script with tests, one acceptance-receipt writer/verifier with tests, a
-few-line change to `gate7_review.py` with a test. Everything else is YAML lines, labels, or prose.
-
----
-
-## 6. Things we should explicitly NOT build
-
-| Not this | Because this exists |
-|---|---|
-| A ticketing system, mission registry, or "readiness document" per slice | Issues + `PRD:` threads + `[WORK-CLAIM]` + the PR itself |
-| A PRD for every defect | `defect-workflow` already records intake, contracts and red tests; the PR template keeps its bug-fix exception |
-| A second CI aggregator or "SDLC gate" status | `ci-gate`; add jobs to its `require_success` list |
-| A new review platform or reviewer fleet | Cheap lane + `adversarial-review-trusted.sh` + 9 read-only agent roles |
-| Automated risk scoring in v1 | One human-written line; path signals are aids; revisit with 30 days of data |
-| Mutation-testing tooling in v1 | Manual check exists; `mira-web` full suite is non-deterministic per `ci.yml` |
-| A second traceability registry | `contract-index.yaml`, `CAPABILITY_CLOSURE.yaml`, `RELEASE_TRAIN.yaml`, `REGISTRY.yaml` already exist; v1 only says which owns which decision |
-| Required human approvals in branch protection | Mike approving Mike's agents; independence comes from Codex |
-| A rollback workflow | Rollback is a forward deploy of a prior SHA through the same gates |
-| commitlint / PR-title bot | Nice-to-have; the only cost of a bad subject is a wrong bump |
-| SBOM / SLSA provenance / signed images / EOL policy | Deferred by the brief; receipts' image ids are the v2 hook |
-| Dashboards (Grafana/Prometheus) | `mira-ops/` does not exist; a weekly table in `wiki/hot.md` suffices at this scale |
-| Manual VERSION/CHANGELOG bookkeeping | Shared-Line Guard + auto tags replaced it for a measured reason |
-| A separate staging-acceptance harness | `retrieval-acceptance.yml`; give it a receipt and a consumer |
-| Another safety taxonomy | S0–S5 and the safety contracts stay |
-| A universal session-closeout report | Protocol §9 stays for unresolved ownership; merged+deployed PRs are closed by their artifacts |
-
----
-
-## 7. Codex's independent objections and findings
-
-Codex ran twice, read-only, in an isolated `CODEX_HOME` against `origin/main` @ `32bcaa67e`
-(`gpt-6.1-sol`; round 1 ≈ $1.21). Round 1 challenged the owner's proposal before this document
-existed; round 2 challenged the complete first draft of this document. Every item below was
-re-verified by reading the cited lines; items that did not verify are omitted. Codex's sandbox could
-not reach the GitHub API, so branch protection, labels and run history were read live by Claude.
-
-### 7.1 Round 1 (challenge of the proposal)
-
-| # | Finding | Verified | Disposition |
-|---|---|---|---|
-| 1 | Cheap lane lacks an exact-head guarantee: separate head/diff queries, no re-read before posting, exit 0 on every outcome | ✔ | REPAIR-6 for the head re-read; §1.2/G-22 state exit-code semantics; snapshot immutability and a mechanical merge consumer are **not** claimed |
-| 2 | Staging deployment is treated as staging acceptance; prod never consumes the retrieval verdict | ✔ | CONNECT-1a/1b (receipt first, then consumer) |
-| 3 | Release/rollback is not a demonstrated recovery contract; 168 h receipt freshness applies to old candidates | ✔ | §3.7 (168 h, receipt refresh, authorization-exercising drill) |
-| 4 | Three incompatible review envelopes | ✔ | §4 row; guarded paths always need the body-bound Codex GREEN regardless of class |
-| 5 | Security trust-boundary defects (privileged auto-fix; stale prod-guard host) | ✔ | REPAIR-10 (delete preferred), REPAIR-9; sequenced second in §8 |
-| 6 | A green check is not a verdict (scope-skips, synthetic HOLD, excluded suites) | ✔ | §1.3 list; CONNECT-4; DoD item 6; acceptance receipt carries per-scenario verdicts |
-| 7 | `RELEASE_TRAIN` blockers stop a label, not a deploy | ✔ | G3 row (manual) now present; CONNECT later |
-| 8 | Exact source SHA ≠ identical binary | ✔ | §1.4 and §3.7 narrowed |
-| 9 | DORA needs joins and definitions; tags are merge events | ✔ | §3.11 rewritten around deployment events and incident fields |
-| 10 | Ceremony and R0 naming collide with existing practice | ✔ | CP-before/after naming; PRD exception kept; Codex-always only proposed for R3 (open decision 1) |
-| 11 | R0 must exclude all control-plane paths | ✔ | §3.2 governance floor adopted from the lifecycle guard's list; principle 4 |
-| 12–13 | R2 too broad; R3 families need different evidence | ✔ | Tenant/safety moved to R3; family rows in G3/G4; v1.1 may split |
-| 14 | Don't demand paid + agentic on every PR | ✔ | Cheap lane every PR (current mandate); Codex per class/decision |
-| 15 | Body edits invalidate attestations | ✔ | Exceptions and closeouts are comments |
-| 16 | Observation for undeployed changes is meaningless | ✔ | Principle 3; G3/G4 apply only to shipped changes; DoD state (c) |
-| 17 | Evidence retention differs | ✔ | §3.11 reports missing data; incident records hold the durable fields |
-| 18 | `dependency-check.yml` swallows failures | ✔ | REPAIR-4 (status per scanner, issue step preserved) |
-| 19 | Dry-run migrations execute a ledger bootstrap | ✔ | D18, accepted |
-| 20 | Nightly direct push to `main` | ✔ | REPAIR-12 |
-| 21 | License denylist vs allowlist | ✔ | REPAIR-13 tightens CI; the Apache/MIT constraint is not softened |
-| 22 | No SBOM / disclosure policy / vuln SLA / product-wide threat model | ✔ | DOC-1 `SECURITY.md`; SBOM/SLSA/EOL deferred by the brief |
-
-### 7.2 Round 2 (challenge of the first draft of this document)
-
-| # | Finding | Verified | Disposition |
-|---|---|---|---|
-| F1 | Draft claimed Conventional Commit "hard-fails post-merge"; `next_version.py` returns patch for an unparseable subject | ✔ | Corrected throughout (§1.3, G2, §4) |
-| F2 | Acceptance criteria do exist in some PRDs and the template; the gap is consumption | ✔ | §1.1, G-03, §3.4 rewritten; literal-heading rule dropped |
-| F3 | Lifecycle doctrine exists (fragmented), not absent | ✔ | §0, G-01 rewritten; `defect-workflow` and handbook cited as the per-defect procedure |
-| F4–F7 | Counts: 39 ADRs, 16/21 PRDs, 67 fixtures, 5 ast-grep rules | ✔ | Corrected |
-| F8 | `RELEASE_TRAIN` CI validates without `--drift` | ✔ | §1.4 corrected |
-| F9 | Migration drift is filename-level; content check has fail-open branches | ✔ | §1.4, §4 corrected |
-| F10 | Runtime `gitSha` identity is per selected target | ✔ | §1.4 corrected |
-| F11 | Acceptance is an asynchronous measurement; capture skips historical deploys | ✔ | §1.4 corrected |
-| F12 | `defect-workflow` already covers production incidents | ✔ | §1.4 corrected; §3.8 builds on it |
-| F13 | Stacked PRs do get `ci.yml` | ✔ | §3.9 corrected |
-| F14 | `beta-probe-prod.yml` "Mike-only" is doctrine | ✔ | §1.4 corrected |
-| R0 loophole | Implementer-written R0 could skip review for `.claude/**`, agent instructions, guard tests, registries, review producers; cheap lane dropped for R0 against the owner mandate | ✔ | Principle 4; governance floor in §3.2; cheap lane every PR |
-| CONNECT-1 | Retrieval JSON has no SHA/run identity; scope, same-SHA reuse, expiry undefined | ✔ | Split into CONNECT-1a (receipt) and 1b (consumer) with rules in §4 |
-| CONNECT-4 | Unconditional `require_success docker-build-check` would fail docs-only PRs | ✔ | Gated with the `test-unit` conditional pattern |
-| CONNECT-5 | Bare `sg scan` failure would skip the AI-review job | ✔ | Capture into the comment, never fail the step |
-| REPAIR-4 | Removing `\|\| true` alone prevents issue creation | ✔ | Status per scanner; issue step preserved |
-| REPAIR-8 | Require a uniquely matching **merged** PR, not any object | ✔ | Adopted |
-| REPAIR-9 | `ubuntu@` is a username, not a prod identity | ✔ | Host IP/hostname + Neon pattern |
-| REPAIR-10 | Moving execution to the base checkout changes what the script reads/pushes | ✔ | Delete preferred |
-| Rollback | 90 days vs the 168 h authorization limit; receipt-only drill insufficient | ✔ | §3.7 corrected |
-| G0–G4 | Branch-before-G0 ordering; `git log` test without fetch; auto tags ≠ baseline; PRD for defects; full root pytest; "no new findings" ≠ PASS; attendance ≠ findings; non-atomic merge; optional R2 Codex vs unconditional rows; hotfix deferral vs guarded attestation; ingest migrations; "Mike authorizes" inferred; blocker row missing; push-time smoke ≠ post-deploy; issue updates missed; closure commits vs exact SHA; prod evidence for governance docs | ✔ | All adopted in §3.3–§3.6 |
-| Metrics | SHA dedup erases restores; labels don't attribute SHAs; MTTR needs explicit timestamps; cost ledger is local; eval denominator stale; same-SHA staging dispatches inflate; "PR lead time" mislabelled | ✔ | §3.11 rewritten; baseline relabelled |
-| Security claims | PS.1/PS.3 "Enforced" overstated; PW.9 `TenantScopedSession` is a regex; RV.1 probe failures don't page; "no label bypass" vs `shared-line-ok`; safety-reviewer text conflicts with the owner decision | ✔ | §3.10 narrowed; §3.13 corrected; REPAIR-11 added |
-| Scope | `SECURITY.md`, D20 and D16 repairs absent from §5; code-size estimate omitted tests and the receipt producer | ✔ | DOC-1, REPAIR-12, REPAIR-13 added; estimate corrected |
-| Bureaucracy | Literal heading rule, defect PRDs, universal full pytest, universal mutation assertion, `review_by` forecasting gate, universal R3 closeout, prod evidence for undeployed changes, mandatory new test per provider incident | ✔ | All deleted or scoped (§3.3–§3.8) |
-
-**Declined / held as open decisions:** Codex's view that automatic Codex review for R3 contradicts
-the 2026-10-03 decision is recorded as open decision 1 rather than resolved either way. Codex's
-suggestion to credit the existing doctrine as sufficient lifecycle definition is partly declined:
-the doctrine exists but no document maps the gates to artifacts, which is what §3 adds.
-
----
-
-## 8. Recommended implementation sequence (after approval; nothing started)
-
-| Step | Change | Why this order |
+| Item | v1 position | Reconsider when |
 |---|---|---|
-| 1 | DOC-0, DOC-1, REPAIR-3, REPAIR-11 (adopt; fix 22 drift items; `SECURITY.md`; safety-reviewer text; template `Risk:` + drop CHANGELOG checkbox) | Stops new work being built on false descriptions; no behavior change |
-| 2 | REPAIR-10, REPAIR-9, REPAIR-12 (privileged auto-fix, prod-guard host, nightly direct push) | Security/trust-boundary defects; independent of the SDLC decision |
-| 3 | ADD-2 labels + canary label lines + issue-tracker doc | Unblocks CFR/MTTR measurement immediately |
-| 4 | CONNECT-1a + REPAIR-7 (acceptance receipt producer; fail-closed re-read) | Produces the artifact before anything consumes it; verify on the next real RC |
-| 5 | CONNECT-1b + REPAIR-8 (prod consumes the acceptance receipt; exact merged-PR match) | Closes the largest evidence hole; verify on the following RC |
-| 6 | REPAIR-6 (cheap lane head re-read) | Makes the required review SHA-honest |
-| 7 | CONNECT-4 + CONNECT-5 + REPAIR-13 (gitleaks/Trivy gated with skip semantics; `sg scan` captured; license allowlist) | After a week of observed green runs on `main` for the two jobs |
-| 8 | REPAIR-4 (dependency coverage) | Expect Dependabot volume; schedule after step 7 |
-| 9 | REPAIR-2 rollback runbook + authorization-exercising drill | Needs CONNECT-1b so the drill exercises the real gate |
-| 10 | ADD-3 `tools/dora.py`, first baseline into `wiki/hot.md` | Needs 2+ weeks of `incident` records |
-| 11 | CONNECT-2/3 branch-protection reconciliation (Mike) | Blocked on #3657 |
-| 12 | 30-day review of `Risk:` lines and metrics → v1.1 (R3 sub-profiles, class hints, `test-eval-offline`, `eval-replay-gate`) | Data before more rules |
-
-**Open decisions for Mike (v1 cannot settle these):**
-1. Codex review **always** for R3 (proposed) vs. the current "only when I say so" for everything.
-2. Keep required approvals at 0 (proposed) or require 1 approval as a visible human gate.
-3. Whether `test-eval-offline` should ever become merge-blocking (advisory by design today).
-4. Whether pure R0 (inert docs) may skip the cheap lane (v1 keeps the every-PR mandate as written).
-5. Whether to delete the `auto-fix` job outright (proposed) or re-architect it.
+| Separate reviewer identity (second GitHub App/account) for the Codex attestation and the production reviewer | Deferred; v1 accepts organizational independence and a recorded click (D6) | A second authorized human or a scoped App credential exists |
+| `test-eval-offline` as a merge gate | Advisory (D3) | 30 days of runs: flake ≤1–2 %, runtime known, unique failures shown |
+| R0 cheap-lane exemption | Not in v1 (D4) | R2 mechanical floor exists and 30 days of `Risk:` lines show no mislabelled control-path change |
+| GitHub Merge Queue | **Not used.** Not eligible: GitHub limits merge queue to Enterprise Cloud and "all public repos owned by organizations"; this repo is owned by a User account. Even if eligible, the queue's candidate SHA ≠ PR head conflicts with exact-head review | Repo moves to an organization or GitHub changes eligibility, **and** the exact-head binding question is resolved |
+| `RELEASE_TRAIN.yaml` blockers consumed by `deploy-vps.yml` | Manual G3 check | After acceptance receipts are consumed |
+| Build-once / promote-by-digest, artifact attestations, SBOM, signed images, SLSA | Deferred (the receipts' image ids are the hook) | A published artifact is pulled by reference at deploy time |
+| Dependency review action, OpenSSF Scorecard as gates | Scorecard run once as a report; dependency review after Dependabot is enabled | After §11.2 enablement |
+| Automated risk-class hints | Not in v1 | 30 days of `Risk:` data |
+| Mutation-testing tooling | Manual mutation check only | `mira-web` suite deterministic; data on defect-test sensitivity |
+| **Not SDLC machinery in v1 (rejected):** FactoryLM Forge, Temporal (adopted for *product* workflows per ADR-0029, not for the SDLC), Restate, DBOS, Dagger (pattern only), Argo Workflows (Kubernetes), Backstage, LangGraph (banned), SWE-agent/mini-SWE-agent, OpenHands, hosted Claude review actions, the ChatGPT Codex cloud review app, a second traceability registry, a rollback workflow that bypasses gates, commitlint, dashboards before status reconstruction is a measured bottleneck | Rejected | Triggers: GitHub-native state projection proven insufficient with evidence; a wait/retry/compensation GitHub Actions + Environments cannot express; multiple human teams; a reviewer role the local split is shown incapable of |
 
 ---
 
-## Appendix A — Standing authorizations already granted (not re-asked)
+# Part B — Current state, gaps and implementation
 
-- Merge on independent-review PASS + green required contexts (2026-09-19/20).
-- Codex review after cheap-lane saturation (2026-10-03).
-- Post-cap Codex rounds after main-merge with `ADV_REVIEW_HUMAN_AUTHORIZED=1` (2026-10-01).
-- Cheap lane `gate7_review.py --paid --post` as the required review on every PR (2026-10-03).
-- Safety flags never withhold an answer (2026-09-27).
+## B.1 Current-state map (what runs on `main` today; verified 2026-10-03)
 
-## Appendix B — Reconnaissance evidence
+| Stage | Mechanism | Status |
+|---|---|---|
+| Intake | GitHub Issues; triage labels (`needs-triage` 220, `ready-for-agent` 98, `ready-for-human` 38, `needs-info` 5); `defect-workflow` skill covers production incidents | Enforced (tracker) / doctrine (procedure) |
+| Requirements | `docs/prd/` (16 top-level, 21 recursive files; 4 with acceptance-criteria sections) and 14 `PRD:` issues; PR-template checkbox unparsed | Doctrine; criteria not consumed |
+| ADRs | 39 MADR files; README index lists 13; ~9 Draft/Proposed; collisions at 0014/0037; convergence Gates 0–11 + checkpoints | Doctrine |
+| Risk | Binary "substantial"; `gate7_review.py:61-112` effort escalation; S0–S5 safety scale | Doctrine |
+| Local gates | ruff/pytest; `.githooks/pre-commit` opt-in (`core.hooksPath` per clone), tool checks fail open when a binary is missing | Convenience |
+| Tests/evals | 16 gated CI jobs; hypothesis in 2 files; no mutation tooling; 67 eval fixture files (65 executed by the loader globs) run by Celery on the VPS; `eval-replay-gate.yml` inert | Mixed |
+| Cheap lane | `[CHEAP-REVIEW]` comment; not SHA-rebound; exit 0 on rendered outcomes; human consumer | Advisory in fact |
+| Codex lane | trusted-base script; exact-head + body-bound GREEN; 3-round ledger; owner-account authentication | Enforced when run |
+| Merge | 6 required contexts, strict, admins; 0 approvals; lifecycle guard advisory; `ci.yml` runs on stacked PRs, other contexts do not | Enforced |
+| Tags | `version-tag.yml`: 1,120 `v*`, 1,078 `rollback/*` at `a54c4c88b`; unprotected; patch bump on unparseable subject | Enforced (tagging) |
+| Staging | `deploy-staging.yml` dispatch-only; any repo commit accepted; selected Hub/Web identity asserted; receipt 90 d | Enforced, boundary gap §5.2 |
+| Acceptance | `retrieval-acceptance.yml` automatic after staging; live-SHA audit; JSON without SHA/run id; fail-open re-read; not consumed | Measurement only |
+| Prod authorization | `deploy-vps.yml` dispatch-only; receipt (fixed Hub/Web) + Staging Gate + filename drift; first-associated-PR fallback; no environment rules | Enforced, gaps §7.2 |
+| Deploy | health-gated swap; selected Hub/Web identity; production receipt; failed swap leaves new containers | Enforced |
+| Observation | 6 canaries (3 alert channels); smoke on push/PR/dispatch, muted 10 min around deploys, not deploy-triggered; `incident` label absent; `docs/incidents/` has 1 file | Partly automated |
+| Registries | `CAPABILITY_CLOSURE.yaml` (`review_by` expiry fails CI repo-wide), `RELEASE_TRAIN.yaml` (validated without `--drift`; blockers stop the `RELEASED` label only) | Enforced (repo invariants) |
 
-Seven read-only recon reports (governance docs, PR-time CI, release/deploy/rollback, test/eval
-architecture, requirements traceability, security overlay, metrics) plus two Codex rounds were
-produced against `origin/main` @ `32bcaa67e` on 2026-10-03. Branch protection, rulesets, labels, PR
-samples and run history were read live via `gh api`/`gh` CLI. Line numbers point at that SHA and
-will drift; names will not.
+Live GitHub settings (read 2026-10-03, unchanged since the evaluation): 3 environments with 0 rules;
+`ota-*` absent; secret scanning / push protection / validity checks / Dependabot security updates
+disabled; Dependabot alerts not enabled; code scanning not configured; no attestation workflow;
+owner type `User`; 0 of 62 workflows use `merge_group`.
 
-## Appendix C — Changelog of this document
+## B.2 Gaps the rules above close (summary; evidence in PR #4210)
 
-- 2026-10-03 — v1 proposal drafted (Claude); Codex round 1 (proposal) and round 2 (draft) folded in.
-  Awaiting Mike.
+Fragmented doctrine; no risk tiering; prose-only acceptance evidence; cheap lane not SHA-bound and not
+consumed; acceptance not consumed by production; receipt scope fixed to Hub/Web (`mira-ask` unproven);
+candidate-tree validators with credentials and arbitrary-commit staging; environments without rules;
+`ota-*` absent; security scanners not gating or not running; repository security features off; stale
+hotfix/rollback docs and no drill; no incident record; no metrics; expired carve-out; 22 doc-vs-automation
+drift items (Appendix D); `test-eval-offline` and other broad suites outside `ci-gate`; mutable action
+tags; ingest-migration environment scope.
+
+## B.3 REUSE / CONNECT / REPAIR / ADD and implementation sequence
+
+Every step is a normal PR through this document's gates (steps touching `.github/`, `tools/hooks/`,
+review producers, `.claude/` are R3 → Codex GREEN + Mike merge) or an explicit Mike settings action.
+Nothing below is implemented by this document.
+
+| Step | Type | Change | Files / systems | Prerequisite | Evidence of completion | Rollback | Mike |
+|---|---|---|---|---|---|---|---|
+| 1 | REPAIR + DOC | Adopt this document (pointer lines in `CLAUDE.md` § Release / PR Workflow and `docs/environments.md`); fix the 22 drift items (Appendix D); delete the expired Claude-reviews-Claude carve-out; add `SECURITY.md`; align `.claude/agents/safety-reviewer.md:15` with the 2026-09-27 decision; PR template: add `Risk:`, drop the CHANGELOG checkbox; retire `[CODEX-REVIEW] PASS` wording in the peer runbook | ~12 docs, template | none | merged diff | revert | Y (R3 governance) |
+| 2 | REPAIR (security) | Delete the `auto-fix` job (D5); `prod-guard.sh` host list (`40.160.141.61`, hostname, prod Neon pattern — not a bare `ubuntu@`); remove or PR-ify `enforcement-audit.yml`'s nightly push | `code-review.yml`, `tools/hooks/prod-guard.sh` + tests, `enforcement-audit.yml` | none (parallel with 1) | workflow diff; hook tests | revert | Y |
+| 3 | ADD (labels) | `incident`, `hotfix` labels; fixed body fields (§10.3) documented in `docs/agents/issue-tracker.md`; `--label incident` in `provider-health-canary.yml` and `oauth-redirect-canary.yml` | labels, 2 workflows, 1 doc | none | `gh label list`; canary diff | remove labels | Y |
+| 4 | REPAIR + CONNECT | `deploy-staging.yml`: fail closed unless `approved_rc_sha` is an ancestor of `origin/main`; `retrieval-acceptance.yml`: trusted-base harness/provisioner (or ancestor check before executing candidate code), fail-closed verdict re-read, **acceptance-receipt producer** (§6.2 fields) | `deploy-staging.yml`, `retrieval-acceptance.yml`, `tools/qa/*` + tests | step 1 | a real RC's `acceptance-receipt-<sha>`; tests | revert | Y |
+| 5 | CONNECT | `deploy-vps.yml` `authorize-source`: receipt verification against the dispatched `services` (incl. `mira-ask`); acceptance receipt required per §6.2 (scope, age, generation, fail-closed); exact merged-PR match only; `migration-drift` from the trusted base. **R2 mechanical floor**: a narrow companion check reusing the lifecycle guard's shape for tenant/safety/migration/retrieval paths (advisory status first, then required) | `deploy-vps.yml`, `tools/staging_receipt.py`, `tools/migration_drift.py` call site, guard companion + tests | step 4 producing receipts | staging dispatch exercising the new checks; tests | revert (fails closed) | Y |
+| 6 | REPAIR | Cheap lane: re-read head before posting, `verdict: STALE` on drift, post a **head-bound check-run** (becomes authoritative only when a required context consumes it); pin `actions/checkout@v6` (`apply-migrations.yml`) and `oven-sh/setup-bun@v2` (`retrieval-acceptance.yml`) by SHA; `apply-ingest-migrations.yml` staging target → `staging` environment | `tools/gate7_review.py` + tests, 3 workflows | none | tests; workflow diffs | revert | Y |
+| 7 | CONNECT | `secrets-scan` + `docker-build-check` into `ci-gate` with the `code == true` skip semantics; `sg scan` output captured into the static-analysis comment (never fails the step); `license-check` allowlist `Apache-2.0;MIT` | `ci.yml`, `code-review.yml` | a week of observed green for the two jobs on `main` | `ci.yml` diff + runs | revert | Y |
+| 8 | REPAIR + SETTINGS | Dependabot roots; pip-audit status per scanner (fail on scanner error, still create the issue on CVEs); `bun audit`; **enable secret scanning, push protection, Dependabot alerts** (repo settings) | `.github/dependabot.yml`, `dependency-check.yml`; settings | step 7 | diff; settings read via `gh api` | revert / disable | Y (settings) |
+| 9 | SETTINGS | `production` environment: required reviewer Mike, **no `prevent_self_review`** (D6); create `ota-signing`/`ota-canary`/`ota-production` with the protections `ota-release.yml` asserts when OTA is next shipped | GitHub environments | step 1 (text first) | `gh api …/environments/production` shows the rule; one exercised dispatch | remove the rule | Y |
+| 10 | REPAIR + DOC | `docs/runbooks/rollback.md`; `rollback_candidate` per service in the production receipt; scheduled re-staging + re-acceptance of the designated candidates with compatibility and refresh-failure rules; the A→B→rollback-to-A drill exercising `authorize-source` | runbook, `deploy-vps.yml` receipt schema, one scheduled workflow, two dispatches | step 5 | drill run ids in the runbook; first green refresh of a prior candidate | n/a | Y |
+| 11 | SETTINGS | Required `Legacy UI Lifecycle Guard` once a non-spoofable status source exists (#3657); reconcile ruleset 17097034 with the classic layer | branch protection / ruleset | #3657 | protection read | revert | Y |
+| 12 | ADD + REVIEW | `tools/dora.py` + tests (read-only; §12.3 definitions; missing data reported as missing); first baseline into `wiki/hot.md`; **30-day review**: `Risk:` lines, `test-eval-offline` measurements (D3), R0 exemption evidence (D4), v1.1 decisions | 2 files; `wiki/hot.md` | steps 3 and 5 running ≥2 weeks | first report | n/a | Y (policy) |
+
+New code in total: one read-only metrics script, one acceptance-receipt writer/verifier, a guard
+companion check, a few lines in `gate7_review.py` — each with tests. Everything else is YAML lines,
+labels, settings, or prose.
+
+## B.4 Responsibility split
+
+| Responsibility | Mike | Claude (implementer) | Codex (reviewer) | CI / workflows |
+|---|---|---|---|---|
+| Risk disputes, downward overrides, R3 merges, production intent, ADR acceptance, exceptions, decisions D1–D6 | **owner** | proposes | may object | — |
+| PRD / criteria / ADR drafts / claims / CP-before | reviews | **does** | — | — |
+| Implement, tests, eval fixtures, hazard ledger, PR body | — | **does** | never edits the branch | — |
+| Cheap lane to a clean verdict | — | **runs** | — | posts `[CHEAP-REVIEW]` |
+| Exact-head review, findings, GREEN bound to SHA + body | authorizes rounds beyond policy | remediates | **does (read-only)** | ledger comments |
+| Required contexts, SAST, license, architecture contracts, capability-closure validity, guard | — | fixes red | — | **decides** |
+| Staging deploy, acceptance, migrations dry-run/apply | authorizes prod `apply` | dispatches staging; assembles the evidence packet | — | receipts, drift, acceptance receipt |
+| Production deploy | **records intent** (dispatch / environment approval / comment) | prepares SHA + packet | — | `authorize-source` enforces |
+| Post-deploy smoke, observation, incident filing, disposition | triages | dispatches smoke, files `incident`, writes the disposition | — | canaries open/update issues |
+| Metrics | reads | runs `tools/dora.py` weekly | — | — |
+
+## B.5 Exceptions and escalation
+
+Exceptions are recorded as PR comments linking Mike's approval; never silent, never body edits. Escalate
+to Mike when: a risk-class disagreement survives one exchange; a downward override is wanted; Codex
+reaches three rounds; a required context is red for a reason outside the PR; an `incident` is open
+longer than 4 h; a `review_by` expiry is within 14 days; a rollback would need a schema rollback; a
+recovery-candidate refresh fails. Never: merge through red required checks; dispatch production without
+the receipts §7 requires; stage a SHA that is not on `main`; edit another session's branch; simulate a
+review; rewrite shared history; run prod SQL from a session; weaken a gate to pass it. Carve-outs carry
+an end date and are deleted on it.
+
+---
+
+## Appendix A — Decision and evaluation record
+
+- 2026-10-03 — Proposal drafted (PR #4208); Codex round 1 (22 findings) and round 2 (14 factual
+  corrections, R0 loophole) folded in.
+- 2026-10-03 — Independent evaluation (PR #4210): evidence clerk + fresh Claude drafter + blind Codex
+  verdict; verifier pass; three Codex adversarial rounds (F1–F5 fixed) → **GREEN at `67fc0b913`**.
+  Verdict **ADOPT WITH CHANGES**; PRD §21 readiness 5/10 as drafted, 10/10 after the fifteen rule-text
+  changes.
+- 2026-10-03 — This canonical revision applies the fifteen changes (Appendix C) and records decisions
+  D1–D6 (§0.1). Awaiting Mike's ratification.
+
+## Appendix B — Standing authorizations already granted (not re-asked)
+
+Merge on independent-review PASS + green required contexts (2026-09-19/20); Codex review after
+cheap-lane saturation (2026-10-03); post-cap Codex rounds after main-merge with
+`ADV_REVIEW_HUMAN_AUTHORIZED=1` (2026-10-01); cheap lane as the required review on every PR
+(2026-10-03); safety flags never withhold an answer (2026-09-27).
+
+## Appendix C — Traceability: the evaluation's fifteen changes → this document
+
+| # | Evaluation change (PR #4210 §13) | Where applied |
+|---|---|---|
+| 1 | `MERGED_NOT_DEPLOYED` non-terminal; never Done | §1.2, §1.3, §1.4 |
+| 2 | Capability-bound acceptance scope; `mira-ask` named | §6.1–§6.2, §7.2, §12.1 |
+| 3 | Candidate-tree validators with credentials; staging accepts any repo commit; trust boundary and fail-closed rule | §5.2, §11.1, B.3 step 4–5 |
+| 4 | Codex attestation authenticated as an owner-account comment | §0.2 principle 6, §4.4, §11.1 |
+| 5 | Same-SHA reuse requires generation match (triggering staging run id = current receipt) and no migration/config change | §6.2 "Same-SHA redeploy", §12.1 |
+| 6 | Process docs and runbooks (rollback, hotfix) are R3; acceptance-receipt tooling in the governance floor | §2.1 R3 row |
+| 7 | Mechanical floor for R2 signals; effective risk = max(...) | §2.3, B.3 step 5 |
+| 8 | Cheap lane: head-bound check-run or advisory | §4.2, §4.5, B.3 step 6 |
+| 9 | R3 merge mechanism named (doctrine) + `--match-head-commit` | §3.2 "Merge" |
+| 10 | `production` environment has no rule; required reviewer without `prevent_self_review`; residual risk named | §7.3, §11.2, B.3 step 9 |
+| 11 | `NOT_APPLICABLE` / `SKIPPED` / `INFRA_UNASSESSED` three-way distinction | §6.2 table |
+| 12 | Metrics: CFR numerator = distinct failed deployment events, denominator = swap-step deployments; eval denominator 65; `headSha` is the controller ref | §12.3 |
+| 13 | Merge Queue: REJECT for v1 (User-owned repo not eligible), trigger and binding conflict recorded | §1.5, §13 |
+| 14 | Rollback: per-service recovery candidates, scheduled refresh of the candidates (not current prod), compatibility, refresh failure → incident | §10.2, B.3 step 10 |
+| 15 | Pin mutable action tags; `apply-ingest-migrations.yml` staging environment | §5.3, §11.1, §11.2, B.3 step 6 |
+
+## Appendix D — Doc-vs-automation drift to repair in step 1 (verified at `a54c4c88b`)
+
+| # | Doc says | Code does |
+|---|---|---|
+| D1 | Merge → smoke → auto prod deploy (`docs/environments.md:84`, `docs/runbooks/deploy-to-production.md:45-58`, `docs/specs/staging-environment-spec.md:164`, `smoke-test.yml:27,182-185`) | `deploy-vps.yml` is dispatch-only |
+| D2 | Hotfix via `skip_staging_gate=true` / `skip_reason` (`environments.md:87-90`, `deploy-to-production.md:126-140`, `staging-environment-spec.md:171`) | inputs rejected (`deploy-vps.yml:71-81`) |
+| D3 | Default rebuild set is 7 services (`deploy-to-production.md:74-77`) | `mira-hub mira-web mira-ask` (`deploy-vps.yml:478`) |
+| D4 | Rollback dispatch `-f ref=`, `VERSION` bump (`docs/runbooks/hubv3-rollback.md`) | only `approved_rc_sha`; `/VERSION` gone |
+| D5 | `docs/review-cheap-lane.md:5-6,61` cites `tools/review_router/router.py` | not on `main` (#4202 open) |
+| D6 | Gate 7 default = free cascade / "No OpenAI" (`FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md:331`, `.claude/commands/gate7-review.md`) | paid lane is required; Cerebras archived; `--adjudicate` uses the cascade only |
+| D7 | `CLAUDE.md:3` "see `/VERSION`" | deleted (#3064); same file says so at 247/332 |
+| D8 | Claude-reviews-Claude carve-out "expires 2026-09-13" (`multi-session-protocol.md:152-180`) | still present |
+| D9 | CI "ast-grep" step runs the 5 rules | `rg` regexes only (`code-review.yml:85-156`) |
+| D10 | Repo map lists `mira-ops/` | absent |
+| D11 | `docs/agents/domain.md` "16 ADRs"; monday.com lock to 2026-07-19 | 39 ADRs; date passed |
+| D12 | `environments.md:38` "no bypass inputs" vs `staging-environment-spec.md:171` | code matches the first |
+| D13 | `staging-environment-spec.md:24` "no staging Hub/Atlas" | `deploy-staging.yml:413-490` checks both |
+| D14 | `CLAUDE.md` "prod-guard enforces #1–#3" | `PROD_HOST` lacks `40.160.141.61`; no DB/token pattern; allows on empty payload |
+| D15 | peer runbook accepts `[CODEX-REVIEW] PASS` | guard accepts only `[CODEX-ADVERSARIAL-REVIEW]` (`ui_surface_lifecycle_guard.py:635-646`) |
+| D16 | `CLAUDE.md:28` Apache/MIT only | `license-check` denylist (`ci.yml:1304-1313`) |
+| D17 | PR template "CHANGELOG entry added" | CHANGELOG frozen; Shared-Line Guard |
+| D18 | `apply-migrations.yml` dry-run "no execution" | executes `CREATE TABLE IF NOT EXISTS schema_migrations` (`:149-170`) |
+| D19 | `.githooks/pre-commit:327-328` "blocking backstop" | `code-review.yml:153-169` comment-only |
+| D20 | `enforcement-audit.yml` pushes to `main` nightly | non-fatal attempt (`:131-140`) |
+| D21 | `tests/eval/README.md:7` "51 fixtures" | 67 files, 65 executed |
+| D22 | `.claude/agents/safety-reviewer.md:15` "IMMEDIATE always stops" | owner decision 2026-09-27 (`guardrails.py:1463-1467`) |
+
+## Appendix E — Changelog of this document
+
+- 2026-10-03 — v1 proposal (two Codex rounds folded in).
+- 2026-10-03 — v1.0 canonical revision: evaluation #4210's fifteen changes applied; decisions D1–D6
+  recorded; restructured into Part A (normative, §1–§13) and Part B (state, gaps, implementation).
