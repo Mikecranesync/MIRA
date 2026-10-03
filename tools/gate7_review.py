@@ -190,6 +190,15 @@ _REDACTORS = _load_pii_redactors()
 # (`tools/predeploy_log_capture.sh` is PII-focused shell `sed`). Defense in depth, not a
 # replacement for gitleaks — deliberately over-broad, since a false redaction costs a
 # reviewer a little context while a miss leaks a live credential.
+_DOTTED_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
+
+
+def _is_dotted_name(value: str) -> bool:
+    """`config.openai_api_key` / `os.environ.get` is a Python attribute path, not an
+    opaque secret literal. (JWTs are dotted too but never pure identifiers.)"""
+    return bool(_DOTTED_NAME_RE.match(value))
+
+
 _SECRET_RES: list[tuple[re.Pattern, str]] = [
     # Known-prefix tokens: OpenAI/Stripe/GitHub/Slack/Doppler/Together, xox*, ghp_, dp.pt.
     (re.compile(r"\b(?:sk|rk|pk)-[A-Za-z0-9_\-]{16,}", re.I), "[SECRET]"),
@@ -209,7 +218,9 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
             # literal — five reviews reported the redaction itself as a bug.
             r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(])"
         ),
-        r"\1\2[SECRET]",
+        lambda m: (
+            m.group(0) if _is_dotted_name(m.group(3)) else f"{m.group(1)}{m.group(2)}[SECRET]"
+        ),
     ),
     # Connection strings with inline credentials.
     (re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s:@/]+:[^\s:@/]+@"), r"\1[SECRET]:[SECRET]@"),
