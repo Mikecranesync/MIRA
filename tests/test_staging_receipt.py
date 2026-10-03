@@ -349,3 +349,111 @@ def test_cli_verify_rejects_unknown_environment(tmp_path):
     out.write_text(json.dumps(_good()))
     r = _cli("verify", "--receipt", str(out), "--approved-rc-sha", SHA, "--environment", "prod")
     assert r.returncode != 0
+
+
+# ── effective services (SDLC v1 §6.2, step 5) ──────────────────────────────
+
+IMG_ASK = "sha256:" + "3" * 64
+
+
+def _staging_six() -> dict:
+    """A receipt shaped like a real default staging deploy: hub/web runtime + ask image."""
+    return _good(
+        built_images={"mira-hub": IMG_HUB, "mira-web": IMG_WEB, "mira-ask": IMG_ASK},
+        running_images={"mira-hub": IMG_HUB, "mira-web": IMG_WEB, "mira-ask": IMG_ASK},
+    )
+
+
+def test_plan_splits_the_target_set_into_runtime_image_and_not_applicable():
+    runtime, images, na = receipt.plan_required_services(("mira-hub", "mira-web", "mira-ask"))
+    assert runtime == ("mira-hub", "mira-web")
+    assert images == ("mira-hub", "mira-web", "mira-ask")
+    assert na == ("mira-ask",)
+
+
+def test_plan_of_an_ask_only_deploy_requires_no_runtime_identity_but_its_image():
+    runtime, images, na = receipt.plan_required_services(("mira-ask",))
+    assert (runtime, images, na) == ((), ("mira-ask",), ("mira-ask",))
+
+
+@pytest.mark.parametrize("bad", [(), ("mira-hub", "mira-hub"), ("mira-hub", "")])
+def test_plan_fails_closed_on_an_empty_or_duplicate_target_set(bad):
+    with pytest.raises(ValueError):
+        receipt.plan_required_services(bad)
+
+
+def test_deployed_service_without_image_identity_blocks():
+    """A staging receipt that never rebuilt mira-ask cannot authorize a prod deploy of it."""
+    problems = _verify(
+        _good(),
+        required_services=("mira-hub", "mira-web"),
+        required_images=("mira-hub", "mira-web", "mira-ask"),
+    )
+    assert "built_images[mira-ask]: deployed service not reported" in problems
+    assert "running_images[mira-ask]: deployed service not reported" in problems
+
+
+def test_default_target_set_verifies_against_a_real_staging_receipt_shape():
+    runtime, images, _ = receipt.plan_required_services(("mira-hub", "mira-web", "mira-ask"))
+    assert _verify(_staging_six(), required_services=runtime, required_images=images) == []
+
+
+def test_cli_effective_services_prints_not_applicable_and_requires_the_image(tmp_path):
+    ok = tmp_path / "ok.json"
+    ok.write_text(json.dumps(_staging_six()))
+    base = [
+        sys.executable,
+        str(_MOD_PATH),
+        "verify",
+        "--receipt",
+        str(ok),
+        "--approved-rc-sha",
+        SHA,
+        "--environment",
+        "staging",
+        "--max-age-hours",
+        "1000000",
+    ]
+    res = subprocess.run(
+        base + ["--effective-services", "mira-hub,mira-web,mira-ask"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "runtime[mira-ask]: NOT_APPLICABLE" in res.stdout
+    # Same receipt, but the target set names a service the deploy never built.
+    res = subprocess.run(
+        base + ["--effective-services", "mira-hub,mira-web,mira-pipeline"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 1
+    assert "built_images[mira-pipeline]: deployed service not reported" in res.stderr
+    # Control: the legacy fixed default still verifies the same receipt.
+    res = subprocess.run(base, capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+
+
+def test_cli_effective_services_empty_fails_closed(tmp_path):
+    ok = tmp_path / "ok.json"
+    ok.write_text(json.dumps(_staging_six()))
+    res = subprocess.run(
+        [
+            sys.executable,
+            str(_MOD_PATH),
+            "verify",
+            "--receipt",
+            str(ok),
+            "--approved-rc-sha",
+            SHA,
+            "--environment",
+            "staging",
+            "--max-age-hours",
+            "1000000",
+            "--effective-services",
+            "",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 1 and "effective services: empty" in res.stderr

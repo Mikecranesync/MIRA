@@ -34,6 +34,12 @@ RECEIPT_PREFIX = "FACTORYLM_DEPLOY_RECEIPT_JSON="
 ENVIRONMENTS = ("staging", "production")
 # The two customer-facing surfaces whose runtime identity proves the deploy.
 DEFAULT_REQUIRED_SERVICES = ("mira-hub", "mira-web")
+# The services that expose a runtime identity endpoint (/api/version, /api/health
+# reporting gitSha) and therefore CAN prove runtime identity. Every other deployed
+# service (mira-ask, mira-pipeline, ...) proves image identity only; its runtime
+# identity is recorded NOT_APPLICABLE with that reason (SDLC v1 §6.2, step 5).
+RUNTIME_IDENTITY_SERVICES = ("mira-hub", "mira-web")
+NOT_APPLICABLE_REASON = "no runtime identity endpoint; image identity proven instead"
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FUTURE_SKEW = timedelta(minutes=5)
@@ -78,6 +84,29 @@ def _as_utc(now: datetime) -> datetime:
     return now.astimezone(timezone.utc)
 
 
+def plan_required_services(
+    effective_services: tuple[str, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Split the ACTUAL deploy target set into what the receipt must prove.
+
+    Returns ``(runtime_required, image_required, runtime_not_applicable)``:
+    image identity is required for EVERY effective service (a receipt that did
+    not rebuild ``mira-ask`` cannot authorize a production deploy of it);
+    runtime identity is required for the services that can report one; the rest
+    are recorded NOT_APPLICABLE — explicitly, never silently absent (§6.2). Pure.
+    """
+    if not effective_services:
+        raise ValueError("effective services: empty — the deploy target set must be explicit")
+    seen: list[str] = []
+    for svc in effective_services:
+        if not svc or svc in seen:
+            raise ValueError(f"effective services: empty or duplicate entry {svc!r}")
+        seen.append(svc)
+    runtime = tuple(s for s in seen if s in RUNTIME_IDENTITY_SERVICES)
+    not_applicable = tuple(s for s in seen if s not in RUNTIME_IDENTITY_SERVICES)
+    return runtime, tuple(seen), not_applicable
+
+
 def verify_receipt(
     receipt: dict,
     *,
@@ -88,12 +117,15 @@ def verify_receipt(
     required_services: tuple[str, ...] = DEFAULT_REQUIRED_SERVICES,
     expected_run_id: str | None = None,
     expected_run_url: str | None = None,
+    required_images: tuple[str, ...] = (),
 ) -> list[str]:
     """Return every problem with ``receipt``; an empty list means it verifies.
 
     Fail-closed by construction: a missing field is a problem, not a skip.
     ``expected_run_id`` / ``expected_run_url`` bind the receipt to the exact
     Actions run that produced the artifact it was downloaded from (provenance).
+    ``required_images`` are services whose built == running image identity must
+    be present even though they report no runtime SHA (the deploy target set).
     """
     problems: list[str] = []
     now_utc = _as_utc(now)
@@ -160,6 +192,11 @@ def verify_receipt(
     for svc in runtime:
         if svc not in built or svc not in running:
             problems.append(f"runtime[{svc}] reported without a matching image identity")
+    for svc in required_images:
+        if svc not in built:
+            problems.append(f"built_images[{svc}]: deployed service not reported")
+        if svc not in running:
+            problems.append(f"running_images[{svc}]: deployed service not reported")
 
     target = receipt.get("target")
     if not isinstance(target, dict):
@@ -224,6 +261,13 @@ def _cmd_extract(args: argparse.Namespace) -> int:
 def _cmd_verify(args: argparse.Namespace) -> int:
     receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
     required = tuple(s for s in args.require_services.split(",") if s)
+    required_images: tuple[str, ...] = ()
+    if args.effective_services is not None:
+        # The deploy target set decides what must be proven — never a fixed default.
+        effective = tuple(s for s in args.effective_services.split(",") if s)
+        required, required_images, not_applicable = plan_required_services(effective)
+        for svc in not_applicable:
+            print(f"runtime[{svc}]: NOT_APPLICABLE — {NOT_APPLICABLE_REASON}")
     problems = verify_receipt(
         receipt,
         approved_rc_sha=args.approved_rc_sha,
@@ -233,6 +277,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         required_services=required,
         expected_run_id=args.expect_run_id,
         expected_run_url=args.expect_run_url,
+        required_images=required_images,
     )
     if problems:
         for problem in problems:
@@ -271,6 +316,15 @@ def main(argv: list[str] | None = None) -> int:
         "--require-services",
         default=",".join(DEFAULT_REQUIRED_SERVICES),
         help="comma-separated services whose runtime + image identity must be present",
+    )
+    verify.add_argument(
+        "--effective-services",
+        default=None,
+        help=(
+            "comma-separated ACTUAL deploy target set; overrides --require-services: image "
+            "identity is required for every service, runtime identity for those that report "
+            "one, and the rest are printed NOT_APPLICABLE (SDLC v1 §6.2)"
+        ),
     )
     verify.add_argument(
         "--expect-run-id",
