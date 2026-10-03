@@ -801,3 +801,67 @@ def test_the_default_ledger_is_shared_by_every_worktree_of_the_repository(tmp_pa
     assert router.default_ledger() == (repo / ".planning" / "review-costs.jsonl").resolve()
     monkeypatch.chdir(repo)
     assert router.default_ledger() == (repo / ".planning" / "review-costs.jsonl").resolve()
+
+
+# ---------------------------------------------------------------------------
+# Codex #4202 r4: rename sources count toward risk (F12)
+
+
+def _fake_pr(monkeypatch, gh_files, diff_names):
+    def run(cmd, **kw):
+        if cmd[:3] == ["gh", "pr", "view"]:
+            out = json.dumps(
+                {
+                    "headRefOid": HEAD_SHA,
+                    "baseRefName": "main",
+                    "baseRefOid": BASE_SHA,
+                    "files": [{"path": p} for p in gh_files],
+                }
+            )
+        elif cmd[:2] == ["git", "merge-base"]:
+            out = BASE_SHA
+        elif cmd[:2] == ["git", "diff"] and "--name-only" in cmd:
+            assert "--no-renames" in cmd, "rename detection must be OFF so both sides appear"
+            out = "\n".join(diff_names)
+        elif cmd[:2] == ["git", "diff"]:
+            out = "+x\n" * 10
+        else:
+            out = ""
+        return subprocess.CompletedProcess(cmd, 0, out + "\n", "")
+
+    monkeypatch.setattr(router, "_run", run)
+
+
+def test_a_renamed_critical_file_keeps_the_critical_tier(monkeypatch):
+    """F12: GitHub's file list names only a rename's destination, so renaming
+    `engine.py` → `supervisor.py` hid the critical source from routing. Paths
+    come from the captured base..head diff with rename detection off, so the
+    deleted source and the added destination are both present."""
+    _fake_pr(
+        monkeypatch,
+        gh_files=["mira-bots/shared/supervisor.py", "mira-bots/shared/__init__.py"],
+        diff_names=[
+            "mira-bots/shared/engine.py",
+            "mira-bots/shared/supervisor.py",
+            "mira-bots/shared/__init__.py",
+        ],
+    )
+    facts = router.pr_facts(1)
+    assert "mira-bots/shared/engine.py" in facts["paths"]
+    assert router.classify(facts["paths"]) == "critical"
+
+
+def test_a_rename_into_a_critical_path_is_critical_too(monkeypatch):
+    _fake_pr(
+        monkeypatch,
+        gh_files=["mira-bots/shared/engine.py"],
+        diff_names=["mira-bots/shared/old_engine.py", "mira-bots/shared/engine.py"],
+    )
+    assert router.classify(router.pr_facts(1)["paths"]) == "critical"
+
+
+def test_without_renames_paths_match_the_pr_file_list(monkeypatch):
+    _fake_pr(
+        monkeypatch, gh_files=["docs/a.md", "tests/t.py"], diff_names=["docs/a.md", "tests/t.py"]
+    )
+    assert sorted(router.pr_facts(1)["paths"]) == ["docs/a.md", "tests/t.py"]

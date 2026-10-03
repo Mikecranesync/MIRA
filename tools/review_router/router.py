@@ -317,13 +317,19 @@ def pr_facts(pr: int) -> dict:
     base = _run(
         ["git", "merge-base", f"origin/{j['baseRefName']}", j["headRefOid"]], check=True
     ).stdout.strip()
-    diff_chars = len(_run(["git", "diff", f"{base}..{j['headRefOid']}"], check=True).stdout)
+    span = f"{base}..{j['headRefOid']}"
+    diff_chars = len(_run(["git", "diff", span], check=True).stdout)
+    # Paths come from the captured immutable objects with rename detection OFF,
+    # so a rename contributes both its deleted source and its added destination.
+    # GitHub's file list names only the destination, which let a renamed
+    # engine.py drop out of the critical tier (#4202 F12).
+    paths = _run(["git", "diff", "--name-only", "--no-renames", span], check=True).stdout.split()
     return {
         "base_ref": j["baseRefName"],
         "base_sha": j["baseRefOid"],
         "head": j["headRefOid"],
         "merge_base": base,
-        "paths": [f["path"] for f in j["files"]],
+        "paths": paths,
         "diff_chars": diff_chars,
     }
 
