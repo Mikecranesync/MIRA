@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
+**Version:** derived from the latest `v*` tag (no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint — `docs/versioning.md`)
 **One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Together (cascade; Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
@@ -25,7 +25,7 @@
 
 ## Hard Constraints (PRD §4)
 
-1. **Licenses:** Apache 2.0 or MIT ONLY.
+1. **Licenses:** Apache 2.0 or MIT ONLY. (Enforced today as a GPL/AGPL/UNKNOWN **denylist** in `ci.yml` `license-check`, plus an allowlist for the migration driver; the full allowlist is SDLC v1 step 7.)
 2. **Cloud LLMs:** Groq + Together cascade (OpenAI-compat). **Cerebras ARCHIVED 2026-09-29** (402 quota since 09-07): its key is `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd; every cascade is key-gated, so it is simply absent. Restore = rename the key back + re-add it to `EXPECTED` in `tools/provider_health_check.py`. NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
@@ -48,7 +48,7 @@
 | Telegram | `@MiraDevBot` or none | `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`) | `@FactoryLM_Diagnose` |
 | Safe to break | YES | YES (gate before promotion) | **NEVER** |
 
-**Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
+**Hard rules (do not bypass — `prod-guard.sh` is a convenience floor for #1–#3, not the authority: it pattern-matches command text, allows with a loud stderr note when it receives no payload, and sees nothing inside a script file):**
 1. NEVER run `psql` / raw SQL against prod NeonDB from a code session. Use staging / dev / `db-inspect.yml`.
 2. NEVER restart, rebuild, or `docker compose` a VPS container directly. Use `deploy-vps.yml`.
 3. NEVER point a feature-branch build at `@FactoryLM_Diagnose`. Use a dev/staging/no-op adapter.
@@ -76,7 +76,6 @@ MIRA/
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
 ├── mira-crawler/    # KB ingest + manual chunker (OEM discovery pipeline)
-├── mira-ops/        # Observability dashboards (Prometheus, Grafana, Flower)
 ├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
 ├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); removed from prod 2026-05-20
 ├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
@@ -302,7 +301,7 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 | Component | File | What it does |
 |-----------|------|-------------|
-| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → ast-grep (IPs/secrets) → cascade review (Groq → Cerebras → Gemini) → PR comment |
+| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → `rg` regex scan for IPs/secrets (the `.ast-grep-rules/` are installed but **not executed** until SDLC v1 step 7) → cascade review → PR comment (advisory; never fails the run) |
 | ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
 | ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
 | Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
@@ -328,6 +327,8 @@ Before any cross-module refactor, migration, consolidation, new service, depende
 New product presentation work goes into the shared FactoryLM shell (`packages/factorylm-theme/**`, `packages/factorylm-interaction/**`, `packages/factorylm-ui/**`, `apps/factorylm-ui-lab/**`), not the legacy public/Hub/mobile presentation trees, which are feature-frozen and CI-guarded (`tools/ui_surface_lifecycle_guard.py`). Charter: `docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`. Rule: `.claude/rules/factorylm-unified-ui-cutover.md`. Capability record: `unified_ui_shell` in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`. Mission `FACTORYLM-UNIFIED-UI-CUTOVER-001`, coordination issue [#3626](https://github.com/Mikecranesync/MIRA/issues/3626).
 
 ## Release / PR Workflow
+
+**The SDLC is specified in `docs/architecture/mira-sdlc-v1.md` (ratified 2026-10-03).** Lifecycle states, risk classes R0–R3 (`Risk:` line on every PR), required checks, the advisory cheap lane and the authoritative exact-head Codex review, staging/acceptance/production receipts, rollback and incident records all live there. Where that document and a live workflow disagree, the live workflow wins until changed through the process it defines.
 
 No PR bumps a version file and no PR hand-writes a changelog line. `/VERSION` and `.github/workflows/version-gate.yml` were **deleted 2026-08-02 (#3064)** — they were the shared line that put every open PR into conflict with every merge. `.github/workflows/version-tag.yml` derives the next semver from the latest `v*` tag plus the merge commit's **Conventional Commit type** (`feat`→minor, `fix`→patch, `feat!`/`BREAKING CHANGE`→major) and creates the tag, the paired `rollback/<date>-vX.Y.Z` checkpoint, and a GitHub Release. Release notes are generated from merged PRs (`.github/release.yml`); `docs/CHANGELOG.md` is frozen as an archive. So: write a well-formed Conventional Commit title, label the PR, and that's the whole authoring duty. See `docs/versioning.md`.
 

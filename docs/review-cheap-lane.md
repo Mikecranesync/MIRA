@@ -1,9 +1,10 @@
 # The cheap review lane — the required gate on every PR
 
 **Owner decision (Mike, 2026-10-03):** every PR's required review is the single-shot
-paid lane below. The agentic Codex lane (`scripts/adversarial-review-trusted.sh`,
-routed by `tools/review_router/router.py`) runs **only on the owner's explicit
-authorization** — for critical paths he names, or to adjudicate a disputed finding.
+paid lane below. The agentic Codex lane (`scripts/adversarial-review-trusted.sh`;
+a router, `tools/review_router/router.py`, is proposed in PR #4202 and **not on `main`**)
+runs on the owner's authorization and, per SDLC v1 §4.3 (D1), on **every R3 change**
+and every PR touching a guarded path — plus critical paths he names or a disputed finding.
 It is no longer automatic. Nothing else about the gate changes: GREEN is exact-head,
 fail-closed, and a merge still needs a human.
 
@@ -58,5 +59,5 @@ verifies before fixing — the same discipline as the Codex lane.
 
 Owner's call, case by case: a change on a critical path he wants exhaustively walked
 (engine, guardrails, auth, migrations, review tooling), or a cheap-lane finding the
-author disputes. Invoke through the router (`python3 tools/review_router/router.py
-<PR> --authorized`) so the budget and CI-first checks still apply.
+author disputes. Invoke from the trusted base — `git show origin/main:scripts/adversarial-review-trusted.sh | bash -s -- <PR> --review-only`
+— the router form (`python3 tools/review_router/router.py <PR> --authorized`) exists only once PR #4202 merges.

@@ -12,6 +12,15 @@ trace why this code looks the way it does.
 
 -
 
+Risk: R_ — <one-line reason>
+
+<!--
+REQUIRED (SDLC v1 §2, docs/architecture/mira-sdlc-v1.md). One of R0 (inert docs), R1 (low-risk product),
+R2 (behavioral / retrieval / model / data), R3 (safety / security / auth / tenant / migration /
+production-control / governance). Effective risk = max(declared, trusted-path floor, reviewer findings);
+a declared class never lowers it. R3 needs an exact-head Codex GREEN before merge.
+-->
+
 ## Spec reference
 
 `docs/specs/_____.md`
@@ -88,7 +97,6 @@ verify the known blind spots with grep. Rules: .claude/rules/codegraph-usage.md.
 - [ ] Write-path integration tests pass (`pytest tests/integration/test_write_paths.py`)
 - [ ] Enum drift check passes (`python scripts/check_enum_drift.py`)
 - [ ] No new secrets in diff (`git diff --cached | rg -i 'api[_-]?key|secret|token|password'`)
-- [ ] CHANGELOG entry added if this changes user-visible behavior
 
 ## Test plan
 
