@@ -3907,7 +3907,11 @@ def test_prod_migration_drift_isolated_from_vps_credentials_and_dependency_hooks
         step for step in drift["steps"] if "--require-hashes" in step.get("run", "")
     )
     assert "--only-binary=:all:" in dependency_step["run"]
-    assert "tools/migration-drift-requirements.txt" in dependency_step["run"]
+    # SDLC v1 §5.2 (step 5): the hash-locked requirements come from the TRUSTED BASE
+    # copy, never the candidate checkout.
+    trusted_reqs = '-r "$RUNNER_TEMP/trusted/migration-drift-requirements.txt"'
+    assert trusted_reqs in dependency_step["run"]
+    assert "-r tools/migration-drift-requirements.txt" not in dependency_step["run"]
 
     fetch_step = next(step for step in drift["steps"] if "DOPPLER_TOKEN" in step.get("env", {}))
     assert set(fetch_step["env"]) == {"DOPPLER_TOKEN"}
@@ -3915,11 +3919,19 @@ def test_prod_migration_drift_isolated_from_vps_credentials_and_dependency_hooks
     assert "prod-db-url" in fetch_step["run"]
 
     verify_step = next(
-        step for step in drift["steps"] if "migration_drift.py" in step.get("run", "")
+        step for step in drift["steps"] if step.get("name") == "Verify prod migration drift = 0"
     )
     assert "DOPPLER_TOKEN" not in json.dumps(verify_step)
     assert "env -i" in verify_step["run"]
-    assert "python3 -I tools/migration_drift.py" in verify_step["run"]
+    # The validator is the trusted-base copy scanning the candidate checkout (§5.2).
+    trusted_drift = 'python3 -I "$RUNNER_TEMP/trusted/migration_drift.py" --root "$GITHUB_WORKSPACE"'
+    assert trusted_drift in verify_step["run"]
+    assert "python3 -I tools/migration_drift.py" not in verify_step["run"]
+    pin_step = next(
+        step for step in drift["steps"] if step.get("name") == "Pin the trusted-base validator"
+    )
+    assert "DOPPLER_TOKEN" not in json.dumps(pin_step)
+    assert pin_step["env"] == {"TRUSTED_BASE_SHA": "${{ github.sha }}"}
 
 
 def test_prod_source_authorization_precedes_all_environment_credentials():
@@ -3947,7 +3959,13 @@ def test_prod_source_authorization_precedes_all_environment_credentials():
     assert "/commits/$DEPLOY_SHA/pulls" in authorize_commands
     assert '--workflow "Staging Gate"' in authorize_commands
     assert "completed:success" in authorize_commands
-    assert "tools/staging_receipt.py verify" in authorize_commands
+    # §5.2: receipts are verified by the TRUSTED-BASE validator copies, never the
+    # candidate's tools/, and the candidate must be an ancestor of that base.
+    assert '"$RUNNER_TEMP/trusted/staging_receipt.py" verify' in authorize_commands
+    assert '"$RUNNER_TEMP/trusted/acceptance_receipt.py" verify' in authorize_commands
+    assert "python3 tools/staging_receipt.py" not in authorize_commands
+    ancestry = 'git merge-base --is-ancestor "$APPROVED_RC_SHA" "$TRUSTED_BASE_SHA"'
+    assert ancestry in authorize_commands
 
     assert jobs["migration-drift"]["needs"] == "authorize-source"
     assert jobs["deploy"]["needs"] == ["authorize-source", "migration-drift"]
