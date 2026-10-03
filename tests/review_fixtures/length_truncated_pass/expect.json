@@ -1,0 +1,13 @@
+{
+ "planted": "content = choice\\[\"message\"\\]\\[\"content\"\\]\\n\\+    return content",
+ "keywords_any": [
+  "finish_reason",
+  "length",
+  "truncat",
+  "cut off",
+  "incomplete",
+  "cap"
+ ],
+ "min_severity": "medium",
+ "provenance": "#4203 Codex r1 F2: a completion cut at the output cap can parse as PASS"
+}
