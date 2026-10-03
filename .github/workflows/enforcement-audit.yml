@@ -118,13 +118,16 @@ jobs:
         run: |
           bun install --frozen-lockfile --ignore-scripts
           npx playwright install --with-deps chromium
-      - name: Restore the previous nightly audit as the regression baseline (artifact, no commit)
+      - name: Restore the newest nightly audit as the regression baseline (artifact, no commit)
         # hub-page-audit.spec.ts compares against readPreviousScore(), which reads
         # docs/audits/*.md from the checkout. The nightly commit-and-push that used
         # to advance that baseline is gone (SDLC v1 §11.1: no direct push to main),
         # so restore the newest successful scheduled run's report artifact instead.
-        # A fresh repo (no prior artifact) falls back to the committed files.
-        if: github.event_name == 'schedule'
+        # A fresh repo (no prior artifact) falls back to the committed files. Runs for
+        # every event that runs the audit (schedule, pull_request, dispatch) — Codex
+        # round 2 on PR #4211: a PR audit compared against the stale committed
+        # baseline otherwise. The baseline is always the newest SCHEDULED run's report
+        # (the trusted nightly against production), never another PR's.
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

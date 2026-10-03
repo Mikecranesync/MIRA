@@ -382,7 +382,13 @@ _PGURL = "postgres" + "ql://"
             f"doppler run -c {_PRD} -- bun -e \"import {{ SQL }} from 'bun'; new SQL(process.env.NEON_DATABASE_URL).unsafe('select 1')\"",
             True,
         ),
-        (f'doppler run --config {_PRD} -- deno eval "console.log(1)" -- -e x', False),
+        (
+            f"doppler run -c {_PRD} -- deno eval \"import postgres from 'npm:postgres'; "
+            f"await postgres(Deno.env.get('URL')).unsafe('select 1')\"",
+            True,
+        ),
+        (f'doppler run --config {_PRD} -- deno eval "console.log(1)"', True),
+        (f"echo 'select 1' | doppler run -c {_PRD} -- node -", True),
         (f"doppler run -c {_PRD} -- python3 -c 'print(1)'", True),
         # every Doppler spelling of the prod config
         (f'doppler run --config={_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
@@ -396,6 +402,8 @@ _PGURL = "postgres" + "ql://"
         ),
         (f'doppler run --config=stg -- {_SQL} "$NEON_DATABASE_URL"', False),
         ("node -e \"require('pg'); console.log(1)\"", False),
+        ('deno eval "console.log(1)"', False),
+        ('doppler run -c stg -- deno eval "console.log(1)"', False),
         (
             f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
             False,

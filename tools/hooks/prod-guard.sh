@@ -125,8 +125,11 @@ PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120
 NEON_PROD_ENDPOINT='ep-purple-hall-ahimeyn0'
 NEON_PROD_URL='postgres(ql)?://[^[:space:]"'"'"']*'"$NEON_PROD_ENDPOINT"
 SQL_CLIENT='\b(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
-DB_LIB='(psycopg|asyncpg|pg8000|sqlalchemy|require\([[:space:]]*["'"'"']pg["'"'"']|from[[:space:]]+["'"'"']pg["'"'"']|\bpg\.(Client|Pool)\b|new[[:space:]]+(Client|Pool)\()'
-INLINE_CODE='\b(python3?|node|bun|deno|ruby|perl)\b[^|;&]*[[:space:]](-c|-e|-p|--eval|--print)[[:space:]]'
+DB_LIB='(psycopg|asyncpg|pg8000|sqlalchemy|npm:postgres|["'"'"']postgres["'"'"']|require\([[:space:]]*["'"'"']pg["'"'"']|from[[:space:]]+["'"'"']pg["'"'"']|\bpg\.(Client|Pool)\b|new[[:space:]]+(Client|Pool)\()'
+# Flag-based inline code (`-c`, `-e`, `-p`, `--eval`, `--print`) OR the subcommand
+# forms `deno eval …` and `deno run -` / `node -` (program on stdin) — Codex round 2
+# on PR #4211 showed `deno eval` slipping through.
+INLINE_CODE='\b(python3?|node|bun|deno|ruby|perl)\b[^|;&]*[[:space:]](-c|-e|-p|--eval|--print)[[:space:]]|\bdeno[[:space:]]+eval\b|\b(deno[[:space:]]+run|node|python3?)[[:space:]]+-([[:space:]]|$)'
 # `--config prd`, `--config=prd`, `-c prd` and `-c=prd` are all accepted by the
 # Doppler CLI; match every spelling (cheap-lane round 3 on PR #4211).
 DOPPLER_PRD='doppler[^|;&]*(--config|-c)([[:space:]]+|[[:space:]]*=[[:space:]]*)prd([[:space:]]|$)'
