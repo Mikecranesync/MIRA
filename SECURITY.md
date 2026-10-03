@@ -9,8 +9,10 @@
   do not triage or close security reports.
 - **Response expectation:** acknowledgement within 3 business days; an initial assessment (confirmed /
   not reproducible / out of scope) within 10 business days. Fixes ship through the normal gates as
-  `Risk: R3 — security` pull requests (`docs/architecture/mira-sdlc-v1.md` §2, §4.3), with an exact-head
-  independent review before merge; a production-degrading issue follows the hotfix path (§10.1).
+  `Risk: R3 — security` pull requests (`docs/architecture/mira-sdlc-v1.md` §2, §4.3) with an exact-head
+  independent review — before merge, or, for a production-degrading issue taking the hotfix path (§10.1)
+  that touches no guarded control-plane path and only when the owner says so on the PR, completed within
+  24 h after merge.
 - **Please do not** test against `factorylm.com` / `app.factorylm.com` production tenants you do not own,
   exfiltrate data, or run denial-of-service traffic. Staging is not public.
 
