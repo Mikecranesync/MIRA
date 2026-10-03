@@ -289,6 +289,62 @@ export interface IdentityProposal {
   readonly model: string;
   /** Rarely present today (#4120 proposals don't carry one yet); forward-compatible. */
   readonly catalogNumber?: string;
+  /**
+   * Light-review fix (PR #4195, "a stale proposal can overwrite a later
+   * confirmed identity"): set by the HOST ADAPTER — never the renderer, never
+   * the server wire frame — by comparing this proposal to the notebook's
+   * CURRENT confirmed identity at render time. A persisted turn keeps the
+   * proposal it was served with forever (`to-interaction.ts`'s own
+   * `persistedMeta` header: a rebind must not make an old turn look like it
+   * concerns the new machine) — but a LIVE "Use its manuals" button on that
+   * stale card would still silently rewrite the notebook back to the earlier
+   * machine. `priorOutcome` lets the card settle itself without that risk:
+   * - `"confirmed"`: this exact manufacturer+model IS the notebook's current
+   *   confirmed identity (a persisted card replaying a decision already made).
+   * - `"superseded"`: the notebook is NOW confirmed to a DIFFERENT identity (a
+   *   stale card from before a later, different confirm) — the card must not
+   *   offer a live Confirm OR Reject; either would act on a moot proposal.
+   * Omitted: the notebook has no confirmed identity yet — today's live card
+   * (Confirm / Not this) applies unchanged.
+   */
+  readonly priorOutcome?: "confirmed" | "superseded";
+}
+
+/**
+ * Case/punctuation-insensitive manufacturer+model match — the ONE comparison
+ * every host adapter uses to decide `IdentityProposal.priorOutcome` (light-
+ * review fix, PR #4195), so Hub and mobile never grow two slightly different
+ * "is this the same machine" rules. Catalog number is deliberately excluded:
+ * a proposal rarely carries one yet (see `catalogNumber`'s own comment above),
+ * so its mere absence must never make an otherwise-identical identity look
+ * "different." Mirrors the server's own `acquisitionKey` normalization
+ * (`mira-hub/src/capabilities/notebook-manual-acquisition.ts`) at the
+ * manufacturer+model grain, without importing a server-only module into a
+ * client adapter.
+ */
+export function sameManufacturerModel(
+  a: { readonly manufacturer: string; readonly model: string },
+  b: { readonly manufacturer: string; readonly model: string },
+): boolean {
+  const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return norm(a.manufacturer) === norm(b.manufacturer) && norm(a.model) === norm(b.model);
+}
+
+/**
+ * Thrown by `HostHooks.onConfirmIdentity` when the server refused the confirm
+ * with 409 `identity_already_confirmed` — the notebook was already confirmed
+ * to a DIFFERENT identity (light-review fix, PR #4195; server side:
+ * `mira-hub/src/app/api/equipment-notebooks/[id]/identity/confirm/route.ts`).
+ * The card's catch handler checks `instanceof` this class — never string-
+ * matches `message` — so it can render a clear TERMINAL refusal instead of
+ * the generic transient-failure copy; every other failure keeps Codex F2's
+ * retryable contract unchanged.
+ */
+export class IdentityAlreadyConfirmedError extends Error {
+  constructor(message = "This machine is already confirmed.") {
+    super(message);
+    this.name = "IdentityAlreadyConfirmedError";
+  }
 }
 
 /**

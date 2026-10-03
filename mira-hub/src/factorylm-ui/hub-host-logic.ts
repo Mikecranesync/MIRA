@@ -168,7 +168,8 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
   const asset = nb.asset
     ? { id: nb.asset.entityId, name: machineNameFor(nb), unsPath: null }
     : null;
-  const confirmed = (nb.identityStatus === "user_confirmed" || nb.identityStatus === "verified") && !!nb.asset?.confirmedAt;
+  const identitySettled = nb.identityStatus === "user_confirmed" || nb.identityStatus === "verified";
+  const confirmed = identitySettled && !!nb.asset?.confirmedAt;
   return {
     notebookId: nb.id,
     threadId: shellThreadId(sel),
@@ -176,6 +177,12 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
     tenantId,
     asset,
     identityConfirmed: confirmed,
+    // Light-review fix (PR #4195): deliberately NOT gated on `asset`
+    // binding like `identityConfirmed` above — the #4120 identity_proposal
+    // confirm route (`identity/confirm/route.ts`) settles manufacturer/model/
+    // identityStatus directly and never creates an asset binding, so that
+    // common case needs this field even when `identityConfirmed` is false.
+    confirmedIdentity: identitySettled && nb.manufacturer && nb.model ? { manufacturer: nb.manufacturer, model: nb.model } : null,
     capturedAt,
   };
 }

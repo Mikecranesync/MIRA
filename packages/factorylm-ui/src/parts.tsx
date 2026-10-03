@@ -13,6 +13,7 @@ import type {
   ShellState,
   SourceReference,
 } from "@factorylm/interaction";
+import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
 import { useState, type Dispatch, type ReactNode } from "react";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
@@ -296,6 +297,21 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
  *    host via `onRejectIdentity` (telemetry, not a precondition).
  * Buttons are plain `<button>` inside `.fl-card__actions`, so the shell's
  * `.fl-shell button` rule (min 44px) applies without bespoke CSS.
+ *
+ * Light-review fix (PR #4195, "a stale proposal can overwrite a later
+ * confirmed identity"): a persisted turn keeps the SAME proposal forever
+ * (`to-interaction.ts`'s own `persistedMeta` header), so a card from BEFORE a
+ * later, different confirm would otherwise still offer a live "Use its
+ * manuals" — clicking it would silently rewrite the notebook back to the
+ * earlier machine. Two independent layers close this:
+ *  - `part.priorOutcome` (adapter-computed from the notebook's CURRENT
+ *    confirmed identity, never the renderer's own guess) seeds `outcome`
+ *    terminal on mount, so a stale/settled card never shows live buttons in
+ *    the first place.
+ *  - Even if a live confirm somehow fires anyway (a race the adapter missed),
+ *    the server's own 409 `identity_already_confirmed` surfaces here as
+ *    `IdentityAlreadyConfirmedError` — a distinct TERMINAL outcome
+ *    ("superseded"), never the generic retryable "Could not confirm."
  */
 function IdentityProposalPart({
   part,
@@ -304,27 +320,40 @@ function IdentityProposalPart({
   readonly part: Extract<InteractionPart, { type: "identity_proposal" }>;
   readonly hooks?: HostHooks;
 }) {
-  const [outcome, setOutcome] = useState<"confirmed" | "rejected" | "failed" | null>(null);
+  const [outcome, setOutcome] = useState<"confirmed" | "rejected" | "failed" | "superseded" | null>(
+    part.priorOutcome === "confirmed" ? "confirmed" : part.priorOutcome === "superseded" ? "superseded" : null,
+  );
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ConfirmIdentityResult | null>(null);
+  // Set only on a LIVE 409 refusal (see header); the adapter-seeded
+  // "superseded" case above has no server message and falls back below.
+  const [refusal, setRefusal] = useState<string | null>(null);
   const proposal: IdentityProposal = {
     manufacturer: part.manufacturer,
     model: part.model,
     ...(part.catalogNumber ? { catalogNumber: part.catalogNumber } : {}),
   };
   const name = `${part.manufacturer} ${part.model}`;
-  // "confirmed"/"rejected" are terminal — the card has already told the truth
-  // and stays that way. "failed" is NOT terminal (Codex F2, MEDIUM): a
-  // transient network error must leave both actions in place so the
-  // technician can retry (or dismiss) instead of being stuck on a dead card.
-  const settled = outcome === "confirmed" || outcome === "rejected";
+  // "confirmed"/"rejected"/"superseded" are terminal — the card has already
+  // told the truth and stays that way. "failed" is NOT terminal (Codex F2,
+  // MEDIUM): a transient network error must leave both actions in place so
+  // the technician can retry (or dismiss) instead of being stuck on a dead
+  // card.
+  const settled = outcome === "confirmed" || outcome === "rejected" || outcome === "superseded";
   const confirm = () => {
     if (busy || settled || !hooks?.onConfirmIdentity) return;
     setBusy(true);
     hooks
       .onConfirmIdentity(proposal)
       .then((r) => { setResult(r); setOutcome("confirmed"); })
-      .catch(() => setOutcome("failed"))
+      .catch((err) => {
+        if (err instanceof IdentityAlreadyConfirmedError) {
+          setRefusal(err.message);
+          setOutcome("superseded");
+        } else {
+          setOutcome("failed");
+        }
+      })
       .finally(() => setBusy(false));
   };
   const reject = () => {
@@ -349,6 +378,8 @@ function IdentityProposalPart({
       </div>
     </> : outcome === "confirmed" ? <p role="status" className="fl-card__meta">
       {result?.message ?? (result?.manualReady ? "Confirmed — its manual is ready to answer from." : "Confirmed.")}
+    </p> : outcome === "superseded" ? <p role="status" className="fl-card__meta">
+      {refusal ?? "A different machine is now confirmed for this notebook."}
     </p> : <p className="fl-card__meta">Not this machine.</p>}
   </Card>;
 }

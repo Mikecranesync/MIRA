@@ -212,6 +212,26 @@ describe("metaFor — identity is server-owned", () => {
   it("unbound notebook → no asset, not confirmed", () => {
     expect(metaFor(nb(), sel, null, "T")).toMatchObject({ asset: null, identityConfirmed: false });
   });
+
+  // Light-review fix (PR #4195): `confirmedIdentity` tracks identityStatus +
+  // manufacturer/model DIRECTLY — independent of the asset-binding gate
+  // `identityConfirmed` uses above. The #4120 identity_proposal confirm
+  // route never creates an asset binding, so `nb()`'s default (user_confirmed,
+  // asset: null) is the realistic shape that field must still cover.
+  it("confirmedIdentity reflects identityStatus+manufacturer/model regardless of asset binding", () => {
+    expect(metaFor(nb(), sel, null, "T")).toMatchObject({
+      identityConfirmed: false,
+      confirmedIdentity: { manufacturer: "Automation Direct", model: "GS10" },
+    });
+    expect(metaFor(nb({ identityStatus: "verified" }), sel, null, "T").confirmedIdentity)
+      .toEqual({ manufacturer: "Automation Direct", model: "GS10" });
+  });
+
+  it("confirmedIdentity is null when the identity isn't settled, or manufacturer/model is missing", () => {
+    expect(metaFor(nb({ identityStatus: "candidate" }), sel, null, "T").confirmedIdentity).toBeNull();
+    expect(metaFor(nb({ identityStatus: "unknown" }), sel, null, "T").confirmedIdentity).toBeNull();
+    expect(metaFor(nb({ manufacturer: null, model: null }), sel, null, "T").confirmedIdentity).toBeNull();
+  });
 });
 
 describe("enabledDocIds / historyRows / groundingLineFor", () => {

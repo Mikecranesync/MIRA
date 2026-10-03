@@ -27,6 +27,7 @@ import type {
   ManualSearchStatus,
   SourceReference,
 } from "../../../packages/factorylm-interaction/src";
+import { sameManufacturerModel } from "../../../packages/factorylm-interaction/src";
 import type {
   EvidenceCitation,
   MachineEvidenceEntry,
@@ -54,6 +55,17 @@ export interface HubNotebookMeta {
   readonly asset?: { readonly id: string; readonly name: string; readonly unsPath?: string | null } | null;
   /** `identityStatus === "user_confirmed" | "verified"` AND `asset.confirmedAt` set — never inferred client-side. */
   readonly identityConfirmed: boolean;
+  /**
+   * The notebook's CURRENT confirmed manufacturer+model — `identityStatus`
+   * `user_confirmed`/`verified`, regardless of `asset` BINDING (a separate
+   * concept `identity-proposal.ts`'s confirm route never creates;
+   * `identityConfirmed` above also requires that binding). Settles a
+   * persisted `identity_proposal` card that no longer matches the notebook's
+   * current identity (light-review fix, PR #4195) — never read for
+   * grounding/authorization, which stay `identityConfirmed`'s job. `null`/
+   * omitted: not (yet) confirmed.
+   */
+  readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
   /** One ISO timestamp per hydrate/turn; the caller passes it so tests stay deterministic. */
   readonly capturedAt: string;
 }
@@ -357,7 +369,16 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   // way — "the client offers 'Use its manuals' / 'Not this' on an abstained
   // turn too, not only an answered one") — never gated by `stopped`/`error`.
   const proposal = identityProposalOf(row.evidence);
-  if (proposal) parts.push({ type: "identity_proposal", ...proposal });
+  if (proposal) {
+    // Light-review fix (PR #4195): settle against the notebook's CURRENT
+    // confirmed identity — `meta` (not `persistedMeta`'s served-context
+    // variant used for `context` above), so a rebind AFTER this turn still
+    // settles it correctly, never the frozen context this turn was served
+    // with.
+    const current = meta.confirmedIdentity ?? null;
+    const priorOutcome = current ? (sameManufacturerModel(proposal, current) ? "confirmed" : "superseded") : undefined;
+    parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
+  }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
     if (row.basis) {

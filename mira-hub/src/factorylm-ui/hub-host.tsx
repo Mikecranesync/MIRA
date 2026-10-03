@@ -24,6 +24,7 @@ import {
   createShellState,
   shellReducer,
   type Attachment,
+  IdentityAlreadyConfirmedError,
   type ConfirmIdentityResult,
   type IdentityProposal,
   type InteractionPart,
@@ -675,8 +676,19 @@ export function HubShellHost() {
       body: JSON.stringify(body),
     });
     const data = (await res.json().catch(() => null)) as
-      | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown }
+      | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown; error?: unknown; manufacturer?: unknown; model?: unknown }
       | null;
+    // Light-review fix (PR #4195): a stale proposal card (or a race the
+    // adapter's own `priorOutcome` missed) can still try to confirm an
+    // identity the notebook has since moved past. The server's 409 names the
+    // CURRENT confirmed machine; relay it as a typed, `instanceof`-checkable
+    // error so the card renders a terminal refusal, never the generic
+    // retryable "Could not confirm."
+    if (res.status === 409 && data?.error === "identity_already_confirmed") {
+      const mfr = typeof data.manufacturer === "string" && data.manufacturer ? data.manufacturer : null;
+      const mdl = typeof data.model === "string" && data.model ? data.model : null;
+      throw new IdentityAlreadyConfirmedError(mfr && mdl ? `This machine is already confirmed as ${mfr} ${mdl}.` : undefined);
+    }
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
     // Codex #4195 round 2 F4 + round 3 F4: a confirm that STARTED a search is
     // followed the same way hydration is (F6) — seed the SAME driver, no

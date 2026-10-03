@@ -408,6 +408,38 @@ describe("identityProposalOf / turnsFromPersisted — the confirm card on reload
     const [, a] = turnsFromPersisted(row(), meta);
     expect(a.parts.some((p) => p.type === "identity_proposal")).toBe(false);
   });
+
+  // Light-review fix (PR #4195, "a stale proposal can overwrite a later
+  // confirmed identity"): the card must settle itself against the
+  // notebook's CURRENT confirmed identity (`meta.confirmedIdentity`), never
+  // leaving a live Confirm on a card from before a later, different confirm.
+  describe("priorOutcome — settled against the CURRENT confirmed identity", () => {
+    const confirmedSame = { ...meta, confirmedIdentity: { manufacturer: "smc", model: "ss5y3 duw01302" } };
+    const confirmedDifferent = { ...meta, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+
+    it("flags 'confirmed' when the notebook's CURRENT identity matches (case/punctuation-insensitive)", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), confirmedSame);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "confirmed" });
+    });
+
+    it("flags 'superseded' when the notebook is NOW confirmed to a DIFFERENT identity", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), confirmedDifferent);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "superseded" });
+    });
+
+    it("carries no priorOutcome when the notebook has no confirmed identity yet (today's live card)", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), meta);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+    });
+
+    it("uses the CURRENT notebook identity (`meta`), never the turn's served/frozen context", () => {
+      // The served machine_evidence context differs from the CURRENT confirmed
+      // identity; priorOutcome must follow the CURRENT identity regardless.
+      const served = { kind: "machine_evidence", assetId: "asset-uuid-OLD", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown" } as const;
+      const [, a] = turnsFromPersisted(row({ evidence: [citation, served, proposal] as unknown as PersistedTurn["evidence"] }), confirmedDifferent);
+      expect(a.parts).toContainEqual(expect.objectContaining({ type: "identity_proposal", priorOutcome: "superseded" }));
+    });
+  });
 });
 
 // Codex F6 (MEDIUM): the Hub never rendered manual_search_status at all.

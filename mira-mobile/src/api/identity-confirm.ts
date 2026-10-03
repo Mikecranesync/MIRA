@@ -11,7 +11,7 @@
  * promotion trigger. This file never guesses `manualReady` — it is the
  * server's own answer, relayed verbatim.
  */
-import type { ConfirmIdentityResult, IdentityProposal } from "@factorylm/interaction";
+import { IdentityAlreadyConfirmedError, type ConfirmIdentityResult, type IdentityProposal } from "@factorylm/interaction";
 import { request } from "./client";
 
 export async function confirmIdentityProposal(
@@ -20,10 +20,29 @@ export async function confirmIdentityProposal(
 ): Promise<ConfirmIdentityResult> {
   const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
   if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+  // Light-review fix (PR #4195): `request()` throws on any non-2xx by
+  // default (`errorFromStatus`, which keeps only the `error` string, not the
+  // manufacturer/model this 409's BODY also carries) — `acceptStatuses`
+  // returns it instead, same contract `uploadMultipartRequest` already uses
+  // for "a non-2xx whose body is the answer".
   const res = await request(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/identity/confirm/`, {
     method: "POST",
     json: body,
+    acceptStatuses: [409],
   });
+  // A stale proposal card (or a race the adapter's own `priorOutcome`
+  // missed) can still try to confirm an identity the notebook has since
+  // moved past. The server's 409 names the CURRENT confirmed machine; relay
+  // it as a typed, `instanceof`-checkable error so the card renders a
+  // terminal refusal, never the generic retryable failure below.
+  if (res.status === 409 && typeof res.data === "object" && res.data !== null) {
+    const refusal = res.data as { error?: unknown; manufacturer?: unknown; model?: unknown };
+    if (refusal.error === "identity_already_confirmed") {
+      const mfr = typeof refusal.manufacturer === "string" && refusal.manufacturer ? refusal.manufacturer : null;
+      const mdl = typeof refusal.model === "string" && refusal.model ? refusal.model : null;
+      throw new IdentityAlreadyConfirmedError(mfr && mdl ? `This machine is already confirmed as ${mfr} ${mdl}.` : undefined);
+    }
+  }
   const data = res.status === 200 && typeof res.data === "object" && res.data !== null
     ? (res.data as { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown })
     : null;

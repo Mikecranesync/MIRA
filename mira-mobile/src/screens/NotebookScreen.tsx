@@ -952,6 +952,17 @@ export function NotebookScreen({
                 }
               : null,
             identityConfirmed: notebook.identityStatus === "user_confirmed",
+            // Light-review fix (PR #4195): independent of the asset-binding-
+            // gated `identityConfirmed` above — the #4120 identity_proposal
+            // confirm route settles manufacturer/model/identityStatus
+            // directly and never binds an asset, so a stale proposal card
+            // needs this field even when `identityConfirmed` is false.
+            confirmedIdentity:
+              (notebook.identityStatus === "user_confirmed" || notebook.identityStatus === "verified") &&
+              notebook.manufacturer &&
+              notebook.model
+                ? { manufacturer: notebook.manufacturer, model: notebook.model }
+                : null,
           }}
         />
       )}

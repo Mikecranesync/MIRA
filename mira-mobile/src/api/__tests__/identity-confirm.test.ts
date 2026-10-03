@@ -4,6 +4,7 @@
 // Run: cd mira-mobile && bunx vitest run src/api/__tests__/identity-confirm
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("../client", async (importOriginal) => {
@@ -24,6 +25,7 @@ describe("confirmIdentityProposal", () => {
     expect(request).toHaveBeenCalledWith("/api/equipment-notebooks/nb-1/identity/confirm/", {
       method: "POST",
       json: { manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+      acceptStatuses: [409],
     });
     expect(result).toEqual({ manualReady: true, message: "Confirmed." });
   });
@@ -36,6 +38,7 @@ describe("confirmIdentityProposal", () => {
     expect(request).toHaveBeenCalledWith("/api/equipment-notebooks/nb-1/identity/confirm/", {
       method: "POST",
       json: { manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" },
+      acceptStatuses: [409],
     });
   });
 
@@ -74,5 +77,57 @@ describe("confirmIdentityProposal", () => {
 
     request.mockResolvedValue({ status: 200, data: { ok: false }, text: "" });
     await expect(confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" })).rejects.toThrow();
+  });
+
+  // Light-review fix (PR #4195): a stale proposal card confirmed after the
+  // notebook has since settled on a DIFFERENT identity.
+  describe("409 identity_already_confirmed — a typed, terminal refusal", () => {
+    it("throws IdentityAlreadyConfirmedError naming the CURRENT confirmed machine", async () => {
+      request.mockResolvedValue({
+        status: 409,
+        data: { error: "identity_already_confirmed", manufacturer: "Rockwell Automation", model: "PowerFlex 525" },
+        text: "",
+      });
+      await expect(confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" }))
+        .rejects.toThrow(IdentityAlreadyConfirmedError);
+      request.mockResolvedValue({
+        status: 409,
+        data: { error: "identity_already_confirmed", manufacturer: "Rockwell Automation", model: "PowerFlex 525" },
+        text: "",
+      });
+      await expect(confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" }))
+        .rejects.toThrow("This machine is already confirmed as Rockwell Automation PowerFlex 525.");
+    });
+
+    it("passes acceptStatuses:[409] so the transport returns the body instead of throwing a generic ApiError", async () => {
+      request.mockResolvedValue({
+        status: 409,
+        data: { error: "identity_already_confirmed", manufacturer: "Rockwell Automation", model: "PowerFlex 525" },
+        text: "",
+      });
+      await expect(confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" })).rejects.toThrow();
+      expect(request).toHaveBeenCalledWith("/api/equipment-notebooks/nb-1/identity/confirm/", expect.objectContaining({ acceptStatuses: [409] }));
+    });
+
+    it("falls back to a generic message when the 409 body omits manufacturer/model", async () => {
+      request.mockResolvedValue({ status: 409, data: { error: "identity_already_confirmed" }, text: "" });
+      await expect(confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" }))
+        .rejects.toThrow("This machine is already confirmed.");
+    });
+
+    // Control: a 409 with a DIFFERENT error code is the ordinary generic
+    // failure path, not the typed refusal — proves the check is keyed on the
+    // error string, not merely on the status code.
+    it("a 409 with a different error code stays the generic (non-typed) failure", async () => {
+      request.mockResolvedValue({ status: 409, data: { error: "some_other_conflict" }, text: "" });
+      let caught: unknown;
+      try {
+        await confirmIdentityProposal("nb-1", { manufacturer: "SMC", model: "X" });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeDefined();
+      expect(caught instanceof IdentityAlreadyConfirmedError).toBe(false);
+    });
   });
 });

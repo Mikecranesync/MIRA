@@ -179,6 +179,48 @@ describe("turns and thread", () => {
   });
 });
 
+// Light-review fix (PR #4195, "a stale proposal can overwrite a later
+// confirmed identity"): a persisted identity_proposal card must settle
+// itself against the notebook's CURRENT confirmed identity (`meta.
+// confirmedIdentity`), never offering a live Confirm when it's stale.
+describe("identity_proposal settling — stale-card guard (#4195)", () => {
+  const proposalMsg: AdapterMessage = {
+    id: "a1",
+    role: "assistant",
+    parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }],
+    lifecycle: "completed",
+    status: null,
+  };
+
+  it("flags priorOutcome:'confirmed' when the notebook's CURRENT identity matches (case/punctuation-insensitive)", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "smc", model: "ss5y3 duw01302" } };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "confirmed" });
+  });
+
+  it("flags priorOutcome:'superseded' when the notebook is NOW confirmed to a DIFFERENT identity", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "superseded" });
+  });
+
+  it("carries no priorOutcome when the notebook has no confirmed identity yet (today's live card)", () => {
+    const meta = { ...META, confirmedIdentity: null };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("leaves every other part type untouched", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+    const turn = toTurn(messages0WithBasis(), meta);
+    expect(turn.parts[0]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Cited from the manual", authorized: false } });
+  });
+
+  function messages0WithBasis(): AdapterMessage {
+    return { id: "b1", role: "assistant", parts: [{ type: "basis", basis: "oem_documentation", label: "Cited from the manual" }], lifecycle: "completed", status: null };
+  }
+});
+
 // Codex F4 (#4189): "Searching…" must resolve once the background search
 // settles, even though NotebookScreen (frozen) keeps a completed turn's
 // parts verbatim in `liveTurns` forever. `UnifiedChat`'s bounded re-check

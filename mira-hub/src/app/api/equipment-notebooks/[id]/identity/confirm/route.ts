@@ -98,6 +98,66 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   }
 
+  // Stale-proposal guard (light-review finding, PR #4195): a persisted
+  // `identity_proposal` card survives in a notebook's history even after a
+  // LATER, DIFFERENT identity is confirmed — `to-interaction.ts` deliberately
+  // never rewrites an old turn's parts (Codex #3839 P1, `persistedMeta`'s own
+  // header). Without this check, clicking that stale card's "Use its
+  // manuals" silently rewrites the notebook back to the earlier machine, and
+  // can re-fire migration 104's promotion/revocation trigger for it.
+  //
+  // "Already confirmed" mirrors the identical check already used elsewhere in
+  // this capability for the same reason (`nameplate-identity-adoption.ts`'s
+  // `isBlankUnboundNotebook`/`mayBeNameplateAdopted`, `hub-host-logic.ts`'s
+  // `confirmed`): identity_status is `user_confirmed` OR `verified` —
+  // migration 073's two settled states. `unknown`/`candidate` are not yet a
+  // settled identity, so the existing unconditional write below stays correct
+  // for them (including the very first confirm of a proposal — the common
+  // case).
+  //
+  // Confirming the SAME identity again must still succeed (an idempotent
+  // re-click, or a stale card that happens to still name the CURRENT
+  // machine) — this guard refuses ONLY a confirm that would REPLACE a
+  // settled identity with a DIFFERENT one. The comparison reuses
+  // `acquisitionKey`'s own normalization (manufacturer/model/catalogNumber,
+  // uppercased, punctuation stripped) rather than inventing a second one;
+  // `identityStatus` is forced to the literal `"user_confirmed"` on BOTH
+  // sides purely to satisfy that function's own precondition — this route
+  // has ALREADY established the notebook is confirmed, by whichever of the
+  // two settled values `acquisitionKey` doesn't itself distinguish.
+  //
+  // The deliberate, human-driven "change this notebook's identity" flow is
+  // the generic `PATCH /api/equipment-notebooks/[id]` (the notebook Settings
+  // edit) — unconditional today, exactly as every rebind that UI already
+  // performs, and this guard does not touch that route. "Not this" (reject)
+  // never writes here either (see the route header above), so it needs no
+  // change.
+  const alreadyConfirmed = notebook.identityStatus === "user_confirmed" || notebook.identityStatus === "verified";
+  if (alreadyConfirmed) {
+    const existingKey = acquisitionKey({
+      identityStatus: "user_confirmed",
+      manufacturer: notebook.manufacturer,
+      model: notebook.model,
+      catalogNumber: notebook.catalogNumber,
+    });
+    const incomingKey = acquisitionKey({
+      identityStatus: "user_confirmed",
+      manufacturer,
+      model,
+      catalogNumber,
+    });
+    if (existingKey !== null && incomingKey !== null && existingKey !== incomingKey) {
+      return NextResponse.json(
+        {
+          error: "identity_already_confirmed",
+          manufacturer: notebook.manufacturer,
+          model: notebook.model,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const ok = await updateNotebook(ctx.tenantId, notebookId, {
     manufacturer,
     model,

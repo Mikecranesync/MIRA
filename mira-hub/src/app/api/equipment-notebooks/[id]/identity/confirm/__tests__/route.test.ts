@@ -134,6 +134,85 @@ describe("POST identity/confirm", () => {
     expect(updateNotebook).not.toHaveBeenCalled();
   });
 
+  // Light-review finding (PR #4195): a stale persisted `identity_proposal`
+  // card must not silently overwrite a LATER, different confirmed identity.
+  describe("stale-proposal guard — a DIFFERENT confirmed identity refuses, the SAME one stays idempotent", () => {
+    it("409s and writes nothing when the notebook is ALREADY confirmed as a DIFFERENT machine", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        id: NB,
+        nodeId: "node-1",
+        asset: null,
+        identityStatus: "user_confirmed",
+        manufacturer: "Rockwell Automation",
+        model: "PowerFlex 525",
+        catalogNumber: "",
+      } as never);
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "identity_already_confirmed",
+        manufacturer: "Rockwell Automation",
+        model: "PowerFlex 525",
+      });
+      expect(updateNotebook).not.toHaveBeenCalled();
+      expect(listSources).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    });
+
+    it("409s the same way when identityStatus is 'verified' (migration 073's other settled state)", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        id: NB,
+        nodeId: "node-1",
+        asset: null,
+        identityStatus: "verified",
+        manufacturer: "Rockwell Automation",
+        model: "PowerFlex 525",
+        catalogNumber: "",
+      } as never);
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(res.status).toBe(409);
+      expect(updateNotebook).not.toHaveBeenCalled();
+    });
+
+    it("stays idempotent (200) when the SAME identity is confirmed again, case/punctuation-insensitively", async () => {
+      vi.mocked(getNotebook).mockResolvedValue({
+        id: NB,
+        nodeId: "node-1",
+        asset: null,
+        identityStatus: "user_confirmed",
+        manufacturer: "smc",
+        model: "ss5y3 duw01302",
+        catalogNumber: "",
+      } as never);
+      const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+      expect(res.status).toBe(200);
+      expect(updateNotebook).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }));
+    });
+
+    it("stays unconditional (200) when the notebook is not yet confirmed ('unknown'/'candidate') — today's first-confirm behavior", async () => {
+      for (const identityStatus of ["unknown", "candidate"] as const) {
+        vi.mocked(updateNotebook).mockClear();
+        vi.mocked(getNotebook).mockResolvedValue({
+          id: NB,
+          nodeId: "node-1",
+          asset: null,
+          identityStatus,
+          manufacturer: null,
+          model: null,
+          catalogNumber: null,
+        } as never);
+        const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
+        expect(res.status).toBe(200);
+        expect(updateNotebook).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("the 409 key reuses the real acquisitionKey contract (mutation check: a key collision across different identities would be a bug)", () => {
+      expect(acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" }))
+        .not.toBe(acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "Rockwell Automation", model: "PowerFlex 525", catalogNumber: "" }));
+    });
+  });
+
   it("confirms through updateNotebook with identity_status=user_confirmed, writing catalogNumber='' when absent", async () => {
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     expect(res.status).toBe(200);
