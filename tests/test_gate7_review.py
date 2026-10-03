@@ -36,6 +36,16 @@ from gate7_review import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _restore_diff_cap(monkeypatch):
+    """main() sets the module-global MAX_DIFF_CHARS for --paid / --diff-cap; one
+    test's cap must not leak into the next (it did: the free-lane truncation
+    test went red after any --paid main() test ran before it)."""
+    import gate7_review as _g7
+
+    monkeypatch.setattr(_g7, "MAX_DIFF_CHARS", _g7.MAX_DIFF_CHARS)
+
+
 # --- escalation: the doctrine's auto-xhigh list ----------------------------
 
 
@@ -750,8 +760,8 @@ PRICES = {
 
 
 def test_paid_estimate_is_worst_case_no_cache_full_output_cap():
-    # 40,000 chars ≈ 10,001 tokens in; the whole output cap out
-    est = g7.paid_estimate_usd("gpt-6.1-sol", 40_000, table=PRICES)
+    # 30,000 chars ≈ 10,001 tokens in at 3 chars/token; the whole output cap out
+    est = g7.paid_estimate_usd("gpt-6.1-sol", 30_000, table=PRICES)
     cap = g7.PAID_MAX_OUTPUT_TOKENS
     assert est == pytest.approx((10_001 * 2.0 + cap * 10.0) / 1e6, rel=1e-6)
 
@@ -760,9 +770,9 @@ def test_pick_paid_model_steps_down_the_ladder_to_stay_under_budget():
     assert g7.PAID_MAX_OUTPUT_TOKENS == 12_000  # the numbers below assume this cap
     assert g7.pick_paid_model(20_000, 0.20, table=PRICES) == "gpt-6.1-sol"  # ≈ $0.13
     assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol out: $0.12 output
-    assert g7.pick_paid_model(245_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.10 (#4182)
-    assert g7.pick_paid_model(600_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.17
-    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.16
+    assert g7.pick_paid_model(150_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.09
+    assert g7.pick_paid_model(245_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.12 at 3 c/t
+    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.21
     assert g7.PAID_LADDER[0] == "gpt-6.1-sol", "strongest model first"
 
 
@@ -1057,3 +1067,69 @@ def test_a_dotted_value_that_is_not_rooted_in_code_is_still_redacted(line, expec
     shaped like one leak. Only a call, or a path rooted in a known code object
     (os., self., settings., config., …), is treated as code."""
     assert redact(line) == expected
+
+
+# --- Codex round 1 on #4203 (F1–F4) + the paid-lane cutoff guard --------------
+
+
+def test_f1_a_quoted_literal_is_never_exempted_as_code():
+    """Codex F1: the code-root exemption also exempted QUOTED values. A string
+    literal is a literal whatever it spells."""
+    assert redact('api_key = "os.environ.secret.value"') == 'api_key = "[SECRET]"'
+    assert redact("token = 'settings.prod.token'") == "token = '[SECRET]'"
+    assert redact("api_key = config.openai_api_key") == "api_key = config.openai_api_key"
+
+
+def test_f2_a_length_truncated_completion_is_no_review_never_pass(monkeypatch):
+    """Codex F2: the output cap can cut a report after '## VERDICT PASS' and before
+    its findings; finish_reason=length means the review is incomplete."""
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 12000},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "length" in attempts[0]
+    assert usage["output_tokens"] == 12000  # still billed, still recorded
+
+
+def test_f3_the_worst_case_estimate_uses_three_chars_per_token():
+    """Codex F3: 4 chars/token is not a bound — #4202's diff measured 3.25."""
+    assert g7.PAID_CHARS_PER_TOKEN == 3
+    est = g7.paid_estimate_usd("gpt-5.4-mini", 30_000, table=PRICES)
+    assert est == pytest.approx((10_001 * 0.75 + g7.PAID_MAX_OUTPUT_TOKENS * 4.5) / 1e6)
+
+
+def test_f4_a_missing_fcntl_does_not_lose_the_ledger_row(tmp_path, monkeypatch):
+    """Codex F4: `import fcntl` fails on Windows and the paid review was lost."""
+    monkeypatch.setitem(sys.modules, "fcntl", None)  # ImportError on import
+    ledger = tmp_path / "c.jsonl"
+    g7.record_paid_run(ledger, {"kind": "run", "lane": "single-shot", "cost_usd": 0.01})
+    assert json.loads(ledger.read_text())["cost_usd"] == 0.01
+
+
+def test_f4_any_ledger_failure_is_loud_not_fatal(capsys):
+    def boom(*a):
+        raise RuntimeError("disk on fire")
+
+    g7._ledger_safely(boom, "x")
+    assert "LEDGER WRITE FAILED" in capsys.readouterr().err
+
+
+def test_the_paid_lane_refuses_an_oversized_diff_instead_of_truncating(tmp_path, monkeypatch):
+    """The cutoff guard: the paid lane never sends a fragment. Over the cap it
+    refuses with exit 4, names the largest files, spends nothing."""
+    big = "".join(f"+++ b/f{i}.py\n" + "+x\n" * 50_000 for i in range(3))  # ~300k chars
+    seen = _patch_main(monkeypatch, big, "## VERDICT\nPASS\n", {})
+    monkeypatch.setattr(
+        g7, "MAX_DIFF_CHARS", g7.MAX_DIFF_CHARS
+    )  # --diff-cap sets the module global
+    ledger = tmp_path / "c.jsonl"
+    rc = g7.main(["7", "--paid", "--diff-cap", "100000", "--ledger", str(ledger)])
+    assert rc == 4 and not seen and not ledger.exists()
+
+
+def test_the_free_lane_still_truncates_with_the_notice():
+    p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS + 5000), "high", [])
+    assert "TRUNCATION NOTICE" in p

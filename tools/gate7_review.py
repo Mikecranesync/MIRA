@@ -227,7 +227,9 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
             r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(])"
         ),
         lambda m: (
-            m.group(0) if _is_dotted_name(m.group(3)) else f"{m.group(1)}{m.group(2)}[SECRET]"
+            m.group(0)
+            if _is_dotted_name(m.group(3)) and not m.group(2).rstrip().endswith(('"', "'"))
+            else f"{m.group(1)}{m.group(2)}[SECRET]"
         ),
     ),
     # Connection strings with inline credentials.
@@ -809,6 +811,7 @@ PAID_ENV = "OPENAI_API_KEY"
 PAID_LADDER = ("gpt-6.1-sol", "gpt-5.4-mini", "gpt-6-luna")  # strongest first
 PAID_MAX_OUTPUT_TOKENS = 12000  # reasoning + visible report share this cap
 PAID_DIFF_CAP = 400_000  # the budget bounds it below this in practice
+PAID_CHARS_PER_TOKEN = 3  # worst case: #4202's diff measured 3.25, so 4 is not a bound (Codex F3)
 PAID_REASONING_EFFORT = "low"  # medium ate a 6k cap as hidden reasoning (live, 2026-10-03)
 _PRICES_FILE = Path(__file__).resolve().parent / "review_router" / "prices.json"
 
@@ -832,9 +835,9 @@ def paid_estimate_usd(
     max_output: int = PAID_MAX_OUTPUT_TOKENS,
     table: Optional[dict] = None,
 ) -> float:
-    """Worst case: no cache hit, the full output cap, ~4 chars per token."""
+    """Worst case: no cache hit, the full output cap, 3 chars per token."""
     usage = {
-        "input_tokens": prompt_chars // 4 + 1,
+        "input_tokens": prompt_chars // PAID_CHARS_PER_TOKEN + 1,
         "cached_input_tokens": 0,
         "output_tokens": max_output,
     }
@@ -894,7 +897,19 @@ def call_paid(
             (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
         ),
     }
-    content = (j.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    choice = (j.get("choices") or [{}])[0]
+    content = choice.get("message", {}).get("content") or ""
+    if choice.get("finish_reason") == "length":
+        # The output cap cut the report (Codex F2): whatever it says, it is
+        # incomplete — a PASS without its findings is not a PASS.
+        return (
+            None,
+            "",
+            [
+                f"openai ({model}): completion cut at the {max_output:,}-token cap (finish_reason=length)"
+            ],
+            usage,
+        )
     if not content.strip():
         return (
             None,
@@ -929,13 +944,29 @@ def default_ledger() -> Path:
     return (home / ".planning" / "review-costs.jsonl").resolve()
 
 
+def _locked(path: str):
+    """The router's flock on the ledger where fcntl exists; a no-op lock where it
+    does not (Windows — Codex F4), so a paid review is never lost to an import."""
+    import contextlib
+
+    try:
+        import fcntl
+    except ImportError:
+        return contextlib.nullcontext()
+
+    @contextlib.contextmanager
+    def _ctx():
+        with open(path, "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
+
+    return _ctx()
+
+
 def record_paid_run(ledger: Path, row: dict) -> None:
     """Append under the same lock the router uses for this file."""
-    import fcntl
-
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    with open(str(ledger) + ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with _locked(str(ledger) + ".lock"):
         with ledger.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
 
@@ -945,7 +976,7 @@ def _ledger_safely(what, *args) -> None:
     the failure is loud (stderr) so the spend gets recorded by hand."""
     try:
         what(*args)
-    except OSError as e:
+    except Exception as e:  # noqa: BLE001 — the review was paid for; never lose it
         print(f"Gate 7: LEDGER WRITE FAILED ({e}) — record this run by hand", file=sys.stderr)
 
 
@@ -1202,6 +1233,24 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"Gate 7: PR classified as {kind} — briefing the reviewer accordingly.", file=sys.stderr
         )
 
+    if a.paid and len(diff) > MAX_DIFF_CHARS:
+        # The cutoff guard: the paid lane never reviews a fragment. Refuse,
+        # name the heaviest files, and point at --paths; nothing is sent.
+        sizes: dict[str, int] = {}
+        cur = ""
+        for line in diff.splitlines(keepends=True):
+            if line.startswith("+++ b/"):
+                cur = line[6:].strip()
+            sizes[cur] = sizes.get(cur, 0) + len(line)
+        top = sorted(sizes.items(), key=lambda kv: -kv[1])[:5]
+        print(
+            f"Gate 7: REFUSED — {len(diff):,} diff chars exceed the {MAX_DIFF_CHARS:,} cap and the "
+            "paid lane never truncates. Split with --paths (one PASS per scope) or raise "
+            "--diff-cap. Heaviest files: "
+            + ", ".join(f"{p or '(header)'} ({n:,})" for p, n in top),
+            file=sys.stderr,
+        )
+        return 4
     prompt = build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind)
     usage: dict = {}
     model = ""
