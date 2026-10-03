@@ -18,7 +18,7 @@ Measured 2026-10-02/03 on PRs #4182, #4202, #4203. Companion to
 | Accounting | GitHub-backed round ledger (reservations, verdicts); dollar ledger via the router | Dollar ledger row per launched call, written after the verdict; failed calls charged at the estimate |
 | Durable record | `[CODEX-ADVERSARIAL-REVIEW]` comment, exact-SHA, counts rounds | `[CHEAP-REVIEW]` comment with head, verdict, model, cost, run id |
 | Rounds | Max 3 autonomous, then the owner | Unlimited; cents each |
-| Failure modes seen | Reservation consumed by a tooling crash (new head needed); the Codex binary moving under a ChatGPT update; the router's estimate floor compounding with its safety factor ($4.36 size-independent) | Reasoning eating the output cap (fixed: low effort, 12k cap); redaction placeholders reported as defects (fixed: redactor no longer rewrites identifiers); chars/token under-estimate (fixed: 3) |
+| Failure modes seen | Reservation consumed by a tooling crash (new head needed); the Codex binary moving under a ChatGPT update; the router's estimate floor compounding with its safety factor ($4.36 size-independent) | Reasoning eating the output cap (fixed: low effort, 12k cap); redaction placeholders reported as defects (fixed: redactor no longer rewrites identifiers); chars/token estimate was not a bound (fixed: tokenizer-with-margin or bytes) |
 
 ## Finding quality, head by head
 

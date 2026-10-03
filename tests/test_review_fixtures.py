@@ -152,3 +152,15 @@ def _load(root):
         expect = json.loads((d / "expect.json").read_text())
         cases.append({"name": d.name, "diff": (d / "diff.patch").read_text(), **expect})
     return cases
+
+
+def test_r2_f5_a_skipped_call_records_no_spend(tmp_path, monkeypatch):
+    """Codex r2 F5: without OPENAI_API_KEY every call is skipped, yet the live
+    provider charged the estimate as launched spend."""
+    monkeypatch.setattr(g7, "pick_paid_model", lambda chars, budget: "gpt-5.4-mini")
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai: skipped (no OPENAI_API_KEY)"], {})
+    )
+    ledger = tmp_path / "c.jsonl"
+    provider = rf.live_provider(0.10, ledger)
+    assert provider("PROMPT") is None and not ledger.exists()

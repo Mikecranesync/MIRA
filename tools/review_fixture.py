@@ -103,12 +103,14 @@ def live_provider(budget_usd: float, ledger: Path | None) -> Callable[[str], str
     import uuid
 
     def provider(prompt: str) -> str | None:
-        model = g7.pick_paid_model(len(prompt), budget_usd)
+        model = g7.pick_paid_model(prompt, budget_usd)
         if not model:
             return None
         result = g7.call_paid(prompt, model)
-        text, usage = result[0], result[3]
-        est = g7.paid_estimate_usd(model, len(prompt))
+        text, attempts, usage = result[0], result[2], result[3]
+        if attempts and attempts[0].startswith("openai: skipped"):
+            return None  # never launched (no key): nothing to record (Codex r2 F5)
+        est = g7.paid_estimate_usd(model, prompt)
         known = bool(usage) and any(usage.values())
         row = {
             "kind": "run",

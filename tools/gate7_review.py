@@ -224,12 +224,19 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
             # A value that runs on into `(` or more identifier characters is
             # code (`os.environ.get(...)`, `settings.token`), not an opaque
             # literal — five reviews reported the redaction itself as a bug.
-            r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(])"
+            # Quoted value: a literal, redacted whatever it contains (Codex r2 F1:
+            # a `(` inside the quotes used to look like a call). Unquoted value:
+            # an opaque token unless it runs into `(`/identifier chars or is a
+            # known-root attribute path — then it is code.
+            r"(\s*[:=]\s*)"
+            r"(?:([\"'])([^\"'\r\n]{12,})\3|([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(]))"
         ),
         lambda m: (
-            m.group(0)
-            if _is_dotted_name(m.group(3)) and not m.group(2).rstrip().endswith(('"', "'"))
-            else f"{m.group(1)}{m.group(2)}[SECRET]"
+            f"{m.group(1)}{m.group(2)}{m.group(3)}[SECRET]{m.group(3)}"
+            if m.group(4) is not None
+            else (
+                m.group(0) if _is_dotted_name(m.group(5)) else f"{m.group(1)}{m.group(2)}[SECRET]"
+            )
         ),
     ),
     # Connection strings with inline credentials.
@@ -811,7 +818,24 @@ PAID_ENV = "OPENAI_API_KEY"
 PAID_LADDER = ("gpt-6.1-sol", "gpt-5.4-mini", "gpt-6-luna")  # strongest first
 PAID_MAX_OUTPUT_TOKENS = 12000  # reasoning + visible report share this cap
 PAID_DIFF_CAP = 400_000  # the budget bounds it below this in practice
-PAID_CHARS_PER_TOKEN = 3  # worst case: #4202's diff measured 3.25, so 4 is not a bound (Codex F3)
+try:  # optional: a real tokenizer tightens the bound; absent, bytes bound tokens
+    import tiktoken as _tiktoken
+
+    _TOKENIZER = _tiktoken.get_encoding("o200k_base")
+except Exception:  # noqa: BLE001 — not installed, not declared; the byte bound applies
+    _TOKENIZER = None
+_TOKENIZER_MARGIN = 1.2  # the model's own tokenizer may differ from o200k
+
+
+def prompt_token_bound(text: str) -> int:
+    """An UPPER bound on the tokens `text` costs (Codex r2 F3: a chars/token
+    average is not a bound). With a tokenizer: its count with a margin. Without:
+    every UTF-8 byte is a token — true, since a token is at least one byte."""
+    if _TOKENIZER is not None:
+        return int(len(_TOKENIZER.encode(text)) * _TOKENIZER_MARGIN) + 1
+    return len(text.encode("utf-8")) + 1
+
+
 PAID_REASONING_EFFORT = "low"  # medium ate a 6k cap as hidden reasoning (live, 2026-10-03)
 _PRICES_FILE = Path(__file__).resolve().parent / "review_router" / "prices.json"
 
@@ -831,28 +855,26 @@ def paid_cost_usd(model: str, usage: dict, table: Optional[dict] = None) -> floa
 
 def paid_estimate_usd(
     model: str,
-    prompt_chars: int,
+    prompt: "str | int",
     max_output: int = PAID_MAX_OUTPUT_TOKENS,
     table: Optional[dict] = None,
 ) -> float:
-    """Worst case: no cache hit, the full output cap, 3 chars per token."""
-    usage = {
-        "input_tokens": prompt_chars // PAID_CHARS_PER_TOKEN + 1,
-        "cached_input_tokens": 0,
-        "output_tokens": max_output,
-    }
+    """Worst case: no cache hit, the full output cap, and the token BOUND of the
+    prompt (a str; an int is taken as an already-bounded token count)."""
+    tokens = prompt_token_bound(prompt) if isinstance(prompt, str) else int(prompt)
+    usage = {"input_tokens": tokens, "cached_input_tokens": 0, "output_tokens": max_output}
     return paid_cost_usd(model, usage, table)
 
 
 def pick_paid_model(
-    prompt_chars: int,
+    prompt: "str | int",
     budget_usd: float,
     ladder: tuple[str, ...] = PAID_LADDER,
     table: Optional[dict] = None,
 ) -> Optional[str]:
     """The strongest model whose worst-case estimate fits the budget; None if none does."""
     for model in ladder:
-        if paid_estimate_usd(model, prompt_chars, table=table) <= budget_usd:
+        if paid_estimate_usd(model, prompt, table=table) <= budget_usd:
             return model
     return None
 
@@ -899,15 +921,15 @@ def call_paid(
     }
     choice = (j.get("choices") or [{}])[0]
     content = choice.get("message", {}).get("content") or ""
-    if choice.get("finish_reason") == "length":
-        # The output cap cut the report (Codex F2): whatever it says, it is
-        # incomplete — a PASS without its findings is not a PASS.
+    reason = choice.get("finish_reason")
+    if reason not in (None, "stop"):
+        # Anything but a clean stop — the output cap (length), a content
+        # filter, a tool call — leaves the report incomplete (Codex F2 / r2 F2):
+        # a PASS without its findings is not a PASS. Billed and recorded.
         return (
             None,
             "",
-            [
-                f"openai ({model}): completion cut at the {max_output:,}-token cap (finish_reason=length)"
-            ],
+            [f"openai ({model}): completion did not stop cleanly (finish_reason={reason})"],
             usage,
         )
     if not content.strip():
@@ -1255,17 +1277,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     usage: dict = {}
     model = ""
     if a.paid:
-        model = pick_paid_model(len(prompt), a.budget_usd) or ""
+        model = pick_paid_model(prompt, a.budget_usd) or ""
         if not model:
             print(
                 f"Gate 7: REFUSED — no model in {PAID_LADDER} fits ${a.budget_usd:.2f} for a "
-                f"{len(prompt):,}-char brief; nothing was sent or spent.",
+                f"{len(prompt):,}-char brief (token bound {prompt_token_bound(prompt):,}); "
+                "nothing was sent or spent.",
                 file=sys.stderr,
             )
             return 3
         print(
             f"Gate 7: single-shot paid lane · {model} · worst-case "
-            f"${paid_estimate_usd(model, len(prompt)):.4f} ≤ ${a.budget_usd:.2f}",
+            f"${paid_estimate_usd(model, prompt):.4f} ≤ ${a.budget_usd:.2f} "
+            f"(token bound {prompt_token_bound(prompt):,}, "
+            f"{'tokenizer' if _TOKENIZER is not None else 'bytes'})",
             file=sys.stderr,
         )
         text, provider, attempts, usage = call_paid(prompt, model)
@@ -1281,7 +1306,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         # known (no append-then-stamp window). A launched call with no usage
         # (timeout, 5xx, empty completion without a usage block) is charged its
         # worst-case estimate and marked usage_unknown — never an unproven zero.
-        est = paid_estimate_usd(model, len(prompt))
+        est = paid_estimate_usd(model, prompt)
         known = bool(usage) and any(usage.values())
         cost = paid_cost_usd(model, usage) if known else est
         return {
@@ -1343,8 +1368,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"head: {head_sha}\nverdict: {review.verdict}\nmodel: {model}\n"
             f"cost_usd: {cost:.4f}\nrun_id: {run_id}\n```\n\n" + report
         )
-        url = _gh_text(["pr", "comment", str(a.pr), "--body-file", "-"], stdin=body)
-        print(f"Gate 7: posted {url}", file=sys.stderr)
+        try:
+            url = _gh_text(["pr", "comment", str(a.pr), "--body-file", "-"], stdin=body)
+            print(f"Gate 7: posted {url}", file=sys.stderr)
+        except (subprocess.CalledProcessError, OSError) as e:
+            # The review is paid for and rendered; a transient gh failure must
+            # not turn it into a crash. Say so loudly; the report is on disk.
+            print(
+                f"Gate 7: POST FAILED ({e}) — report kept at {a.out or 'stdout'}", file=sys.stderr
+            )
     return 0
 
 

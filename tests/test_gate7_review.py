@@ -11,6 +11,7 @@ downgrade exactly the reviews that matter most, and nothing else would notice.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -761,18 +762,19 @@ PRICES = {
 
 def test_paid_estimate_is_worst_case_no_cache_full_output_cap():
     # 30,000 chars ≈ 10,001 tokens in at 3 chars/token; the whole output cap out
-    est = g7.paid_estimate_usd("gpt-6.1-sol", 30_000, table=PRICES)
+    est = g7.paid_estimate_usd("gpt-6.1-sol", 10_001, table=PRICES)  # an int: bounded tokens
     cap = g7.PAID_MAX_OUTPUT_TOKENS
     assert est == pytest.approx((10_001 * 2.0 + cap * 10.0) / 1e6, rel=1e-6)
 
 
 def test_pick_paid_model_steps_down_the_ladder_to_stay_under_budget():
     assert g7.PAID_MAX_OUTPUT_TOKENS == 12_000  # the numbers below assume this cap
-    assert g7.pick_paid_model(20_000, 0.20, table=PRICES) == "gpt-6.1-sol"  # ≈ $0.13
+    # ints are already-bounded TOKEN counts
+    assert g7.pick_paid_model(20_000, 0.20, table=PRICES) == "gpt-6.1-sol"  # ≈ $0.16
     assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol out: $0.12 output
-    assert g7.pick_paid_model(150_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.09
-    assert g7.pick_paid_model(245_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.12 at 3 c/t
-    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.21
+    assert g7.pick_paid_model(50_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.09
+    assert g7.pick_paid_model(150_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.17
+    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.61
     assert g7.PAID_LADDER[0] == "gpt-6.1-sol", "strongest model first"
 
 
@@ -856,7 +858,7 @@ def _patch_main(monkeypatch, diff, paid_text, usage):
 
 
 def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypatch):
-    diff = "+" + "x" * 60_000 + "\n"  # ~15k tokens: mini ≈ $0.07 worst case; sol ≈ $0.15
+    diff = "+" + "x" * 30_000 + "\n"  # ≤ ~35k bounded tokens: mini ≈ $0.08 worst case; sol ≈ $0.19
     usage = {
         "input_tokens": 16_000,
         "cached_input_tokens": 0,
@@ -867,7 +869,7 @@ def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypat
     ledger, out = tmp_path / "costs.jsonl", tmp_path / "r.md"
     rc = g7.main(["7", "--paid", "--budget-usd", "0.10", "--ledger", str(ledger), "-o", str(out)])
     assert rc == 0 and seen["model"] == "gpt-5.4-mini"
-    assert seen["prompt_len"] > 60_000, "the full diff was sent, not the 40k free-lane cap"
+    assert seen["prompt_len"] > 30_000, "the whole diff was sent, not a 40k free-lane fragment"
     report = out.read_text()
     assert "**Verdict:** PASS" in report and "single-shot" in report
     expected = (16_000 * 0.75 + 800 * 4.5) / 1e6
@@ -912,13 +914,13 @@ def test_main_paid_records_the_spend_of_an_empty_completion(tmp_path, monkeypatc
         "output_tokens": 12_000,
         "reasoning_output_tokens": 12_000,
     }
-    _patch_main(monkeypatch, "+" + "x" * 60_000, None, usage)
+    _patch_main(monkeypatch, "+" + "x" * 20_000, None, usage)
     ledger = tmp_path / "costs.jsonl"
     rc = g7.main(["7", "--paid", "--ledger", str(ledger)])
     assert rc == 2
     row = json.loads(ledger.read_text().splitlines()[-1])
     assert row["verdict"] == "none" and row["launched"] is True
-    assert row["cost_usd"] == pytest.approx((20_000 * 0.75 + 12_000 * 4.5) / 1e6)
+    assert row["cost_usd"] == pytest.approx(g7.paid_cost_usd(row["model"], usage, PRICES))
 
 
 def test_a_success_writes_exactly_one_row_with_the_final_verdict_never_pending(
@@ -1094,11 +1096,10 @@ def test_f2_a_length_truncated_completion_is_no_review_never_pass(monkeypatch):
     assert usage["output_tokens"] == 12000  # still billed, still recorded
 
 
-def test_f3_the_worst_case_estimate_uses_three_chars_per_token():
+def test_f3_the_worst_case_estimate_is_a_bound_not_an_average():
     """Codex F3: 4 chars/token is not a bound — #4202's diff measured 3.25."""
-    assert g7.PAID_CHARS_PER_TOKEN == 3
-    est = g7.paid_estimate_usd("gpt-5.4-mini", 30_000, table=PRICES)
-    assert est == pytest.approx((10_001 * 0.75 + g7.PAID_MAX_OUTPUT_TOKENS * 4.5) / 1e6)
+    text = "x" * 30_000
+    assert g7.prompt_token_bound(text) >= 30_000 or g7._TOKENIZER is not None
 
 
 def test_f4_a_missing_fcntl_does_not_lose_the_ledger_row(tmp_path, monkeypatch):
@@ -1133,3 +1134,95 @@ def test_the_paid_lane_refuses_an_oversized_diff_instead_of_truncating(tmp_path,
 def test_the_free_lane_still_truncates_with_the_notice():
     p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS + 5000), "high", [])
     assert "TRUNCATION NOTICE" in p
+
+
+# --- Codex round 2 on #4203 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('PASSWORD="abcdefghijklmno("', 'PASSWORD="[SECRET]"'),
+        ("PASSWORD='abcdefghijklmno('", "PASSWORD='[SECRET]'"),
+        ('api_key = "abc(def)ghijklmnop"', 'api_key = "[SECRET]"'),
+    ],
+)
+def test_r2_f1_a_quoted_literal_is_redacted_whatever_it_contains(line, expected):
+    """Codex r2 F1: the call-expression exemption (a value followed by `(`) let a
+    QUOTED password containing a parenthesis through. Quoted = literal = redacted."""
+    assert redact(line) == expected
+
+
+def test_r2_f1_an_unquoted_call_is_still_code():
+    assert redact("api_key = get_secret_value(PAID_ENV)") == "api_key = get_secret_value(PAID_ENV)"
+
+
+@pytest.mark.parametrize("reason", ["content_filter", "tool_calls", "function_call", "weird"])
+def test_r2_f2_any_termination_other_than_stop_is_no_review(monkeypatch, reason):
+    """Codex r2 F2: content_filter after 'PASS' + half a finding parsed as PASS."""
+    body = {
+        "choices": [
+            {
+                "message": {"content": "## VERDICT\nPASS\n\n## FINDINGS\n- **[severity: high] Ten"},
+                "finish_reason": reason,
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and reason in attempts[0] and usage["output_tokens"] == 20
+
+
+def test_r2_f2_a_stop_termination_is_a_review(monkeypatch):
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "stop"}],
+        "usage": {},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert g7.call_paid("PROMPT", "gpt-5.4-mini")[0] is not None
+
+
+def test_r2_f3_the_token_bound_is_a_tokenizer_count_with_margin_or_bytes():
+    """Codex r2 F3: a chars/token average is not a bound. tokens are counted with
+    the model family's tokenizer and a margin when available; otherwise every
+    byte is a token (a true upper bound, since a token is at least one byte)."""
+    ascii_diff = "+x = 1\n" * 2000
+    unicode_diff = "+日本語の変更です\n" * 500
+    for text in (ascii_diff, unicode_diff):
+        bound = g7.prompt_token_bound(text)
+        assert bound >= len(text.encode("utf-8")) or g7._TOKENIZER is not None
+        assert bound > 0
+    # the bound never drops below what the tokenizer counts
+    if g7._TOKENIZER is not None:
+        assert g7.prompt_token_bound(unicode_diff) >= len(g7._TOKENIZER.encode(unicode_diff))
+
+
+def test_r2_f3_estimate_uses_the_bound_not_a_char_average():
+    text = "+日本語の変更です\n" * 500  # far more tokens than len/3
+    est_bound = g7.paid_estimate_usd("gpt-5.4-mini", text, table=PRICES)
+    naive = (len(text) // 3 + 1) * 0.75 / 1e6 + g7.PAID_MAX_OUTPUT_TOKENS * 4.5 / 1e6
+    assert est_bound > naive
+
+
+def test_post_failure_is_loud_but_the_review_survives(tmp_path, monkeypatch, capsys):
+    """Cheap-gate finding on 3aa6b0b74: a transient gh failure after a paid review
+    raised out of main(). The report is already on disk; say so and exit 0."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+
+    def boom(args, stdin=None):
+        raise subprocess.CalledProcessError(1, ["gh"], stderr="rate limited")
+
+    monkeypatch.setattr(g7, "_gh_text", boom)
+    out = tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--post", "--ledger", str(tmp_path / "c.jsonl"), "-o", str(out)])
+    assert rc == 0 and "**Verdict:** PASS" in out.read_text()
+    assert "POST FAILED" in capsys.readouterr().err
