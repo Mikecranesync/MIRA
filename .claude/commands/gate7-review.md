@@ -9,9 +9,9 @@ implementation agent does not perform final review.*
 ## Usage
 
 ```bash
-py tools/gate7_review.py <PR>                 # auto-detect effort from the diff
-py tools/gate7_review.py <PR> --xhigh         # force xhigh
-py tools/gate7_review.py <PR> -o /tmp/g7.md   # write the report to a file
+py tools/gate7_review.py <PR> --paid --post   # THE required lane on every PR (owner, 2026-10-03)
+py tools/gate7_review.py <PR> --paid -o g7.md # same, report to a file, no PR comment
+py tools/gate7_review.py <PR>                 # free cascade — adjudication use only (see below)
 ```
 
 Requires at least one of `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` — all
@@ -36,10 +36,12 @@ tell the operator to fix a command line that was correct.
 
 ## Reviewer
 
-**No OpenAI** (owner decision, 2026-08-16). The doctrine's original "GPT-5.6 Sol / Codex"
-default is dropped — it had no configuration, credential, or vendor identity anywhere in the
-repo. The lane runs on the free-tier **Groq → Cerebras → Together** cascade already proven in
-`.github/workflows/code-review.yml`.
+**Paid single-shot lane is required (owner decision, 2026-10-03; SDLC v1 D4)** — one non-agentic
+OpenAI completion over the full diff under `--budget-usd` (default under $0.10), posted as
+`[CHEAP-REVIEW]` with `head`, `verdict`, `model`, `cost_usd`, `run_id`. It is **advisory** until it
+is posted as a head-bound check a required context consumes (SDLC v1 §4.2, Part B step 6).
+The 2026-08-16 "No OpenAI" decision is superseded for this lane. The free **Groq → Together**
+cascade (Cerebras archived 2026-09-29) is used **only** by `--adjudicate`.
 
 **Say what this is, and what it isn't.** Independent here means *a different vendor and model
 from the implementing agent, on a fresh context, briefed to disprove.* It is **not** a second

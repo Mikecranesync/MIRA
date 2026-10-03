@@ -90,7 +90,8 @@ gh run watch <RUN_ID>
 ```
 
 Review the dry-run output in the Actions log. It prints each SQL statement without
-executing. When satisfied:
+executing it (the only statement a dry-run executes is the idempotent `schema_migrations` ledger
+`CREATE TABLE IF NOT EXISTS`). When satisfied:
 
 ```bash
 # Apply to staging

@@ -31,7 +31,8 @@ on:
         default: true
 
 permissions:
-  contents: write    # for nightly audit commits to docs/audits/
+  contents: read     # the nightly direct push to main was removed (SDLC v1 §11.1); reports ship as artifacts
+  actions: read      # restore the previous nightly audit artifact as the regression baseline
   pull-requests: write
 
 concurrency:
@@ -117,6 +118,31 @@ jobs:
         run: |
           bun install --frozen-lockfile --ignore-scripts
           npx playwright install --with-deps chromium
+      - name: Restore the newest nightly audit as the regression baseline (artifact, no commit)
+        # hub-page-audit.spec.ts compares against readPreviousScore(), which reads
+        # docs/audits/*.md from the checkout. The nightly commit-and-push that used
+        # to advance that baseline is gone (SDLC v1 §11.1: no direct push to main),
+        # so restore the newest successful scheduled run's report artifact instead.
+        # A fresh repo (no prior artifact) falls back to the committed files. Runs for
+        # every event that runs the audit (schedule, pull_request, dispatch) — Codex
+        # round 2 on PR #4211: a PR audit compared against the stale committed
+        # baseline otherwise. The baseline is always the newest SCHEDULED run's report
+        # (the trusted nightly against production), never another PR's.
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          restored=0
+          for id in $(gh run list --workflow enforcement-audit.yml --event schedule --status success \
+                        --limit 5 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$id" -n "hub-audit-$id" -D docs/audits >/dev/null 2>&1; then
+              echo "baseline restored from run $id: $(find docs/audits -name '*.md' | wc -l) report(s) present"
+              restored=1
+              break
+            fi
+          done
+          [ "$restored" = 1 ] || echo "::notice::no previous nightly audit artifact found; using the committed docs/audits baseline"
       - name: Run audit
         env:
           HUB_URL: ${{ vars.ENFORCEMENT_HUB_URL || 'https://app.factorylm.com/hub' }}
@@ -128,16 +154,3 @@ jobs:
           name: hub-audit-${{ github.run_id }}
           path: docs/audits/*.md
           if-no-files-found: ignore
-      - name: Commit nightly audit (cron only)
-        if: github.event_name == 'schedule'
-        run: |
-          cd ..
-          git config user.name "factorylm-bot"
-          git config user.email "bot@factorylm.com"
-          if [ -n "$(git status --porcelain docs/audits/)" ]; then
-            git add docs/audits/
-            git commit -m "chore(audits): nightly hub audit $(date -u +%Y-%m-%d)"
-            git push origin HEAD:main || echo "nightly audit push failed (non-fatal)"
-          else
-            echo "no audit changes to commit"
-          fi

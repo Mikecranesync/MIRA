@@ -292,7 +292,7 @@ jobs:
             done < .migration_plan
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dry-run — show statements only (no execution)
+      - name: Dry-run — show statements only (executes nothing beyond the schema_migrations ledger CREATE TABLE IF NOT EXISTS above)
         if: inputs.mode == 'dry-run'
         run: |
           set -euo pipefail
