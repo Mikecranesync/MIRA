@@ -331,9 +331,11 @@ def test_prod_guard_covers_ovh_production_host(command, should_deny):
 # from a code session") had no enforcer until SDLC v1 step 2: prod-guard only knew
 # SSH hosts. The prod compute endpoint is `ep-purple-hall-ahimeyn0` (factorylm/prd);
 # staging/dev are on other endpoints. Either a libpq URL carrying that endpoint, or a
-# SQL client *invoked* (command start / after `--` / after a postgres image) together
-# with the endpoint or a Doppler `prd` config, denies. Reading a secret value,
-# mentioning the endpoint or client in prose/grep, and staging/dev SQL stay allowed.
+# SQL client verb ANYWHERE together with the endpoint or a Doppler `prd` config,
+# denies — unanchored on purpose, so wrapper shells (`bash -lc`, `sh -c`,
+# `python3 -c`) cannot carry the client past the guard (cheap-lane finding on
+# PR #4211). Reading a secret value, mentioning the client in prose without a prod
+# signal, and staging/dev SQL stay allowed.
 # Tokens are split so this file's own text does not trip the guard while being
 # written or grepped (same trick as `_D`/`_C` above).
 _EP = "ep-purple-" + "hall-ahimeyn0"
@@ -354,6 +356,14 @@ _PGURL = "postgres" + "ql://"
         (f'doppler run --project factorylm --config {_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
         (f'doppler run -p factorylm -c {_PRD} -- {_DUMP} "$NEON_DATABASE_URL" > dump.sql', True),
         (f'{_SQL} "host={_EP}.us-east-1.aws.neon.tech dbname=neondb"', True),
+        # wrapper shells must not carry the client past the guard
+        (f"doppler run -c {_PRD} -- bash -lc '{_SQL} \"$NEON_DATABASE_URL\"'", True),
+        (f'doppler run --config {_PRD} -- sh -c "{_DUMP} $NEON_DATABASE_URL > d.sql"', True),
+        (
+            f"doppler run -c {_PRD} -- python3 -c \"import subprocess; subprocess.run(['{_SQL}', '-c', 'select 1'])\"",
+            True,
+        ),
+        (f"docker run --rm postgres:16 bash -lc '{_SQL} host={_EP}.neon.tech'", True),
         # allowed: reading the secret, prose, grep, and non-prod configs
         (
             f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
@@ -362,7 +372,8 @@ _PGURL = "postgres" + "ql://"
         (f"grep -rn {_EP} docs/", False),
         (f'doppler run -p factorylm -c stg -- {_SQL} "$NEON_DATABASE_URL"', False),
         (f'doppler run -p factorylm -c dev -- {_SQL} "$NEON_DATABASE_URL"', False),
-        (f'git commit -m "{_SQL} recipe for the {_PRD} ledger ({_EP})"', False),
+        (f'git commit -m "{_SQL} recipe for the {_PRD} ledger"', False),
+        (f'git commit -m "document the {_EP} endpoint and the staging twin"', False),
         (f"doppler run -c {_PRD} -- {_D} ps", False),
     ],
 )

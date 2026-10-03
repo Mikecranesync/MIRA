@@ -100,18 +100,22 @@ PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120
 #   (a) a libpq URL carrying the prod endpoint anywhere in the command — a
 #       connection string is a connection attempt, whatever client wraps it
 #       (`docker run … postgres:16 psql "$URL"`, `node -e … new Client(url)`);
-#   (b) a SQL client INVOKED (command position, after a `--` separator as in
-#       `doppler run -c prd -- psql …`, or right after a `postgres…` image as in
-#       `docker run … postgres:16 psql …`) together with the prod endpoint OR a
-#       Doppler `prd` config in the same command.
+#   (b) a SQL client verb ANYWHERE in the command together with the prod endpoint
+#       OR a Doppler `prd` config in the same command.
+# (b) is deliberately UNANCHORED, like MUTATION below and unlike CMDSTART: the
+# gate here is the prod-specific signal (endpoint / `prd` config), and once that
+# is present the verb must be caught wherever a wrapper puts it —
+# `doppler run -c prd -- bash -lc 'psql "$URL"'`, `sh -c "pg_dump …"`,
+# `python3 -c "subprocess.run(['psql', …])"`. An invocation-position anchor was
+# tried first and let every one of those through (cheap-lane finding, PR #4211).
+# The cost is one rare false positive — prose that quotes a SQL client AND names
+# the prod endpoint or a `--config prd` in the same command — which fails closed
+# with the MIRA_ALLOW_PROD=1 override, the correct direction for hard rule #1.
 # `doppler secrets get … --config prd` without a SQL client is NOT matched —
 # reading a secret value is standing-authorized; connecting with it is not.
-# Mentioning the endpoint or a client name in prose/grep/commit messages is not
-# matched: the client verb must sit at an invocation position (same reasoning as
-# CMDSTART below — a guard that fires on commit messages gets switched off).
 NEON_PROD_ENDPOINT='ep-purple-hall-ahimeyn0'
 NEON_PROD_URL='postgres(ql)?://[^[:space:]"'"'"']*'"$NEON_PROD_ENDPOINT"
-SQL_CLIENT='(^|[;&(]|--|postgres[^[:space:]]*)[[:space:]]+(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b|^(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
+SQL_CLIENT='\b(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
 DOPPLER_PRD='doppler[^|;&]*(--config|-c)[[:space:]]+prd([[:space:]]|$)'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
