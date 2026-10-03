@@ -67,6 +67,11 @@ jobs:
     #                              and the judge cascade (scoring), as fallback
     #                              for Groq under outage / 429 / 5xx
     #   STAGING_GEMINI_API_KEY   — second fallback for the same two cascades
+    #   STAGING_TOGETHERAI_API_KEY — Together fallback for BOTH cascades (#3711).
+    #                              The value lives in Doppler factorylm/stg as
+    #                              TOGETHERAI_API_KEY; both cascades skip the
+    #                              provider when the secret is unset, so an
+    #                              absent secret is inert, never fatal.
     # The engine cascade lives in mira-bots/shared/inference/router.py and
     # answers the technician's question. The judge cascade lives in
     # tools/staging_test.py and grades the resulting reply on the 5-dim
@@ -210,6 +215,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.STAGING_CEREBRAS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
+          TOGETHERAI_API_KEY: ${{ secrets.STAGING_TOGETHERAI_API_KEY }}
           INFERENCE_BACKEND: cloud
           # tenant_id must be a real UUID — `kg_entities.tenant_id` is a uuid
           # column; passing the literal string "staging" trips a Postgres cast
@@ -237,6 +243,10 @@ jobs:
           QUALITY_GATE_JUDGE: "0"
         run: |
           # Retry the flaky LLM/retrieval-graded eval once before failing (#1680).
+          # A judge that is unreachable on every provider no longer fails a
+          # question: tools/staging_test.py redraws it once, then records it as
+          # inconclusive (skipped). A run whose judge is dead still fails via the
+          # >50% skipped harness-degraded guard (#3711).
           for attempt in 1 2; do
             if python tools/staging_test.py; then exit 0; fi
             echo "::warning::staging gate attempt ${attempt} failed (flaky LLM grading); retrying in 5s..."

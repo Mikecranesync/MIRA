@@ -5,15 +5,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Not a PR gate (#3711). This suite grades live inference with a live judge;
+# on 2026-09-09 it scored 15/21 twice on a branch that touched no engine,
+# prompt, or retrieval code, against 18/21 for the last green run — a swing
+# inside the noise band already recorded for it, on cases #1212 tracks. It was
+# never a required branch-protection context, so as a PR trigger it could only
+# mislead. It now runs nightly on main and on demand, as a trend, not a gate.
 on:
-  pull_request:
-    paths:
-      - 'mira-bots/**'
-      - 'evals/**'
-      - 'tests/golden_*.csv'
-    branches:
-      - main
-      - develop
+  schedule:
+    - cron: '17 6 * * *'  # nightly, main
   workflow_dispatch:
     inputs:
       mode:
