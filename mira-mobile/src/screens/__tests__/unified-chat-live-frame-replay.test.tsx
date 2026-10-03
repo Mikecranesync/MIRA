@@ -455,6 +455,32 @@ describe("UnifiedChat — a delayed hydration read never replaces a newer live s
     expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
   });
 
+  it("Codex r9: a delayed hydration read does not replace a newer search discovered by polling", async () => {
+    vi.useFakeTimers();
+    let resolveHydration!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveHydration = r; }));
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    // A cached running G1 frame: the screen follows G1 while hydration is still in flight.
+    render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // The periodic poll discovers a newer search G2.
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The stale hydration answer (G1, settled) arrives only now.
+    await act(async () => {
+      resolveHydration({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+    const before = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
+  });
+
   it("control: a hydration read with no newer input still seeds the follower", async () => {
     fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
     render(<UnifiedChat {...props([], [SMC_TURN])} />);
