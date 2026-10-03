@@ -301,6 +301,17 @@ def needs_regression_test(prior_status: str | None, changed_since_prior: list[st
     return not any(_match(p, TEST_GLOBS) for p in changed_since_prior)
 
 
+def blocked_by_finding_rule(prior: dict, head: str, changed_files) -> bool:
+    """Apply the finding->test rule to the head about to be reviewed. The same
+    head as the prior round has, by definition, changed nothing — it is blocked
+    without asking git (a re-run at the reviewed head used to skip the rule)."""
+    reviewed = prior.get("reviewed_sha")
+    if not reviewed:
+        return False
+    since = [] if reviewed == head else list(changed_files(reviewed, head))
+    return needs_regression_test(prior.get("status"), since)
+
+
 # ---------------------------------------------------------------------------
 # Thin process layer (no logic worth testing lives below the dataclass line)
 
@@ -412,17 +423,25 @@ _RUN_BUCKET = {"success": "pass", "neutral": "pass", "skipped": "skipping", "can
 _STATUS_BUCKET = {"success": "pass", "failure": "fail", "error": "fail", "pending": "pending"}
 
 
+# Worst first: when one name is reported by both APIs, the worse bucket wins.
+_BUCKET_RANK = {"fail": 0, "cancel": 1, "pending": 2, "skipping": 3, "pass": 4}
+
+
 def buckets_for_sha(check_runs: list[dict], statuses: list[dict]) -> list[dict]:
     """Map the commit's check runs and commit statuses to name/bucket. The
-    newest run per name wins (re-runs); an incomplete run is pending."""
-    out: dict[str, str] = {}
+    newest run per name wins (re-runs); an incomplete run is pending. A name
+    reported by BOTH APIs (the Legacy UI Lifecycle Guard is) takes the worse
+    of the two — a green commit status must never mask a failed check run."""
+    runs: dict[str, str] = {}
     for r in sorted(check_runs, key=lambda r: r.get("id", 0)):
         if r.get("status") != "completed":
-            out[r["name"]] = "pending"
+            runs[r["name"]] = "pending"
         else:
-            out[r["name"]] = _RUN_BUCKET.get(r.get("conclusion") or "", "fail")
+            runs[r["name"]] = _RUN_BUCKET.get(r.get("conclusion") or "", "fail")
+    out = dict(runs)
     for st in statuses:  # the combined-status API already returns the latest per context
-        out[st["context"]] = _STATUS_BUCKET.get(st.get("state") or "", "pending")
+        b = _STATUS_BUCKET.get(st.get("state") or "", "pending")
+        out[st["context"]] = min(b, out.get(st["context"], b), key=_BUCKET_RANK.__getitem__)
     return [{"name": n, "bucket": b} for n, b in out.items()]
 
 
@@ -643,15 +662,15 @@ def main(argv: list[str] | None = None) -> int:
         return refuse(
             f"required CI is not green at {facts['head'][:9]} failed={failed} pending={pending}"
         )
-    if prior.get("reviewed_sha") and prior["reviewed_sha"] != facts["head"]:
-        since = _run(
-            ["git", "diff", "--name-only", f"{prior['reviewed_sha']}..{facts['head']}"], cwd=REPO
-        ).stdout.split()
-        if needs_regression_test(prior.get("status"), since):
-            return refuse(
-                "the previous round found issues and no test changed since; "
-                "turn each fixed finding into a regression test first"
-            )
+    if blocked_by_finding_rule(
+        prior,
+        facts["head"],
+        lambda a, b: _run(["git", "diff", "--name-only", f"{a}..{b}"], cwd=REPO).stdout.split(),
+    ):
+        return refuse(
+            "the previous round found issues and no test changed since; "
+            "turn each fixed finding into a regression test first"
+        )
 
     pre = (
         {} if args.no_prefilter else free_prefilter(args.pr, args.ledger.parent, facts["base_sha"])

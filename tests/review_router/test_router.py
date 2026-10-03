@@ -207,6 +207,29 @@ def test_ledger_round_trip(tmp_path):
 # Finding -> deterministic test rule
 
 
+def test_a_same_head_rerun_after_findings_is_blocked_without_a_test_change():
+    """Cheap-gate finding on 2c47d35ba: the finding->test rule used to apply
+    only when the head had moved, so re-invoking at the reviewed head (no fix
+    at all) spent a paid round with no test change."""
+    prior = {"reviewed_sha": HEAD_SHA, "status": "ISSUES_FOUND"}
+
+    def never_diffed(a, b):
+        raise AssertionError("same head must not shell out for a diff")
+
+    assert router.blocked_by_finding_rule(prior, HEAD_SHA, never_diffed) is True
+    assert (
+        router.blocked_by_finding_rule({**prior, "status": "GREEN"}, HEAD_SHA, never_diffed)
+        is False
+    )
+    assert router.blocked_by_finding_rule({}, HEAD_SHA, never_diffed) is False
+    other = "b" * 40
+    assert router.blocked_by_finding_rule(prior, other, lambda a, b: ["tools/x.py"]) is True
+    assert (
+        router.blocked_by_finding_rule(prior, other, lambda a, b: ["tools/x.py", "tests/test_x.py"])
+        is False
+    )
+
+
 def test_fix_without_a_test_change_blocks_the_next_paid_round():
     assert router.needs_regression_test("ISSUES_FOUND", ["tools/qa/x.py"]) is True
     assert (
@@ -429,6 +452,27 @@ def test_run_cost_never_records_an_unproven_zero():
 
 # ---------------------------------------------------------------------------
 # CI bound to the exact commit (F1)
+
+
+@pytest.mark.parametrize(
+    "run_conclusion, run_status, status_state, expected",
+    [
+        ("failure", "completed", "success", "fail"),  # status must not mask a failed run
+        ("success", "completed", "failure", "fail"),  # nor a run mask a failed status
+        (None, "in_progress", "success", "pending"),  # an incomplete run is not green
+        ("success", "completed", "pending", "pending"),
+        ("success", "completed", "success", "pass"),
+    ],
+)
+def test_a_name_reported_by_both_apis_takes_the_worse_bucket(
+    run_conclusion, run_status, status_state, expected
+):
+    """The Legacy UI Lifecycle Guard reports as a check run AND a commit status
+    under one name. Cheap-gate finding on 2c47d35ba: the status overwrote the
+    run unconditionally, so a failed required run could read as green."""
+    runs = [{"id": 1, "name": "Guard", "status": run_status, "conclusion": run_conclusion}]
+    statuses = [{"context": "Guard", "state": status_state}]
+    assert router.buckets_for_sha(runs, statuses) == [{"name": "Guard", "bucket": expected}]
 
 
 def test_buckets_for_sha_newest_rerun_wins_and_incomplete_is_pending():
