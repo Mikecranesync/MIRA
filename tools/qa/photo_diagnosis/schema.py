@@ -90,6 +90,33 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
 DOC_SUFFIXES = {".pdf"}
 
 
+def _is_image(head: bytes) -> bool:
+    return (
+        head.startswith(b"\xff\xd8\xff")  # JPEG
+        or head.startswith(b"\x89PNG")
+        or (head[:4] == b"RIFF" and head[8:12] == b"WEBP")
+        or head[4:8] == b"ftyp"  # HEIC/HEIF family
+    )
+
+
+def _check_identity(p: Path, field: str, kind: str, errors: list[str]) -> None:
+    """The file must BE what its suffix claims (cheap-lane review, 2026-10-03): a
+    suffix check alone lets a case point `photo` at a secrets file named *.jpg,
+    or at a symlink, and the harness would upload it to staging and the judge."""
+    if p.is_symlink():
+        errors.append(f"{field}: symlinks are not allowed ({p})")
+        return
+    try:
+        head = p.open("rb").read(16)
+    except OSError as e:
+        errors.append(f"{field}: unreadable ({e})")
+        return
+    ok = head.startswith(b"%PDF") if kind == "pdf" else _is_image(head)
+    if not ok:
+        label = "a .pdf" if kind == "pdf" else "an image"
+        errors.append(f"{field}: not {label} by content (first bytes {head[:8]!r})")
+
+
 def _check_suffix(raw: Any, field: str, allowed: set[str], kind: str, errors: list[str]) -> None:
     """Gate 7: a path the harness uploads to staging (and the judge) must have
     the expected file type, so a case can never point it at, e.g., a secrets
@@ -169,6 +196,8 @@ def validate_case(raw: Any, path: Path) -> dict:
         photo_path = _resolve_path(photo_raw, path)
         if not photo_path.exists():
             errors.append(f"photo missing: file not found at {photo_path}")
+        else:
+            _check_identity(photo_path, "photo", "image", errors)
 
     # sources — optional list of PDF paths. Existence is not enforced here
     # (private fixtures may reference not-yet-pulled sources); shape is.
@@ -182,6 +211,10 @@ def validate_case(raw: Any, path: Path) -> dict:
     _check_text_list(sources, "sources", errors)
     for i, src in enumerate(sources if isinstance(sources, list) else []):
         _check_suffix(src, f"sources[{i}]", DOC_SUFFIXES, "a .pdf", errors)
+        if isinstance(src, str) and src.strip():
+            src_path = _resolve_path(src, path)
+            if src_path.exists():  # existence is not enforced; identity is
+                _check_identity(src_path, f"sources[{i}]", "pdf", errors)
     _check_text_list(visible_facts, "visible_facts", errors)
 
     safety = raw.get("safety") or []
@@ -208,8 +241,8 @@ def validate_case(raw: Any, path: Path) -> dict:
             )
 
     validated_by = raw.get("validated_by")
-    if validated_by is not None and not isinstance(validated_by, str):
-        errors.append("validated_by: must be a string or null")
+    if validated_by is not None and (not isinstance(validated_by, str) or not validated_by.strip()):
+        errors.append("validated_by: must be a non-empty string or null (empty is not a sign-off)")
 
     validated_on_raw = raw.get("validated_on")
     validated_on: _dt.date | None = None
@@ -421,5 +454,7 @@ def load_cases(cases_dir: Path) -> tuple[list[dict], list[CaseError]]:
 
 
 def scorable(case: dict) -> bool:
-    """A case is scored only once a human has validated it."""
-    return case.get("validated_by") is not None
+    """A case is scored only once a human has validated it — a NAMED human: an
+    empty or blank marker is not a sign-off (cheap-lane review, 2026-10-03)."""
+    v = case.get("validated_by")
+    return isinstance(v, str) and bool(v.strip())

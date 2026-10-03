@@ -381,3 +381,47 @@ def test_r9_f2_duplicate_ids_in_a_fixture_namespace_are_rejected(namespace):
     raw[namespace].append(dup)
     errors = _errors(raw)
     assert any(f"{namespace}: duplicate id {first['id']!r}" in e for e in errors), errors
+
+
+# --- cheap-lane 2026-10-03: an empty validation marker is not a sign-off --------
+
+
+def test_an_empty_validated_by_is_rejected_and_never_scorable():
+    errors = _errors(_qa_case(validated_by=""))
+    assert any(e.startswith("validated_by: must be a non-empty string") for e in errors), errors
+    assert any(e.startswith("validated_by:") for e in _errors(_qa_case(validated_by="   ")))
+    assert schema.scorable({"validated_by": ""}) is False
+    assert schema.scorable({"validated_by": "  "}) is False
+    assert schema.scorable({"validated_by": "mike"}) is True
+
+
+# --- cheap-lane 2026-10-03: the file must BE the type its suffix claims ----------
+
+
+def test_a_secrets_file_with_an_image_suffix_is_rejected_by_content(tmp_path):
+    fake = tmp_path / "creds.jpg"
+    fake.write_text('{"token": "abc"}')
+    errors = _errors(_qa_case(photo=str(fake)))
+    assert any(e.startswith("photo: not an image by content") for e in errors), errors
+
+
+def test_a_symlinked_photo_is_rejected(tmp_path):
+    real = (FAKE_CASE_FILE.parent / REAL_PHOTO).resolve()
+    link = tmp_path / "photo.jpg"
+    link.symlink_to(real)
+    errors = _errors(_qa_case(photo=str(link)))
+    assert any(e.startswith("photo: symlinks are not allowed") for e in errors), errors
+
+
+def test_a_real_image_passes_the_content_check():
+    schema.validate_case(_qa_case(), FAKE_CASE_FILE)  # raises on any error
+
+
+def test_an_existing_source_must_be_a_pdf_by_content(tmp_path):
+    fake = tmp_path / "manual.pdf"
+    fake.write_text("not a pdf")
+    errors = _errors(_diag_case(sources=[str(fake)]))
+    assert any(e.startswith("sources[0]: not a .pdf by content") for e in errors), errors
+    real = tmp_path / "ok.pdf"
+    real.write_bytes(b"%PDF-1.4\n%fake\n")
+    schema.validate_case(_diag_case(sources=[str(real)]), FAKE_CASE_FILE)  # raises on any error

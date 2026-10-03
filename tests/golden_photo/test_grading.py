@@ -83,6 +83,7 @@ def test_turn_grade_parses_all_seven_fields_and_notes():
                     "U": True,
                     "X": False,
                     "N": False,
+                    "C": False,
                     "notes": "ok",
                 }
             )
