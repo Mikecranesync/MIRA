@@ -31,8 +31,12 @@ permissions:
   contents: read
   actions: read   # read the triggering staging run's receipt artifact (generation binding, SDLC v1 §6.2)
 
+# One concurrency group SHARED with deploy-staging.yml: a staging deploy cannot
+# start while an acceptance run is auditing the environment, and vice versa, so
+# the generation under audit cannot change mid-run (SDLC v1 §6.2 "Same-SHA
+# redeploy"; Codex F1 on PR #4217). GitHub concurrency groups are repo-wide.
 concurrency:
-  group: retrieval-acceptance-staging
+  group: staging-environment
   cancel-in-progress: false
 
 jobs:
@@ -74,8 +78,18 @@ jobs:
           case "$sha" in
             *[!0-9a-f]*) echo "::error::gitSha is not hexadecimal: $sha"; exit 1 ;;
           esac
+          # The GENERATION identity: builtAt is stamped per build by deploy-staging
+          # (MIRA_BUILD_TIME), so a same-SHA --no-cache rebuild changes it while the
+          # gitSha does not. It must be a real timestamp or the run cannot pin a
+          # generation at all.
+          built_at="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("builtAt") or "").strip())')"
+          case "$built_at" in
+            ????-??-??T??:??:??Z) ;;
+            *) echo "::error::health reported no build timestamp (builtAt=\"$built_at\") — cannot pin the deployment generation"; exit 1 ;;
+          esac
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "staging is running $sha — auditing that tree" >> "$GITHUB_STEP_SUMMARY"
+          echo "built_at=$built_at" >> "$GITHUB_OUTPUT"
+          echo "staging is running $sha built $built_at — auditing that tree" >> "$GITHUB_STEP_SUMMARY"
 
       # SDLC v1 §5.2 (Part B step 4): the steps below check out the DEPLOYED tree
       # and execute its provisioner and harness with the staging DOPPLER_TOKEN. A
@@ -186,12 +200,19 @@ jobs:
       # say what happened; the step still fails the job.
       - name: The deploy must not have moved under the audit
         id: identity_end
-        if: always()
+        if: always() && steps.deployed.outputs.sha != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+          BUILT_AT_START: ${{ steps.deployed.outputs.built_at }}
+          STAGING_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          now="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/" \
-                 | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())')" || now=""
+          body="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 "$ACCEPT_BASE/api/health/")" || body=""
+          now=""; built_now=""
+          if [ -n "$body" ]; then
+            now="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("gitSha") or "").strip())' 2>/dev/null || true)"
+            built_now="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("builtAt") or "").strip())' 2>/dev/null || true)"
+          fi
           case "$now" in
             ????????????????????????????????????????) ;;
             *) now="" ;;
@@ -199,17 +220,37 @@ jobs:
           case "$now" in
             *[!0-9a-f]*) now="" ;;
           esac
-          if [ -z "$now" ]; then
+          case "$built_now" in
+            ????-??-??T??:??:??Z) ;;
+            *) built_now="" ;;
+          esac
+          if [ -z "$now" ] || [ -z "$built_now" ]; then
             echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
-            echo "::error::could not re-read health at verdict time — INFRA_UNASSESSED; this run authorizes nothing (SDLC v1 §6.2)"
+            echo "built_at_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
+            echo "::error::could not re-read health identity at verdict time — INFRA_UNASSESSED; this run authorizes nothing (SDLC v1 §6.2)"
             exit 1
           fi
           echo "identity_end=$now" >> "$GITHUB_OUTPUT"
-          if [ "$now" != "$DEPLOYED_SHA" ]; then
-            echo "::error::staging moved $DEPLOYED_SHA -> $now during the run; this verdict is SUPERSEDED"
+          echo "built_at_end=$built_now" >> "$GITHUB_OUTPUT"
+          if [ "$now" != "$DEPLOYED_SHA" ] || [ "$built_now" != "$BUILT_AT_START" ]; then
+            echo "::error::staging generation changed during the run ($DEPLOYED_SHA built $BUILT_AT_START -> $now built $built_now); this verdict is SUPERSEDED"
             exit 1
           fi
-          echo "verdict pinned to $now" >> "$GITHUB_STEP_SUMMARY"
+          # Belt and braces for the shared concurrency group: no deploy-staging run
+          # newer than the one that triggered this acceptance may have STARTED. A
+          # later run that is still queued has changed nothing; one in progress or
+          # completed means the audited generation is gone (SUPERSEDED).
+          if [ -n "$STAGING_RUN_ID" ]; then
+            newer="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
+                       --jq "[.[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\"))] | length")" || {
+              echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
+              echo "::error::could not list deploy-staging runs at verdict time — INFRA_UNASSESSED"; exit 1; }
+            if [ "$newer" != "0" ]; then
+              echo "::error::$newer deploy-staging run(s) newer than the triggering run $STAGING_RUN_ID have started; this verdict is SUPERSEDED"
+              exit 1
+            fi
+          fi
+          echo "verdict pinned to $now built $built_now" >> "$GITHUB_STEP_SUMMARY"
 
       # The generation this verdict belongs to is the staging deploy that
       # triggered it. Its receipt (deployed_at + running image ids) is copied into
@@ -241,6 +282,8 @@ jobs:
         env:
           DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
           IDENTITY_END: ${{ steps.identity_end.outputs.identity_end || 'INFRA_UNASSESSED' }}
+          BUILT_AT_START: ${{ steps.deployed.outputs.built_at }}
+          BUILT_AT_END: ${{ steps.identity_end.outputs.built_at_end || 'INFRA_UNASSESSED' }}
           CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
           CAPTURE_SKIPPED: ${{ steps.capnb.outputs.skipped }}
           STAGING_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -257,6 +300,7 @@ jobs:
           else capture=SKIPPED; fi
           args=( build --repository "$GITHUB_REPOSITORY" --base-url "$ACCEPT_BASE" --deployed-sha "$DEPLOYED_SHA"
                  --rows /tmp/retrieval-acceptance.json --capture-status "$capture" --identity-end "$IDENTITY_END"
+                 --built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END"
                  --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-url "$RUN_URL"
                  --out "$RUNNER_TEMP/acceptance-receipt.json" )
           [ -n "$STAGING_RUN_ID" ] && args+=( --staging-run-id "$STAGING_RUN_ID" )

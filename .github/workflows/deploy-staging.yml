@@ -36,8 +36,11 @@ on:
 permissions:
   contents: read
 
+# Shared with retrieval-acceptance.yml (SDLC v1 §6.2 / step 4): a staging deploy
+# waits for a running acceptance audit, so the generation under audit cannot be
+# replaced mid-run. Concurrency groups are repo-wide, not per workflow.
 concurrency:
-  group: deploy-staging-vps
+  group: staging-environment
   cancel-in-progress: false
 
 jobs:

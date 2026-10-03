@@ -32,6 +32,7 @@ INFRA_UNASSESSED = "INFRA_UNASSESSED"
 VERDICTS = ("PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE", "SUPERSEDED", INFRA_UNASSESSED)
 _CAPTURE_STATUSES = ("PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FUTURE_SKEW = timedelta(minutes=5)
 
 
@@ -61,6 +62,8 @@ def build_receipt(
     rows: dict,
     capture_status: str,
     identity_end: str,
+    built_at_start: str,
+    built_at_end: str,
     run_id: str,
     run_attempt: int,
     run_url: str,
@@ -79,6 +82,23 @@ def build_receipt(
         )
     if capture_status not in _CAPTURE_STATUSES:
         raise ValueError(f"capture_status must be one of {_CAPTURE_STATUSES}: {capture_status!r}")
+    # The deployment GENERATION is `builtAt` from /api/health — stamped per build by
+    # deploy-staging.yml (MIRA_BUILD_TIME), so a same-SHA `--no-cache` rebuild changes
+    # it while gitSha does not (Codex F1, PR #4217). Start value must be a real
+    # timestamp; the end value is a timestamp or INFRA_UNASSESSED.
+    try:
+        _parse_timestamp(built_at_start)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"built_at_start is not a timestamp ({exc}); cannot pin the generation"
+        ) from exc
+    if built_at_end != INFRA_UNASSESSED:
+        try:
+            _parse_timestamp(built_at_end)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"built_at_end must be a timestamp or {INFRA_UNASSESSED} ({exc})"
+            ) from exc
 
     raw_rows = rows.get("rows") if isinstance(rows, dict) else None
     if not raw_rows:
@@ -135,9 +155,9 @@ def build_receipt(
     else:
         generation = None
 
-    if identity_end == INFRA_UNASSESSED:
+    if identity_end == INFRA_UNASSESSED or built_at_end == INFRA_UNASSESSED:
         overall = INFRA_UNASSESSED
-    elif identity_end != deployed_sha:
+    elif identity_end != deployed_sha or built_at_end != built_at_start:
         overall = "SUPERSEDED"
     elif capture_status == "FAIL" or any(
         s["capability"] == "retrieval" and s["verdict"] == "FAIL" for s in scenarios
@@ -163,6 +183,8 @@ def build_receipt(
         "capture_status": capture_status,
         "identity_start": deployed_sha,
         "identity_end": identity_end,
+        "built_at_start": built_at_start,
+        "built_at_end": built_at_end,
         "overall": overall,
         "authorizes": authorizes,
         "staging_run_id": staging_run_id,
@@ -183,6 +205,7 @@ def verify_receipt(
     max_age_hours: float = FRESHNESS_HOURS,
     required_capabilities: tuple[str, ...] = ("retrieval",),
     expected_staging_run_id: object = None,
+    required_services: tuple[str, ...] = ("mira-hub",),
 ) -> list[str]:
     """Return every problem with ``receipt``; an empty list means it authorizes.
 
@@ -230,6 +253,41 @@ def verify_receipt(
                 f"identity_end mismatch: expected {approved_rc_sha}, got {identity_end!r}"
             )
 
+    # Generation identity observed live: builtAt at start and at verdict must be the
+    # same parseable timestamp. A rebuild of the same SHA mid-run is SUPERSEDED.
+    built_at_start = receipt.get("built_at_start")
+    built_at_end = receipt.get("built_at_end")
+    try:
+        _parse_timestamp(built_at_start)
+    except (ValueError, TypeError) as exc:
+        problems.append(f"built_at_start: missing or invalid ({exc})")
+    if built_at_end == INFRA_UNASSESSED:
+        problems.append(f"built_at re-read failed: {INFRA_UNASSESSED}")
+    elif built_at_end != built_at_start:
+        problems.append(
+            f"built_at changed during assessment: {built_at_start!r} -> {built_at_end!r} (SUPERSEDED)"
+        )
+
+    # Scope fields are mandatory and must agree with each other (Codex F2).
+    services_covered = receipt.get("services_covered")
+    if not isinstance(services_covered, list) or not services_covered:
+        problems.append("services_covered: missing or empty")
+        services_covered = []
+    elif isinstance(git_sha, dict):
+        if set(services_covered) != set(git_sha):
+            problems.append(
+                f"services_covered {sorted(services_covered)} != git_sha services {sorted(git_sha)}"
+            )
+    for svc in required_services:
+        if svc not in services_covered:
+            problems.append(f"services_covered: required service {svc!r} not covered")
+    capture_status = receipt.get("capture_status")
+    if capture_status not in _CAPTURE_STATUSES:
+        problems.append(f"capture_status: missing or invalid ({capture_status!r})")
+    attempt = receipt.get("acceptance_run_attempt")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        problems.append(f"acceptance_run_attempt: missing or invalid ({attempt!r})")
+
     overall = receipt.get("overall")
     if overall != "PASS":
         if overall == "SUPERSEDED":
@@ -249,6 +307,24 @@ def verify_receipt(
         for key in ("staging_run_id", "deployed_at", "running_images"):
             if not generation.get(key):
                 problems.append(f"generation[{key}]: missing or empty")
+        try:
+            _parse_timestamp(generation.get("deployed_at"))
+        except (ValueError, TypeError) as exc:
+            problems.append(f"generation[deployed_at]: invalid ({exc})")
+        images = generation.get("running_images")
+        if not isinstance(images, dict) or not images:
+            problems.append("generation[running_images]: not a non-empty object")
+        else:
+            for svc, image in images.items():
+                if not isinstance(image, str) or not _IMAGE_ID_RE.match(image):
+                    problems.append(
+                        f"generation[running_images][{svc}]: not a sha256 image id: {image!r}"
+                    )
+            for svc in services_covered:
+                if svc not in images:
+                    problems.append(
+                        f"generation[running_images]: covered service {svc!r} has no image id"
+                    )
 
     staging_run_id = receipt.get("staging_run_id")
     if staging_run_id is None:
@@ -270,6 +346,24 @@ def verify_receipt(
     if not isinstance(scenarios, list) or not scenarios:
         problems.append("scenarios: missing or empty")
         scenarios = []
+
+    capabilities = receipt.get("capabilities")
+    declared = {s.get("capability") for s in scenarios if isinstance(s, dict)}
+    if not isinstance(capabilities, list) or not capabilities:
+        problems.append("capabilities: missing or empty")
+    elif set(capabilities) != declared:
+        problems.append(
+            f"capabilities {sorted(capabilities)} != scenario capabilities {sorted(declared)}"
+        )
+    capture_rows = [
+        s for s in scenarios if isinstance(s, dict) and s.get("capability") == "capture"
+    ]
+    if capture_rows and capture_status in _CAPTURE_STATUSES:
+        verdicts = {s.get("verdict") for s in capture_rows}
+        if verdicts != {capture_status}:
+            problems.append(
+                f"capture_status {capture_status!r} != capture scenario verdict(s) {sorted(verdicts)}"
+            )
 
     for capability in required_capabilities:
         matching = [
@@ -338,6 +432,8 @@ def _cmd_build(args: argparse.Namespace) -> int:
         rows=rows,
         capture_status=args.capture_status,
         identity_end=args.identity_end,
+        built_at_start=args.built_at_start,
+        built_at_end=args.built_at_end,
         run_id=args.run_id,
         run_attempt=args.run_attempt,
         run_url=args.run_url,
@@ -362,6 +458,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         max_age_hours=args.max_age_hours,
         required_capabilities=required,
         expected_staging_run_id=args.expect_staging_run_id,
+        required_services=tuple(x for x in args.require_services.split(",") if x),
     )
     if problems:
         for problem in problems:
@@ -389,6 +486,10 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--rows", required=True, help="retrieval acceptance rows JSON")
     build.add_argument("--capture-status", required=True, choices=_CAPTURE_STATUSES)
     build.add_argument("--identity-end", required=True)
+    build.add_argument("--built-at-start", required=True, help="builtAt from /api/health at start")
+    build.add_argument(
+        "--built-at-end", required=True, help="builtAt at verdict, or INFRA_UNASSESSED"
+    )
     build.add_argument("--run-id", required=True)
     build.add_argument("--run-attempt", required=True, type=int)
     build.add_argument("--run-url", required=True)
@@ -408,6 +509,11 @@ def main(argv: list[str] | None = None) -> int:
         help="comma-separated capabilities that must be PASS on every scenario",
     )
     verify.add_argument("--expect-staging-run-id", default=None)
+    verify.add_argument(
+        "--require-services",
+        default="mira-hub",
+        help="comma-separated services that must appear in services_covered",
+    )
     verify.set_defaults(func=_cmd_verify)
 
     args = parser.parse_args(argv)

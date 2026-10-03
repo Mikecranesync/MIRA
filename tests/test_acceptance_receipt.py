@@ -39,6 +39,9 @@ def _rows(n_pass: int, n_fail: int) -> dict:
     return {"base": "https://stg.example", "ran_at": NOW.isoformat(), "rows": scenarios}
 
 
+BUILT_AT = (NOW - timedelta(minutes=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _staging_receipt(**overrides) -> dict:
     # The identity fields a real staging receipt carries (tools/staging_receipt.py);
     # build_receipt binds the generation to THESE, never to the artifact filename.
@@ -89,6 +92,8 @@ def _good(**overrides) -> dict:
         rows=_rows(2, 0),
         capture_status="PASS",
         identity_end=SHA,
+        built_at_start=BUILT_AT,
+        built_at_end=BUILT_AT,
         run_id="1",
         run_attempt=1,
         run_url="https://github.com/Mikecranesync/MIRA/actions/runs/1",
@@ -258,6 +263,8 @@ def _build_argv(rows_path, out, **extra) -> list[str]:
         "--rows": str(rows_path),
         "--capture-status": "PASS",
         "--identity-end": SHA,
+        "--built-at-start": BUILT_AT,
+        "--built-at-end": BUILT_AT,
         "--run-id": "1",
         "--run-attempt": "1",
         "--run-url": "https://github.com/Mikecranesync/MIRA/actions/runs/1",
@@ -314,3 +321,75 @@ def test_cli_verify_rejects_unparseable_receipt_json(tmp_path):
     out.write_text("not json")
     r = _cli("verify", "--receipt", str(out), "--approved-rc-sha", SHA)
     assert r.returncode == 1
+
+
+# --- Codex round 1 on PR #4217 ---------------------------------------------------------
+
+
+def test_same_sha_rebuild_mid_run_is_superseded_via_built_at():
+    """F1: gitSha equal at both probes, builtAt different → the generation changed."""
+    later = (NOW - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    data = _good(built_at_end=later)
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    assert any("built_at changed" in p for p in _verify(data))
+
+
+def test_unreadable_built_at_at_verdict_is_infra_unassessed():
+    data = _good(built_at_end=ar.INFRA_UNASSESSED)
+    assert data["overall"] == ar.INFRA_UNASSESSED
+    assert any("built_at re-read failed" in p for p in _verify(data))
+
+
+@pytest.mark.parametrize("bad", ["unknown", "", "not-a-time"])
+def test_built_at_start_must_be_a_timestamp(bad):
+    with pytest.raises(ValueError, match="built_at_start"):
+        _good(built_at_start=bad)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "services_covered",
+        "capabilities",
+        "capture_status",
+        "acceptance_run_attempt",
+        "built_at_start",
+    ],
+)
+def test_scope_fields_are_mandatory(field):
+    """F2: every scope field is checked, not just present-by-construction."""
+    data = _good()
+    del data[field]
+    assert any(field in p for p in _verify(data)), field
+
+
+def test_services_covered_must_agree_with_git_sha_and_required_services():
+    data = _good()
+    data["services_covered"] = ["mira-ask"]
+    problems = _verify(data)
+    assert any("services_covered" in p and "git_sha" in p for p in problems)
+    assert any("required service 'mira-hub'" in p for p in problems)
+    good = _good()
+    assert any(
+        "required service 'mira-ask'" in p
+        for p in _verify(good, required_services=("mira-hub", "mira-ask"))
+    )
+
+
+def test_generation_values_are_validated_not_just_present():
+    data = _good()
+    data["generation"]["deployed_at"] = "invalid"
+    data["generation"]["running_images"] = {"mira-web": "invalid"}
+    problems = _verify(data)
+    assert any("generation[deployed_at]: invalid" in p for p in problems)
+    assert any("not a sha256 image id" in p for p in problems)
+    assert any("covered service 'mira-hub' has no image id" in p for p in problems)
+
+
+def test_capabilities_and_capture_status_must_agree_with_scenarios():
+    data = _good()
+    data["capabilities"] = ["retrieval"]
+    assert any("capabilities" in p and "scenario capabilities" in p for p in _verify(data))
+    data = _good()
+    data["capture_status"] = "FAIL"
+    assert any("capture_status 'FAIL' != capture scenario verdict" in p for p in _verify(data))

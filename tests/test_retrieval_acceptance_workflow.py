@@ -58,7 +58,7 @@ def test_verdict_time_reread_fails_closed_and_records_identity():
     steps = _steps()
     step = steps[_index(steps, lambda s: s.get("id") == "identity_end")]
     run = step["run"]
-    assert step.get("if") == "always()"
+    assert str(step.get("if")).startswith("always()"), "runs even after failed scenarios"
     assert "exit 0" not in run
     assert "::warning::" not in run
     assert "identity_end=INFRA_UNASSESSED" in run
@@ -99,6 +99,33 @@ def test_receipt_is_built_from_the_trusted_base_and_uploaded_under_the_sha():
     assert _index(steps, lambda s: s.get("id") == "identity_end") < _index(
         steps, lambda s: s.get("id") == "receipt"
     )
+
+
+def test_generation_identity_is_built_at_observed_at_both_probes():
+    """Codex F1 on PR #4217: gitSha alone cannot see a same-SHA rebuild; builtAt can."""
+    steps = _steps()
+    start = steps[_index(steps, lambda s: s.get("id") == "deployed")]["run"]
+    assert "built_at=$built_at" in start and 'get("builtAt")' in start
+    assert "cannot pin the deployment generation" in start, "a missing builtAt fails the run"
+    end = steps[_index(steps, lambda s: s.get("id") == "identity_end")]
+    run = end["run"]
+    assert "built_at_end=$built_now" in run and "built_at_end=INFRA_UNASSESSED" in run
+    assert '[ "$built_now" != "$BUILT_AT_START" ]' in run, "a changed builtAt is SUPERSEDED"
+    assert "--workflow deploy-staging.yml" in run and "SUPERSEDED" in run, (
+        "newer started deploy runs supersede"
+    )
+    assert end["env"]["GH_TOKEN"] == "${{ github.token }}"
+    receipt = steps[_index(steps, lambda s: s.get("id") == "receipt")]["run"]
+    assert '--built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END"' in receipt
+
+
+def test_deploy_and_acceptance_share_one_concurrency_group():
+    """A staging deploy may not run while the audit runs (nor the reverse)."""
+    acc = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+    dep = yaml.safe_load((_WORKFLOW.parent / "deploy-staging.yml").read_text(encoding="utf-8"))
+    assert acc["concurrency"]["group"] == dep["concurrency"]["group"] == "staging-environment"
+    assert acc["concurrency"]["cancel-in-progress"] is False
+    assert dep["concurrency"]["cancel-in-progress"] is False
 
 
 def test_generation_binding_reads_the_triggering_staging_receipt():
