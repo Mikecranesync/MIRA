@@ -383,6 +383,25 @@ def test_a_candidate_local_shim_is_refused(monkeypatch):
     assert router.untrusted_tooling("main") == ["tools/review_router/codex_shim.sh"]
 
 
+def test_bootstrap_is_honoured_only_while_the_router_is_absent_from_the_base(monkeypatch):
+    """Cheap-gate finding on 4ca3360c8: `--bootstrap` waived the trust check
+    unconditionally; its "only before the router is on main" limit lived in
+    help text. Now it is enforced from the base branch itself."""
+    here = {r: f"sha-{i}" for i, r in enumerate(router.TOOLING)}
+    _fake_git({}, here, monkeypatch)
+    assert router.router_on_base("main") is False
+    _fake_git({"tools/review_router/router.py": "sha-0"}, here, monkeypatch)
+    assert router.router_on_base("main") is True
+
+    drift = ["tools/review_router/codex_shim.sh"]
+    assert router.tooling_refusal([], bootstrap=False, router_on_base=True) is None
+    assert router.tooling_refusal([], bootstrap=True, router_on_base=True) is None
+    assert "differs" in router.tooling_refusal(drift, bootstrap=False, router_on_base=False)
+    assert router.tooling_refusal(drift, bootstrap=True, router_on_base=False) is None
+    refused = router.tooling_refusal(drift, bootstrap=True, router_on_base=True)
+    assert refused and "--bootstrap" in refused
+
+
 def test_tooling_absent_from_the_base_is_untrusted(monkeypatch):
     here = {r: f"sha-{i}" for i, r in enumerate(router.TOOLING)}
     _fake_git({}, here, monkeypatch)

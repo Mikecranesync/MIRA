@@ -525,6 +525,28 @@ def untrusted_tooling(base_ref: str) -> list[str]:
     return bad
 
 
+def router_on_base(base_ref: str) -> bool:
+    """Is this router committed on the base branch at all?"""
+    rel = "tools/review_router/router.py"
+    return bool(_run(["git", "rev-parse", f"origin/{base_ref}:{rel}"], cwd=REPO).stdout.strip())
+
+
+def tooling_refusal(drift: list[str], *, bootstrap: bool, router_on_base: bool) -> str | None:
+    """Why a run must not proceed on this tooling, or None. `--bootstrap` is
+    honoured ONLY while the router is absent from the base: once it is on
+    main, a candidate-local router/shim/price table never runs, flag or not."""
+    if not drift:
+        return None
+    if bootstrap and not router_on_base:
+        return None
+    if bootstrap:
+        return (
+            "--bootstrap is honoured only while the router is absent from the base; "
+            f"it is on the base now — run from a checkout of the base branch ({', '.join(drift)})"
+        )
+    return f"router tooling differs from the base: {', '.join(drift)} (run it from a checkout of the base branch)"
+
+
 _VERDICT_RE = re.compile(r"^\*\*Verdict:\*\* (PASS|BLOCK|UNKNOWN)\b", re.M)
 
 
@@ -611,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--bootstrap",
         action="store_true",
-        help="allow router files that differ from the base (only before the router is on main)",
+        help="allow router files that differ from the base; honoured only while the base has no router at all (refused once it is on main)",
     )
     args = ap.parse_args(argv)
     # Resolve against the invocation directory NOW: the trusted runner chdirs
@@ -652,11 +674,12 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: " + msg, file=sys.stderr)
         return 3
 
-    if (drift := untrusted_tooling(facts["base_ref"])) and not args.bootstrap:
-        return refuse(
-            f"router tooling differs from origin/{facts['base_ref']}: {', '.join(drift)} "
-            "(run it from a checkout of the base branch)"
-        )
+    if msg := tooling_refusal(
+        untrusted_tooling(facts["base_ref"]),
+        bootstrap=args.bootstrap,
+        router_on_base=router_on_base(facts["base_ref"]),
+    ):
+        return refuse(msg)
     failed, pending = deterministic_stage(facts["head"], facts["base_ref"])
     if failed or pending:
         return refuse(
