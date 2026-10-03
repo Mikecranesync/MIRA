@@ -124,7 +124,9 @@ NEON_PROD_URL='postgres(ql)?://[^[:space:]"'"'"']*'"$NEON_PROD_ENDPOINT"
 SQL_CLIENT='\b(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
 DB_LIB='(psycopg|asyncpg|pg8000|sqlalchemy|require\([[:space:]]*["'"'"']pg["'"'"']|from[[:space:]]+["'"'"']pg["'"'"']|\bpg\.(Client|Pool)\b|new[[:space:]]+(Client|Pool)\()'
 INLINE_CODE='\b(python3?|node|bun|deno|ruby|perl)\b[^|;&]*[[:space:]](-c|-e|-p|--eval|--print)[[:space:]]'
-DOPPLER_PRD='doppler[^|;&]*(--config|-c)[[:space:]]+prd([[:space:]]|$)'
+# `--config prd`, `--config=prd`, `-c prd` and `-c=prd` are all accepted by the
+# Doppler CLI; match every spelling (cheap-lane round 3 on PR #4211).
+DOPPLER_PRD='doppler[^|;&]*(--config|-c)([[:space:]]+|[[:space:]]*=[[:space:]]*)prd([[:space:]]|$)'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
 # at the start of a line or right after a shell separator (; & ( ). This stops

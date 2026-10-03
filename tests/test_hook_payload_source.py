@@ -377,8 +377,17 @@ _PGURL = "postgres" + "ql://"
         (f"doppler run -c {_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
         (f"doppler run --config {_PRD} -- python3 -c 'import asyncpg; asyncpg.connect()'", True),
         (f"python3 -c \"print(open('x').read())\" {_EP}", True),
+        # every Doppler spelling of the prod config
+        (f'doppler run --config={_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
+        (f"doppler run -c={_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
+        (f'doppler run -p factorylm --config  {_PRD}  -- {_DUMP} "$NEON_DATABASE_URL"', True),
         # allowed: reading the secret, prose, grep, inline code without a prod signal, non-prod configs
         ("python3 -c \"print('hello')\"", False),
+        (
+            f"doppler secrets get NEON_DATABASE_URL --project factorylm --config={_PRD} --plain",
+            False,
+        ),
+        (f'doppler run --config=stg -- {_SQL} "$NEON_DATABASE_URL"', False),
         ("node -e \"require('pg'); console.log(1)\"", False),
         (
             f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
