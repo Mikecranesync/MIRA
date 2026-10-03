@@ -104,8 +104,11 @@ PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120
 #       verb, a database-library marker (psycopg/asyncpg/pg8000/sqlalchemy,
 #       node `pg`), or an interpreter running inline code (`python3 -c`,
 #       `node -e`, `bun -e`, …) — the vectors a command line can carry;
-#   (c) a Doppler `prd` config together with a SQL client verb or a database-
-#       library marker (`doppler run -c prd -- psql …`, `… -- node -e "require('pg')"`).
+#   (c) a Doppler `prd` config together with a SQL client verb, a database-
+#       library marker, or an interpreter running inline code (`doppler run -c prd
+#       -- psql …`, `… -- node -e "require('pg')"`, `… -- bun -e "new SQL(…)"`):
+#       the prod config supplies the URL through the environment, so the inline
+#       code is the only visible vector and any of it is denied (Codex F1, #4211).
 # (b)/(c) are deliberately UNANCHORED, like MUTATION below and unlike CMDSTART:
 # the gate is the prod-specific signal (endpoint / `prd` config); once present,
 # the client must be caught wherever a wrapper puts it — `bash -lc 'psql …'`,
@@ -179,7 +182,7 @@ if printf '%s' "$cmd" | grep -qiE "$NEON_PROD_ENDPOINT" \
   deny "Database client aimed at the PRODUCTION NeonDB endpoint blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
 fi
 if printf '%s' "$cmd" | grep -qiE "$DOPPLER_PRD" \
-   && { printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" || printf '%s' "$cmd" | grep -qiE "$DB_LIB"; }; then
+   && { printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" || printf '%s' "$cmd" | grep -qiE "$DB_LIB" || printf '%s' "$cmd" | grep -qiE "$INLINE_CODE"; }; then
   deny "Database client under the PRODUCTION Doppler config blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
 fi
 

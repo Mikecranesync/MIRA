@@ -377,6 +377,13 @@ _PGURL = "postgres" + "ql://"
         (f"doppler run -c {_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
         (f"doppler run --config {_PRD} -- python3 -c 'import asyncpg; asyncpg.connect()'", True),
         (f"python3 -c \"print(open('x').read())\" {_EP}", True),
+        # native clients with no library marker: under a prd config, inline code is the vector (Codex F1)
+        (
+            f"doppler run -c {_PRD} -- bun -e \"import {{ SQL }} from 'bun'; new SQL(process.env.NEON_DATABASE_URL).unsafe('select 1')\"",
+            True,
+        ),
+        (f'doppler run --config {_PRD} -- deno eval "console.log(1)" -- -e x', False),
+        (f"doppler run -c {_PRD} -- python3 -c 'print(1)'", True),
         # every Doppler spelling of the prod config
         (f'doppler run --config={_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
         (f"doppler run -c={_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
