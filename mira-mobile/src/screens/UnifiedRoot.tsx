@@ -257,6 +257,21 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         (threadId) => !notebook.threads?.some((thread) => thread.id === threadId),
       );
       if (missing.length === 0) return notebook;
+      // threadRows() synthesizes the notebook's legacy conversation only while
+      // its summaries are empty. Adding session chats would hide it, so keep it
+      // explicitly; a blank title takes the notebook's label there (#4188 F4).
+      const server: Notebook["threads"] =
+        notebook.threads && notebook.threads.length > 0
+          ? notebook.threads
+          : [{
+              id: LEGACY_THREAD_ID,
+              notebookId: notebook.id,
+              title: "",
+              createdAt: notebook.createdAt ?? "",
+              updatedAt: notebook.createdAt ?? "",
+              turnCount: 0,
+              sharedLegacy: true,
+            }];
       return {
         ...notebook,
         threads: [
@@ -269,7 +284,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             turnCount: 0,
             sharedLegacy: false,
           })),
-          ...(notebook.threads ?? []),
+          ...(server ?? []),
         ],
       };
     });

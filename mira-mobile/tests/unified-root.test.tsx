@@ -449,6 +449,44 @@ describe("UnifiedRoot", () => {
     expect(root.querySelector(`[data-item-id="${newRow}"]`)).not.toBeNull();
   });
 
+  it("#4188 Codex F4: a notebook with no server threads keeps its original (legacy) conversation listed after a new chat is started", async () => {
+    // threadRows() synthesizes the legacy row only while the summaries array
+    // is empty, so merging a session chat into it used to hide the original
+    // conversation from the drawer and the project root.
+    scanApi.getAssetByTag.mockResolvedValue({ id: "asset-empty" });
+    scanApi.openAssetNotebook.mockResolvedValue({
+      id: "nb-empty", displayName: "Press 4", manufacturer: null, model: null, equipmentType: null,
+      identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [],
+    });
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={backRef}
+        onSignOut={async () => {}}
+        deepLink={{ tag: "PRESS-4", raw: "factorylm://m/PRESS-4" }}
+        onDeepLinkConsumed={() => {}}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    let root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    expect(root.querySelector('[data-item-id="notebook-nb-empty:thread-legacy"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
+    const newThreadId = (await waitFor(() => screen.getByTestId("nb"))).getAttribute("data-thread-id") ?? "";
+    await act(async () => {
+      backRef.current?.();
+    });
+    root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    const rows = Array.from(root.querySelectorAll("[data-item-id]")).map((el) => el.getAttribute("data-item-id"));
+    expect(rows).toContain("notebook-nb-empty:thread-legacy");
+    expect(rows).toContain(`notebook-nb-empty:thread-${newThreadId}`);
+    expect(root.querySelector('[data-item-id="notebook-nb-empty:thread-legacy"]')?.textContent).toContain("Press 4");
+  });
+
   it("#4188 Codex F2: a failed deep link that arrives while the project root is showing surfaces its notice there", async () => {
     const backRef = { current: null as (() => boolean) | null };
     const view = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
