@@ -251,6 +251,11 @@ function UnifiedChatForNotebook({
   // the identical event twice is still wasted work — skip it outright when
   // nothing about the live frame has changed since the last observation.
   const lastLiveFrameKeyRef = useRef<string | null>(null);
+  // Codex r8 F23 (#4195): bumped whenever newer input (a live frame, or a
+  // confirm's own status read) advances the tracked search. An async status
+  // read captures it at request time and is dropped if it changed meanwhile,
+  // so a slow, older answer can never replace a newer search.
+  const searchInputEpochRef = useRef(0);
   // Codex round 5 F16 (#4195): a notebook switch that keeps THIS component
   // mounted (`NotebooksTab.tsx`'s `onOpenNotebook` — a Sensor READ resolving
   // a different machine changes the `id`/`notebookId` prop in place, with no
@@ -388,6 +393,7 @@ function UnifiedChatForNotebook({
     const liveKey = `${notebookId}|${live.manufacturer}|${live.model}|${live.startedAt ?? ""}`;
     if (lastLiveFrameKeyRef.current === liveKey) return;
     lastLiveFrameKeyRef.current = liveKey;
+    searchInputEpochRef.current += 1;
     setFollow((prev) => {
       const result = observeLiveManualSearchFrame(prev, notebookId, live);
       if (result.refreshSources) void refreshPromotedScope();
@@ -402,9 +408,10 @@ function UnifiedChatForNotebook({
   useEffect(() => {
     if (!notebookId) return;
     let cancelled = false;
+    const epoch = searchInputEpochRef.current;
     void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
       .then((status) => {
-        if (cancelled || !status) return;
+        if (cancelled || !status || searchInputEpochRef.current !== epoch) return;
         setFollow((prev) => {
           const result = reseedManualSearchFollow(prev, notebookId, status);
           if (result.refreshSources) void refreshPromotedScope();
@@ -760,6 +767,8 @@ function UnifiedChatForNotebook({
             // unavailable (a transient failure right after confirm) — it
             // must never overwrite a fresh authoritative settle.
             let authoritative: ManualSearchStatus | null = null;
+            searchInputEpochRef.current += 1;
+            const confirmEpoch = searchInputEpochRef.current;
             try {
               authoritative = await fetchManualSearchStatus(requestedNotebookId, { threadId: attachmentThreadId ?? undefined });
             } catch {
@@ -768,6 +777,8 @@ function UnifiedChatForNotebook({
             // F16, same check: the scope refresh above may have taken long
             // enough for the technician to have moved on too.
             if (!aliveRef.current || notebookIdRef.current !== requestedNotebookId) return result;
+            // F23: a live frame that arrived during this read is newer; it wins.
+            if (searchInputEpochRef.current !== confirmEpoch) return result;
             if (authoritative) {
               setFollow((prev) => {
                 const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, authoritative!);

@@ -398,3 +398,67 @@ describe("UnifiedChat — a second, different search must not erase the first se
     expect(screen.getByText("Found it (SMC).")).toBeTruthy();
   });
 });
+
+describe("UnifiedChat — a delayed hydration read never replaces a newer live search (#4195 Codex r8 F23)", () => {
+  it("keeps following generation G2 when the mount-time GET for an older settled G1 arrives after G2's live frame", async () => {
+    vi.useFakeTimers();
+    let resolveHydration!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveHydration = r; }));
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
+
+    // A newer search starts on the live stream while the hydration GET is still in flight.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The stale hydration answer (an older, already-settled G1) lands now.
+    await act(async () => {
+      resolveHydration({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // G2 is still being polled.
+    const before = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
+  });
+
+  it("a confirm's status read that lands after a newer live frame does not replace it", async () => {
+    fetchManualSearchStatus.mockResolvedValueOnce(null); // mount-time hydration: nothing yet
+    let resolveConfirmRead!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveConfirmRead = r; }));
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    confirmIdentityProposal.mockResolvedValue({ manualReady: false, searching: true, startedAt: "gen-1", message: "Searching." });
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    const confirm = (await screen.findAllByRole("button", { name: "Use its manuals" }))[0]!;
+    await act(async () => { fireEvent.click(confirm); });
+    for (let i = 0; i < 10 && fetchManualSearchStatus.mock.calls.length < 2; i++) {
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(fetchManualSearchStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    await act(async () => {
+      resolveConfirmRead({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+  });
+
+  it("control: a hydration read with no newer input still seeds the follower", async () => {
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(await screen.findByText("Found it.")).toBeTruthy();
+  });
+});
