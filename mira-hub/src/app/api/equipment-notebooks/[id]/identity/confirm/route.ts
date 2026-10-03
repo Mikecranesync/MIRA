@@ -9,10 +9,13 @@
  * chat/route.ts, the `proposalEntries` persist site).
  *
  * This route does NOT create a second identity-write path. It validates the
- * body and calls the SAME `updateNotebook` seam the Hub's generic
- * `PATCH /api/equipment-notebooks/[id]` already uses (see that route's own
- * header: "PATCH ... — edit identity/metadata"). Writing
- * `identity_status = 'user_confirmed'` fires the
+ * body and calls `confirmNotebookIdentity` (`capabilities/notebook-manual-
+ * acquisition.ts`), which writes the SAME columns the Hub's generic
+ * `PATCH /api/equipment-notebooks/[id]` (`updateNotebook`) writes — just as
+ * one atomic UPDATE whose WHERE clause encodes the stale-identity guard
+ * below, instead of a separate read-then-write (light-review TOCTOU
+ * remediation, PR #4195). Writing `identity_status = 'user_confirmed'` fires
+ * the
  * `equipment_notebooks_revoke_auto_manuals` trigger — migration 104's
  * promotion branch, specifically — which turns a matching CANDIDATE-basis
  * manual (one a background search already found AND whose applicability was
@@ -38,11 +41,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, listSources, updateNotebook } from "@/lib/equipment-notebooks";
+import { getNotebook, listSources } from "@/lib/equipment-notebooks";
 import {
   acquisitionEnabled,
   acquisitionKey,
   applicableReadySource,
+  confirmNotebookIdentity,
   readAcquisition,
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
@@ -53,8 +57,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MAX_FIELD_LEN = 200;
 
 /** A trimmed, length-bounded string, or "" when absent/not a string — never
- *  null/undefined, so every caller can pass the result straight to
- *  `updateNotebook` without an extra presence check. */
+ *  null/undefined, so every caller can pass the result straight to the
+ *  identity write without an extra presence check. */
 function readString(body: Record<string, unknown>, key: string): string {
   const v = body[key];
   return typeof v === "string" ? v.trim().slice(0, MAX_FIELD_LEN) : "";
@@ -111,20 +115,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // `isBlankUnboundNotebook`/`mayBeNameplateAdopted`, `hub-host-logic.ts`'s
   // `confirmed`): identity_status is `user_confirmed` OR `verified` —
   // migration 073's two settled states. `unknown`/`candidate` are not yet a
-  // settled identity, so the existing unconditional write below stays correct
-  // for them (including the very first confirm of a proposal — the common
-  // case).
+  // settled identity, so an unconditional write stays correct for them
+  // (including the very first confirm of a proposal — the common case).
   //
   // Confirming the SAME identity again must still succeed (an idempotent
   // re-click, or a stale card that happens to still name the CURRENT
   // machine) — this guard refuses ONLY a confirm that would REPLACE a
-  // settled identity with a DIFFERENT one. The comparison reuses
-  // `acquisitionKey`'s own normalization (manufacturer/model/catalogNumber,
-  // uppercased, punctuation stripped) rather than inventing a second one;
-  // `identityStatus` is forced to the literal `"user_confirmed"` on BOTH
-  // sides purely to satisfy that function's own precondition — this route
-  // has ALREADY established the notebook is confirmed, by whichever of the
-  // two settled values `acquisitionKey` doesn't itself distinguish.
+  // settled identity with a DIFFERENT one.
+  //
+  // TOCTOU remediation (light-review finding, PR #4195 #4195-followup, HIGH):
+  // this check used to run in JS against the `getNotebook` read above, with
+  // an unconditional `updateNotebook` after it. Two concurrent confirms for
+  // DIFFERENT identities on the same unconfirmed notebook both passed that
+  // read-time check and both wrote — the second silently winning. The guard
+  // now lives INSIDE `confirmNotebookIdentity`'s own UPDATE ... WHERE clause
+  // (`notebook-manual-acquisition.ts`), so the check and the write are one
+  // atomic statement under Postgres's row lock. See that function's doc
+  // comment for the exact truth table (byte-identical to the one this
+  // comment used to describe) and why it's safe under concurrency.
   //
   // The deliberate, human-driven "change this notebook's identity" flow is
   // the generic `PATCH /api/equipment-notebooks/[id]` (the notebook Settings
@@ -132,44 +140,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // performs, and this guard does not touch that route. "Not this" (reject)
   // never writes here either (see the route header above), so it needs no
   // change.
-  const alreadyConfirmed = notebook.identityStatus === "user_confirmed" || notebook.identityStatus === "verified";
-  if (alreadyConfirmed) {
-    const existingKey = acquisitionKey({
-      identityStatus: "user_confirmed",
-      manufacturer: notebook.manufacturer,
-      model: notebook.model,
-      catalogNumber: notebook.catalogNumber,
-    });
-    const incomingKey = acquisitionKey({
-      identityStatus: "user_confirmed",
-      manufacturer,
-      model,
-      catalogNumber,
-    });
-    if (existingKey !== null && incomingKey !== null && existingKey !== incomingKey) {
+  const confirmResult = await confirmNotebookIdentity(ctx.tenantId, notebookId, {
+    manufacturer,
+    model,
+    catalogNumber,
+  });
+  if (!confirmResult.ok) {
+    if (confirmResult.error === "identity_already_confirmed") {
       return NextResponse.json(
         {
           error: "identity_already_confirmed",
-          manufacturer: notebook.manufacturer,
-          model: notebook.model,
+          manufacturer: confirmResult.manufacturer,
+          model: confirmResult.model,
         },
         { status: 409 },
       );
     }
-  }
-
-  const ok = await updateNotebook(ctx.tenantId, notebookId, {
-    manufacturer,
-    model,
-    catalogNumber,
-    identityStatus: "user_confirmed",
-    // "user": the technician asserted this identity directly (closest fit of
-    // the four values migration 073's CHECK allows — manual/nameplate_image/
-    // user/existing_asset; there is no "chat_proposal" value, and adding one
-    // is a migration this narrow route does not need).
-    identitySourceType: "user",
-  });
-  if (!ok) {
     return NextResponse.json({ error: "confirm_failed" }, { status: 500 });
   }
 

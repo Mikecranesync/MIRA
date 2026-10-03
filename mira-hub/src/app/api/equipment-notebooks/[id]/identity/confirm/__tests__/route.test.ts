@@ -1,8 +1,15 @@
 // POST /api/equipment-notebooks/[id]/identity/confirm — "Use its manuals"
 // (T2, #4175/#4189): confirming an identity_proposal (#4120) sets the
-// notebook's own identity through the SAME updateNotebook seam the generic
-// PATCH uses (never a second identity-write path), and reports whether
-// migration 104 promoted a matching candidate manual.
+// notebook's own identity through `confirmNotebookIdentity` (never a second
+// identity-write path), and reports whether migration 104 promoted a
+// matching candidate manual.
+//
+// `confirmNotebookIdentity` is mocked at the module boundary here — this
+// suite proves the ROUTE's contract (status codes, response bodies, what it
+// passes to the write) at the seam. The atomic UPDATE...WHERE guard itself
+// (the light-review TOCTOU remediation, PR #4195) is proven for real against
+// Postgres in `notebook-identity-confirm.integration.test.ts` — unit-mocking
+// it here would prove nothing about the race it fixes.
 //
 // Run: cd mira-hub && npx vitest run "src/app/api/equipment-notebooks/[id]/identity/confirm/__tests__/route"
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -11,7 +18,6 @@ import type { NextRequest } from "next/server";
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({
   getNotebook: vi.fn(),
-  updateNotebook: vi.fn(),
   listSources: vi.fn(),
 }));
 
@@ -25,6 +31,7 @@ const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
   startManualAcquisition: vi.fn(async () => true),
   readAcquisition: vi.fn(async () => null as unknown),
+  confirmNotebookIdentity: vi.fn(async () => ({ ok: true }) as unknown),
 }));
 vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>();
@@ -33,6 +40,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
     acquisitionEnabled: acqMock.acquisitionEnabled,
     startManualAcquisition: acqMock.startManualAcquisition,
     readAcquisition: acqMock.readAcquisition,
+    confirmNotebookIdentity: acqMock.confirmNotebookIdentity,
     // acquisitionKey stays REAL — pure, already unit-proven; this suite
     // checks the route builds the exact same key the candidate-basis
     // search would (see the existing "writes an identity whose
@@ -42,7 +50,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 
 import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, listSources, updateNotebook } from "@/lib/equipment-notebooks";
+import { getNotebook, listSources } from "@/lib/equipment-notebooks";
 // The real exported contract — proves the confirm route's key input shape
 // matches the candidate-basis search's own key exactly (not re-implemented).
 import { acquisitionKey } from "@/capabilities/notebook-manual-acquisition";
@@ -73,7 +81,6 @@ beforeEach(() => {
     role: "owner",
   } as never);
   vi.mocked(getNotebook).mockResolvedValue({ id: NB, nodeId: "node-1", asset: null } as never);
-  vi.mocked(updateNotebook).mockResolvedValue(true as never);
   vi.mocked(listSources).mockResolvedValue([] as never);
   // `clearAllMocks` resets call history, not a `mockReturnValue` a test
   // overrode — reset the acquisition spies to their defaults explicitly so
@@ -81,6 +88,7 @@ beforeEach(() => {
   acqMock.acquisitionEnabled.mockReturnValue(true);
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
+  acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
 });
 
 describe("POST identity/confirm", () => {
@@ -89,7 +97,7 @@ describe("POST identity/confirm", () => {
     vi.mocked(sessionOr401).mockResolvedValue(NextResponse.json({ error: "unauthorized" }, { status: 401 }) as never);
     const res = await POST(req({ manufacturer: "SMC", model: "X" }), params);
     expect(res.status).toBe(401);
-    expect(updateNotebook).not.toHaveBeenCalled();
+    expect(acqMock.confirmNotebookIdentity).not.toHaveBeenCalled();
   });
 
   it("404s a malformed notebook id without touching the database", async () => {
@@ -115,7 +123,7 @@ describe("POST identity/confirm", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_body" });
       expect(getNotebook).not.toHaveBeenCalled();
-      expect(updateNotebook).not.toHaveBeenCalled();
+      expect(acqMock.confirmNotebookIdentity).not.toHaveBeenCalled();
     },
   );
 
@@ -123,7 +131,7 @@ describe("POST identity/confirm", () => {
     expect((await POST(req({ model: "X" }), params)).status).toBe(400);
     expect((await POST(req({ manufacturer: "SMC" }), params)).status).toBe(400);
     expect((await POST(req({ manufacturer: "  ", model: "X" }), params)).status).toBe(400);
-    expect(updateNotebook).not.toHaveBeenCalled();
+    expect(acqMock.confirmNotebookIdentity).not.toHaveBeenCalled();
   });
 
   it("404s a notebook that isn't the caller's", async () => {
@@ -131,22 +139,25 @@ describe("POST identity/confirm", () => {
     const res = await POST(req({ manufacturer: "SMC", model: "X" }), params);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "notebook_not_found" });
-    expect(updateNotebook).not.toHaveBeenCalled();
+    expect(acqMock.confirmNotebookIdentity).not.toHaveBeenCalled();
   });
 
   // Light-review finding (PR #4195): a stale persisted `identity_proposal`
   // card must not silently overwrite a LATER, different confirmed identity.
+  // The guard itself is now INSIDE `confirmNotebookIdentity`'s atomic
+  // UPDATE...WHERE (TOCTOU remediation, same PR) — these tests prove the
+  // ROUTE reacts correctly to that function's result, by mocking the result
+  // it returns to the route, not by re-deriving the guard from a `getNotebook`
+  // shape. The real guard predicate is proven against Postgres in
+  // `notebook-identity-confirm.integration.test.ts`.
   describe("stale-proposal guard — a DIFFERENT confirmed identity refuses, the SAME one stays idempotent", () => {
-    it("409s and writes nothing when the notebook is ALREADY confirmed as a DIFFERENT machine", async () => {
-      vi.mocked(getNotebook).mockResolvedValue({
-        id: NB,
-        nodeId: "node-1",
-        asset: null,
-        identityStatus: "user_confirmed",
+    it("409s and writes nothing (one call, no retry) when confirmNotebookIdentity reports an ALREADY-confirmed DIFFERENT machine", async () => {
+      acqMock.confirmNotebookIdentity.mockResolvedValue({
+        ok: false,
+        error: "identity_already_confirmed",
         manufacturer: "Rockwell Automation",
         model: "PowerFlex 525",
-        catalogNumber: "",
-      } as never);
+      });
       const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
@@ -154,44 +165,42 @@ describe("POST identity/confirm", () => {
         manufacturer: "Rockwell Automation",
         model: "PowerFlex 525",
       });
-      expect(updateNotebook).not.toHaveBeenCalled();
+      expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledTimes(1);
+      expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, {
+        manufacturer: "SMC",
+        model: "SS5Y3-DUW01302",
+        catalogNumber: "",
+      });
       expect(listSources).not.toHaveBeenCalled();
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     });
 
-    it("409s the same way when identityStatus is 'verified' (migration 073's other settled state)", async () => {
-      vi.mocked(getNotebook).mockResolvedValue({
-        id: NB,
-        nodeId: "node-1",
-        asset: null,
-        identityStatus: "verified",
+    it("409s the same way when the write reports 'verified' (migration 073's other settled state) as the blocking identity", async () => {
+      acqMock.confirmNotebookIdentity.mockResolvedValue({
+        ok: false,
+        error: "identity_already_confirmed",
         manufacturer: "Rockwell Automation",
         model: "PowerFlex 525",
-        catalogNumber: "",
-      } as never);
+      });
       const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
       expect(res.status).toBe(409);
-      expect(updateNotebook).not.toHaveBeenCalled();
     });
 
-    it("stays idempotent (200) when the SAME identity is confirmed again, case/punctuation-insensitively", async () => {
-      vi.mocked(getNotebook).mockResolvedValue({
-        id: NB,
-        nodeId: "node-1",
-        asset: null,
-        identityStatus: "user_confirmed",
-        manufacturer: "smc",
-        model: "ss5y3 duw01302",
-        catalogNumber: "",
-      } as never);
+    it("stays idempotent (200) when confirmNotebookIdentity succeeds for the SAME identity re-confirmed", async () => {
+      acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
       const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
       expect(res.status).toBe(200);
-      expect(updateNotebook).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }));
+      expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(
+        TENANT,
+        NB,
+        expect.objectContaining({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }),
+      );
     });
 
     it("stays unconditional (200) when the notebook is not yet confirmed ('unknown'/'candidate') — today's first-confirm behavior", async () => {
       for (const identityStatus of ["unknown", "candidate"] as const) {
-        vi.mocked(updateNotebook).mockClear();
+        acqMock.confirmNotebookIdentity.mockClear();
+        acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: true });
         vi.mocked(getNotebook).mockResolvedValue({
           id: NB,
           nodeId: "node-1",
@@ -203,7 +212,7 @@ describe("POST identity/confirm", () => {
         } as never);
         const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
         expect(res.status).toBe(200);
-        expect(updateNotebook).toHaveBeenCalledTimes(1);
+        expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledTimes(1);
       }
     });
 
@@ -213,25 +222,23 @@ describe("POST identity/confirm", () => {
     });
   });
 
-  it("confirms through updateNotebook with identity_status=user_confirmed, writing catalogNumber='' when absent", async () => {
+  it("confirms through confirmNotebookIdentity, writing catalogNumber='' when absent", async () => {
     const res = await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
     expect(res.status).toBe(200);
-    expect(updateNotebook).toHaveBeenCalledWith(TENANT, NB, {
+    expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, {
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       catalogNumber: "",
-      identityStatus: "user_confirmed",
-      identitySourceType: "user",
     });
   });
 
   it("passes through a provided catalogNumber verbatim", async () => {
     await POST(req({ manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" }), params);
-    expect(updateNotebook).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ catalogNumber: "DUW01302" }));
+    expect(acqMock.confirmNotebookIdentity).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ catalogNumber: "DUW01302" }));
   });
 
-  it("500s when the identity write itself fails, and reports no manual", async () => {
-    vi.mocked(updateNotebook).mockResolvedValue(false as never);
+  it("500s when the identity write itself fails (notebook vanished between getNotebook and the write), and reports no manual", async () => {
+    acqMock.confirmNotebookIdentity.mockResolvedValue({ ok: false, error: "confirm_failed" });
     const res = await POST(req({ manufacturer: "SMC", model: "X" }), params);
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "confirm_failed" });
@@ -493,7 +500,7 @@ describe("POST identity/confirm", () => {
 
   it("writes an identity whose acquisitionKey matches the candidate-basis search's own key exactly (migration 104's promotion predicate)", async () => {
     await POST(req({ manufacturer: "SMC", model: "SS5Y3-DUW01302" }), params);
-    const written = vi.mocked(updateNotebook).mock.calls[0][2] as {
+    const written = acqMock.confirmNotebookIdentity.mock.calls[0][2] as {
       manufacturer: string;
       model: string;
       catalogNumber: string;
