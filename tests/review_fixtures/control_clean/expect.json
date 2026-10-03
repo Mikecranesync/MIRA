@@ -1,0 +1,6 @@
+{
+ "planted": null,
+ "keywords_any": [],
+ "min_severity": "high",
+ "provenance": "control: a correct, boring change; any finding at or above min_severity is a false positive"
+}

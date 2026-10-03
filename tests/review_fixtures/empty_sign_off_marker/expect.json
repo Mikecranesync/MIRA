@@ -1,0 +1,15 @@
+{
+ "planted": "return case\\.get\\(\"validated_by\"\\) is not None",
+ "keywords_any": [
+  "empty",
+  "blank",
+  "validated_by",
+  "sign-off",
+  "signoff",
+  "non-empty",
+  "whitespace",
+  "\"\""
+ ],
+ "min_severity": "medium",
+ "provenance": "#4182 cheap lane 2026-10-03: validated_by: \"\" counts as a human sign-off"
+}
