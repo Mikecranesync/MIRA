@@ -170,7 +170,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           const withOpened = (list: Notebook[]): Notebook[] =>
             opened && !list.some((nb) => nb.id === opened.id) ? [opened, ...list] : list;
           if (opened) setNotebooks((current) => withOpened(current ?? []));
-          open(outcome.notebookId);
+          // open() reads the list from this render, which does not contain a
+          // just-added notebook yet, so it would fall back to the legacy thread.
+          // Name the opened notebook's latest thread explicitly in that case
+          // only; a notebook already listed keeps open()'s own resume rules.
+          const listedAlready = notebooks?.some((nb) => nb.id === outcome.notebookId) ?? false;
+          open(outcome.notebookId, opened && !listedAlready ? latestThreadId(opened) : undefined);
           // The notebook may be new (openAssetNotebook can create it); refresh
           // the drawer so it lists what the technician is now inside. A refresh
           // that lags the create must not drop the notebook just opened.

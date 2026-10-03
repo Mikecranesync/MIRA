@@ -599,6 +599,9 @@ describe("UnifiedRoot", () => {
     );
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-new");
+    // open() runs before the list update lands; it must still open the new
+    // notebook's latest thread, not fall back to the legacy one.
+    expect(nb.getAttribute("data-thread-id")).toBe("thrd-n1");
 
     let consumed = false;
     await act(async () => {
