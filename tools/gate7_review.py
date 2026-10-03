@@ -1036,6 +1036,19 @@ def render(review: Review, number: int, level: str, reasons: list[str], receipts
     return "\n".join(lines) + "\n"
 
 
+def _usd(text: str) -> float:
+    """A spend cap must be a finite positive number: `inf`/`nan`/`-1`/`0` made
+    every estimate fit (cheap gate on ff0e32523)."""
+    import math
+
+    v = float(text)
+    if not math.isfinite(v) or v <= 0:
+        raise argparse.ArgumentTypeError(
+            f"budget must be a finite positive dollar amount, got {text!r}"
+        )
+    return v
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Gate 7 independent adversarial review")
     p.add_argument("pr", type=int, help="PR number")
@@ -1094,7 +1107,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "model chosen by a worst-case estimate against --budget-usd (strongest "
         "first), real cost recorded to --ledger. Refuses (exit 3) when no model fits.",
     )
-    p.add_argument("--budget-usd", type=float, default=0.10, help="per-review cap for --paid")
+    p.add_argument("--budget-usd", type=_usd, default=0.10, help="per-review cap for --paid")
     p.add_argument(
         "--ledger",
         type=Path,

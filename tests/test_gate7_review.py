@@ -1287,3 +1287,11 @@ def test_a_malformed_successful_response_is_no_review_with_usage_unknown(monkeyp
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
     assert text is None and "malformed" in attempts[0] and usage == {}
+
+
+@pytest.mark.parametrize("bad", ["inf", "nan", "-1", "0"])
+def test_a_non_finite_or_non_positive_budget_is_refused(bad, monkeypatch):
+    """Cheap gate on ff0e32523: `--budget-usd inf` made every estimate fit."""
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", {})
+    with pytest.raises(SystemExit):
+        g7.main(["7", "--paid", "--budget-usd", bad])

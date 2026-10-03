@@ -153,10 +153,10 @@ def live_provider(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--live", action="store_true", help="run the paid single-shot lane per case")
-    ap.add_argument("--budget-usd", type=float, default=0.10, help="PER-CASE budget for --live")
+    ap.add_argument("--budget-usd", type=g7._usd, default=0.10, help="PER-CASE budget for --live")
     ap.add_argument(
         "--total-budget-usd",
-        type=float,
+        type=g7._usd,
         default=0.25,
         help="hard stop for the whole --live run: a case is not launched when spend so far "
         "plus its worst-case estimate would exceed this",

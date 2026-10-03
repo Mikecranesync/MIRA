@@ -204,3 +204,9 @@ def test_live_total_budget_stops_launching_before_it_is_exceeded(tmp_path, monke
     assert provider("P1") is not None  # 0 + 0.04 ≤ 0.0415
     assert provider("P2") is not None  # 0.0012 + 0.04 = 0.0412 ≤ 0.0415
     assert provider("P3") is None and len(calls) == 2  # 0.0024 + 0.04 > 0.0415: refused
+
+
+@pytest.mark.parametrize("flag", ["--budget-usd", "--total-budget-usd"])
+def test_fixture_cli_refuses_a_non_finite_budget(flag, monkeypatch):
+    with pytest.raises(SystemExit):
+        rf.main(["--live", flag, "inf"])
