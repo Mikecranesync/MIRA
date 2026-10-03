@@ -769,9 +769,9 @@ def call_cascade(
 PAID_URL = "https://api.openai.com/v1/chat/completions"
 PAID_ENV = "OPENAI_API_KEY"
 PAID_LADDER = ("gpt-6.1-sol", "gpt-5.4-mini", "gpt-6-luna")  # strongest first
-PAID_MAX_OUTPUT_TOKENS = 6000
+PAID_MAX_OUTPUT_TOKENS = 12000  # reasoning + visible report share this cap
 PAID_DIFF_CAP = 400_000  # the budget bounds it below this in practice
-PAID_REASONING_EFFORT = "medium"
+PAID_REASONING_EFFORT = "low"  # medium ate a 6k cap as hidden reasoning (live, 2026-10-03)
 _PRICES_FILE = Path(__file__).resolve().parent / "review_router" / "prices.json"
 
 
@@ -861,7 +861,10 @@ def call_paid(
         return (
             None,
             "",
-            [f"openai ({model}): empty completion (reasoning consumed the budget?)"],
+            [
+                f"openai ({model}): empty completion — reasoning used "
+                f"{usage['reasoning_output_tokens']:,} of the {max_output:,}-token output cap"
+            ],
             usage,
         )
     return (
@@ -886,6 +889,18 @@ def default_ledger() -> Path:
         else Path(__file__).resolve().parents[1]
     )
     return (home / ".planning" / "review-costs.jsonl").resolve()
+
+
+def _stamp_verdict(ledger: Path, verdict: str) -> None:
+    """Rewrite the LAST single-shot row's verdict from 'pending' to the parsed one."""
+    rows = ledger.read_text(encoding="utf-8").splitlines()
+    for i in range(len(rows) - 1, -1, -1):
+        row = json.loads(rows[i])
+        if row.get("lane") == "single-shot" and row.get("verdict") == "pending":
+            row["verdict"] = verdict
+            rows[i] = json.dumps(row)
+            break
+    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
 def record_paid_run(ledger: Path, row: dict) -> None:
@@ -1160,6 +1175,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         text, provider, attempts = call_cascade(
             prompt, max_tokens=32000 if level == "xhigh" else 24000
         )
+    if a.paid and usage:
+        # Record the spend of EVERY launched call, including a failed one: an
+        # empty completion still bills its reasoning tokens. An unrecorded
+        # failure is an unproven zero (the router's #4202 F3 lesson).
+        cost = paid_cost_usd(model, usage)
+        record_paid_run(
+            a.ledger or default_ledger(),
+            {
+                "kind": "run",
+                "lane": "single-shot",
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "pr": a.pr,
+                "head": head_sha,
+                "model": model,
+                "effort": PAID_REASONING_EFFORT,
+                "diff_chars": len(diff),
+                **usage,
+                "estimate_usd": round(paid_estimate_usd(model, len(prompt)), 4),
+                "cost_usd": round(cost, 4),
+                "usage_unknown": False,
+                "launched": True,
+                "verdict": "none" if text is None else "pending",
+            },
+        )
+        print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
     if text is None:
         print("Gate 7: ENTIRE CASCADE FAILED — no review produced.", file=sys.stderr)
         for at in attempts:
@@ -1178,26 +1218,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"{usage.get('output_tokens', 0):,}/{usage.get('reasoning_output_tokens', 0):,} "
             f"· cost ${cost:.4f} (budget ${a.budget_usd:.2f})",
         ]
-        record_paid_run(
-            a.ledger or default_ledger(),
-            {
-                "kind": "run",
-                "lane": "single-shot",
-                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "pr": a.pr,
-                "head": head_sha,
-                "model": model,
-                "effort": PAID_REASONING_EFFORT,
-                "diff_chars": len(diff),
-                **usage,
-                "estimate_usd": round(paid_estimate_usd(model, len(prompt)), 4),
-                "cost_usd": round(cost, 4),
-                "usage_unknown": False,
-                "launched": True,
-                "verdict": review.verdict,
-            },
-        )
-        print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
+        _stamp_verdict(a.ledger or default_ledger(), review.verdict)
     report = render(review, a.pr, level, reasons, receipts)
 
     if a.out:

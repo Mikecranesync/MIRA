@@ -750,16 +750,19 @@ PRICES = {
 
 
 def test_paid_estimate_is_worst_case_no_cache_full_output_cap():
-    # 40,000 chars ≈ 10,001 tokens in; 6,000 out at the cap
+    # 40,000 chars ≈ 10,001 tokens in; the whole output cap out
     est = g7.paid_estimate_usd("gpt-6.1-sol", 40_000, table=PRICES)
-    assert est == pytest.approx((10_001 * 2.0 + 6000 * 10.0) / 1e6, rel=1e-6)
+    cap = g7.PAID_MAX_OUTPUT_TOKENS
+    assert est == pytest.approx((10_001 * 2.0 + cap * 10.0) / 1e6, rel=1e-6)
 
 
 def test_pick_paid_model_steps_down_the_ladder_to_stay_under_budget():
-    assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-6.1-sol"  # ~$0.07
-    assert g7.pick_paid_model(100_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol ≈ $0.11
-    assert g7.pick_paid_model(600_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.14
-    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.15
+    assert g7.PAID_MAX_OUTPUT_TOKENS == 12_000  # the numbers below assume this cap
+    assert g7.pick_paid_model(20_000, 0.20, table=PRICES) == "gpt-6.1-sol"  # ≈ $0.13
+    assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol out: $0.12 output
+    assert g7.pick_paid_model(245_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.10 (#4182)
+    assert g7.pick_paid_model(600_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.17
+    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.16
     assert g7.PAID_LADDER[0] == "gpt-6.1-sol", "strongest model first"
 
 
@@ -843,7 +846,7 @@ def _patch_main(monkeypatch, diff, paid_text, usage):
 
 
 def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypatch):
-    diff = "+" + "x" * 60_000 + "\n"  # ~15k tokens: sol ≈ $0.09 worst case
+    diff = "+" + "x" * 60_000 + "\n"  # ~15k tokens: mini ≈ $0.07 worst case; sol ≈ $0.15
     usage = {
         "input_tokens": 16_000,
         "cached_input_tokens": 0,
@@ -853,15 +856,16 @@ def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypat
     seen = _patch_main(monkeypatch, diff, "## VERDICT\nPASS\n", usage)
     ledger, out = tmp_path / "costs.jsonl", tmp_path / "r.md"
     rc = g7.main(["7", "--paid", "--budget-usd", "0.10", "--ledger", str(ledger), "-o", str(out)])
-    assert rc == 0 and seen["model"] == "gpt-6.1-sol"
+    assert rc == 0 and seen["model"] == "gpt-5.4-mini"
     assert seen["prompt_len"] > 60_000, "the full diff was sent, not the 40k free-lane cap"
     report = out.read_text()
     assert "**Verdict:** PASS" in report and "single-shot" in report
-    expected = (16_000 * 2.0 + 800 * 10.0) / 1e6
+    expected = (16_000 * 0.75 + 800 * 4.5) / 1e6
     assert f"cost ${expected:.4f}" in report
     row = json.loads(ledger.read_text().splitlines()[-1])
     assert row["kind"] == "run" and row["lane"] == "single-shot" and row["pr"] == 7
-    assert row["model"] == "gpt-6.1-sol" and row["cost_usd"] == pytest.approx(expected)
+    assert row["model"] == "gpt-5.4-mini" and row["cost_usd"] == pytest.approx(expected)
+    assert row["verdict"] == "PASS"
     assert row["launched"] is True and row["usage_unknown"] is False
     assert row["cost_usd"] < 0.10
 
@@ -888,3 +892,20 @@ def test_the_real_price_table_exists_and_prices_every_ladder_model():
     table = g7.prices()
     for model in g7.PAID_LADDER:
         assert {"input", "cached_input", "output"} <= set(table[model]), model
+
+
+def test_main_paid_records_the_spend_of_an_empty_completion(tmp_path, monkeypatch):
+    """A failed call still billed its reasoning tokens: never an unproven zero."""
+    usage = {
+        "input_tokens": 20_000,
+        "cached_input_tokens": 0,
+        "output_tokens": 12_000,
+        "reasoning_output_tokens": 12_000,
+    }
+    _patch_main(monkeypatch, "+" + "x" * 60_000, None, usage)
+    ledger = tmp_path / "costs.jsonl"
+    rc = g7.main(["7", "--paid", "--ledger", str(ledger)])
+    assert rc == 2
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["verdict"] == "none" and row["launched"] is True
+    assert row["cost_usd"] == pytest.approx((20_000 * 0.75 + 12_000 * 4.5) / 1e6)
