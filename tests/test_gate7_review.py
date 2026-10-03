@@ -998,10 +998,20 @@ def test_post_puts_the_verdict_cost_and_head_on_the_pr_thread(tmp_path, monkeypa
     args, body = posted[0]
     assert args[:3] == ["pr", "comment", "7"] and "--body-file" in args
     assert body.startswith("[CHEAP-REVIEW]") and "verdict: PASS" in body
-    assert "head: " + "c" * 40 in body and "cost_usd: 0.0" in body and "## Findings" in body
+    assert "head: " + "c" * 40 in body and "cost_usd: 0.0" in body
+    # the comment carries the EXACT rendered report, byte for byte, after the header
+    assert body.endswith((tmp_path / "r.md").read_text())
 
 
 def test_post_without_paid_is_refused(monkeypatch):
     _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", {})
     with pytest.raises(SystemExit):
         g7.main(["7", "--post"])
+
+
+def test_the_brief_declares_the_redaction_placeholders():
+    """Three reviews tonight reported `[SECRET](PAID_ENV, "")` / `"[IP]"` as defects —
+    the harness's own redaction. The brief now names the placeholders as such."""
+    prompt = build_prompt("t", "b", "+x = os.environ.get('K')\n", "high", [])
+    assert "[SECRET], [IP], [MAC] and [SN]" in prompt
+    assert prompt.index("placeholder is never a defect") < prompt.index("BEGIN UNTRUSTED PR DATA")
