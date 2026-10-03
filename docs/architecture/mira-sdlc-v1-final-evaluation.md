@@ -117,9 +117,12 @@ changes land):**
 | Unresolved issues = normal follow-up PRs | TRUE | §14 — every remaining item is REUSE/CONNECT/REPAIR |
 | Consistent with current `origin/main` | TRUE | per the delta recon (§2, out of this agent's scope; fact-pack §A: no material drift) |
 
-**Six of ten TRUE.** Ratification readiness: **NOT YET** — ratify after the four before-ratification
-rule fixes in §12/§13 land in the document text (no code changes required for three of the four), at
-which point this table should read ten of ten TRUE.
+**Five of ten TRUE, five FALSE.** Ratification readiness: **NOT YET** — ratify after the rule-text
+changes in §13 land in #4208. Each FALSE row maps to document changes: exact identity → §13 changes 2, 3,
+5; gates not satisfiable by prose → 7, 8; stale-evidence invalidation → 5, 11; trust boundaries
+understood → 3, 4, 10; hotfix/rollback practical → 14 (the *rule*: a fresh rollback receipt is kept
+before an incident; the drill itself is later evidence, §14 step 10). No code change is required for any
+of them. After those land, this table should read ten of ten TRUE.
 
 ---
 
@@ -633,8 +636,9 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
     setting already deadlocks `ota-production`, S14); name the residual self-approval risk (§10).
 11. **§3.3 G3 (acceptance scope)** — add the `NOT_APPLICABLE`/`SKIPPED`/`INFRA_UNASSESSED` three-way
     distinction from §9; today both reduce to "exit 0."
-12. **§3.11** — correct change-failure-rate's denominator to deployments that reached the swap step
-    (not every workflow run, J11); correct the eval-fixture denominator from 67 to 65 (J7); note
+12. **§3.11** — correct change-failure-rate's numerator to distinct failed deployment events (run id +
+    attempt + service set, incidents linked as evidence) and its denominator to deployments that reached
+    the swap step (not every workflow run, J11); correct the eval-fixture denominator from 67 to 65 (J7); note
     `headSha` on a `deploy-vps.yml` run is the controller-checkout ref, not the deployed SHA (G:105).
 13. **New subsection near §3.3/§3.9** — the proposal text has zero mentions of "Merge Queue" or
     `merge_group` despite PRD §4.B requiring this; add one recording the confirmed `owner.type: User`
@@ -657,7 +661,7 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
 
 | Step | Type | Change | Files/systems | Prerequisite | Required evidence | Rollback | Mike auth |
 |---|---|---|---|---|---|---|---|
-| 1 | REPAIR+DOC | Adopt the document with §13 changes 1,4,6,9,10,13 applied; fix drift items; add `SECURITY.md`; fix `safety-reviewer.md` text | `docs/architecture/mira-sdlc-v1.md`, ~10 drift docs, `SECURITY.md`, `safety-reviewer.md` | None | Merged PR diff | Revert PR | Y (R3 governance) |
+| 1 | REPAIR+DOC | Apply **all** §13 changes 1–15 to #4208's text (every MUST FIX BEFORE RATIFICATION rule in §12 is a text change here), then adopt; fix the 22 drift items; add `SECURITY.md`; fix `safety-reviewer.md` text | `docs/architecture/mira-sdlc-v1.md`, ~10 drift docs, `SECURITY.md`, `safety-reviewer.md` | None | Merged PR diff; §12 before-ratification list cross-checked against the document text | Revert PR | Y (R3 governance) |
 | 2 | REPAIR (security) | Delete auto-fix job; fix `prod-guard.sh` host list; fix nightly direct push | `code-review.yml`, `prod-guard.sh`, `enforcement-audit.yml` | **None — independent of step 1**, may run in parallel | Workflow diff + a dry run | Revert | Y |
 | 3 | ADD | `incident`/`hotfix` labels + fixed body fields; wire into 2 canary workflows | labels; `provider-health-canary.yml`, `oauth-redirect-canary.yml`; `docs/agents/issue-tracker.md` | None (parallel to 1–2) | `gh label list`; canary diff | Remove labels | Y (touches workflows) |
 | 4 | CONNECT | Acceptance-receipt producer with corrected scope/skip semantics (§13 ch. 2,11); fail-closed re-read | `retrieval-acceptance.yml`, `tools/qa/*`, tests | Step 1 | A real RC's receipt artifact + test pass | Revert workflow | Y |
@@ -697,7 +701,7 @@ Section-level edits to `docs/architecture/mira-sdlc-v1.md`. Not implemented here
 |---|---|---|---|
 | Change lead time | PR `mergedAt` → first production receipt whose deployed Hub/Web SHA is a descendant of the merge commit (median/p90), reported only while the receipt is retained; reverted changes excluded and counted separately | Merged PRs; `production-receipt-<sha>`; `git merge-base --is-ancestor` | **Partially** — a run's `headSha` is the *controller-checkout* ref, not the deployed SHA (G:105); must join via receipts, never `headSha` alone |
 | Deployment frequency | Successful `deploy-vps.yml` runs per week that reached the swap step, not every workflow conclusion | Run history; production receipts | **Yes**, once the swap-step distinction is applied — today's raw run count (22/30 "failed" over 17 days) is mostly pre-swap authorization/build exits (J11), not deployment-frequency evidence |
-| Change failure rate | `incident` issues whose `deploy_sha:` names a deployment that reached the swap step ÷ deployments that reached the swap step; `external-cause` reported separately | ADD-2 fields; run history filtered to post-swap conclusions | **No** — requires ADD-2 first; explicitly not derivable today per the proposal's own baseline (`:425`) |
+| Change failure rate | **Distinct failed deployment events** (identified by `deploy-vps.yml` run id + attempt + service set, not by SHA) that have ≥1 attributable `incident` linked ÷ deployment events that reached the swap step; three incidents on one deployment count once; two attempts of the same SHA stay distinct; `external-cause` reported separately (aligned with Appendix B.9) | ADD-2 fields (`deploy_run:` added alongside `deploy_sha:`); run history filtered to post-swap conclusions | **No** — requires ADD-2 first; explicitly not derivable today per the proposal's own baseline (`:425`) |
 | Failed-deployment recovery time | `first_seen:` → `restored_at:` from the incident record | ADD-2 fields | **No** — same prerequisite |
 | Deployment rework rate | Deployments followed by a same-week redeploy of a different SHA to the same service, excluding scheduled/no-op redeploys ÷ total deployments | Run history + production receipts | **Partially** — mechanically countable from run history today; needs the swap-step filter above to avoid counting pre-swap retries as "rework" |
 
@@ -783,7 +787,7 @@ absence still leaves a live self-approval path (reasoned, not exercised — vali
    5. Put a required reviewer on the `production` environment (without `prevent_self_review`, which deadlocks a one-owner repo and already blocks `ota-production`), and say plainly that this buys a recorded click, not identity separation; also state that the Codex attestation is authenticated as an owner-account comment.
 3. **Top three explicitly rejected ideas:** (a) FactoryLM Forge / Temporal-Restate-DBOS / Backstage / Argo / LangGraph / SWE-agent / OpenHands as SDLC machinery — rejected or deferred with triggers (§15); (b) a hosted reviewer — `claude-code-action` in review mode, or the ChatGPT Codex cloud review app (distinct from `openai/codex-action`, which §11 rates BORROW PATTERN) — duplicates the local lane and reintroduces the disclosed secrets-plus-untrusted-PR-text failure class; (c) GitHub Merge Queue for v1 — the repo is User-owned and not eligible, and the candidate-SHA model conflicts with exact-head review regardless.
 4. **Unresolved owner decisions (§17):** Codex mandatory for all R3 (recommend YES); keep required approvals at 0 (recommend YES, conditional on the environment reviewer); `test-eval-offline` blocking (recommend NO, measure 30 days); R0 cheap-lane exemption (recommend NO in v1); delete the `auto-fix` job (recommend DELETE); whether a recorded click without identity separation is an acceptable interim production control (risk-tolerance call).
-5. **Ready for ratification after those changes?** **Yes.** PRD §21 reads 6/10 TRUE today (drafter) — the four FALSE conditions are all rule-text defects in #4208, not code; after §13 changes 1–8 and 10 land in the document, all ten conditions are met. Ratification adopts rules, not completed repairs; the code-level items are sequenced in §14.
+5. **Ready for ratification after those changes?** **Yes.** PRD §21 reads 5/10 TRUE today (§1 table) — the five FALSE conditions are all rule-text defects in #4208, not code; each is mapped to its §13 change in §1 (identity → 2, 3, 5; prose-satisfiable gates → 7, 8; stale-evidence invalidation → 5, 11; trust boundaries → 3, 4, 10; hotfix/rollback rule → 14). After §13 changes 1–15 land in the document, all ten conditions are met. Ratification adopts rules, not completed repairs; the code-level items are sequenced in §14.
 6. **Path:** `docs/architecture/mira-sdlc-v1-final-evaluation.md` (this document), branch `docs/sdlc-v1-evaluation`, draft PR #4210.
 
 ## Appendix A — Inputs, costs and limits
@@ -1034,3 +1038,19 @@ Assessment is of **the supplied proposal today**, not completion of implementati
 | Consistent with current main after delta recon | **TRUE, bounded** | Local expected `origin/main` and its four-file delta verified; no material SDLC drift. Live remote currency remains reported, and factual omissions require correction above. |
 
 **NOT READY.** Adopt with the ranked document changes, then reassess the false conditions. Ratification can precede code repairs once the rules and boundaries are correct; the current draft should not be ratified unchanged.
+
+## Appendix C — Codex adversarial round on this document (PR #4210)
+
+Round 1 (trusted-base entrypoint `scripts/adversarial-review-trusted.sh … --review-only`, Codex CLI,
+read-only sandbox, isolated home) reviewed `429c1ccdd537fcc7d3291c9fb8daae6bcffc22e2`:
+`ISSUES_FOUND` — 0 blocker, 0 high, **2 medium, 1 low**
+(https://github.com/Mikecranesync/MIRA/pull/4210#issuecomment-5969831047). Dispositions, all applied in
+the next commit:
+
+| Finding | Disposition |
+|---|---|
+| F1 MEDIUM — §1 table had 5 TRUE / 5 FALSE but the text said "six of ten"; §18 promised ten-of-ten after changes 1–8 and 10 while the hotfix/rollback row depended on change 14 | **Fixed**: counts corrected to 5/10; every FALSE row mapped to its §13 change(s), including 14; §18 item 5 aligned |
+| F2 MEDIUM — §14 step 1 adopted the document after only changes 1, 4, 6, 9, 10, 13, leaving several MUST-FIX-BEFORE-RATIFICATION rules to later steps | **Fixed**: step 1 now applies all §13 changes 1–15 before adoption; code repairs remain in later steps |
+| F3 LOW — §16 change failure rate counted incident issues keyed by `deploy_sha`, so one deployment with three incidents counted three, and same-SHA attempts were indistinguishable | **Fixed**: numerator is distinct failed deployment events (run id + attempt + service set) with incidents linked; §13 change 12 aligned with Appendix B.9 |
+
+Round 2 result is recorded below when available.
