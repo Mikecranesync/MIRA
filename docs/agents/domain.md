@@ -6,7 +6,7 @@ How the engineering skills should consume MIRA's domain documentation when explo
 
 - **`docs/THEORY_OF_OPERATIONS.md`** — MIRA's primary doctrine (what it is, how it works, why). This is the project glossary equivalent until a real `CONTEXT.md` is grown lazily.
 - **`CONTEXT-MAP.md`** at the repo root — points at MIRA's per-module contexts (mira-bots, mira-core, mira-hub, etc.).
-- **`docs/adr/`** — 16 system-wide ADRs (0001–0016). Read ones that touch the area you're about to work in.
+- **`docs/adr/`** — 39 system-wide ADRs as of 2026-10-03 (the README index lists 13; numbers 0014 and 0037 are each used twice). Read ones that touch the area you're about to work in.
 - **Per-module `CLAUDE.md`** — each module dir (`mira-bots/`, `mira-core/`, `mira-hub/`, `mira-cmms/`, `mira-mcp/`, `mira-pipeline/`, `mira-web/`, `mira-sidecar/`, `mira-bridge/`) carries its own deep context. These are the seed "CONTEXT.md per context" until lazy per-module CONTEXT.md files emerge via `/grill-with-docs`.
 - **Specs:** `docs/specs/` — product surface contracts (UNS gate, namespace builder, DST FSM).
 - **Plans:** `docs/plans/` — phased execution. Active: 90-day MVP plan + namespace-builder plan.
@@ -64,4 +64,4 @@ Especially watch for conflicts with:
 
 ## Marketplace objective lock
 
-Per `~/.claude/CLAUDE.md` (global) and root `CLAUDE.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.
+The monday.com marketplace lock (through 2026-07-19) has **expired**; the current scope anchor is `NORTH_STAR.md` + `docs/plans/2026-06-01-mira-master-architecture-plan.md` (root `CLAUDE.md` § North Star). Engineering skills that propose architectural changes, refactors, or new features still check that anchor or capture the idea in `docs/ideation/` for later. This is enforced by the `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.

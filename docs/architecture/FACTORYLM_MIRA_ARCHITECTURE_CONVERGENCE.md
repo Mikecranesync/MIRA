@@ -328,8 +328,11 @@ Run applicable:
 
 The implementation agent does not perform final review.
 
-**Default: the free-tier Groq → Cerebras → Together cascade — High reasoning.**
-Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.md`).
+**Required on every PR (owner decision 2026-10-03, SDLC v1 D4): the single-shot paid lane**
+`py tools/gate7_review.py <PR> --paid --post`, advisory until posted as a head-bound check (SDLC v1 §4.2).
+The free cascade (Groq → Together; Cerebras archived 2026-09-29) remains **only** for `--adjudicate`.
+The 2026-08-16 "No OpenAI" amendment below is superseded for this lane by that decision
+(`docs/review-cheap-lane.md`; see `.claude/commands/gate7-review.md`).
 
 > **Amended 2026-08-16 (CU-11, owner decision).** This gate previously specified
 > "GPT-5.6 Sol — High reasoning." **No OpenAI.** That name carried no configuration,

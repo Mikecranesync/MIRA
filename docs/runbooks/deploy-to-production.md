@@ -42,20 +42,14 @@ Path-filtered: pushes that touch only `docs/**`, `wiki/**`, `**/*.md`, or `.clau
 **skip** the smoke run — `deploy-vps.yml` never fires for those pushes.
 (Source: `.github/workflows/smoke-test.yml:24-35`)
 
-### Step 3 — Deploy fires when Smoke passes
+### Step 3 — Deploy is a manual dispatch (nothing fires on Smoke)
 
-`.github/workflows/deploy-vps.yml` listens for:
-```yaml
-workflow_run:
-  workflows: ["Smoke Test"]
-  types: [completed]
+`.github/workflows/deploy-vps.yml` is `workflow_dispatch` **only** ("AUTO-DEPLOY stays DISABLED"). The `workflow_run: ["Smoke Test"]` trigger described in earlier revisions of this runbook no longer exists. To deploy:
+```bash
+gh workflow run deploy-vps.yml -f approved_rc_sha=<40-hex commit on main> [-f services="mira-hub mira-web mira-ask"]
 ```
-and runs only when `conclusion == 'success'`.
-
-It also verifies that the `staging-gate` workflow ran and succeeded on the PR head SHA
-before deploying. If the merge commit was produced by squash-merge, the workflow
-matches by the PR branch's head SHA.
-(Source: `docs/environments.md:38`, `.github/workflows/deploy-vps.yml`)
+`authorize-source` then requires, for that SHA: a green Staging Gate on the PR head mapped from the merge commit (squash-merge aware), an unexpired (≤168 h) verified `staging-receipt-<sha>` from `deploy-staging.yml`, and zero migration filename drift. Push-time smoke is a signal, not a gate.
+(Source: `.github/workflows/deploy-vps.yml`; rules in `docs/architecture/mira-sdlc-v1.md` §7)
 
 ### Step 4 — Watch the deploy
 
@@ -70,12 +64,13 @@ gh run watch <RUN_ID>
 gh run view <RUN_ID> --log
 ```
 
-The deploy job runs on the VPS via SSH. Default targets
-(`.github/workflows/deploy-vps.yml:199`):
+The deploy job runs on the VPS via SSH. Default targets when `services` is empty
+(`.github/workflows/deploy-vps.yml`, `TARGETS="${SERVICES:-mira-hub mira-web mira-ask}"`):
 ```
-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack
+mira-hub mira-web mira-ask
 ```
-Not every container is rebuilt on every deploy — only the ones listed above.
+(the #3800 OVH minimal set; `mira-ask` restored 2026-09-27). Not every container is rebuilt on every
+deploy — only the ones listed, and the receipt proves the runtime identity only for the selected Hub/Web.
 
 ### Step 5 — Post-deploy verification
 
@@ -123,21 +118,15 @@ If it returns 200, the deploy succeeded. The red step is a false alarm.
 
 ---
 
-## Hotfix workflow_dispatch path
+## Hotfix path (no bypass inputs exist)
 
-Use this only when production is degraded and the normal merge-gate flow is too slow.
+Use this only when production is degraded and the normal flow is too slow. **`deploy-vps.yml` has no `skip_staging_gate` / `skip_reason` inputs any more — it rejects every `skip_*` input at `authorize-source`.** A hotfix is the normal path with the queue cleared and the emergency recorded (`docs/architecture/mira-sdlc-v1.md` §10.1):
 
-```bash
-gh workflow run deploy-vps.yml \
-  -f services="mira-pipeline mira-hub" \
-  -f skip_staging_gate=true \
-  -f skip_reason="Chat crash-loop: missing COPY in Dockerfile, fix in #1667"
-```
-
-**`skip_reason` is required.** An empty string causes `exit 1` before docker runs
-(`.github/workflows/deploy-vps.yml:76-79`). The workflow attempts to open a GitHub
-audit issue; if that fails (token lacks `issues:write`), it warns and continues —
-non-fatal since PR #1673.
+1. Open an `incident` issue (fixed fields: `docs/agents/issue-tracker.md`).
+2. Fix PR titled `fix(hotfix): …`, `Risk: R3 — production-control`; cheap lane one round; required contexts green.
+3. `deploy-staging.yml` for the merge SHA, acceptance for the capabilities in scope, then
+   `gh workflow run deploy-vps.yml -f approved_rc_sha=<sha> -f services="<narrowest list containing the fix>"`.
+4. Regression disposition on the incident within 24 hours.
 
 After a hotfix dispatch:
 1. Verify prod health (Step 5 above).
