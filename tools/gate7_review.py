@@ -37,6 +37,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -891,22 +892,40 @@ def default_ledger() -> Path:
     return (home / ".planning" / "review-costs.jsonl").resolve()
 
 
-def _stamp_verdict(ledger: Path, verdict: str) -> None:
-    """Rewrite the LAST single-shot row's verdict from 'pending' to the parsed one."""
-    rows = ledger.read_text(encoding="utf-8").splitlines()
-    for i in range(len(rows) - 1, -1, -1):
-        row = json.loads(rows[i])
-        if row.get("lane") == "single-shot" and row.get("verdict") == "pending":
-            row["verdict"] = verdict
-            rows[i] = json.dumps(row)
-            break
-    ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
+def _stamp_verdict(ledger: Path, run_id: str, verdict: str) -> None:
+    """Rewrite THIS run's row (by run_id) from 'pending' to the parsed verdict.
+    Never "the last pending row": two paid reviews can share the ledger."""
+    import fcntl
+
+    with open(str(ledger) + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        rows = ledger.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(rows):
+            row = json.loads(line)
+            if row.get("run_id") == run_id:
+                row["verdict"] = verdict
+                rows[i] = json.dumps(row)
+        ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
 def record_paid_run(ledger: Path, row: dict) -> None:
+    """Append under the same lock the router uses for this file."""
+    import fcntl
+
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    with ledger.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row) + "\n")
+    with open(str(ledger) + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with ledger.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+
+
+def _ledger_safely(what, *args) -> None:
+    """A review that was paid for must never be lost to a ledger write failure;
+    the failure is loud (stderr) so the spend gets recorded by hand."""
+    try:
+        what(*args)
+    except OSError as e:
+        print(f"Gate 7: LEDGER WRITE FAILED ({e}) — record this run by hand", file=sys.stderr)
 
 
 def render(review: Review, number: int, level: str, reasons: list[str], receipts: list[str]) -> str:
@@ -1175,16 +1194,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         text, provider, attempts = call_cascade(
             prompt, max_tokens=32000 if level == "xhigh" else 24000
         )
+    run_id = uuid.uuid4().hex
     if a.paid and usage:
         # Record the spend of EVERY launched call, including a failed one: an
         # empty completion still bills its reasoning tokens. An unrecorded
         # failure is an unproven zero (the router's #4202 F3 lesson).
         cost = paid_cost_usd(model, usage)
-        record_paid_run(
+        _ledger_safely(
+            record_paid_run,
             a.ledger or default_ledger(),
             {
                 "kind": "run",
                 "lane": "single-shot",
+                "run_id": run_id,
                 "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "pr": a.pr,
                 "head": head_sha,
@@ -1218,7 +1240,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"{usage.get('output_tokens', 0):,}/{usage.get('reasoning_output_tokens', 0):,} "
             f"· cost ${cost:.4f} (budget ${a.budget_usd:.2f})",
         ]
-        _stamp_verdict(a.ledger or default_ledger(), review.verdict)
+        _ledger_safely(_stamp_verdict, a.ledger or default_ledger(), run_id, review.verdict)
     report = render(review, a.pr, level, reasons, receipts)
 
     if a.out:

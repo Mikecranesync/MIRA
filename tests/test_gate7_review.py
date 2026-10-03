@@ -909,3 +909,35 @@ def test_main_paid_records_the_spend_of_an_empty_completion(tmp_path, monkeypatc
     row = json.loads(ledger.read_text().splitlines()[-1])
     assert row["verdict"] == "none" and row["launched"] is True
     assert row["cost_usd"] == pytest.approx((20_000 * 0.75 + 12_000 * 4.5) / 1e6)
+
+
+def test_verdict_is_stamped_on_this_runs_row_not_the_last_pending_one(tmp_path):
+    """Found by the lane reviewing its own PR (#4203, $0.017): two concurrent paid
+    reviews share one ledger; stamping "the last pending row" could stamp the
+    other process's row. Rows carry a run id and are stamped by it."""
+    ledger = tmp_path / "c.jsonl"
+    g7.record_paid_run(
+        ledger, {"kind": "run", "lane": "single-shot", "run_id": "aaaa", "verdict": "pending"}
+    )
+    g7.record_paid_run(
+        ledger, {"kind": "run", "lane": "single-shot", "run_id": "bbbb", "verdict": "pending"}
+    )
+    g7._stamp_verdict(ledger, "aaaa", "BLOCK")
+    rows = [json.loads(ln) for ln in ledger.read_text().splitlines()]
+    assert [(r["run_id"], r["verdict"]) for r in rows] == [("aaaa", "BLOCK"), ("bbbb", "pending")]
+
+
+def test_an_unwritable_ledger_does_not_lose_a_paid_review(tmp_path, monkeypatch, capsys):
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    bad = tmp_path / "file-not-dir"
+    bad.write_text("x")  # a ledger path whose parent is a file: mkdir/open fails
+    out = tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--ledger", str(bad / "c.jsonl"), "-o", str(out)])
+    assert rc == 0 and "**Verdict:** PASS" in out.read_text()
+    assert "LEDGER WRITE FAILED" in capsys.readouterr().err
