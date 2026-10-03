@@ -204,4 +204,60 @@ describe("UnifiedChat — a notebook switch mid-confirm must not corrupt the NEW
     expect(screen.getByText("24VDC.")).toBeTruthy();
     expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
   });
+
+  it("cheap-review r3 (#4195): A's scope refresh landing after the switch to B never rides B's next send", async () => {
+    // A's confirm resolves while A is still showing, so it passes the
+    // notebook check and starts its scope re-read. The technician switches
+    // to B before that re-read returns. A's promoted doc must not become the
+    // retrieval scope of B's next question.
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    const pendingDetail = deferred<unknown>();
+    getNotebookDetail.mockImplementation(() => pendingDetail.promise as never);
+
+    const view = render(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    const confirmButton = await screen.findByRole("button", { name: "Use its manuals" });
+    await act(async () => { fireEvent.click(confirmButton); });
+    for (let i = 0; i < 10 && getNotebookDetail.mock.calls.length === 0; i++) {
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(getNotebookDetail).toHaveBeenCalledWith(NB_A, expect.anything());
+
+    const propsB = props(NB_B, [PLAIN_TURN_B]);
+    view.rerender(<UnifiedChat {...propsB} />);
+    await act(async () => {
+      pendingDetail.resolve({
+        notebook: { id: NB_A }, sources: [{ docId: "doc-a", enabledByDefault: true, matchState: "verified" }],
+        turns: [], threads: [], photos: [],
+      });
+      await Promise.resolve();
+    });
+
+    const input = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "what voltage?" } });
+    await act(async () => { fireEvent.keyDown(input, { key: "Enter" }); });
+    const onSendB = propsB.handlers.onSend as ReturnType<typeof vi.fn>;
+    expect(onSendB).toHaveBeenCalledTimes(1);
+    expect(onSendB).toHaveBeenCalledWith("what voltage?");
+  });
+
+  it("cheap-review r3 (#4195): a scope stashed on A before the switch is dropped, not sent on B", async () => {
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    getNotebookDetail.mockResolvedValue({
+      notebook: { id: NB_A }, sources: [{ docId: "doc-a", enabledByDefault: true, matchState: "verified" }],
+      turns: [], threads: [], photos: [],
+    } as never);
+    const view = render(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    const confirmButton = await screen.findByRole("button", { name: "Use its manuals" });
+    await act(async () => { fireEvent.click(confirmButton); });
+    await screen.findByText(/Confirmed\./);
+
+    const propsB = props(NB_B, [PLAIN_TURN_B]);
+    view.rerender(<UnifiedChat {...propsB} />);
+    await act(async () => { await Promise.resolve(); });
+    const input = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "what voltage?" } });
+    await act(async () => { fireEvent.keyDown(input, { key: "Enter" }); });
+    const onSendB = propsB.handlers.onSend as ReturnType<typeof vi.fn>;
+    expect(onSendB).toHaveBeenCalledWith("what voltage?");
+  });
 });

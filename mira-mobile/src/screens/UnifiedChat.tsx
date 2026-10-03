@@ -224,6 +224,8 @@ export function UnifiedChat({
   // overlay a turn on notebook B's thread.
   useEffect(() => {
     setFollow(null);
+    // A scope stashed for the previous notebook must never reach this one's send.
+    confirmedScopeRef.current = null;
     setSettledManualSearches(new Map());
     lastLiveFrameKeyRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally ONLY notebookId: reset-on-change, not reset-on-every-render.
@@ -304,11 +306,16 @@ export function UnifiedChat({
   // the next send falls back to the host's own eventually-refreshed scope.
   const refreshPromotedScope = useCallback(async () => {
     if (!notebookId) return;
+    // The re-read is async; the notebook can change in place before it
+    // returns (NotebooksTab switches without remounting). Only the notebook
+    // it was fetched for may store a scope, or A's docs ride B's next send.
+    const fetchedFor = notebookId;
     try {
-      const after = await getNotebookDetail(notebookId, { threadId: attachmentThreadId ?? undefined });
+      const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
+      if (notebookIdRef.current !== fetchedFor) return;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
     } catch {
-      confirmedScopeRef.current = null;
+      if (notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
     }
   }, [notebookId, attachmentThreadId]);
 
