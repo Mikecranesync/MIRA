@@ -229,3 +229,31 @@ def test_cli_fails_closed_on_malformed_input(tmp_path):
         text=True,
     )
     assert res.returncode == 2 and "::error::" in res.stderr
+
+
+# ── workflow contract ──────────────────────────────────────────────────────
+
+
+def test_workflow_installs_the_hash_locked_test_deps_before_the_self_test():
+    """Codex F3 on PR #4218: setup-python ships no pytest; the lock must be installed first."""
+    import yaml
+
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "r2-signal-floor.yml").read_text())
+    steps = wf["jobs"]["evaluate"]["steps"]
+    names = [s.get("name") for s in steps]
+    install = names.index("Install trusted-base test dependencies")
+    assert (
+        install
+        < names.index("Evaluate the R2 signal floor")
+        < names.index("Run trusted-base floor tests")
+    )
+    run = steps[install]["run"]
+    assert "--require-hashes" in run and "-r requirements/ui-lifecycle-guard.txt" in run
+    lock = (REPO / "requirements" / "ui-lifecycle-guard.txt").read_text()
+    assert "pytest==" in lock, "the reused lock must actually carry pytest"
+    # The guard's trust shape: evaluation runs with no token on the trusted base only.
+    evaluate = steps[names.index("Evaluate the R2 signal floor")]
+    assert "env" not in evaluate and "GH_TOKEN" not in json.dumps(evaluate)
+    checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@"))
+    assert checkout["with"]["ref"] == "${{ needs.snapshot.outputs.base_sha }}"
+    assert checkout["with"]["persist-credentials"] is False

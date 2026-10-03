@@ -486,3 +486,72 @@ def test_boolean_pass_values_still_map_to_pass_and_fail():
     ok = _good(rows={"rows": [{"scenario": "a", "pass": True}, {"scenario": "b", "pass": False}]})
     verdicts = {s["name"]: s["verdict"] for s in ok["scenarios"] if s["capability"] == "retrieval"}
     assert verdicts == {"a": "PASS", "b": "FAIL"} and ok["overall"] == "FAIL"
+
+
+# ── Codex F1 on PR #4218: a run id is not a generation ───────────────────────
+
+
+def _rerun_generation() -> dict:
+    """The SAME staging run id and SHA, rebuilt: new built_at, deployed_at, image ids."""
+    return _staging_receipt(
+        built_at=(NOW - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        deployed_at=(NOW - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        running_images={"mira-hub": "sha256:" + "7" * 64, "mira-web": "sha256:" + "8" * 64},
+    )
+
+
+def test_presented_staging_receipt_binds_the_generation_not_just_the_run_id():
+    old = _good()  # acceptance audited generation A (run 9)
+    assert _verify(old, expected_staging_run_id=9, staging_receipt=_staging_receipt()) == []
+    # Generation B: run 9 re-run, same SHA — the run id STILL matches, the receipt must not.
+    problems = _verify(old, expected_staging_run_id=9, staging_receipt=_rerun_generation())
+    assert any("generation[built_at]" in p and "SUPERSEDED" in p for p in problems)
+    assert any("generation[deployed_at]" in p for p in problems)
+    assert any("running_images" in p and "not the ones presented" in p for p in problems)
+
+
+def test_a_changed_image_alone_breaks_the_generation_binding():
+    sr = _staging_receipt(
+        running_images={"mira-hub": "sha256:" + "9" * 64, "mira-web": "sha256:" + "2" * 64}
+    )
+    problems = _verify(_good(), expected_staging_run_id=9, staging_receipt=sr)
+    assert problems == [
+        "generation[running_images] != staging receipt running_images — "
+        "the audited containers are not the ones presented for production"
+    ]
+
+
+def test_a_staging_receipt_for_another_sha_or_run_cannot_bind():
+    assert any(
+        "not " + SHA in p
+        for p in _verify(_good(), staging_receipt=_staging_receipt(approved_rc_sha=OTHER))
+    )
+    assert any(
+        "staging_run_id" in p
+        for p in _verify(_good(), staging_receipt=_staging_receipt(run_id="8"))
+    )
+
+
+def test_cli_verify_staging_receipt_binding(tmp_path):
+    receipt = tmp_path / "acc.json"
+    receipt.write_text(json.dumps(_good()))
+    same = tmp_path / "same.json"
+    same.write_text(json.dumps(_staging_receipt()))
+    rerun = tmp_path / "rerun.json"
+    rerun.write_text(json.dumps(_rerun_generation()))
+    base = [
+        "verify",
+        "--receipt",
+        str(receipt),
+        "--approved-rc-sha",
+        SHA,
+        "--max-age-hours",
+        "1000000",
+        "--expect-staging-run-id",
+        "9",
+        "--require-capabilities",
+        "retrieval",
+    ]
+    assert _cli(*base, "--staging-receipt", str(same)).returncode == 0
+    res = _cli(*base, "--staging-receipt", str(rerun))
+    assert res.returncode == 1 and "SUPERSEDED" in res.stderr

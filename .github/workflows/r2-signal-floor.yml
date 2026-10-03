@@ -169,6 +169,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The floor tool itself is stdlib-only; the self-test below needs pytest.
+      # Reuse the lifecycle guard's hash-locked, trusted-base lock (it carries
+      # pytest) rather than a second lock file (Codex F3 on PR #4218).
+      - name: Install trusted-base test dependencies
+        run: |
+          python3 -I -m pip install --quiet --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r requirements/ui-lifecycle-guard.txt
+
       # stdlib only; isolated mode; no token; no network.
       - name: Evaluate the R2 signal floor
         run: |

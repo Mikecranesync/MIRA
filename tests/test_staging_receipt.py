@@ -457,3 +457,91 @@ def test_cli_effective_services_empty_fails_closed(tmp_path):
         text=True,
     )
     assert res.returncode == 1 and "effective services: empty" in res.stderr
+
+
+# ── Codex F2 on PR #4218: an explicit image-only target set carries runtime={} ─
+
+
+def _ask_only_production(**overrides) -> dict:
+    data = _good(
+        environment="production",
+        runtime={},
+        built_images={"mira-ask": IMG_ASK},
+        running_images={"mira-ask": IMG_ASK},
+    )
+    data.update(overrides)
+    return data
+
+
+def test_image_only_target_set_accepts_an_empty_runtime_map():
+    runtime, images, _ = receipt.plan_required_services(("mira-ask",))
+    assert (
+        _verify(
+            _ask_only_production(),
+            environment="production",
+            required_services=runtime,
+            required_images=images,
+        )
+        == []
+    )
+
+
+def test_image_only_target_set_still_requires_the_image_and_a_dict_runtime():
+    runtime, images, _ = receipt.plan_required_services(("mira-ask",))
+    missing = _ask_only_production(built_images={}, running_images={})
+    problems = _verify(
+        missing, environment="production", required_services=runtime, required_images=images
+    )
+    assert "built_images[mira-ask]: deployed service not reported" in problems
+    absent = _ask_only_production()
+    del absent["runtime"]
+    assert "runtime: missing or empty — no runtime identity was proven" in _verify(
+        absent, environment="production", required_services=runtime, required_images=images
+    )
+
+
+def test_a_hub_target_set_never_accepts_an_empty_runtime_map():
+    runtime, images, _ = receipt.plan_required_services(("mira-hub", "mira-ask"))
+    problems = _verify(
+        _ask_only_production(),
+        environment="production",
+        required_services=runtime,
+        required_images=images,
+    )
+    assert "runtime: missing or empty — no runtime identity was proven" in problems
+    assert "runtime[mira-hub]: required service not reported" in problems
+
+
+def test_default_target_set_without_effective_services_still_rejects_empty_runtime():
+    """Control: the legacy fixed default (no --effective-services) keeps the old strictness."""
+    assert "runtime: missing or empty — no runtime identity was proven" in _verify(
+        _ask_only_production(), environment="production"
+    )
+
+
+def test_cli_ask_only_production_receipt_verifies_with_effective_services(tmp_path):
+    path = tmp_path / "prod.json"
+    path.write_text(json.dumps(_ask_only_production()))
+    base = [
+        sys.executable,
+        str(_MOD_PATH),
+        "verify",
+        "--receipt",
+        str(path),
+        "--approved-rc-sha",
+        SHA,
+        "--environment",
+        "production",
+        "--max-age-hours",
+        "1000000",
+    ]
+    assert (
+        subprocess.run(
+            base + ["--effective-services", "mira-ask"], capture_output=True, text=True
+        ).returncode
+        == 0
+    )
+    res = subprocess.run(
+        base + ["--effective-services", "mira-hub,mira-ask"], capture_output=True, text=True
+    )
+    assert res.returncode == 1 and "runtime[mira-hub]: required service not reported" in res.stderr

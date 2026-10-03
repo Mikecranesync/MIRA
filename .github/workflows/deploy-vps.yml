@@ -297,13 +297,19 @@ jobs:
             --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168 \
             --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL" \
             --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Keep the VERIFIED staging receipt for the acceptance generation binding.
+          install -m 600 staging-receipt.json "$RUNNER_TEMP/staging-receipt.json"
           echo "staging_run_id=$STAGING_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "staging receipt verified: run ${RUN_URL}"
 
       # SDLC v1 §6.2 / §7.2 (step 5): the staging receipt proves what was DEPLOYED;
       # the acceptance receipt proves that generation was AUDITED. Both are required,
-      # and they must name the SAME staging run — a receipt from an earlier generation
-      # of the same SHA (a rebuild, a recreate) never authorizes. v1 requires the
+      # and they must name the SAME GENERATION: the acceptance receipt's generation
+      # (built_at, deployed_at, running image ids, run id) must equal the staging
+      # receipt verified above. A run id alone is not a generation — GitHub keeps
+      # the run id across re-runs, so a re-run rebuilds the same SHA under the old
+      # id (Codex F1 on PR #4218). A receipt from an earlier generation of the same
+      # SHA (a rebuild, a recreate, a re-run) never authorizes. v1 requires the
       # complete acceptance suite (retrieval + capture, mira-hub covered) on every
       # production dispatch: no delta→capability mapper exists yet, and §6.2 says
       # unknown impact means broader coverage, never an empty suite set.
@@ -357,10 +363,12 @@ jobs:
             exit 1
           fi
           # Trusted-base verifier; generation-bound to the staging run verified above.
+          [ -s "$RUNNER_TEMP/staging-receipt.json" ] || { echo "::error::the verified staging receipt is missing — cannot bind the acceptance generation"; exit 1; }
           python3 -I "$RUNNER_TEMP/trusted/acceptance_receipt.py" verify \
             --receipt "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" \
             --approved-rc-sha "$APPROVED_RC_SHA" --max-age-hours 168 \
             --expect-staging-run-id "$STAGING_RUN_ID" \
+            --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
             --require-capabilities retrieval,capture --require-services mira-hub
           echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
 

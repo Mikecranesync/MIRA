@@ -231,3 +231,14 @@ def test_acceptance_receipt_is_required_and_generation_bound():
     assert 'echo "staging_run_id=$STAGING_RUN_ID" >> "$GITHUB_OUTPUT"' in _run(
         "authorize-source", "Require a deployed-staging receipt for approved_rc_sha"
     )
+
+
+def test_acceptance_generation_is_bound_to_the_presented_staging_receipt():
+    """Codex F1 on PR #4218: a run id survives a re-run; the generation identity does not."""
+    staging = _run("authorize-source", "Require a deployed-staging receipt for approved_rc_sha")
+    assert 'install -m 600 staging-receipt.json "$RUNNER_TEMP/staging-receipt.json"' in staging
+    acc = _run(
+        "authorize-source", "Require a generation-matched acceptance receipt for approved_rc_sha"
+    )
+    assert '--staging-receipt "$RUNNER_TEMP/staging-receipt.json"' in acc
+    assert '[ -s "$RUNNER_TEMP/staging-receipt.json" ] ||' in acc

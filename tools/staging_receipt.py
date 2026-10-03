@@ -155,9 +155,14 @@ def verify_receipt(
     # every required service must be reported. One matching surface never masks
     # another that does not.
     runtime = receipt.get("runtime")
-    if not isinstance(runtime, dict) or not runtime:
+    # An EXPLICIT image-only target set (e.g. services=mira-ask: no Hub/Web deployed,
+    # so no gitSha endpoint exists) legitimately reports runtime={}. Only then is an
+    # empty map acceptable; a missing/malformed field never is, and a required
+    # runtime service missing from the map is still a problem below.
+    image_only = bool(required_images) and not required_services
+    if not isinstance(runtime, dict) or (not runtime and not image_only):
         problems.append("runtime: missing or empty — no runtime identity was proven")
-        runtime = {}
+        runtime = {} if not isinstance(runtime, dict) else runtime
     for svc, value in runtime.items():
         if value != approved_rc_sha:
             problems.append(f"runtime[{svc}]: reported {value!r}, expected {approved_rc_sha}")
