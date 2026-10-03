@@ -72,9 +72,11 @@ change spanning 3 or more top-level modules each escalate. Critical stays critic
   measured astra runs and scaled by price, and the worst cost this model has
   actually run at; ×1.5 either way. The fixed term matters: #4202 r1 cost $1.60
   on a 44.7k-char diff, about twice a per-character-only estimate.
-- **Post-run:** record exact usage per call (`codex --json` → `turn.completed.usage`:
+- **Post-run:** record the exact usage per call (`codex --json` → `turn.completed.usage`:
   input, cached input, output, reasoning) and the cost to
-  `.planning/review-costs.jsonl`.
+  `.planning/review-costs.jsonl`. The **cost is an upper bound, not an exact bill**:
+  reasoning tokens are added to output tokens in case Codex reports them separately
+  (`cost_usd` in `router.py` says so) — an over-count, never an under-count.
 
 An agentic run cannot be stopped at a token count mid-flight. The hard stop is
 therefore *never start a run that could exceed the ceiling*, plus the existing
