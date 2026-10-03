@@ -211,7 +211,8 @@ review task through the peer channel. The packet also includes base SHA,
 complete changed-file count/list (including rename origins), verification
 outputs, and required browser/device evidence. If peer messaging is unavailable,
 post the same packet to the PR with `[CODEX-REVIEW-REQUEST]` so GitHub remains the
-durable fallback. Only a `[CODEX-REVIEW] PASS` naming that exact SHA clears the
+durable fallback. Only a `[CODEX-ADVERSARIAL-REVIEW]` envelope with `status: GREEN` whose
+`reviewed_sha` is that exact head (and whose `reviewed_body_sha256` matches the body) clears the
 gate; any new commit invalidates the verdict. Claude/subagent review output is
 useful evidence but cannot substitute for or self-award the Codex PASS.
 

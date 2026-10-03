@@ -121,13 +121,17 @@ exception, and importing or copying a legacy presentation into a new path does
 not make it canonical.
 
 ```text
-[CODEX-REVIEW] PASS | CONCERNS | FAIL
-Reviewed SHA: <40-character SHA>
-Findings: <ordered evidence>
+[CODEX-ADVERSARIAL-REVIEW]
+reviewed_sha: <40-character SHA>
+reviewed_body_sha256: <sha256 of the PR body>
+base_sha: <40-character SHA>
+status: GREEN | ISSUES_FOUND
 ```
 
-Only `PASS` for the current head clears the gate. Any commit, rebase, or force
-push invalidates the prior verdict and requires a new packet.
+Only `status: GREEN` for the current head **and** the current body clears the gate — the lifecycle guard
+(`tools/ui_surface_lifecycle_guard.py`) and the review ledger accept **only** this envelope, posted by the
+repository owner account via the trusted-base script; a `[CODEX-REVIEW] PASS` line is not read by anything.
+Any commit, rebase, force push, or PR-body edit invalidates the prior verdict and requires a new round.
 
 ## Lane discipline
 
@@ -148,8 +152,9 @@ Serial merge order alone is not sufficient.
 
 If the peer receiver is absent, stale, unauthenticated, or silent, do not infer
 approval. Post the complete packet to the PR as `[CODEX-REVIEW-REQUEST]` and
-hold merge. The assigned Codex task posts a durable `[CODEX-REVIEW]` result to
-the PR after independent review.
+hold merge. The review is then produced by the trusted-base script
+(`git show origin/main:scripts/adversarial-review-trusted.sh | bash -s -- <PR> --review-only`),
+which posts the durable `[CODEX-ADVERSARIAL-REVIEW]` envelope.
 
 If native peers repeatedly disappear while their processes are still alive,
 verify that both clients point to the CHARLIE loopback broker and that no remote
