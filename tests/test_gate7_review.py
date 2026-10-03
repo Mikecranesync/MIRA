@@ -808,7 +808,7 @@ def _fake_httpx(monkeypatch, body, calls):
 def test_call_paid_sends_one_non_agentic_request_and_parses_usage(monkeypatch):
     calls = []
     body = {
-        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}}],
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "stop"}],
         "usage": {
             "prompt_tokens": 12_000,
             "prompt_tokens_details": {"cached_tokens": 2_000},
@@ -838,7 +838,11 @@ def test_call_paid_without_a_key_or_with_an_empty_completion_is_no_review(monkey
     text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
     assert text is None and "OPENAI_API_KEY" in attempts[0]
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    _fake_httpx(monkeypatch, {"choices": [{"message": {"content": "  "}}], "usage": {}}, [])
+    _fake_httpx(
+        monkeypatch,
+        {"choices": [{"message": {"content": "  "}, "finish_reason": "stop"}], "usage": {}},
+        [],
+    )
     text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
     assert text is None and "empty" in attempts[0]
 
@@ -1226,3 +1230,35 @@ def test_post_failure_is_loud_but_the_review_survives(tmp_path, monkeypatch, cap
     rc = g7.main(["7", "--paid", "--post", "--ledger", str(tmp_path / "c.jsonl"), "-o", str(out)])
     assert rc == 0 and "**Verdict:** PASS" in out.read_text()
     assert "POST FAILED" in capsys.readouterr().err
+
+
+# --- Codex round 3 on #4203 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('PASSWORD="abcdefghij\'klmnop"', 'PASSWORD="[SECRET]"'),
+        ("PASSWORD='abcdefghij\"klmnop'", "PASSWORD='[SECRET]'"),
+    ],
+)
+def test_r3_f1_the_opposite_quote_inside_a_quoted_literal_is_still_redacted(line, expected):
+    """Codex r3 F1: the quoted branch excluded BOTH quote characters, so a value
+    containing the other one fell to the unquoted branch and was too short."""
+    assert redact(line) == expected
+
+
+def test_r3_f2_a_missing_finish_reason_is_not_a_clean_stop(monkeypatch):
+    """Codex r3 F2 + the cheap gate: a response with no finish_reason was accepted.
+    Only an explicit 'stop' is complete."""
+    for body in (
+        {"choices": [{"message": {"content": "## VERDICT\nPASS\n"}}], "usage": {}},
+        {
+            "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": None}],
+            "usage": {},
+        },
+    ):
+        _fake_httpx(monkeypatch, body, [])
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+        assert text is None and "finish_reason=None" in attempts[0]

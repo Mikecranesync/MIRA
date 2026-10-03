@@ -229,7 +229,7 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
             # an opaque token unless it runs into `(`/identifier chars or is a
             # known-root attribute path — then it is code.
             r"(\s*[:=]\s*)"
-            r"(?:([\"'])([^\"'\r\n]{12,})\3|([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(]))"
+            r"(?:([\"'])((?:(?!\3)[^\r\n]){12,})\3|([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(]))"
         ),
         lambda m: (
             f"{m.group(1)}{m.group(2)}{m.group(3)}[SECRET]{m.group(3)}"
@@ -922,7 +922,7 @@ def call_paid(
     choice = (j.get("choices") or [{}])[0]
     content = choice.get("message", {}).get("content") or ""
     reason = choice.get("finish_reason")
-    if reason not in (None, "stop"):
+    if reason != "stop":  # missing/None is not a clean stop either (Codex r3 F2)
         # Anything but a clean stop — the output cap (length), a content
         # filter, a tool call — leaves the report incomplete (Codex F2 / r2 F2):
         # a PASS without its findings is not a PASS. Billed and recorded.
