@@ -458,6 +458,35 @@ describe("UnifiedRoot", () => {
     expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
   });
 
+  it("#4188: BACK from a notebook the list does not (yet) contain — a QR deep link to a just-created machine notebook — goes to the global home, never an empty 'FactoryLM' project root", async () => {
+    // openAssetNotebook can create the notebook; the drawer refresh that would
+    // list it is allowed to fail or lag (UnifiedRoot's deep-link effect). Until
+    // it lands there is no project to show, so a project root here would be a
+    // fabricated, empty page.
+    scanApi.getAssetByTag.mockResolvedValue({ id: "asset-new" });
+    scanApi.openAssetNotebook.mockResolvedValue({ id: "nb-new" });
+    const backRef = { current: null as (() => boolean) | null };
+    render(
+      <UnifiedRoot
+        me={ME}
+        backRef={backRef}
+        onSignOut={async () => {}}
+        deepLink={{ tag: "CV-NEW", raw: "factorylm://m/CV-NEW" }}
+        onDeepLinkConsumed={() => {}}
+      />,
+    );
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-new");
+
+    let consumed = false;
+    await act(async () => {
+      consumed = backRef.current?.() ?? false;
+    });
+    expect(consumed).toBe(true);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    expect(screen.queryByTestId("unified-project-root")).toBeNull();
+  });
+
   it("#4188 control: a cold start with no notebooks is unchanged — the empty-workspace create prompt, not a project root or home composer", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);

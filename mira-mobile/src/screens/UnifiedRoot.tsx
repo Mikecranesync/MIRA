@@ -473,7 +473,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         openAddSources={queuedOpenAddSources}
         unifiedShell={host}
         backRef={backRef}
-        onExit={() => setProjectRootVisible(true)}
+        // A project root needs a project to show. A notebook the list does not
+        // contain yet (a QR deep link can create one; its drawer refresh may
+        // fail or lag) has none, so BACK goes to the global home instead of a
+        // fabricated, empty "FactoryLM" project page (#4188 light review).
+        onExit={() => (currentProject ? setProjectRootVisible(true) : setHomeVisible(true))}
         onOpenNotebook={open}
         initialQuestion={queuedQuestion}
         onInitialQuestionSent={() => setQueuedQuestion(null)}
