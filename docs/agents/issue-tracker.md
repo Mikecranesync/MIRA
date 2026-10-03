@@ -47,7 +47,10 @@ restoring_action: <deploy | config | provider recovery | none>
   parsed. An issue opened before this convention has no field block until a human adds one.
 - Closing an `incident` requires a **regression disposition** comment using one of:
   `new-test:<path>` (docstring cites the issue), `existing-coverage:<path>`, `guard:<workflow or hook>`,
-  `eval-fixture:<path>`, or `external-cause:<reason>`. An incident without a disposition stays open.
+  `eval-fixture:<path>`, or `external-cause:<reason>`. **This is doctrine, not a mechanical guard**: GitHub
+  will let anyone with write access close the issue without one. An incident closed without a
+  disposition is a process violation to reopen; `tools/dora.py` (SDLC v1 step 12) reports such closures
+  as missing data rather than counting them as resolved.
 - Narrative root-cause write-ups live in `docs/incidents/`; the issue is the record of truth for the
   fields above.
 - The owning change (the PR or issue whose deployment failed) links the incident and stays
