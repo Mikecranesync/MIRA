@@ -911,20 +911,46 @@ def test_main_paid_records_the_spend_of_an_empty_completion(tmp_path, monkeypatc
     assert row["cost_usd"] == pytest.approx((20_000 * 0.75 + 12_000 * 4.5) / 1e6)
 
 
-def test_verdict_is_stamped_on_this_runs_row_not_the_last_pending_one(tmp_path):
-    """Found by the lane reviewing its own PR (#4203, $0.017): two concurrent paid
-    reviews share one ledger; stamping "the last pending row" could stamp the
-    other process's row. Rows carry a run id and are stamped by it."""
+def test_a_success_writes_exactly_one_row_with_the_final_verdict_never_pending(
+    tmp_path, monkeypatch
+):
+    """Found by the lane reviewing #4203: append-then-stamp left a window where a
+    crash kept a row at verdict "pending". The verdict is parsed first and the
+    row is written once; there is no stamp step."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nBLOCK\n- **[severity: high] t** — d\n", usage)
     ledger = tmp_path / "c.jsonl"
-    g7.record_paid_run(
-        ledger, {"kind": "run", "lane": "single-shot", "run_id": "aaaa", "verdict": "pending"}
-    )
-    g7.record_paid_run(
-        ledger, {"kind": "run", "lane": "single-shot", "run_id": "bbbb", "verdict": "pending"}
-    )
-    g7._stamp_verdict(ledger, "aaaa", "BLOCK")
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 0
     rows = [json.loads(ln) for ln in ledger.read_text().splitlines()]
-    assert [(r["run_id"], r["verdict"]) for r in rows] == [("aaaa", "BLOCK"), ("bbbb", "pending")]
+    assert len(rows) == 1 and rows[0]["verdict"] == "BLOCK" and len(rows[0]["run_id"]) == 32
+    assert not hasattr(g7, "_stamp_verdict")
+
+
+def test_a_launched_call_that_returns_no_usage_is_charged_its_estimate(tmp_path, monkeypatch):
+    """A timeout or 5xx after launch bills unknown tokens: never an unrecorded zero."""
+    _patch_main(monkeypatch, "+" + "x" * 4000, None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai (gpt-5.4-mini): ReadTimeout — x"], {})
+    )
+    ledger = tmp_path / "c.jsonl"
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 2
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["launched"] is True and row["usage_unknown"] is True
+    assert row["cost_usd"] == row["estimate_usd"] > 0 and row["verdict"] == "none"
+
+
+def test_a_call_skipped_for_a_missing_key_writes_no_row(tmp_path, monkeypatch):
+    _patch_main(monkeypatch, "+x\n", None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai: skipped (no OPENAI_API_KEY)"], {})
+    )
+    ledger = tmp_path / "c.jsonl"
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 2 and not ledger.exists()
 
 
 def test_an_unwritable_ledger_does_not_lose_a_paid_review(tmp_path, monkeypatch, capsys):

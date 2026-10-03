@@ -905,22 +905,6 @@ def default_ledger() -> Path:
     return (home / ".planning" / "review-costs.jsonl").resolve()
 
 
-def _stamp_verdict(ledger: Path, run_id: str, verdict: str) -> None:
-    """Rewrite THIS run's row (by run_id) from 'pending' to the parsed verdict.
-    Never "the last pending row": two paid reviews can share the ledger."""
-    import fcntl
-
-    with open(str(ledger) + ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        rows = ledger.read_text(encoding="utf-8").splitlines()
-        for i, line in enumerate(rows):
-            row = json.loads(line)
-            if row.get("run_id") == run_id:
-                row["verdict"] = verdict
-                rows[i] = json.dumps(row)
-        ledger.write_text("\n".join(rows) + "\n", encoding="utf-8")
-
-
 def record_paid_run(ledger: Path, row: dict) -> None:
     """Append under the same lock the router uses for this file."""
     import fcntl
@@ -1216,33 +1200,40 @@ def main(argv: Optional[list[str]] = None) -> int:
             prompt, max_tokens=32000 if level == "xhigh" else 24000
         )
     run_id = uuid.uuid4().hex
-    if a.paid and usage:
-        # Record the spend of EVERY launched call, including a failed one: an
-        # empty completion still bills its reasoning tokens. An unrecorded
-        # failure is an unproven zero (the router's #4202 F3 lesson).
-        cost = paid_cost_usd(model, usage)
-        _ledger_safely(
-            record_paid_run,
-            a.ledger or default_ledger(),
-            {
-                "kind": "run",
-                "lane": "single-shot",
-                "run_id": run_id,
-                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "pr": a.pr,
-                "head": head_sha,
-                "model": model,
-                "effort": PAID_REASONING_EFFORT,
-                "diff_chars": len(diff),
-                **usage,
-                "estimate_usd": round(paid_estimate_usd(model, len(prompt)), 4),
-                "cost_usd": round(cost, 4),
-                "usage_unknown": False,
-                "launched": True,
-                "verdict": "none" if text is None else "pending",
-            },
+    launched = bool(model) and not (attempts and attempts[0].startswith("openai: skipped"))
+
+    def paid_row(verdict: str) -> dict:
+        # Every LAUNCHED call gets exactly one row, written AFTER the verdict is
+        # known (no append-then-stamp window). A launched call with no usage
+        # (timeout, 5xx, empty completion without a usage block) is charged its
+        # worst-case estimate and marked usage_unknown — never an unproven zero.
+        est = paid_estimate_usd(model, len(prompt))
+        known = bool(usage) and any(usage.values())
+        cost = paid_cost_usd(model, usage) if known else est
+        return {
+            "kind": "run",
+            "lane": "single-shot",
+            "run_id": run_id,
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "pr": a.pr,
+            "head": head_sha,
+            "model": model,
+            "effort": PAID_REASONING_EFFORT,
+            "diff_chars": len(diff),
+            **(usage if known else {}),
+            "estimate_usd": round(est, 4),
+            "cost_usd": round(cost, 4),
+            "usage_unknown": not known,
+            "launched": True,
+            "verdict": verdict,
+        }
+
+    if a.paid and launched and text is None:
+        row = paid_row("none")
+        _ledger_safely(record_paid_run, a.ledger or default_ledger(), row)
+        print(
+            f"Gate 7: paid lane cost ${row['cost_usd']:.4f} ({model}, no review)", file=sys.stderr
         )
-        print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
     if text is None:
         print("Gate 7: ENTIRE CASCADE FAILED — no review produced.", file=sys.stderr)
         for at in attempts:
@@ -1253,15 +1244,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     findings = parse_findings(text)
     review = Review(verdict_of(text, findings), findings, provider, text, attempts)
     if a.paid:
-        cost = paid_cost_usd(model, usage)
+        row = paid_row(review.verdict)
+        cost = row["cost_usd"]
         receipts = [
             *receipts,
             f"- lane: single-shot paid · model `{model}` · tokens in/cached/out/reasoning "
             f"{usage.get('input_tokens', 0):,}/{usage.get('cached_input_tokens', 0):,}/"
             f"{usage.get('output_tokens', 0):,}/{usage.get('reasoning_output_tokens', 0):,} "
-            f"· cost ${cost:.4f} (budget ${a.budget_usd:.2f})",
+            f"· cost ${cost:.4f} (budget ${a.budget_usd:.2f}) · run `{run_id}`",
         ]
-        _ledger_safely(_stamp_verdict, a.ledger or default_ledger(), run_id, review.verdict)
+        _ledger_safely(record_paid_run, a.ledger or default_ledger(), row)
+        print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
     report = render(review, a.pr, level, reasons, receipts)
 
     if a.out:
@@ -1271,7 +1264,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         sys.stdout.write(report)
     if a.post:
-        cost = paid_cost_usd(model, usage)
         body = (
             "[CHEAP-REVIEW]\n\n```\n"
             f"head: {head_sha}\nverdict: {review.verdict}\nmodel: {model}\n"
