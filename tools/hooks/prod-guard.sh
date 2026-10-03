@@ -100,22 +100,30 @@ PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120
 #   (a) a libpq URL carrying the prod endpoint anywhere in the command — a
 #       connection string is a connection attempt, whatever client wraps it
 #       (`docker run … postgres:16 psql "$URL"`, `node -e … new Client(url)`);
-#   (b) a SQL client verb ANYWHERE in the command together with the prod endpoint
-#       OR a Doppler `prd` config in the same command.
-# (b) is deliberately UNANCHORED, like MUTATION below and unlike CMDSTART: the
-# gate here is the prod-specific signal (endpoint / `prd` config), and once that
-# is present the verb must be caught wherever a wrapper puts it —
-# `doppler run -c prd -- bash -lc 'psql "$URL"'`, `sh -c "pg_dump …"`,
-# `python3 -c "subprocess.run(['psql', …])"`. An invocation-position anchor was
-# tried first and let every one of those through (cheap-lane finding, PR #4211).
-# The cost is one rare false positive — prose that quotes a SQL client AND names
-# the prod endpoint or a `--config prd` in the same command — which fails closed
-# with the MIRA_ALLOW_PROD=1 override, the correct direction for hard rule #1.
-# `doppler secrets get … --config prd` without a SQL client is NOT matched —
-# reading a secret value is standing-authorized; connecting with it is not.
+#   (b) the prod endpoint ANYWHERE in the command together with a SQL client
+#       verb, a database-library marker (psycopg/asyncpg/pg8000/sqlalchemy,
+#       node `pg`), or an interpreter running inline code (`python3 -c`,
+#       `node -e`, `bun -e`, …) — the vectors a command line can carry;
+#   (c) a Doppler `prd` config together with a SQL client verb or a database-
+#       library marker (`doppler run -c prd -- psql …`, `… -- node -e "require('pg')"`).
+# (b)/(c) are deliberately UNANCHORED, like MUTATION below and unlike CMDSTART:
+# the gate is the prod-specific signal (endpoint / `prd` config); once present,
+# the client must be caught wherever a wrapper puts it — `bash -lc 'psql …'`,
+# `sh -c "pg_dump …"`, `python3 -c "psycopg2.connect(host='ep-…')"`. Two earlier
+# shapes (anchored verb; verb-only) each let a class through (cheap-lane rounds
+# 1–2 on PR #4211). The cost is a rare false positive — prose that quotes a
+# client AND names the endpoint / `--config prd` in one command — which fails
+# closed with MIRA_ALLOW_PROD=1, the right direction for hard rule #1.
+# NOT matched, by design: `doppler secrets get … --config prd` (reading a value
+# is standing-authorized; connecting with it is not); `grep`/`git` text that
+# names the endpoint; and `python3 some_script.py` whose body is invisible to a
+# command-text guard — this hook is a convenience boundary (SDLC v1 §11.1), not
+# the authority; the authority is that sessions hold no prod URL by default.
 NEON_PROD_ENDPOINT='ep-purple-hall-ahimeyn0'
 NEON_PROD_URL='postgres(ql)?://[^[:space:]"'"'"']*'"$NEON_PROD_ENDPOINT"
 SQL_CLIENT='\b(psql|pg_dump|pg_dumpall|pg_restore|pgcli)\b'
+DB_LIB='(psycopg|asyncpg|pg8000|sqlalchemy|require\([[:space:]]*["'"'"']pg["'"'"']|from[[:space:]]+["'"'"']pg["'"'"']|\bpg\.(Client|Pool)\b|new[[:space:]]+(Client|Pool)\()'
+INLINE_CODE='\b(python3?|node|bun|deno|ruby|perl)\b[^|;&]*[[:space:]](-c|-e|-p|--eval|--print)[[:space:]]'
 DOPPLER_PRD='doppler[^|;&]*(--config|-c)[[:space:]]+prd([[:space:]]|$)'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
@@ -164,9 +172,13 @@ fi
 if printf '%s' "$cmd" | grep -qiE "$NEON_PROD_URL"; then
   deny "Connection to the PRODUCTION NeonDB endpoint blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1: no prod SQL from a session). Use staging/dev or db-inspect.yml."
 fi
-if printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" \
-   && { printf '%s' "$cmd" | grep -qiE "$NEON_PROD_ENDPOINT" || printf '%s' "$cmd" | grep -qiE "$DOPPLER_PRD"; }; then
-  deny "SQL client against the PRODUCTION NeonDB blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
+if printf '%s' "$cmd" | grep -qiE "$NEON_PROD_ENDPOINT" \
+   && { printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" || printf '%s' "$cmd" | grep -qiE "$DB_LIB" || printf '%s' "$cmd" | grep -qiE "$INLINE_CODE"; }; then
+  deny "Database client aimed at the PRODUCTION NeonDB endpoint blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
+fi
+if printf '%s' "$cmd" | grep -qiE "$DOPPLER_PRD" \
+   && { printf '%s' "$cmd" | grep -qiE "$SQL_CLIENT" || printf '%s' "$cmd" | grep -qiE "$DB_LIB"; }; then
+  deny "Database client under the PRODUCTION Doppler config blocked by tools/hooks/prod-guard.sh (docs/environments.md hard rule #1). Use staging/dev or db-inspect.yml; override MIRA_ALLOW_PROD=1 is for humans."
 fi
 
 # 2. SSH/scp/rsync INVOKED against a prod host: allow read-only, deny mutations.

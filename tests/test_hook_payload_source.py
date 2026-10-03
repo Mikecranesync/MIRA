@@ -331,11 +331,12 @@ def test_prod_guard_covers_ovh_production_host(command, should_deny):
 # from a code session") had no enforcer until SDLC v1 step 2: prod-guard only knew
 # SSH hosts. The prod compute endpoint is `ep-purple-hall-ahimeyn0` (factorylm/prd);
 # staging/dev are on other endpoints. Either a libpq URL carrying that endpoint, or a
-# SQL client verb ANYWHERE together with the endpoint or a Doppler `prd` config,
-# denies — unanchored on purpose, so wrapper shells (`bash -lc`, `sh -c`,
-# `python3 -c`) cannot carry the client past the guard (cheap-lane finding on
-# PR #4211). Reading a secret value, mentioning the client in prose without a prod
-# signal, and staging/dev SQL stay allowed.
+# the endpoint together with a SQL client verb, a DB-library marker (psycopg, asyncpg,
+# node `pg`, …) or an interpreter running inline code, or a Doppler `prd` config
+# together with a client verb or library marker, denies — unanchored on purpose, so
+# wrapper shells and library clients cannot carry the connection past the guard
+# (cheap-lane rounds 1–2 on PR #4211). Reading a secret value, naming the endpoint in
+# prose/grep, inline code without the endpoint, and staging/dev SQL stay allowed.
 # Tokens are split so this file's own text does not trip the guard while being
 # written or grepped (same trick as `_D`/`_C` above).
 _EP = "ep-purple-" + "hall-ahimeyn0"
@@ -364,7 +365,21 @@ _PGURL = "postgres" + "ql://"
             True,
         ),
         (f"docker run --rm postgres:16 bash -lc '{_SQL} host={_EP}.neon.tech'", True),
-        # allowed: reading the secret, prose, grep, and non-prod configs
+        # library clients: no CLI verb, no URL, still a connection to prod
+        (
+            f"python3 -c \"import psycopg2; psycopg2.connect(host='{_EP}.neon.tech', dbname='neondb')\"",
+            True,
+        ),
+        (
+            f"node -e \"new (require('pg').Client)({{host: '{_EP}.neon.tech'}}).query('select 1')\"",
+            True,
+        ),
+        (f"doppler run -c {_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
+        (f"doppler run --config {_PRD} -- python3 -c 'import asyncpg; asyncpg.connect()'", True),
+        (f"python3 -c \"print(open('x').read())\" {_EP}", True),
+        # allowed: reading the secret, prose, grep, inline code without a prod signal, non-prod configs
+        ("python3 -c \"print('hello')\"", False),
+        ("node -e \"require('pg'); console.log(1)\"", False),
         (
             f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
             False,
