@@ -123,7 +123,11 @@ CROSS_MODULE_THRESHOLD = 3  # distinct top-level dirs of non-test changes
 
 
 def _match(path: str, globs: tuple[str, ...]) -> bool:
-    return any(fnmatch.fnmatch(path, g) for g in globs)
+    # Case-insensitive on every platform: the globs are lowercase and
+    # fnmatch.fnmatch is case-sensitive on Linux, so a mixed-case security
+    # path (mira-mobile/src/screens/SafetyNotice.tsx) must not slide down a tier.
+    lowered = path.lower()
+    return any(fnmatch.fnmatchcase(lowered, g.lower()) for g in globs)
 
 
 def classify(paths: list[str]) -> str:
