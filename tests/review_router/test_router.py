@@ -44,6 +44,26 @@ def test_classify(paths, tier):
     assert router.classify(paths) == tier
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-mobile/src/screens/SafetyNotice.tsx",  # a real tracked file
+        "mira-hub/src/capabilities/Answer-Validation.ts",
+        "mira-hub/src/lib/AuthClient.ts",
+        "mira-hub/db/Migrations/106_x.sql",
+    ],
+)
+def test_a_case_variant_of_a_critical_path_is_still_critical(path):
+    """The globs are lowercase and fnmatch is case-sensitive on Linux: a
+    mixed-case security path must not slide down to a cheaper lane."""
+    assert router.classify([path]) == "critical"
+
+
+def test_every_glob_is_lowercase():
+    for g in router.CRITICAL_GLOBS + router.LOW_GLOBS + router.TEST_GLOBS:
+        assert g == g.lower(), g
+
+
 def test_a_single_critical_path_wins_over_any_number_of_low_paths():
     assert (
         router.classify([f"tests/t{i}.py" for i in range(50)] + ["mira-bots/shared/guardrails.py"])
