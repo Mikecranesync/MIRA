@@ -149,17 +149,19 @@ jobs:
             --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
           # Dedup by a stable title marker so a multi-cycle outage updates ONE
           # issue instead of opening a new one every 6h.
-          # Narrow the dedup target to this canary's own label and refuse an ambiguous
-          # match (Codex F1, PR #4212): a title substring alone could pick a stale or
-          # hand-renamed issue and leave the live incident un-updated.
+          # Narrow the dedup target to this canary's own label (Codex F1, PR #4212): a
+          # title substring alone could pick a stale or hand-renamed issue.
           matches=$(gh issue list --state open --label provider-incident --search 'in:title "LLM provider coverage"' \
             --json number --jq '[.[].number]')
           count=$(printf '%s' "$matches" | jq 'length')
+          # More than one open match is a maintenance state, not an outage of the canary:
+          # update the NEWEST (highest number) deterministically and flag the duplicates
+          # for cleanup — never strand the live signal, never pick an arbitrary one
+          # (Codex rounds 2 and 3, PR #4212).
           if [ "$count" -gt 1 ]; then
-            echo "::error::ambiguous incident dedup: $count open issues match ($matches); close or retitle the stale ones"
-            exit 1
+            echo "::warning::$count open issues match the incident dedup ($matches); updating the newest, close or retitle the stale ones"
           fi
-          existing=$(printf '%s' "$matches" | jq -r '.[0] // empty')
+          existing=$(printf '%s' "$matches" | jq -r 'max // empty')
           if [ -n "$existing" ]; then
             # Label FIRST, then comment (Codex F1, PR #4212): if the label add fails the
             # run goes red without leaving a half-updated record (comment present, label
