@@ -21,6 +21,7 @@ import pytest
 
 _MOD_PATH = Path(__file__).resolve().parents[1] / "tools" / "acceptance_receipt.py"
 _spec = importlib.util.spec_from_file_location("acceptance_receipt", _MOD_PATH)
+assert _spec and _spec.loader, f"cannot load {_MOD_PATH}"
 ar = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ar)
 
