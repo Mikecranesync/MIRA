@@ -11,9 +11,13 @@ tests/test_acceptance_receipt.py.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 _WORKFLOW = (
@@ -119,7 +123,10 @@ def test_generation_identity_is_built_at_observed_at_both_probes():
     # Codex F5 on PR #4217: a dispatch replaced in the concurrency queue ends
     # completed/cancelled without running a job — only a newer run whose DEPLOY job
     # actually started may supersede; unreadable job metadata → INFRA_UNASSESSED.
-    assert 'select(.name == "Deploy MIRA staging to VPS" and .startedAt != null' in run
+    # Codex F6 on PR #4217: a SKIPPED deploy job (authorizer failed) still carries a
+    # startedAt, and `gh` renders a missing time as 0001-01-01T00:00:00Z — neither is
+    # execution evidence. The executable contract is test_supersession_predicate_*.
+    assert 'select(.name == "Deploy MIRA staging to VPS" and .conclusion != "skipped"' in run
     assert "could not read the jobs of deploy-staging run" in run
     assert end["env"]["GH_TOKEN"] == "${{ github.token }}"
     receipt = steps[_index(steps, lambda s: s.get("id") == "receipt")]["run"]
@@ -174,3 +181,153 @@ def test_generation_binding_reads_the_triggering_staging_receipt():
     assert "github.event_name == 'workflow_run'" in step["if"]
     assert 'gh run download "$STAGING_RUN_ID" -n "staging-receipt-$DEPLOYED_SHA"' in step["run"]
     assert step["env"]["STAGING_RUN_ID"] == "${{ github.event.workflow_run.id }}"
+
+
+_DEPLOY_JOB = "Deploy MIRA staging to VPS"
+
+
+def _supersession_predicate() -> str:
+    """The exact jq program identity_end runs over a newer run's jobs."""
+    run = _steps()[_index(_steps(), lambda s: s.get("id") == "identity_end")]["run"]
+    m = re.search(r"--json jobs --jq '(\[\.jobs\[\] \| select\(.*?\)\] \| length)'", run)
+    assert m, "identity_end no longer counts started deploy jobs with a jq predicate"
+    return m.group(1)
+
+
+def _started_deploy_jobs(jobs: list[dict]) -> int:
+    jq = shutil.which("jq")
+    assert jq, "jq is required to execute the supersession contract (ubuntu-latest ships it)"
+    out = subprocess.run(
+        [jq, _supersession_predicate()],
+        input=json.dumps({"jobs": jobs}),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return int(out)
+
+
+_ZERO_TIME = "0001-01-01T00:00:00Z"
+
+
+@pytest.mark.parametrize(
+    "jobs",
+    [
+        pytest.param([], id="queued-dispatch-cancelled-before-any-job (F5)"),
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "completed",
+                    "conclusion": "skipped",
+                    "startedAt": "2026-10-01T01:54:27Z",
+                }
+            ],
+            id="authorizer-failed-deploy-skipped-with-real-startedAt (F6, run 36803300705)",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "completed",
+                    "conclusion": "skipped",
+                    "startedAt": _ZERO_TIME,
+                }
+            ],
+            id="skipped-with-zero-time (F6)",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "queued",
+                    "conclusion": None,
+                    "startedAt": _ZERO_TIME,
+                }
+            ],
+            id="queued-job-zero-time-never-started (F6)",
+        ),
+        pytest.param(
+            [{"name": _DEPLOY_JOB, "status": "queued", "conclusion": None, "startedAt": None}],
+            id="queued-job-null-startedAt",
+        ),
+        pytest.param(
+            [{"name": _DEPLOY_JOB, "status": "queued", "conclusion": "", "startedAt": ""}],
+            id="queued-job-empty-startedAt",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": "Authorize the staging deploy",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "startedAt": "2026-10-01T01:54:20Z",
+                }
+            ],
+            id="only-the-authorizer-ran",
+        ),
+    ],
+)
+def test_supersession_predicate_ignores_deploy_jobs_that_never_executed(jobs):
+    """A newer run whose deploy job never ran must NOT supersede a valid audit."""
+    assert _started_deploy_jobs(jobs) == 0
+
+
+@pytest.mark.parametrize(
+    "jobs",
+    [
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "startedAt": "2026-10-01T14:21:44Z",
+                }
+            ],
+            id="started-then-cancelled (may have mutated staging)",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "startedAt": "2026-10-01T14:21:44Z",
+                }
+            ],
+            id="deploying-right-now",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "startedAt": "2026-10-01T14:59:52Z",
+                }
+            ],
+            id="deployed",
+        ),
+        pytest.param(
+            [
+                {
+                    "name": "Authorize the staging deploy",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "startedAt": "2026-10-01T14:59:40Z",
+                },
+                {
+                    "name": _DEPLOY_JOB,
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "startedAt": "2026-10-01T14:59:52Z",
+                },
+            ],
+            id="deploy-started-then-failed",
+        ),
+    ],
+)
+def test_supersession_predicate_counts_deploy_jobs_that_executed(jobs):
+    """Control: a deploy job that actually ran still supersedes, whatever it concluded."""
+    assert _started_deploy_jobs(jobs) == 1

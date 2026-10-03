@@ -241,15 +241,21 @@ jobs:
             # was replaced in the concurrency queue ends `completed/cancelled` without
             # running a job, and must not supersede a valid audit. So the evidence is
             # the deploy job itself: it supersedes only if a newer run's "Deploy MIRA
-            # staging to VPS" job has a start time (whatever it concluded — a started
-            # then cancelled deploy may have mutated staging). Any API failure is
-            # INFRA_UNASSESSED. The generation binding to the triggering receipt's
-            # built_at is what catches an older run being re-run; this catches newer.
+            # staging to VPS" job actually EXECUTED (whatever it concluded — a started
+            # then cancelled deploy may have mutated staging). A start time alone is
+            # not execution evidence (Codex F6, PR #4217): a job the authorizer
+            # SKIPPED never touches staging, yet GitHub still stamps it with a
+            # startedAt (observed on run 36803300705), and `gh` renders a missing
+            # time as the zero timestamp 0001-01-01T00:00:00Z rather than null. So
+            # a skipped job never counts, and only a real (non-zero-year) start time
+            # does. Any API failure is INFRA_UNASSESSED. The generation binding to
+            # the triggering receipt's built_at is what catches an older run being
+            # re-run; this catches newer.
             if newer_ids="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
                          --jq ".[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\")) | .databaseId")"; then
               started=0
               for rid in $newer_ids; do
-                if n="$(gh run view "$rid" --json jobs --jq '[.jobs[] | select(.name == "Deploy MIRA staging to VPS" and .startedAt != null and .startedAt != "")] | length')"; then
+                if n="$(gh run view "$rid" --json jobs --jq '[.jobs[] | select(.name == "Deploy MIRA staging to VPS" and .conclusion != "skipped" and ((.startedAt // "") | test("^[1-9][0-9]{3}-")))] | length')"; then
                   [ "$n" != "0" ] && started=$((started + 1))
                 else
                   assessment=INFRA_UNASSESSED; reason="could not read the jobs of deploy-staging run $rid at verdict time"; break
