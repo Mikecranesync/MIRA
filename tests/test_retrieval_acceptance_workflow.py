@@ -116,6 +116,11 @@ def test_generation_identity_is_built_at_observed_at_both_probes():
     assert "--workflow deploy-staging.yml" in run and "SUPERSEDED" in run, (
         "newer started deploy runs supersede"
     )
+    # Codex F5 on PR #4217: a dispatch replaced in the concurrency queue ends
+    # completed/cancelled without running a job — only a newer run whose DEPLOY job
+    # actually started may supersede; unreadable job metadata → INFRA_UNASSESSED.
+    assert 'select(.name == "Deploy MIRA staging to VPS" and .startedAt != null' in run
+    assert "could not read the jobs of deploy-staging run" in run
     assert end["env"]["GH_TOKEN"] == "${{ github.token }}"
     receipt = steps[_index(steps, lambda s: s.get("id") == "receipt")]["run"]
     assert '--built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END"' in receipt

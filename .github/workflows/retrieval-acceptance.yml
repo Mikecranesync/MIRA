@@ -236,13 +236,27 @@ jobs:
             assessment=SUPERSEDED; reason="staging generation changed during the run ($DEPLOYED_SHA built $BUILT_AT_START -> $now built $built_now)"
           elif [ -n "$STAGING_RUN_ID" ]; then
             # Belt and braces for the shared concurrency group: no deploy-staging run
-            # newer than the triggering one may have STARTED (a queued one changed
-            # nothing). The generation binding to the triggering receipt's built_at
-            # is what catches an older run being re-run; this catches the newer ones.
-            if newer="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
-                         --jq "[.[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\"))] | length")"; then
-              if [ "$newer" != "0" ]; then
-                assessment=SUPERSEDED; reason="$newer deploy-staging run(s) newer than the triggering run $STAGING_RUN_ID have started"
+            # newer than the triggering one may have actually STARTED DEPLOYING. A
+            # run's status alone cannot tell (Codex F5, PR #4217): a dispatch that
+            # was replaced in the concurrency queue ends `completed/cancelled` without
+            # running a job, and must not supersede a valid audit. So the evidence is
+            # the deploy job itself: it supersedes only if a newer run's "Deploy MIRA
+            # staging to VPS" job has a start time (whatever it concluded — a started
+            # then cancelled deploy may have mutated staging). Any API failure is
+            # INFRA_UNASSESSED. The generation binding to the triggering receipt's
+            # built_at is what catches an older run being re-run; this catches newer.
+            if newer_ids="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
+                         --jq ".[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\")) | .databaseId")"; then
+              started=0
+              for rid in $newer_ids; do
+                if n="$(gh run view "$rid" --json jobs --jq '[.jobs[] | select(.name == "Deploy MIRA staging to VPS" and .startedAt != null and .startedAt != "")] | length')"; then
+                  [ "$n" != "0" ] && started=$((started + 1))
+                else
+                  assessment=INFRA_UNASSESSED; reason="could not read the jobs of deploy-staging run $rid at verdict time"; break
+                fi
+              done
+              if [ "$assessment" = "PASS" ] && [ "$started" != "0" ]; then
+                assessment=SUPERSEDED; reason="$started deploy-staging run(s) newer than the triggering run $STAGING_RUN_ID started their deploy job"
               fi
             else
               assessment=INFRA_UNASSESSED; reason="could not list deploy-staging runs at verdict time"
