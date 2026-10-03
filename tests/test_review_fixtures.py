@@ -164,3 +164,43 @@ def test_r2_f5_a_skipped_call_records_no_spend(tmp_path, monkeypatch):
     ledger = tmp_path / "c.jsonl"
     provider = rf.live_provider(0.10, ledger)
     assert provider("PROMPT") is None and not ledger.exists()
+
+
+def test_strict_recall_counts_a_dead_case_as_a_miss():
+    """Cheap gate on f570862b5: excluding no-review cases from recall flatters a
+    reviewer that fails to review. `recall` is over reviewed cases (diagnostic);
+    `recall_strict` is over every planted case (the honest number)."""
+    catches = {c["name"] for c in PLANTED}
+    r = rf.run(_provider(catches, dead={"unhashable_kind_crash"}), CASES)
+    assert r["recall"] == 1.0
+    assert r["recall_strict"] == pytest.approx((len(PLANTED) - 1) / len(PLANTED))
+
+
+def test_live_total_budget_stops_launching_before_it_is_exceeded(tmp_path, monkeypatch):
+    """Cheap gate on f570862b5: --budget-usd was per case; six cases could spend
+    six budgets. A total hard-stop refuses further launches once the actual spend
+    plus the next worst-case estimate would exceed it."""
+    monkeypatch.setattr(g7, "pick_paid_model", lambda chars, budget: "gpt-5.4-mini")
+    monkeypatch.setattr(g7, "paid_estimate_usd", lambda model, prompt, **k: 0.04)
+    calls = []
+
+    def call_paid(prompt, model, **k):
+        calls.append(1)
+        return (
+            "## VERDICT\nPASS\n",
+            "openai",
+            ["openai: ok"],
+            {
+                "input_tokens": 1000,
+                "cached_input_tokens": 0,
+                "output_tokens": 100,
+                "reasoning_output_tokens": 0,
+            },
+        )
+
+    monkeypatch.setattr(g7, "call_paid", call_paid)
+    # each launched call costs 1000×0.75 + 100×4.5 per 1M = $0.0012 at mini's prices
+    provider = rf.live_provider(0.10, tmp_path / "c.jsonl", total_budget_usd=0.0415)
+    assert provider("P1") is not None  # 0 + 0.04 ≤ 0.0415
+    assert provider("P2") is not None  # 0.0012 + 0.04 = 0.0412 ≤ 0.0415
+    assert provider("P3") is None and len(calls) == 2  # 0.0024 + 0.04 > 0.0415: refused

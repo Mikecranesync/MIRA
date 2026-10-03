@@ -910,18 +910,25 @@ def call_paid(
         j = r.json()
     except Exception as e:  # noqa: BLE001 — any failure is "no review"
         return None, "", [f"openai ({model}): {type(e).__name__} — {str(e)[:120]}"], {}
-    u = j.get("usage") or {}
-    usage = {
-        "input_tokens": int(u.get("prompt_tokens", 0)),
-        "cached_input_tokens": int((u.get("prompt_tokens_details") or {}).get("cached_tokens", 0)),
-        "output_tokens": int(u.get("completion_tokens", 0)),
-        "reasoning_output_tokens": int(
-            (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
-        ),
-    }
-    choice = (j.get("choices") or [{}])[0]
-    content = choice.get("message", {}).get("content") or ""
-    reason = choice.get("finish_reason")
+    try:
+        u = j.get("usage") or {}
+        usage = {
+            "input_tokens": int(u.get("prompt_tokens", 0)),
+            "cached_input_tokens": int(
+                (u.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+            ),
+            "output_tokens": int(u.get("completion_tokens", 0)),
+            "reasoning_output_tokens": int(
+                (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0)
+            ),
+        }
+        choice = (j.get("choices") or [{}])[0]
+        content = choice.get("message", {}).get("content") or ""
+        reason = choice.get("finish_reason")
+    except (TypeError, KeyError, IndexError, ValueError, AttributeError) as e:
+        # A 200 with a malformed body is still a launched, billed call: no
+        # review, usage unknown (the caller charges the estimate).
+        return None, "", [f"openai ({model}): malformed response ({type(e).__name__}: {e})"], {}
     if reason != "stop":  # missing/None is not a clean stop either (Codex r3 F2)
         # Anything but a clean stop — the output cap (length), a content
         # filter, a tool call — leaves the report incomplete (Codex F2 / r2 F2):

@@ -1262,3 +1262,12 @@ def test_r3_f2_a_missing_finish_reason_is_not_a_clean_stop(monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
         assert text is None and "finish_reason=None" in attempts[0]
+
+
+def test_a_malformed_successful_response_is_no_review_with_usage_unknown(monkeypatch):
+    """Cheap gate on f570862b5: a 200 whose body has `choices` as a string raised
+    TypeError out of call_paid before main() could record the launched spend."""
+    _fake_httpx(monkeypatch, {"choices": "oops", "usage": {"prompt_tokens": 5}}, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "malformed" in attempts[0] and usage == {}

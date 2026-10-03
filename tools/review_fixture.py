@@ -86,26 +86,43 @@ def run(provider: Callable[[str], str | None], cases: list[dict]) -> dict:
     planted = [r for r in rows if not r.get("no_review") and not r.get("control")]
     hits = sum(1 for r in planted if r["hit"])
     fps = sum(r["false_positives"] for r in rows if r.get("control"))
+    all_planted = sum(1 for c in cases if c.get("planted") is not None)
     return {
         "rows": rows,
         "planted": len(planted),
         "hits": hits,
-        "recall": (hits / len(planted)) if planted else None,
+        "recall": (hits / len(planted)) if planted else None,  # over cases that got a review
+        "recall_strict": (hits / all_planted) if all_planted else None,  # a no-review is a miss
         "control_false_positives": fps,
         "no_review": sum(1 for r in rows if r.get("no_review")),
     }
 
 
-def live_provider(budget_usd: float, ledger: Path | None) -> Callable[[str], str | None]:
-    """The single-shot paid lane, one call per fixture, each under the per-review
-    budget, every launched call recorded (verdict from the parsed review)."""
+def live_provider(
+    budget_usd: float, ledger: Path | None, total_budget_usd: float | None = None
+) -> Callable[[str], str | None]:
+    """The single-shot paid lane, one call per fixture, each under the per-case
+    budget AND under a total: a case is not launched when the spend so far plus
+    its worst-case estimate would exceed `total_budget_usd`. Every launched call
+    is recorded (verdict from the parsed review)."""
     import time
     import uuid
+
+    spent = {"usd": 0.0}
 
     def provider(prompt: str) -> str | None:
         model = g7.pick_paid_model(prompt, budget_usd)
         if not model:
             return None
+        if total_budget_usd is not None:
+            worst = g7.paid_estimate_usd(model, prompt)
+            if spent["usd"] + worst > total_budget_usd:
+                print(
+                    f"fixture: REFUSED — spent ${spent['usd']:.4f} + worst case ${worst:.4f} "
+                    f"exceeds the total ${total_budget_usd:.2f}; not launched",
+                    file=sys.stderr,
+                )
+                return None
         result = g7.call_paid(prompt, model)
         text, attempts, usage = result[0], result[2], result[3]
         if attempts and attempts[0].startswith("openai: skipped"):
@@ -125,6 +142,7 @@ def live_provider(budget_usd: float, ledger: Path | None) -> Callable[[str], str
             "launched": True,
             "verdict": g7.verdict_of(text, g7.parse_findings(text)) if text else "none",
         }
+        spent["usd"] += row["cost_usd"]
         g7._ledger_safely(g7.record_paid_run, ledger or g7.default_ledger(), row)
         print(f"fixture: {model} ${row['cost_usd']:.4f} verdict={row['verdict']}", file=sys.stderr)
         return text
@@ -135,7 +153,14 @@ def live_provider(budget_usd: float, ledger: Path | None) -> Callable[[str], str
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--live", action="store_true", help="run the paid single-shot lane per case")
-    ap.add_argument("--budget-usd", type=float, default=0.10, help="per-case budget for --live")
+    ap.add_argument("--budget-usd", type=float, default=0.10, help="PER-CASE budget for --live")
+    ap.add_argument(
+        "--total-budget-usd",
+        type=float,
+        default=0.25,
+        help="hard stop for the whole --live run: a case is not launched when spend so far "
+        "plus its worst-case estimate would exceed this",
+    )
     ap.add_argument("--ledger", type=Path, default=None)
     ap.add_argument("--json", action="store_true", help="print the full result as JSON")
     a = ap.parse_args(argv)
@@ -150,7 +175,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"{c['name']}: planted={planted_present(c)} min={c['min_severity']} chars={len(c['diff'])}"
             )
         return 0
-    result = run(live_provider(a.budget_usd, a.ledger), cases)
+    print(
+        f"fixture: {len(cases)} cases, per-case ${a.budget_usd:.2f}, total hard stop "
+        f"${a.total_budget_usd:.2f}",
+        file=sys.stderr,
+    )
+    result = run(live_provider(a.budget_usd, a.ledger, a.total_budget_usd), cases)
     print(
         json.dumps(result if a.json else {k: v for k, v in result.items() if k != "rows"}, indent=1)
     )
