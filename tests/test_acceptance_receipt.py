@@ -445,3 +445,44 @@ def test_verify_rejects_tampered_generation_built_at():
     data = _good()
     del data["assessment"]
     assert any("assessment" in p for p in _verify(data))
+
+
+# --- Codex round 3 on PR #4217 ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_pass",
+    ["false", "true", 1, 0, {"result": "FAIL"}, None],
+    ids=["str-false", "str-true", "int-1", "int-0", "object", "missing"],
+)
+def test_pass_must_be_a_json_boolean_not_truthy(bad_pass):
+    """F4: a malformed `pass` is rejected; it never becomes PASS by truthiness."""
+    rows = {"rows": [{"scenario": "broken", "pass": bad_pass, "trace_id": "t"}]}
+    if bad_pass is None:
+        del rows["rows"][0]["pass"]
+    with pytest.raises(ValueError, match=r"rows\[0\]\.pass must be a JSON boolean"):
+        _good(rows=rows)
+
+
+@pytest.mark.parametrize(
+    ("row", "needle"),
+    [
+        ("not-an-object", r"rows\[0\] is not a scenario object"),
+        ({"scenario": "", "pass": True}, r"rows\[0\]\.scenario must be a non-empty string"),
+        ({"pass": True}, r"rows\[0\]\.scenario must be a non-empty string"),
+    ],
+)
+def test_malformed_scenario_rows_are_rejected(row, needle):
+    with pytest.raises(ValueError, match=needle):
+        _good(rows={"rows": [row]})
+
+
+def test_rows_must_be_a_list():
+    with pytest.raises(ValueError):
+        _good(rows={"rows": {"scenario": "x", "pass": True}})
+
+
+def test_boolean_pass_values_still_map_to_pass_and_fail():
+    ok = _good(rows={"rows": [{"scenario": "a", "pass": True}, {"scenario": "b", "pass": False}]})
+    verdicts = {s["name"]: s["verdict"] for s in ok["scenarios"] if s["capability"] == "retrieval"}
+    assert verdicts == {"a": "PASS", "b": "FAIL"} and ok["overall"] == "FAIL"

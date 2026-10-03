@@ -111,15 +111,32 @@ def build_receipt(
             "rows contains zero scenarios; an empty suite set never certifies anything"
         )
 
-    scenarios = [
-        {
-            "name": row.get("scenario"),
-            "capability": "retrieval",
-            "verdict": "PASS" if row.get("pass") else "FAIL",
-            "trace_id": row.get("trace_id"),
-        }
-        for row in raw_rows
-    ]
+    # Evidence must be well-formed before it becomes a verdict: each row is an
+    # object with a non-empty scenario name and a JSON BOOLEAN `pass`. Python
+    # truthiness would turn "false", 1 or {"result": "FAIL"} into PASS (Codex F4,
+    # PR #4217) — malformed evidence is rejected, never authorized.
+    if not isinstance(raw_rows, list):
+        raise ValueError("rows['rows'] must be a list of scenario objects")
+    scenarios = []
+    for i, row in enumerate(raw_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"rows[{i}] is not a scenario object: {row!r}")
+        name = row.get("scenario")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"rows[{i}].scenario must be a non-empty string: {name!r}")
+        passed = row.get("pass")
+        if not isinstance(passed, bool):
+            raise ValueError(
+                f"rows[{i}].pass must be a JSON boolean, got {type(passed).__name__} {passed!r}"
+            )
+        scenarios.append(
+            {
+                "name": name,
+                "capability": "retrieval",
+                "verdict": "PASS" if passed else "FAIL",
+                "trace_id": row.get("trace_id"),
+            }
+        )
     scenarios.append(
         {"name": "capture_acceptance", "capability": "capture", "verdict": capture_status}
     )
