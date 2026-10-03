@@ -103,13 +103,19 @@ jobs:
           # Ensure the label exists (no-op if it already does).
           gh label create oauth-incident --color B60205 \
             --description "Google OAuth sign-in incident (canary)" 2>/dev/null || true
+          # SDLC v1 §10.3: every canary-opened failure record also carries the
+          # generic `incident` label so the observation window (§9), the metrics
+          # (§12.3) and the regression disposition are counted off ONE label.
+          gh label create incident --color B60205 \
+            --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
           # Dedup by a stable title marker so a multi-hour outage updates ONE
           # issue instead of opening a new one every hour.
           existing=$(gh issue list --state open --search 'in:title redirect_uri_mismatch' \
             --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
+            gh issue edit "$existing" --add-label incident >/dev/null 2>&1 || true
             echo "commented on existing incident #$existing"
           else
-            gh issue create --title "$title" --body "$body" --label oauth-incident
+            gh issue create --title "$title" --body "$body" --label oauth-incident --label incident
           fi

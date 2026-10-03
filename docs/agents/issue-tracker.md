@@ -20,3 +20,40 @@ Create a GitHub issue.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.
+
+## Failure records: the `incident` label (SDLC v1 §10.3)
+
+One production failure = one issue labelled `incident`, with these fixed fields in the body, one per
+line, exactly these keys (a reader and `tools/dora.py` parse them; free prose goes below them):
+
+```
+first_seen: <ISO-8601 UTC>
+deploy_run: <deploy-vps.yml run id + attempt, or "none">
+deploy_sha: <40-hex approved_rc_sha, or "none">
+services: <comma-separated services deployed, or "none">
+impact: <one line: what users or operators could not do>
+restored_at: <ISO-8601 UTC, or "open">
+restoring_action: <deploy | config | provider recovery | none>
+```
+
+- Canary-opened `*-incident` issues (`provider-incident`, `oauth-incident`) carry the `incident`
+  label as well; the canaries add it on creation and on every update. The canary body does not
+  contain the fixed fields — whoever triages the issue adds them in a comment or edits the body.
+- Closing an `incident` requires a **regression disposition** comment using one of:
+  `new-test:<path>` (docstring cites the issue), `existing-coverage:<path>`, `guard:<workflow or hook>`,
+  `eval-fixture:<path>`, or `external-cause:<reason>`. An incident without a disposition stays open.
+- Narrative root-cause write-ups live in `docs/incidents/`; the issue is the record of truth for the
+  fields above.
+- The owning change (the PR or issue whose deployment failed) links the incident and stays
+  `FAILED_OBSERVED` until the disposition lands; it does not inherit the fix's success.
+
+## Hotfixes: the `hotfix` label (SDLC v1 §10.1)
+
+A hotfix is the normal path with the queue cleared, never a gate bypass (`deploy-vps.yml` has none).
+Open the `incident` issue first, then the fix PR titled `fix(hotfix): …`, labelled `hotfix`, classified
+`Risk: R3 — production-control`. Cheap lane one round; Codex may be deferred post-merge only when the
+PR touches no guarded control-plane path and Mike says so on the PR, completing within 24 h. Required
+contexts, staging, acceptance and the production receipt gates apply unchanged.
+
+Full rules: `docs/architecture/mira-sdlc-v1.md` §9 (observation window), §10 (failure, hotfix,
+rollback) and §12.3 (how the fields feed the metrics).
