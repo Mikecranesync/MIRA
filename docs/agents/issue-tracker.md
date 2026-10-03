@@ -23,9 +23,10 @@ Run `gh issue view <number> --comments`.
 
 ## Failure records: the `incident` label (SDLC v1 §10.3)
 
-One production failure = one issue labelled `incident`, with these fixed fields **in the issue body**,
-one per line, exactly these keys (a reader and `tools/dora.py` parse the body, never the comments; free
-prose goes below the fields):
+One production failure = one issue labelled `incident`, with these fixed fields **in the initial issue
+body**, one per line, exactly these keys — whether a canary or a human opens it. A reader and
+`tools/dora.py` parse the body and **never** a comment: a comment is not a substitute for any field, in any
+case. Free prose goes below the fields:
 
 ```
 first_seen: <ISO-8601 UTC>

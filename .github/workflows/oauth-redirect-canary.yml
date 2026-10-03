@@ -126,13 +126,14 @@ jobs:
           existing=$(gh issue list --state open --search 'in:title redirect_uri_mismatch' \
             --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
-            # Fail closed: an existing failure record without the `incident` label is an
-            # incomplete record, and the observation window / metrics key on that label
-            # (SDLC v1 §9, §12.3). The comment above is already delivered; a red run here
-            # is the visible signal, never a silently dropped label.
+            # Label FIRST, then comment (Codex F1, PR #4212): if the label add fails the
+            # run goes red without leaving a half-updated record (comment present, label
+            # absent). An existing failure record without the `incident` label is an
+            # incomplete record; the observation window and metrics key on that label
+            # (SDLC v1 §9, §12.3). `--add-label` is idempotent when the label is present.
             gh issue edit "$existing" --add-label incident \
-              || { echo "::error::could not add the incident label to #$existing"; exit 1; }
+              || { echo "::error::could not add the incident label to #$existing; comment withheld"; exit 1; }
+            gh issue comment "$existing" --body "$body"
             echo "commented on existing incident #$existing"
           else
             gh issue create --title "$title" --body "$body" --label oauth-incident --label incident
