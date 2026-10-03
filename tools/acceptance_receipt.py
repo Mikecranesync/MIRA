@@ -31,6 +31,8 @@ INFRA_UNASSESSED = "INFRA_UNASSESSED"
 # The full verdict vocabulary a scenario or `overall` may carry.
 VERDICTS = ("PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE", "SUPERSEDED", INFRA_UNASSESSED)
 _CAPTURE_STATUSES = ("PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE")
+# The workflow's explicit verdict-time assessment (emitted once, after every check).
+_ASSESSMENTS = ("PASS", "SUPERSEDED", INFRA_UNASSESSED)
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FUTURE_SKEW = timedelta(minutes=5)
@@ -64,6 +66,7 @@ def build_receipt(
     identity_end: str,
     built_at_start: str,
     built_at_end: str,
+    assessment: str,
     run_id: str,
     run_attempt: int,
     run_url: str,
@@ -99,6 +102,8 @@ def build_receipt(
             raise ValueError(
                 f"built_at_end must be a timestamp or {INFRA_UNASSESSED} ({exc})"
             ) from exc
+    if assessment not in _ASSESSMENTS:
+        raise ValueError(f"assessment must be one of {_ASSESSMENTS}: {assessment!r}")
 
     raw_rows = rows.get("rows") if isinstance(rows, dict) else None
     if not raw_rows:
@@ -147,17 +152,41 @@ def build_receipt(
                 f"staging_receipt run_id {staging_receipt.get('run_id')!r} != triggering staging run "
                 f"{staging_run_id!r}; not this generation's receipt"
             )
+        # The triggering deploy's own build identity (deploy-staging stamps
+        # MIRA_BUILD_TIME into the receipt). Both live probes must equal it, or the
+        # generation observed is NOT the one this acceptance was triggered for —
+        # e.g. an older run re-run before this audit started (Codex F1, PR #4217).
+        receipt_built_at = staging_receipt.get("built_at")
+        try:
+            _parse_timestamp(receipt_built_at)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"staging_receipt built_at is missing or invalid ({exc}); cannot bind the generation"
+            ) from exc
         generation = {
             "staging_run_id": staging_run_id,
             "deployed_at": staging_receipt["deployed_at"],
+            "built_at": receipt_built_at,
             "running_images": staging_receipt["running_images"],
         }
     else:
         generation = None
 
-    if identity_end == INFRA_UNASSESSED or built_at_end == INFRA_UNASSESSED:
+    live_is_triggering_generation = generation is None or (
+        built_at_start == generation["built_at"] and built_at_end == generation["built_at"]
+    )
+    if (
+        assessment == INFRA_UNASSESSED
+        or identity_end == INFRA_UNASSESSED
+        or built_at_end == INFRA_UNASSESSED
+    ):
         overall = INFRA_UNASSESSED
-    elif identity_end != deployed_sha or built_at_end != built_at_start:
+    elif (
+        assessment == "SUPERSEDED"
+        or identity_end != deployed_sha
+        or built_at_end != built_at_start
+        or not live_is_triggering_generation
+    ):
         overall = "SUPERSEDED"
     elif capture_status == "FAIL" or any(
         s["capability"] == "retrieval" and s["verdict"] == "FAIL" for s in scenarios
@@ -185,6 +214,7 @@ def build_receipt(
         "identity_end": identity_end,
         "built_at_start": built_at_start,
         "built_at_end": built_at_end,
+        "assessment": assessment,
         "overall": overall,
         "authorizes": authorizes,
         "staging_run_id": staging_run_id,
@@ -288,6 +318,10 @@ def verify_receipt(
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         problems.append(f"acceptance_run_attempt: missing or invalid ({attempt!r})")
 
+    assessment = receipt.get("assessment")
+    if assessment != "PASS":
+        problems.append(f"assessment: expected PASS, got {assessment!r}")
+
     overall = receipt.get("overall")
     if overall != "PASS":
         if overall == "SUPERSEDED":
@@ -304,13 +338,26 @@ def verify_receipt(
     if not isinstance(generation, dict) or not generation:
         problems.append("generation: missing or empty — no deployment generation was proven")
     else:
-        for key in ("staging_run_id", "deployed_at", "running_images"):
+        for key in ("staging_run_id", "deployed_at", "built_at", "running_images"):
             if not generation.get(key):
                 problems.append(f"generation[{key}]: missing or empty")
         try:
             _parse_timestamp(generation.get("deployed_at"))
         except (ValueError, TypeError) as exc:
             problems.append(f"generation[deployed_at]: invalid ({exc})")
+        try:
+            _parse_timestamp(generation.get("built_at"))
+        except (ValueError, TypeError) as exc:
+            problems.append(f"generation[built_at]: invalid ({exc})")
+        else:
+            if (
+                generation.get("built_at") != built_at_start
+                or generation.get("built_at") != built_at_end
+            ):
+                problems.append(
+                    f"generation[built_at] {generation.get('built_at')!r} != live probes "
+                    f"{built_at_start!r}/{built_at_end!r} — the audited generation is not the triggering deploy"
+                )
         images = generation.get("running_images")
         if not isinstance(images, dict) or not images:
             problems.append("generation[running_images]: not a non-empty object")
@@ -353,7 +400,7 @@ def verify_receipt(
         problems.append("capabilities: missing or empty")
     elif set(capabilities) != declared:
         problems.append(
-            f"capabilities {sorted(capabilities)} != scenario capabilities {sorted(declared)}"
+            f"capabilities {sorted(map(str, capabilities))} != scenario capabilities {sorted(map(str, declared))}"
         )
     capture_rows = [
         s for s in scenarios if isinstance(s, dict) and s.get("capability") == "capture"
@@ -362,7 +409,7 @@ def verify_receipt(
         verdicts = {s.get("verdict") for s in capture_rows}
         if verdicts != {capture_status}:
             problems.append(
-                f"capture_status {capture_status!r} != capture scenario verdict(s) {sorted(verdicts)}"
+                f"capture_status {capture_status!r} != capture scenario verdict(s) {sorted(map(str, verdicts))}"
             )
 
     for capability in required_capabilities:
@@ -434,6 +481,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
         identity_end=args.identity_end,
         built_at_start=args.built_at_start,
         built_at_end=args.built_at_end,
+        assessment=args.assessment,
         run_id=args.run_id,
         run_attempt=args.run_attempt,
         run_url=args.run_url,
@@ -489,6 +537,12 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--built-at-start", required=True, help="builtAt from /api/health at start")
     build.add_argument(
         "--built-at-end", required=True, help="builtAt at verdict, or INFRA_UNASSESSED"
+    )
+    build.add_argument(
+        "--assessment",
+        required=True,
+        choices=_ASSESSMENTS,
+        help="the workflow's explicit verdict-time assessment (emitted after every check)",
     )
     build.add_argument("--run-id", required=True)
     build.add_argument("--run-attempt", required=True, type=int)

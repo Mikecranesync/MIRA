@@ -198,6 +198,11 @@ jobs:
       # SDLC v1 §6.2 (step 4): a failed re-read is INFRA_UNASSESSED, never success.
       # The identity is recorded as an output either way so the receipt below can
       # say what happened; the step still fails the job.
+      # SDLC v1 §6.2 (step 4): identity is re-read at verdict time and the step emits
+      # ONE explicit `assessment` (PASS / SUPERSEDED / INFRA_UNASSESSED) only after
+      # every check has run (Codex F3 on PR #4217: emitting probe values before the
+      # newer-run check let a superseded run build a passing receipt). A failed
+      # re-read is INFRA_UNASSESSED, never success; the step still fails the job.
       - name: The deploy must not have moved under the audit
         id: identity_end
         if: always() && steps.deployed.outputs.sha != ''
@@ -224,31 +229,34 @@ jobs:
             ????-??-??T??:??:??Z) ;;
             *) built_now="" ;;
           esac
+          assessment=PASS; reason=""
           if [ -z "$now" ] || [ -z "$built_now" ]; then
-            echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
-            echo "built_at_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
-            echo "::error::could not re-read health identity at verdict time — INFRA_UNASSESSED; this run authorizes nothing (SDLC v1 §6.2)"
-            exit 1
-          fi
-          echo "identity_end=$now" >> "$GITHUB_OUTPUT"
-          echo "built_at_end=$built_now" >> "$GITHUB_OUTPUT"
-          if [ "$now" != "$DEPLOYED_SHA" ] || [ "$built_now" != "$BUILT_AT_START" ]; then
-            echo "::error::staging generation changed during the run ($DEPLOYED_SHA built $BUILT_AT_START -> $now built $built_now); this verdict is SUPERSEDED"
-            exit 1
-          fi
-          # Belt and braces for the shared concurrency group: no deploy-staging run
-          # newer than the one that triggered this acceptance may have STARTED. A
-          # later run that is still queued has changed nothing; one in progress or
-          # completed means the audited generation is gone (SUPERSEDED).
-          if [ -n "$STAGING_RUN_ID" ]; then
-            newer="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
-                       --jq "[.[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\"))] | length")" || {
-              echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
-              echo "::error::could not list deploy-staging runs at verdict time — INFRA_UNASSESSED"; exit 1; }
-            if [ "$newer" != "0" ]; then
-              echo "::error::$newer deploy-staging run(s) newer than the triggering run $STAGING_RUN_ID have started; this verdict is SUPERSEDED"
-              exit 1
+            assessment=INFRA_UNASSESSED; reason="could not re-read the health identity at verdict time"
+          elif [ "$now" != "$DEPLOYED_SHA" ] || [ "$built_now" != "$BUILT_AT_START" ]; then
+            assessment=SUPERSEDED; reason="staging generation changed during the run ($DEPLOYED_SHA built $BUILT_AT_START -> $now built $built_now)"
+          elif [ -n "$STAGING_RUN_ID" ]; then
+            # Belt and braces for the shared concurrency group: no deploy-staging run
+            # newer than the triggering one may have STARTED (a queued one changed
+            # nothing). The generation binding to the triggering receipt's built_at
+            # is what catches an older run being re-run; this catches the newer ones.
+            if newer="$(gh run list --workflow deploy-staging.yml --limit 10 --json databaseId,status \
+                         --jq "[.[] | select(.databaseId > ($STAGING_RUN_ID|tonumber) and (.status == \"in_progress\" or .status == \"completed\"))] | length")"; then
+              if [ "$newer" != "0" ]; then
+                assessment=SUPERSEDED; reason="$newer deploy-staging run(s) newer than the triggering run $STAGING_RUN_ID have started"
+              fi
+            else
+              assessment=INFRA_UNASSESSED; reason="could not list deploy-staging runs at verdict time"
             fi
+          fi
+          # Single emission point, AFTER every check.
+          {
+            echo "identity_end=${now:-INFRA_UNASSESSED}"
+            echo "built_at_end=${built_now:-INFRA_UNASSESSED}"
+            echo "assessment=$assessment"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$assessment" != "PASS" ]; then
+            echo "::error::$assessment — $reason; this run authorizes nothing (SDLC v1 §6.2)"
+            exit 1
           fi
           echo "verdict pinned to $now built $built_now" >> "$GITHUB_STEP_SUMMARY"
 
@@ -284,6 +292,7 @@ jobs:
           IDENTITY_END: ${{ steps.identity_end.outputs.identity_end || 'INFRA_UNASSESSED' }}
           BUILT_AT_START: ${{ steps.deployed.outputs.built_at }}
           BUILT_AT_END: ${{ steps.identity_end.outputs.built_at_end || 'INFRA_UNASSESSED' }}
+          ASSESSMENT: ${{ steps.identity_end.outputs.assessment || 'INFRA_UNASSESSED' }}
           CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
           CAPTURE_SKIPPED: ${{ steps.capnb.outputs.skipped }}
           STAGING_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -300,7 +309,7 @@ jobs:
           else capture=SKIPPED; fi
           args=( build --repository "$GITHUB_REPOSITORY" --base-url "$ACCEPT_BASE" --deployed-sha "$DEPLOYED_SHA"
                  --rows /tmp/retrieval-acceptance.json --capture-status "$capture" --identity-end "$IDENTITY_END"
-                 --built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END"
+                 --built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END" --assessment "$ASSESSMENT"
                  --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-url "$RUN_URL"
                  --out "$RUNNER_TEMP/acceptance-receipt.json" )
           [ -n "$STAGING_RUN_ID" ] && args+=( --staging-run-id "$STAGING_RUN_ID" )

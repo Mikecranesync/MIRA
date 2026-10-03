@@ -51,6 +51,7 @@ def _staging_receipt(**overrides) -> dict:
         "approved_rc_sha": SHA,
         "run_id": "9",
         "deployed_at": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "built_at": BUILT_AT,
         "running_images": {"mira-hub": "sha256:" + "1" * 64, "mira-web": "sha256:" + "2" * 64},
     }
     data.update(overrides)
@@ -94,6 +95,7 @@ def _good(**overrides) -> dict:
         identity_end=SHA,
         built_at_start=BUILT_AT,
         built_at_end=BUILT_AT,
+        assessment="PASS",
         run_id="1",
         run_attempt=1,
         run_url="https://github.com/Mikecranesync/MIRA/actions/runs/1",
@@ -265,6 +267,7 @@ def _build_argv(rows_path, out, **extra) -> list[str]:
         "--identity-end": SHA,
         "--built-at-start": BUILT_AT,
         "--built-at-end": BUILT_AT,
+        "--assessment": "PASS",
         "--run-id": "1",
         "--run-attempt": "1",
         "--run-url": "https://github.com/Mikecranesync/MIRA/actions/runs/1",
@@ -393,3 +396,51 @@ def test_capabilities_and_capture_status_must_agree_with_scenarios():
     data = _good()
     data["capture_status"] = "FAIL"
     assert any("capture_status 'FAIL' != capture scenario verdict" in p for p in _verify(data))
+
+
+# --- Codex round 2 on PR #4217 ---------------------------------------------------------
+
+
+def test_explicit_superseded_assessment_overrides_matching_probes():
+    """F3: the workflow's newer-run check fails AFTER the probes matched; the receipt
+    must still be SUPERSEDED because the step said so."""
+    data = _good(assessment="SUPERSEDED")
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    problems = _verify(data)
+    assert any("assessment: expected PASS" in p for p in problems)
+    assert any("SUPERSEDED" in p for p in problems)
+
+
+def test_explicit_infra_unassessed_assessment_wins():
+    data = _good(assessment=ar.INFRA_UNASSESSED)
+    assert data["overall"] == ar.INFRA_UNASSESSED and data["authorizes"] is False
+
+
+def test_assessment_must_be_a_known_value():
+    with pytest.raises(ValueError, match="assessment"):
+        _good(assessment="GREEN")
+
+
+def test_live_build_must_be_the_triggering_deploys_build():
+    """F1: an older deploy re-run before this audit started yields a consistent live
+    builtAt that is NOT the triggering receipt's built_at → SUPERSEDED."""
+    other = (NOW - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    data = _good(built_at_start=other, built_at_end=other)
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    assert any("not the triggering deploy" in p for p in _verify(data))
+
+
+def test_staging_receipt_without_built_at_cannot_bind_a_generation():
+    sr = _staging_receipt()
+    del sr["built_at"]
+    with pytest.raises(ValueError, match="built_at"):
+        _good(staging_receipt=sr)
+
+
+def test_verify_rejects_tampered_generation_built_at():
+    data = _good()
+    data["generation"]["built_at"] = (NOW - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert any("generation[built_at]" in p for p in _verify(data))
+    data = _good()
+    del data["assessment"]
+    assert any("assessment" in p for p in _verify(data))

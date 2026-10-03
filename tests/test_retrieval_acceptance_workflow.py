@@ -61,7 +61,9 @@ def test_verdict_time_reread_fails_closed_and_records_identity():
     assert str(step.get("if")).startswith("always()"), "runs even after failed scenarios"
     assert "exit 0" not in run
     assert "::warning::" not in run
-    assert "identity_end=INFRA_UNASSESSED" in run
+    assert "identity_end=${now:-INFRA_UNASSESSED}" in run, (
+        "an unreadable identity is recorded as INFRA_UNASSESSED"
+    )
     assert "SUPERSEDED" in run
     # a non-40-char / non-hex health answer is treated as a failed re-read
     assert "????????????????????????????????????????" in run
@@ -109,7 +111,7 @@ def test_generation_identity_is_built_at_observed_at_both_probes():
     assert "cannot pin the deployment generation" in start, "a missing builtAt fails the run"
     end = steps[_index(steps, lambda s: s.get("id") == "identity_end")]
     run = end["run"]
-    assert "built_at_end=$built_now" in run and "built_at_end=INFRA_UNASSESSED" in run
+    assert "built_at_end=${built_now:-INFRA_UNASSESSED}" in run
     assert '[ "$built_now" != "$BUILT_AT_START" ]' in run, "a changed builtAt is SUPERSEDED"
     assert "--workflow deploy-staging.yml" in run and "SUPERSEDED" in run, (
         "newer started deploy runs supersede"
@@ -117,6 +119,39 @@ def test_generation_identity_is_built_at_observed_at_both_probes():
     assert end["env"]["GH_TOKEN"] == "${{ github.token }}"
     receipt = steps[_index(steps, lambda s: s.get("id") == "receipt")]["run"]
     assert '--built-at-start "$BUILT_AT_START" --built-at-end "$BUILT_AT_END"' in receipt
+
+
+def test_assessment_is_emitted_once_after_every_check_and_fed_to_the_receipt():
+    """Codex F3 on PR #4217: a superseded run must not leave matching probe values
+    for the receipt step to build a PASS from."""
+    steps = _steps()
+    run = steps[_index(steps, lambda s: s.get("id") == "identity_end")]["run"]
+    assert run.count('echo "identity_end=') == 1, "one emission point"
+    assert run.count('echo "built_at_end=') == 1
+    assert 'echo "assessment=$assessment"' in run
+    emit = run.index('echo "assessment=$assessment"')
+    assert run.index("gh run list --workflow deploy-staging.yml") < emit, (
+        "newer-run check precedes emission"
+    )
+    assert run.index('[ "$built_now" != "$BUILT_AT_START" ]') < emit
+    assert run.index("exit 1") > emit, "the job fails AFTER the assessment is recorded"
+    receipt = steps[_index(steps, lambda s: s.get("id") == "receipt")]
+    assert (
+        receipt["env"]["ASSESSMENT"]
+        == "${{ steps.identity_end.outputs.assessment || 'INFRA_UNASSESSED' }}"
+    )
+    assert '--assessment "$ASSESSMENT"' in receipt["run"]
+
+
+def test_staging_receipt_carries_the_build_identity_the_probes_must_match():
+    """Codex F1 on PR #4217: the triggering deploy stamps built_at; both live probes
+    must equal it (checked by tools/acceptance_receipt.py), so an older re-run deploy
+    cannot be certified by a receipt for a newer run."""
+    dep = (_WORKFLOW.parent / "deploy-staging.yml").read_text(encoding="utf-8")
+    assert '"built_at": os.environ["MIRA_BUILD_TIME"]' in dep
+    assert dep.index("export MIRA_BUILD_TIME") < dep.index(
+        '"built_at": os.environ["MIRA_BUILD_TIME"]'
+    )
 
 
 def test_deploy_and_acceptance_share_one_concurrency_group():
