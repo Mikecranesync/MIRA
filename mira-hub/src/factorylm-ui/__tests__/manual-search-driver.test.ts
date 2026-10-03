@@ -12,6 +12,19 @@ import { createManualSearchDriver } from "../manual-search-driver";
 const NB = "nb-1";
 const RUNNING = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" };
 const SETTLED = { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" };
+const RUNNING_G2 = { manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" };
+const SETTLED_G2 = { manufacturer: "Rockwell", model: "1756-L71", running: false, message: "Found it (G2).", startedAt: "gen-2" };
+
+/** A controllable, externally-resolvable (or rejectable) promise — for
+ *  holding a `fetchStatus` read open past a reseed, so its continuation
+ *  arrives AFTER the tracked state has already moved on to a newer
+ *  generation. */
+function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -158,5 +171,110 @@ describe("createManualSearchDriver — Codex round 3 F6: a later authoritative r
     await vi.advanceTimersByTimeAsync(4000);
     expect(driver.current()?.phase).toBe("resolved");
     expect(driver.current()?.status.message).toBe("Found it.");
+  });
+});
+
+describe("createManualSearchDriver — Codex round 7 F21: an obsolete in-flight poll must never clobber a newer generation", () => {
+  it("a G1 poll that is ALREADY IN FLIGHT when seed(G2) runs is discarded on arrival, and G2's own timer keeps polling", async () => {
+    let call = 0;
+    const g1Read = deferred<typeof RUNNING | null>();
+    const fetchStatus = vi.fn(() => {
+      call += 1;
+      if (call === 1) return g1Read.promise; // G1's tick — held open.
+      return Promise.resolve(SETTLED_G2); // G2's own, later tick.
+    });
+    const onStateChange = vi.fn();
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange, onRefreshSources: vi.fn() });
+
+    driver.seed(NB, RUNNING);
+    await vi.advanceTimersByTimeAsync(4000); // G1's tick fires; fetchStatus call #1 is now in flight.
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    // A confirmation/refresh seeds a SECOND, different generation for the
+    // SAME notebook while G1's read is still outstanding.
+    driver.seed(NB, RUNNING_G2);
+    const stateAfterSeedG2 = driver.current();
+    expect(stateAfterSeedG2?.phase).toBe("following");
+    expect(stateAfterSeedG2?.key).toContain("gen-2");
+
+    // G1's now-obsolete read resolves with a SETTLED g1 snapshot.
+    g1Read.resolve({ ...RUNNING, running: false, startedAt: "gen-1" } as never);
+    await vi.advanceTimersByTimeAsync(0); // flush the stale .then()
+
+    // The notebook-id check alone would have let this through (same
+    // notebook); only the epoch guard discards it. G2's tracked state must
+    // be untouched — the SAME object, not a replacement built from G1's data.
+    expect(driver.current()).toBe(stateAfterSeedG2);
+    expect(driver.current()?.phase).toBe("following");
+    expect(driver.current()?.key).toContain("gen-2");
+
+    // And G2's OWN freshly scheduled timer is unaffected — it fires on
+    // schedule and resolves normally.
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+    expect(driver.current()?.phase).toBe("resolved");
+    expect(driver.current()?.status).toEqual(SETTLED_G2);
+  });
+
+  it("the same discard applies after reset() + a fresh seed() of the SAME notebook id", async () => {
+    let call = 0;
+    const g1Read = deferred<typeof RUNNING | null>();
+    const fetchStatus = vi.fn(() => {
+      call += 1;
+      if (call === 1) return g1Read.promise;
+      return Promise.resolve(SETTLED_G2);
+    });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+
+    driver.seed(NB, RUNNING);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    // Notebook change away and back — `reset()` then a fresh `seed()` for
+    // the EXACT SAME notebook id, so the `trackedNotebookId !== notebookId`
+    // check by itself cannot distinguish the new generation from the old.
+    driver.reset();
+    driver.seed(NB, RUNNING_G2);
+    const stateAfterReseed = driver.current();
+    expect(stateAfterReseed?.key).toContain("gen-2");
+
+    g1Read.resolve({ ...RUNNING, running: false, startedAt: "gen-1" } as never);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(driver.current()).toBe(stateAfterReseed);
+    expect(driver.current()?.key).toContain("gen-2");
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(driver.current()?.phase).toBe("resolved");
+    expect(driver.current()?.status).toEqual(SETTLED_G2);
+  });
+
+  it("a G1 poll that REJECTS after seed(G2) is discarded the same way — no stale-error advance onto G2", async () => {
+    let call = 0;
+    const g1Read = deferred<never>();
+    const fetchStatus = vi.fn(() => {
+      call += 1;
+      if (call === 1) return g1Read.promise;
+      return Promise.resolve(SETTLED_G2);
+    });
+    const driver = createManualSearchDriver({ fetchStatus, onStateChange: vi.fn(), onRefreshSources: vi.fn() });
+
+    driver.seed(NB, RUNNING);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    driver.seed(NB, RUNNING_G2);
+    const stateAfterSeedG2 = driver.current();
+
+    g1Read.reject(new Error("network"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(driver.current()).toBe(stateAfterSeedG2);
+    expect(driver.current()?.phase).toBe("following");
+    expect(driver.current()?.key).toContain("gen-2");
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(driver.current()?.phase).toBe("resolved");
+    expect(driver.current()?.status).toEqual(SETTLED_G2);
   });
 });

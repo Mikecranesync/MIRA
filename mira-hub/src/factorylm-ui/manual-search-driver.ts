@@ -63,6 +63,18 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let trackedNotebookId: string | null = null;
+  // Codex round 7 F21 (#4195): the notebook-id check alone is not enough to
+  // discard an obsolete poll — `seed(notebookId, …)` for a SECOND, different
+  // generation of the SAME notebook changes `state` out from under an
+  // already-in-flight `fetchStatus` read without changing `trackedNotebookId`
+  // at all, so that stale read's continuation would pass the notebook check
+  // and advance the NEW generation's state using the OLD generation's
+  // snapshot. `epoch` is bumped every time `seed()` actually replaces the
+  // tracked state (a real reseed, not the duplicate-seed no-op) and every
+  // time `reset()` runs; each scheduled tick captures the epoch it was
+  // scheduled under and a continuation whose epoch no longer matches is
+  // discarded — same shape as `trackedNotebookId`, one layer finer.
+  let epoch = 0;
 
   function clearTimer(): void {
     if (timer !== null) {
@@ -74,13 +86,15 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
   function scheduleTick(notebookId: string): void {
     clearTimer();
     if (!state || state.phase !== "following") return;
+    const tickEpoch = epoch;
     timer = schedule(() => {
       timer = null;
       void deps
         .fetchStatus(notebookId)
         .then((status) => {
-          // A reset() (notebook change) during the fetch must discard this read.
-          if (!state || trackedNotebookId !== notebookId) return;
+          // A reset() (notebook change) OR a reseed to a newer generation
+          // during the fetch must discard this now-obsolete read.
+          if (!state || trackedNotebookId !== notebookId || epoch !== tickEpoch) return;
           const result = advanceManualSearchFollow(state, notebookId, status);
           state = result.state;
           deps.onStateChange(state);
@@ -88,7 +102,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
           scheduleTick(notebookId);
         })
         .catch(() => {
-          if (!state || trackedNotebookId !== notebookId) return;
+          if (!state || trackedNotebookId !== notebookId || epoch !== tickEpoch) return;
           const result = advanceManualSearchFollow(state, notebookId, null);
           state = result.state;
           deps.onStateChange(state);
@@ -113,6 +127,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
       trackedNotebookId = notebookId;
       state = result.state;
       if (changed) {
+        epoch += 1; // F21: this reseed just replaced tracked state — invalidate any in-flight tick from before it.
         deps.onStateChange(state);
         scheduleTick(notebookId);
       }
@@ -122,6 +137,7 @@ export function createManualSearchDriver(deps: ManualSearchDriverDeps): ManualSe
       clearTimer();
       state = null;
       trackedNotebookId = null;
+      epoch += 1; // F21: invalidate any in-flight tick from the notebook just abandoned.
     },
     current() {
       return state;

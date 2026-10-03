@@ -177,6 +177,17 @@ function UnifiedChatForNotebook({
   // Codex F1 (HIGH, #4175/#4189): the re-read scope a confirmed identity just
   // promoted, consumed one-shot by the next send (see `onSend` below).
   const confirmedScopeRef = useRef<string[] | null>(null);
+  // Codex round 7 F22 (#4195): `onSend` consumes this ref BEFORE
+  // `attachments.compose` resolves (it has to — the snapshot must be taken
+  // synchronously, before the await, same as `confirmedScope` itself). If
+  // that compose then fails or rejects, no send ever reaches the parent, so
+  // nothing actually spent the scope — restore it so the retry this failure
+  // invites still rides the promoted manual. Restoring only when the ref is
+  // still empty is what keeps this from clobbering a NEWER scope stashed by
+  // a confirm/refresh that landed while the failed compose was in flight.
+  const restoreConfirmedScope = useCallback((scope: string[] | null) => {
+    if (scope && confirmedScopeRef.current === null) confirmedScopeRef.current = scope;
+  }, []);
   // Light review (#4195, notebook-switch class): true until THIS instance
   // unmounts. The wrapper below remounts a fresh instance per notebook, so an
   // in-flight async continuation (confirm / compose / refresh) that settles
@@ -186,8 +197,22 @@ function UnifiedChatForNotebook({
   // continuation would otherwise call a parent handler or spend a network
   // call on behalf of a notebook this instance no longer represents.
   const aliveRef = useRef(true);
-  useEffect(() => () => {
-    aliveRef.current = false;
+  // Codex round 7 F20 (#4195): the ref above is initialized `true` exactly
+  // ONCE, at first render — only the cleanup below ever wrote `false`. React
+  // 18 StrictMode (`mira-mobile/src/main.tsx` wraps the app in it) runs
+  // effect setup, its cleanup, then setup again on every mount, so the
+  // sequence was: init(true) -> setup(no-op) -> cleanup(false) -> setup
+  // (still nothing restoring it) — leaving a StrictMode-mounted instance
+  // permanently "dead" from its very first render, dropping every compose
+  // continuation and confirm/refresh silently. Setting it `true` again in
+  // the setup itself makes the second StrictMode pass restore exactly what
+  // its own matching cleanup just cleared; a real unmount still ends on the
+  // cleanup's `false` with no later setup to undo it.
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
   }, []);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
@@ -564,6 +589,13 @@ function UnifiedChatForNotebook({
       // send to, so it is DROPPED entirely (not sent to A, not sent to B).
       if (!aliveRef.current) return;
       if (composed.failure) {
+        // Codex round 7 F22 (#4195): no send is actually handed to the parent
+        // on this path, so the promoted scope captured above must not be
+        // treated as spent — restore it for the retry this failure invites.
+        // Only restore into an EMPTY ref: if something newer already landed
+        // while compose was pending (another confirm's refresh), that newer
+        // value must win, never be clobbered by this older one.
+        restoreConfirmedScope(confirmedScope);
         // Do not send: a photo question with no photo would answer from nothing.
         dispatch({ type: "set-send-error", error: composed.failure });
         dispatch({ type: "set-draft", draft: composed.question });
@@ -580,11 +612,15 @@ function UnifiedChatForNotebook({
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
       if (!aliveRef.current) return;
+      // Codex round 7 F22 (#4195), same reasoning as the `composed.failure`
+      // branch above: a rejected compose never reaches `handlers.onSend`
+      // either, so the scope it would have ridden must survive for retry.
+      restoreConfirmedScope(confirmedScope);
       const message = error instanceof Error ? error.message : String(error);
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
       dispatch({ type: "set-draft", draft: text });
     });
-  }, [attachTarget, attachments, handlers, dispatch]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
