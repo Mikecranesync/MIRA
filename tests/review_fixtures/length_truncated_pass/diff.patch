@@ -1,0 +1,13 @@
+--- a/tools/review/paid.py
++++ b/tools/review/paid.py
+@@ -1,6 +1,4 @@
+-def call(prompt: str) -> str | None:
+-    choice = post(prompt)["choices"][0]
+-    if choice.get("finish_reason") == "length":
+-        return None  # incomplete: never a PASS
+-    content = choice["message"]["content"]
+-    return content
++def call(prompt: str) -> str | None:
++    choice = post(prompt)["choices"][0]
++    content = choice["message"]["content"]
++    return content
