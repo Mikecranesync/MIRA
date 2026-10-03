@@ -28,6 +28,7 @@ import {
   sourcesRefFromItem,
   notebookMachines,
   notebookProjects,
+  threadItemId,
   threadRefFromItem,
 } from "../unified/notebook-tree";
 import { NotebookScreen } from "./NotebookScreen";
@@ -303,10 +304,16 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     () => host?.projects.find((project) => project.id === projectIdForNotebook(selected ?? "")) ?? null,
     [host, selected],
   );
-  const currentProjectThreads = useMemo<readonly ProjectItem[]>(
-    () => currentProject?.children.filter((node): node is ProjectItem => node.kind === "thread") ?? [],
-    [currentProject],
-  );
+  // The server order is a boot-time snapshot: chatting in an older thread does
+  // not re-rank it. Float the thread just left to the top so it is always the
+  // first row, whatever the stale order says (#4188 light review).
+  const currentProjectThreads = useMemo<readonly ProjectItem[]>(() => {
+    const threads = currentProject?.children.filter((node): node is ProjectItem => node.kind === "thread") ?? [];
+    if (!selected || !selectedThreadId) return threads;
+    const leftId = threadItemId(selected, selectedThreadId);
+    const left = threads.find((item) => item.id === leftId);
+    return left ? [left, ...threads.filter((item) => item !== left)] : threads;
+  }, [currentProject, selected, selectedThreadId]);
 
   // NotebookScreen owns Android Back while a conversation is mounted. Every
   // root-owned state must replace that handler explicitly: otherwise the

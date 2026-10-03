@@ -395,6 +395,25 @@ describe("UnifiedRoot", () => {
     ).toContain("Intermittent fault");
   });
 
+  it("#4188: the thread just left is FIRST in the project root, even when the boot-time list ranked it lower", async () => {
+    // The list is loaded once at boot (server updated_at DESC). Chatting in an
+    // older thread does not re-rank it, so the root floats the thread just left
+    // to the top instead of trusting the stale order.
+    const backRef = { current: null as (() => boolean) | null };
+    const { container } = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    await waitFor(() => screen.getByTestId("nb"));
+    await act(async () => {
+      backRef.current?.();
+    });
+    const root = await waitFor(() => screen.getByTestId("unified-project-root"));
+    const rows = Array.from(root.querySelectorAll("[data-item-id]")).map((el) => el.getAttribute("data-item-id"));
+    expect(rows).toEqual(["notebook-nb-a:thread-thrd-a2", "notebook-nb-a:thread-thrd-a1"]);
+    expect(container).toBeTruthy();
+  });
+
   it("tapping a recent thread in the project root reopens that exact thread (#4188)", async () => {
     const backRef = { current: null as (() => boolean) | null };
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
