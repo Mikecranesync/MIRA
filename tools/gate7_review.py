@@ -204,7 +204,10 @@ _SECRET_RES: list[tuple[re.Pattern, str]] = [
     (
         re.compile(
             r"(?i)\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|DSN|CREDENTIAL)[A-Z0-9_]*)"
-            r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})"
+            # A value that runs on into `(` or more identifier characters is
+            # code (`os.environ.get(...)`, `settings.token`), not an opaque
+            # literal — five reviews reported the redaction itself as a bug.
+            r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})(?![A-Za-z0-9._\-+/=(])"
         ),
         r"\1\2[SECRET]",
     ),

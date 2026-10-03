@@ -1015,3 +1015,30 @@ def test_the_brief_declares_the_redaction_placeholders():
     prompt = build_prompt("t", "b", "+x = os.environ.get('K')\n", "high", [])
     assert "[SECRET], [IP], [MAC] and [SN]" in prompt
     assert prompt.index("placeholder is never a defect") < prompt.index("BEGIN UNTRUSTED PR DATA")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '    key = os.environ.get(PAID_ENV, "")',
+        "token = settings.get_token()",
+        "api_key = config.openai_api_key",
+    ],
+)
+def test_an_identifier_or_call_assigned_to_a_key_name_is_code_not_a_secret(line):
+    """Five single-shot reviews reported `[SECRET](PAID_ENV, "")` as a broken env
+    lookup: the KEY=value rule redacted a dotted identifier / call as if it were
+    an opaque literal. A value that runs into `(` or more identifier chars is code."""
+    assert redact(line) == line
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('api_key = "sk-abcdefghijklmnopqrstuvwxyz"', 'api_key = "[SECRET]"'),
+        ("token: ghp_abcdefghijklmnop1234", "token: [SECRET]"),
+        ("SECRET=AbCdEfGhIjKlMnOpQrSt", "SECRET=[SECRET]"),
+    ],
+)
+def test_opaque_literal_values_are_still_redacted(line, expected):
+    assert redact(line) == expected
