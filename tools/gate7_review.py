@@ -722,6 +722,18 @@ def fetch_pr(number: int) -> tuple[str, str, list[str], str, str]:
     )
 
 
+def current_head(number: int) -> str:
+    """The PR's head SHA right now, or "" when GitHub cannot be asked. Used to
+    re-bind the posted verdict to the head at post time, not fetch time."""
+    try:
+        return (
+            _gh_json(["pr", "view", str(number), "--json", "headRefOid"]).get("headRefOid", "")
+            or ""
+        )
+    except (subprocess.CalledProcessError, OSError, ValueError):
+        return ""
+
+
 def receipts_block(
     head_sha: str,
     scopes: Optional[list[str]],
@@ -1384,9 +1396,28 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         sys.stdout.write(report)
     if a.post:
+        # Re-read the head immediately before posting (SDLC v1 §4.2 / step 6).
+        # The diff and the head were fetched once at the start; a push during the
+        # review would otherwise be stamped with a verdict for bytes nobody can
+        # see any more. On drift the envelope says STALE and carries both SHAs;
+        # the reviewed verdict is kept on its own line so nothing is lost. A
+        # failed re-read is also STALE — never assume the head held.
+        live_head = current_head(a.pr)
+        if live_head == head_sha:
+            verdict_line = f"verdict: {review.verdict}\n"
+        else:
+            verdict_line = (
+                f"verdict: STALE\nreviewed_verdict: {review.verdict}\n"
+                f"current_head: {live_head or 'unknown (re-read failed)'}\n"
+            )
+            print(
+                f"Gate 7: head moved during review ({head_sha[:12]} -> "
+                f"{(live_head or 'unknown')[:12]}); posting verdict: STALE",
+                file=sys.stderr,
+            )
         body = (
             "[CHEAP-REVIEW]\n\n```\n"
-            f"head: {head_sha}\nverdict: {review.verdict}\nmodel: {model}\n"
+            f"head: {head_sha}\n{verdict_line}model: {model}\n"
             f"cost_usd: {cost:.4f}\nrun_id: {run_id}\n```\n\n" + report
         )
         try:

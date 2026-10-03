@@ -56,7 +56,11 @@ jobs:
   apply:
     name: Apply ingest migrations (${{ inputs.target }} / ${{ inputs.mode }})
     runs-on: ubuntu-latest
-    environment: production
+    # Same split as apply-migrations.yml: the staging target runs under the
+    # `staging` environment (its DOPPLER_TOKEN is stg-scoped), prod under
+    # `production`. Until SDLC v1 step 6 both targets ran under `production`
+    # (spec §5.3 / §11.1).
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
 
     steps:
