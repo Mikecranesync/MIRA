@@ -16,8 +16,10 @@
 
 ## Supported versions
 
-The deployed production commit (the latest `v*` tag on `main` that has a production receipt) is the only
-supported version. Older tags are rollback addresses, not supported releases.
+The commit currently serving production — the `gitSha` reported by the production `/api/health` endpoint,
+identified by its `v*` tag on `main` — is the only supported version. A production receipt existed when it
+was deployed (receipts are retained 90 days; support does not lapse when the artifact expires). Older tags
+are rollback addresses, not supported releases.
 
 ## Scope notes
 
