@@ -18,7 +18,7 @@ The agentic lane re-reads the repository. Measured 2026-10-02/03:
 | #4203 | 55k chars | — | **$0.017** |
 
 #4182 round 11 consumed 2.6M input tokens for a diff of 67k tokens. One non-agentic
-completion over the full diff costs diff tokens only.
+completion over the diff costs diff tokens only.
 
 ## Run it
 
@@ -33,7 +33,7 @@ doppler run --project factorylm --config dev -- \
   python3 tools/gate7_review.py <PR> --paid --post -o .planning/cheap-<PR>-<head>.md
 ```
 
-- One chat completion, no tools, no retries, the **full diff** (cap 400k chars).
+- One chat completion, no tools, no retries, the diff **up to 400k chars** (≈100k tokens — every PR so far fits; a larger one is truncated at the tail and the run receipts say `sent < total`).
 - Model: the strongest of `gpt-6.1-sol → gpt-5.4-mini → gpt-6-luna` whose **worst-case**
   estimate (no cache, the whole 12k output cap, prices from
   `tools/review_router/prices.json`) fits `--budget-usd` (default **$0.10**). If none

@@ -193,10 +193,18 @@ _REDACTORS = _load_pii_redactors()
 _DOTTED_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
 
 
+_CODE_ROOTS = frozenset(
+    {"os", "self", "cls", "settings", "config", "cfg", "env", "process", "this", "ctx", "app"}
+)
+
+
 def _is_dotted_name(value: str) -> bool:
     """`config.openai_api_key` / `os.environ.get` is a Python attribute path, not an
-    opaque secret literal. (JWTs are dotted too but never pure identifiers.)"""
-    return bool(_DOTTED_NAME_RE.match(value))
+    opaque secret literal — but ONLY when rooted in a known code object: a secret
+    shaped like a dotted name (`PASSWORD=my.dog.name`) must still be redacted.
+    This is a security boundary; over-redaction costs reviewer attention,
+    under-redaction leaks. (JWTs are dotted too but never pure identifiers.)"""
+    return bool(_DOTTED_NAME_RE.match(value)) and value.split(".", 1)[0] in _CODE_ROOTS
 
 
 _SECRET_RES: list[tuple[re.Pattern, str]] = [
@@ -1020,7 +1028,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument(
         "--paid",
         action="store_true",
-        help="the <$0.10 lane: ONE non-agentic OpenAI completion over the FULL diff, "
+        help="the <$0.10 lane: ONE non-agentic OpenAI completion over the diff (up to "
+        "400k chars; larger is truncated and the receipts say so), "
         "model chosen by a worst-case estimate against --budget-usd (strongest "
         "first), real cost recorded to --ledger. Refuses (exit 3) when no model fits.",
     )

@@ -1042,3 +1042,18 @@ def test_an_identifier_or_call_assigned_to_a_key_name_is_code_not_a_secret(line)
 )
 def test_opaque_literal_values_are_still_redacted(line, expected):
     assert redact(line) == expected
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("PASSWORD=my.dog.name.secret", "PASSWORD=[SECRET]"),  # ≥12 chars: the rule's floor
+        ("api_key=abc.def.ghi.jkl", "api_key=[SECRET]"),
+        ("token = Ab1.Cd2.Ef3.Gh4", "token = [SECRET]"),
+    ],
+)
+def test_a_dotted_value_that_is_not_rooted_in_code_is_still_redacted(line, expected):
+    """The lane's review of d1c293a56: exempting every dotted name let a secret
+    shaped like one leak. Only a call, or a path rooted in a known code object
+    (os., self., settings., config., …), is treated as code."""
+    assert redact(line) == expected
