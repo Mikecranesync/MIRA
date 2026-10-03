@@ -65,6 +65,7 @@ def test_verdict_time_reread_fails_closed_and_records_identity():
     assert "SUPERSEDED" in run
     # a non-40-char / non-hex health answer is treated as a failed re-read
     assert "????????????????????????????????????????" in run
+    assert '*[!0-9a-f]*) now=""' in run, "40 chars alone is not a SHA; hex is required too"
 
 
 def test_receipt_is_built_from_the_trusted_base_and_uploaded_under_the_sha():

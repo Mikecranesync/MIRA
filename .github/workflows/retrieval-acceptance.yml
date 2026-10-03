@@ -196,6 +196,9 @@ jobs:
             ????????????????????????????????????????) ;;
             *) now="" ;;
           esac
+          case "$now" in
+            *[!0-9a-f]*) now="" ;;
+          esac
           if [ -z "$now" ]; then
             echo "identity_end=INFRA_UNASSESSED" >> "$GITHUB_OUTPUT"
             echo "::error::could not re-read health at verdict time — INFRA_UNASSESSED; this run authorizes nothing (SDLC v1 §6.2)"

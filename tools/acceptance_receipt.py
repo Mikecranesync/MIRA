@@ -100,9 +100,33 @@ def build_receipt(
     )
 
     if staging_receipt is not None:
+        # The artifact NAME is only a lookup key. Bind the generation to the staging
+        # receipt's own identity fields, not to the filename: same schema, staging
+        # environment, the SAME approved SHA this run audited, and the run id that
+        # stamped it must be the run that triggered this acceptance (cheap-lane
+        # finding, PR #4217). A receipt that says otherwise is not this generation.
         missing = [k for k in ("deployed_at", "running_images") if not staging_receipt.get(k)]
         if missing:
             raise ValueError(f"staging_receipt missing/empty field(s): {missing}")
+        if staging_receipt.get("schema") != "factorylm.deploy-receipt/1":
+            raise ValueError(
+                f"staging_receipt schema is {staging_receipt.get('schema')!r}, "
+                "expected 'factorylm.deploy-receipt/1'"
+            )
+        if staging_receipt.get("environment") != "staging":
+            raise ValueError(
+                f"staging_receipt environment is {staging_receipt.get('environment')!r}, expected 'staging'"
+            )
+        if staging_receipt.get("approved_rc_sha") != deployed_sha:
+            raise ValueError(
+                f"staging_receipt approved_rc_sha {staging_receipt.get('approved_rc_sha')!r} "
+                f"!= deployed_sha {deployed_sha}; not this deployment's receipt"
+            )
+        if staging_run_id is None or str(staging_receipt.get("run_id")) != str(staging_run_id):
+            raise ValueError(
+                f"staging_receipt run_id {staging_receipt.get('run_id')!r} != triggering staging run "
+                f"{staging_run_id!r}; not this generation's receipt"
+            )
         generation = {
             "staging_run_id": staging_run_id,
             "deployed_at": staging_receipt["deployed_at"],
@@ -229,6 +253,12 @@ def verify_receipt(
     staging_run_id = receipt.get("staging_run_id")
     if staging_run_id is None:
         problems.append("staging_run_id: missing")
+    elif isinstance(generation, dict) and str(generation.get("staging_run_id")) != str(
+        staging_run_id
+    ):
+        problems.append(
+            f"generation.staging_run_id {generation.get('staging_run_id')!r} != staging_run_id {staging_run_id!r}"
+        )
     elif expected_staging_run_id is not None and str(staging_run_id) != str(
         expected_staging_run_id
     ):

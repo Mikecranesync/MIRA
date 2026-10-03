@@ -39,11 +39,46 @@ def _rows(n_pass: int, n_fail: int) -> dict:
     return {"base": "https://stg.example", "ran_at": NOW.isoformat(), "rows": scenarios}
 
 
-def _staging_receipt() -> dict:
-    return {
+def _staging_receipt(**overrides) -> dict:
+    # The identity fields a real staging receipt carries (tools/staging_receipt.py);
+    # build_receipt binds the generation to THESE, never to the artifact filename.
+    data = {
+        "schema": "factorylm.deploy-receipt/1",
+        "environment": "staging",
+        "approved_rc_sha": SHA,
+        "run_id": "9",
         "deployed_at": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "running_images": {"mira-hub": "sha256:" + "1" * 64, "mira-web": "sha256:" + "2" * 64},
     }
+    data.update(overrides)
+    return data
+
+
+@pytest.mark.parametrize(
+    ("overrides", "needle"),
+    [
+        ({"approved_rc_sha": OTHER}, "not this deployment"),
+        ({"run_id": "8"}, "not this generation"),
+        ({"environment": "production"}, "environment"),
+        ({"schema": "factorylm.deploy-receipt/0"}, "schema"),
+    ],
+)
+def test_generation_binds_to_the_staging_receipt_identity_not_the_filename(overrides, needle):
+    """Cheap-lane finding on PR #4217: a same-named artifact from another run or SHA
+    must not become this acceptance's generation."""
+    with pytest.raises(ValueError, match=needle):
+        _good(staging_receipt=_staging_receipt(**overrides))
+
+
+def test_generation_requires_the_triggering_run_id():
+    with pytest.raises(ValueError, match="not this generation"):
+        _good(staging_run_id=None, staging_receipt=_staging_receipt())
+
+
+def test_verify_rejects_generation_from_a_different_staging_run():
+    data = _good()
+    data["generation"]["staging_run_id"] = 8
+    assert any("generation.staging_run_id" in p for p in _verify(data))
 
 
 def _good(**overrides) -> dict:
