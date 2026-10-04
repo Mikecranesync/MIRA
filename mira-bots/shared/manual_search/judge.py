@@ -463,10 +463,12 @@ _FAULT_HEADING = re.compile(
     re.I,
 )
 
+# Only words that are not also English or drive-table abbreviations: "En"
+# (Enabled) appears 33 times in the first pages of a PowerFlex 525 parameter guide.
 _STOPWORDS = {
     "en": frozenset("the and of to for with is this on be are or not if when from".split()),
-    "pt": frozenset("de do da dos das para com não em uma um que os as ao".split()),
-    "es": frozenset("de del la las los el para con que en una un por se no".split()),
+    "pt": frozenset("da dos das para com não em uma que os ao pelo".split()),
+    "es": frozenset("del la las los el para con que una por como".split()),
     "de": frozenset("der die das und mit für von zu im ist den nicht ein eine auf".split()),
     "fr": frozenset("le la les et des du pour avec dans est une un sur pas au".split()),
     "id": frozenset("dan yang untuk dengan di ini atau dari pada jika akan tidak ke".split()),
@@ -474,10 +476,16 @@ _STOPWORDS = {
 
 
 def text_language(text: str) -> str | None:
-    """The document's language from function-word counts, or None when the text is
-    too short or too mixed to say. Deterministic; preferred over the model's guess."""
+    """The language a technician would read this document in, from function-word
+    counts: the preferred language whenever it is present as real prose (multilingual
+    editions and parameter tables count), otherwise a clearly dominant other language,
+    otherwise None. Short words in drive tables ("No", "En", "Se") read as Spanish, so a
+    document is only called foreign when the preferred language is nearly absent.
+    Deterministic; preferred over the model's guess."""
     words = re.findall(r"[^\W\d_]+", (text or "").lower())
     counts = {lang: sum(1 for w in words if w in sw) for lang, sw in _STOPWORDS.items()}
+    if counts.get(PREFERRED_LANGUAGE, 0) >= 8:
+        return PREFERRED_LANGUAGE
     best = max(counts, key=lambda k: counts[k])
     runner_up = max(v for k, v in counts.items() if k != best)
     if counts[best] < 12 or counts[best] < 2 * runner_up:

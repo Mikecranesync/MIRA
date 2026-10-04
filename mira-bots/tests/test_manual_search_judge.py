@@ -756,8 +756,9 @@ ID_TEXT = (
 
 def test_text_language_is_deterministic_and_abstains_on_thin_text():
     assert judge.text_language(EN_TEXT) == "en"
-    assert judge.text_language(PT_TEXT) == "pt"
-    assert judge.text_language(ID_TEXT) == "id"
+    # The judge reads up to 7,000 characters; a few paragraphs is the realistic floor.
+    assert judge.text_language(PT_TEXT * 3) == "pt"
+    assert judge.text_language(ID_TEXT * 3) == "id"
     assert judge.text_language("PowerFlex 525 F005 4-3 5-1 A-2") is None
 
 
@@ -861,3 +862,22 @@ async def test_a_slow_upgrade_batch_times_out_and_keeps_the_match(volumes, monke
     ranked = await judge.judge_candidates("Allen-Bradley", "PowerFlex 525", _vol_cands(COMMS, PROG))
     assert volumes.read == [COMMS]
     assert ranked[0]["url"] == COMMS and judge.is_match(ranked[0])
+
+
+# Live 2026-10-04: 520-DU001 ("On Drive Guide", F005 on p4) read as Spanish: its first
+# pages carry "En" (Enabled) 33 times against 8 English function words. Same counts,
+# synthetic text (not the manual's), so the fixture reproduces the misread exactly.
+EN_PARAMETER_TABLE = (
+    " ".join(f"P{n:03d} Output Freq En Disabled" for n in range(33))
+    + " Additional parameters are listed on the previous page, the value is the fault code"
+    + " for this drive."
+)
+
+
+def test_english_parameter_table_with_spanish_looking_abbreviations_is_english():
+    assert judge.text_language(EN_PARAMETER_TABLE) == "en"
+
+
+def test_a_bare_parameter_table_is_unknown_not_spanish():
+    table_only = " ".join(f"P{n:03d} Output Freq En Disabled" for n in range(33))
+    assert judge.text_language(table_only) is None
