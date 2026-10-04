@@ -93,7 +93,12 @@ def emit(data):
     sys.stdout.write(json.dumps(data)); sys.exit(0)
 
 if args[:2] == ["run", "list"]:
-    emit([{"databaseId": int(x)} for x in fx["runs"]])
+    runs = [r if isinstance(r, dict) else {"id": r} for r in fx["runs"]]
+    want = args[args.index("--status") + 1] if "--status" in args else None
+    runs = [r for r in runs if want in (None, r.get("status", "completed"), r.get("conclusion", "success"))]
+    if "--limit" in args:
+        runs = runs[: int(args[args.index("--limit") + 1])]
+    emit([{"databaseId": int(r["id"])} for r in runs])
 if args and args[0] == "api":
     raw = next(a for a in args[1:] if a.lstrip("/").startswith("repos/"))
     key = raw.lstrip("/").split("/", 3)[3]
@@ -213,7 +218,10 @@ def _prod_fixtures(tmp: Path, *, broken_run: str = "") -> dict:
 
 
 def _run_record(tmp: Path, fixtures: dict, services: str) -> subprocess.CompletedProcess:
-    env = _env(tmp, fixtures, APPROVED_RC_SHA=NEW, EFFECTIVE_SERVICES=services)
+    limit = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]["RECEIPT_WALK_LIMIT"]
+    env = _env(
+        tmp, fixtures, APPROVED_RC_SHA=NEW, EFFECTIVE_SERVICES=services, RECEIPT_WALK_LIMIT=limit
+    )
     trusted = Path(env["RUNNER_TEMP"]) / "trusted"
     trusted.mkdir()
     shutil.copy(TOOL, trusted / "rollback_candidates.py")
@@ -264,8 +272,155 @@ def test_record_step_with_no_earlier_deploy_run_records_null_candidates(tmp_path
 def test_refresh_lists_only_main_dispatch_deploy_runs():
     run = _step(REFRESH, "check", "Gather the production receipts")["run"]
     assert (
-        "--workflow deploy-vps.yml --branch main --event workflow_dispatch --status success" in run
+        "--workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed"
+        in run
     )
+
+
+def _walk_lines(run: str) -> list[str]:
+    keep = ("gh run list --repo", 'startswith("production-receipt-")', "ART_EXPIRED", "ART_ID")
+    return [line.strip() for line in run.splitlines() if any(k in line for k in keep)]
+
+
+def test_both_receipt_walks_are_the_same_walk():
+    """deploy-vps authorize-source and the refresh must read production the same way."""
+    record = _walk_lines(_step(DEPLOY, "authorize-source", RECORD)["run"])
+    gather = _walk_lines(_step(REFRESH, "check", "Gather the production receipts")["run"])
+    shared = [line for line in record if "break" not in line and "GAP" not in line]
+    assert shared and all(line in gather for line in shared), (shared, gather)
+    runs = next(line for line in record if "gh run list" in line)
+    assert '--status completed --limit "$RECEIPT_WALK_LIMIT"' in runs
+    deploy_env = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]
+    refresh_env = _wf(REFRESH)["jobs"]["check"]["env"]
+    assert deploy_env["RECEIPT_WALK_LIMIT"] == refresh_env["RECEIPT_WALK_LIMIT"] == "200"
+    assert deploy_env["PRODUCTION_DEFAULT_SERVICES"] == refresh_env["PRODUCTION_DEFAULT_SERVICES"]
+    for text in (DEPLOY.read_text(encoding="utf-8"), REFRESH.read_text(encoding="utf-8")):
+        assert "--status success --limit" not in text
+
+
+def test_the_runbook_walks_receipts_like_the_workflows():
+    """Codex #4222 r1 F5: the operator procedure keeps the same provenance filters."""
+    runbook = (REPO / "docs/runbooks/rollback.md").read_text(encoding="utf-8")
+    assert (
+        "--workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed"
+        in runbook
+    )
+    assert "--status success" not in runbook
+    assert "more than one production receipt" in runbook
+
+
+def test_a_receipted_run_counts_whatever_its_conclusion(tmp_path):
+    """Codex #4222 r1 F4: a run that failed AFTER uploading its receipt still ran in production."""
+    fx = _prod_fixtures(tmp_path)
+    d_sha, run = "d" * 40, "36900000001"
+    fx["runs"] = [{"id": run, "conclusion": "failure"}, *fx["runs"]]
+    fx["api"][f"actions/runs/{run}/artifacts"] = {
+        "artifacts": [{"id": 999, "name": f"production-receipt-{d_sha}", "expired": False}]
+    }
+    fx["zips"]["actions/artifacts/999/zip"] = _zip(
+        tmp_path,
+        "999",
+        "production-receipt.json",
+        _receipt(d_sha, run, "2026-10-03T10:00:00Z", ("mira-hub",)),
+    )
+    res = _run_record(tmp_path, fx, "mira-hub")
+    assert res.returncode == 0, res.stdout + res.stderr
+    line = next(
+        x
+        for x in (tmp_path / "out").read_text().splitlines()
+        if x.startswith("rollback_candidates=")
+    )
+    assert json.loads(line.split("=", 1)[1])["mira-hub"]["sha"] == d_sha
+
+
+def test_the_record_walk_stops_at_the_first_expired_receipt(tmp_path):
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"][1]["expired"] = True
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    line = next(
+        x
+        for x in (tmp_path / "out").read_text().splitlines()
+        if x.startswith("rollback_candidates=")
+    )
+    cands = json.loads(line.split("=", 1)[1])
+    assert cands["mira-hub"]["sha"] == C and cands["mira-web"]["sha"] is None
+    zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
+    assert len(zips) == 1, "nothing older than the expired receipt is read"
+
+
+REFRESH_STEPS = (
+    "Gather the production receipts",
+    "Designate the recovery candidates",
+    "Check each candidate",
+    "Record the outcome on issues",
+)
+
+
+def _run_refresh(tmp: Path, fixtures: dict, limit: str = "") -> tuple[list, dict]:
+    job_env = _wf(REFRESH)["jobs"]["check"]["env"]
+    env = _env(
+        tmp,
+        fixtures,
+        HEAD_SHA=NEW,
+        RUN_URL="https://github.com/x/y/actions/runs/1",
+        REFRESH_BEFORE_HOURS=job_env["REFRESH_BEFORE_HOURS"],
+        PRODUCTION_DEFAULT_SERVICES=job_env["PRODUCTION_DEFAULT_SERVICES"],
+        RECEIPT_WALK_LIMIT=limit or job_env["RECEIPT_WALK_LIMIT"],
+    )
+    done = []
+    for name in REFRESH_STEPS:
+        res = subprocess.run(
+            ["bash", "-c", _step(REFRESH, "check", name)["run"]],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        done.append(res)
+        if res.returncode != 0:
+            break
+    designated = Path(env["RUNNER_TEMP"]) / "designated.json"
+    return done, (json.loads(designated.read_text()) if designated.exists() else {})
+
+
+def _creates(tmp: Path) -> list[list[str]]:
+    return [c for c in _calls(tmp) if c[:2] == ["issue", "create"]]
+
+
+def test_refresh_bootstrap_reports_no_candidate_and_loses_nothing(tmp_path):
+    """Today's shape: receipts cover the default set, none records the field yet."""
+    done, d = _run_refresh(tmp_path, _prod_fixtures(tmp_path))
+    assert [r.returncode for r in done] == [0, 0, 0, 0], [r.stderr for r in done]
+    assert d["lost"] == {} and d["designated"] == []
+    assert "NO_CANDIDATE" in (tmp_path / "summary").read_text()
+    assert _creates(tmp_path) == []
+
+
+def test_refresh_an_expired_newest_receipt_is_lost_not_bootstrap(tmp_path):
+    """Codex #4222 r1 F1: production on B past retention must not read as 'nothing to do'."""
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36805202089/artifacts"]["artifacts"][1]["expired"] = True
+    done, d = _run_refresh(tmp_path, fx)
+    assert done[-1].returncode == 1 and len(done) == 4, [r.stderr for r in done]
+    assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
+    assert "NO_CANDIDATE" not in (tmp_path / "summary").read_text()
+    titles = sorted(_arg(c, "--title") for c in _creates(tmp_path))
+    assert titles == [
+        f"Rollback designation lost for {s}" for s in ("mira-ask", "mira-hub", "mira-web")
+    ]
+    assert all(_arg(c, "--label") == "incident" for c in _creates(tmp_path))
+
+
+def test_refresh_an_exhausted_window_loses_the_service_it_did_not_reach(tmp_path):
+    done, d = _run_refresh(tmp_path, _prod_fixtures(tmp_path), limit="1")
+    assert done[-1].returncode == 1, [r.stderr for r in done]
+    assert sorted(d["lost"]) == ["mira-web"]
+    assert "newest 1 deploy runs" in d["lost"]["mira-web"]
+    assert [_arg(c, "--title") for c in _creates(tmp_path)] == [
+        "Rollback designation lost for mira-web"
+    ]
 
 
 def test_record_step_fails_closed_on_a_malformed_receipt(tmp_path):
@@ -559,6 +714,20 @@ def test_lost_readiness_opens_an_incident_with_the_fixed_fields_and_fails(tmp_pa
     assert body[3] == "services: mira-hub,mira-ask"
     assert body[5] == "restored_at: open" and body[6] == "restoring_action: none"
     assert re.fullmatch(r"first_seen: \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", body[0])
+
+
+def test_a_lost_designation_opens_an_incident_with_the_fixed_fields_and_fails(tmp_path):
+    res, calls = _run_outcome(
+        tmp_path,
+        [("none", "mira-web", "LOST", "no production receipt for mira-web within the walk")],
+    )
+    assert res.returncode == 1, res.stdout + res.stderr
+    create = next(c for c in calls if c[:2] == ["issue", "create"])
+    assert _arg(create, "--label") == "incident"
+    assert _arg(create, "--title") == "Rollback designation lost for mira-web"
+    body = _arg(create, "--body").splitlines()
+    assert [line.split(":", 1)[0] for line in body[:7]] == list(FIELDS)
+    assert body[3] == "services: mira-web"
 
 
 def test_a_due_refresh_requests_action_without_an_incident(tmp_path):

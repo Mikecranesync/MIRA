@@ -85,6 +85,9 @@ jobs:
       # Must equal the deploy script's default TARGETS fallback (the three-service
       # OVH set) — pinned by tests/test_deploy_vps_production_authorization.py.
       PRODUCTION_DEFAULT_SERVICES: "mira-hub mira-web mira-ask"
+      # §10.2 receipt walk window; must equal rollback-candidate-refresh.yml (pinned by
+      # tests/test_rollback_candidate_refresh.py).
+      RECEIPT_WALK_LIMIT: "200"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -380,9 +383,12 @@ jobs:
       # is not the one being deployed — read from production receipts, never from the
       # host checkout (PRIOR_SHA) or from tags. Computed here, before any production
       # credential or the host is touched, and stamped onto the production receipt
-      # after the deploy. Bounded for this job's 5-minute timeout: successful deploy
+      # after the deploy. Bounded for this job's 5-minute timeout: completed deploy
       # runs are walked newest-first and the walk stops once every service has a
-      # candidate. Any malformed receipt or API failure fails closed.
+      # candidate, or at the first expired receipt (every older one has expired too).
+      # A run's conclusion does not matter: its receipt is uploaded only after the
+      # production verify passed, and only a read-only nginx check can fail after it.
+      # Any malformed receipt or API failure fails closed.
       # Only main-branch workflow_dispatch runs count: a run dispatched from another ref executes
       # THAT ref's copy of this file and could upload a production-receipt-* of its own making.
       - name: Record rollback candidates (SDLC v1 §10.2)
@@ -394,16 +400,21 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [[ "$RECEIPT_WALK_LIMIT" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "::error::RECEIPT_WALK_LIMIT must be a positive integer"; exit 1; }
           DIR="$RUNNER_TEMP/production-receipts"
           install -d -m 700 "$DIR"
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status success --limit 40 --json databaseId --jq '.[].databaseId')"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit "$RECEIPT_WALK_LIMIT" --json databaseId --jq '.[].databaseId')"
           for run in $RUNS; do
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
-              --jq '[.artifacts[] | select((.name | startswith("production-receipt-")) and .expired == false)] | if length > 1 then error("more than one production receipt in run") else (.[0].id // empty) end')"
+              --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
             [ -n "$ART" ] || continue
+            read -r ART_ID ART_EXPIRED <<< "$ART"
+            [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
+            # Newest first: once one receipt has expired, every older one has too.
+            [ "$ART_EXPIRED" = "false" ] || break
             install -d -m 700 "$DIR/$run"
-            gh api "/repos/$REPO/actions/artifacts/$ART/zip" > "$DIR/$run.zip"
+            gh api "/repos/$REPO/actions/artifacts/$ART_ID/zip" > "$DIR/$run.zip"
             unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
             rm -f "$DIR/$run.zip"
             rc=0

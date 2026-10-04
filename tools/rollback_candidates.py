@@ -151,7 +151,7 @@ def candidates_for_deploy(
             out[svc] = {
                 "sha": None,
                 "from_run_id": None,
-                "reason": f"no earlier production receipt deployed {svc} within artifact retention",
+                "reason": f"no earlier production receipt deployed {svc} within the receipt walk (retention or run window)",
             }
         else:
             out[svc] = {

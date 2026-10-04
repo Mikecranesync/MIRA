@@ -21,6 +21,15 @@ name: Rollback Candidate Refresh
 # staging dispatch. No designated candidate (every receipt written before the field
 # existed designates nothing) is reported and is not a failure.
 #
+# A designation is never silently dropped. The walk reads completed main-branch
+# deploy runs newest-first (a run's conclusion does not matter: its receipt exists
+# only if the production verify passed) and stops at the first expired receipt or
+# after RECEIPT_WALK_LIMIT runs. If it stopped short, any service of the deploy
+# default set (PRODUCTION_DEFAULT_SERVICES, equal to deploy-vps.yml's) that it did
+# not see is LOST: an `incident`, and the job fails. Accepted limitation: a service
+# OUTSIDE the default set whose only receipts are past retention is invisible here,
+# because no durable service inventory outlives the 90-day receipts.
+#
 # Re-staging is NOT automated here yet: a staging deploy dispatched with this
 # workflow's GITHUB_TOKEN would not trigger retrieval-acceptance (workflow_run is
 # not fired for runs created by GITHUB_TOKEN), and authorize-source accepts only
@@ -52,6 +61,9 @@ jobs:
       issues: write
     env:
       REFRESH_BEFORE_HOURS: "72"
+      # Equal to deploy-vps.yml (pinned by tests/test_rollback_candidate_refresh.py).
+      PRODUCTION_DEFAULT_SERVICES: "mira-hub mira-web mira-ask"
+      RECEIPT_WALK_LIMIT: "200"
     steps:
       - name: Check out the trusted main revision with history
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -66,31 +78,48 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [[ "$RECEIPT_WALK_LIMIT" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "::error::RECEIPT_WALK_LIMIT must be a positive integer"; exit 1; }
           DIR="$RUNNER_TEMP/production-receipts"
           install -d -m 700 "$DIR"
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status success --limit 40 --json databaseId --jq '.[].databaseId')"
+          GAP=""
+          N=0
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit "$RECEIPT_WALK_LIMIT" --json databaseId --jq '.[].databaseId')"
           for run in $RUNS; do
+            N=$((N + 1))
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
-              --jq '[.artifacts[] | select((.name | startswith("production-receipt-")) and .expired == false)] | if length > 1 then error("more than one production receipt in run") else (.[0].id // empty) end')"
+              --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
             [ -n "$ART" ] || continue
+            read -r ART_ID ART_EXPIRED <<< "$ART"
+            [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
+            # Newest first: once one receipt has expired, every older one has too.
+            if [ "$ART_EXPIRED" != "false" ]; then
+              GAP="the production receipt of deploy run $run has expired (90-day retention), and every older one with it"
+              break
+            fi
             install -d -m 700 "$DIR/$run"
-            gh api "/repos/$REPO/actions/artifacts/$ART/zip" > "$DIR/$run.zip"
+            gh api "/repos/$REPO/actions/artifacts/$ART_ID/zip" > "$DIR/$run.zip"
             unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
             rm -f "$DIR/$run.zip"
           done
-          echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -z "$GAP" ] && [ "$N" -ge "$RECEIPT_WALK_LIMIT" ]; then
+            GAP="the walk stopped at the newest $RECEIPT_WALK_LIMIT deploy runs"
+          fi
+          printf '%s' "$GAP" > "$RUNNER_TEMP/evidence-gap.txt"
+          echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l); evidence gap: ${GAP:-none}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Designate the recovery candidates
         id: designate
         run: |
           set -euo pipefail
           python3 -I tools/rollback_candidates.py designate \
-            --receipts-dir "$RUNNER_TEMP/production-receipts" --out "$RUNNER_TEMP/designated.json"
+            --receipts-dir "$RUNNER_TEMP/production-receipts" --out "$RUNNER_TEMP/designated.json" \
+            --inventory "$PRODUCTION_DEFAULT_SERVICES" --evidence-gap "$(cat "$RUNNER_TEMP/evidence-gap.txt")"
           python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1]))
           print("current:", json.dumps(d["current"], sort_keys=True))
           print("designated:", json.dumps(d["designated"], sort_keys=True))
-          print("undesignated:", json.dumps(d["undesignated"], sort_keys=True))' "$RUNNER_TEMP/designated.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          print("undesignated:", json.dumps(d["undesignated"], sort_keys=True))
+          print("lost:", json.dumps(d["lost"], sort_keys=True))' "$RUNNER_TEMP/designated.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Check each candidate
         id: check
@@ -154,7 +183,13 @@ jobs:
           }
 
           COUNT="$(jq '.designated | length' "$RUNNER_TEMP/designated.json")"
-          if [ "$COUNT" = "0" ]; then
+          LOST="$(jq '(.lost // {}) | length' "$RUNNER_TEMP/designated.json")"
+          for svc in $(jq -r '(.lost // {}) | keys[]' "$RUNNER_TEMP/designated.json"); do
+            [[ "$svc" =~ ^[a-z0-9-]+$ ]] || { echo "::error::unexpected service name '$svc'"; exit 1; }
+            why="$(jq -r --arg s "$svc" '.lost[$s]' "$RUNNER_TEMP/designated.json" | tr '\n\t' '  ' | cut -c1-500)"
+            printf '%s\t%s\tLOST\t%s\n' "none" "$svc" "$why" >> "$RESULTS"
+          done
+          if [ "$COUNT" = "0" ] && [ "$LOST" = "0" ]; then
             echo "::notice::no designated rollback candidate — no production receipt records rollback_candidate yet (SDLC v1 §10.2)"
             echo "NO_CANDIDATE: nothing to refresh" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
@@ -202,6 +237,12 @@ jobs:
                 # shellcheck disable=SC2016
                 body="$(printf 'first_seen: %s\ndeploy_run: none\ndeploy_sha: none\nservices: %s\nimpact: a rollback of %s to %s would be refused by deploy-vps.yml authorize-source (%s)\nrestored_at: open\nrestoring_action: none\n\nRecovery readiness for the designated rollback candidate is lost (SDLC v1 §10.2).\n\n- candidate: %s\n- services: %s\n- state: %s\n- reason: %s\n- detected by: %s\n\nRestore by re-staging the candidate (`gh workflow run deploy-staging.yml -f approved_rc_sha=%s -f reset_volumes=false`, after which retrieval-acceptance runs on its own), or record why it is no longer a valid target. See docs/runbooks/rollback.md.\n' \
                   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${services// /,}" "$services" "$sha" "$state" "$sha" "$services" "$state" "$reason" "$RUN_URL" "$sha")" ;;
+              LOST)
+                lost=1
+                title="Rollback designation lost for ${services}"
+                label="incident"
+                body="$(printf 'first_seen: %s\ndeploy_run: none\ndeploy_sha: none\nservices: %s\nimpact: the recovery target of %s can no longer be read from production receipts (%s)\nrestored_at: open\nrestoring_action: none\n\nThe designated rollback candidate of %s cannot be determined (SDLC v1 §10.2): %s.\n\nDetected by %s. Restore by redeploying %s through deploy-vps.yml so a fresh production receipt records its candidate, or record the recovery target by hand. See docs/runbooks/rollback.md.\n' \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$services" "$services" "$reason" "$services" "$reason" "$RUN_URL" "$services")" ;;
               DUE)
                 title="Rollback candidate ${short} refresh due"
                 label=""

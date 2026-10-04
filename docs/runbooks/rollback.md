@@ -31,8 +31,10 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 - Services are independent. On 2026-10-01 production ran Hub + Ask at `648896996` but Web at
   `76887423` (the 10-01 deploy did not include Web), so a later deploy records Hub→`648896996`,
   Ask→`648896996`, Web→`76887423`.
-- **A deploy that fails after the container swap uploads no receipt.** The candidate is therefore the
-  last *receipted* SHA — which is what you want: an unreceipted generation was never proven.
+- **A deploy that fails before its production verify uploads no receipt.** The candidate is therefore
+  the last *receipted* SHA — which is what you want: an unreceipted generation was never proven. A run
+  whose receipt was uploaded counts whatever its final conclusion: only the read-only nginx check runs
+  after the upload, so production really is on that SHA.
 - `sha: null` is explicit, never absent: no earlier receipt within retention means no automatic
   candidate for that service, and a human picks one (§4).
 
@@ -41,18 +43,28 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 ```bash
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 DIR=$(mktemp -d)
-for run in $(gh run list --workflow deploy-vps.yml --status success --limit 40 --json databaseId --jq '.[].databaseId'); do
+# Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
+# dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
+# making), any conclusion, newest first, stopping at the first expired receipt.
+for run in $(gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit 200 --json databaseId --jq '.[].databaseId'); do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
-    --jq '[.artifacts[] | select((.name|startswith("production-receipt-")) and .expired==false)][0].id // empty')
+    --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end') || break
   [ -n "$art" ] || continue
-  mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$art/zip" > "$DIR/$run.zip" \
+  read -r id expired <<< "$art"
+  [ "$expired" = "false" ] || { echo "retention horizon at run $run"; break; }
+  mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip" \
     && unzip -o -q "$DIR/$run.zip" -d "$DIR/$run" && rm "$DIR/$run.zip"
 done
-python3 tools/rollback_candidates.py designate --receipts-dir "$DIR"   # what production designates now
+python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
+  --inventory "mira-hub mira-web mira-ask"   # what production designates now
 ```
 
-`designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA) and
-`undesignated` (services whose current receipt predates the field or records `sha: null`). For a
+`designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA),
+`undesignated` (services whose current receipt predates the field or records `sha: null`) and `lost`
+(a default-set service the walk did not reach because it stopped at an expired receipt or the run
+window; the daily check opens an `incident` for each). Accepted limitation: a service outside the
+default set whose only receipts are past the 90-day retention cannot be seen at all, because no
+durable service inventory outlives the receipts. For a
 service whose current receipt predates the field, the same walk the deploy uses gives its previous
 production SHA:
 
@@ -74,8 +86,12 @@ python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-
 ```
 
 This is conservative: it reads migration files added on `main` after the candidate, whether or not
-`apply-migrations.yml` has applied them to production yet. On 2026-10-04 the whole corpus had three
-contracting files (`048`, `069`, `070`, all `tenant_id` → `TEXT`) and none since `0994b31a`.
+`apply-migrations.yml` has applied them to production yet, and it counts every `DROP` of a table, view,
+type, sequence, schema or function even when the same file re-creates the name (the new object may not
+be what older code expects). Literals and comments are ignored, and DDL inside `DO` blocks and function
+bodies is checked. On 2026-10-04 the whole corpus had five contracting files (`048`, `069`, `070`:
+`tenant_id` → `TEXT`; `033`: a guarded column rename; `063`: a drop-and-recreate of
+`flaky_input_signals`) and none since `0994b31a`.
 
 ## 3. Is its evidence fresh?
 
