@@ -525,15 +525,17 @@ _TABLE_TARGET = tuple(
 
 
 def _opaque(sql: str) -> str:
-    """Upper-case SQL with literals blanked, comments dropped, quoted names as single tokens
-    and every dollar-quoted body replaced by one opaque token (its content is never proof)."""
+    """Upper-case SQL with literals blanked, comments dropped, quoted names as exact
+    case-preserving tokens and every dollar-quoted body replaced by one opaque token (its
+    content is never proof). A quoted name never folds into an unquoted one: at worst a
+    statement on the same table looks foreign, which only makes the result stricter."""
     out, pos = [], 0
     for m in _LEXEMES.finditer(sql):
         out.append(re.sub(r"['\"]", " ", sql[pos : m.start()]))
         if m.group("dollar"):
             out.append(" $BODY$ ")
         elif m.group("ident"):
-            out.append('"' + re.sub(r"[^A-Za-z0-9_]", "_", m.group("ident")[1:-1]) + '"')
+            out.append('"Q' + m.group("ident")[1:-1].encode("utf-8").hex() + '"')
         else:
             out.append("''" if (m.group("literal") or m.group("estr")) else " ")
         pos = m.end()
@@ -542,7 +544,8 @@ def _opaque(sql: str) -> str:
 
 
 def _table(name: str) -> str:
-    return name.strip('"').split(".")[-1]
+    """The table as written, schema included: ``a.t`` and ``b.t`` are different tables."""
+    return name
 
 
 _REFERENCES = re.compile(r"\bREFERENCES (?:ONLY )?([^\s(]+)")
@@ -595,6 +598,27 @@ def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
         repo, "diff", "--name-only", "--diff-filter=AMR", candidate, head, "--", *MIGRATION_DIRS
     ).split()
     hits = []
+    # A file added after the candidate and deleted before head may have been applied in
+    # between: its effect can be live although head no longer shows it.
+    added = _git(
+        repo,
+        "log",
+        "--format=",
+        "--name-only",
+        "--diff-filter=A",
+        f"{candidate}..{head}",
+        "--",
+        *MIGRATION_DIRS,
+    ).split()
+    at_head = set(_git(repo, "ls-tree", "-r", "--name-only", head, "--", *MIGRATION_DIRS).split())
+    for path in sorted({p for p in added if p.endswith(".sql")} - at_head):
+        hits.append(
+            {
+                "path": path,
+                "kind": "unproven",
+                "statement": "added after the candidate and deleted before head; it may have been applied",
+            }
+        )
     for path in sorted(p for p in changed if p.endswith(".sql")):
         text = _git(repo, "show", f"{head}:{path}")
         for stmt in contracting_statements(text):

@@ -679,6 +679,13 @@ def test_expand_only_statements_are_proven(sql):
         "CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT f FOREIGN KEY (x) REFERENCES existing (id);",
         "CREATE TABLE n () INHERITS (existing);",
         "CREATE TABLE n PARTITION OF existing FOR VALUES IN (1);",
+        # a new table only exempts statements on THAT table: quoted names are case-sensitive
+        # and a schema makes a different table (pre-Codex Claude screen, 2026-10-04)
+        """CREATE TABLE widgets (id int); ALTER TABLE "WIDGETS" ADD CONSTRAINT c CHECK (id > 0);""",
+        "CREATE TABLE new_schema.widgets (id int); "
+        "ALTER TABLE old_schema.widgets ADD CONSTRAINT c CHECK (id > 0);",
+        "CREATE TABLE new_schema.widgets (id int); REVOKE SELECT ON old_schema.widgets FROM r;",
+        "CREATE TABLE new_schema.widgets (id int); INSERT INTO old_schema.widgets VALUES (1);",
     ],
 )
 def test_anything_not_provably_expand_only_is_unproven(sql):
@@ -696,6 +703,22 @@ def test_compat_fails_on_an_unproven_migration_alone(tmp_path):
     res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
     assert res.returncode == 1 and "UNPROVEN mira-hub/db/migrations/002_b.sql" in res.stdout
     assert "0 contracting and 1 not provably expand-only" in res.stdout
+
+
+def test_compat_sees_a_migration_added_and_deleted_after_the_candidate(tmp_path):
+    """Applied in between, its effect may be live although head no longer has the file."""
+    repo, cand = _repo(tmp_path)
+    mig = repo / "mira-hub/db/migrations/002_gone.sql"
+    mig.write_text("ALTER TABLE a ADD COLUMN y int;\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add")
+    mig.unlink()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "delete")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [
+        ("mira-hub/db/migrations/002_gone.sql", "unproven")
+    ]
 
 
 def test_migration_dirs_are_exactly_what_the_apply_workflows_apply():
