@@ -480,20 +480,34 @@ def _git(repo: Path, *args: str) -> str:
 # it matches one of these; anything else is "not proven" and makes the candidate invalid.
 # One row per entry, with why older code can neither read nor write wrongly through it:
 #   BEGIN / COMMIT / END / START TRANSACTION   transaction control, no schema change
-#   SET [LOCAL|SESSION] name TO|= value         this migration session only
+#   SET [LOCAL|SESSION] name TO|= value         this migration session only (a SET of search_path
+#                                               also ends every same-file exemption below: it
+#                                               re-points the names created before it)
 #   CREATE TABLE … (no INHERITS / PARTITION OF; a new table older code never references —
 #     foreign keys only to tables new in this file) an FK to an older table can block its deletes
 #   CREATE SEQUENCE …                           a new object older code never references
 #   COMMENT ON …                                metadata only
-#   GRANT …                                     can only allow more
+#   GRANT privileges ON [TABLE|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE] x, or ON ALL … IN SCHEMA s
+#                                               object privileges can only allow more (not a
+#                                               role grant: it can bring a restrictive policy into
+#                                               force; not schema USAGE: search_path skips a schema
+#                                               without it, so granting it re-points names)
 #   ALTER TABLE … ADD COLUMN c <built-in type>  older inserts omit c, so c must take NULL or a
-#     [NULL | NOT NULL with DEFAULT] [DEFAULT     default that always succeeds: a constant,
-#      constant | now() | gen_random_uuid()]     now() or gen_random_uuid(); no domain type, no
-#     [COLLATE x] and nothing else               constraint, no other default expression
-#   any statement on a table a PLAIN `CREATE TABLE` made earlier in the same file
-#     (IF NOT EXISTS proves nothing: the table may predate the file)
+#     [NULL | NOT NULL with DEFAULT] [DEFAULT     default that always succeeds: a constant (cast,
+#      constant | now() | gen_random_uuid()]     if at all, only to a built-in type), now() or
+#     [COLLATE x] and nothing else               gen_random_uuid(); no domain type, no constraint,
+#                                               no other default expression. A length- or
+#                                               precision-bounded type takes a constant only:
+#                                               now() as text varies in length between calls
+#   any statement but INSERT on a table a PLAIN `CREATE TABLE` (not CREATE TABLE … AS) made
+#     earlier in the same file (IF NOT EXISTS proves nothing: the table may predate the file).
+#     With every INSERT and CREATE TABLE … AS unproven, that table is empty, so nothing on it
+#     evaluates a row expression.
+# Assumed of older code: it names the columns it reads (no SELECT * unpacked by position).
 # Not on it, deliberately: CREATE INDEX on an existing table (an expression or predicate can
-# error, and a btree rejects rows over its size limit), INSERT/UPDATE/DELETE into existing tables, CREATE UNIQUE INDEX, DROP
+# error, and a btree rejects rows over its size limit), CREATE TABLE … AS and INSERT anywhere
+# (a query, and a table's defaults and checks, can call any function, e.g. setval),
+# UPDATE/DELETE, CREATE UNIQUE INDEX, DROP
 # INDEX or DROP CONSTRAINT (an ON CONFLICT arbiter for older upserts), ADD CONSTRAINT, policies
 # and RLS, REVOKE, triggers, CREATE [OR REPLACE] FUNCTION/VIEW (overload resolution and
 # behaviour), CREATE EXTENSION, DO blocks, and anything unrecognised. These need a human.
@@ -508,21 +522,28 @@ _EXPAND_ONLY = tuple(
         r"CREATE TABLE (?:IF NOT EXISTS )?\S+ [^$]+",
         r"CREATE SEQUENCE (?:IF NOT EXISTS )?\S+[^$]*",
         r"COMMENT ON [^$]+",
-        r"GRANT [^$]+",
+        r"GRANT [^$]+? ON (?:(?:TABLE|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE) [^$]+"
+        r"|ALL (?:TABLES|SEQUENCES|FUNCTIONS|PROCEDURES|ROUTINES) IN SCHEMA [^$]+"
+        r"|[^\s,]+(?:, ?[^\s,]+)* TO [^$]+)",
     )
 )
-_BUILTIN_TYPE = (
+_UNBOUNDED_TYPE = (
     r"(?:SMALLINT|INTEGER|INT[248]?|BIGINT|BOOL(?:EAN)?|TEXT|UUID|JSONB?|DATE|REAL|FLOAT[48]"
     r"|DOUBLE PRECISION|BYTEA|INTERVAL|TIMESTAMPTZ|TIMESTAMP(?: WITH(?:OUT)? TIME ZONE)?"
-    r"|(?:NUMERIC|DECIMAL)(?:\(\d+(?:, ?\d+)?\))?|(?:VARCHAR|CHARACTER VARYING)(?:\(\d+\))?)(?:\[\])?"
+    r"|NUMERIC|DECIMAL|VARCHAR|CHARACTER VARYING)(?:\[\])?"
 )
-_SAFE_DEFAULT = (
-    r"DEFAULT (?:-?\d+(?:\.\d+)?|''(?:::[A-Z_]+(?:\[\])?)?|TRUE|FALSE|NOW\(\)|CURRENT_TIMESTAMP"
-    r"|GEN_RANDOM_UUID\(\))"
+_BOUNDED_TYPE = (
+    r"(?:(?:NUMERIC|DECIMAL)\(\d+(?:, ?\d+)?\)|(?:VARCHAR|CHARACTER VARYING)\(\d+\))(?:\[\])?"
 )
+_BUILTIN_TYPE = rf"(?:{_BOUNDED_TYPE}|{_UNBOUNDED_TYPE})"
+# a literal (blanked by _opaque) is coerced once, when the migration runs; a cast to a domain
+# would run the domain's check, which can depend on session state, on every older insert
+_CONST_DEFAULT = rf"DEFAULT (?:-?\d+(?:\.\d+)?|''(?:::{_BUILTIN_TYPE})?|TRUE|FALSE)"
+_SAFE_DEFAULT = rf"(?:{_CONST_DEFAULT}|DEFAULT (?:NOW\(\)|CURRENT_TIMESTAMP|GEN_RANDOM_UUID\(\)))"
 _ADD_COLUMN = re.compile(
-    rf"ADD COLUMN (?:IF NOT EXISTS )?\S+ {_BUILTIN_TYPE}"
-    rf"(?: (?:NULL|NOT NULL|{_SAFE_DEFAULT}|COLLATE \S+))*"
+    rf"ADD COLUMN (?:IF NOT EXISTS )?\S+ "
+    rf"(?:{_UNBOUNDED_TYPE}(?: (?:NULL|NOT NULL|{_SAFE_DEFAULT}|COLLATE \S+))*"
+    rf"|{_BOUNDED_TYPE}(?: (?:NULL|NOT NULL|{_CONST_DEFAULT}|COLLATE \S+))*)"
 )
 _NOT_NULL_NEEDS_DEFAULT = re.compile(rf"(?!.*\bNOT NULL\b)|(?=.*\b{_SAFE_DEFAULT})")
 _PLAIN_CREATE_TABLE = re.compile(r"CREATE TABLE (?!IF NOT EXISTS )(\S+) .+")
@@ -533,7 +554,6 @@ _TABLE_TARGET = tuple(
         r"CREATE (?:UNIQUE )?INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?\S+ ON (?:ONLY )?([^\s(]+)[^$]*",
         r"(?:CREATE|DROP) POLICY (?:IF EXISTS )?\S+ ON (\S+)[^$]*",
         r"(?:GRANT|REVOKE) [^$]+ ON (?:TABLE )?([^\s,]+) (?:TO|FROM) [^$]+",
-        r"INSERT INTO ([^\s(]+)[^$]*",
         r"COMMENT ON (?:TABLE|COLUMN) ([^\s.]+)[^$]*",
     )
 )
@@ -568,6 +588,29 @@ _REFERENCES = re.compile(r"\bREFERENCES (?:ONLY )?([^\s(]+)")
 _BINDS_PARENT = re.compile(r"\bINHERITS?\b|\bPARTITION OF\b|\bATTACH PARTITION\b")
 
 
+_SEARCH_PATH = re.compile(r"SET (?:LOCAL |SESSION )?SEARCH_PATH\b")
+_CREATE_TABLE_AS = re.compile(r"\bAS\b")
+
+
+def _depth0(stmt: str) -> str:
+    """The statement with every parenthesised group removed (literals are already blanked)."""
+    out, depth = [], 0
+    for ch in stmt:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(depth - 1, 0)
+        elif depth == 0:
+            out.append(ch)
+    return "".join(out)
+
+
+def _evaluates_a_query(stmt: str) -> bool:
+    """CREATE TABLE … AS: an AS outside every parenthesis (a column list's AS — a generated
+    column, a CAST — is inside one)."""
+    return stmt.startswith("CREATE TABLE ") and bool(_CREATE_TABLE_AS.search(_depth0(stmt)))
+
+
 def _binds_older_table(stmt: str, new_tables: set[str]) -> bool:
     """A foreign key into, or inheritance/partitioning involving, a table not new in this file
     (CREATE TABLE … INHERITS / PARTITION OF, ALTER TABLE … INHERIT / ATTACH PARTITION)."""
@@ -585,9 +628,11 @@ def unproven_statements(sql: str) -> list[str]:
         stmt = " ".join(raw.split())
         if not stmt:
             continue
+        if _SEARCH_PATH.match(stmt):
+            new_tables.clear()  # every earlier name may now resolve to an older table
         created = _PLAIN_CREATE_TABLE.fullmatch(stmt)
         own = {_table(created.group(1))} if created else set()
-        if _binds_older_table(stmt, new_tables | own):
+        if _binds_older_table(stmt, new_tables | own) or _evaluates_a_query(stmt):
             out.append(stmt)
             continue
         target = next((m.group(1) for p in _TABLE_TARGET if (m := p.fullmatch(stmt))), None)

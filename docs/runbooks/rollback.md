@@ -77,24 +77,27 @@ while IFS=$'\t' read -r run updated; do
   [ "$ran" = "0" ] || printf '%s\t%s\tproduction may have changed without a receipt\n' "$run" "$updated" >> "$GAPS"
 done < "$LESS"
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
-  --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS"   # what production designates now
+  --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS" --out "$DIR.designation"   # what production designates now
+# A service whose current receipt predates the field: the walk the deploy uses gives its previous
+# production SHA, from these same receipts and gaps, with that service's own current SHA.
+python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); [print(s, d["current"][s]["sha"]) for s in d["undesignated"]]' \
+  "$DIR.designation" > "$DIR.undesignated"
+while read -r svc sha; do
+  python3 tools/rollback_candidates.py candidates --receipts-dir "$DIR" --gaps "$GAPS" \
+    --deploying "$sha" --services "$svc"
+done < "$DIR.undesignated"
 )
 ```
 
-`designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA),
+The first line, from `designate`, holds `current` (what each service runs), `designated` (targets, grouped by SHA),
 `undesignated` (services whose current receipt predates the field or records `sha: null`) and `lost`
 (a default-set service with no readable receipt — GitHub omits expired artifacts and removes old
 runs, so absence is missing history, never "never deployed" — or any service whose current receipt an
 unreadable run could post-date; the daily check opens an `incident` for each). Accepted limitation: a service outside the
 default set whose only receipts are past the 90-day retention cannot be seen at all, because no
-durable service inventory outlives the receipts. For a
-service whose current receipt predates the field, the same walk the deploy uses gives its previous
-production SHA:
-
-```bash
-python3 tools/rollback_candidates.py candidates --receipts-dir "$DIR" \
-  --deploying <sha-currently-running-for-that-service> --services "mira-hub mira-web mira-ask"
-```
+durable service inventory outlives the receipts. Each further line covers one `undesignated`
+service: its previous production SHA by the walk the deploy uses, or `sha: null` with an
+`unresolved:` reason when an unreadable run could hold a deployment newer than that receipt.
 
 ## 2. Is the candidate still a valid code-only target?
 
@@ -113,21 +116,24 @@ python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-
 | Allowed (expand-only) | Why older code can neither read nor write wrongly through it |
 |---|---|
 | `BEGIN`, `COMMIT`, `END`, `START TRANSACTION` | transaction control, no schema change |
-| `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only |
-| `CREATE TABLE …` without `INHERITS` / `PARTITION OF` (and no later `INHERIT` / `ATTACH PARTITION` of an older table), foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes |
+| `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only; a `SET` of `search_path` also ends the same-file exemption for every table created before it (it re-points their names) |
+| `CREATE TABLE …` (not `CREATE TABLE … AS`) without `INHERITS` / `PARTITION OF` (and no later `INHERIT` / `ATTACH PARTITION` of an older table), foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes; `… AS` runs a query, which can call any function |
 | `CREATE SEQUENCE …` | a new object older code never references |
 | `COMMENT ON …` | metadata only |
-| `GRANT …` | can only allow more |
-| `ALTER TABLE … ADD COLUMN c <built-in type>` with only `NULL`, `COLLATE`, a default that is a constant, `now()` or `gen_random_uuid()`, and `NOT NULL` only together with such a default | older inserts omit `c`, so `c` must take NULL or a default that always succeeds; a domain type, a constraint or any other default expression could reject older rows |
-| any statement on a table a **plain** `CREATE TABLE` made earlier in the same file | older code cannot touch a table that did not exist (`IF NOT EXISTS` proves nothing) |
+| `GRANT privileges ON [TABLE\|SEQUENCE\|FUNCTION\|PROCEDURE\|ROUTINE] x` or `ON ALL … IN SCHEMA s` | object privileges can only allow more; a role grant can bring a restrictive policy into force, and schema `USAGE` re-points older code's unqualified names (`search_path` skips a schema without it) |
+| `ALTER TABLE … ADD COLUMN c <built-in type>` with only `NULL`, `COLLATE`, a default that is a constant (cast, if at all, only to a built-in type), `now()` or `gen_random_uuid()`, and `NOT NULL` only together with such a default; a length- or precision-bounded type (`varchar(n)`, `numeric(p,s)`) takes a constant only | older inserts omit `c`, so `c` must take NULL or a default that always succeeds; a domain type or cast, a constraint or any other default expression could reject older rows, and `now()` as text varies in length between calls |
+| any statement except `INSERT` on a table a **plain** `CREATE TABLE` made earlier in the same file | older code cannot touch a table that did not exist (`IF NOT EXISTS` proves nothing); with every `INSERT` and `CREATE TABLE … AS` unproven, the table is empty, so nothing on it evaluates a row expression |
 
 Not on it, on purpose: `CREATE INDEX` on an existing table (an expression or predicate can error,
-and a btree rejects rows over its size limit), data changes to existing tables, `CREATE UNIQUE INDEX`, `DROP INDEX` and
+and a btree rejects rows over its size limit), `CREATE TABLE … AS` and `INSERT` anywhere (a query, and a
+table's defaults and checks, can call any function, e.g. `setval`), other data changes, `CREATE UNIQUE INDEX`, `DROP INDEX` and
 `DROP CONSTRAINT` (one may be the `ON CONFLICT` arbiter of an older upsert), `ADD CONSTRAINT`, policies
 and RLS, `REVOKE`, triggers, `CREATE [OR REPLACE] FUNCTION/VIEW` (behaviour and overload resolution),
 `CREATE EXTENSION`, `DO` blocks, and anything unrecognised. A known contraction (a dropped or renamed
 column or table, a type change, `SET NOT NULL`, any dropped object, including inside `DO` blocks and
 `EXECUTE` strings) is labelled `CONTRACTING`; the rest is `UNPROVEN`. Both make the candidate invalid.
+Assumed of older code: it names the columns it reads (no `SELECT *` unpacked by position), since an
+added column is the one change this list admits on an existing table.
 
 This reads files added on `main` after the candidate whether or not `apply-migrations.yml` has applied
 them yet. **Measured on 2026-10-04:** 108 of the 123 existing migration files are not provably

@@ -359,11 +359,72 @@ def _run_runbook(tmp: Path, fixtures: dict, cap: str = "") -> subprocess.Complet
     )
 
 
+def _designation(res: subprocess.CompletedProcess) -> dict:
+    return next(
+        json.loads(x) for x in res.stdout.splitlines() if x.startswith("{") and '"designated"' in x
+    )
+
+
+def _previous(res: subprocess.CompletedProcess) -> dict:
+    """The fallback's per-service candidates: every JSON line after the designation."""
+    out: dict = {}
+    for x in res.stdout.splitlines():
+        if x.startswith("{") and '"designated"' not in x:
+            out.update(json.loads(x))
+    return out
+
+
 def test_the_runbook_snippet_designates_from_a_complete_walk(tmp_path):
     res = _run_runbook(tmp_path, _prod_fixtures(tmp_path))
     assert res.returncode == 0, res.stdout + res.stderr
-    d = json.loads(res.stdout.strip().splitlines()[-1])
+    d = _designation(res)
     assert d["lost"] == {} and d["designated"] == []
+
+
+def test_the_runbook_gives_each_undesignated_service_its_previous_sha(tmp_path):
+    """Codex #4222 r5 F13: the fallback for receipts that predate the field runs inside the
+    same procedure, on the receipts it downloaded, with each service's own current SHA."""
+    res = _run_runbook(tmp_path, _prod_fixtures(tmp_path))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert sorted(_designation(res)["undesignated"]) == ["mira-ask", "mira-hub", "mira-web"]
+    prev = _previous(res)
+    assert {s: e["sha"] for s, e in prev.items()} == {
+        "mira-hub": B,
+        "mira-ask": B,
+        "mira-web": "0994b31a453cd0789661e21bb22db8f3e5eb926e",
+    }
+
+
+def test_the_runbook_fallback_honours_the_gaps(tmp_path):
+    """Codex #4222 r5 F13: a newer unreadable deployment makes the previous SHA unresolved,
+    never an older definitive one."""
+    fx = _prod_fixtures(tmp_path)
+    gap_run = "36600000000"  # its receipt expired; it ran between B (09-28) and C (10-01)
+    fx["runs"].insert(1, {"id": gap_run, "updatedAt": "2026-09-30T00:00:00Z"})
+    fx["api"][f"actions/runs/{gap_run}/artifacts"] = {
+        "artifacts": [{"id": 950, "name": f"production-receipt-{'e' * 40}", "expired": True}]
+    }
+    res = _run_runbook(tmp_path, fx)
+    assert res.returncode == 0, res.stdout + res.stderr
+    d = _designation(res)
+    assert sorted(d["lost"]) == ["mira-web"], "its current receipt (B) predates the gap"
+    prev = _previous(res)
+    assert sorted(prev) == ["mira-ask", "mira-hub"]
+    for svc in ("mira-ask", "mira-hub"):
+        assert prev[svc]["sha"] is None, prev[svc]
+        assert prev[svc]["reason"].startswith(f"unresolved: run {gap_run}"), prev[svc]
+
+
+def test_every_runbook_block_defines_the_variables_it_reads():
+    """Codex #4222 r5 F13: a block that reads $DIR or $GAPS must set it itself; a value set
+    inside another block (or its subshell) does not survive into the next."""
+    text = (REPO / "docs/runbooks/rollback.md").read_text(encoding="utf-8")
+    blocks = [b.split("\n```", 1)[0] for b in text.split("```bash\n")[1:]]
+    assert blocks, "no bash blocks found"
+    for block in blocks:
+        for var in ("DIR", "GAPS"):
+            if f'"${var}' in block or f"${var}" in block:
+                assert f"{var}=" in block, f"${var} read but not set in:\n{block}"
 
 
 @pytest.mark.parametrize("broken", ["artifacts", "jobs"])
@@ -382,8 +443,9 @@ def test_the_runbook_snippet_aborts_rather_than_designate_from_an_incomplete_wal
 def test_the_runbook_snippet_records_a_truncated_listing(tmp_path):
     res = _run_runbook(tmp_path, _prod_fixtures(tmp_path), cap="1")
     assert res.returncode == 0, res.stdout + res.stderr
-    d = json.loads(res.stdout.strip().splitlines()[-1])
+    d = _designation(res)
     assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
+    assert _previous(res) == {}, "a lost service gets no fallback SHA"
 
 
 def test_a_receipted_run_counts_whatever_its_conclusion(tmp_path):

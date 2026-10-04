@@ -684,13 +684,25 @@ def test_expand_patterns_inside_a_do_block_are_not_flagged(sql):
         "ALTER TABLE t ADD COLUMN y uuid DEFAULT gen_random_uuid();",
         # an index is fine on a table this file created
         "CREATE TABLE n (x int); CREATE INDEX ni ON n ((1 / x)) WHERE x > 0;",
-        # everything on a table a plain CREATE TABLE made earlier in the same file
+        # everything but an INSERT on a table a plain CREATE TABLE made earlier in the same file
         "CREATE TABLE n (x int); CREATE UNIQUE INDEX ni ON n (x); "
         "ALTER TABLE n ENABLE ROW LEVEL SECURITY; DROP POLICY IF EXISTS p ON n; "
-        "CREATE POLICY p ON n USING (true); REVOKE DELETE ON n FROM PUBLIC; INSERT INTO n VALUES (1);",
+        "CREATE POLICY p ON n USING (true); REVOKE DELETE ON n FROM PUBLIC;",
         # foreign keys among tables new in this file, or to itself, bind nothing older
         "CREATE TABLE p (id int PRIMARY KEY, parent int REFERENCES p (id)); "
         "CREATE TABLE c (pid int REFERENCES p (id));",
+        # controls for the round-5 tightening: a cast to a built-in type, a constant into a
+        # bounded type, a function default into an unbounded one, AS inside a column list (not
+        # CREATE TABLE AS), object grants, and a search_path SET before the table it re-points
+        "ALTER TABLE t ADD COLUMN y text DEFAULT ''::text, "
+        "ADD COLUMN z timestamptz DEFAULT 'epoch'::timestamp with time zone;",
+        "ALTER TABLE t ADD COLUMN y varchar(20) DEFAULT 'x', ADD COLUMN z text DEFAULT now();",
+        "CREATE TABLE n (x int, y text GENERATED ALWAYS AS (x::text) STORED, z int DEFAULT CAST(1 AS int));",
+        "GRANT USAGE, SELECT ON SEQUENCE s TO factorylm_app;",
+        "GRANT EXECUTE ON FUNCTION f(int, text) TO factorylm_app;",
+        "GRANT SELECT ON ALL TABLES IN SCHEMA public TO r;",
+        "GRANT SELECT (x, y) ON t, u TO r WITH GRANT OPTION;",
+        "SET search_path TO public; CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT c CHECK (x > 0);",
     ],
 )
 def test_expand_only_statements_are_proven(sql):
@@ -759,10 +771,65 @@ def test_expand_only_statements_are_proven(sql):
         "ALTER TABLE old_schema.widgets ADD CONSTRAINT c CHECK (id > 0);",
         "CREATE TABLE new_schema.widgets (id int); REVOKE SELECT ON old_schema.widgets FROM r;",
         "CREATE TABLE new_schema.widgets (id int); INSERT INTO old_schema.widgets VALUES (1);",
+        # Codex #4222 r5 F10: a cast in a DEFAULT proves nothing unless its target is a
+        # built-in type (a domain's check can depend on session state, e.g. current_setting)
+        "ALTER TABLE existing ADD COLUMN y int NOT NULL DEFAULT '1'::positive_int;",
+        "ALTER TABLE existing ADD COLUMN y text DEFAULT ''::scoped_text;",
+        # a bounded type takes only a constant: now() as text varies in length from call to
+        # call (pre-round-6 self-check)
+        "ALTER TABLE existing ADD COLUMN y varchar(25) DEFAULT now();",
+        "ALTER TABLE existing ADD COLUMN y varchar(36) NOT NULL DEFAULT gen_random_uuid();",
+        # Codex #4222 r5 F12: CREATE TABLE AS and INSERT evaluate expressions that can change
+        # existing state (setval); an INSERT also runs the new table's defaults and checks
+        "CREATE TABLE snapshot AS SELECT setval('existing_id_seq', 1);",
+        "CREATE TABLE snapshot (x) AS TABLE existing WITH NO DATA;",
+        "CREATE TABLE IF NOT EXISTS snapshot AS SELECT setval('existing_id_seq', 1);",
+        "CREATE TABLE n (x bigint); INSERT INTO n SELECT setval('existing_id_seq', 1);",
+        "CREATE TABLE n (x bigint); INSERT INTO n VALUES (setval('existing_id_seq', 1));",
+        "CREATE TABLE n (x bigint DEFAULT setval('existing_id_seq', 1), y int); "
+        "INSERT INTO n (y) VALUES (1);",
+        "CREATE TABLE n (x int); INSERT INTO n VALUES (1);",
+        # a SET of search_path re-points every name created before it (pre-round-6 self-check)
+        "CREATE TABLE widgets (id int); SET search_path TO legacy; "
+        "ALTER TABLE widgets ADD CONSTRAINT c CHECK (id > 0);",
+        "CREATE TABLE widgets (id int); SET LOCAL search_path = legacy; "
+        "REVOKE SELECT ON widgets FROM r;",
+        # a role grant can bring a restrictive policy into force; schema USAGE re-points
+        # older code's unqualified names (search_path skips schemas without it)
+        "GRANT restricted_reader TO factorylm_app;",
+        "GRANT USAGE ON SCHEMA legacy TO factorylm_app;",
+        "GRANT CREATE ON DATABASE factorylm TO factorylm_app;",
     ],
 )
 def test_anything_not_provably_expand_only_is_unproven(sql):
     assert rc.unproven_statements(sql), sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "ALTER TABLE a ADD COLUMN y int NOT NULL DEFAULT '1'::positive_int;",
+        "CREATE TABLE snapshot AS SELECT setval('a_x_seq', 1);",
+        "CREATE TABLE n (x bigint); INSERT INTO n SELECT setval('a_x_seq', 1);",
+    ],
+)
+def test_compat_fails_on_the_round_5_forms(tmp_path, sql):
+    """Codex #4222 r5 F10/F12, end to end through the CLI against a real git history."""
+    repo, cand = _repo(tmp_path)
+    (repo / "mira-hub/db/migrations/002_b.sql").write_text(sql + "\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head")
+    res = cli(
+        "compat",
+        "--candidate",
+        cand,
+        "--head",
+        _git(repo, "rev-parse", "HEAD"),
+        "--repo",
+        str(repo),
+    )
+    assert res.returncode == 1, res.stdout
+    assert "UNPROVEN mira-hub/db/migrations/002_b.sql" in res.stdout
 
 
 def test_compat_fails_on_an_unproven_migration_alone(tmp_path):
