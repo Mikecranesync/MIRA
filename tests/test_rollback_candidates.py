@@ -152,35 +152,6 @@ def test_a_non_run_id_directory_fails_closed(tmp_path):
         rc.load_receipts(tmp_path / "r")
 
 
-def test_covered_exit_codes(tmp_path):
-    root = real_three(tmp_path)
-    ok = cli(
-        "covered",
-        "--receipts-dir",
-        str(root),
-        "--deploying",
-        NEW,
-        "--services",
-        "mira-hub mira-web mira-ask",
-    )
-    assert ok.returncode == 0, ok.stdout + ok.stderr
-    partial = cli(
-        "covered",
-        "--receipts-dir",
-        str(root),
-        "--deploying",
-        NEW,
-        "--services",
-        "mira-hub mira-pipeline",
-    )
-    assert partial.returncode == 3 and "mira-pipeline" in partial.stdout
-    (root / "36350115024" / "production-receipt.json").write_text("{", encoding="utf-8")
-    broken = cli(
-        "covered", "--receipts-dir", str(root), "--deploying", NEW, "--services", "mira-hub"
-    )
-    assert broken.returncode == 2
-
-
 def test_candidates_cli_prints_one_line_of_json(tmp_path):
     out = cli(
         "candidates",
@@ -310,7 +281,9 @@ def test_designate_reports_an_inventory_service_lost_beyond_the_walk(tmp_path):
     assert "mira-hub" in d["undesignated"] and "mira-hub" not in d["lost"]
 
 
-def test_designate_without_a_gap_reports_a_never_receipted_service_as_undesignated(tmp_path):
+def test_designate_reports_an_unreadable_inventory_service_lost_even_without_a_gap(tmp_path):
+    """Codex #4222 r2 F1: GitHub omits expired artifacts and deletes old runs, so a missing
+    receipt is missing history, never 'never deployed'."""
     receipts = rc.load_receipts(
         write(
             tmp_path / "r",
@@ -318,8 +291,8 @@ def test_designate_without_a_gap_reports_a_never_receipted_service_as_undesignat
         )
     )
     d = rc.designate(receipts, inventory=ALL)
-    assert d["lost"] == {}
-    assert "never" in d["undesignated"]["mira-web"] and "never" in d["undesignated"]["mira-ask"]
+    assert sorted(d["lost"]) == ["mira-ask", "mira-web"]
+    assert "mira-web" not in d["undesignated"] and "mira-hub" in d["undesignated"]
 
 
 def test_designate_with_a_gap_but_full_coverage_loses_nothing(tmp_path):
@@ -415,6 +388,14 @@ def test_designate_reads_the_newest_receipt_per_service_and_groups_by_sha(tmp_pa
         "DROP TABLE t; CREATE TABLE t (replacement int);",
         "DROP VIEW IF EXISTS v; CREATE VIEW v AS SELECT 1;",
         "DROP TYPE IF EXISTS s; CREATE TYPE s AS ENUM ('a');",
+        # quoted identifiers with whitespace (Codex #4222 r2 F2)
+        'ALTER TABLE "maintenance assets" DROP COLUMN c;',
+        'ALTER TABLE public."a b" RENAME COLUMN x TO y;',
+        # every statement inside a dynamic EXECUTE string, and dynamic DDL we cannot parse
+        "DO $$ BEGIN EXECUTE 'ALTER TABLE t ADD COLUMN x int; ALTER TABLE t DROP COLUMN y'; END $$;",
+        "DO $$ BEGIN EXECUTE 'ALTER TABLE ' || quote_ident(t) || ' DROP COLUMN c'; END $$;",
+        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I DROP COLUMN %I', t, c); END $$;",
+        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ' || 'RENAME TO %I', a, b); END $$;",
     ],
 )
 def test_contracting_statements_are_flagged(sql):
@@ -434,6 +415,10 @@ def test_contracting_statements_are_flagged(sql):
         "ALTER TABLE t ENABLE ROW LEVEL SECURITY;",
         "-- DROP TABLE t;\n/* ALTER TABLE t DROP COLUMN c; */ SELECT 1;",
         "UPDATE t SET c = NULL; DELETE FROM t;",
+        # a quoted identifier that merely contains keywords is a name, not an action
+        'ALTER TABLE "drop column" ADD COLUMN x int;',
+        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ADD COLUMN x int', t); END $$;",
+        "DO $$ BEGIN EXECUTE 'GRANT SELECT ON ' || t || ' TO r'; END $$;",
     ],
 )
 def test_expand_and_idempotent_patterns_are_not_flagged(sql):

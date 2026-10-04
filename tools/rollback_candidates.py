@@ -19,9 +19,8 @@ runtime set) and never from tags:
   contracting migration landed on main after it (expand/contract: rolling code
   back across a contraction needs a schema decision, §10.2 "Database").
 
-Plus ``covered`` (lets the workflow stop downloading receipts once every service
-has a candidate) and ``due`` (refresh when the candidate's staging or acceptance
-receipt expires within the window).
+Plus ``due`` (refresh when the candidate's staging or acceptance receipt expires
+within the window).
 
 FAIL-CLOSED: a malformed receipt, a run-id mismatch with the run it was
 downloaded from, or a candidate map that does not cover exactly the deploy target
@@ -168,10 +167,10 @@ def designate(
     """The recovery targets production designates now (newest receipt per service).
 
     ``inventory`` names services that must be accounted for (the deploy default set).
-    One with no receipt in the walk is ``lost`` when the walk stopped short of the full
-    history (``evidence_gap``: an expired receipt or an exhausted window) — its current
-    receipt may lie beyond what was read — and ``undesignated`` (never receipted) when
-    the walk read everything.
+    One with no readable receipt is ``lost``: GitHub omits expired artifacts and
+    removes old runs, so a missing receipt is missing history, never "never deployed".
+    ``evidence_gap`` (an expired receipt or an exhausted window) is added to the reason.
+    Only a receipt that exists but records no candidate is bootstrap (``undesignated``).
     """
     current: dict[str, ProdReceipt] = {}
     for r in receipts:  # newest first
@@ -181,10 +180,10 @@ def designate(
     undesignated: dict[str, str] = {}
     lost: dict[str, str] = {}
     for svc in sorted(set(inventory) - set(current)):
-        if evidence_gap:
-            lost[svc] = f"no production receipt for {svc} within the walk: {evidence_gap}"
-        else:
-            undesignated[svc] = f"{svc} was never deployed by a receipted production run"
+        lost[svc] = (
+            f"no readable production receipt for {svc} (receipts expire after 90 days and old"
+            f" runs are removed){': ' + evidence_gap if evidence_gap else ''}"
+        )
     for svc, r in sorted(current.items()):
         entry = (r.rollback_candidate or {}).get(svc)
         if entry is None:
@@ -239,7 +238,8 @@ def _strip_literals_and_comments(sql: str, keep_literals: bool = False) -> str:
             tag = f"${m.group('tag')}$"
             return tag + _strip_literals_and_comments(m.group("body"), keep_literals=True) + tag
         if m.group("ident"):
-            return m.group("ident")
+            # A quoted name is one token: whitespace, quotes or keywords inside it are data.
+            return '"' + re.sub(r"[^A-Za-z0-9_]", "_", m.group("ident")[1:-1]) + '"'
         if m.group("estr"):
             if not keep_literals:
                 return "''"
@@ -318,32 +318,50 @@ def contracting_statements(sql: str) -> list[str]:
     TABLE actions DROP [COLUMN], RENAME, ALTER COLUMN ... [SET DATA] TYPE, ALTER COLUMN
     ... SET NOT NULL, including inside DO blocks and function bodies. Not contracting:
     DROP POLICY/INDEX/TRIGGER, DROP CONSTRAINT, DROP DEFAULT / DROP NOT NULL, ADD
-    COLUMN, CREATE … (expand), data DML. Literals and comments are ignored.
+    COLUMN, CREATE … (expand), data DML. Literals and comments are ignored; quoted
+    names are single tokens; every statement inside an EXECUTE string is checked, and
+    an EXECUTE built at run time (|| or format()) that could narrow anything counts.
     """
     upper = _strip_literals_and_comments(sql).upper()
     hits = []
     for raw in _split_statements(upper):
-        stmt = " ".join(raw.split())
-        start = _DDL_START.search(stmt)
-        if not start:
+        piece = " ".join(raw.split())
+        # Dynamic DDL assembled at run time cannot be parsed; treat it as contracting
+        # when it could narrow anything (conservative: a false INVALID beats a silent one).
+        dyn = _EXECUTE.search(piece)
+        if dyn and _DYNAMIC.search(dyn.group(1)) and _DYNAMIC_NARROWING.search(dyn.group(1)):
+            hits.append(piece)
             continue
-        stmt = stmt[start.start() :]
-        if _DROP_OBJECT.match(stmt):
-            hits.append(stmt)
-            continue
-        m = _ALTER_TABLE.match(stmt)
-        if not m:
-            continue
-        for action in _split_top_level(m.group(2)):
-            if (
-                re.match(r"DROP\s+(?!CONSTRAINT\b)", action)
-                or action.startswith("RENAME")
-                or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+(?:SET\s+DATA\s+)?TYPE\b", action)
-                or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+SET\s+NOT\s+NULL\b", action)
-            ):
+        # Every DDL start, each up to the next: a piece can hold several statements (an
+        # EXECUTE string, a PL/pgSQL body) and each one runs.
+        starts = [m.start() for m in _DDL_START.finditer(piece)]
+        for i, at in enumerate(starts):
+            stmt = piece[at : starts[i + 1] if i + 1 < len(starts) else len(piece)].strip()
+            if _contracts(stmt):
                 hits.append(stmt)
-                break
     return hits
+
+
+_EXECUTE = re.compile(r"\bEXECUTE\b(.*)")
+_DYNAMIC = re.compile(r"\|\||\bFORMAT\s*\(")
+_DYNAMIC_NARROWING = re.compile(r"\bDROP\b|\bRENAME\b|\bALTER\s+COLUMN\b|\bNOT\s+NULL\b")
+
+
+def _contracts(stmt: str) -> bool:
+    if _DROP_OBJECT.match(stmt):
+        return True
+    m = _ALTER_TABLE.match(stmt)
+    if not m:
+        return False
+    for action in _split_top_level(m.group(2)):
+        if (
+            re.match(r"DROP\s+(?!CONSTRAINT\b)", action)
+            or action.startswith("RENAME")
+            or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+(?:SET\s+DATA\s+)?TYPE\b", action)
+            or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+SET\s+NOT\s+NULL\b", action)
+        ):
+            return True
+    return False
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -403,12 +421,11 @@ def _write(obj: object, out: str) -> None:
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("candidates", "covered"):
-        c = sub.add_parser(name)
-        c.add_argument("--receipts-dir", required=True)
-        c.add_argument("--deploying", required=True)
-        c.add_argument("--services", required=True)
-        c.add_argument("--out", default="")
+    c = sub.add_parser("candidates")
+    c.add_argument("--receipts-dir", required=True)
+    c.add_argument("--deploying", required=True)
+    c.add_argument("--services", required=True)
+    c.add_argument("--out", default="")
     d = sub.add_parser("designate")
     d.add_argument("--receipts-dir", required=True)
     d.add_argument("--out", default="")
@@ -429,16 +446,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     a = p.parse_args(argv)
 
     try:
-        if a.cmd in ("candidates", "covered"):
+        if a.cmd == "candidates":
             if not _SHA.match(a.deploying):
                 raise ValueError(f"--deploying is not a 40-hex commit: {a.deploying!r}")
             cands = candidates_for_deploy(
                 load_receipts(Path(a.receipts_dir)), a.deploying, _services(a.services)
             )
-            if a.cmd == "covered":
-                missing = sorted(svc for svc, e in cands.items() if e["sha"] is None)
-                print(f"uncovered: {' '.join(missing) or '-'}")
-                return 3 if missing else 0
             problems = candidate_problems(cands, _services(a.services), a.deploying)
             if problems:
                 raise ValueError("; ".join(problems))

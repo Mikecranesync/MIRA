@@ -234,7 +234,7 @@ def _run_record(tmp: Path, fixtures: dict, services: str) -> subprocess.Complete
     )
 
 
-def test_record_step_walks_newest_first_and_stops_once_covered(tmp_path):
+def test_record_step_reads_the_whole_bounded_history(tmp_path):
     res = _run_record(tmp_path, _prod_fixtures(tmp_path), "mira-hub mira-web mira-ask")
     assert res.returncode == 0, res.stdout + res.stderr
     line = next(
@@ -245,9 +245,7 @@ def test_record_step_walks_newest_first_and_stops_once_covered(tmp_path):
     cands = json.loads(line.split("=", 1)[1])
     assert {s: e["sha"] for s, e in cands.items()} == {"mira-hub": C, "mira-ask": C, "mira-web": B}
     downloads = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
-    assert len(downloads) == 2, (
-        "the third (oldest) receipt is never downloaded once every service is covered"
-    )
+    assert len(downloads) == 3, "every readable receipt is read before selecting by deployed_at"
     listing = next(c for c in _calls(tmp_path) if c[:2] == ["run", "list"])
     assert listing[listing.index("--branch") + 1] == "main", (
         "a run dispatched from another ref runs ITS copy"
@@ -278,7 +276,14 @@ def test_refresh_lists_only_main_dispatch_deploy_runs():
 
 
 def _walk_lines(run: str) -> list[str]:
-    keep = ("gh run list --repo", 'startswith("production-receipt-")', "ART_EXPIRED", "ART_ID")
+    keep = (
+        "gh run list --repo",
+        'startswith("production-receipt-")',
+        "ART_EXPIRED",
+        "ART_ID",
+        "UPLOADED",
+        "/jobs?per_page=100",
+    )
     return [line.strip() for line in run.splitlines() if any(k in line for k in keep)]
 
 
@@ -296,6 +301,18 @@ def test_both_receipt_walks_are_the_same_walk():
     assert deploy_env["PRODUCTION_DEFAULT_SERVICES"] == refresh_env["PRODUCTION_DEFAULT_SERVICES"]
     for text in (DEPLOY.read_text(encoding="utf-8"), REFRESH.read_text(encoding="utf-8")):
         assert "--status success --limit" not in text
+
+
+def test_the_missing_receipt_check_names_the_real_upload_step():
+    """The walks detect a vanished receipt by this step's name; a rename must fail here."""
+    names = [s.get("name") for s in _wf(DEPLOY)["jobs"]["deploy"]["steps"]]
+    upload = "Upload production receipt (90-day retention)"
+    assert upload in names
+    for run in (
+        _step(DEPLOY, "authorize-source", RECORD)["run"],
+        _step(REFRESH, "check", "Gather the production receipts")["run"],
+    ):
+        assert f'select(.name == "{upload}" and .conclusion == "success")' in run
 
 
 def test_the_runbook_walks_receipts_like_the_workflows():
@@ -331,6 +348,80 @@ def test_a_receipted_run_counts_whatever_its_conclusion(tmp_path):
         if x.startswith("rollback_candidates=")
     )
     assert json.loads(line.split("=", 1)[1])["mira-hub"]["sha"] == d_sha
+
+
+def test_a_rerun_of_an_older_run_with_the_newest_deployment_wins(tmp_path):
+    """Codex #4222 r2 F7: run order and service coverage prove nothing about time."""
+    fx = _prod_fixtures(tmp_path)
+    a_sha = "0994b31a453cd0789661e21bb22db8f3e5eb926e"
+    # the oldest-listed run was re-run after the others and deployed last
+    fx["zips"]["actions/artifacts/903/zip"] = _zip(
+        tmp_path,
+        "903b",
+        "production-receipt.json",
+        _receipt(
+            a_sha, "36350115024", "2026-10-02T09:00:00Z", ("mira-hub", "mira-web", "mira-ask")
+        ),
+    )
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    line = next(
+        x
+        for x in (tmp_path / "out").read_text().splitlines()
+        if x.startswith("rollback_candidates=")
+    )
+    cands = json.loads(line.split("=", 1)[1])
+    assert {s: e["sha"] for s, e in cands.items()} == dict.fromkeys(
+        ("mira-hub", "mira-web", "mira-ask"), a_sha
+    )
+
+
+def _jobs(upload_conclusion: str) -> dict:
+    return {
+        "jobs": [
+            {
+                "name": "Authorize production source",
+                "steps": [{"name": "x", "conclusion": "success"}],
+            },
+            {
+                "name": "Deploy",
+                "steps": [
+                    {
+                        "name": "Upload production receipt (90-day retention)",
+                        "conclusion": upload_conclusion,
+                    }
+                ],
+            },
+        ]
+    }
+
+
+def test_the_record_walk_stops_where_a_receipt_has_vanished(tmp_path):
+    """A run whose upload succeeded but whose receipt is gone is a gap: never fall back past it."""
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
+    fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("success")
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    line = next(
+        x
+        for x in (tmp_path / "out").read_text().splitlines()
+        if x.startswith("rollback_candidates=")
+    )
+    cands = json.loads(line.split("=", 1)[1])
+    assert cands["mira-hub"]["sha"] == C and cands["mira-web"]["sha"] is None
+    zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
+    assert len(zips) == 1, "the receipt behind the gap is not read"
+
+
+def test_a_run_that_never_uploaded_a_receipt_is_skipped(tmp_path):
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
+    fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("skipped")
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
+    assert len(zips) == 2, "the walk continues past a run that never had a receipt"
 
 
 def test_the_record_walk_stops_at_the_first_expired_receipt(tmp_path):
@@ -411,6 +502,30 @@ def test_refresh_an_expired_newest_receipt_is_lost_not_bootstrap(tmp_path):
         f"Rollback designation lost for {s}" for s in ("mira-ask", "mira-hub", "mira-web")
     ]
     assert all(_arg(c, "--label") == "incident" for c in _creates(tmp_path))
+
+
+def test_refresh_a_vanished_newest_receipt_is_lost(tmp_path):
+    """Codex #4222 r2 F1: GitHub omits expired artifacts — absence must not read as bootstrap."""
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36805202089/artifacts"]["artifacts"].pop(1)
+    fx["api"]["actions/runs/36805202089/jobs?per_page=100"] = _jobs("success")
+    done, d = _run_refresh(tmp_path, fx)
+    assert done[-1].returncode == 1 and len(done) == 4, [r.stderr for r in done]
+    assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
+    assert "no longer readable" in d["lost"]["mira-hub"]
+    assert len(_creates(tmp_path)) == 3
+
+
+def test_refresh_a_service_whose_runs_are_gone_is_lost(tmp_path):
+    """Codex #4222 r2 F1: with its runs removed too, a default service is LOST, not 'never'."""
+    fx = _prod_fixtures(tmp_path)
+    fx["runs"] = ["36805202089"]  # only the hub+ask receipt remains
+    done, d = _run_refresh(tmp_path, fx)
+    assert done[-1].returncode == 1, [r.stderr for r in done]
+    assert sorted(d["lost"]) == ["mira-web"]
+    assert [_arg(c, "--title") for c in _creates(tmp_path)] == [
+        "Rollback designation lost for mira-web"
+    ]
 
 
 def test_refresh_an_exhausted_window_loses_the_service_it_did_not_reach(tmp_path):

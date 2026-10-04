@@ -45,11 +45,17 @@ REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 DIR=$(mktemp -d)
 # Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
-# making), any conclusion, newest first, stopping at the first expired receipt.
+# making), any conclusion, newest first, stopping at the first evidence gap: an expired receipt, or a
+# run whose upload succeeded but whose receipt is gone. Select only after reading everything up to there.
 for run in $(gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit 200 --json databaseId --jq '.[].databaseId'); do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
     --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end') || break
-  [ -n "$art" ] || continue
+  if [ -z "$art" ]; then
+    up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+      --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')
+    [ "$up" = "0" ] && continue
+    echo "receipt of run $run is gone (its upload succeeded)"; break
+  fi
   read -r id expired <<< "$art"
   [ "$expired" = "false" ] || { echo "retention horizon at run $run"; break; }
   mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip" \
@@ -61,8 +67,8 @@ python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
 
 `designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA),
 `undesignated` (services whose current receipt predates the field or records `sha: null`) and `lost`
-(a default-set service the walk did not reach because it stopped at an expired receipt or the run
-window; the daily check opens an `incident` for each). Accepted limitation: a service outside the
+(a default-set service with no readable receipt: GitHub omits expired artifacts and removes old runs,
+so absence is missing history, never "never deployed"; the daily check opens an `incident` for each). Accepted limitation: a service outside the
 default set whose only receipts are past the 90-day retention cannot be seen at all, because no
 durable service inventory outlives the receipts. For a
 service whose current receipt predates the field, the same walk the deploy uses gives its previous

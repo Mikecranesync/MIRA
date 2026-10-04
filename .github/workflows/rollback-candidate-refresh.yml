@@ -23,12 +23,14 @@ name: Rollback Candidate Refresh
 #
 # A designation is never silently dropped. The walk reads completed main-branch
 # deploy runs newest-first (a run's conclusion does not matter: its receipt exists
-# only if the production verify passed) and stops at the first expired receipt or
-# after RECEIPT_WALK_LIMIT runs. If it stopped short, any service of the deploy
-# default set (PRODUCTION_DEFAULT_SERVICES, equal to deploy-vps.yml's) that it did
-# not see is LOST: an `incident`, and the job fails. Accepted limitation: a service
-# OUTSIDE the default set whose only receipts are past retention is invisible here,
-# because no durable service inventory outlives the 90-day receipts.
+# only if the production verify passed), up to RECEIPT_WALK_LIMIT runs, and stops at
+# the first evidence gap: an expired receipt, or a run whose upload step succeeded
+# but whose receipt is gone. Any service of the deploy default set
+# (PRODUCTION_DEFAULT_SERVICES, equal to deploy-vps.yml's) with no readable receipt
+# is LOST — GitHub omits expired artifacts and removes old runs, so absence is
+# missing history, never "never deployed" — an `incident`, and the job fails.
+# Accepted limitation: a service OUTSIDE the default set whose only receipts are past
+# retention is invisible here, because no durable service inventory outlives them.
 #
 # Re-staging is NOT automated here yet: a staging deploy dispatched with this
 # workflow's GITHUB_TOKEN would not trigger retrieval-acceptance (workflow_run is
@@ -89,10 +91,18 @@ jobs:
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
               --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
-            [ -n "$ART" ] || continue
+            if [ -z "$ART" ]; then
+              # No artifact: a run that never uploaded one is skipped; one whose upload step
+              # succeeded had a receipt that is gone (deleted, or omitted once expired).
+              UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+                --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
+              [ "$UPLOADED" = "0" ] && continue
+              GAP="the production receipt of deploy run $run is no longer readable (its upload succeeded)"
+              break
+            fi
             read -r ART_ID ART_EXPIRED <<< "$ART"
             [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
-            # Newest first: once one receipt has expired, every older one has too.
+            # An expired receipt is an evidence gap too: stop rather than fall back past it.
             if [ "$ART_EXPIRED" != "false" ]; then
               GAP="the production receipt of deploy run $run has expired (90-day retention), and every older one with it"
               break
