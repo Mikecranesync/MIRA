@@ -323,6 +323,74 @@ def test_designate_cli_takes_the_inventory_and_the_gap(tmp_path):
     assert sorted(json.loads(out.read_text())["lost"]) == ["mira-web"]
 
 
+def _gap(run: str, updated: str, reason: str = "receipt gone after a successful upload"):
+    return rc.Gap(run, rc._parse_ts(updated), reason)
+
+
+def test_a_gap_newer_than_the_candidate_leaves_it_unresolved(tmp_path):
+    """Codex #4222 r3 F7: a vanished re-run may hold the newest deployment."""
+    receipts = rc.load_receipts(real_three(tmp_path))
+    gaps = [_gap("36000000100", "2026-10-02T09:00:00Z")]
+    cands = rc.candidates_for_deploy(receipts, NEW, ALL, gaps)
+    assert {s: c["sha"] for s, c in cands.items()} == dict.fromkeys(ALL)
+    assert all("unresolved: run 36000000100" in c["reason"] for c in cands.values())
+    assert rc.candidate_problems(cands, ALL, NEW) == [], "the stamp still accepts it"
+
+
+def test_a_gap_older_than_every_candidate_changes_nothing(tmp_path):
+    receipts = rc.load_receipts(real_three(tmp_path))
+    plain = rc.candidates_for_deploy(receipts, NEW, ALL)
+    old = rc.candidates_for_deploy(
+        receipts, NEW, ALL, [_gap("36000000100", "2026-06-01T00:00:00Z")]
+    )
+    assert old == plain
+
+
+def test_a_gap_is_per_service(tmp_path):
+    """Updated after Web's candidate (09-28) but before Hub's (10-01): only Web is unresolved."""
+    receipts = rc.load_receipts(real_three(tmp_path))
+    cands = rc.candidates_for_deploy(
+        receipts, NEW, ALL, [_gap("36000000100", "2026-09-29T00:00:00Z")]
+    )
+    assert cands["mira-hub"]["sha"] == C and cands["mira-ask"]["sha"] == C
+    assert cands["mira-web"]["sha"] is None
+
+
+def test_designate_loses_a_service_an_unreadable_run_could_post_date(tmp_path):
+    """Full coverage in the newest readable receipt is not chronological completeness."""
+    receipts = rc.load_receipts(real_three(tmp_path))
+    d = rc.designate(receipts, inventory=ALL, gaps=[_gap("36000000100", "2026-10-02T09:00:00Z")])
+    assert sorted(d["lost"]) == list(sorted(ALL))
+    assert all("may hold a deployment" in why for why in d["lost"].values())
+    d_old = rc.designate(
+        receipts, inventory=ALL, gaps=[_gap("36000000100", "2026-06-01T00:00:00Z")]
+    )
+    assert d_old["lost"] == {}
+
+
+def test_load_gaps_fails_closed_on_a_malformed_line(tmp_path):
+    good = tmp_path / "g.tsv"
+    good.write_text("36000000100\t2026-10-02T09:00:00Z\treceipt gone\n\n")
+    assert [g.run_id for g in rc.load_gaps(str(good))] == ["36000000100"]
+    assert rc.load_gaps("") == []
+    for bad in (
+        "x\t2026-10-02T09:00:00Z\tr",
+        "1\tyesterday\tr",
+        "1\t2026-10-02T09:00:00Z\t ",
+        "1\t2",
+    ):
+        (tmp_path / "b.tsv").write_text(bad + "\n")
+        with pytest.raises(ValueError):
+            rc.load_gaps(str(tmp_path / "b.tsv"))
+
+
+def test_since_prints_the_oldest_receipt_time(tmp_path, capsys):
+    rc.main(["since", "--receipts-dir", str(real_three(tmp_path))])
+    assert capsys.readouterr().out.strip() == "2026-09-27T21:04:48Z"
+    rc.main(["since", "--receipts-dir", str(tmp_path / "none")])
+    assert capsys.readouterr().out.strip() == ""
+
+
 def test_designate_without_the_field_designates_nothing(tmp_path):
     d = rc.designate(rc.load_receipts(real_three(tmp_path)))
     assert d["designated"] == []

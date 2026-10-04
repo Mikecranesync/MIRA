@@ -98,7 +98,7 @@ if args[:2] == ["run", "list"]:
     runs = [r for r in runs if want in (None, r.get("status", "completed"), r.get("conclusion", "success"))]
     if "--limit" in args:
         runs = runs[: int(args[args.index("--limit") + 1])]
-    emit([{"databaseId": int(r["id"])} for r in runs])
+    emit([{"databaseId": int(r["id"]), "updatedAt": r.get("updatedAt", "2026-10-03T12:00:00Z")} for r in runs])
 if args and args[0] == "api":
     raw = next(a for a in args[1:] if a.lstrip("/").startswith("repos/"))
     key = raw.lstrip("/").split("/", 3)[3]
@@ -165,7 +165,9 @@ def test_candidates_are_computed_in_authorize_source_from_the_trusted_tool():
     pin = _step(DEPLOY, "authorize-source", "Pin the trusted base and its validators")["run"]
     assert "tools/rollback_candidates.py" in pin
     run = _step(DEPLOY, "authorize-source", RECORD)["run"]
-    assert '"$RUNNER_TEMP/trusted/rollback_candidates.py" candidates' in run
+    assert 'TOOL="$RUNNER_TEMP/trusted/rollback_candidates.py"' in run
+    assert 'python3 -I "$TOOL" candidates' in run and 'python3 -I "$TOOL" since' in run
+    assert run.count("TOOL=") == 1, "the trusted copy is the only tool the step runs"
     assert "python3 tools/rollback_candidates.py" not in DEPLOY.read_text(encoding="utf-8")
     outputs = _wf(DEPLOY)["jobs"]["authorize-source"]["outputs"]
     assert (
@@ -275,26 +277,18 @@ def test_refresh_lists_only_main_dispatch_deploy_runs():
     )
 
 
-def _walk_lines(run: str) -> list[str]:
-    keep = (
-        "gh run list --repo",
-        'startswith("production-receipt-")',
-        "ART_EXPIRED",
-        "ART_ID",
-        "UPLOADED",
-        "/jobs?per_page=100",
-    )
-    return [line.strip() for line in run.splitlines() if any(k in line for k in keep)]
+def _walk_block(run: str) -> str:
+    start = run.index('RUNS="$(gh run list')
+    end = run.index('done < "$RECEIPTLESS"') + len('done < "$RECEIPTLESS"')
+    return "\n".join(line for line in run[start:end].splitlines() if "N=$((N + 1))" not in line)
 
 
 def test_both_receipt_walks_are_the_same_walk():
     """deploy-vps authorize-source and the refresh must read production the same way."""
-    record = _walk_lines(_step(DEPLOY, "authorize-source", RECORD)["run"])
-    gather = _walk_lines(_step(REFRESH, "check", "Gather the production receipts")["run"])
-    shared = [line for line in record if "break" not in line and "GAP" not in line]
-    assert shared and all(line in gather for line in shared), (shared, gather)
-    runs = next(line for line in record if "gh run list" in line)
-    assert '--status completed --limit "$RECEIPT_WALK_LIMIT"' in runs
+    record = _walk_block(_step(DEPLOY, "authorize-source", RECORD)["run"])
+    gather = _walk_block(_step(REFRESH, "check", "Gather the production receipts")["run"])
+    assert record == gather
+    assert '--status completed --limit "$RECEIPT_WALK_LIMIT"' in record
     deploy_env = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]
     refresh_env = _wf(REFRESH)["jobs"]["check"]["env"]
     assert deploy_env["RECEIPT_WALK_LIMIT"] == refresh_env["RECEIPT_WALK_LIMIT"] == "200"
@@ -396,22 +390,85 @@ def _jobs(upload_conclusion: str) -> dict:
     }
 
 
-def test_the_record_walk_stops_where_a_receipt_has_vanished(tmp_path):
-    """A run whose upload succeeded but whose receipt is gone is a gap: never fall back past it."""
+def _cands(tmp: Path) -> dict:
+    line = next(
+        x for x in (tmp / "out").read_text().splitlines() if x.startswith("rollback_candidates=")
+    )
+    return json.loads(line.split("=", 1)[1])
+
+
+def _as_dict_runs(fx: dict, **updated: str) -> None:
+    fx["runs"] = [
+        {"id": r, **({"updatedAt": updated[r]} if r in updated else {})} for r in fx["runs"]
+    ]
+
+
+def test_a_vanished_receipt_that_could_be_newer_leaves_the_candidates_unresolved(tmp_path):
+    """A run whose upload succeeded but whose receipt is gone may hide a newer deployment."""
     fx = _prod_fixtures(tmp_path)
     fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
     fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("success")
     res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
-    assert res.returncode == 0, res.stdout + res.stderr
-    line = next(
-        x
-        for x in (tmp_path / "out").read_text().splitlines()
-        if x.startswith("rollback_candidates=")
+    assert res.returncode == 0, "uncertainty is recorded, never a failed deploy"
+    cands = _cands(tmp_path)
+    assert {s: e["sha"] for s, e in cands.items()} == dict.fromkeys(
+        ("mira-hub", "mira-web", "mira-ask")
     )
-    cands = json.loads(line.split("=", 1)[1])
-    assert cands["mira-hub"]["sha"] == C and cands["mira-web"]["sha"] is None
+    assert "unresolved: run 36369296665" in cands["mira-web"]["reason"]
     zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
-    assert len(zips) == 1, "the receipt behind the gap is not read"
+    assert len(zips) == 2, "every readable receipt is still read"
+
+
+def test_a_vanished_rerun_behind_full_coverage_is_caught(tmp_path):
+    """Codex #4222 r3 F7: run order [200, 100]; 200 covers everything; 100 was re-run later and
+    its receipt vanished. Coverage must not hide it."""
+    d_sha = "d" * 40
+    fx = {
+        "runs": [
+            {"id": "36900000200", "updatedAt": "2026-10-02T10:00:00Z"},
+            {"id": "36900000100", "updatedAt": "2026-10-04T08:00:00Z"},
+        ],
+        "api": {
+            "actions/runs/36900000200/artifacts": {
+                "artifacts": [{"id": 300, "name": f"production-receipt-{d_sha}", "expired": False}]
+            },
+            "actions/runs/36900000100/artifacts": {"artifacts": []},
+            "actions/runs/36900000100/jobs?per_page=100": _jobs("success"),
+        },
+        "zips": {
+            "actions/artifacts/300/zip": _zip(
+                tmp_path,
+                "300",
+                "production-receipt.json",
+                _receipt(
+                    d_sha,
+                    "36900000200",
+                    "2026-10-02T09:50:00Z",
+                    ("mira-hub", "mira-web", "mira-ask"),
+                ),
+            )
+        },
+    }
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert all(e["sha"] is None for e in _cands(tmp_path).values())
+
+
+def test_a_receiptless_run_older_than_every_receipt_is_not_even_asked(tmp_path):
+    """Pass 2 asks for job lists only where a gap could matter."""
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
+    _as_dict_runs(fx, **{"36369296665": "2026-09-27T20:00:00Z"})
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    cands = _cands(tmp_path)
+    a_sha = "0994b31a453cd0789661e21bb22db8f3e5eb926e"
+    assert {s: e["sha"] for s, e in cands.items()} == {
+        "mira-hub": C,
+        "mira-ask": C,
+        "mira-web": a_sha,
+    }
+    assert not [c for c in _calls(tmp_path) if c[0] == "api" and "/jobs" in c[1]]
 
 
 def test_a_run_that_never_uploaded_a_receipt_is_skipped(tmp_path):
@@ -420,24 +477,22 @@ def test_a_run_that_never_uploaded_a_receipt_is_skipped(tmp_path):
     fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("skipped")
     res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
     assert res.returncode == 0, res.stdout + res.stderr
-    zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
-    assert len(zips) == 2, "the walk continues past a run that never had a receipt"
+    assert _cands(tmp_path)["mira-web"]["sha"] == "0994b31a453cd0789661e21bb22db8f3e5eb926e"
 
 
-def test_the_record_walk_stops_at_the_first_expired_receipt(tmp_path):
+@pytest.mark.parametrize(
+    "updated,web_resolved",
+    [("2026-06-01T00:00:00Z", True), ("2026-10-03T12:00:00Z", False)],
+)
+def test_an_expired_receipt_is_a_timestamped_gap(tmp_path, updated, web_resolved):
+    """Old and expired changes nothing; a recent run with an expired receipt (a re-run) may."""
     fx = _prod_fixtures(tmp_path)
     fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"][1]["expired"] = True
+    _as_dict_runs(fx, **{"36369296665": updated})
     res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
     assert res.returncode == 0, res.stdout + res.stderr
-    line = next(
-        x
-        for x in (tmp_path / "out").read_text().splitlines()
-        if x.startswith("rollback_candidates=")
-    )
-    cands = json.loads(line.split("=", 1)[1])
-    assert cands["mira-hub"]["sha"] == C and cands["mira-web"]["sha"] is None
-    zips = [c for c in _calls(tmp_path) if c[0] == "api" and c[1].endswith("/zip")]
-    assert len(zips) == 1, "nothing older than the expired receipt is read"
+    web = _cands(tmp_path)["mira-web"]["sha"]
+    assert (web == "0994b31a453cd0789661e21bb22db8f3e5eb926e") is web_resolved
 
 
 REFRESH_STEPS = (
@@ -512,7 +567,7 @@ def test_refresh_a_vanished_newest_receipt_is_lost(tmp_path):
     done, d = _run_refresh(tmp_path, fx)
     assert done[-1].returncode == 1 and len(done) == 4, [r.stderr for r in done]
     assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
-    assert "no longer readable" in d["lost"]["mira-hub"]
+    assert "may hold a deployment" in d["lost"]["mira-hub"]
     assert len(_creates(tmp_path)) == 3
 
 
@@ -526,6 +581,39 @@ def test_refresh_a_service_whose_runs_are_gone_is_lost(tmp_path):
     assert [_arg(c, "--title") for c in _creates(tmp_path)] == [
         "Rollback designation lost for mira-web"
     ]
+
+
+def test_refresh_a_vanished_rerun_behind_full_coverage_is_lost(tmp_path):
+    """Codex #4222 r3 F7, end to end: an incident, not a stale designation read as ready."""
+    d_sha, c_sha = "d" * 40, "c" * 40
+    cand = {
+        s: {"sha": c_sha, "from_run_id": "36800000000", "reason": "prev"}
+        for s in ("mira-hub", "mira-web", "mira-ask")
+    }
+    body = _receipt(
+        d_sha, "36900000200", "2026-10-02T09:50:00Z", ("mira-hub", "mira-web", "mira-ask")
+    )
+    body["rollback_candidate"] = cand
+    fx = {
+        "runs": [
+            {"id": "36900000200", "updatedAt": "2026-10-02T10:00:00Z"},
+            {"id": "36900000100", "updatedAt": "2026-10-04T08:00:00Z"},
+        ],
+        "api": {
+            "actions/runs/36900000200/artifacts": {
+                "artifacts": [{"id": 300, "name": f"production-receipt-{d_sha}", "expired": False}]
+            },
+            "actions/runs/36900000100/artifacts": {"artifacts": []},
+            "actions/runs/36900000100/jobs?per_page=100": _jobs("success"),
+        },
+        "zips": {
+            "actions/artifacts/300/zip": _zip(tmp_path, "300", "production-receipt.json", body)
+        },
+    }
+    done, d = _run_refresh(tmp_path, fx)
+    assert done[-1].returncode == 1 and len(done) == 4, [r.stderr for r in done]
+    assert d["designated"] == [] and sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
+    assert len(_creates(tmp_path)) == 3
 
 
 def test_refresh_an_exhausted_window_loses_the_service_it_did_not_reach(tmp_path):

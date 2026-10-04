@@ -42,33 +42,38 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 
 ```bash
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-DIR=$(mktemp -d)
+DIR=$(mktemp -d); GAPS="$DIR.gaps"; LESS="$DIR.receiptless"; : > "$GAPS"; : > "$LESS"
 # Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
-# making), any conclusion, newest first, stopping at the first evidence gap: an expired receipt, or a
-# run whose upload succeeded but whose receipt is gone. Select only after reading everything up to there.
-for run in $(gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit 200 --json databaseId --jq '.[].databaseId'); do
+# making), any conclusion. Pass 1 reads every readable receipt; an unreadable one is a gap bounded by
+# its run's updatedAt. Pass 2 asks whether a receipt-less run that could post-date them had uploaded one.
+gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit 200 \
+  --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"' > "$DIR.runs"
+while read -r run updated; do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
     --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end') || break
-  if [ -z "$art" ]; then
-    up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
-      --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')
-    [ "$up" = "0" ] && continue
-    echo "receipt of run $run is gone (its upload succeeded)"; break
-  fi
+  if [ -z "$art" ]; then printf '%s\t%s\n' "$run" "$updated" >> "$LESS"; continue; fi
   read -r id expired <<< "$art"
-  [ "$expired" = "false" ] || { echo "retention horizon at run $run"; break; }
+  if [ "$expired" != "false" ]; then printf '%s\t%s\treceipt expired\n' "$run" "$updated" >> "$GAPS"; continue; fi
   mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip" \
     && unzip -o -q "$DIR/$run.zip" -d "$DIR/$run" && rm "$DIR/$run.zip"
-done
+done < "$DIR.runs"
+since=$(python3 tools/rollback_candidates.py since --receipts-dir "$DIR")
+while IFS=$'\t' read -r run updated; do
+  [ -n "$since" ] && [[ ! "$updated" < "$since" ]] || continue
+  up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+    --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')
+  [ "$up" = "0" ] || printf '%s\t%s\treceipt gone after a successful upload\n' "$run" "$updated" >> "$GAPS"
+done < "$LESS"
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
-  --inventory "mira-hub mira-web mira-ask"   # what production designates now
+  --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS"   # what production designates now
 ```
 
 `designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA),
 `undesignated` (services whose current receipt predates the field or records `sha: null`) and `lost`
-(a default-set service with no readable receipt: GitHub omits expired artifacts and removes old runs,
-so absence is missing history, never "never deployed"; the daily check opens an `incident` for each). Accepted limitation: a service outside the
+(a default-set service with no readable receipt — GitHub omits expired artifacts and removes old
+runs, so absence is missing history, never "never deployed" — or any service whose current receipt an
+unreadable run could post-date; the daily check opens an `incident` for each). Accepted limitation: a service outside the
 default set whose only receipts are past the 90-day retention cannot be seen at all, because no
 durable service inventory outlives the receipts. For a
 service whose current receipt predates the field, the same walk the deploy uses gives its previous

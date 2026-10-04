@@ -139,14 +139,62 @@ def load_receipts(root: Path) -> list[ProdReceipt]:
     return sorted(receipts, key=lambda r: (r.deployed_at, int(r.run_id)), reverse=True)
 
 
+@dataclass(frozen=True)
+class Gap:
+    """A completed deploy run whose receipt cannot be read (expired, or vanished after a
+    successful upload). ``updated_at`` (GitHub's, for the latest attempt) bounds when it
+    could have deployed: never after it."""
+
+    run_id: str
+    updated_at: datetime
+    reason: str
+
+
+def load_gaps(path: str) -> list[Gap]:
+    """``run_id<TAB>updated_at<TAB>reason`` per line, as the receipt walks write them."""
+    if not path:
+        return []
+    gaps = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) != 3 or not _RUN_ID.match(parts[0]) or not parts[2].strip():
+            raise ValueError(f"malformed gap line: {line!r}")
+        gaps.append(Gap(parts[0], _parse_ts(parts[1]), parts[2].strip()[:120]))
+    return gaps
+
+
+def _newer_gap(gaps: list[Gap], than: datetime) -> Optional[Gap]:
+    """A gap that could hold a deployment at or after ``than`` (it was updated no earlier)."""
+    return next((g for g in sorted(gaps, key=lambda g: g.updated_at) if g.updated_at >= than), None)
+
+
 def candidates_for_deploy(
-    receipts: list[ProdReceipt], deploying_sha: str, services: tuple[str, ...]
+    receipts: list[ProdReceipt],
+    deploying_sha: str,
+    services: tuple[str, ...],
+    gaps: Optional[list[Gap]] = None,
 ) -> dict:
-    """Per service: the newest receipted production SHA that is not the one being deployed."""
+    """Per service: the newest receipted production SHA that is not the one being deployed.
+
+    When an unreadable run could hold a newer deployment than that receipt, the candidate
+    is unresolved: ``sha: null`` with the reason, never a possibly stale target.
+    """
     out = {}
     for svc in services:
         hit = next((r for r in receipts if svc in r.services and r.sha != deploying_sha), None)
-        if hit is None:
+        gap = _newer_gap(gaps or [], hit.deployed_at) if hit else None
+        if gap is not None:
+            out[svc] = {
+                "sha": None,
+                "from_run_id": None,
+                "reason": (
+                    f"unresolved: run {gap.run_id} (updated {_iso(gap.updated_at)}) may hold a"
+                    f" deployment newer than receipt run {hit.run_id}: {gap.reason}"
+                )[:300],
+            }
+        elif hit is None:
             out[svc] = {
                 "sha": None,
                 "from_run_id": None,
@@ -162,7 +210,10 @@ def candidates_for_deploy(
 
 
 def designate(
-    receipts: list[ProdReceipt], inventory: tuple[str, ...] = (), evidence_gap: str = ""
+    receipts: list[ProdReceipt],
+    inventory: tuple[str, ...] = (),
+    evidence_gap: str = "",
+    gaps: Optional[list[Gap]] = None,
 ) -> dict:
     """The recovery targets production designates now (newest receipt per service).
 
@@ -171,6 +222,8 @@ def designate(
     removes old runs, so a missing receipt is missing history, never "never deployed".
     ``evidence_gap`` (an expired receipt or an exhausted window) is added to the reason.
     Only a receipt that exists but records no candidate is bootstrap (``undesignated``).
+    A service whose current receipt an unreadable run could post-date (``gaps``) is
+    ``lost`` too: its real current deployment, and so its target, may be hidden.
     """
     current: dict[str, ProdReceipt] = {}
     for r in receipts:  # newest first
@@ -185,6 +238,13 @@ def designate(
             f" runs are removed){': ' + evidence_gap if evidence_gap else ''}"
         )
     for svc, r in sorted(current.items()):
+        gap = _newer_gap(gaps or [], r.deployed_at)
+        if gap is not None:
+            lost[svc] = (
+                f"run {gap.run_id} (updated {_iso(gap.updated_at)}) may hold a deployment of"
+                f" {svc} newer than receipt run {r.run_id}: {gap.reason}"
+            )
+            continue
         entry = (r.rollback_candidate or {}).get(svc)
         if entry is None:
             undesignated[svc] = (
@@ -461,11 +521,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     c.add_argument("--deploying", required=True)
     c.add_argument("--services", required=True)
     c.add_argument("--out", default="")
+    c.add_argument("--gaps", default="")
+    w = sub.add_parser("since")
+    w.add_argument("--receipts-dir", required=True)
     d = sub.add_parser("designate")
     d.add_argument("--receipts-dir", required=True)
     d.add_argument("--out", default="")
     d.add_argument("--inventory", default="")
     d.add_argument("--evidence-gap", default="")
+    d.add_argument("--gaps", default="")
     s = sub.add_parser("stamp")
     s.add_argument("--receipt", required=True)
     s.add_argument("--candidates-json", required=True)
@@ -485,16 +549,27 @@ def main(argv: Optional[list[str]] = None) -> int:
             if not _SHA.match(a.deploying):
                 raise ValueError(f"--deploying is not a 40-hex commit: {a.deploying!r}")
             cands = candidates_for_deploy(
-                load_receipts(Path(a.receipts_dir)), a.deploying, _services(a.services)
+                load_receipts(Path(a.receipts_dir)),
+                a.deploying,
+                _services(a.services),
+                load_gaps(a.gaps),
             )
             problems = candidate_problems(cands, _services(a.services), a.deploying)
             if problems:
                 raise ValueError("; ".join(problems))
             _write(cands, a.out)
+        elif a.cmd == "since":
+            receipts = load_receipts(Path(a.receipts_dir))
+            print(_iso(min(r.deployed_at for r in receipts)) if receipts else "")
         elif a.cmd == "designate":
             inventory = _services(a.inventory) if a.inventory.strip() else ()
             _write(
-                designate(load_receipts(Path(a.receipts_dir)), inventory, a.evidence_gap.strip()),
+                designate(
+                    load_receipts(Path(a.receipts_dir)),
+                    inventory,
+                    a.evidence_gap.strip(),
+                    load_gaps(a.gaps),
+                ),
                 a.out,
             )
         elif a.cmd == "stamp":

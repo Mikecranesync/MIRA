@@ -22,13 +22,14 @@ name: Rollback Candidate Refresh
 # existed designates nothing) is reported and is not a failure.
 #
 # A designation is never silently dropped. The walk reads completed main-branch
-# deploy runs newest-first (a run's conclusion does not matter: its receipt exists
-# only if the production verify passed), up to RECEIPT_WALK_LIMIT runs, and stops at
-# the first evidence gap: an expired receipt, or a run whose upload step succeeded
-# but whose receipt is gone. Any service of the deploy default set
-# (PRODUCTION_DEFAULT_SERVICES, equal to deploy-vps.yml's) with no readable receipt
-# is LOST — GitHub omits expired artifacts and removes old runs, so absence is
-# missing history, never "never deployed" — an `incident`, and the job fails.
+# deploy runs (a run's conclusion does not matter: its receipt exists only if the
+# production verify passed), up to RECEIPT_WALK_LIMIT runs, and reads every readable
+# receipt. An unreadable one (expired, or gone after a successful upload) is a gap
+# bounded by its run's updatedAt. A service is LOST — an `incident`, and the job
+# fails — when it is in the deploy default set (PRODUCTION_DEFAULT_SERVICES, equal to
+# deploy-vps.yml's) and has no readable receipt (GitHub omits expired artifacts and
+# removes old runs, so absence is missing history, never "never deployed"), or when a
+# gap could post-date its current receipt (its real current deployment may be hidden).
 # Accepted limitation: a service OUTSIDE the default set whose only receipts are past
 # retention is invisible here, because no durable service inventory outlives them.
 #
@@ -85,38 +86,46 @@ jobs:
           install -d -m 700 "$DIR"
           GAP=""
           N=0
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit "$RECEIPT_WALK_LIMIT" --json databaseId --jq '.[].databaseId')"
-          for run in $RUNS; do
+          TOOL="tools/rollback_candidates.py"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit "$RECEIPT_WALK_LIMIT" --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"')"
+          GAPS="$RUNNER_TEMP/receipt-gaps.tsv"
+          RECEIPTLESS="$RUNNER_TEMP/receiptless-runs.tsv"
+          : > "$GAPS"
+          : > "$RECEIPTLESS"
+          # Pass 1: every readable receipt. An unreadable one is recorded as a gap with its run's
+          # updatedAt (it cannot have deployed after that), never a stop and never a fallback.
+          while read -r run updated; do
+            [ -n "$run" ] || continue
             N=$((N + 1))
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
+            [[ "$updated" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::unexpected updatedAt '$updated' for run $run"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
               --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
-            if [ -z "$ART" ]; then
-              # No artifact: a run that never uploaded one is skipped; one whose upload step
-              # succeeded had a receipt that is gone (deleted, or omitted once expired).
-              UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
-                --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
-              [ "$UPLOADED" = "0" ] && continue
-              GAP="the production receipt of deploy run $run is no longer readable (its upload succeeded)"
-              break
-            fi
+            if [ -z "$ART" ]; then printf '%s\t%s\n' "$run" "$updated" >> "$RECEIPTLESS"; continue; fi
             read -r ART_ID ART_EXPIRED <<< "$ART"
             [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
-            # An expired receipt is an evidence gap too: stop rather than fall back past it.
-            if [ "$ART_EXPIRED" != "false" ]; then
-              GAP="the production receipt of deploy run $run has expired (90-day retention), and every older one with it"
-              break
-            fi
+            if [ "$ART_EXPIRED" != "false" ]; then printf '%s\t%s\t%s\n' "$run" "$updated" "receipt expired" >> "$GAPS"; continue; fi
             install -d -m 700 "$DIR/$run"
             gh api "/repos/$REPO/actions/artifacts/$ART_ID/zip" > "$DIR/$run.zip"
             unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
             rm -f "$DIR/$run.zip"
-          done
+          done <<< "$RUNS"
+          # Pass 2: a run without a receipt matters only if it ended after the oldest receipt read
+          # (otherwise it cannot post-date any of them); only then ask whether its upload succeeded,
+          # which means it had a receipt that is gone (deleted, or omitted once expired).
+          SINCE="$(python3 -I "$TOOL" since --receipts-dir "$DIR")"
+          while IFS=$'\t' read -r run updated; do
+            [ -n "$run" ] && [ -n "$SINCE" ] || continue
+            [[ "$updated" < "$SINCE" ]] && continue
+            UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+              --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
+            [ "$UPLOADED" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "receipt gone after a successful upload" >> "$GAPS"
+          done < "$RECEIPTLESS"
           if [ -z "$GAP" ] && [ "$N" -ge "$RECEIPT_WALK_LIMIT" ]; then
             GAP="the walk stopped at the newest $RECEIPT_WALK_LIMIT deploy runs"
           fi
           printf '%s' "$GAP" > "$RUNNER_TEMP/evidence-gap.txt"
-          echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l); evidence gap: ${GAP:-none}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l); unreadable: $(wc -l < "$GAPS"); window: ${GAP:-complete}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Designate the recovery candidates
         id: designate
@@ -124,7 +133,8 @@ jobs:
           set -euo pipefail
           python3 -I tools/rollback_candidates.py designate \
             --receipts-dir "$RUNNER_TEMP/production-receipts" --out "$RUNNER_TEMP/designated.json" \
-            --inventory "$PRODUCTION_DEFAULT_SERVICES" --evidence-gap "$(cat "$RUNNER_TEMP/evidence-gap.txt")"
+            --inventory "$PRODUCTION_DEFAULT_SERVICES" --evidence-gap "$(cat "$RUNNER_TEMP/evidence-gap.txt")" \
+            --gaps "$RUNNER_TEMP/receipt-gaps.tsv"
           python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1]))
           print("current:", json.dumps(d["current"], sort_keys=True))
           print("designated:", json.dumps(d["designated"], sort_keys=True))
