@@ -8,6 +8,7 @@ import {
   buildGroundedContext,
   displayPage,
   isRefusalAnswer,
+  withUngroundedNotice,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -234,9 +235,19 @@ export async function POST(req: Request) {
         verified: c.verified === true,
       })).filter((s) => cited.has(s.index));
 
+  // Grounding-honesty floor (#4224 Defect B): an answer that cited nothing must
+  // SAY it isn't grounded — like the authenticated notebook does — instead of
+  // arriving as a confident wall of text under the page's "if we can't cite a
+  // source, we say so" promise. isRefusalAnswer() already carries its own
+  // admission, so it is left alone (never double-stamped).
+  const answerBody =
+    citations.length === 0 && !isRefusalAnswer(answerText)
+      ? withUngroundedNotice(answerText)
+      : answerText;
+
   return NextResponse.json(
     {
-      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerBody}` : answerBody,
       citations,
       provider: result.provider,
     } as AskResponse,
