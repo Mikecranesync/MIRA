@@ -291,6 +291,40 @@ def test_a_deleted_trigger_still_reconciles_from_the_remaining_evidence():
     assert d.payload["external_id"] == RUN_2
 
 
+def _decide_with_trigger(body: str, cid: int, live: list, existing: tuple = ()):
+    return crc.decide(
+        body=body,
+        author_login=OWNER,
+        author_type="User",
+        owner=OWNER,
+        current_head=HEAD,
+        comments=live,
+        existing_checks=list(existing),
+        trigger_id=cid,
+        trigger_url=f"https://github.com/Mikecranesync/MIRA/pull/1#issuecomment-{cid}",
+    )
+
+
+def test_a_lagging_comment_list_cannot_hide_a_failing_trigger():
+    """The list does not show the BLOCK yet; the trigger itself is counted (fail closed)."""
+    d = _decide_with_trigger(BLOCK_2, 2, [comment(1, PASS_1)], (check(101, RUN_ID, "success"),))
+    assert (
+        d.post is True
+        and d.payload["conclusion"] == "failure"
+        and d.payload["external_id"] == RUN_2
+    )
+
+
+def test_a_missing_pass_trigger_is_never_resurrected():
+    """A PASS absent from the list may have been deleted; only live evidence counts."""
+    d = _decide_with_trigger(envelope("PASS", run_id=RUN_3), 3, [comment(2, BLOCK_2)])
+    assert (
+        d.post is True
+        and d.payload["conclusion"] == "failure"
+        and d.payload["external_id"] == RUN_2
+    )
+
+
 def test_a_newer_full_pass_clears_earlier_failures():
     live = [comment(1, BLOCK_2), comment(2, envelope("PASS", run_id=RUN_3))]
     d = decide(live[1]["body"], cid=2, comments=live, existing=(check(101, RUN_2, "failure"),))

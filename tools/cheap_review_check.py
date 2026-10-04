@@ -20,7 +20,8 @@ The decision, in order (the first failing rule means nothing is posted):
    ignored, however well-formed.
 3. The reviewed `head` is still the pull request's head when the workflow runs.
 4. The trigger only wakes the reconciler: the check this head should show is
-   recomputed from ALL live, fully paginated owner reviews of it (`head_state`).
+   recomputed from ALL live, fully paginated owner reviews of it (`head_state`);
+   a non-PASS trigger the comment list does not show yet is counted anyway.
    The window starts at the newest FULL-scope review; any non-PASS verdict in it
    (that review, or a later scoped one) makes the head `failure`, sourced from the
    newest such review; otherwise a full PASS makes it `success`; scoped PASSes alone
@@ -155,6 +156,8 @@ def decide(
     current_head: str,
     comments: Iterable[dict],
     existing_checks: Iterable[dict],
+    trigger_id: object = None,
+    trigger_url: str = "",
 ) -> Decision:
     """Gate on the triggering comment, then reconcile the head's check from live evidence."""
     env = parse_envelope(body)
@@ -174,7 +177,25 @@ def decide(
             f"reviewed head {env['head']} is no longer the pull request head ({current_head}); "
             "a verdict about superseded bytes is not posted",
         )
-    state = head_state(comments, owner, current_head)
+    live = list(comments)
+    # The comment list can lag the event that delivered the trigger. Fail closed: a
+    # non-PASS trigger missing from the live list still counts (posting failure is
+    # always safe); a missing PASS trigger does not (it may have been deleted, and a
+    # PASS must never be resurrected).
+    if (
+        isinstance(trigger_id, int)
+        and env["verdict"] != "PASS"
+        and all(c.get("id") != trigger_id for c in live)
+    ):
+        live.append(
+            {
+                "id": trigger_id,
+                "html_url": trigger_url,
+                "user": {"login": author_login, "type": author_type},
+                "body": body,
+            }
+        )
+    state = head_state(live, owner, current_head)
     if state is None:
         return Decision(
             False,
@@ -250,6 +271,8 @@ def _cmd_decide(args: argparse.Namespace) -> int:
         current_head=args.current_head,
         comments=_read_jsonl(args.comments),
         existing_checks=_read_jsonl(args.existing_checks),
+        trigger_id=comment.get("id"),
+        trigger_url=comment.get("html_url") or "",
     )
     print(decision.reason)
     if decision.post:
