@@ -254,10 +254,12 @@ transitions. No agent may self-award a PASS on work it authored.
   the **commit/head-bound GitHub check-run** (Part B step 6). Since step 6 the lane re-reads the head
   immediately before posting (`verdict: STALE` on drift) and `.github/workflows/cheap-review-check.yml`
   turns the owner-posted envelope into a check-run named `Cheap Review` on the reviewed head, only while
-  that head is still the PR head and only for the newest owner review of that head (a replayed or late
-  older review never posts over a newer verdict; a re-run of a posted review is a no-op): `success` for a
-  full-scope `PASS`, nothing for a `--paths`-scoped `PASS` (the envelope declares its scope), `failure`
-  for every other verdict (never `neutral` or `skipped`, which branch protection counts as passing). Reasons it is still advisory, all
+  that head is still the PR head. The check is reconciled from all live owner reviews of the head: the
+  newest full-scope review plus any failure at or after it, so a replayed or late older review, a
+  `--paths`-scoped `PASS` (the envelope declares its scope) or a newer scoped `PASS` can never show
+  success over failure evidence; an unchanged state posts nothing. `success` for a full-scope `PASS`,
+  `failure` for every other verdict (never `neutral` or `skipped`, which branch protection counts as
+  passing). Reasons it is still advisory, all
   facts today: no required context consumes it (a settings action); the exit code is 0 for rendered
   PASS, BLOCK and UNKNOWN and for a failed post (2/3/4 only for provider failure, budget refusal,
   oversized diff); and the check-run's source is "a workflow token in this repository" — any workflow

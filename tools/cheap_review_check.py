@@ -9,7 +9,7 @@ comment and posts the check-run with the workflow's own token; this module is th
 whole decision it makes, stdlib-only and network-free so it runs from the trusted
 default-branch checkout with `python3 -I`.
 
-The decision, in order (the first failing rule wins, and nothing is posted):
+The decision, in order (the first failing rule means nothing is posted):
 
 1. The comment is the lane's envelope: it STARTS with `[CHEAP-REVIEW]`, then a
    fenced block of `key: value` lines carrying a 40-hex `head`, a `verdict`, a
@@ -19,18 +19,20 @@ The decision, in order (the first failing rule wins, and nothing is posted):
    authentication the review ledger applies (§4.4). Anyone else's envelope is
    ignored, however well-formed.
 3. The reviewed `head` is still the pull request's head when the workflow runs.
-4. It is the NEWEST eligible review of that head: among the live, fully paginated
-   PR comments, no later owner envelope for the same head exists. A replayed or
-   late-delivered older review never posts over a newer verdict (Codex F1, #4221).
-5. Its `run_id` has not already produced a `Cheap Review` check-run on that head,
-   so a re-run of the workflow is a no-op.
-6. A `scope: partial` PASS reviewed only part of the head and certifies nothing
-   about the rest, so it posts nothing (Codex F2, #4221). A partial non-PASS still
-   posts its failure: a defect found in part of the head is a defect in the head.
+4. The trigger only wakes the reconciler: the check this head should show is
+   recomputed from ALL live, fully paginated owner reviews of it (`head_state`).
+   The window starts at the newest FULL-scope review; any non-PASS verdict in it
+   (that review, or a later scoped one) makes the head `failure`, sourced from the
+   newest such review; otherwise a full PASS makes it `success`; scoped PASSes alone
+   certify nothing and post nothing. So a replayed or late older review cannot post
+   over a newer verdict (Codex F1, #4221), a `--paths` PASS never becomes a whole-head
+   success (F2), and a newer scoped PASS never hides an earlier failure (F4).
+5. Nothing is posted when the newest existing `Cheap Review` check-run on the head
+   already shows that conclusion from that review's `run_id` (re-runs are no-ops).
 
 Only then is a payload produced: check-run `Cheap Review` on that exact head,
-`success` for a full-scope `PASS` and `failure` for EVERY other verdict. `neutral`
-and `skipped` are never used — branch protection treats both as passing.
+`success` when the reconciled source is a full-scope `PASS`, `failure` for EVERY
+other verdict. `neutral` and `skipped` are never used — branch protection treats both as passing.
 
 The check-run stays ADVISORY until a required status context consumes it (a
 branch-protection action, not this file). Its source limitation is stated in the
@@ -112,6 +114,38 @@ class Decision:
     payload: dict = field(default_factory=dict)
 
 
+def head_state(comments: Iterable[dict], owner: str, head: str) -> Optional[tuple[str, dict, dict]]:
+    """Reconcile the check this head should show from ALL live owner reviews of it.
+
+    Returns ``(conclusion, envelope, comment)`` or None when nothing certifies the head.
+    Reviews are ordered by comment id (creation order). The window starts at the newest
+    FULL-scope review; any non-PASS verdict inside that window (the full review itself or
+    a later scoped one) makes the head ``failure``, sourced from the newest such review —
+    a scoped PASS never outranks failure evidence (Codex F4, #4221). With no failure in
+    the window, a full PASS makes it ``success``. Scoped PASSes alone certify nothing.
+    """
+    reviews: list[tuple[int, dict, dict]] = []
+    for c in comments:
+        user = c.get("user") or {}
+        env = parse_envelope(c.get("body"))
+        if (
+            isinstance(c.get("id"), int)
+            and _is_owner_user(user.get("login"), user.get("type"), owner)
+            and env is not None
+            and env["head"] == head
+        ):
+            reviews.append((c["id"], env, c))
+    reviews.sort(key=lambda r: r[0])
+    full = [r for r in reviews if r[1]["scope"] == "full"]
+    window = [r for r in reviews if not full or r[0] >= full[-1][0]]
+    failures = [r for r in window if r[1]["verdict"] != "PASS"]
+    if failures:
+        return "failure", failures[-1][1], failures[-1][2]
+    if full and full[-1][1]["verdict"] == "PASS":
+        return "success", full[-1][1], full[-1][2]
+    return None
+
+
 def decide(
     *,
     body: object,
@@ -119,12 +153,10 @@ def decide(
     author_type: object,
     owner: str,
     current_head: str,
-    comment_id: object,
     comments: Iterable[dict],
-    existing_external_ids: Iterable[str],
-    comment_url: str = "",
+    existing_checks: Iterable[dict],
 ) -> Decision:
-    """Apply the six rules in the module docstring; build the check-run payload."""
+    """Gate on the triggering comment, then reconcile the head's check from live evidence."""
     env = parse_envelope(body)
     if env is None:
         return Decision(False, "not a well-formed [CHEAP-REVIEW] envelope")
@@ -142,80 +174,67 @@ def decide(
             f"reviewed head {env['head']} is no longer the pull request head ({current_head}); "
             "a verdict about superseded bytes is not posted",
         )
-    eligible: list[int] = []
-    for c in comments:
-        user = c.get("user") or {}
-        other = parse_envelope(c.get("body"))
-        if (
-            isinstance(c.get("id"), int)
-            and _is_owner_user(user.get("login"), user.get("type"), owner)
-            and other is not None
-            and other["head"] == current_head
-        ):
-            eligible.append(c["id"])
-    if not isinstance(comment_id, int) or comment_id not in eligible:
+    state = head_state(comments, owner, current_head)
+    if state is None:
         return Decision(
             False,
-            f"triggering comment {comment_id!r} is not among the live owner reviews of this head",
+            f"no full-scope review and no failure among the owner reviews of {current_head}; "
+            "a scoped PASS certifies nothing about the rest of the head",
         )
-    newest = max(eligible)
-    if comment_id != newest:
+    conclusion, source, source_comment = state
+    checks = [c for c in existing_checks if isinstance(c.get("id"), int)]
+    latest = max(checks, key=lambda c: c["id"]) if checks else None
+    if (
+        latest is not None
+        and latest.get("external_id") == source["run_id"]
+        and latest.get("conclusion") == conclusion
+    ):
         return Decision(
             False,
-            f"a newer owner review of {current_head} exists (comment {newest}); "
-            f"comment {comment_id} is superseded and never posts over it",
+            f"{CHECK_NAME} already shows {conclusion} from run {source['run_id']}; nothing to do",
         )
-    if env["run_id"] in set(existing_external_ids):
-        return Decision(
-            False, f"run {env['run_id']} already has a {CHECK_NAME} check-run on this head"
-        )
-    verdict = env["verdict"]
-    if verdict == "PASS" and env["scope"] != "full":
-        return Decision(
-            False,
-            f"a scoped PASS ({env.get('excluded_files')} changed files excluded) reviewed only part "
-            "of the head and certifies nothing about the rest",
-        )
-    conclusion = "success" if verdict == "PASS" else "failure"
-    title = f"Cheap review {verdict} at {env['head'][:12]}"
+    verdict = source["verdict"]
+    title = f"Cheap review {verdict} at {source['head'][:12]}"
     lines = [
         f"verdict: {verdict}",
-        f"head: {env['head']}",
-        f"scope: {env['scope']}",
-        f"model: {env['model']}",
-        f"cost_usd: {env['cost_usd']}",
-        f"run_id: {env['run_id']}",
+        f"head: {source['head']}",
+        f"scope: {source['scope']}",
+        f"model: {source['model']}",
+        f"cost_usd: {source['cost_usd']}",
+        f"run_id: {source['run_id']}",
+        f"source_comment: {source_comment.get('id')}",
     ]
-    if "excluded_files" in env:
-        lines.append(f"excluded_files: {env['excluded_files']}")
-    if "reviewed_verdict" in env:
-        lines.append(f"reviewed_verdict: {env['reviewed_verdict']}")
+    if "excluded_files" in source:
+        lines.append(f"excluded_files: {source['excluded_files']}")
+    if "reviewed_verdict" in source:
+        lines.append(f"reviewed_verdict: {source['reviewed_verdict']}")
     summary = (
-        "Posted from the repository owner's newest `[CHEAP-REVIEW]` comment on this head by "
-        "`.github/workflows/cheap-review-check.yml` (SDLC v1 §4.2). Advisory until a "
-        "required status context consumes it.\n\n```\n" + "\n".join(lines) + "\n```"
+        "Reconciled from all of the repository owner's live `[CHEAP-REVIEW]` comments on this "
+        "head by `.github/workflows/cheap-review-check.yml` (SDLC v1 §4.2): the newest full-scope "
+        "review, and any failure reported at or after it. Advisory until a required status "
+        "context consumes it.\n\n```\n" + "\n".join(lines) + "\n```"
     )
     payload: dict = {
         "name": CHECK_NAME,
-        "head_sha": env["head"],
+        "head_sha": source["head"],
         "status": "completed",
         "conclusion": conclusion,
-        "external_id": env["run_id"],
+        "external_id": source["run_id"],
         "output": {"title": title, "summary": summary},
     }
-    if comment_url.startswith("https://github.com/"):
-        payload["details_url"] = comment_url
-    return Decision(True, f"posting {CHECK_NAME}={conclusion} on {env['head']}", payload)
+    url = source_comment.get("html_url") or ""
+    if isinstance(url, str) and url.startswith("https://github.com/"):
+        payload["details_url"] = url
+    return Decision(
+        True,
+        f"posting {CHECK_NAME}={conclusion} on {source['head']} from run {source['run_id']}",
+        payload,
+    )
 
 
 def _read_jsonl(path: str) -> list[dict]:
     with open(path, encoding="utf-8") as fh:
         return [json.loads(line) for line in fh if line.strip()]
-
-
-def _read_lines(path: str) -> list[str]:
-    with open(path, encoding="utf-8") as fh:
-        return [line.strip() for line in fh if line.strip()]
 
 
 def _cmd_decide(args: argparse.Namespace) -> int:
@@ -229,10 +248,8 @@ def _cmd_decide(args: argparse.Namespace) -> int:
         author_type=user.get("type"),
         owner=args.owner,
         current_head=args.current_head,
-        comment_id=comment.get("id"),
         comments=_read_jsonl(args.comments),
-        existing_external_ids=_read_lines(args.existing_checks),
-        comment_url=comment.get("html_url") or "",
+        existing_checks=_read_jsonl(args.existing_checks),
     )
     print(decision.reason)
     if decision.post:

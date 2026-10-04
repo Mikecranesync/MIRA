@@ -1,11 +1,12 @@
 """Contract for the head-bound `Cheap Review` check-run (SDLC v1 Part B step 6, §4.2).
 
-Covers `tools/cheap_review_check.py` (envelope parsing + the six posting rules),
+Covers `tools/cheap_review_check.py` (envelope parsing + reconciliation),
 the envelope's agreement with what `tools/gate7_review.py` actually renders, and
 `.github/workflows/cheap-review-check.yml` — whose decide/post steps are EXECUTED
-here against a fake `gh`, not just read. Codex review of #4221 (iteration 1) drove
-the freshness rule (F1: a replayed or late older review must not post over a newer
-verdict) and the scope rule (F2: a `--paths` PASS must not become a whole-head PASS).
+here against a fake `gh`, not just read. Codex review of #4221 drove the
+reconciliation rule: F1 (a replayed or late older review must not post over a newer
+verdict), F2 (a `--paths` PASS must not become a whole-head PASS) and F4 (a newer
+scoped PASS must not hide an earlier failure).
 """
 
 from __future__ import annotations
@@ -59,7 +60,16 @@ def envelope(
 
 
 def comment(cid: int, body: str, login: str = OWNER, typ: str = "User") -> dict:
-    return {"id": cid, "user": {"login": login, "type": typ}, "body": body}
+    return {
+        "id": cid,
+        "html_url": f"https://github.com/Mikecranesync/MIRA/pull/1#issuecomment-{cid}",
+        "user": {"login": login, "type": typ},
+        "body": body,
+    }
+
+
+def check(cid: int, run_id: str, conclusion: str) -> dict:
+    return {"id": cid, "external_id": run_id, "conclusion": conclusion}
 
 
 def decide(
@@ -79,10 +89,8 @@ def decide(
         author_type=typ,
         owner=OWNER,
         current_head=current,
-        comment_id=cid,
         comments=live,
-        existing_external_ids=existing,
-        comment_url="https://github.com/Mikecranesync/MIRA/pull/1#issuecomment-1",
+        existing_checks=list(existing),
     )
 
 
@@ -204,9 +212,8 @@ def test_an_empty_owner_trusts_nobody():
         author_type="User",
         owner="",
         current_head=HEAD,
-        comment_id=1,
         comments=[comment(1, envelope(), login="")],
-        existing_external_ids=(),
+        existing_checks=[],
     )
     assert d.post is False
 
@@ -223,70 +230,77 @@ def test_an_unreadable_current_head_posts_nothing(current):
 
 
 def test_a_non_github_details_url_is_dropped():
-    d = crc.decide(
-        body=envelope(),
-        author_login=OWNER,
-        author_type="User",
-        owner=OWNER,
-        current_head=HEAD,
-        comment_id=1,
-        comments=[comment(1, envelope())],
-        existing_external_ids=(),
-        comment_url="https://evil.example/x",
-    )
+    c = comment(1, envelope())
+    c["html_url"] = "https://evil.example/x"
+    d = decide(envelope(), cid=1, comments=[c])
     assert d.post is True and "details_url" not in d.payload
 
 
-# ── freshness and idempotency (Codex F1 on #4221) ────────────────────────────
+# ── reconciliation from live evidence (Codex F1 / F2 / F4 on #4221) ─────────
 
 PASS_1 = envelope("PASS", run_id=RUN_ID)
 BLOCK_2 = envelope("BLOCK", run_id=RUN_2)
 LIVE = [comment(1, PASS_1), comment(2, BLOCK_2)]
+RUN_3 = "c0ffee00c0ffee00c0ffee00c0ffee00"
+RUN_4 = "d00dfeedd00dfeedd00dfeedd00dfeed"
 
 
 def test_replaying_an_older_pass_after_a_newer_block_posts_nothing():
-    """Codex's scenario: PASS(c1), BLOCK(c2), then c1 replayed -> no new success."""
+    """F1: PASS(c1), BLOCK(c2), then c1 replayed -> no new success."""
     first = decide(PASS_1, cid=1, comments=[comment(1, PASS_1)])
     assert first.payload["conclusion"] == "success"
-    second = decide(BLOCK_2, cid=2, comments=LIVE, existing=(RUN_ID,))
-    assert second.payload["conclusion"] == "failure"
-    replay = decide(PASS_1, cid=1, comments=LIVE, existing=(RUN_ID, RUN_2))
-    assert replay.post is False and "newer owner review" in replay.reason
+    second = decide(BLOCK_2, cid=2, comments=LIVE, existing=(check(101, RUN_ID, "success"),))
+    assert second.payload["conclusion"] == "failure" and second.payload["external_id"] == RUN_2
+    shown = (check(101, RUN_ID, "success"), check(102, RUN_2, "failure"))
+    replay = decide(PASS_1, cid=1, comments=LIVE, existing=shown)
+    assert replay.post is False and "already shows failure" in replay.reason
 
 
 def test_events_processed_out_of_order_leave_the_newest_verdict():
-    """c2 is processed first; the late c1 event must not post over it."""
+    """F1: c2 is processed first; the late c1 event must not post over it."""
     assert decide(BLOCK_2, cid=2, comments=LIVE).payload["conclusion"] == "failure"
-    late = decide(PASS_1, cid=1, comments=LIVE, existing=(RUN_2,))
-    assert late.post is False and "superseded" in late.reason
+    late = decide(PASS_1, cid=1, comments=LIVE, existing=(check(101, RUN_2, "failure"),))
+    assert late.post is False
 
 
-def test_a_rerun_of_the_newest_review_is_a_no_op():
-    d = decide(BLOCK_2, cid=2, comments=LIVE, existing=(RUN_2,))
-    assert d.post is False and "already has" in d.reason
+def test_an_unchanged_state_is_a_no_op():
+    d = decide(BLOCK_2, cid=2, comments=LIVE, existing=(check(101, RUN_2, "failure"),))
+    assert d.post is False and "already shows" in d.reason
 
 
-def test_newer_reviews_of_another_head_or_by_others_do_not_supersede():
+def test_a_stale_latest_check_is_corrected_even_if_its_run_was_posted_before():
+    """The newest check shows success from a since-deleted review; the live state is failure."""
+    shown = (check(101, RUN_2, "failure"), check(102, RUN_3, "success"))
+    d = decide(BLOCK_2, cid=2, comments=LIVE, existing=shown)
+    assert d.post is True and d.payload["conclusion"] == "failure"
+
+
+def test_newer_reviews_of_another_head_or_by_others_do_not_count():
     live = [
         comment(1, PASS_1),
         comment(2, envelope("BLOCK", head=OTHER, run_id=RUN_2)),  # another head
-        comment(3, envelope("BLOCK", run_id=RUN_2), login="mallory"),  # not the owner
+        comment(3, envelope("BLOCK", run_id=RUN_3), login="mallory"),  # not the owner
         comment(4, "LGTM"),  # not an envelope
     ]
     assert decide(PASS_1, cid=1, comments=live).payload["conclusion"] == "success"
 
 
-def test_a_deleted_trigger_comment_posts_nothing():
+def test_a_deleted_trigger_still_reconciles_from_the_remaining_evidence():
     d = decide(PASS_1, cid=1, comments=[comment(2, BLOCK_2)])
-    assert d.post is False and "not among the live owner reviews" in d.reason
+    assert d.post is True and d.payload["conclusion"] == "failure"
+    assert d.payload["external_id"] == RUN_2
 
 
-# ── scope (Codex F2 on #4221) ────────────────────────────────────────────────
+def test_a_newer_full_pass_clears_earlier_failures():
+    live = [comment(1, BLOCK_2), comment(2, envelope("PASS", run_id=RUN_3))]
+    d = decide(live[1]["body"], cid=2, comments=live, existing=(check(101, RUN_2, "failure"),))
+    assert d.payload["conclusion"] == "success" and d.payload["external_id"] == RUN_3
 
 
-def test_a_scoped_pass_never_becomes_a_whole_head_success():
+def test_a_scoped_pass_alone_never_becomes_a_whole_head_success():
+    """F2."""
     d = decide(envelope("PASS", scope=SCOPE_PARTIAL))
-    assert d.post is False and "scoped PASS" in d.reason
+    assert d.post is False and "scoped PASS certifies nothing" in d.reason
 
 
 def test_a_scoped_block_still_fails_the_head():
@@ -300,7 +314,30 @@ def test_a_passing_scope_cannot_erase_a_failing_scope_on_the_same_head():
     pass_scope = envelope("PASS", scope=SCOPE_PARTIAL, run_id=RUN_2)
     live = [comment(1, block_scope), comment(2, pass_scope)]
     assert decide(block_scope, cid=1, comments=live[:1]).payload["conclusion"] == "failure"
-    assert decide(pass_scope, cid=2, comments=live, existing=(RUN_ID,)).post is False
+    d = decide(pass_scope, cid=2, comments=live, existing=(check(101, RUN_ID, "failure"),))
+    assert d.post is False
+
+
+FULL_PASS = envelope("PASS", run_id=RUN_ID)
+SCOPED_BLOCK = envelope("BLOCK", scope=SCOPE_PARTIAL, run_id=RUN_3)
+SCOPED_PASS = envelope("PASS", scope=SCOPE_PARTIAL, run_id=RUN_4)
+F4_LIVE = [comment(1, FULL_PASS), comment(2, SCOPED_BLOCK), comment(3, SCOPED_PASS)]
+F4_SHOWN = (check(101, RUN_ID, "success"),)
+
+
+@pytest.mark.parametrize("first", [2, 3])
+def test_a_newer_scoped_pass_never_hides_an_unprocessed_block(first):
+    """F4 (Codex it.2): full PASS already shows success; scoped BLOCK c2 and scoped
+    PASS c3 land before either is processed. In EITHER event order the head ends at
+    failure, and replays of every event are no-ops once it shows."""
+    by_id = {c["id"]: c for c in F4_LIVE}
+    d = decide(by_id[first]["body"], cid=first, comments=F4_LIVE, existing=F4_SHOWN)
+    assert d.post is True and d.payload["conclusion"] == "failure"
+    assert d.payload["external_id"] == RUN_3
+    shown = F4_SHOWN + (check(102, RUN_3, "failure"),)
+    for cid in (1, 2, 3):
+        again = decide(by_id[cid]["body"], cid=cid, comments=F4_LIVE, existing=shown)
+        assert again.post is False, cid
 
 
 # ── the workflow file ────────────────────────────────────────────────────────
@@ -371,7 +408,7 @@ path = next(a for a in args[1:] if a.startswith("repos/"))
 if "/issues/" in path:
     emit(fx["comments"])
 if "/check-runs" in path:
-    emit({"check_runs": [{"external_id": e} for e in fx["existing"]]})
+    emit({"check_runs": fx["existing"]})
 if "/pulls/" in path:
     emit({"head": {"sha": fx["head"]}})
 sys.exit(1)
@@ -434,8 +471,9 @@ def test_workflow_steps_post_a_success_for_the_newest_full_pass(tmp_path):
 @needs_jq
 def test_workflow_steps_skip_a_replayed_older_review(tmp_path):
     c1, c2 = comment(1, PASS_1), comment(2, BLOCK_2)
+    shown = (check(101, RUN_ID, "success"), check(102, RUN_2, "failure"))
     outputs, payload_path, calls = _run_steps(
-        tmp_path, c1, head=HEAD, live=[c1, c2], existing=(RUN_ID, RUN_2)
+        tmp_path, c1, head=HEAD, live=[c1, c2], existing=shown
     )
     assert "post=false" in outputs and not payload_path.exists()
     assert not any("--method" in call for call in calls)
@@ -444,8 +482,20 @@ def test_workflow_steps_skip_a_replayed_older_review(tmp_path):
 @needs_jq
 def test_workflow_steps_skip_a_rerun_of_an_already_posted_review(tmp_path):
     c = comment(10, PASS_1)
-    outputs, payload_path, _ = _run_steps(tmp_path, c, head=HEAD, live=[c], existing=(RUN_ID,))
+    outputs, payload_path, _ = _run_steps(
+        tmp_path, c, head=HEAD, live=[c], existing=(check(101, RUN_ID, "success"),)
+    )
     assert "post=false" in outputs and not payload_path.exists()
+
+
+@needs_jq
+def test_workflow_steps_reconcile_the_f4_sequence_to_failure(tmp_path):
+    outputs, payload_path, _ = _run_steps(
+        tmp_path, F4_LIVE[2], head=HEAD, live=F4_LIVE, existing=F4_SHOWN
+    )
+    assert "post=true" in outputs
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    assert payload["conclusion"] == "failure" and payload["external_id"] == RUN_3
 
 
 @needs_jq

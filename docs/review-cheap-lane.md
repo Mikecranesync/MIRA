@@ -46,11 +46,13 @@ doppler run --project factorylm --config dev -- \
   model, cost, run id, findings). GitHub is the durable store.
 - That comment becomes a **head-bound check-run** named `Cheap Review`
   (`.github/workflows/cheap-review-check.yml`, SDLC v1 Part B step 6): `success` for a
-  full-scope `PASS` on the current head, `failure` for every other verdict, and nothing
-  at all for a superseded head, a comment not posted by the repository owner, an older
-  review when a newer one of the same head exists, or a `--paths`-scoped `PASS` (the
-  envelope's `scope:` line says `full` or `partial`). It is advisory until branch
-  protection requires that context (a settings action, not a code change).
+  full-scope `PASS` on the current head and `failure` for every other verdict. The
+  check is reconciled from all of the owner's live reviews of the head (the newest
+  full-scope review, plus any failure at or after it), so a scoped `PASS` (the
+  envelope's `scope:` line says `full` or `partial`) or a replayed older review never
+  shows success over a reported failure. A superseded head or a comment not posted by
+  the repository owner posts nothing. It is advisory until branch protection requires
+  that context (a settings action, not a code change).
 - No key / failed call / empty completion ⇒ "no review" (exit 2). Never a PASS.
 
 ## What it cannot do (so the owner knows what he is buying)
