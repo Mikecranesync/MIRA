@@ -1073,6 +1073,49 @@ def test_post_keeps_the_plain_verdict_when_the_head_held(tmp_path, monkeypatch):
     assert "verdict: PASS" in body and "STALE" not in body and "current_head" not in body
 
 
+def test_post_declares_full_scope_for_an_unscoped_run(tmp_path, monkeypatch):
+    """Codex F2 on #4221: the envelope says whether the whole head was reviewed."""
+    body = _post_body(tmp_path, monkeypatch, "c" * 40)
+    fields = body.split("```")[1].strip().splitlines()
+    assert "scope: full" in fields and not any(f.startswith("excluded_files:") for f in fields)
+
+
+def test_post_declares_partial_scope_when_paths_exclude_files(tmp_path, monkeypatch):
+    diff = (
+        "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n@@ -0,0 +1 @@\n+x\n"
+        "diff --git a/mira-bots/shared/engine.py b/mira-bots/shared/engine.py\n"
+        "--- a/mira-bots/shared/engine.py\n+++ b/mira-bots/shared/engine.py\n@@ -0,0 +1 @@\n+y\n"
+    )
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, diff, "## VERDICT\nPASS\n", usage)
+    posted = []
+    monkeypatch.setattr(
+        g7, "_gh_text", lambda args, stdin=None: posted.append((args, stdin)) or "https://x/1"
+    )
+    rc = g7.main(
+        [
+            "7",
+            "--paid",
+            "--post",
+            "--paths",
+            "docs/",
+            "--ledger",
+            str(tmp_path / "c.jsonl"),
+            "-o",
+            str(tmp_path / "r.md"),
+        ]
+    )
+    assert rc == 0 and len(posted) == 1
+    fields = posted[0][1].split("```")[1].strip().splitlines()
+    assert "scope: partial" in fields and "excluded_files: 1" in fields
+    assert "scope: full" not in fields
+
+
 def test_current_head_returns_empty_when_gh_fails(monkeypatch):
     def boom(args):
         raise subprocess.CalledProcessError(1, args)

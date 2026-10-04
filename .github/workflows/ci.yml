@@ -947,6 +947,12 @@ jobs:
         # The mechanical R2/R3 path floor behind the advisory "R2 Signal Floor" status.
         run: pytest tests/test_r2_signal_floor.py -q
 
+      - name: Cheap Review check-run tests (SDLC v1 step 6)
+        # tools/cheap_review_check.py + cheap-review-check.yml: owner-only envelope, current
+        # head only, PASS->success and every other verdict->failure; the workflow's decide
+        # and post steps are EXECUTED against a fake gh.
+        run: pytest tests/test_cheap_review_check.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
