@@ -179,3 +179,26 @@ def test_prod_scheduled_drift_isolates_database_secret_to_the_validator_process(
     assert 'NEON_DATABASE_URL="$URL"' in check
     assert "--database-url" not in check
     assert "trap" in check
+
+
+def test_cli_root_scans_the_given_checkout_not_the_validators_own_repo(tmp_path, monkeypatch):
+    """SDLC v1 §5.2: a trusted-base COPY of the validator must scan the CANDIDATE tree."""
+    (tmp_path / "mira-hub" / "db" / "migrations").mkdir(parents=True)
+    (tmp_path / "mira-core" / "mira-ingest" / "db" / "migrations").mkdir(parents=True)
+    (tmp_path / "mira-hub" / "db" / "migrations" / "999_only_in_candidate.sql").write_text(
+        "select 1;"
+    )
+
+    async def _applied(url: str) -> set[str]:
+        return set()
+
+    monkeypatch.setattr(drift, "_read_applied_migrations", _applied)
+    rc = drift.main(["--root", str(tmp_path), "--database-url", "postgres://x/y"])
+    assert rc == 1, "the candidate-only migration is drift against an empty ledger"
+    # Control: with the migration 'applied', the same root is clean.
+
+    async def _applied_all(url: str) -> set[str]:
+        return {"999_only_in_candidate.sql"}
+
+    monkeypatch.setattr(drift, "_read_applied_migrations", _applied_all)
+    assert drift.main(["--root", str(tmp_path), "--database-url", "postgres://x/y"]) == 0

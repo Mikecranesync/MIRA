@@ -11,6 +11,7 @@ downgrade exactly the reviews that matter most, and nothing else would notice.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,6 +35,16 @@ from gate7_review import (  # noqa: E402
     Review,
     verdict_of,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_diff_cap(monkeypatch):
+    """main() sets the module-global MAX_DIFF_CHARS for --paid / --diff-cap; one
+    test's cap must not leak into the next (it did: the free-lane truncation
+    test went red after any --paid main() test ran before it)."""
+    import gate7_review as _g7
+
+    monkeypatch.setattr(_g7, "MAX_DIFF_CHARS", _g7.MAX_DIFF_CHARS)
 
 
 # --- escalation: the doctrine's auto-xhigh list ----------------------------
@@ -730,3 +741,619 @@ def test_build_prompt_default_is_unchanged_for_a_code_round_one():
     prompt = build_prompt("t", "b", "diff", "high", [])
     assert "SETTLED FROM EARLIER ROUNDS" not in prompt
     assert "WHAT KIND OF CHANGE THIS IS" not in prompt
+
+
+# --- the <$0.10 lane: single-shot PAID review ------------------------------
+# Owner goal (Mike, 2026-10-03): a review that costs less than $0.10. Codex is
+# agentic and re-reads the repo (2.6M input tokens for a 246k-char diff); a
+# single-shot call costs diff tokens only. Model is chosen by a worst-case
+# estimate against the budget; cost is recorded from the API's usage field.
+
+import json  # noqa: E402
+
+import gate7_review as g7  # noqa: E402
+
+PRICES = {
+    "gpt-6.1-sol": {"input": 2.0, "cached_input": 0.1, "output": 10.0},
+    "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.5},
+    "gpt-6-luna": {"input": 0.1, "cached_input": 0.01, "output": 0.5},
+}
+
+
+def test_paid_estimate_is_worst_case_no_cache_full_output_cap():
+    # 30,000 chars ≈ 10,001 tokens in at 3 chars/token; the whole output cap out
+    est = g7.paid_estimate_usd("gpt-6.1-sol", 10_001, table=PRICES)  # an int: bounded tokens
+    cap = g7.PAID_MAX_OUTPUT_TOKENS
+    assert est == pytest.approx((10_001 * 2.0 + cap * 10.0) / 1e6, rel=1e-6)
+
+
+def test_pick_paid_model_steps_down_the_ladder_to_stay_under_budget():
+    assert g7.PAID_MAX_OUTPUT_TOKENS == 12_000  # the numbers below assume this cap
+    # ints are already-bounded TOKEN counts
+    assert g7.pick_paid_model(20_000, 0.20, table=PRICES) == "gpt-6.1-sol"  # ≈ $0.16
+    assert g7.pick_paid_model(20_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # sol out: $0.12 output
+    assert g7.pick_paid_model(50_000, 0.10, table=PRICES) == "gpt-5.4-mini"  # ≈ $0.09
+    assert g7.pick_paid_model(150_000, 0.10, table=PRICES) == "gpt-6-luna"  # mini ≈ $0.17
+    assert g7.pick_paid_model(6_000_000, 0.10, table=PRICES) is None  # luna ≈ $0.61
+    assert g7.PAID_LADDER[0] == "gpt-6.1-sol", "strongest model first"
+
+
+def test_paid_cost_counts_cached_input_at_the_cached_rate():
+    usage = {"input_tokens": 1_000_000, "cached_input_tokens": 400_000, "output_tokens": 10_000}
+    cost = g7.paid_cost_usd("gpt-5.4-mini", usage, table=PRICES)
+    assert cost == pytest.approx(600_000 * 0.75 / 1e6 + 400_000 * 0.075 / 1e6 + 10_000 * 4.5 / 1e6)
+
+
+class _Resp:
+    def __init__(self, body):
+        self._body = body
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._body
+
+
+def _fake_httpx(monkeypatch, body, calls):
+    import types
+
+    def post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "json": json, "auth": headers.get("Authorization", "")})
+        return _Resp(body)
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=post))
+
+
+def test_call_paid_sends_one_non_agentic_request_and_parses_usage(monkeypatch):
+    calls = []
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 12_000,
+            "prompt_tokens_details": {"cached_tokens": 2_000},
+            "completion_tokens": 900,
+            "completion_tokens_details": {"reasoning_tokens": 300},
+        },
+    }
+    _fake_httpx(monkeypatch, body, calls)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, provider, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text.startswith("## VERDICT") and "gpt-5.4-mini" in provider
+    assert len(calls) == 1 and calls[0]["url"] == g7.PAID_URL
+    assert calls[0]["auth"] == "Bearer sk-test"
+    sent = calls[0]["json"]
+    assert sent["model"] == "gpt-5.4-mini" and "tools" not in sent
+    assert sent["max_completion_tokens"] == g7.PAID_MAX_OUTPUT_TOKENS and "max_tokens" not in sent
+    assert usage == {
+        "input_tokens": 12_000,
+        "cached_input_tokens": 2_000,
+        "output_tokens": 900,
+        "reasoning_output_tokens": 300,
+    }
+
+
+def test_call_paid_without_a_key_or_with_an_empty_completion_is_no_review(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "OPENAI_API_KEY" in attempts[0]
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    _fake_httpx(
+        monkeypatch,
+        {"choices": [{"message": {"content": "  "}, "finish_reason": "stop"}], "usage": {}},
+        [],
+    )
+    text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "empty" in attempts[0]
+
+
+def _patch_main(monkeypatch, diff, paid_text, usage):
+    monkeypatch.setattr(g7, "fetch_pr", lambda n: ("t", "b", ["docs/a.md"], diff, "c" * 40))
+    # the post-time head re-read agrees with the fetch-time head unless a test says otherwise
+    monkeypatch.setattr(g7, "current_head", lambda n: "c" * 40)
+    seen = {}
+
+    def call_paid(prompt, model, **kw):
+        seen["model"], seen["prompt_len"] = model, len(prompt)
+        return paid_text, f"openai ({model}, single-shot)", ["openai: ok"], usage
+
+    monkeypatch.setattr(g7, "call_paid", call_paid)
+    monkeypatch.setattr(g7, "prices", lambda: PRICES)
+    monkeypatch.setattr(g7, "call_cascade", lambda *a, **k: pytest.fail("free cascade used"))
+    return seen
+
+
+def test_main_paid_picks_by_budget_records_cost_and_receipts(tmp_path, monkeypatch):
+    diff = "+" + "x" * 30_000 + "\n"  # ≤ ~35k bounded tokens: mini ≈ $0.08 worst case; sol ≈ $0.19
+    usage = {
+        "input_tokens": 16_000,
+        "cached_input_tokens": 0,
+        "output_tokens": 800,
+        "reasoning_output_tokens": 200,
+    }
+    seen = _patch_main(monkeypatch, diff, "## VERDICT\nPASS\n", usage)
+    ledger, out = tmp_path / "costs.jsonl", tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--budget-usd", "0.10", "--ledger", str(ledger), "-o", str(out)])
+    assert rc == 0 and seen["model"] == "gpt-5.4-mini"
+    assert seen["prompt_len"] > 30_000, "the whole diff was sent, not a 40k free-lane fragment"
+    report = out.read_text()
+    assert "**Verdict:** PASS" in report and "single-shot" in report
+    expected = (16_000 * 0.75 + 800 * 4.5) / 1e6
+    assert f"cost ${expected:.4f}" in report
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["kind"] == "run" and row["lane"] == "single-shot" and row["pr"] == 7
+    assert row["model"] == "gpt-5.4-mini" and row["cost_usd"] == pytest.approx(expected)
+    assert row["verdict"] == "PASS"
+    assert row["launched"] is True and row["usage_unknown"] is False
+    assert row["cost_usd"] < 0.10
+
+
+def test_main_paid_refuses_when_no_model_fits_the_budget_and_spends_nothing(tmp_path, monkeypatch):
+    seen = _patch_main(monkeypatch, "+" + "x" * 60_000, "## VERDICT\nPASS\n", {})
+    ledger = tmp_path / "costs.jsonl"
+    rc = g7.main(["7", "--paid", "--budget-usd", "0.001", "--ledger", str(ledger)])
+    assert rc == 3 and not seen and not ledger.exists()
+
+
+def test_main_paid_with_no_review_is_exit_2_never_pass(tmp_path, monkeypatch, capsys):
+    _patch_main(monkeypatch, "+x\n", None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai: HTTPStatusError — 429"], {})
+    )
+    rc = g7.main(["7", "--paid", "--ledger", str(tmp_path / "c.jsonl")])
+    assert rc == 2 and "PASS" not in capsys.readouterr().out
+
+
+def test_the_real_price_table_exists_and_prices_every_ladder_model():
+    """Tests above stub prices(); this one reads the committed file, so a missing
+    or incomplete table fails here instead of at the first live run."""
+    table = g7.prices()
+    for model in g7.PAID_LADDER:
+        assert {"input", "cached_input", "output"} <= set(table[model]), model
+
+
+def test_main_paid_records_the_spend_of_an_empty_completion(tmp_path, monkeypatch):
+    """A failed call still billed its reasoning tokens: never an unproven zero."""
+    usage = {
+        "input_tokens": 20_000,
+        "cached_input_tokens": 0,
+        "output_tokens": 12_000,
+        "reasoning_output_tokens": 12_000,
+    }
+    _patch_main(monkeypatch, "+" + "x" * 20_000, None, usage)
+    ledger = tmp_path / "costs.jsonl"
+    rc = g7.main(["7", "--paid", "--ledger", str(ledger)])
+    assert rc == 2
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["verdict"] == "none" and row["launched"] is True
+    assert row["cost_usd"] == pytest.approx(g7.paid_cost_usd(row["model"], usage, PRICES))
+
+
+def test_a_success_writes_exactly_one_row_with_the_final_verdict_never_pending(
+    tmp_path, monkeypatch
+):
+    """Found by the lane reviewing #4203: append-then-stamp left a window where a
+    crash kept a row at verdict "pending". The verdict is parsed first and the
+    row is written once; there is no stamp step."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nBLOCK\n- **[severity: high] t** — d\n", usage)
+    ledger = tmp_path / "c.jsonl"
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 0
+    rows = [json.loads(ln) for ln in ledger.read_text().splitlines()]
+    assert len(rows) == 1 and rows[0]["verdict"] == "BLOCK" and len(rows[0]["run_id"]) == 32
+    assert not hasattr(g7, "_stamp_verdict")
+
+
+def test_a_launched_call_that_returns_no_usage_is_charged_its_estimate(tmp_path, monkeypatch):
+    """A timeout or 5xx after launch bills unknown tokens: never an unrecorded zero."""
+    _patch_main(monkeypatch, "+" + "x" * 4000, None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai (gpt-5.4-mini): ReadTimeout — x"], {})
+    )
+    ledger = tmp_path / "c.jsonl"
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 2
+    row = json.loads(ledger.read_text().splitlines()[-1])
+    assert row["launched"] is True and row["usage_unknown"] is True
+    assert row["cost_usd"] == row["estimate_usd"] > 0 and row["verdict"] == "none"
+
+
+def test_a_call_skipped_for_a_missing_key_writes_no_row(tmp_path, monkeypatch):
+    _patch_main(monkeypatch, "+x\n", None, {})
+    monkeypatch.setattr(
+        g7, "call_paid", lambda *a, **k: (None, "", ["openai: skipped (no OPENAI_API_KEY)"], {})
+    )
+    ledger = tmp_path / "c.jsonl"
+    assert g7.main(["7", "--paid", "--ledger", str(ledger)]) == 2 and not ledger.exists()
+
+
+def test_an_unwritable_ledger_does_not_lose_a_paid_review(tmp_path, monkeypatch, capsys):
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    bad = tmp_path / "file-not-dir"
+    bad.write_text("x")  # a ledger path whose parent is a file: mkdir/open fails
+    out = tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--ledger", str(bad / "c.jsonl"), "-o", str(out)])
+    assert rc == 0 and "**Verdict:** PASS" in out.read_text()
+    assert "LEDGER WRITE FAILED" in capsys.readouterr().err
+
+
+def test_post_puts_the_verdict_cost_and_head_on_the_pr_thread(tmp_path, monkeypatch):
+    """GitHub is the durable store: with --post the rendered report goes to the PR
+    as one comment headed [CHEAP-REVIEW] with head, verdict and measured cost."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    posted = []
+    monkeypatch.setattr(
+        g7, "_gh_text", lambda args, stdin=None: posted.append((args, stdin)) or "https://x/1"
+    )
+    rc = g7.main(
+        [
+            "7",
+            "--paid",
+            "--post",
+            "--ledger",
+            str(tmp_path / "c.jsonl"),
+            "-o",
+            str(tmp_path / "r.md"),
+        ]
+    )
+    assert rc == 0 and len(posted) == 1
+    args, body = posted[0]
+    assert args[:3] == ["pr", "comment", "7"] and "--body-file" in args
+    assert body.startswith("[CHEAP-REVIEW]") and "verdict: PASS" in body
+    assert "head: " + "c" * 40 in body and "cost_usd: 0.0" in body
+    # the comment carries the EXACT rendered report, byte for byte, after the header
+    assert body.endswith((tmp_path / "r.md").read_text())
+
+
+def _post_body(tmp_path, monkeypatch, live_head):
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+    monkeypatch.setattr(g7, "current_head", lambda n: live_head)
+    posted = []
+    monkeypatch.setattr(
+        g7, "_gh_text", lambda args, stdin=None: posted.append((args, stdin)) or "https://x/1"
+    )
+    rc = g7.main(
+        [
+            "7",
+            "--paid",
+            "--post",
+            "--ledger",
+            str(tmp_path / "c.jsonl"),
+            "-o",
+            str(tmp_path / "r.md"),
+        ]
+    )
+    assert rc == 0 and len(posted) == 1
+    return posted[0][1]
+
+
+def test_post_rereads_the_head_and_marks_a_moved_head_stale(tmp_path, monkeypatch):
+    """SDLC v1 §4.2 / Part B step 6: the head is fetched once with the diff; a push
+    during the review would otherwise be stamped with a verdict for bytes nobody can
+    see any more. The envelope must say STALE, keep the reviewed verdict on its own
+    line, and name both SHAs so the merger can see exactly what drifted."""
+    body = _post_body(tmp_path, monkeypatch, "d" * 40)
+    head, envelope = body.split("```")[1].strip().splitlines(), body
+    assert "\nverdict: STALE\n" in envelope and "\nverdict: PASS\n" not in envelope
+    assert "reviewed_verdict: PASS" in envelope
+    assert "head: " + "c" * 40 in envelope and "current_head: " + "d" * 40 in envelope
+    assert head[0] == "head: " + "c" * 40 and head[1] == "verdict: STALE"
+
+
+def test_post_treats_a_failed_head_reread_as_stale_not_as_held(tmp_path, monkeypatch):
+    """A re-read that fails is not evidence the head held — fail closed."""
+    body = _post_body(tmp_path, monkeypatch, "")
+    assert "verdict: STALE" in body and "current_head: unknown (re-read failed)" in body
+
+
+def test_post_keeps_the_plain_verdict_when_the_head_held(tmp_path, monkeypatch):
+    body = _post_body(tmp_path, monkeypatch, "c" * 40)
+    assert "verdict: PASS" in body and "STALE" not in body and "current_head" not in body
+
+
+def test_current_head_returns_empty_when_gh_fails(monkeypatch):
+    def boom(args):
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(g7, "_gh_json", boom)
+    assert g7.current_head(7) == ""
+
+
+def test_post_without_paid_is_refused(monkeypatch):
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", {})
+    with pytest.raises(SystemExit):
+        g7.main(["7", "--post"])
+
+
+def test_the_brief_declares_the_redaction_placeholders():
+    """Three reviews tonight reported `[SECRET](PAID_ENV, "")` / `"[IP]"` as defects —
+    the harness's own redaction. The brief now names the placeholders as such."""
+    prompt = build_prompt("t", "b", "+x = os.environ.get('K')\n", "high", [])
+    assert "[SECRET], [IP], [MAC] and [SN]" in prompt
+    assert prompt.index("placeholder is never a defect") < prompt.index("BEGIN UNTRUSTED PR DATA")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '    key = os.environ.get(PAID_ENV, "")',
+        "token = settings.get_token()",
+        "api_key = config.openai_api_key",
+    ],
+)
+def test_an_identifier_or_call_assigned_to_a_key_name_is_code_not_a_secret(line):
+    """Five single-shot reviews reported `[SECRET](PAID_ENV, "")` as a broken env
+    lookup: the KEY=value rule redacted a dotted identifier / call as if it were
+    an opaque literal. A value that runs into `(` or more identifier chars is code."""
+    assert redact(line) == line
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('api_key = "sk-abcdefghijklmnopqrstuvwxyz"', 'api_key = "[SECRET]"'),
+        ("token: ghp_abcdefghijklmnop1234", "token: [SECRET]"),
+        ("SECRET=AbCdEfGhIjKlMnOpQrSt", "SECRET=[SECRET]"),
+    ],
+)
+def test_opaque_literal_values_are_still_redacted(line, expected):
+    assert redact(line) == expected
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("PASSWORD=my.dog.name.secret", "PASSWORD=[SECRET]"),  # ≥12 chars: the rule's floor
+        ("api_key=abc.def.ghi.jkl", "api_key=[SECRET]"),
+        ("token = Ab1.Cd2.Ef3.Gh4", "token = [SECRET]"),
+    ],
+)
+def test_a_dotted_value_that_is_not_rooted_in_code_is_still_redacted(line, expected):
+    """The lane's review of d1c293a56: exempting every dotted name let a secret
+    shaped like one leak. Only a call, or a path rooted in a known code object
+    (os., self., settings., config., …), is treated as code."""
+    assert redact(line) == expected
+
+
+# --- Codex round 1 on #4203 (F1–F4) + the paid-lane cutoff guard --------------
+
+
+def test_f1_a_quoted_literal_is_never_exempted_as_code():
+    """Codex F1: the code-root exemption also exempted QUOTED values. A string
+    literal is a literal whatever it spells."""
+    assert redact('api_key = "os.environ.secret.value"') == 'api_key = "[SECRET]"'
+    assert redact("token = 'settings.prod.token'") == "token = '[SECRET]'"
+    assert redact("api_key = config.openai_api_key") == "api_key = config.openai_api_key"
+
+
+def test_f2_a_length_truncated_completion_is_no_review_never_pass(monkeypatch):
+    """Codex F2: the output cap can cut a report after '## VERDICT PASS' and before
+    its findings; finish_reason=length means the review is incomplete."""
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 12000},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "length" in attempts[0]
+    assert usage["output_tokens"] == 12000  # still billed, still recorded
+
+
+def test_f3_the_worst_case_estimate_is_a_bound_not_an_average():
+    """Codex F3: 4 chars/token is not a bound — #4202's diff measured 3.25."""
+    text = "x" * 30_000
+    assert g7.prompt_token_bound(text) >= 30_000 or g7._TOKENIZER is not None
+
+
+def test_f4_a_missing_fcntl_does_not_lose_the_ledger_row(tmp_path, monkeypatch):
+    """Codex F4: `import fcntl` fails on Windows and the paid review was lost."""
+    monkeypatch.setitem(sys.modules, "fcntl", None)  # ImportError on import
+    ledger = tmp_path / "c.jsonl"
+    g7.record_paid_run(ledger, {"kind": "run", "lane": "single-shot", "cost_usd": 0.01})
+    assert json.loads(ledger.read_text())["cost_usd"] == 0.01
+
+
+def test_f4_any_ledger_failure_is_loud_not_fatal(capsys):
+    def boom(*a):
+        raise RuntimeError("disk on fire")
+
+    g7._ledger_safely(boom, "x")
+    assert "LEDGER WRITE FAILED" in capsys.readouterr().err
+
+
+def test_the_paid_lane_refuses_an_oversized_diff_instead_of_truncating(tmp_path, monkeypatch):
+    """The cutoff guard: the paid lane never sends a fragment. Over the cap it
+    refuses with exit 4, names the largest files, spends nothing."""
+    big = "".join(f"+++ b/f{i}.py\n" + "+x\n" * 50_000 for i in range(3))  # ~300k chars
+    seen = _patch_main(monkeypatch, big, "## VERDICT\nPASS\n", {})
+    monkeypatch.setattr(
+        g7, "MAX_DIFF_CHARS", g7.MAX_DIFF_CHARS
+    )  # --diff-cap sets the module global
+    ledger = tmp_path / "c.jsonl"
+    rc = g7.main(["7", "--paid", "--diff-cap", "100000", "--ledger", str(ledger)])
+    assert rc == 4 and not seen and not ledger.exists()
+
+
+def test_the_free_lane_still_truncates_with_the_notice():
+    p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS + 5000), "high", [])
+    assert "TRUNCATION NOTICE" in p
+
+
+# --- Codex round 2 on #4203 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('PASSWORD="abcdefghijklmno("', 'PASSWORD="[SECRET]"'),
+        ("PASSWORD='abcdefghijklmno('", "PASSWORD='[SECRET]'"),
+        ('api_key = "abc(def)ghijklmnop"', 'api_key = "[SECRET]"'),
+    ],
+)
+def test_r2_f1_a_quoted_literal_is_redacted_whatever_it_contains(line, expected):
+    """Codex r2 F1: the call-expression exemption (a value followed by `(`) let a
+    QUOTED password containing a parenthesis through. Quoted = literal = redacted."""
+    assert redact(line) == expected
+
+
+def test_r2_f1_an_unquoted_rooted_call_is_still_code():
+    assert redact('key = os.environ.get(PAID_ENV, "")') == 'key = os.environ.get(PAID_ENV, "")'
+    assert redact("token = settings.get_token()") == "token = settings.get_token()"
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("api_key=abcdefghijklmnop(", "api_key=[SECRET]("),
+        ("api_key = get_secret_value(PAID_ENV)", "api_key = [SECRET](PAID_ENV)"),
+        ("PASSWORD=abcdefghijklmnop_extra", "PASSWORD=[SECRET]"),
+    ],
+)
+def test_an_unquoted_value_followed_by_a_paren_is_code_only_when_rooted(line, expected):
+    """Cheap gate on 777b54432: an unquoted 16-char token followed by `(` was
+    exempted as a call. Only a known-root attribute path is code; a bare call
+    is redacted — over-redaction on the safe side of a security boundary."""
+    assert redact(line) == expected
+
+
+@pytest.mark.parametrize("reason", ["content_filter", "tool_calls", "function_call", "weird"])
+def test_r2_f2_any_termination_other_than_stop_is_no_review(monkeypatch, reason):
+    """Codex r2 F2: content_filter after 'PASS' + half a finding parsed as PASS."""
+    body = {
+        "choices": [
+            {
+                "message": {"content": "## VERDICT\nPASS\n\n## FINDINGS\n- **[severity: high] Ten"},
+                "finish_reason": reason,
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and reason in attempts[0] and usage["output_tokens"] == 20
+
+
+def test_r2_f2_a_stop_termination_is_a_review(monkeypatch):
+    body = {
+        "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": "stop"}],
+        "usage": {},
+    }
+    _fake_httpx(monkeypatch, body, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert g7.call_paid("PROMPT", "gpt-5.4-mini")[0] is not None
+
+
+def test_r2_f3_the_token_bound_is_a_tokenizer_count_with_margin_or_bytes():
+    """Codex r2 F3: a chars/token average is not a bound. tokens are counted with
+    the model family's tokenizer and a margin when available; otherwise every
+    byte is a token (a true upper bound, since a token is at least one byte)."""
+    ascii_diff = "+x = 1\n" * 2000
+    unicode_diff = "+日本語の変更です\n" * 500
+    for text in (ascii_diff, unicode_diff):
+        bound = g7.prompt_token_bound(text)
+        assert bound >= len(text.encode("utf-8")) or g7._TOKENIZER is not None
+        assert bound > 0
+    # the bound never drops below what the tokenizer counts
+    if g7._TOKENIZER is not None:
+        assert g7.prompt_token_bound(unicode_diff) >= len(g7._TOKENIZER.encode(unicode_diff))
+
+
+def test_r2_f3_estimate_uses_the_bound_not_a_char_average():
+    text = "+日本語の変更です\n" * 500  # far more tokens than len/3
+    est_bound = g7.paid_estimate_usd("gpt-5.4-mini", text, table=PRICES)
+    naive = (len(text) // 3 + 1) * 0.75 / 1e6 + g7.PAID_MAX_OUTPUT_TOKENS * 4.5 / 1e6
+    assert est_bound > naive
+
+
+def test_post_failure_is_loud_but_the_review_survives(tmp_path, monkeypatch, capsys):
+    """Cheap-gate finding on 3aa6b0b74: a transient gh failure after a paid review
+    raised out of main(). The report is already on disk; say so and exit 0."""
+    usage = {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+    }
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", usage)
+
+    def boom(args, stdin=None):
+        raise subprocess.CalledProcessError(1, ["gh"], stderr="rate limited")
+
+    monkeypatch.setattr(g7, "_gh_text", boom)
+    out = tmp_path / "r.md"
+    rc = g7.main(["7", "--paid", "--post", "--ledger", str(tmp_path / "c.jsonl"), "-o", str(out)])
+    assert rc == 0 and "**Verdict:** PASS" in out.read_text()
+    assert "POST FAILED" in capsys.readouterr().err
+
+
+# --- Codex round 3 on #4203 ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ('PASSWORD="abcdefghij\'klmnop"', 'PASSWORD="[SECRET]"'),
+        ("PASSWORD='abcdefghij\"klmnop'", "PASSWORD='[SECRET]'"),
+    ],
+)
+def test_r3_f1_the_opposite_quote_inside_a_quoted_literal_is_still_redacted(line, expected):
+    """Codex r3 F1: the quoted branch excluded BOTH quote characters, so a value
+    containing the other one fell to the unquoted branch and was too short."""
+    assert redact(line) == expected
+
+
+def test_r3_f2_a_missing_finish_reason_is_not_a_clean_stop(monkeypatch):
+    """Codex r3 F2 + the cheap gate: a response with no finish_reason was accepted.
+    Only an explicit 'stop' is complete."""
+    for body in (
+        {"choices": [{"message": {"content": "## VERDICT\nPASS\n"}}], "usage": {}},
+        {
+            "choices": [{"message": {"content": "## VERDICT\nPASS\n"}, "finish_reason": None}],
+            "usage": {},
+        },
+    ):
+        _fake_httpx(monkeypatch, body, [])
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        text, _p, attempts, _u = g7.call_paid("PROMPT", "gpt-5.4-mini")
+        assert text is None and "finish_reason=None" in attempts[0]
+
+
+def test_a_malformed_successful_response_is_no_review_with_usage_unknown(monkeypatch):
+    """Cheap gate on f570862b5: a 200 whose body has `choices` as a string raised
+    TypeError out of call_paid before main() could record the launched spend."""
+    _fake_httpx(monkeypatch, {"choices": "oops", "usage": {"prompt_tokens": 5}}, [])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    text, _p, attempts, usage = g7.call_paid("PROMPT", "gpt-5.4-mini")
+    assert text is None and "malformed" in attempts[0] and usage == {}
+
+
+@pytest.mark.parametrize("bad", ["inf", "nan", "-1", "0"])
+def test_a_non_finite_or_non_positive_budget_is_refused(bad, monkeypatch):
+    """Cheap gate on ff0e32523: `--budget-usd inf` made every estimate fit."""
+    _patch_main(monkeypatch, "+x\n", "## VERDICT\nPASS\n", {})
+    with pytest.raises(SystemExit):
+        g7.main(["7", "--paid", "--budget-usd", bad])

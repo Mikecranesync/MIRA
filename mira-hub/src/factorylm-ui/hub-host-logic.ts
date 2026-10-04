@@ -335,7 +335,10 @@ export function newThreadId(random: () => string = () => globalThis.crypto.rando
  *  effects — the same seams `hub-host.tsx` already owns (`loadDetail`, the
  *  manual-search driver's `seed`, and a read of the LATEST selection). */
 export interface ConfirmIdentityEffects {
-  readonly loadDetail: (sel: HubSelection) => Promise<void> | void;
+  /** Resolves `true` when the refreshed detail was applied, `false` when it
+   *  was not (HTTP error, no data). A newer load superseding this one counts
+   *  as applied: it started after the identity write, so it carries it. */
+  readonly loadDetail: (sel: HubSelection) => Promise<boolean | void> | boolean | void;
   readonly seedDriver: (notebookId: string, status: ManualSearchStatus) => void;
   /** The CURRENT selection, read fresh — never the one captured when the
    *  confirm request was made. */
@@ -353,22 +356,45 @@ export interface ConfirmIdentityEffects {
  * the await to decide what to `loadDetail`/seed — so a technician who
  * confirmed on notebook A, then navigated to notebook B before A's response
  * arrived, had A's manufacturer/model/generation silently seeded onto B's
- * follower (and B's detail re-fetched under A's identity). The fix: bind
- * completion to `requestedNotebookId` (the notebook THIS confirm was
- * actually for), and discard both side effects — never partially apply one
- * — when the CURRENT selection no longer matches it. Returning to A later
- * is unaffected: it hydrates from its own fresh `loadDetail`/GET, never from
- * this discarded completion.
+ * follower (and B's detail re-fetched under A's identity, #4219 Codex r2/r3
+ * F1 narrow this further — see below). The fix: bind completion to
+ * `requestedNotebookId` (the notebook THIS confirm was actually for), and
+ * discard both side effects — never partially apply one — when the CURRENT
+ * selection no longer matches it. Returning to A later is unaffected: it
+ * hydrates from its own fresh `loadDetail`/GET, never from this discarded
+ * completion.
  */
 export async function applyConfirmIdentityResult(
   requestedNotebookId: string,
   proposal: { readonly manufacturer: string; readonly model: string },
   data: { readonly searching: boolean; readonly startedAt?: string },
   effects: ConfirmIdentityEffects,
-): Promise<void> {
+): Promise<"refreshed" | "failed" | "skipped"> {
   const sel = effects.currentSelection();
-  if (!sel || sel.notebookId !== requestedNotebookId) return;
-  void effects.loadDetail(sel);
+  if (!sel || sel.notebookId !== requestedNotebookId) return "skipped";
+  // #4219 Codex F1: wait for the refresh, so the card shows "ready" only once
+  // the promoted manual is in the host's source scope; a send in between
+  // would otherwise go out with the old (possibly empty) sourceDocIds. The
+  // identity write already succeeded, so a failed refresh is logged, not
+  // reported as a failed confirmation; the next detail load picks it up.
+  // #4219 Codex r2 F1: report whether the refresh applied, so the caller can
+  // stop claiming the manual is ready when the scope never caught up.
+  let applied: boolean;
+  try {
+    applied = (await effects.loadDetail(sel)) !== false;
+  } catch (err) {
+    console.error("[hub-host] detail refresh after confirm failed:", err instanceof Error ? err.message : err);
+    applied = false;
+  }
+  // #4219 Codex r3 F1: if the technician left this notebook while the
+  // refresh ran, its outcome no longer describes what they are looking at.
+  if (effects.currentSelection()?.notebookId !== requestedNotebookId) return "skipped";
+  const outcome = applied ? "refreshed" : "failed";
+  // #4195 round 2/3 F4: a confirm that STARTED a search is followed the same
+  // way hydration is (F6) — seed the SAME driver, no second timer. Seeded on
+  // BOTH "refreshed" and "failed" (the search itself is a server-side fact
+  // independent of whether this particular scope refresh landed) — never on
+  // "skipped", since the technician has already left this notebook.
   if (data.searching) {
     effects.seedDriver(requestedNotebookId, {
       manufacturer: proposal.manufacturer,
@@ -377,4 +403,28 @@ export async function applyConfirmIdentityResult(
       ...(data.startedAt ? { startedAt: data.startedAt } : {}),
     });
   }
+  return outcome;
+}
+
+/**
+ * #4219 Codex r3 F1 — detail loads supersede each other (a newer load aborts
+ * the older one). A superseded load must not report success just because it
+ * was cancelled: it reports the outcome of the load that REPLACED it, so a
+ * confirm whose refresh was superseded by a failing load still learns that
+ * the scope never caught up. `run` receives `follow()`, which a superseded
+ * load returns instead of its own result.
+ */
+export function createLatestLoadTracker(): {
+  start(run: (follow: () => Promise<boolean>) => Promise<boolean>): Promise<boolean>;
+} {
+  let latest: Promise<boolean> | null = null;
+  return {
+    start(run) {
+      let self: Promise<boolean> | null = null;
+      const follow = (): Promise<boolean> => (latest && latest !== self ? latest : Promise.resolve(false));
+      self = run(follow);
+      latest = self;
+      return self;
+    },
+  };
 }

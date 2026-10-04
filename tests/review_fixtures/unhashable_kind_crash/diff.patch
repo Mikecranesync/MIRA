@@ -1,0 +1,11 @@
+--- a/tools/qa/schema.py
++++ b/tools/qa/schema.py
+@@ -1,4 +1,4 @@
+-kind = raw.get("kind")
+-kind_known = kind if isinstance(kind, str) and kind in VALID_KINDS else None
+-if kind_known is None:
+-    errors.append(f"kind: invalid or missing (got {kind!r})")
++kind = raw.get("kind")
++kind_known = kind if kind in VALID_KINDS else None
++if kind_known is None:
++    errors.append(f"kind: invalid or missing (got {kind!r})")

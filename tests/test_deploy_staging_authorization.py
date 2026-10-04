@@ -23,6 +23,11 @@ import yaml
 _ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOW_PATH = _ROOT / ".github" / "workflows" / "deploy-staging.yml"
 _MAIN_SHA = "a" * 40
+# A commit that EXISTS in the repository but is not reachable from main (an
+# unmerged PR-branch head). SDLC v1 §5.2 / step 4: it must never be staged.
+_UNMERGED_SHA = "c" * 40
+# A commit that exists and is on main, but whose ancestry lookup errors out.
+_API_ERROR_SHA = "d" * 40
 
 
 def _workflow() -> dict:
@@ -59,15 +64,27 @@ def _run_authorizer(
     gh.write_text(
         "#!/bin/sh\n"
         f'VALID_SHA="{_MAIN_SHA}"\n'
+        f'UNMERGED_SHA="{_UNMERGED_SHA}"\n'
+        f'API_ERROR_SHA="{_API_ERROR_SHA}"\n'
         'test "$#" -eq 4 || exit 90\n'
         'test "$1" = api || exit 91\n'
         'test "$3" = --jq || exit 93\n'
-        'test "$4" = .sha || exit 94\n'
-        'if [ "$2" = "repos/Mikecranesync/MIRA/commits/$VALID_SHA" ]; then\n'
-        '  printf "%s\\n" "$VALID_SHA"\n'
-        "else\n"
-        "  exit 22\n"
-        "fi\n",
+        'case "$4" in\n'
+        "  .sha)\n"
+        '    case "$2" in\n'
+        '      "repos/Mikecranesync/MIRA/commits/$VALID_SHA") printf "%s\\n" "$VALID_SHA" ;;\n'
+        '      "repos/Mikecranesync/MIRA/commits/$UNMERGED_SHA") printf "%s\\n" "$UNMERGED_SHA" ;;\n'
+        '      "repos/Mikecranesync/MIRA/commits/$API_ERROR_SHA") printf "%s\\n" "$API_ERROR_SHA" ;;\n'
+        "      *) exit 22 ;;\n"
+        "    esac ;;\n"
+        "  .status)\n"
+        '    case "$2" in\n'
+        '      "repos/Mikecranesync/MIRA/compare/main...$VALID_SHA") printf "behind\\n" ;;\n'
+        '      "repos/Mikecranesync/MIRA/compare/main...$UNMERGED_SHA") printf "diverged\\n" ;;\n'
+        "      *) exit 22 ;;\n"
+        "    esac ;;\n"
+        "  *) exit 94 ;;\n"
+        "esac\n",
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -128,6 +145,11 @@ def test_authorizer_accepts_approved_rc_sha_and_emits_only_validated_values(tmp_
         ({"controller_ref": "refs/heads/release/test"}, "non-main controller"),
         ({"approved_rc_sha": "A" * 40}, "non-lowercase target SHA"),
         ({"approved_rc_sha": "b" * 40}, "SHA not present in the repository"),
+        (
+            {"approved_rc_sha": _UNMERGED_SHA},
+            "SHA present but not reachable from main (SDLC v1 §5.2)",
+        ),
+        ({"approved_rc_sha": _API_ERROR_SHA}, "ancestry lookup failed — must fail closed"),
         ({"approved_rc_sha": "a" * 39}, "39-char SHA"),
         ({"approved_rc_sha": ""}, "empty approved_rc_sha"),
         ({"services": "mira-hub; id"}, "shell metacharacter in services"),
@@ -145,6 +167,18 @@ def test_authorizer_rejects_untrusted_or_ambiguous_inputs(
     """Invalid source or deploy parameters must stop before environment access."""
     result = _run_authorizer(tmp_path, **overrides)
     assert result.returncode != 0, f"authorizer accepted {description}"
+
+
+def test_authorizer_names_the_ancestry_failure(tmp_path):
+    """SDLC v1 §5.2: a commit that exists but is not on main is refused, and the
+    reason says so (an operator must not mistake it for 'SHA not present')."""
+    result = _run_authorizer(tmp_path, approved_rc_sha=_UNMERGED_SHA)
+    assert result.returncode != 0
+    assert "not on main" in result.stdout + result.stderr
+    assert "diverged" in result.stdout + result.stderr
+    result = _run_authorizer(tmp_path, approved_rc_sha=_API_ERROR_SHA)
+    assert result.returncode != 0
+    assert "api error" in result.stdout + result.stderr
 
 
 def test_authorization_job_is_secret_free_and_owns_downstream_values():

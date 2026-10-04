@@ -325,7 +325,8 @@ fi
 #    see CLAUDE.md "Verify Subagent Output"). Warn-only here so a concurrent
 #    branch flip in the shared working tree can't turn this into the kind of
 #    Stop-hook thrash session-discipline.md already flags — the PR-diff CI
-#    step (code-review.yml) is the blocking backstop. Does NOT catch
+#    step (code-review.yml) re-runs it but is comment-only, NOT blocking
+#    (SDLC v1 drift D19); a reviewer must read it. Does NOT catch
 #    non-import fabrication (invented enum/state strings) — see the script's
 #    docstring for the full scope statement.
 # ------------------------------------------------------------------

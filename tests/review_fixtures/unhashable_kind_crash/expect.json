@@ -1,0 +1,15 @@
+{
+ "planted": "kind if kind in VALID_KINDS else None",
+ "keywords_any": [
+  "unhashable",
+  "typeerror",
+  "list",
+  "dict",
+  "isinstance",
+  "type check",
+  "crash",
+  "hashable"
+ ],
+ "min_severity": "medium",
+ "provenance": "#4182 cheap lane 2026-10-03 (dd006072f): kind: [] raises TypeError out of validation"
+}

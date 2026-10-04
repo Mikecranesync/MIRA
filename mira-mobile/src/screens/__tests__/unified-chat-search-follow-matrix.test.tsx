@@ -425,3 +425,77 @@ describe("F27 (Codex r12): within ONE generation, an older read never overwrites
   });
 });
 
+describe("F28 (Codex round 13): a cached same-generation live frame never discards a settled, newer-dispatched GET result", () => {
+  it("the mount probe's deferred READY response settles correctly even though a cached running live frame for the SAME generation arrived while it was in flight", async () => {
+    vi.useFakeTimers();
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    // The mount probe is dispatched with NOTHING tracked yet (no live frame present at mount).
+    const view = render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Searching/)).toBeNull();
+
+    // A cached live frame arrives reporting the SAME generation (gen-1) the
+    // in-flight probe will eventually resolve to — e.g. a parent rerender
+    // delivering `liveTurns` for the first time shortly after mount.
+    view.rerender(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // Any poll this generation's own tick chain fires before the mount
+    // probe settles must come back null — proving the eventual READY below
+    // is not masked by some OTHER, later successful read.
+    fetchManualSearchStatus.mockResolvedValue(null);
+
+    // The mount probe's deferred response finally arrives: SETTLED and
+    // READY, for the SAME generation (gen-1) the cached live frame reported.
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+
+    // The ready state is shown, not discarded in favor of "Still searching".
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+    expect(screen.queryByText(/Still searching — check back in a minute\./)).toBeNull();
+
+    // Polling stopped (settled, not following) — no further reads even if time passes.
+    const callsAtReady = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtReady);
+
+    // Promoted-scope refresh fired (the manual may now be citable) — the
+    // ONLY call site for getNotebookDetail in this component is
+    // refreshPromotedScope, reached via the driver's onRefreshSources.
+    expect(getNotebookDetail).toHaveBeenCalled();
+  });
+
+  // Control (F23, restated locally): a live frame reporting a GENUINELY
+  // DIFFERENT generation than nothing-tracked-yet must still supersede an
+  // in-flight probe for the old context — this file's existing F23 cases
+  // cover the fuller interleavings; this is the minimal same-shape control
+  // for this describe block, proving the F28 fix did not weaken F23.
+  it("control: a live frame reporting a DIFFERENT generation still supersedes an in-flight probe for the old context", async () => {
+    vi.useFakeTimers();
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    // A DIFFERENT generation (Rockwell, gen-2) goes live while the probe above is still in flight.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The old probe (for nothing/gen-1) finally resolves — it must NOT win over gen-2.
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+  });
+});
+

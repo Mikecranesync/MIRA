@@ -4,6 +4,7 @@ import type { HubNotebook } from "./notebook-tree";
 import { createManualSearchDriver } from "./manual-search-driver";
 import {
   applyConfirmIdentityResult,
+  createLatestLoadTracker,
   homeSendPlan,
   isUnboundNotebook,
   landingSelection,
@@ -404,6 +405,10 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
+  const NO_SEARCH = { searching: false } as const;
+  const DUMMY_PROPOSAL = { manufacturer: "SMC", model: "SS5Y3-DUW01302" } as const;
+  const noopSeed = () => {};
+
   it("the technician having moved to B before the POST resolves: A's confirm seeds NOTHING and refreshes NOTHING", async () => {
     const loadDetail = vi.fn(async () => undefined);
     const fetchStatus = vi.fn(async () => null); // the driver's own GET seam — never reached
@@ -474,5 +479,119 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
     driver.seed(A.notebookId, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a-2" });
     expect(driver.current()?.phase).toBe("following");
     expect(driver.current()?.key).toBe("nb-a|gen-a-2"); // A's SECOND, independent generation — not gen-a
+  });
+
+  it("#4219 Codex F1: does not resolve until A's detail refresh has finished, so the ready outcome is never shown on stale sources", async () => {
+    let finishRefresh!: () => void;
+    const loadDetail = vi.fn(() => new Promise<void>((r) => { finishRefresh = r; }));
+    let settled = false;
+    const done = applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail, seedDriver: noopSeed, currentSelection: () => A }).then(() => { settled = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(loadDetail).toHaveBeenCalledWith(A);
+    expect(settled).toBe(false);
+    finishRefresh();
+    await done;
+    expect(settled).toBe(true);
+  });
+
+  it("#4219 Codex F1: a failed refresh does not turn the already-saved confirmation into a failure, and reports 'failed'", async () => {
+    const loadDetail = vi.fn(async () => { throw new Error("detail GET failed"); });
+    await expect(applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail, seedDriver: noopSeed, currentSelection: () => A })).resolves.toBe("failed");
+    expect(loadDetail).toHaveBeenCalledWith(A);
+  });
+
+  it("#4219 Codex r2 F1: a refresh that did not apply (HTTP error, no data) reports 'failed'", async () => {
+    const loadDetail = vi.fn(async () => false);
+    await expect(applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail, seedDriver: noopSeed, currentSelection: () => A })).resolves.toBe("failed");
+  });
+
+  it("#4219 Codex r2 F1: an applied refresh reports 'refreshed'; a moved selection reports 'skipped'", async () => {
+    await expect(applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail: vi.fn(async () => true), seedDriver: noopSeed, currentSelection: () => A })).resolves.toBe("refreshed");
+    await expect(applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail: vi.fn(async () => true), seedDriver: noopSeed, currentSelection: () => B })).resolves.toBe("skipped");
+  });
+
+  it("#4219 Codex r3 F1: the selection moving away while the refresh runs reports 'skipped', not 'refreshed'", async () => {
+    let current: HubSelection = A;
+    const loadDetail = vi.fn(async () => { current = B; return true; });
+    await expect(applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail, seedDriver: noopSeed, currentSelection: () => current })).resolves.toBe("skipped");
+  });
+
+  it("no selection at all: refreshes NOTHING", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    await applyConfirmIdentityResult(A.notebookId, DUMMY_PROPOSAL, NO_SEARCH, { loadDetail, seedDriver: noopSeed, currentSelection: () => null });
+    expect(loadDetail).not.toHaveBeenCalled();
+  });
+
+  it("a search that STARTED (searching:true) is seeded even on a 'failed' scope refresh — the search itself is a server-side fact independent of this refresh", async () => {
+    const loadDetail = vi.fn(async () => { throw new Error("detail GET failed"); });
+    const seeded: Array<[string, unknown]> = [];
+    const outcome = await applyConfirmIdentityResult(
+      A.notebookId,
+      DUMMY_PROPOSAL,
+      { searching: true, startedAt: "gen-a" },
+      { loadDetail, seedDriver: (nbId, status) => seeded.push([nbId, status]), currentSelection: () => A },
+    );
+    expect(outcome).toBe("failed");
+    expect(seeded).toEqual([[A.notebookId, { manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a" }]]);
+  });
+
+  it("a search that STARTED is NOT seeded when the outcome is 'skipped' (the technician already left this notebook)", async () => {
+    const loadDetail = vi.fn(async () => true);
+    const seeded: Array<[string, unknown]> = [];
+    const outcome = await applyConfirmIdentityResult(
+      A.notebookId,
+      DUMMY_PROPOSAL,
+      { searching: true, startedAt: "gen-a" },
+      { loadDetail, seedDriver: (nbId, status) => seeded.push([nbId, status]), currentSelection: () => B },
+    );
+    expect(outcome).toBe("skipped");
+    expect(seeded).toEqual([]);
+  });
+});
+
+describe("createLatestLoadTracker — a superseded load reports the load that replaced it (#4219 Codex r3 F1)", () => {
+  function deferredBool() {
+    let resolve!: (v: boolean) => void;
+    const promise = new Promise<boolean>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  it("a superseded load resolves with the REPLACEMENT load's failure, not its own abort", async () => {
+    const tracker = createLatestLoadTracker();
+    const first = deferredBool();
+    const second = deferredBool();
+    const a = tracker.start(async (follow) => { await first.promise; return follow(); }); // gets superseded
+    const b = tracker.start(async () => second.promise);
+    first.resolve(true);
+    second.resolve(false); // the replacement GET fails
+    await expect(a).resolves.toBe(false);
+    await expect(b).resolves.toBe(false);
+  });
+
+  it("a superseded load resolves true when the replacement applied", async () => {
+    const tracker = createLatestLoadTracker();
+    const gate = deferredBool();
+    const a = tracker.start(async (follow) => { await gate.promise; return follow(); });
+    tracker.start(async () => true);
+    gate.resolve(true);
+    await expect(a).resolves.toBe(true);
+  });
+
+  it("follows a chain of replacements to the newest", async () => {
+    const tracker = createLatestLoadTracker();
+    const g1 = deferredBool();
+    const g2 = deferredBool();
+    const a = tracker.start(async (follow) => { await g1.promise; return follow(); });
+    tracker.start(async (follow) => { await g2.promise; return follow(); });
+    tracker.start(async () => false);
+    g1.resolve(true);
+    g2.resolve(true);
+    await expect(a).resolves.toBe(false);
+  });
+
+  it("control: a load nothing superseded keeps its own result", async () => {
+    const tracker = createLatestLoadTracker();
+    await expect(tracker.start(async () => true)).resolves.toBe(true);
   });
 });

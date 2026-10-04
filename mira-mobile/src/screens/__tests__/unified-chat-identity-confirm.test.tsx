@@ -125,7 +125,10 @@ describe("UnifiedChat — identity confirmation refreshes scope before the next 
     await act(async () => {
       fireEvent.click(confirmButton);
     });
-    await screen.findByText(/Confirmed\./);
+    // #4219 Codex r2 F1: the identity is saved, but the scope never caught
+    // up, so the card must not claim the manual is ready to answer from.
+    await screen.findByText(/Machine confirmed, but its manual couldn't be loaded\./);
+    expect(screen.queryByText(/ready to answer from/)).toBeNull();
 
     const input = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "what is the port size?" } });

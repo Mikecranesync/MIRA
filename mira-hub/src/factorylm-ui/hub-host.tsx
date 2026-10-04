@@ -62,6 +62,7 @@ import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  createLatestLoadTracker,
   detailQueryFor,
   enabledDocIds,
   errorMessageFor,
@@ -159,6 +160,7 @@ export function HubShellHost() {
   // detail of the selection that replaced it (Codex #3839 F3).
   const detailAbortRef = useRef<AbortController | null>(null);
   const [detailGate] = useState(() => latestRequestGate());
+  const [detailLoads] = useState(() => createLatestLoadTracker());
 
   // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
@@ -209,7 +211,7 @@ export function HubShellHost() {
     void loadNotebooks();
   }, [loadNotebooks]);
 
-  const loadDetail = useCallback(async (sel: HubSelection) => {
+  const loadDetail = useCallback((sel: HubSelection): Promise<boolean> => detailLoads.start(async (follow) => {
     const token = detailGate.begin();
     detailAbortRef.current?.abort();
     const ctrl = new AbortController();
@@ -219,18 +221,20 @@ export function HubShellHost() {
       // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
       res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
     } catch (err) {
-      if (isAbortError(err)) return; // superseded by a newer selection
+      // Superseded by a newer load: report THAT load's outcome, not this abort (#4219 Codex r3 F1).
+      if (isAbortError(err)) return follow();
       throw err;
     }
     // Commit only if no newer load or selection change happened while this one was in flight.
-    if (!detailGate.isCurrent(token)) return;
-    if (res.status === 401) { setSignedOut(true); return; }
-    if (!res.data) return;
+    if (!detailGate.isCurrent(token)) return follow();
+    if (res.status === 401) { setSignedOut(true); return false; }
+    if (!res.data) return false;
     setDetail(res.data);
     // Codex #4195 round 2 F6: hydration follows a running search to completion —
     // seed the SAME driver a confirm uses, keyed on this notebook's status.
     if (res.data.manualSearch) manualSearchDriverRef.current?.seed(sel.notebookId, res.data.manualSearch);
-  }, [detailGate]);
+    return true;
+  }), [detailGate, detailLoads]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     if (selection) void loadDetail(selection);
@@ -703,7 +707,7 @@ export function HubShellHost() {
     // a different notebook while this POST was in flight must get neither a
     // `loadDetail` refresh nor a follower seed under A's identity; see
     // `applyConfirmIdentityResult`'s own header for the full race.
-    await applyConfirmIdentityResult(
+    const refresh = await applyConfirmIdentityResult(
       notebookId,
       proposal,
       { searching, ...(startedAt ? { startedAt } : {}) },
@@ -713,6 +717,16 @@ export function HubShellHost() {
         currentSelection: () => selectionRef.current,
       },
     );
+    // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
+    // not apply, the next question would still use the old sources. Say so
+    // instead of claiming the manual is ready to answer from.
+    if (refresh === "failed" && data.manualReady === true) {
+      return {
+        manualReady: false,
+        searching: false,
+        message: "Machine confirmed, but its manual couldn't be loaded. Reload this notebook before asking about it.",
+      };
+    }
     return {
       manualReady: data.manualReady === true,
       searching,

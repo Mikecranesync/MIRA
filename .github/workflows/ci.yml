@@ -937,6 +937,16 @@ jobs:
         # Receipt extraction, verification, and field schema tests for staging and production.
         run: pytest tests/test_staging_receipt.py -q
 
+      - name: production authorization contract tests (SDLC v1 step 5)
+        # deploy-vps.yml authorize-source: one effective service set (mira-ask included),
+        # exact merged-PR match, trusted-base validators + ancestry, generation-bound
+        # acceptance receipt. The jq/shell decision points are EXECUTED over fixtures.
+        run: pytest tests/test_deploy_vps_production_authorization.py tests/test_acceptance_receipt.py tests/test_retrieval_acceptance_workflow.py tests/test_deploy_staging_authorization.py -q
+
+      - name: R2 signal floor tests (SDLC v1 §2.3)
+        # The mechanical R2/R3 path floor behind the advisory "R2 Signal Floor" status.
+        run: pytest tests/test_r2_signal_floor.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest

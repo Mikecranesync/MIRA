@@ -169,7 +169,17 @@ function createMobileManualSearchDriver(deps: {
     state = result.state;
     if (changed) {
       onStateChange(state);
+      // Codex F28 (round 13), follow-on: a pending tick can have been
+      // scheduled by an EARLIER commit for the SAME generation (observeLive
+      // adopting a live frame while a GET read was still in flight — see
+      // `observeLive`'s own comment) and then be settled by a DIFFERENT
+      // commit (that GET read finally applying) before the tick ever fires.
+      // `scheduleTick` already clears any existing timer before arming a
+      // new one; the missing half was clearing it when the NEW result is
+      // no longer `following` at all — otherwise that stale timer still
+      // fires later and spends a request this generation no longer needs.
       if (state.phase === "following") scheduleTick();
+      else clearTimer();
     }
     if (result.refreshSources) onRefreshSources();
   }
@@ -216,7 +226,24 @@ function createMobileManualSearchDriver(deps: {
       commit(reseedManualSearchFollow(state, notebookId, read));
     },
     observeLive(read) {
-      lastApplied = ++seq;
+      // Codex F28 (round 13): `lastApplied`/`seq` order AUTHORITATIVE GET
+      // reads (seed, tick, probe) against EACH OTHER — a live SSE frame is
+      // not one of those; it can be a stale replay of a frame already
+      // reflected in `state` (the same `baseThread` object re-delivered by
+      // an unrelated parent rerender). Bumping the SAME fence here let a
+      // cached same-generation RUNNING replay discard an outstanding,
+      // already-dispatched, more-authoritative GET result purely because
+      // its own request was dispatched earlier — the GET had not yet had a
+      // chance to apply. `observeLiveManualSearchFrame` already encodes the
+      // only question that matters: does this frame carry NEW information
+      // (a different, not-yet-tracked generation) or is it a no-op replay
+      // of the one already tracked (`state === result.state`, same
+      // reference, when nothing changed)? A no-op must never touch the GET
+      // ordering fence. A genuinely new generation still wins over a
+      // pending read for the OLD context — not via this fence, but via
+      // `probe`/`scheduleTick`'s own `currentKey() !== capturedKey` check
+      // below, which already discards a read whose reported generation no
+      // longer matches what's now current.
       commit(observeLiveManualSearchFrame(state, notebookId, read));
     },
     probe() {
@@ -400,6 +427,15 @@ function UnifiedChatForNotebook({
   // generation; `withManualSearchOverrides` appends it to the last assistant
   // turn when no live frame ever carried a matching part (the realistic
   // post-reload case), or replaces one in place.
+  //
+  // Codex round 5 F16 (#4195): `notebookIdRef` tracks the LATEST committed
+  // `meta.notebookId` across renders of this SAME instance. `onConfirmIdentity`
+  // and `refreshPromotedScope` below bind their async continuations to the
+  // notebookId THIS request was for, and discard them if it no longer
+  // matches — a notebook switch via `NotebooksTab.tsx`'s `onOpenNotebook`
+  // changes this component's `notebookId` prop IN PLACE, with no
+  // `key`-forced remount (only the `UnifiedChat` wrapper below remounts on
+  // a notebook change).
   const notebookId = meta.notebookId || null;
   const notebookIdRef = useRef(notebookId);
   notebookIdRef.current = notebookId;
@@ -517,8 +553,10 @@ function UnifiedChatForNotebook({
   // sources" signal on a successful settle (the manual may just have become
   // citable). Best-effort: a failed re-read here never fails anything else —
   // the next send falls back to the host's own eventually-refreshed scope.
-  const refreshPromotedScope = useCallback(async () => {
-    if (!notebookId || !aliveRef.current) return;
+  // Resolves `true` when the re-read scope was stored, `false` when the
+  // re-read failed (#4219 Codex r2 F1), `null` when there was nothing to do.
+  const refreshPromotedScope = useCallback(async (): Promise<boolean | null> => {
+    if (!notebookId || !aliveRef.current) return null;
     // The re-read is async; this instance can unmount before it returns (the
     // technician switched notebooks — see the `UnifiedChat` wrapper's remount
     // doc comment). Only a STILL-MOUNTED instance, for the notebook it was
@@ -526,10 +564,12 @@ function UnifiedChatForNotebook({
     const fetchedFor = notebookId;
     try {
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
-      if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return;
+      if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
+      return false;
     }
   }, [notebookId, attachmentThreadId]);
 
@@ -892,7 +932,17 @@ function UnifiedChatForNotebook({
             // stale (possibly empty) scope the host computed before this
             // confirm. Mirrors the Hub's own `loadDetail` call after confirm
             // (`hub-host.tsx`'s `onConfirmIdentity`).
-            await refreshPromotedScope();
+            const refreshed = await refreshPromotedScope();
+            // #4219 Codex r2 F1: the identity is saved, but if the scope re-read
+            // failed, the next question would still use the old sources. Say so
+            // instead of claiming the manual is ready to answer from.
+            if (refreshed === false && result.manualReady) {
+              return {
+                ...result,
+                manualReady: false,
+                message: "Machine confirmed, but its manual couldn't be loaded. Reload this notebook before asking about it.",
+              };
+            }
             // Codex round 11 remediation (#4195, single reader): the confirm
             // path no longer fetches `fetchManualSearchStatus` itself — that
             // was the third independent reader, and its own epoch-guarded
