@@ -399,6 +399,12 @@ def test_string_literals_cannot_fake_a_contraction(sql):
         "DO $$ BEGIN IF EXISTS (SELECT 1) THEN ALTER TABLE t RENAME COLUMN a TO b; END IF; END $$;",
         "DO $tag$ BEGIN ALTER TABLE t DROP COLUMN c; END $tag$;",
         "DO $$ BEGIN DROP TABLE legacy_rows; END $$;",
+        # dynamic DDL inside a body still runs
+        "DO $$ BEGIN EXECUTE 'ALTER TABLE t DROP COLUMN c'; END $$;",
+        # a paren inside a literal inside a body, or inside a quoted identifier, cannot
+        # swallow the next action
+        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '(', DROP COLUMN d; END $$;",
+        'ALTER TABLE t ADD COLUMN "x(" int, DROP COLUMN d;',
         # an apostrophe inside a dollar-quoted body is not the start of a literal
         "COMMENT ON TABLE t IS $$it's$$; ALTER TABLE t DROP COLUMN c; SELECT 'x';",
     ],

@@ -247,6 +247,20 @@ def test_record_step_walks_newest_first_and_stops_once_covered(tmp_path):
     assert listing[listing.index("--event") + 1] == "workflow_dispatch"
 
 
+def test_record_step_with_no_earlier_deploy_run_records_null_candidates(tmp_path):
+    """The first production deploy after this lands: no run to walk, the step still succeeds."""
+    res = _run_record(tmp_path, {"runs": [], "api": {}, "zips": {}}, "mira-hub mira-web")
+    assert res.returncode == 0, res.stdout + res.stderr
+    line = next(
+        x
+        for x in (tmp_path / "out").read_text().splitlines()
+        if x.startswith("rollback_candidates=")
+    )
+    cands = json.loads(line.split("=", 1)[1])
+    assert {s: e["sha"] for s, e in cands.items()} == {"mira-hub": None, "mira-web": None}
+    assert not [c for c in _calls(tmp_path) if c[0] == "api"], "nothing to download"
+
+
 def test_refresh_lists_only_main_dispatch_deploy_runs():
     run = _step(REFRESH, "check", "Gather the production receipts")["run"]
     assert (

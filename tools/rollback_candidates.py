@@ -248,13 +248,20 @@ def _created_names(sql_upper: str) -> set[str]:
 
 
 def _split_top_level(text: str) -> list[str]:
-    parts, depth, cur = [], 0, []
+    parts, depth, cur, quote = [], 0, [], ""
     for ch in text:
-        if ch == "(":
+        # A paren or comma inside '…' or "…" is data, not structure ('' and "" escapes
+        # toggle twice and so stay inside).
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
             depth += 1
         elif ch == ")":
             depth -= 1
-        if ch == "," and depth == 0:
+        if ch == "," and depth == 0 and not quote:
             parts.append("".join(cur))
             cur = []
         else:
