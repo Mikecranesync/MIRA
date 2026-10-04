@@ -286,6 +286,12 @@ export function HubShellHost() {
       },
     });
   }
+  // Codex r14 F29: stop following when the host unmounts. reset() clears the
+  // pending timer and invalidates in-flight tick continuations (driver epoch),
+  // so no status request or loadDetail fires for an abandoned surface. It is
+  // idempotent and leaves the driver reusable, so StrictMode's dev-only
+  // cleanup/re-setup replay is harmless: the next detail load reseeds it.
+  useEffect(() => () => manualSearchDriverRef.current?.reset(), []);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
