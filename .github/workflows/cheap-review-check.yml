@@ -16,9 +16,12 @@ name: Cheap Review Check
 #   * The comment is read from the event payload file, never interpolated into a
 #     shell line.
 #   * Only an envelope posted by the repository owner account as a `User` counts
-#     (the review ledger's rule, §4.4), and only while its reviewed head is still
-#     the PR head. PASS -> success; every other verdict -> failure (never neutral or
-#     skipped, which branch protection counts as passing).
+#     (the review ledger's rule, §4.4), only while its reviewed head is still the PR
+#     head, and only if it is the NEWEST owner review of that head among the live
+#     comments (a replayed or late older review never posts over a newer verdict);
+#     a run_id that already has a check-run is not posted twice. A full-scope PASS
+#     -> success; a scoped (--paths) PASS posts nothing; every other verdict ->
+#     failure (never neutral or skipped, which branch protection counts as passing).
 #   * ADVISORY: no branch-protection rule consumes `Cheap Review` yet. Making it
 #     required is a separate settings action, never this file.
 #   * Only `created` comments: an edited comment does not re-decide a posted check.
@@ -63,8 +66,17 @@ jobs:
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::pull request number is not numeric"; exit 1; }
           head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::pull request head is not a 40-hex SHA"; exit 1; }
+          # Live state, read inside this serialized run (Codex F1 on #4221): every PR comment
+          # (fully paginated) so only the NEWEST owner review of this head can post, and the
+          # existing Cheap Review check-runs on the head so a re-run is a no-op.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | {id, user: {login: .user.login, type: .user.type}, body}' > "$RUNNER_TEMP/comments.jsonl"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/check-runs?check_name=Cheap%20Review&per_page=100" \
+            --jq '.check_runs[].external_id // empty' > "$RUNNER_TEMP/existing-checks.txt"
           python3 -I tools/cheap_review_check.py decide \
             --event "$GITHUB_EVENT_PATH" --owner "$OWNER" --current-head "$head" \
+            --comments "$RUNNER_TEMP/comments.jsonl" --existing-checks "$RUNNER_TEMP/existing-checks.txt" \
             --out "$RUNNER_TEMP/check-run.json" --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Post the check-run

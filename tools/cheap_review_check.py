@@ -13,18 +13,24 @@ The decision, in order (the first failing rule wins, and nothing is posted):
 
 1. The comment is the lane's envelope: it STARTS with `[CHEAP-REVIEW]`, then a
    fenced block of `key: value` lines carrying a 40-hex `head`, a `verdict`, a
-   `model`, a `cost_usd` and a 32-hex `run_id`.
+   `model`, a `cost_usd`, a 32-hex `run_id` and a `scope` (`full`, or `partial`
+   with an `excluded_files` count).
 2. It was posted by the repository owner account as a `User` — the same
    authentication the review ledger applies (§4.4). Anyone else's envelope is
    ignored, however well-formed.
 3. The reviewed `head` is still the pull request's head when the workflow runs.
-   A verdict about bytes that are no longer the head is not posted anywhere.
+4. It is the NEWEST eligible review of that head: among the live, fully paginated
+   PR comments, no later owner envelope for the same head exists. A replayed or
+   late-delivered older review never posts over a newer verdict (Codex F1, #4221).
+5. Its `run_id` has not already produced a `Cheap Review` check-run on that head,
+   so a re-run of the workflow is a no-op.
+6. A `scope: partial` PASS reviewed only part of the head and certifies nothing
+   about the rest, so it posts nothing (Codex F2, #4221). A partial non-PASS still
+   posts its failure: a defect found in part of the head is a defect in the head.
 
 Only then is a payload produced: check-run `Cheap Review` on that exact head,
-`success` for `verdict: PASS` and `failure` for EVERY other verdict. `neutral`
-and `skipped` are never used — branch protection treats both as passing, so an
-UNKNOWN or STALE verdict mapped to either would satisfy a required context it
-never earned.
+`success` for a full-scope `PASS` and `failure` for EVERY other verdict. `neutral`
+and `skipped` are never used — branch protection treats both as passing.
 
 The check-run stays ADVISORY until a required status context consumes it (a
 branch-protection action, not this file). Its source limitation is stated in the
@@ -40,11 +46,11 @@ import json
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Iterable, Optional
 
 MARKER = "[CHEAP-REVIEW]"
 CHECK_NAME = "Cheap Review"
-REQUIRED_FIELDS = ("head", "verdict", "model", "cost_usd", "run_id")
+REQUIRED_FIELDS = ("head", "verdict", "model", "cost_usd", "run_id", "scope")
 
 _ENVELOPE = re.compile(
     r"\A\[CHEAP-REVIEW\]\r?\n\r?\n```\r?\n(?P<block>.*?)\r?\n```(?:\r?\n|\Z)", re.DOTALL
@@ -54,6 +60,7 @@ _SHA40 = re.compile(r"\A[0-9a-f]{40}\Z")
 _RUN_ID = re.compile(r"\A[0-9a-f]{32}\Z")
 _VERDICT = re.compile(r"\A[A-Z]+\Z")
 _COST = re.compile(r"\A[0-9]+(?:\.[0-9]+)?\Z")
+_COUNT = re.compile(r"\A[1-9][0-9]*\Z")
 _MAX_FIELD = 200
 
 
@@ -83,7 +90,19 @@ def parse_envelope(body: object) -> Optional[dict[str, str]]:
         return None
     if not _COST.match(fields["cost_usd"]):
         return None
+    if fields["scope"] == "full":
+        if "excluded_files" in fields:
+            return None
+    elif fields["scope"] == "partial":
+        if not _COUNT.match(fields.get("excluded_files", "")):
+            return None
+    else:
+        return None
     return fields
+
+
+def _is_owner_user(login: object, typ: object, owner: str) -> bool:
+    return bool(owner) and login == owner and typ == "User"
 
 
 @dataclass
@@ -100,13 +119,16 @@ def decide(
     author_type: object,
     owner: str,
     current_head: str,
+    comment_id: object,
+    comments: Iterable[dict],
+    existing_external_ids: Iterable[str],
     comment_url: str = "",
 ) -> Decision:
-    """Apply the three rules in the module docstring; build the check-run payload."""
+    """Apply the six rules in the module docstring; build the check-run payload."""
     env = parse_envelope(body)
     if env is None:
         return Decision(False, "not a well-formed [CHEAP-REVIEW] envelope")
-    if not owner or author_login != owner or author_type != "User":
+    if not _is_owner_user(author_login, author_type, owner):
         return Decision(
             False,
             f"envelope posted by {author_login!r} ({author_type!r}); only the repository owner "
@@ -120,20 +142,56 @@ def decide(
             f"reviewed head {env['head']} is no longer the pull request head ({current_head}); "
             "a verdict about superseded bytes is not posted",
         )
+    eligible: list[int] = []
+    for c in comments:
+        user = c.get("user") or {}
+        other = parse_envelope(c.get("body"))
+        if (
+            isinstance(c.get("id"), int)
+            and _is_owner_user(user.get("login"), user.get("type"), owner)
+            and other is not None
+            and other["head"] == current_head
+        ):
+            eligible.append(c["id"])
+    if not isinstance(comment_id, int) or comment_id not in eligible:
+        return Decision(
+            False,
+            f"triggering comment {comment_id!r} is not among the live owner reviews of this head",
+        )
+    newest = max(eligible)
+    if comment_id != newest:
+        return Decision(
+            False,
+            f"a newer owner review of {current_head} exists (comment {newest}); "
+            f"comment {comment_id} is superseded and never posts over it",
+        )
+    if env["run_id"] in set(existing_external_ids):
+        return Decision(
+            False, f"run {env['run_id']} already has a {CHECK_NAME} check-run on this head"
+        )
     verdict = env["verdict"]
+    if verdict == "PASS" and env["scope"] != "full":
+        return Decision(
+            False,
+            f"a scoped PASS ({env.get('excluded_files')} changed files excluded) reviewed only part "
+            "of the head and certifies nothing about the rest",
+        )
     conclusion = "success" if verdict == "PASS" else "failure"
     title = f"Cheap review {verdict} at {env['head'][:12]}"
     lines = [
         f"verdict: {verdict}",
         f"head: {env['head']}",
+        f"scope: {env['scope']}",
         f"model: {env['model']}",
         f"cost_usd: {env['cost_usd']}",
         f"run_id: {env['run_id']}",
     ]
+    if "excluded_files" in env:
+        lines.append(f"excluded_files: {env['excluded_files']}")
     if "reviewed_verdict" in env:
         lines.append(f"reviewed_verdict: {env['reviewed_verdict']}")
     summary = (
-        "Posted from the repository owner's `[CHEAP-REVIEW]` comment by "
+        "Posted from the repository owner's newest `[CHEAP-REVIEW]` comment on this head by "
         "`.github/workflows/cheap-review-check.yml` (SDLC v1 §4.2). Advisory until a "
         "required status context consumes it.\n\n```\n" + "\n".join(lines) + "\n```"
     )
@@ -150,6 +208,16 @@ def decide(
     return Decision(True, f"posting {CHECK_NAME}={conclusion} on {env['head']}", payload)
 
 
+def _read_jsonl(path: str) -> list[dict]:
+    with open(path, encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def _read_lines(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as fh:
+        return [line.strip() for line in fh if line.strip()]
+
+
 def _cmd_decide(args: argparse.Namespace) -> int:
     with open(args.event, encoding="utf-8") as fh:
         event = json.load(fh)
@@ -161,6 +229,9 @@ def _cmd_decide(args: argparse.Namespace) -> int:
         author_type=user.get("type"),
         owner=args.owner,
         current_head=args.current_head,
+        comment_id=comment.get("id"),
+        comments=_read_jsonl(args.comments),
+        existing_external_ids=_read_lines(args.existing_checks),
         comment_url=comment.get("html_url") or "",
     )
     print(decision.reason)
@@ -180,6 +251,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     d.add_argument("--event", required=True, help="path to the issue_comment event JSON")
     d.add_argument("--owner", required=True, help="repository owner login")
     d.add_argument("--current-head", required=True, help="the pull request's head SHA, read now")
+    d.add_argument("--comments", required=True, help="live PR comments, one JSON object per line")
+    d.add_argument(
+        "--existing-checks",
+        required=True,
+        help="external_id of each existing Cheap Review check-run",
+    )
     d.add_argument("--out", required=True, help="where to write the check-run payload")
     d.add_argument("--github-output", default="", help="append post=true|false here")
     args = p.parse_args(argv)
