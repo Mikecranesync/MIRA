@@ -41,6 +41,8 @@ from typing import Any
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from manual_truth_table import Cells, asserts_meaning  # noqa: E402
+from manual_truth_table import classify as truth_classify  # noqa: E402
 from retrieval_acceptance import Hub  # noqa: E402
 
 MACHINES = Path(__file__).resolve().parent / "golden_walk_machines.json"
@@ -83,6 +85,72 @@ def cleanup(tenant: str, doppler_config: str) -> None:
         capture_output=True,
         check=False,
     )
+
+
+class DocProbe:
+    """Read-only, staging-only: does a scoped document's indexed text contain the
+    asked code? The truth table's `document` cell. Runs before the stranger is
+    swept, because the sweep deletes the chunks with the tenant."""
+
+    def __init__(self, doppler_config: str) -> None:
+        if doppler_config != "stg":
+            raise SystemExit("DocProbe is staging-only (doppler config 'stg')")
+        self.url = subprocess.run(
+            ["doppler", "secrets", "get", "NEON_DATABASE_URL", "--plain"]
+            + ["-p", "factorylm", "-c", doppler_config],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.conn = None
+
+    def has_code(self, tenant: str, doc_ids: list[str], code: str) -> bool | None:
+        if not doc_ids:
+            return None
+        try:
+            import psycopg2
+
+            if self.conn is None:
+                self.conn = psycopg2.connect(self.url)
+                self.conn.set_session(readonly=True, autocommit=True)
+            pat = r"\s+".join(re.escape(part) for part in code.split())
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FILTER (WHERE content ~* %s), count(*) FROM knowledge_entries"
+                    " WHERE tenant_id = %s::uuid AND doc_id = ANY(%s::uuid[])",
+                    (f"(^|[^A-Za-z0-9]){pat}([^A-Za-z0-9]|$)", tenant, doc_ids),
+                )
+                hits, total = cur.fetchone()
+            return None if total == 0 else hits > 0
+        except Exception as e:  # a probe outage is an unknown cell, never a verdict
+            print(f"doc probe unavailable: {e}"[:200], file=sys.stderr)
+            return None
+
+
+def packet_of(hub: Hub, notebook_id: str, trace_id: str | None) -> dict[str, Any]:
+    """The turn's Jev shadow fields from the diagnostics endpoint (staging)."""
+    if not trace_id:
+        return {}
+    st, _, j = hub.json(
+        "GET", f"/api/equipment-notebooks/{notebook_id}/turns/diagnostics/?limit=20"
+    )
+    rows = (j or {}).get("turns", []) if st == 200 and isinstance(j, dict) else []
+    hit = next((t for t in rows if t.get("traceId") == trace_id), None)
+    if not hit:
+        return {}
+    st, _, j = hub.json(
+        "GET", f"/api/equipment-notebooks/{notebook_id}/turns/{hit['turnId']}/diagnostics/"
+    )
+    p = (j or {}).get("packet") or {} if st == 200 and isinstance(j, dict) else {}
+    gate, dec = p.get("answer_gate") or {}, p.get("jev_decision") or {}
+    return {
+        "jev_sufficient": gate.get("jev_sufficient"),
+        "jev_skipped_reason": gate.get("jev_skipped_reason"),
+        "evidence_sufficient": gate.get("evidence_sufficient"),
+        "failure_class": dec.get("failure_class"),
+        "failure_class_probabilities": dec.get("failure_class_probabilities"),
+        "returned_doc_ids": (p.get("retrieval") or {}).get("returned_doc_ids"),
+    }
 
 
 def frames_of(
@@ -186,7 +254,13 @@ def passage_hits(
     )
 
 
-def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
+def walk(
+    hub: Hub,
+    m: dict[str, Any],
+    search_timeout: int,
+    probe: DocProbe | None = None,
+    tenant: str | None = None,
+) -> dict[str, Any]:
     r: dict[str, Any] = {
         "id": m["id"],
         "machine": f"{m['manufacturer']} {m['model']}",
@@ -285,6 +359,20 @@ def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
         "answer_head": content[:400],
     }
     r["time_to_cited_answer_s"] = round(time.monotonic() - t_confirm, 1)
+    trace = first(frames, "trace")
+    jev = packet_of(hub, nid, trace.get("traceId") or trace.get("trace_id"))
+    has_code = probe.has_code(tenant, doc_ids, m["code"]) if probe and tenant else None
+    cells = Cells(
+        expect_manual=m["expect_manual"],
+        identified=bool(prop),
+        found=bool(manuals),
+        document_has_code=has_code,
+        cited=bool(cits),
+        citation_true=any(t[0] for t in truths),
+        asserted=asserts_meaning(content, code_in(content, m["code"])),
+        jev_sufficient=jev.get("jev_sufficient"),
+    )
+    r["truth"] = {"cells": cells.__dict__, "jev": jev} | truth_classify(cells).as_dict()
     r["outcome"], r["cause"] = classify(
         m["expect_manual"],
         bool(prop),
@@ -297,8 +385,8 @@ def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
 
 def table(rows: list[dict[str, Any]]) -> str:
     out = [
-        "| Machine | Outcome | Cause | Search s | Cited answer s | Citations |",
-        "|---|---|---|---|---|---|",
+        "| Machine | Outcome | Truth table | Stage | Honest | Doc has code | Jev sufficient | Jev agrees | Citations |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         s = r["steps"]
@@ -308,8 +396,10 @@ def table(rows: list[dict[str, Any]]) -> str:
             )
             or "—"
         )
+        t = r.get("truth") or {}
+        c = t.get("cells") or {}
         out.append(
-            f"| {r['machine']}{'' if r['expect_manual'] else ' (honesty)'} | {r['outcome']} | {r.get('cause', '')} | {(s.get('search') or {}).get('seconds', '—')} | {r.get('time_to_cited_answer_s', '—')} | {cits} |"
+            f"| {r['machine']}{'' if r['expect_manual'] else ' (honesty)'} | {r['outcome']} | {t.get('verdict', '—')} | {t.get('stage', '—')} | {t.get('honest', '—')} | {c.get('document_has_code', '—')} | {c.get('jev_sufficient', '—')} | {t.get('jev_agrees', '—')} | {cits} |"
         )
     return "\n".join(out)
 
@@ -344,6 +434,7 @@ def main() -> int:
         tenant, cookie = provision(a.base, a.fresh_tenant)
         a.cookie = cookie
     hub = Hub(a.base, a.cookie, timeout=240)
+    probe = DocProbe(a.fresh_tenant) if a.fresh_tenant else None
     machines = json.loads(MACHINES.read_text())["machines"]
     if a.only:
         want = set(a.only.split(","))
@@ -351,7 +442,7 @@ def main() -> int:
     rows = []
     for m in machines:
         try:
-            r = walk(hub, m, a.search_timeout)
+            r = walk(hub, m, a.search_timeout, probe, tenant)
         except Exception as e:  # a crashed walk is a measured failure, not a harness abort
             r = {
                 "id": m["id"],
@@ -362,7 +453,10 @@ def main() -> int:
                 "cause": f"harness_error: {e}"[:300],
             }
         rows.append(r)
-        print(f"{r['outcome']:4} {r['machine']}: {r.get('cause', '')}", flush=True)
+        print(
+            f"{r['outcome']:4} {(r.get('truth') or {}).get('verdict', '-'):24} {r['machine']}: {r.get('cause', '')}",
+            flush=True,
+        )
     if tenant:
         cleanup(tenant, a.fresh_tenant)
     real = [r for r in rows if r["expect_manual"]]
