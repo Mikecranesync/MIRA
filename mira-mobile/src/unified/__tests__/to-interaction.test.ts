@@ -112,6 +112,29 @@ describe("toInteractionPart", () => {
     expect(toInteractionPart({ type: "error", reason: "stopped" })).toMatchObject({ error: { code: "stopped", retryable: false } });
     expect(sourceFor({ ...CITATION, page: null, fileId: "file-9" })).toMatchObject({ kind: "workspace_file", locator: "Check the supply." });
   });
+
+  // T2 (#4175): identity_proposal frames ride the mobile wire as
+  // `{type:"unknown", raw:{kind:"identity_proposal", ...}}` (sse.ts's generic
+  // passthrough, unmodified — it's guarded legacy presentation). Recognizing
+  // it HERE, in the canonical adapter, is what turns the raw "Unrecognized
+  // part" inspection box into the confirm card.
+  it("recognizes an identity_proposal raw frame and maps it to a real part", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }))
+      .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("carries catalogNumber through when the server includes one", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" } }))
+      .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" });
+  });
+
+  it("falls back to unknown for a malformed identity_proposal and any other kind (regression)", () => {
+    // Missing required fields — never half-render a card with blanks.
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } }))
+      .toEqual({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } });
+    // A genuinely unknown future kind stays unknown, unchanged.
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "future" } })).toEqual({ type: "unknown", raw: { kind: "future" } });
+  });
 });
 
 describe("turns and thread", () => {
@@ -142,4 +165,46 @@ describe("turns and thread", () => {
     expect(toTurn(messages[0], { ...META, asset: null }).context.machineId).toBeUndefined();
     expect(contextFor({ ...META, identityConfirmed: false })).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
+});
+
+// Light-review fix (PR #4195, "a stale proposal can overwrite a later
+// confirmed identity"): a persisted identity_proposal card must settle
+// itself against the notebook's CURRENT confirmed identity (`meta.
+// confirmedIdentity`), never offering a live Confirm when it's stale.
+describe("identity_proposal settling — stale-card guard (#4195)", () => {
+  const proposalMsg: AdapterMessage = {
+    id: "a1",
+    role: "assistant",
+    parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }],
+    lifecycle: "completed",
+    status: null,
+  };
+
+  it("flags priorOutcome:'confirmed' when the notebook's CURRENT identity matches (case/punctuation-insensitive)", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "smc", model: "ss5y3 duw01302" } };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "confirmed" });
+  });
+
+  it("flags priorOutcome:'superseded' when the notebook is NOW confirmed to a DIFFERENT identity", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "superseded" });
+  });
+
+  it("carries no priorOutcome when the notebook has no confirmed identity yet (today's live card)", () => {
+    const meta = { ...META, confirmedIdentity: null };
+    const turn = toTurn(proposalMsg, meta);
+    expect(turn.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("leaves every other part type untouched", () => {
+    const meta = { ...META, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+    const turn = toTurn(messages0WithBasis(), meta);
+    expect(turn.parts[0]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Cited from the manual", authorized: false } });
+  });
+
+  function messages0WithBasis(): AdapterMessage {
+    return { id: "b1", role: "assistant", parts: [{ type: "basis", basis: "oem_documentation", label: "Cited from the manual" }], lifecycle: "completed", status: null };
+  }
 });

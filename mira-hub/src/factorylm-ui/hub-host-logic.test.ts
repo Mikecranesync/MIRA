@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
+  applyConfirmIdentityResult,
   homeSendPlan,
   isUnboundNotebook,
   landingSelection,
@@ -22,6 +23,7 @@ import {
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
+  type HubSelection,
 } from "./hub-host-logic";
 
 describe("stoppedStreamResult", () => {
@@ -209,6 +211,26 @@ describe("metaFor — identity is server-owned", () => {
   it("unbound notebook → no asset, not confirmed", () => {
     expect(metaFor(nb(), sel, null, "T")).toMatchObject({ asset: null, identityConfirmed: false });
   });
+
+  // Light-review fix (PR #4195): `confirmedIdentity` tracks identityStatus +
+  // manufacturer/model DIRECTLY — independent of the asset-binding gate
+  // `identityConfirmed` uses above. The #4120 identity_proposal confirm
+  // route never creates an asset binding, so `nb()`'s default (user_confirmed,
+  // asset: null) is the realistic shape that field must still cover.
+  it("confirmedIdentity reflects identityStatus+manufacturer/model regardless of asset binding", () => {
+    expect(metaFor(nb(), sel, null, "T")).toMatchObject({
+      identityConfirmed: false,
+      confirmedIdentity: { manufacturer: "Automation Direct", model: "GS10" },
+    });
+    expect(metaFor(nb({ identityStatus: "verified" }), sel, null, "T").confirmedIdentity)
+      .toEqual({ manufacturer: "Automation Direct", model: "GS10" });
+  });
+
+  it("confirmedIdentity is null when the identity isn't settled, or manufacturer/model is missing", () => {
+    expect(metaFor(nb({ identityStatus: "candidate" }), sel, null, "T").confirmedIdentity).toBeNull();
+    expect(metaFor(nb({ identityStatus: "unknown" }), sel, null, "T").confirmedIdentity).toBeNull();
+    expect(metaFor(nb({ manufacturer: null, model: null }), sel, null, "T").confirmedIdentity).toBeNull();
+  });
 });
 
 describe("enabledDocIds / historyRows / groundingLineFor", () => {
@@ -371,5 +393,31 @@ describe("selectionFromSearch / searchForSelection — addressable conversations
     }
     expect(searchForSelection(null)).toBe("");
     expect(searchForSelection({ notebookId: "a b", threadId: "t:1" })).toBe("?notebook=a+b&thread=t%3A1");
+  });
+});
+
+describe("applyConfirmIdentityResult — the post-await confirm race (Codex round 5 F16, #4195)", () => {
+  const A: HubSelection = { notebookId: "nb-a", threadId: "legacy" };
+  const B: HubSelection = { notebookId: "nb-b", threadId: "legacy" };
+
+  it("the technician having moved to B before the POST resolves: A's confirm refreshes NOTHING", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    await applyConfirmIdentityResult(A.notebookId, {
+      loadDetail,
+      currentSelection: () => B, // the technician is now on B
+    });
+    expect(loadDetail).not.toHaveBeenCalled();
+  });
+
+  it("control: the technician is STILL on A when the POST resolves — loadDetail refreshes A", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    await applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A });
+    expect(loadDetail).toHaveBeenCalledWith(A);
+  });
+
+  it("no selection at all: refreshes NOTHING", async () => {
+    const loadDetail = vi.fn(async () => undefined);
+    await applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => null });
+    expect(loadDetail).not.toHaveBeenCalled();
   });
 });

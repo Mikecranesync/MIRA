@@ -20,6 +20,7 @@ import type {
   ShellFixture,
   SourceReference,
 } from "@factorylm/interaction";
+import { sameManufacturerModel } from "@factorylm/interaction";
 import type { AdapterMessage, MessagePart } from "../chat-adapter/contract";
 import type { ChatCitation } from "../lib/sse";
 
@@ -33,6 +34,15 @@ export interface UnifiedNotebookMeta {
   readonly asset?: { readonly id: string; readonly name: string; readonly unsPath?: string | null } | null;
   /** The notebook's identity status is user_confirmed (server-owned; never inferred). */
   readonly identityConfirmed: boolean;
+  /**
+   * The notebook's CURRENT confirmed manufacturer+model — mirrors the Hub's
+   * own `confirmedIdentity` (to-interaction.ts): `identityStatus`
+   * `user_confirmed`/`verified`, independent of `identityConfirmed` above
+   * (asset BINDING, a separate concept the #4120 confirm route never
+   * creates). Settles a persisted `identity_proposal` card that no longer
+   * matches (light-review fix, PR #4195) — never read for grounding.
+   */
+  readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
   /** ISO timestamp used as the context capture time; the caller passes one value per hydrate. */
   readonly capturedAt: string;
 }
@@ -194,8 +204,41 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
     case "identity_dispute":
       return { type: "identity_dispute" };
     case "unknown":
-      return { type: "unknown", raw: part.raw };
+      return unknownInteractionPart(part.raw);
   }
+}
+
+/** A raw string field, or null — never coerced from a non-string. */
+function rawString(raw: Record<string, unknown>, key: string): string | null {
+  const v = raw[key];
+  return typeof v === "string" ? v : null;
+}
+
+/**
+ * `{type:"unknown", raw}` is the mobile chat-adapter's generic passthrough for
+ * any server frame kind this contract version doesn't model — the ONE place
+ * (per `src/lib/sse.ts`'s "one canonical parser" rule) that already carries an
+ * `identity_proposal` frame's full JSON all the way from the wire to the
+ * shell, un-reshaped. Recognizing a known `raw.kind` HERE — in the canonical,
+ * unguarded adapter — turns it into the shared part `PartRenderer` knows how
+ * to confirm/show, without touching `sse.ts` or `turns-to-parts.ts` (both
+ * guarded legacy presentation, #FACTORYLM-UNIFIED-UI-CUTOVER-001). Anything
+ * else still falls back to `unknown` verbatim — never a crash, never a guess
+ * (PRD §9.2).
+ */
+function unknownInteractionPart(raw: unknown): InteractionPart {
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const r = raw as Record<string, unknown>;
+    if (r.kind === "identity_proposal") {
+      const manufacturer = rawString(r, "manufacturer");
+      const model = rawString(r, "model");
+      if (manufacturer && model) {
+        const catalogNumber = rawString(r, "catalogNumber");
+        return { type: "identity_proposal", manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
+      }
+    }
+  }
+  return { type: "unknown", raw };
 }
 
 export function lifecycleOf(msg: AdapterMessage): Lifecycle {
@@ -207,13 +250,27 @@ export function lifecycleOf(msg: AdapterMessage): Lifecycle {
   }
 }
 
+/**
+ * Settle a persisted/live `identity_proposal` part against the notebook's
+ * CURRENT confirmed identity (light-review fix, PR #4195) — mirrors the
+ * Hub's own `to-interaction.ts`. Any other part type passes through
+ * untouched; a notebook with no confirmed identity yet leaves the part
+ * untouched too (today's live card applies).
+ */
+function settleIdentityProposal(part: InteractionPart, meta: UnifiedNotebookMeta): InteractionPart {
+  if (part.type !== "identity_proposal") return part;
+  const current = meta.confirmedIdentity ?? null;
+  if (!current) return part;
+  return { ...part, priorOutcome: sameManufacturerModel(part, current) ? "confirmed" : "superseded" };
+}
+
 export function toTurn(msg: AdapterMessage, meta: UnifiedNotebookMeta): InteractionTurn {
   const disputed = msg.parts.some((part) => part.type === "identity_dispute");
   return {
     id: msg.id,
     threadId: threadIdFor(meta),
     role: msg.role,
-    parts: msg.parts.map(toInteractionPart),
+    parts: msg.parts.map(toInteractionPart).map((part) => settleIdentityProposal(part, meta)),
     lifecycle: lifecycleOf(msg),
     context: contextFor(meta, disputed),
     createdAt: meta.capturedAt,

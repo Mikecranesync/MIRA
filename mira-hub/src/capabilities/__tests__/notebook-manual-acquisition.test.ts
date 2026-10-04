@@ -52,6 +52,7 @@ import {
   MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
   acquisitionKey,
+  applicableReadySource,
   readAcquisition,
   reconcileAcquisition,
   recordFromOutcome,
@@ -921,5 +922,76 @@ describe("limit copy claims no reset time", () => {
     expect(t).toMatch(/try again later/i);
     expect(t).not.toMatch(/tomorrow/i);
     expect(t.toLowerCase()).toContain("limit");
+  });
+});
+
+// Codex F3 round 2 (MEDIUM) — "ready" means a manual that APPLIES to the
+// given identity: role "manual", enabled, trusted, and a stamped
+// autoAcquisitionKey matching acquisitionKey(identity) exactly, AND
+// answerable now (readiness.canChat).
+describe("applicableReadySource (#4195 F3)", () => {
+  const smc = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" };
+  const smcKey = acquisitionKey(smc)!;
+  function source(over: Record<string, unknown> = {}) {
+    return {
+      docId: "d1",
+      enabledByDefault: true,
+      matchState: "verified",
+      sourceRole: "manual",
+      readiness: { canChat: true },
+      matchEvidence: { autoAcquisitionKey: smcKey },
+      ...over,
+    } as never;
+  }
+
+  it("finds an applicable, enabled, ready manual", () => {
+    expect(applicableReadySource([source()], smc)).not.toBeNull();
+  });
+
+  it("is null when the manual is enabled+applicable but not yet readable", () => {
+    const s = source({ readiness: { canChat: false } });
+    expect(applicableReadySource([s], smc)).toBeNull();
+  });
+
+  // Codex F13 (round 3): TWO applicable, enabled, trusted sources for the
+  // SAME identity — the older one still indexing, the newer one ready.
+  // applicableReadySource must search ALL of them, not stop at the FIRST
+  // applicable match in `listSources`' own (created_at) order.
+  it("finds a LATER ready source when an earlier applicable one isn't ready yet (Codex F13)", () => {
+    const olderNotReady = source({ docId: "d-older", readiness: { canChat: false } });
+    const newerReady = source({ docId: "d-newer", readiness: { canChat: true } });
+    const ready = applicableReadySource([olderNotReady, newerReady], smc);
+    expect(ready).not.toBeNull();
+    expect((ready as { docId: string }).docId).toBe("d-newer");
+  });
+
+  it("is still null when NONE of several applicable sources are ready", () => {
+    const a = source({ docId: "a", readiness: { canChat: false } });
+    const b = source({ docId: "b", readiness: { canChat: false } });
+    expect(applicableReadySource([a, b], smc)).toBeNull();
+  });
+
+  it("excludes a manual whose stamped key is for a DIFFERENT identity (Codex F3 scenario)", () => {
+    const rockwell = source({ matchEvidence: { autoAcquisitionKey: "ROCKWELL|POWERFLEX525|" } });
+    expect(applicableReadySource([rockwell], smc)).toBeNull();
+  });
+
+  it("excludes a manual with no stamped key at all (hand-attached, not search-matched)", () => {
+    expect(applicableReadySource([source({ matchEvidence: null })], smc)).toBeNull();
+  });
+
+  it("excludes a disabled, a candidate, and a non-manual source", () => {
+    expect(applicableReadySource([source({ enabledByDefault: false })], smc)).toBeNull();
+    expect(applicableReadySource([source({ matchState: "candidate" })], smc)).toBeNull();
+    expect(applicableReadySource([source({ sourceRole: "drawing" })], smc)).toBeNull();
+  });
+
+  it("accepts user_confirmed the same as verified", () => {
+    expect(applicableReadySource([source({ matchState: "user_confirmed" })], smc)).not.toBeNull();
+  });
+
+  it("returns null when the identity itself has no acquisition key", () => {
+    const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+    expect(applicableReadySource([source()], unconfirmed)).toBeNull();
   });
 });

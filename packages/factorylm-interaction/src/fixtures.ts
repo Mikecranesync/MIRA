@@ -20,6 +20,7 @@ export const FIXTURE_IDS = Object.freeze([
   "safety-stop",
   "work-run",
   "error-retry",
+  "identity-proposal",
   "offline-sync",
   "enterprise-inspector",
   "long-history",
@@ -372,6 +373,24 @@ const fixtureData: Record<FixtureId, ShellFixture> = {
     machines: [],
     activeContext: GENERAL_CONTEXT,
     offline: { state: "error", pendingChanges: 0, detail: "Retry remains available in the lab." },
+  },
+  "identity-proposal": {
+    id: "identity-proposal",
+    title: "Confirm a proposed machine",
+    review: REVIEW,
+    thread: thread("thread-identity-proposal", "Photographed part", GENERAL_CONTEXT, [
+      turn("turn-identity-proposal", "thread-identity-proposal", "assistant", GENERAL_CONTEXT, [
+        { type: "text", text: "I saw an SMC part in your photo." },
+        { type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+        // Regression (T2 acceptance #4): a kind this version doesn't know
+        // still falls back to the inspectable "unknown" box.
+        { type: "unknown", raw: { kind: "some_future_frame", detail: "not yet known" } },
+      ]),
+    ]),
+    projects: [],
+    machines: [],
+    activeContext: GENERAL_CONTEXT,
+    offline: { state: "online", pendingChanges: 0 },
   },
   "offline-sync": {
     id: "offline-sync",

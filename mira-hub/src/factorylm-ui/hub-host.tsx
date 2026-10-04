@@ -24,6 +24,9 @@ import {
   createShellState,
   shellReducer,
   type Attachment,
+  IdentityAlreadyConfirmedError,
+  type ConfirmIdentityResult,
+  type IdentityProposal,
   type InteractionPart,
   type InteractionTurn,
   type ProjectItem,
@@ -54,6 +57,7 @@ import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
+  applyConfirmIdentityResult,
   chatBodyFor,
   detailQueryFor,
   enabledDocIds,
@@ -597,6 +601,54 @@ export function HubShellHost() {
     readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
   }, [readAloud, view.thread.turns, citations]);
 
+  // T2 (#4175): confirm a machine MIRA proposed from free text (#4120).
+  // Posts to the Hub's own confirm route (which reuses `updateNotebook` — not
+  // a second identity-write path) and relays its outcome verbatim; the shell
+  // renders the server's own `manualReady`/`message`, never a client guess.
+  // Refresh afterward so a promoted candidate manual (migration 104) shows
+  // up in Sources/the answer the next time the technician asks.
+  const onConfirmIdentity = useCallback(async (proposal: IdentityProposal): Promise<ConfirmIdentityResult> => {
+    const notebookId = selectionRef.current?.notebookId;
+    if (!notebookId) throw new Error("no notebook selected");
+    const body: Record<string, string> = { manufacturer: proposal.manufacturer, model: proposal.model };
+    if (proposal.catalogNumber) body.catalogNumber = proposal.catalogNumber;
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/identity/confirm/`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown; error?: unknown; manufacturer?: unknown; model?: unknown }
+      | null;
+    // Light-review fix (PR #4195): a stale proposal card (or a race the
+    // adapter's own `priorOutcome` missed) can still try to confirm an
+    // identity the notebook has since moved past. The server's 409 names the
+    // CURRENT confirmed machine; relay it as a typed, `instanceof`-checkable
+    // error so the card renders a terminal refusal, never the generic
+    // retryable "Could not confirm."
+    if (res.status === 409 && data?.error === "identity_already_confirmed") {
+      const mfr = typeof data.manufacturer === "string" && data.manufacturer ? data.manufacturer : null;
+      const mdl = typeof data.model === "string" && data.model ? data.model : null;
+      throw new IdentityAlreadyConfirmedError(mfr && mdl ? `This machine is already confirmed as ${mfr} ${mdl}.` : undefined);
+    }
+    if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
+    const searching = data.searching === true;
+    const startedAt = typeof data.startedAt === "string" && data.startedAt ? data.startedAt : undefined;
+    // Codex round 5 F16 (#4195): bind completion to `notebookId` — the
+    // notebook THIS confirm was for, captured BEFORE the await — never to
+    // whatever `selectionRef.current` is NOW. A technician who navigated to
+    // a different notebook while this POST was in flight must get no
+    // `loadDetail` refresh under A's identity; see
+    // `applyConfirmIdentityResult`'s own header for the full race.
+    await applyConfirmIdentityResult(notebookId, { loadDetail, currentSelection: () => selectionRef.current });
+    return {
+      manualReady: data.manualReady === true,
+      searching,
+      ...(startedAt ? { startedAt } : {}),
+      ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
+    };
+  }, [loadDetail]);
+
   // Plant memory (migration 095): record what fixed the machine, filed under
   // the question this answer replied to. The platform prompt/alert dialogs are
   // the capture UI (commodity-before-custom); the next answer on this notebook
@@ -639,6 +691,7 @@ export function HubShellHost() {
     ...(selection?.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
+    ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
