@@ -202,7 +202,15 @@ def test_every_non_pass_verdict_is_a_failure(verdict):
 def test_only_the_owner_account_as_a_user_is_trusted(login, typ):
     d = decide(envelope("PASS"), login=login, typ=typ)
     assert d.post is False
-    assert "owner" in d.reason
+    assert "only the repository owner account" in d.reason
+
+
+def test_a_non_owner_trigger_does_not_reconcile_even_with_live_owner_evidence():
+    """The trigger gate is the rule, not just the reconciler's owner filter."""
+    owner_pass = comment(1, PASS_1)
+    mallory = comment(2, envelope("PASS", run_id=RUN_2), login="mallory")
+    d = decide(mallory["body"], cid=2, comments=[owner_pass, mallory], login="mallory")
+    assert d.post is False and "only the repository owner account" in d.reason
 
 
 def test_an_empty_owner_trusts_nobody():
