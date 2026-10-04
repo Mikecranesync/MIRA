@@ -289,7 +289,8 @@ def designate(
 #     <label> <sha256 of the file's bytes> <repo-relative path>
 # with label ``expand`` (older code keeps working), ``contract`` or ``unreviewed``. Only
 # ``expand`` keeps a candidate valid. No SQL is parsed: an unlabelled file, a label for
-# other content, or a file added and deleted in between all invalidate (fail closed).
+# other content, a file added and deleted in between, and any file whose content changed
+# after the candidate (an earlier version may be the one applied) all invalidate (fail closed).
 # tests/test_rollback_candidates.py fails CI on any migration without a matching line, so
 # the label lands in the migration's own reviewed PR; the sha matches the ledger's
 # ``sha256sum`` (apply-migrations.yml, schema_migrations.content_sha256).
@@ -355,41 +356,94 @@ def label_problems(labels: dict[str, tuple[str, str]], files: dict[str, str]) ->
     return problems
 
 
+def _blobs(repo: Path, rev: str) -> dict[str, str]:
+    """``path -> git blob id`` of every migration file in ``rev``."""
+    out = {}
+    for line in _git(repo, "ls-tree", "-r", rev, "--", *MIGRATION_DIRS).splitlines():
+        meta, path = line.split("\t", 1)
+        if path.endswith(".sql"):
+            out[path] = meta.split()[2]
+    return out
+
+
+def _versions_since(candidate: str, head: str, repo: Path) -> dict[str, set[str]]:
+    """``path -> every blob id`` a migration file had in any commit of candidate..head where it
+    changed (merge commits against each parent; no rename pairing). A deletion adds nothing."""
+    raw = _git(
+        repo,
+        "log",
+        "-m",
+        "--no-renames",
+        "--raw",
+        "--no-abbrev",
+        "--format=",
+        f"{candidate}..{head}",
+        "--",
+        *MIGRATION_DIRS,
+    )
+    out: dict[str, set[str]] = {}
+    for line in raw.splitlines():
+        if not line.startswith(":"):
+            continue
+        meta, path = line.split("\t", 1)
+        new_blob = meta.split()[3]
+        if path.endswith(".sql"):
+            versions = out.setdefault(path, set())
+            if new_blob.strip("0"):  # all zeros = deleted at that commit
+                versions.add(new_blob)
+    return out
+
+
 def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
-    """Migration files that changed on ``head`` after ``candidate`` and are not labelled
-    ``expand`` for their exact content at ``head`` (kind: ``contract``, ``unreviewed`` or
-    ``unlabelled``). Empty means the candidate is still a valid code-only rollback target."""
+    """Migration files whose content after ``candidate`` is not proven harmless to it, looking
+    at EVERY version each file had in candidate..head, not only its final bytes: a version
+    applied in between stays live (kind ``contract``, ``unreviewed`` or ``unlabelled``).
+
+    * A file the candidate already had is compatible with it by construction. Edited at any
+      point after it (even if later restored), the version the database ran may be one no
+      label covers: invalid. Deleted unchanged: no new schema, ignored.
+    * A file new after the candidate must have had exactly one version, still present at
+      head and labelled ``expand`` for those bytes.
+
+    Empty means the candidate is still a valid code-only rollback target."""
     for sha in (candidate, head):
         if not _SHA.match(sha):
             raise ValueError(f"not a 40-hex commit: {sha!r}")
     _git(repo, "merge-base", "--is-ancestor", candidate, head)  # CalledProcessError if not
     labels = parse_labels(_git(repo, "show", f"{head}:{LABELS_FILE}"))  # missing file = error
-    changed = _git(
-        repo, "diff", "--name-only", "--diff-filter=AMR", candidate, head, "--", *MIGRATION_DIRS
-    ).split()
+    before, after = _blobs(repo, candidate), _blobs(repo, head)
     hits = []
-    # A file added after the candidate and deleted before head may have been applied in
-    # between: its effect can be live although head no longer shows it.
-    added = _git(
-        repo,
-        "log",
-        "--format=",
-        "--name-only",
-        "--diff-filter=A",
-        f"{candidate}..{head}",
-        "--",
-        *MIGRATION_DIRS,
-    ).split()
-    at_head = set(_git(repo, "ls-tree", "-r", "--name-only", head, "--", *MIGRATION_DIRS).split())
-    for path in sorted({p for p in added if p.endswith(".sql")} - at_head):
-        hits.append(
-            {
-                "path": path,
-                "kind": "unlabelled",
-                "reason": "added after the candidate and deleted before head; it may have been applied",
-            }
-        )
-    for path in sorted(p for p in changed if p.endswith(".sql")):
+    for path, versions in sorted(_versions_since(candidate, head, repo).items()):
+        if path in before:
+            if versions - {before[path]}:
+                hits.append(
+                    {
+                        "path": path,
+                        "kind": "unlabelled",
+                        "reason": "changed after the candidate, which already had it; an edited"
+                        " version may have been applied, and no label can cover it",
+                    }
+                )
+            continue
+        if path not in after:
+            hits.append(
+                {
+                    "path": path,
+                    "kind": "unlabelled",
+                    "reason": "added after the candidate and deleted before head; it may have been applied",
+                }
+            )
+            continue
+        if len(versions) > 1:
+            hits.append(
+                {
+                    "path": path,
+                    "kind": "unlabelled",
+                    "reason": f"its content changed after the candidate ({len(versions)} versions);"
+                    " an earlier version may have been applied, and the label covers only the last",
+                }
+            )
+            continue
         sha = hashlib.sha256(_git_bytes(repo, "show", f"{head}:{path}")).hexdigest()
         label, labelled_sha = labels.get(path, (None, None))
         if label is None:

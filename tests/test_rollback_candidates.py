@@ -582,24 +582,117 @@ def test_an_unlabelled_later_migration_invalidates(tmp_path):
 
 
 def test_a_label_for_other_content_does_not_count(tmp_path):
-    """The label binds to the exact bytes: an edited file is a different migration."""
+    """The label binds to the exact bytes: a line for other content proves nothing."""
     repo, cand = _repo(tmp_path)
-    _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: "expand"})
-    (repo / B002).write_text("ALTER TABLE a DROP COLUMN x;\n")  # label line keeps the old sha
-    _git(repo, "commit", "-q", "-am", "edit")
+    (repo / B002).write_text("ALTER TABLE a DROP COLUMN x;\n")
+    with (repo / LABELS).open("a") as fh:
+        fh.write(f"expand {_sha('ALTER TABLE a ADD COLUMN y int;' + chr(10))} {B002}\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head")
     hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
     assert [(h["path"], h["kind"]) for h in hits] == [(B002, "unlabelled")]
     assert "different content" in hits[0]["reason"]
 
 
-def test_an_existing_migration_changed_after_the_candidate_needs_a_label_for_its_new_content(
+def _relabel(repo: Path, path: str, label: str) -> None:
+    """Replace ``path``'s label line with one for its current content."""
+    keep = [x for x in (repo / LABELS).read_text().splitlines() if not x.endswith(f" {path}")]
+    keep.append(f"{label} {_sha((repo / path).read_text())} {path}")
+    (repo / LABELS).write_text("\n".join(keep) + "\n")
+
+
+def test_an_existing_migration_edited_after_the_candidate_invalidates_whatever_its_label(
     tmp_path,
 ):
+    """An edited applied migration: the version the database ran may differ from the one
+    labelled, so no label for the final bytes can clear it."""
     repo, cand = _repo(tmp_path)
-    (repo / "mira-hub/db/migrations/001_a.sql").write_text("CREATE TABLE a (x bigint);\n")
+    first = "mira-hub/db/migrations/001_a.sql"
+    (repo / first).write_text("CREATE TABLE a (x bigint);\n")
+    _relabel(repo, first, "expand")
     _git(repo, "commit", "-q", "-am", "rewrite an applied file")
     hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
-    assert [h["kind"] for h in hits] == ["unlabelled"]
+    assert [(h["path"], h["kind"]) for h in hits] == [(first, "unlabelled")]
+    assert "changed after the candidate" in hits[0]["reason"]
+
+
+def test_an_earlier_version_cannot_hide_behind_the_final_label(tmp_path):
+    """Codex #4222 r6 F14: a version applied in between stays live although the file was later
+    rewritten and correctly relabelled; every version after the candidate counts."""
+    repo, cand = _repo(tmp_path)
+    ingest = "mira-core/mira-ingest/db/migrations/012_x.sql"
+    _land(repo, {ingest: "ALTER TABLE chunks DROP COLUMN legacy;\n"}, {ingest: "contract"})
+    (repo / ingest).write_text("ALTER TABLE chunks ADD COLUMN y int;\n")
+    _relabel(repo, ingest, "expand")
+    _git(repo, "commit", "-q", "-am", "rewrite and relabel")
+    head = _git(repo, "rev-parse", "HEAD")
+    hits = rc.contracting_since(cand, head, repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(ingest, "unlabelled")]
+    assert "changed after the candidate" in hits[0]["reason"]
+    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
+    assert res.returncode == 1, res.stdout
+
+
+def test_an_existing_migration_edited_and_restored_still_invalidates(tmp_path):
+    """Codex #4222 r6 F14: the intermediate version may have been applied."""
+    repo, cand = _repo(tmp_path)
+    first = repo / "mira-hub/db/migrations/001_a.sql"
+    original = first.read_text()
+    first.write_text("CREATE TABLE a (x bigint);\n")
+    _git(repo, "commit", "-q", "-am", "edit")
+    first.write_text(original)
+    _git(repo, "commit", "-q", "-am", "restore")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [
+        ("mira-hub/db/migrations/001_a.sql", "unlabelled")
+    ]
+
+
+def test_an_existing_migration_deleted_unchanged_leaves_the_candidate_valid(tmp_path):
+    """A file the candidate already had is compatible with it by construction; deleting it
+    later adds no schema change."""
+    repo, cand = _repo(tmp_path)
+    first = "mira-hub/db/migrations/001_a.sql"
+    _git(repo, "rm", "-q", first)
+    keep = [x for x in (repo / LABELS).read_text().splitlines() if not x.endswith(f" {first}")]
+    (repo / LABELS).write_text("\n".join(keep) + "\n")
+    _git(repo, "commit", "-q", "-am", "delete")
+    assert rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo) == []
+
+
+def test_a_merge_commit_that_rewrites_a_migration_counts_as_a_version(tmp_path):
+    """A merge resolution can introduce bytes neither parent had; the merge's own diff is a
+    version too (git log -m), so the side branch's applied version still counts."""
+    repo, cand = _repo(tmp_path)
+    base = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "side")
+    _land(repo, {B002: "ALTER TABLE a DROP COLUMN x;\n"}, {B002: "contract"})
+    _git(repo, "checkout", "-q", base)
+    (repo / "notes.txt").write_text("unrelated\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "unrelated")
+    _git(repo, "merge", "-q", "--no-ff", "--no-commit", "side")
+    (repo / B002).write_text("ALTER TABLE a ADD COLUMN y int;\n")
+    _relabel(repo, B002, "expand")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "merge side, rewriting 002")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(B002, "unlabelled")]
+
+
+@pytest.mark.parametrize("label, expected", [("expand", []), ("contract", [(B002, "contract")])])
+def test_a_migration_from_a_merged_branch_is_read_like_any_other(tmp_path, label, expected):
+    repo, cand = _repo(tmp_path)
+    base = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "side")
+    _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: label})
+    _git(repo, "checkout", "-q", base)
+    (repo / "notes.txt").write_text("unrelated\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "unrelated")
+    _git(repo, "merge", "-q", "--no-ff", "side", "-m", "merge side")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == expected
 
 
 def test_a_migration_renamed_after_the_candidate_needs_a_label_at_its_new_path(tmp_path):

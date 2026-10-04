@@ -111,10 +111,14 @@ check does not read SQL. Every migration file carries a human **label** in
 | `contract` | older code may break: a drop, rename, type change, new constraint, data rewrite, … | invalid |
 | `unreviewed` | nobody has decided yet | invalid |
 
-A candidate is valid only while every migration file added, changed or renamed on `main` after it,
-in every directory an `apply-*` workflow applies, is labelled `expand` for its exact content. A file
-with no label, a label for different content, or a file added and then deleted in between also
-invalidates it. Everything fails closed.
+A candidate is valid only while every migration file added or renamed on `main` after it, in every
+directory an `apply-*` workflow applies, is labelled `expand` for its exact content. The check looks at
+**every version** each file had after the candidate, not only its final bytes, because a version
+applied in between stays live in the database: a file the candidate already had invalidates it if it
+was edited at any point (even if restored), and a new file invalidates it if its content ever changed.
+A file with no label, a label for different content, or a file added and then deleted in between also
+invalidates it. Everything fails closed. A file the candidate already had and that was later deleted
+unchanged is fine: the candidate was built with it.
 
 ```bash
 git fetch origin main
