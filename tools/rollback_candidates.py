@@ -326,12 +326,6 @@ def contracting_statements(sql: str) -> list[str]:
     hits = []
     for raw in _split_statements(upper):
         piece = " ".join(raw.split())
-        # Dynamic DDL assembled at run time cannot be parsed; treat it as contracting
-        # when it could narrow anything (conservative: a false INVALID beats a silent one).
-        dyn = _EXECUTE.search(piece)
-        if dyn and _DYNAMIC.search(dyn.group(1)) and _DYNAMIC_NARROWING.search(dyn.group(1)):
-            hits.append(piece)
-            continue
         # Every DDL start, each up to the next: a piece can hold several statements (an
         # EXECUTE string, a PL/pgSQL body) and each one runs.
         starts = [m.start() for m in _DDL_START.finditer(piece)]
@@ -339,12 +333,53 @@ def contracting_statements(sql: str) -> list[str]:
             stmt = piece[at : starts[i + 1] if i + 1 < len(starts) else len(piece)].strip()
             if _contracts(stmt):
                 hits.append(stmt)
-    return hits
+    for body in _bodies(sql):
+        # A body that EXECUTEs anything other than one literal runs SQL assembled at run
+        # time, which cannot be parsed: contracting if it could narrow anything
+        # (conservative: a false INVALID beats a silent one).
+        if _executes_dynamic_sql(body) and _NARROWING.search(body.upper()):
+            hits.append("dynamic EXECUTE: " + " ".join(body.split())[:200])
+        # Every string literal in a body may be executed: decode it and check it as SQL.
+        for text in _decoded_literals(body):
+            hits.extend(contracting_statements(text))
+    return list(dict.fromkeys(hits))
 
 
-_EXECUTE = re.compile(r"\bEXECUTE\b(.*)")
-_DYNAMIC = re.compile(r"\|\||\bFORMAT\s*\(")
-_DYNAMIC_NARROWING = re.compile(r"\bDROP\b|\bRENAME\b|\bALTER\s+COLUMN\b|\bNOT\s+NULL\b")
+_NARROWING = re.compile(r"\bDROP\b|\bRENAME\b|\bALTER\s+COLUMN\b|\bSET\s+NOT\s+NULL\b")
+_EXECUTE_ARG = re.compile(r"\bEXECUTE\b(.*)", re.DOTALL)
+_ONE_LITERAL = re.compile(r"\A'(?:[^']|'')*'(?:\s+USING\b.*)?\Z", re.DOTALL)
+
+
+def _bodies(sql: str) -> list[str]:
+    """Every dollar-quoted body, nested ones included."""
+    out = []
+    for m in _LEXEMES.finditer(sql):
+        if m.group("dollar"):
+            out.append(m.group("body"))
+            out.extend(_bodies(m.group("body")))
+    return out
+
+
+def _decoded_literals(body: str) -> list[str]:
+    """The string literals at this body's own level, unescaped to the SQL they hold."""
+    out = []
+    for m in _LEXEMES.finditer(body):
+        if m.group("literal"):
+            out.append(m.group("literal")[1:-1].replace("''", "'"))
+        elif m.group("estr"):
+            out.append(
+                re.sub(r"\\(.)", r"\1", m.group("estr")[2:-1].replace("''", "'"), flags=re.DOTALL)
+            )
+    return out
+
+
+def _executes_dynamic_sql(body: str) -> bool:
+    text = _strip_literals_and_comments(body, keep_literals=True).upper()
+    for piece in _split_statements(text):
+        m = _EXECUTE_ARG.search(piece)
+        if m and not _ONE_LITERAL.match(m.group(1).strip()):
+            return True
+    return False
 
 
 def _contracts(stmt: str) -> bool:

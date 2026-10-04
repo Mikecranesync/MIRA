@@ -396,6 +396,12 @@ def test_designate_reads_the_newest_receipt_per_service_and_groups_by_sha(tmp_pa
         "DO $$ BEGIN EXECUTE 'ALTER TABLE ' || quote_ident(t) || ' DROP COLUMN c'; END $$;",
         "DO $$ BEGIN EXECUTE format('ALTER TABLE %I DROP COLUMN %I', t, c); END $$;",
         "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ' || 'RENAME TO %I', a, b); END $$;",
+        # an EXECUTE string is SQL: decoded and checked like any other (Codex #4222 r3 F2)
+        """DO $$ BEGIN EXECUTE 'ALTER TABLE "maintenance assets" DROP COLUMN c'; END $$;""",
+        """DO $$ BEGIN EXECUTE 'ALTER TABLE t ALTER COLUMN "old value" SET NOT NULL'; END $$;""",
+        "DO $$ BEGIN EXECUTE 'ALTER TABLE t ALTER COLUMN c SET DEFAULT ''('', DROP COLUMN d'; END $$;",
+        # a statement assembled in a variable and then executed cannot be parsed
+        "DO $$ DECLARE s text; BEGIN s := 'ALTER TABLE ' || t || ' DROP COLUMN c'; EXECUTE s; END $$;",
     ],
 )
 def test_contracting_statements_are_flagged(sql):
@@ -419,6 +425,8 @@ def test_contracting_statements_are_flagged(sql):
         'ALTER TABLE "drop column" ADD COLUMN x int;',
         "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ADD COLUMN x int', t); END $$;",
         "DO $$ BEGIN EXECUTE 'GRANT SELECT ON ' || t || ' TO r'; END $$;",
+        # IS NOT NULL is a predicate, not SET NOT NULL
+        "DO $$ BEGIN IF x IS NOT NULL THEN EXECUTE 'DELETE FROM t WHERE ' || cond; END IF; END $$;",
     ],
 )
 def test_expand_and_idempotent_patterns_are_not_flagged(sql):
