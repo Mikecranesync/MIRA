@@ -165,9 +165,17 @@ def load_gaps(path: str) -> list[Gap]:
     return gaps
 
 
+# deployed_at comes from the deploy host's clock, updatedAt from GitHub's: compare with margin.
+CLOCK_SKEW = timedelta(minutes=15)
+
+
 def _newer_gap(gaps: list[Gap], than: datetime) -> Optional[Gap]:
-    """A gap that could hold a deployment at or after ``than`` (it was updated no earlier)."""
-    return next((g for g in sorted(gaps, key=lambda g: g.updated_at) if g.updated_at >= than), None)
+    """A gap that could hold a deployment at or after ``than`` (it was updated no earlier,
+    within the clock-skew margin)."""
+    return next(
+        (g for g in sorted(gaps, key=lambda g: g.updated_at) if g.updated_at >= than - CLOCK_SKEW),
+        None,
+    )
 
 
 def candidates_for_deploy(
@@ -212,7 +220,6 @@ def candidates_for_deploy(
 def designate(
     receipts: list[ProdReceipt],
     inventory: tuple[str, ...] = (),
-    evidence_gap: str = "",
     gaps: Optional[list[Gap]] = None,
 ) -> dict:
     """The recovery targets production designates now (newest receipt per service).
@@ -220,7 +227,6 @@ def designate(
     ``inventory`` names services that must be accounted for (the deploy default set).
     One with no readable receipt is ``lost``: GitHub omits expired artifacts and
     removes old runs, so a missing receipt is missing history, never "never deployed".
-    ``evidence_gap`` (an expired receipt or an exhausted window) is added to the reason.
     Only a receipt that exists but records no candidate is bootstrap (``undesignated``).
     A service whose current receipt an unreadable run could post-date (``gaps``) is
     ``lost`` too: its real current deployment, and so its target, may be hidden.
@@ -235,7 +241,7 @@ def designate(
     for svc in sorted(set(inventory) - set(current)):
         lost[svc] = (
             f"no readable production receipt for {svc} (receipts expire after 90 days and old"
-            f" runs are removed){': ' + evidence_gap if evidence_gap else ''}"
+            " runs are removed)"
         )
     for svc, r in sorted(current.items()):
         gap = _newer_gap(gaps or [], r.deployed_at)
@@ -641,11 +647,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     c.add_argument("--gaps", default="")
     w = sub.add_parser("since")
     w.add_argument("--receipts-dir", required=True)
+    ws = sub.add_parser("window-start")
+    ws.add_argument("--days", type=int, required=True)
     d = sub.add_parser("designate")
     d.add_argument("--receipts-dir", required=True)
     d.add_argument("--out", default="")
     d.add_argument("--inventory", default="")
-    d.add_argument("--evidence-gap", default="")
     d.add_argument("--gaps", default="")
     s = sub.add_parser("stamp")
     s.add_argument("--receipt", required=True)
@@ -677,14 +684,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             _write(cands, a.out)
         elif a.cmd == "since":
             receipts = load_receipts(Path(a.receipts_dir))
-            print(_iso(min(r.deployed_at for r in receipts)) if receipts else "")
+            print(_iso(min(r.deployed_at for r in receipts) - CLOCK_SKEW) if receipts else "")
+        elif a.cmd == "window-start":
+            print((datetime.now(timezone.utc) - timedelta(days=a.days)).strftime("%Y-%m-%d"))
         elif a.cmd == "designate":
             inventory = _services(a.inventory) if a.inventory.strip() else ()
             _write(
                 designate(
                     load_receipts(Path(a.receipts_dir)),
                     inventory,
-                    a.evidence_gap.strip(),
                     load_gaps(a.gaps),
                 ),
                 a.out,

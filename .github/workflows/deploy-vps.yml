@@ -69,9 +69,9 @@ jobs:
     name: Authorize production source
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # 10, not 5: the §10.2 receipt walk reads up to RECEIPT_WALK_LIMIT runs' artifact lists
-    # and, for runs without a receipt, their job list (measured ~3 min for 191 runs from a
-    # workstation, 2026-10-04) before any production job starts.
+    # 10, not 5: the §10.2 receipt walk reads the artifact list of every deploy run of the last
+    # RECEIPT_WALK_DAYS (measured 70 s for 191 runs from a workstation, 2026-10-04) before any
+    # production job starts.
     timeout-minutes: 10
     outputs:
       approved_rc_sha: ${{ steps.validate.outputs.approved_rc_sha }}
@@ -88,9 +88,11 @@ jobs:
       # Must equal the deploy script's default TARGETS fallback (the three-service
       # OVH set) — pinned by tests/test_deploy_vps_production_authorization.py.
       PRODUCTION_DEFAULT_SERVICES: "mira-hub mira-web mira-ask"
-      # §10.2 receipt walk window; must equal rollback-candidate-refresh.yml (pinned by
+      # §10.2 receipt walk window (90-day receipt retention + 30-day re-run limit + 1) and
+      # listing cap; must equal rollback-candidate-refresh.yml (pinned by
       # tests/test_rollback_candidate_refresh.py).
-      RECEIPT_WALK_LIMIT: "200"
+      RECEIPT_WALK_DAYS: "121"
+      RECEIPT_WALK_CAP: "1000"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -386,8 +388,8 @@ jobs:
       # is not the one being deployed — read from production receipts, never from the
       # host checkout (PRIOR_SHA) or from tags. Computed here, before any production
       # credential or the host is touched, and stamped onto the production receipt
-      # after the deploy. The walk reads every readable receipt of up to RECEIPT_WALK_LIMIT
-      # completed deploy runs and only then selects by deployed_at: a re-run of an older
+      # after the deploy. The walk reads every readable receipt of the completed deploy runs
+      # of the last RECEIPT_WALK_DAYS and only then selects by deployed_at: a re-run of an older
       # run can carry the newest deployment, so run order and coverage prove nothing about
       # time. An unreadable receipt (expired, or gone after a successful upload) is a gap
       # bounded by its run's updatedAt; a service whose candidate such a gap could
@@ -406,15 +408,23 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          [[ "$RECEIPT_WALK_LIMIT" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "::error::RECEIPT_WALK_LIMIT must be a positive integer"; exit 1; }
+          [[ "$RECEIPT_WALK_DAYS" =~ ^[1-9][0-9]{0,3}$ && "$RECEIPT_WALK_CAP" =~ ^[1-9][0-9]{0,4}$ ]] || { echo "::error::RECEIPT_WALK_DAYS and RECEIPT_WALK_CAP must be positive integers"; exit 1; }
           DIR="$RUNNER_TEMP/production-receipts"
           install -d -m 700 "$DIR"
           TOOL="$RUNNER_TEMP/trusted/rollback_candidates.py"
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit "$RECEIPT_WALK_LIMIT" --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"')"
+          # Every run that can still matter: a receipt lives 90 days after its upload, and a run
+          # can be re-run (uploading a new one) only up to 30 days after it started (GitHub docs,
+          # "Re-running workflows and jobs"), so RECEIPT_WALK_DAYS = 121 lists them all.
+          WINDOW_START="$(python3 -I "$TOOL" window-start --days "$RECEIPT_WALK_DAYS")"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --created ">=$WINDOW_START" --limit "$RECEIPT_WALK_CAP" --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"')"
           GAPS="$RUNNER_TEMP/receipt-gaps.tsv"
           RECEIPTLESS="$RUNNER_TEMP/receiptless-runs.tsv"
           : > "$GAPS"
           : > "$RECEIPTLESS"
+          # A listing cut at the cap leaves older runs unread; any of them may hold a newer deployment.
+          if [ "$(grep -c . <<< "$RUNS" || true)" -ge "$RECEIPT_WALK_CAP" ]; then
+            printf '%s\t%s\t%s\n' "$(tail -n 1 <<< "$RUNS" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "run listing truncated at $RECEIPT_WALK_CAP, older runs unread" >> "$GAPS"
+          fi
           # Pass 1: every readable receipt. An unreadable one is recorded as a gap with its run's
           # updatedAt (it cannot have deployed after that), never a stop and never a fallback.
           while read -r run updated; do
@@ -439,7 +449,7 @@ jobs:
           while IFS=$'\t' read -r run updated; do
             [ -n "$run" ] && [ -n "$SINCE" ] || continue
             [[ "$updated" < "$SINCE" ]] && continue
-            UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+            UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
               --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
             [ "$UPLOADED" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "receipt gone after a successful upload" >> "$GAPS"
           done < "$RECEIPTLESS"

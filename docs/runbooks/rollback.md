@@ -47,7 +47,8 @@ DIR=$(mktemp -d); GAPS="$DIR.gaps"; LESS="$DIR.receiptless"; : > "$GAPS"; : > "$
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
 # making), any conclusion. Pass 1 reads every readable receipt; an unreadable one is a gap bounded by
 # its run's updatedAt. Pass 2 asks whether a receipt-less run that could post-date them had uploaded one.
-gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --limit 200 \
+gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed \
+  --created ">=$(python3 tools/rollback_candidates.py window-start --days 121)" --limit 1000 \
   --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"' > "$DIR.runs"
 while read -r run updated; do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
@@ -61,7 +62,7 @@ done < "$DIR.runs"
 since=$(python3 tools/rollback_candidates.py since --receipts-dir "$DIR")
 while IFS=$'\t' read -r run updated; do
   [ -n "$since" ] && [[ ! "$updated" < "$since" ]] || continue
-  up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+  up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
     --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')
   [ "$up" = "0" ] || printf '%s\t%s\treceipt gone after a successful upload\n' "$run" "$updated" >> "$GAPS"
 done < "$LESS"
@@ -86,23 +87,46 @@ python3 tools/rollback_candidates.py candidates --receipts-dir "$DIR" \
 
 ## 2. Is the candidate still a valid code-only target?
 
-Expand/contract: code rolled back across a **contracting** migration (a dropped/renamed column or
-table, a column type change, `SET NOT NULL`) breaks. Check every migration directory an `apply-*`
-workflow applies:
+Expand/contract: code rolled back across a migration that older code cannot live with breaks. The
+check **fails closed**: a candidate is valid only if every statement in every migration file added on
+`main` after it, in every directory an `apply-*` workflow applies, is on the expand-only allowlist
+below. Anything else, a known contraction or merely something the tool cannot prove harmless, needs
+a human decision.
 
 ```bash
 git fetch origin main
 python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-parse origin/main)" --repo .
-# exit 0 = no contracting statement since the candidate; 1 = list printed, needs a schema decision (§5)
+# exit 0 = every later statement is expand-only; 1 = CONTRACTING / UNPROVEN lines printed (§5)
 ```
 
-This is conservative: it reads migration files added on `main` after the candidate, whether or not
-`apply-migrations.yml` has applied them to production yet, and it counts every `DROP` of a table, view,
-type, sequence, schema or function even when the same file re-creates the name (the new object may not
-be what older code expects). Literals and comments are ignored, and DDL inside `DO` blocks and function
-bodies is checked. On 2026-10-04 the whole corpus had five contracting files (`048`, `069`, `070`:
-`tenant_id` → `TEXT`; `033`: a guarded column rename; `063`: a drop-and-recreate of
-`flaky_input_signals`) and none since `0994b31a`.
+| Allowed (expand-only) | Why older code can neither read nor write wrongly through it |
+|---|---|
+| `BEGIN`, `COMMIT`, `END`, `START TRANSACTION` | transaction control, no schema change |
+| `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only |
+| `CREATE TABLE …` without `INHERITS` / `PARTITION OF`, foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes |
+| `CREATE INDEX …` (not `UNIQUE`) | changes plans, never results or accepted writes |
+| `CREATE SEQUENCE …` | a new object older code never references |
+| `COMMENT ON …` | metadata only |
+| `GRANT …` | can only allow more |
+| `ALTER TABLE … ADD COLUMN c …` that is nullable or defaulted, with no `UNIQUE`, primary key, `CHECK`, `GENERATED` or `REFERENCES` | older inserts omit `c`, and nothing about `c` can reject older code's rows or deletes |
+| any statement on a table a **plain** `CREATE TABLE` made earlier in the same file | older code cannot touch a table that did not exist (`IF NOT EXISTS` proves nothing) |
+
+Not on it, on purpose: data changes to existing tables, `CREATE UNIQUE INDEX`, `DROP INDEX` and
+`DROP CONSTRAINT` (one may be the `ON CONFLICT` arbiter of an older upsert), `ADD CONSTRAINT`, policies
+and RLS, `REVOKE`, triggers, `CREATE [OR REPLACE] FUNCTION/VIEW` (behaviour and overload resolution),
+`CREATE EXTENSION`, `DO` blocks, and anything unrecognised. A known contraction (a dropped or renamed
+column or table, a type change, `SET NOT NULL`, any dropped object, including inside `DO` blocks and
+`EXECUTE` strings) is labelled `CONTRACTING`; the rest is `UNPROVEN`. Both make the candidate invalid.
+
+This reads files added on `main` after the candidate whether or not `apply-migrations.yml` has applied
+them yet. **Measured on 2026-10-04:** 89 of the 123 existing migration files are not provably
+expand-only (most use `DO` blocks, functions, triggers or RLS), and all three real candidates
+(`648896996`, `76887423`, `0994b31a`) are already invalid because of `101`, `102` and `104`
+(trigger and function changes). Expect the daily check to raise an incident whenever production's
+candidate predates such a migration; a human decides, and it clears once a deploy moves the
+candidate past it. A durable, off-file record of reviewed migrations would remove the repeats; it is
+a tracked follow-up, not part of this check (applied migration files are immutable, so it cannot be
+a marker inside them).
 
 ## 3. Is its evidence fresh?
 

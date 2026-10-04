@@ -274,10 +274,9 @@ def test_designate_reports_an_inventory_service_lost_beyond_the_walk(tmp_path):
             receipt(C, "36805202089", "2026-10-01T02:23:34Z", services=("mira-hub",)),
         )
     )
-    gap = "the production receipt of run 1 has expired"
-    d = rc.designate(receipts, inventory=ALL, evidence_gap=gap)
+    d = rc.designate(receipts, inventory=ALL)
     assert sorted(d["lost"]) == ["mira-ask", "mira-web"]
-    assert all(gap in why for why in d["lost"].values())
+    assert all("no readable production receipt" in why for why in d["lost"].values())
     assert "mira-hub" in d["undesignated"] and "mira-hub" not in d["lost"]
 
 
@@ -299,7 +298,7 @@ def test_designate_with_a_gap_but_full_coverage_loses_nothing(tmp_path):
     receipts = rc.load_receipts(
         write(tmp_path / "r", receipt(C, "36805202089", "2026-10-01T02:23:34Z"))
     )
-    assert rc.designate(receipts, inventory=ALL, evidence_gap="window")["lost"] == {}
+    assert rc.designate(receipts, inventory=ALL)["lost"] == {}
 
 
 def test_designate_cli_takes_the_inventory_and_the_gap(tmp_path):
@@ -316,8 +315,6 @@ def test_designate_cli_takes_the_inventory_and_the_gap(tmp_path):
             str(out),
             "--inventory",
             "mira-hub mira-web",
-            "--evidence-gap",
-            "walked the newest 1 deploy runs",
         ]
     )
     assert sorted(json.loads(out.read_text())["lost"]) == ["mira-web"]
@@ -384,9 +381,31 @@ def test_load_gaps_fails_closed_on_a_malformed_line(tmp_path):
             rc.load_gaps(str(tmp_path / "b.tsv"))
 
 
+def test_a_gap_just_before_the_candidate_counts_within_the_skew_margin(tmp_path):
+    """deployed_at is the deploy host's clock, updatedAt GitHub's: compare with margin."""
+    receipts = rc.load_receipts(real_three(tmp_path))
+    near = rc.candidates_for_deploy(
+        receipts, NEW, ALL, [_gap("36000000100", "2026-10-01T02:15:00Z")]
+    )
+    far = rc.candidates_for_deploy(
+        receipts, NEW, ALL, [_gap("36000000100", "2026-10-01T01:30:00Z")]
+    )
+    assert near["mira-hub"]["sha"] is None, "8 minutes before the candidate is within the margin"
+    assert far["mira-hub"]["sha"] == C
+
+
+def test_window_start_is_days_before_now(capsys):
+    from datetime import date as _date
+
+    rc.main(["window-start", "--days", "121"])
+    got = _date.fromisoformat(capsys.readouterr().out.strip())
+    today = datetime.now(timezone.utc).date()
+    assert (today - got).days == 121
+
+
 def test_since_prints_the_oldest_receipt_time(tmp_path, capsys):
     rc.main(["since", "--receipts-dir", str(real_three(tmp_path))])
-    assert capsys.readouterr().out.strip() == "2026-09-27T21:04:48Z"
+    assert capsys.readouterr().out.strip() == "2026-09-27T20:49:48Z", "oldest minus the skew margin"
     rc.main(["since", "--receipts-dir", str(tmp_path / "none")])
     assert capsys.readouterr().out.strip() == ""
 

@@ -219,10 +219,17 @@ def _prod_fixtures(tmp: Path, *, broken_run: str = "") -> dict:
     return {"runs": [r[0] for r in rows], "api": api, "zips": zips}
 
 
-def _run_record(tmp: Path, fixtures: dict, services: str) -> subprocess.CompletedProcess:
-    limit = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]["RECEIPT_WALK_LIMIT"]
+def _run_record(
+    tmp: Path, fixtures: dict, services: str, cap: str = ""
+) -> subprocess.CompletedProcess:
+    job_env = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]
     env = _env(
-        tmp, fixtures, APPROVED_RC_SHA=NEW, EFFECTIVE_SERVICES=services, RECEIPT_WALK_LIMIT=limit
+        tmp,
+        fixtures,
+        APPROVED_RC_SHA=NEW,
+        EFFECTIVE_SERVICES=services,
+        RECEIPT_WALK_DAYS=job_env["RECEIPT_WALK_DAYS"],
+        RECEIPT_WALK_CAP=cap or job_env["RECEIPT_WALK_CAP"],
     )
     trusted = Path(env["RUNNER_TEMP"]) / "trusted"
     trusted.mkdir()
@@ -278,7 +285,7 @@ def test_refresh_lists_only_main_dispatch_deploy_runs():
 
 
 def _walk_block(run: str) -> str:
-    start = run.index('RUNS="$(gh run list')
+    start = run.index("WINDOW_START=")
     end = run.index('done < "$RECEIPTLESS"') + len('done < "$RECEIPTLESS"')
     return "\n".join(line for line in run[start:end].splitlines() if "N=$((N + 1))" not in line)
 
@@ -288,10 +295,14 @@ def test_both_receipt_walks_are_the_same_walk():
     record = _walk_block(_step(DEPLOY, "authorize-source", RECORD)["run"])
     gather = _walk_block(_step(REFRESH, "check", "Gather the production receipts")["run"])
     assert record == gather
-    assert '--status completed --limit "$RECEIPT_WALK_LIMIT"' in record
+    assert '--status completed --created ">=$WINDOW_START" --limit "$RECEIPT_WALK_CAP"' in record
+    assert 'window-start --days "$RECEIPT_WALK_DAYS"' in record
+    assert "jobs?per_page=100&filter=all" in record, "every attempt's steps, not only the latest"
     deploy_env = _wf(DEPLOY)["jobs"]["authorize-source"]["env"]
     refresh_env = _wf(REFRESH)["jobs"]["check"]["env"]
-    assert deploy_env["RECEIPT_WALK_LIMIT"] == refresh_env["RECEIPT_WALK_LIMIT"] == "200"
+    # 90-day receipt retention + 30-day re-run limit + 1 day: every run whose receipt can matter
+    assert deploy_env["RECEIPT_WALK_DAYS"] == refresh_env["RECEIPT_WALK_DAYS"] == "121"
+    assert deploy_env["RECEIPT_WALK_CAP"] == refresh_env["RECEIPT_WALK_CAP"] == "1000"
     assert deploy_env["PRODUCTION_DEFAULT_SERVICES"] == refresh_env["PRODUCTION_DEFAULT_SERVICES"]
     for text in (DEPLOY.read_text(encoding="utf-8"), REFRESH.read_text(encoding="utf-8")):
         assert "--status success --limit" not in text
@@ -407,7 +418,7 @@ def test_a_vanished_receipt_that_could_be_newer_leaves_the_candidates_unresolved
     """A run whose upload succeeded but whose receipt is gone may hide a newer deployment."""
     fx = _prod_fixtures(tmp_path)
     fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
-    fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("success")
+    fx["api"]["actions/runs/36369296665/jobs?per_page=100&filter=all"] = _jobs("success")
     res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
     assert res.returncode == 0, "uncertainty is recorded, never a failed deploy"
     cands = _cands(tmp_path)
@@ -433,7 +444,7 @@ def test_a_vanished_rerun_behind_full_coverage_is_caught(tmp_path):
                 "artifacts": [{"id": 300, "name": f"production-receipt-{d_sha}", "expired": False}]
             },
             "actions/runs/36900000100/artifacts": {"artifacts": []},
-            "actions/runs/36900000100/jobs?per_page=100": _jobs("success"),
+            "actions/runs/36900000100/jobs?per_page=100&filter=all": _jobs("success"),
         },
         "zips": {
             "actions/artifacts/300/zip": _zip(
@@ -474,7 +485,7 @@ def test_a_receiptless_run_older_than_every_receipt_is_not_even_asked(tmp_path):
 def test_a_run_that_never_uploaded_a_receipt_is_skipped(tmp_path):
     fx = _prod_fixtures(tmp_path)
     fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
-    fx["api"]["actions/runs/36369296665/jobs?per_page=100"] = _jobs("skipped")
+    fx["api"]["actions/runs/36369296665/jobs?per_page=100&filter=all"] = _jobs("skipped")
     res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
     assert res.returncode == 0, res.stdout + res.stderr
     assert _cands(tmp_path)["mira-web"]["sha"] == "0994b31a453cd0789661e21bb22db8f3e5eb926e"
@@ -503,7 +514,7 @@ REFRESH_STEPS = (
 )
 
 
-def _run_refresh(tmp: Path, fixtures: dict, limit: str = "") -> tuple[list, dict]:
+def _run_refresh(tmp: Path, fixtures: dict, cap: str = "") -> tuple[list, dict]:
     job_env = _wf(REFRESH)["jobs"]["check"]["env"]
     env = _env(
         tmp,
@@ -512,7 +523,8 @@ def _run_refresh(tmp: Path, fixtures: dict, limit: str = "") -> tuple[list, dict
         RUN_URL="https://github.com/x/y/actions/runs/1",
         REFRESH_BEFORE_HOURS=job_env["REFRESH_BEFORE_HOURS"],
         PRODUCTION_DEFAULT_SERVICES=job_env["PRODUCTION_DEFAULT_SERVICES"],
-        RECEIPT_WALK_LIMIT=limit or job_env["RECEIPT_WALK_LIMIT"],
+        RECEIPT_WALK_DAYS=job_env["RECEIPT_WALK_DAYS"],
+        RECEIPT_WALK_CAP=cap or job_env["RECEIPT_WALK_CAP"],
     )
     done = []
     for name in REFRESH_STEPS:
@@ -563,7 +575,7 @@ def test_refresh_a_vanished_newest_receipt_is_lost(tmp_path):
     """Codex #4222 r2 F1: GitHub omits expired artifacts — absence must not read as bootstrap."""
     fx = _prod_fixtures(tmp_path)
     fx["api"]["actions/runs/36805202089/artifacts"]["artifacts"].pop(1)
-    fx["api"]["actions/runs/36805202089/jobs?per_page=100"] = _jobs("success")
+    fx["api"]["actions/runs/36805202089/jobs?per_page=100&filter=all"] = _jobs("success")
     done, d = _run_refresh(tmp_path, fx)
     assert done[-1].returncode == 1 and len(done) == 4, [r.stderr for r in done]
     assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
@@ -604,7 +616,7 @@ def test_refresh_a_vanished_rerun_behind_full_coverage_is_lost(tmp_path):
                 "artifacts": [{"id": 300, "name": f"production-receipt-{d_sha}", "expired": False}]
             },
             "actions/runs/36900000100/artifacts": {"artifacts": []},
-            "actions/runs/36900000100/jobs?per_page=100": _jobs("success"),
+            "actions/runs/36900000100/jobs?per_page=100&filter=all": _jobs("success"),
         },
         "zips": {
             "actions/artifacts/300/zip": _zip(tmp_path, "300", "production-receipt.json", body)
@@ -616,14 +628,19 @@ def test_refresh_a_vanished_rerun_behind_full_coverage_is_lost(tmp_path):
     assert len(_creates(tmp_path)) == 3
 
 
-def test_refresh_an_exhausted_window_loses_the_service_it_did_not_reach(tmp_path):
-    done, d = _run_refresh(tmp_path, _prod_fixtures(tmp_path), limit="1")
+def test_refresh_a_truncated_listing_loses_everything(tmp_path):
+    """A listing cut at the cap leaves older runs unread: no current receipt can be trusted."""
+    done, d = _run_refresh(tmp_path, _prod_fixtures(tmp_path), cap="1")
     assert done[-1].returncode == 1, [r.stderr for r in done]
-    assert sorted(d["lost"]) == ["mira-web"]
-    assert "newest 1 deploy runs" in d["lost"]["mira-web"]
-    assert [_arg(c, "--title") for c in _creates(tmp_path)] == [
-        "Rollback designation lost for mira-web"
-    ]
+    assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
+    assert "truncated" in d["lost"]["mira-hub"]
+
+
+def test_record_a_truncated_listing_leaves_every_candidate_unresolved(tmp_path):
+    res = _run_record(tmp_path, _prod_fixtures(tmp_path), "mira-hub mira-web mira-ask", cap="2")
+    assert res.returncode == 0, res.stdout + res.stderr
+    cands = _cands(tmp_path)
+    assert all(e["sha"] is None and "truncated" in e["reason"] for e in cands.values())
 
 
 def test_record_step_fails_closed_on_a_malformed_receipt(tmp_path):
