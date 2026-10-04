@@ -253,12 +253,21 @@ def verify_receipt(
     required_capabilities: tuple[str, ...] = ("retrieval",),
     expected_staging_run_id: object = None,
     required_services: tuple[str, ...] = ("mira-hub",),
+    staging_receipt: dict | None = None,
 ) -> list[str]:
     """Return every problem with ``receipt``; an empty list means it authorizes.
 
     Fail-closed by construction: a missing field is a problem, not a skip. Only an
     exact-SHA, PASS, generation-matched, non-stale receipt covering every required
     capability clears.
+
+    ``staging_receipt`` is the staging receipt PRESENTED at production authorization.
+    A run id alone cannot bind a generation: GitHub keeps ``GITHUB_RUN_ID`` across
+    re-runs, so a re-run of the same staging run rebuilds the same SHA into a NEW
+    generation under the OLD id (SDLC v1 §6.2 "Same-SHA redeploy"; Codex F1 on
+    PR #4218). When given, the acceptance receipt's ``generation`` must equal that
+    staging receipt's identity — built_at, deployed_at, every running image id and
+    the run id — or the receipt does not authorize.
     """
     problems: list[str] = []
     now_utc = _as_utc(now)
@@ -390,6 +399,9 @@ def verify_receipt(
                         f"generation[running_images]: covered service {svc!r} has no image id"
                     )
 
+    if staging_receipt is not None:
+        problems.extend(_generation_matches_staging(receipt, staging_receipt, approved_rc_sha))
+
     staging_run_id = receipt.get("staging_run_id")
     if staging_run_id is None:
         problems.append("staging_run_id: missing")
@@ -513,9 +525,49 @@ def _cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _generation_matches_staging(
+    receipt: dict, staging_receipt: dict, approved_rc_sha: str
+) -> list[str]:
+    """Every problem where the acceptance generation != the presented staging receipt."""
+    problems: list[str] = []
+    if not isinstance(staging_receipt, dict):
+        return ["staging receipt: not a JSON object"]
+    generation = receipt.get("generation")
+    if not isinstance(generation, dict):
+        return ["generation: missing — cannot bind to the presented staging receipt"]
+    if staging_receipt.get("approved_rc_sha") != approved_rc_sha:
+        problems.append(
+            f"staging receipt is for {staging_receipt.get('approved_rc_sha')!r}, not {approved_rc_sha}"
+        )
+    for key in ("built_at", "deployed_at"):
+        if generation.get(key) != staging_receipt.get(key) or not staging_receipt.get(key):
+            problems.append(
+                f"generation[{key}] {generation.get(key)!r} != staging receipt {key} "
+                f"{staging_receipt.get(key)!r} — a different generation of the same SHA (SUPERSEDED)"
+            )
+    gen_images = generation.get("running_images")
+    stg_images = staging_receipt.get("running_images")
+    if not isinstance(stg_images, dict) or not stg_images:
+        problems.append("staging receipt running_images: missing or empty")
+    elif gen_images != stg_images:
+        problems.append(
+            "generation[running_images] != staging receipt running_images — "
+            "the audited containers are not the ones presented for production"
+        )
+    if str(receipt.get("staging_run_id")) != str(staging_receipt.get("run_id")):
+        problems.append(
+            f"staging_run_id {receipt.get('staging_run_id')!r} != staging receipt run_id "
+            f"{staging_receipt.get('run_id')!r}"
+        )
+    return problems
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
     required = tuple(c for c in args.require_capabilities.split(",") if c)
+    staging = None
+    if args.staging_receipt:
+        staging = json.loads(Path(args.staging_receipt).read_text(encoding="utf-8"))
     problems = verify_receipt(
         receipt,
         approved_rc_sha=args.approved_rc_sha,
@@ -524,6 +576,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         required_capabilities=required,
         expected_staging_run_id=args.expect_staging_run_id,
         required_services=tuple(x for x in args.require_services.split(",") if x),
+        staging_receipt=staging,
     )
     if problems:
         for problem in problems:
@@ -580,6 +633,14 @@ def main(argv: list[str] | None = None) -> int:
         help="comma-separated capabilities that must be PASS on every scenario",
     )
     verify.add_argument("--expect-staging-run-id", default=None)
+    verify.add_argument(
+        "--staging-receipt",
+        default=None,
+        help=(
+            "the staging-receipt JSON presented at production authorization; the acceptance "
+            "generation (built_at, deployed_at, running_images, run id) must equal it"
+        ),
+    )
     verify.add_argument(
         "--require-services",
         default="mira-hub",

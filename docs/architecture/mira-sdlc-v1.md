@@ -179,10 +179,14 @@ effective_risk = max( declared_risk,
 - A declared class can **never lower** the effective class. Lowering requires an explicit owner
   decision recorded as a PR comment.
 - Recompute on every candidate change (new commits can move a PR into a higher floor).
-- **Today** the only mechanical floor is the lifecycle guard's control-path list (R3 governance
-  paths). The R2 signal floor (tenant / safety / migration / retrieval paths) is **DOCTRINE until
-  Part B step 5 lands** (a narrow companion check reusing the guard's shape). Until then, an
-  under-classified R2 change outside the guarded list is caught only by a reviewer.
+- **Mechanical floors today:** the lifecycle guard's control-path list (R3 governance paths) and,
+  since Part B step 5, the **R2 Signal Floor** — `tools/r2_signal_floor.py` run by
+  `.github/workflows/r2-signal-floor.yml` (the guard's trust shape: `pull_request_target`,
+  trusted-base tool, data-only metadata, status posted from a code-free job). It classifies the
+  changed paths against the §2.1 tenant / safety / migration / retrieval signal lists and FAILS
+  when the PR's `Risk:` line is missing or below the floor. **Advisory status in v1** (the
+  "then required" half is a branch-protection action, §11.2). A path outside both lists is still
+  caught only by a reviewer — the lists are narrow by design, never a guess.
 
 ---
 
@@ -373,8 +377,14 @@ a receipt-proven staging runtime identity or an explicit, recorded `NOT_APPLICAB
 | Expiry | 168 h from acceptance completion (one system-wide freshness constant, shared with the staging receipt); not refreshed by copying |
 | Fail-closed | Missing, malformed, unparseable, stale, ambiguous or scope-mismatched receipts block; a failed verdict-time identity re-read is `INFRA_UNASSESSED`, not success |
 
-State today: the receipt does not exist; the fail-open re-read exists. **DOCTRINE until Part B steps 4–5**
-(producer first, then the `deploy-vps.yml` consumer).
+State: **enforced** since Part B steps 4–5. The producer is `retrieval-acceptance.yml` +
+`tools/acceptance_receipt.py` (step 4, first real receipt `acceptance-receipt-42ad7ecea…` from staging
+run 37153875169); the consumer is `deploy-vps.yml` `authorize-source` (step 5): the newest unexpired
+`acceptance-receipt-<sha>` artifact, provenance-checked to a successful `workflow_run` of
+`retrieval-acceptance.yml`, verified from the trusted base with `--expect-staging-run-id` equal to the
+staging receipt's run — so a receipt from an earlier generation of the same SHA never authorizes. v1
+requires the complete suite (`retrieval,capture`, `mira-hub` covered) on every production dispatch: no
+delta→capability mapper exists yet, and unknown impact means broader coverage.
 
 ---
 
@@ -392,9 +402,10 @@ commit, requires an unexpired (≤168 h) verified `staging-receipt-<sha>` with w
 
 | Criterion | Rule | Today | Closed by |
 |---|---|---|---|
-| Staging receipt covers the dispatched `services` | Verifier compares against the real input; `mira-ask` included | Fixed Hub/Web default | Part B step 5 |
-| Acceptance receipt | Required for every capability in scope, PASS, not SUPERSEDED/SKIPPED/INFRA_UNASSESSED, ≤168 h, generation-matched (§6.2) | No consumer | Part B step 5 |
-| PR association | Exactly one **merged** PR into `main` whose `merge_commit_sha` matches; otherwise STOP (no first-associated-PR fallback) | Fallback exists | Part B step 5 |
+| Staging receipt covers the dispatched `services` | Verifier compares against the real input; `mira-ask` included | **Enforced** — `authorize-source` resolves one `effective_services` set (input or the production default) and verifies image identity for every service, runtime identity for `mira-hub`/`mira-web`, `NOT_APPLICABLE` recorded for the rest (`tools/staging_receipt.py --effective-services`) | Part B step 5 ✅ |
+| Acceptance receipt | Required for every capability in scope, PASS, not SUPERSEDED/SKIPPED/INFRA_UNASSESSED, ≤168 h, generation-matched (§6.2) | **Enforced** — required, provenance-checked, bound to the staging receipt's run id, verified from the trusted base | Part B step 5 ✅ |
+| PR association | Exactly one **merged** PR into `main` whose `merge_commit_sha` matches; otherwise STOP (no first-associated-PR fallback) | **Enforced** — exact match only; 0 or ≥2 matches STOP | Part B step 5 ✅ |
+| Validators from the trusted base | `staging_receipt.py`, `acceptance_receipt.py`, `migration_drift.py` run from the controller ref (`github.sha` on `main`), never the candidate tree; the candidate must be an ancestor of it (§5.2) | **Enforced** — `Pin the trusted base and its validators` + `migration_drift.py --root` | Part B step 5 ✅ |
 | Migrations (Hub **and** ingest) | Applied staging → prod via the ledgered workflows, `dry-run` then `apply`; content check has fail-open branches (absent hashes) — recorded, not relied on | Filename-level drift gate | — (documented) |
 | Release holds | No open `RELEASE_TRAIN.yaml` blocker for the component deployed, or Mike's written waiver (manual check in v1) | Blockers stop the `RELEASED` label only | §13 |
 | Device evidence | When native/OTA mobile is in the release | Present in `ota-release.yml`; `ota-*` environments absent | §13 |
@@ -782,3 +793,6 @@ cheap-lane saturation (2026-10-03); post-cap Codex rounds after main-merge with
 - 2026-10-03 — v1.0 canonical revision: evaluation #4210's fifteen changes applied; decisions D1–D6
   recorded; restructured into Part A (normative, §1–§13) and Part B (state, gaps, implementation).
 - 2026-10-03 — Ratified (status line, Appendix A); no rule text changed.
+- 2026-10-03 — Part B step 5 landed: §2.3 R2 Signal Floor (advisory), §6.2 acceptance-receipt consumer, §7.2 rows
+  marked Enforced (effective services incl. `mira-ask`, generation-bound acceptance receipt, exact merged-PR match,
+  trusted-base validators). Status text only; no rule text changed.

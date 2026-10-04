@@ -1,0 +1,222 @@
+name: R2 Signal Floor
+
+# SDLC v1 Part B step 5 — the narrow mechanical companion to the Legacy UI
+# Lifecycle Guard (docs/architecture/mira-sdlc-v1.md §2.3): the R2/R3 signal
+# floor for tenant / safety / migration / retrieval paths, compared against the
+# PR body's `Risk: R<n>` line. ADVISORY status first (then required, by a
+# separate branch-protection action — never by this file).
+#
+# Same trust shape as ui-lifecycle-guard.yml, deliberately: `pull_request_target`
+# so the evaluation always runs the TRUSTED BASE revision's tool, never PR code;
+# a snapshot job captures the immutable PR tuple; a status-only `pending` job;
+# an `evaluate` job that fetches metadata as DATA ONLY (never interpolated into
+# shell), checks out ONLY base.sha with credentials disabled, and holds no
+# statuses:write; and a `final-status` job on a fresh runner that branches on
+# `needs.evaluate.result`. The tool itself is stdlib-only and makes no network
+# call. Bootstrap note: a workflow file cannot run on the PR that introduces it.
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to evaluate from the current default-branch workflow
+        required: true
+        type: string
+
+concurrency:
+  group: r2-signal-floor-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  STATUS_CONTEXT: "R2 Signal Floor"
+
+jobs:
+  snapshot:
+    name: Capture current PR snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.snapshot.outputs.pr_number }}
+      base_ref: ${{ steps.snapshot.outputs.base_ref }}
+      base_sha: ${{ steps.snapshot.outputs.base_sha }}
+      head_sha: ${{ steps.snapshot.outputs.head_sha }}
+    steps:
+      - name: Assert trusted workflow-dispatch ref
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [ "$DISPATCH_REF" != "refs/heads/main" ]; then
+            echo "::error::workflow_dispatch must execute the current default-branch workflow"
+            exit 1
+          fi
+      - name: Resolve current immutable PR snapshot
+        id: snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          PR_NUMBER="${EVENT_PR_NUMBER:-$INPUT_PR_NUMBER}"
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::a numeric pull request number is required"
+            exit 1
+          fi
+          gh api "repos/$REPO/pulls/$PR_NUMBER" > "$RUNNER_TEMP/current-pull.json"
+          BASE_REF="$(jq -r '.base.ref' "$RUNNER_TEMP/current-pull.json")"
+          BASE_SHA="$(jq -r '.base.sha' "$RUNNER_TEMP/current-pull.json")"
+          HEAD_SHA="$(jq -r '.head.sha' "$RUNNER_TEMP/current-pull.json")"
+          if [ "$BASE_REF" != "main" ] || [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::current pull metadata lacks the required main base and immutable SHAs"
+            exit 1
+          fi
+          {
+            echo "pr_number=$PR_NUMBER"
+            echo "base_ref=$BASE_REF"
+            echo "base_sha=$BASE_SHA"
+            echo "head_sha=$HEAD_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+  pending:
+    name: Post pending status
+    needs: snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Post pending status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
+        run: |
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f "context=$STATUS_CONTEXT" \
+            -f description="Evaluating the R2/R3 signal floor against the declared Risk line..."
+
+  evaluate:
+    name: R2 Signal Floor
+    needs: [snapshot, pending]
+    runs-on: ubuntu-latest
+    # No statuses:write here — this job executes checked-out base code.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Assert base ref is main
+        env:
+          BASE_REF: ${{ needs.snapshot.outputs.base_ref }}
+        run: |
+          if [ "$BASE_REF" != "main" ]; then
+            echo "::error::captured base.ref is '$BASE_REF', expected 'main'"
+            exit 1
+          fi
+
+      # The ONLY token-bearing step. Everything it produces is a plain data file
+      # under $RUNNER_TEMP; nothing is interpolated into a shell command. Runs
+      # BEFORE any checked-out code executes.
+      - name: Fetch PR metadata (data only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.snapshot.outputs.pr_number }}
+          CAPTURED_BASE_SHA: ${{ needs.snapshot.outputs.base_sha }}
+          CAPTURED_HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR_NUMBER" > "$RUNNER_TEMP/current-pull.json"
+          BASE_SHA="$(jq -r '.base.sha' "$RUNNER_TEMP/current-pull.json")"
+          HEAD_SHA="$(jq -r '.head.sha' "$RUNNER_TEMP/current-pull.json")"
+          if [ "$BASE_SHA" != "$CAPTURED_BASE_SHA" ] || [ "$HEAD_SHA" != "$CAPTURED_HEAD_SHA" ]; then
+            echo "::error::pull request base/head changed after the current snapshot was captured"
+            exit 1
+          fi
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[] | {filename, status, previous_filename}' \
+            > "$RUNNER_TEMP/changed-files.jsonl"
+          EXPECTED="$(jq -r '.changed_files' "$RUNNER_TEMP/current-pull.json")"
+          ACTUAL="$(wc -l < "$RUNNER_TEMP/changed-files.jsonl" | tr -d ' ')"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::changed-file listing is incomplete ($ACTUAL of $EXPECTED) — refusing to evaluate a partial set"
+            exit 1
+          fi
+          jq -r '.body // ""' "$RUNNER_TEMP/current-pull.json" > "$RUNNER_TEMP/pr-body.md"
+
+      # Trusted base ONLY. Never the head ref, never a merge ref.
+      - name: Checkout trusted base revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.snapshot.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      # The floor tool itself is stdlib-only; the self-test below needs pytest.
+      # Reuse the lifecycle guard's hash-locked, trusted-base lock (it carries
+      # pytest) rather than a second lock file (Codex F3 on PR #4218).
+      - name: Install trusted-base test dependencies
+        run: |
+          python3 -I -m pip install --quiet --disable-pip-version-check \
+            --only-binary=:all: --require-hashes \
+            -r requirements/ui-lifecycle-guard.txt
+
+      # stdlib only; isolated mode; no token; no network.
+      - name: Evaluate the R2 signal floor
+        run: |
+          python3 -I tools/r2_signal_floor.py \
+            --changes-json-file "$RUNNER_TEMP/changed-files.jsonl" \
+            --pr-body-file "$RUNNER_TEMP/pr-body.md" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Run trusted-base floor tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: >-
+          python3 -I -m pytest -c /dev/null --noconftest
+          --import-mode=importlib --rootdir=. -p no:cacheprovider
+          tests/test_r2_signal_floor.py -q
+
+  final-status:
+    name: Post final status
+    needs: [snapshot, pending, evaluate]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Post final status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ needs.snapshot.outputs.head_sha }}
+          RESULT: ${{ needs.evaluate.result }}
+        run: |
+          if [ "$RESULT" = "success" ]; then
+            STATE=success
+            DESC="No R2/R3 signal path changed, or the declared Risk class meets the mechanical floor."
+          else
+            STATE=failure
+            DESC="A tenant/safety/migration/retrieval signal path changed and the declared Risk class is missing or below the floor (SDLC v1 §2.3)."
+          fi
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f "state=$STATE" \
+            -f "context=$STATUS_CONTEXT" \
+            -f "description=$DESC"

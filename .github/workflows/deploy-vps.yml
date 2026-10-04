@@ -15,6 +15,18 @@ name: Deploy to VPS
 #     deploy-staging.yml) must exist, be unexpired, and verify for the same SHA.
 #   * The production migration-drift gate ALWAYS runs and fails closed. There are
 #     no skip_* inputs; gate bypasses were removed, not made optional.
+#   * SDLC v1 Part B step 5 (docs/architecture/mira-sdlc-v1.md §5.2, §6.2, §7.2):
+#       - approved_rc_sha must be reachable from main as dispatched (ancestor check);
+#       - the PR association is an EXACT merged-PR match (no first-associated fallback);
+#       - the staging receipt is verified against the ACTUAL deploy target set
+#         (`services` input, or the production default) — image identity for every
+#         service incl. mira-ask, runtime identity for the services that report one;
+#       - a generation-matched `acceptance-receipt-<sha>` (PASS, unexpired, bound to
+#         the SAME staging run as the staging receipt) is REQUIRED; no older receipt
+#         is ever substituted;
+#       - every validator (staging_receipt.py, acceptance_receipt.py,
+#         migration_drift.py) runs from the TRUSTED BASE (the controller ref,
+#         `github.sha` on main), never from the candidate tree.
 #   * Images are built with `--no-cache --pull`; the built image IDs must equal
 #     the running container image IDs; /api/version (hub) and /api/health (web)
 #     must report gitSha == approved_rc_sha, or the run STOPs naming the prior
@@ -62,6 +74,14 @@ jobs:
       approved_rc_sha: ${{ steps.validate.outputs.approved_rc_sha }}
       approved_release_tag: ${{ steps.resolve-tag.outputs.approved_release_tag }}
       services: ${{ steps.validate.outputs.services }}
+      # The ACTUAL deploy target set (input, or the production default) — the one
+      # resolution every receipt check and the deploy itself consume (§6.2).
+      effective_services: ${{ steps.validate.outputs.effective_services }}
+      staging_run_id: ${{ steps.staging-receipt.outputs.staging_run_id }}
+    env:
+      # Must equal the deploy script's default TARGETS fallback (the three-service
+      # OVH set) — pinned by tests/test_deploy_vps_production_authorization.py.
+      PRODUCTION_DEFAULT_SERVICES: "mira-hub mira-web mira-ask"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -95,8 +115,28 @@ jobs:
             echo "::error::approved_release_tag must match ^v[0-9]+\.[0-9]+\.[0-9]+$ or be empty"
             exit 1
           fi
-          echo "approved_rc_sha=$APPROVED_RC_SHA" >> "$GITHUB_OUTPUT"
-          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          # The deploy target set is resolved ONCE, here, and every later check
+          # (staging receipt, acceptance receipt, production receipt) and the
+          # deploy consume this output — never a fixed Hub/Web default (§6.2).
+          EFFECTIVE="${SERVICES:-$PRODUCTION_DEFAULT_SERVICES}"
+          SERVICE_LIST_PATTERN='^[a-z0-9-]+( [a-z0-9-]+)*$'
+          [[ "$EFFECTIVE" =~ $SERVICE_LIST_PATTERN ]] || {
+            echo "::error::services must be a single-space-separated list of service names (got '$SERVICES')"
+            exit 1
+          }
+          SEEN=" "
+          for service in $EFFECTIVE; do
+            case "$SEEN" in
+              *" $service "*) echo "::error::duplicate service in the deploy target set: $service"; exit 1 ;;
+            esac
+            SEEN="${SEEN}${service} "
+          done
+          {
+            echo "approved_rc_sha=$APPROVED_RC_SHA"
+            echo "services=$SERVICES"
+            echo "effective_services=$EFFECTIVE"
+          } >> "$GITHUB_OUTPUT"
+          echo "deploy target set: $EFFECTIVE" >> "$GITHUB_STEP_SUMMARY"
       - name: Require HEAD == approved_rc_sha
         env:
           APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
@@ -107,6 +147,30 @@ jobs:
             echo "::error::HEAD ($CHECKED_OUT) != approved_rc_sha ($APPROVED_RC_SHA)"
             exit 1
           fi
+      # SDLC v1 §5.2: candidate-tree code is acceptable only for commits reachable
+      # from main, and the VALIDATORS never come from the candidate at all. The
+      # trusted base is the controller ref this workflow definition runs from
+      # (`github.sha` == the tip of main at dispatch; the job `if:` already
+      # requires refs/heads/main). The candidate must be an ancestor of it, and
+      # the validator copies are taken from that object — not from the checkout.
+      - name: Pin the trusted base and its validators
+        env:
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          TRUSTED_BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::trusted base sha is not a 40-hex commit"; exit 1; }
+          git fetch --no-tags origin "$TRUSTED_BASE_SHA"
+          if ! git merge-base --is-ancestor "$APPROVED_RC_SHA" "$TRUSTED_BASE_SHA"; then
+            echo "::error::approved_rc_sha $APPROVED_RC_SHA is not reachable from main ($TRUSTED_BASE_SHA) — only merged commits may be authorized (SDLC v1 §5.2)"
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/trusted"
+          for f in tools/staging_receipt.py tools/acceptance_receipt.py; do
+            git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
+            [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
+          done
+          echo "trusted base $TRUSTED_BASE_SHA; candidate $APPROVED_RC_SHA is an ancestor" >> "$GITHUB_STEP_SUMMARY"
       - name: Resolve and pin the release tag
         id: resolve-tag
         env:
@@ -141,15 +205,18 @@ jobs:
             echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
             exit 1
           fi
-          PR_HEAD_SHA=$(echo "$PULLS_JSON" \
-            | jq -r '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty')
-          if [ -z "$PR_HEAD_SHA" ]; then
-            PR_HEAD_SHA=$(echo "$PULLS_JSON" | jq -r '.[0].head.sha // empty')
-          fi
-          if [ -z "$PR_HEAD_SHA" ]; then
-            echo "::error::No PR associated with $DEPLOY_SHA. Direct pushes to main are not authorized for production."
+          # SDLC v1 §7.2: EXACTLY ONE merged PR into main whose merge_commit_sha is
+          # the approved SHA. No first-associated-PR fallback — a commit that merely
+          # appears in some PR's history is not that PR's reviewed head.
+          MATCHES="$(echo "$PULLS_JSON" | jq -c --arg sha "$DEPLOY_SHA" \
+            '[.[] | select(.merge_commit_sha == $sha and .merged_at != null and .base.ref == "main")] | map(.head.sha)')"
+          MATCH_COUNT="$(echo "$MATCHES" | jq 'length')"
+          if [ "$MATCH_COUNT" != "1" ]; then
+            echo "::error::expected exactly one merged PR into main with merge_commit_sha $DEPLOY_SHA, found $MATCH_COUNT ($MATCHES). Direct pushes and ambiguous associations are not authorized for production (SDLC v1 §7.2)."
             exit 1
           fi
+          PR_HEAD_SHA="$(echo "$MATCHES" | jq -r '.[0]')"
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::merged PR head is not a 40-hex commit: $PR_HEAD_SHA"; exit 1; }
           echo "PR head SHA: $PR_HEAD_SHA"
           if ! STATUS=$(gh run list \
             --repo "$REPO" \
@@ -176,9 +243,11 @@ jobs:
               ;;
           esac
       - name: Require a deployed-staging receipt for approved_rc_sha
+        id: staging-receipt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          EFFECTIVE_SERVICES: ${{ steps.validate.outputs.effective_services }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -221,10 +290,87 @@ jobs:
           gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > receipt.zip
           unzip -o receipt.zip
           echo "::endgroup::"
-          python3 tools/staging_receipt.py verify --receipt staging-receipt.json \
+          # Trusted-base validator, checked against the ACTUAL deploy target set:
+          # image identity for every service (mira-ask included), runtime identity
+          # for the services that report one, NOT_APPLICABLE printed for the rest.
+          python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt staging-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168 \
-            --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL"
+            --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL" \
+            --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Keep the VERIFIED staging receipt for the acceptance generation binding.
+          install -m 600 staging-receipt.json "$RUNNER_TEMP/staging-receipt.json"
+          echo "staging_run_id=$STAGING_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "staging receipt verified: run ${RUN_URL}"
+
+      # SDLC v1 §6.2 / §7.2 (step 5): the staging receipt proves what was DEPLOYED;
+      # the acceptance receipt proves that generation was AUDITED. Both are required,
+      # and they must name the SAME GENERATION: the acceptance receipt's generation
+      # (built_at, deployed_at, running image ids, run id) must equal the staging
+      # receipt verified above. A run id alone is not a generation — GitHub keeps
+      # the run id across re-runs, so a re-run rebuilds the same SHA under the old
+      # id (Codex F1 on PR #4218). A receipt from an earlier generation of the same
+      # SHA (a rebuild, a recreate, a re-run) never authorizes. v1 requires the
+      # complete acceptance suite (retrieval + capture, mira-hub covered) on every
+      # production dispatch: no delta→capability mapper exists yet, and §6.2 says
+      # unknown impact means broader coverage, never an empty suite set.
+      - name: Require a generation-matched acceptance receipt for approved_rc_sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          STAGING_RUN_ID: ${{ steps.staging-receipt.outputs.staging_run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::no verified staging run id to bind the acceptance receipt to"; exit 1; }
+          ACCEPTANCE_WORKFLOW_PATH=".github/workflows/retrieval-acceptance.yml"
+          # Newest unexpired artifact of the exact name; provenance must be a completed,
+          # successful workflow_run-triggered run of retrieval-acceptance.yml in THIS repo.
+          # Never fall through to an older candidate.
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=acceptance-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::No unexpired acceptance-receipt-${APPROVED_RC_SHA} artifact exists — the staging acceptance run has not produced a receipt for this SHA (SDLC v1 §6.2)."
+            exit 1
+          fi
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          ACCEPTANCE_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          if [ -z "$ACCEPTANCE_RUN_ID" ]; then
+            echo "::error::acceptance receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."
+            exit 1
+          fi
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${ACCEPTANCE_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "acceptance receipt artifact ${ARTIFACT_ID} <- run ${ACCEPTANCE_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$ACCEPTANCE_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_run" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::acceptance receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_run-triggered run of ${ACCEPTANCE_WORKFLOW_PATH} in ${REPO} — STOP."
+            exit 1
+          fi
+          echo "::group::Download acceptance receipt"
+          install -d -m 700 "$RUNNER_TEMP/acceptance-receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/acceptance-receipt.zip"
+          unzip -o "$RUNNER_TEMP/acceptance-receipt.zip" -d "$RUNNER_TEMP/acceptance-receipt"
+          echo "::endgroup::"
+          [ -s "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" ] || { echo "::error::artifact ${ARTIFACT_ID} contains no acceptance-receipt.json — STOP."; exit 1; }
+          RECEIPT_RUN_ID="$(jq -r '.acceptance_run_id // empty' "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json")"
+          if [ "$RECEIPT_RUN_ID" != "$ACCEPTANCE_RUN_ID" ]; then
+            echo "::error::acceptance receipt says acceptance_run_id=${RECEIPT_RUN_ID}, artifact came from run ${ACCEPTANCE_RUN_ID} — STOP."
+            exit 1
+          fi
+          # Trusted-base verifier; generation-bound to the staging run verified above.
+          [ -s "$RUNNER_TEMP/staging-receipt.json" ] || { echo "::error::the verified staging receipt is missing — cannot bind the acceptance generation"; exit 1; }
+          python3 -I "$RUNNER_TEMP/trusted/acceptance_receipt.py" verify \
+            --receipt "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" \
+            --approved-rc-sha "$APPROVED_RC_SHA" --max-age-hours 168 \
+            --expect-staging-run-id "$STAGING_RUN_ID" \
+            --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
+            --require-capabilities retrieval,capture --require-services mira-hub
+          echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The migration gate intentionally runs on a separate runner from the VPS
   # deploy. It receives the prod DB URL but never the SSH key; the deploy job
@@ -250,6 +396,22 @@ jobs:
             echo "::error::HEAD ($CHECKED_OUT) != approved_rc_sha ($APPROVED_RC_SHA)"
             exit 1
           fi
+      # SDLC v1 §5.2: the validator and its hash-locked requirements come from the
+      # TRUSTED BASE (controller ref on main), never from the candidate checkout.
+      # The candidate tree supplies only the migration FILES being deployed, via
+      # --root. (authorize-source already proved the candidate is an ancestor.)
+      - name: Pin the trusted-base validator
+        env:
+          TRUSTED_BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::trusted base sha is not a 40-hex commit"; exit 1; }
+          git fetch --no-tags --depth=1 origin "$TRUSTED_BASE_SHA"
+          install -d -m 700 "$RUNNER_TEMP/trusted"
+          for f in tools/migration_drift.py tools/migration-drift-requirements.txt; do
+            git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
+            [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
+          done
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -258,7 +420,7 @@ jobs:
           python3 -I -m pip install \
             --disable-pip-version-check \
             --only-binary=:all: --require-hashes \
-            -r tools/migration-drift-requirements.txt
+            -r "$RUNNER_TEMP/trusted/migration-drift-requirements.txt"
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
       - name: Fetch only the production database URL
@@ -283,7 +445,7 @@ jobs:
           URL="$(<"$URL_FILE")"
           trap 'rm -f "$URL_FILE"' EXIT
           if env -i PATH="$PATH" NEON_DATABASE_URL="$URL" \
-            python3 -I tools/migration_drift.py | tee /tmp/deploy_drift.out; then
+            python3 -I "$RUNNER_TEMP/trusted/migration_drift.py" --root "$GITHUB_WORKSPACE" | tee /tmp/deploy_drift.out; then
             echo "✓ prod migration drift = 0 — deploy-order verified"
           else
             {
@@ -364,7 +526,9 @@ jobs:
 
       - name: Deploy
         env:
-          SERVICES: ${{ needs.authorize-source.outputs.services }}
+          # The ONE resolved deploy target set (authorize-source), so the receipts
+          # and the deploy can never disagree about what was deployed.
+          SERVICES: ${{ needs.authorize-source.outputs.effective_services }}
           APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
           APPROVED_RELEASE_TAG: ${{ needs.authorize-source.outputs.approved_release_tag }}
         run: |
@@ -757,15 +921,24 @@ jobs:
       - name: Extract and verify the production receipt
         env:
           APPROVED_RC_SHA: ${{ needs.authorize-source.outputs.approved_rc_sha }}
+          EFFECTIVE_SERVICES: ${{ needs.authorize-source.outputs.effective_services }}
+          TRUSTED_BASE_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          python3 tools/staging_receipt.py extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
+          # Trusted-base validator (§5.2); the receipt must prove the ACTUAL deployed
+          # service set (§8.2): image identity for every service, runtime identity
+          # for those that report one.
+          [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::trusted base sha is not a 40-hex commit"; exit 1; }
+          git fetch --no-tags origin "$TRUSTED_BASE_SHA"
+          install -d -m 700 "$RUNNER_TEMP/trusted"
+          git show "$TRUSTED_BASE_SHA:tools/staging_receipt.py" > "$RUNNER_TEMP/trusted/staging_receipt.py"
+          python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
-          python3 tools/staging_receipt.py verify --receipt production-receipt.json \
+          python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt production-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1 \
-            --require-services ""
+            --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload production receipt (90-day retention)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
