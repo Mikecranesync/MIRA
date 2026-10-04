@@ -415,6 +415,26 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
     expect(loadDetail).toHaveBeenCalledWith(A);
   });
 
+  it("#4219 Codex F1: does not resolve until A's detail refresh has finished, so the ready outcome is never shown on stale sources", async () => {
+    let finishRefresh!: () => void;
+    const loadDetail = vi.fn(() => new Promise<void>((r) => { finishRefresh = r; }));
+    let settled = false;
+    const done = applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A }).then(() => { settled = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(loadDetail).toHaveBeenCalledWith(A);
+    expect(settled).toBe(false);
+    finishRefresh();
+    await done;
+    expect(settled).toBe(true);
+  });
+
+  it("#4219 Codex F1: a failed refresh does not turn the already-saved confirmation into a failure", async () => {
+    const loadDetail = vi.fn(async () => { throw new Error("detail GET failed"); });
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A })).resolves.toBeUndefined();
+    expect(loadDetail).toHaveBeenCalledWith(A);
+  });
+
   it("no selection at all: refreshes NOTHING", async () => {
     const loadDetail = vi.fn(async () => undefined);
     await applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => null });

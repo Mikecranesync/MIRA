@@ -361,5 +361,14 @@ export async function applyConfirmIdentityResult(
 ): Promise<void> {
   const sel = effects.currentSelection();
   if (!sel || sel.notebookId !== requestedNotebookId) return;
-  void effects.loadDetail(sel);
+  // #4219 Codex F1: wait for the refresh, so the card shows "ready" only once
+  // the promoted manual is in the host's source scope; a send in between
+  // would otherwise go out with the old (possibly empty) sourceDocIds. The
+  // identity write already succeeded, so a failed refresh is logged, not
+  // reported as a failed confirmation; the next detail load picks it up.
+  try {
+    await effects.loadDetail(sel);
+  } catch (err) {
+    console.error("[hub-host] detail refresh after confirm failed:", err instanceof Error ? err.message : err);
+  }
 }
