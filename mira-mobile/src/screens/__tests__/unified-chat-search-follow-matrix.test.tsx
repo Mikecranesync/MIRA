@@ -383,3 +383,45 @@ describe("Confirm-reconcile (#4195 round 4 F6): a settled candidate-review messa
     expect(confirmIdentityProposal).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("F27 (Codex r12): within ONE generation, an older read never overwrites a newer accepted result", () => {
+  async function mountWithDeferredProbe() {
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    // Confirm promotes the manual without changing the generation; its probe returns READY first.
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use its manuals" })); await Promise.resolve(); });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    return (v: unknown) => resolveMountProbe(v);
+  }
+
+  it("a delayed mount probe's settled decline does not replace the newer READY result", async () => {
+    const resolveMountProbe = await mountWithDeferredProbe();
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Candidate: not turned on.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText("Candidate: not turned on.")).toBeNull();
+  });
+
+  it("a delayed mount probe's older RUNNING snapshot does not reopen tracking after READY", async () => {
+    vi.useFakeTimers();
+    const resolveMountProbe = await mountWithDeferredProbe();
+    const callsAtReady = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtReady);
+  });
+});
+

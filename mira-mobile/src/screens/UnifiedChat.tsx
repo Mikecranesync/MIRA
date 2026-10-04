@@ -146,6 +146,14 @@ function createMobileManualSearchDriver(deps: {
   const delayMs = deps.delayMs ?? 4000;
   let state: ManualSearchFollowState | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // Codex r12 F27: start-order freshness WITHIN a generation. Every read is
+  // numbered when it starts; seed/live inputs take a number when they arrive.
+  // A concrete result applies only if it is newer than the last applied one,
+  // so a slow, older snapshot can never overwrite a newer accepted result.
+  // Null/error reads carry no information and never move `lastApplied`
+  // (F25), so they cannot discard a valid delayed result.
+  let seq = 0;
+  let lastApplied = 0;
 
   function currentKey(): string {
     return state?.key ?? manualSearchKey(notebookId, undefined);
@@ -175,14 +183,28 @@ function createMobileManualSearchDriver(deps: {
     const capturedKey = state.key;
     timer = setTimeout(() => {
       timer = null;
+      const mine = ++seq;
+      // A discarded tick spends no budget; keep the chain alive if nothing
+      // newer already rescheduled it.
+      const discard = () => {
+        if (state?.phase === "following" && timer === null) scheduleTick();
+      };
       void fetchStatus()
         .then((read) => {
           if (!isAlive() || !state) return;
-          if (currentKey() !== capturedKey && (!read || manualSearchKey(notebookId, read.startedAt) !== currentKey())) return;
+          if (mine < lastApplied || currentKey() !== capturedKey && (!read || manualSearchKey(notebookId, read.startedAt) !== currentKey())) {
+            discard();
+            return;
+          }
+          if (read) lastApplied = mine;
           commit(advanceManualSearchFollow(state, notebookId, read));
         })
         .catch(() => {
-          if (!isAlive() || !state || currentKey() !== capturedKey) return;
+          if (!isAlive() || !state) return;
+          if (mine < lastApplied || currentKey() !== capturedKey) {
+            discard();
+            return;
+          }
           commit(advanceManualSearchFollow(state, notebookId, null));
         });
     }, delayMs);
@@ -190,17 +212,22 @@ function createMobileManualSearchDriver(deps: {
 
   return {
     seed(read) {
+      lastApplied = ++seq;
       commit(reseedManualSearchFollow(state, notebookId, read));
     },
     observeLive(read) {
+      lastApplied = ++seq;
       commit(observeLiveManualSearchFrame(state, notebookId, read));
     },
     probe() {
       const capturedKey = currentKey();
+      const mine = ++seq;
       void fetchStatus()
         .then((read) => {
           if (!isAlive() || !read) return; // ends quietly — nothing to reconcile.
+          if (mine < lastApplied) return;
           if (currentKey() !== capturedKey && manualSearchKey(notebookId, read.startedAt) !== currentKey()) return;
+          lastApplied = mine;
           commit(reseedManualSearchFollow(state, notebookId, read));
         })
         .catch(() => { /* ends quietly — never retries on its own */ });
