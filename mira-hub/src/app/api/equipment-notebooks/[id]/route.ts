@@ -17,6 +17,7 @@ import {
   updateNotebook,
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
+import { currentManualSearchStatus, type ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,29 @@ function requestSearchParams(req: NextRequest): URLSearchParams {
   const maybe = req as { nextUrl?: { searchParams?: URLSearchParams }; url?: string };
   if (maybe.nextUrl?.searchParams) return maybe.nextUrl.searchParams;
   return new URL(maybe.url ?? "http://localhost/").searchParams;
+}
+
+/**
+ * The most recently PROPOSED (not yet confirmed) identity on this notebook's
+ * turns, read straight off the raw `evidence[]` the same way
+ * `mira-hub/src/factorylm-ui/to-interaction.ts`'s `identityProposalOf` does
+ * (duplicated here, not imported: that file is a client component and this
+ * is a server-only route). `turns` is chronological, so the LAST match wins.
+ */
+function latestIdentityProposal(
+  turns: readonly { evidence: unknown[] }[],
+): { manufacturer: string; model: string } | null {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    for (const e of turns[i]!.evidence) {
+      if (typeof e !== "object" || e === null) continue;
+      const r = e as Record<string, unknown>;
+      if (r.kind !== "identity_proposal") continue;
+      if (typeof r.manufacturer === "string" && typeof r.model === "string") {
+        return { manufacturer: r.manufacturer, model: r.model };
+      }
+    }
+  }
+  return null;
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,7 +94,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         return [];
       }),
   ]);
-  return NextResponse.json({ notebook, sources, turns, threads, photos });
+  // T2 (#4189 F4/F6) — the manual-search status is computed FRESH on every
+  // read, never persisted on the turn: a "running" snapshot taken at
+  // persist-time would read as permanently stale once the search finishes
+  // (the exact reason chat/route.ts's own `manualSearchStatusFrame` comment
+  // gives for keeping that frame transient-only). This is the ONE place that
+  // recomputes current state, reused by both the Hub (`hub-host.tsx`'s
+  // `loadDetail`, called after every send and after a confirm) and mobile
+  // (`getNotebookDetail`) on their EXISTING post-turn/post-confirm refetch —
+  // never a second acquisition-status path.
+  let manualSearch: ManualSearchStatus | null = null;
+  try {
+    manualSearch = await currentManualSearchStatus(
+      ctx.tenantId,
+      id,
+      {
+        identityStatus: notebook.identityStatus,
+        manufacturer: notebook.manufacturer,
+        model: notebook.model,
+        catalogNumber: notebook.catalogNumber,
+      },
+      latestIdentityProposal(turns),
+      sources,
+    );
+  } catch (err) {
+    console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
+  }
+  return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

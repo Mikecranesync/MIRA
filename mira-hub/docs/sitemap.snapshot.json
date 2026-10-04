@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 185
+    "apiRoutes": 186
   },
   "pages": [
     "/admin",
@@ -162,6 +162,7 @@
     "/api/equipment-notebooks/[id]/asset",
     "/api/equipment-notebooks/[id]/chat",
     "/api/equipment-notebooks/[id]/fixes",
+    "/api/equipment-notebooks/[id]/identity/confirm",
     "/api/equipment-notebooks/[id]/look",
     "/api/equipment-notebooks/[id]/nameplate/confirm",
     "/api/equipment-notebooks/[id]/nameplate/recognize",
