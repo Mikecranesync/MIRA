@@ -118,6 +118,7 @@ import {
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { citationTitle } from "@/capabilities/citation-title";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -342,7 +343,7 @@ async function buildCitations(
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
-      sourceTitle: c.title || "Attached document",
+      sourceTitle: citationTitle(c),
       page: c.sourcePage,
       fileId: null,
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.

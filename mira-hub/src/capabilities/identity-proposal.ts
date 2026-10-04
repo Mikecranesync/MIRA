@@ -113,8 +113,33 @@ function isFamilyNumber(t: string): boolean {
   );
 }
 
+/**
+ * Product-SERIES names a technician says between the maker and the model:
+ * "Siemens SINAMICS G120C", "Schneider Electric Altivar ATV320", "Danfoss VLT
+ * AutomationDrive FC 302". They carry no digits, so without this the token
+ * after the maker never parses as a model and no proposal is made (Golden Walk
+ * baseline, 2026-10-04: 4 of 10 real machines got no "Use its manuals").
+ * A closed list on purpose — a generic "skip capitalised words" rule would
+ * reopen false proposals ("Siemens Please G120"). Only a FALLBACK: a span the
+ * plain parse already finds ("VLT 5000") is never re-read.
+ */
+const SERIES_WORDS = new Set([
+  "SINAMICS", "SIMATIC", "MICROMASTER", "ALTIVAR", "VLT", "AUTOMATIONDRIVE", "AQUADRIVE",
+  "MOVITRAC", "MOVIDRIVE", "DURAPULSE", "VARISPEED", "OPTIDRIVE",
+]);
+const MAX_SERIES_SKIP = 2;
+
 /** The model span starting at `tokens[0]`, or null. */
 function modelSpanAt(tokens: string[]): string | null {
+  const plain = plainModelSpanAt(tokens);
+  if (plain) return plain;
+  // "Siemens SINAMICS G120C": skip at most two known series names before the model.
+  let rest = tokens;
+  for (let i = 0; i < MAX_SERIES_SKIP && rest[0] && SERIES_WORDS.has(rest[0].toUpperCase()); i++) rest = rest.slice(1);
+  return rest === tokens ? null : plainModelSpanAt(rest);
+}
+
+function plainModelSpanAt(tokens: string[]): string | null {
   // "Siemens PLC S7-1200": skip one generic device word before the model.
   if (tokens[0] && GENERIC_DEVICE_WORDS.has(tokens[0].toUpperCase())) tokens = tokens.slice(1);
   const [t1, t2, t3] = tokens;
@@ -143,14 +168,18 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
   const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(manufacturer)}(?![A-Za-z0-9])`, "ig");
   for (const m of message.matchAll(re)) {
     const rest = message.slice((m.index ?? 0) + m[0].length);
-    const tokens = rest.trim().split(/\s+/).slice(0, 4).map(cleanToken);
+    // The plain parse reads four tokens; the series fallback needs that much
+    // lookahead AFTER the skipped series names, or a trailing unit ("DC 24 V")
+    // falls outside the window and a rating is proposed as a model (Codex #4228 F1).
+    const wide = rest.trim().split(/\s+/).slice(0, 4 + MAX_SERIES_SKIP).map(cleanToken);
+    const tokens = wide.slice(0, 4);
     // "Siemens SN: PF525" names a serial, not a model — never parse past a label.
     if (tokens[0] && tokens[0] === tokens[0].toUpperCase() && LABEL_WORDS.has(tokens[0])) continue;
     // The existing parser first, scoped to THIS mention's window, so a model is
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = parsed.model ?? modelSpanAt(tokens);
+    const span = parsed.model ?? modelSpanAt(wide);
     if (span) return span;
   }
   return null;
