@@ -13,6 +13,7 @@ Two workflows, read as data AND executed against a fake `gh`:
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import os
 import re
@@ -857,8 +858,18 @@ def _scratch_repo(tmp: Path, contract: bool) -> tuple[Path, str, str]:
     git("add", "-A")
     git("commit", "-q", "-m", "candidate")
     cand = git("rev-parse", "HEAD")
-    sql = "ALTER TABLE a DROP COLUMN x;\n" if contract else "ALTER TABLE a ADD COLUMN y int;\n"
+    sql = "ALTER TABLE a ADD COLUMN y int;\n"
     (repo / "mira-hub/db/migrations/002_b.sql").write_text(sql)
+    # compat reads labels, never SQL: the same file is valid or not by its label alone
+    (repo / "tools" / "migration_compat.txt").write_text(
+        "".join(
+            f"{label} {hashlib.sha256(text.encode()).hexdigest()} mira-hub/db/migrations/{name}\n"
+            for label, text, name in (
+                ("unreviewed", "CREATE TABLE a (x int);\n", "001_a.sql"),
+                ("contract" if contract else "expand", sql, "002_b.sql"),
+            )
+        )
+    )
     git("add", "-A")
     git("commit", "-q", "-m", "head")
     return repo, cand, git("rev-parse", "HEAD")
@@ -985,7 +996,7 @@ def test_no_designated_candidate_is_reported_not_failed(tmp_path):
             False,
             "STALE",
         ),
-        ("contracting migration", {"staging_age_h": 1}, {}, True, "INVALID"),
+        ("migration not labelled expand", {"staging_age_h": 1}, {}, True, "INVALID"),
     ],
 )
 def test_each_candidate_state(tmp_path, case, evidence, env_extra, contract, expected):

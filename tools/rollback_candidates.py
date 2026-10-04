@@ -15,9 +15,11 @@ runtime set) and never from tags:
   designates right now. Per service, the newest receipt that deployed it is what
   is running; its recorded ``rollback_candidate`` for that service is the target.
   Receipts written before this field existed designate nothing.
-* ``compat`` — is a candidate still a valid code-only rollback target? Not if a
-  contracting migration landed on main after it (expand/contract: rolling code
-  back across a contraction needs a schema decision, §10.2 "Database").
+* ``compat`` — is a candidate still a valid code-only rollback target? Only while
+  every migration file that changed on main after it carries a human ``expand``
+  label for its exact content (LABELS_FILE); anything else may contract, and
+  rolling code back across a contraction needs a schema decision (§10.2
+  "Database"). No SQL is parsed.
 
 Plus ``due`` (refresh when the candidate's staging or acceptance receipt expires
 within the window).
@@ -31,6 +33,7 @@ set is an error, not a skip. stdlib only — runs from the trusted base with
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -278,196 +281,22 @@ def designate(
     }
 
 
-# ── contracting-migration detection (expand/contract, §10.2 Compatibility) ────────
+# ── migration labels (expand/contract, §10.2 Compatibility) ───────────────────────
+#
+# A rollback candidate is valid only while no contracting migration has been applied since
+# it ran. Whether a migration contracts is decided ONCE, by a human, when it is written:
+# LABELS_FILE carries one line per migration file, bound to its exact content,
+#     <label> <sha256 of the file's bytes> <repo-relative path>
+# with label ``expand`` (older code keeps working), ``contract`` or ``unreviewed``. Only
+# ``expand`` keeps a candidate valid. No SQL is parsed: an unlabelled file, a label for
+# other content, or a file added and deleted in between all invalidate (fail closed).
+# tests/test_rollback_candidates.py fails CI on any migration without a matching line, so
+# the label lands in the migration's own reviewed PR; the sha matches the ledger's
+# ``sha256sum`` (apply-migrations.yml, schema_migrations.content_sha256).
 
-_COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
-# One left-to-right pass, so a quote or comment marker is only special where it starts a
-# token: a '(' ';' ',' or '--' inside a string literal can neither hide nor fake an action.
-_LEXEMES = re.compile(
-    r"(?P<dollar>\$(?P<tag>[A-Za-z_][A-Za-z0-9_]*|)\$(?P<body>.*?)\$(?P=tag)\$)"
-    r"|(?P<ident>\"(?:[^\"]|\"\")*\")"
-    r"|(?P<estr>(?<![A-Za-z0-9_])[Ee]'(?:[^'\\]|\\.|'')*')"
-    r"|(?P<literal>'(?:[^']|'')*')"
-    r"|(?P<comment>--[^\n]*|/\*.*?\*/)",
-    re.DOTALL,
-)
-_ESCAPE = re.compile(r"\\.", re.DOTALL)
-
-
-def _strip_literals_and_comments(sql: str, keep_literals: bool = False) -> str:
-    """Blank string literals, drop comments; keep identifiers and dollar-quoted bodies.
-
-    A dollar-quoted body (``DO $$ … $$``, a function body) stays visible because DDL
-    inside it still runs — hiding it would be the unsafe direction. Its contents are
-    lexed the same way, except that literals are kept (``EXECUTE 'ALTER TABLE …'`` is
-    real DDL), with E-string escapes rewritten as '' so quote tracking stays balanced.
-    A quote that starts no literal or identifier is not structure and is blanked.
-    """
-
-    def render(m: re.Match) -> str:
-        if m.group("dollar"):
-            tag = f"${m.group('tag')}$"
-            return tag + _strip_literals_and_comments(m.group("body"), keep_literals=True) + tag
-        if m.group("ident"):
-            # A quoted name is one token: whitespace, quotes or keywords inside it are data.
-            return '"' + re.sub(r"[^A-Za-z0-9_]", "_", m.group("ident")[1:-1]) + '"'
-        if m.group("estr"):
-            if not keep_literals:
-                return "''"
-            return _ESCAPE.sub(lambda e: "''" if e.group(0) == "\\'" else "__", m.group("estr")[1:])
-        if m.group("literal"):
-            return m.group("literal") if keep_literals else "''"
-        return " "
-
-    out, pos = [], 0
-    for m in _LEXEMES.finditer(sql):
-        out.append(re.sub(r"['\"]", " ", sql[pos : m.start()]))
-        out.append(render(m))
-        pos = m.end()
-    out.append(re.sub(r"['\"]", " ", sql[pos:]))
-    return "".join(out)
-
-
-_DROP_OBJECT = re.compile(
-    r"\ADROP\s+(TABLE|VIEW|MATERIALIZED\s+VIEW|TYPE|SCHEMA|SEQUENCE|FUNCTION)\s+(?:IF\s+EXISTS\s+)?(.+)\Z"
-)
-_ALTER_TABLE = re.compile(r"\AALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(\S+)\s+(.+)\Z")
-# Where a checked statement starts inside a ;-delimited piece. DDL inside a DO block or
-# function body follows a PL/pgSQL prefix (DO $$ BEGIN IF … THEN) and still runs.
-_DDL_START = re.compile(
-    r"\b(?:ALTER\s+TABLE|DROP\s+(?:TABLE|VIEW|MATERIALIZED\s+VIEW|TYPE|SCHEMA|SEQUENCE|FUNCTION))\b"
-)
-
-
-def _split_statements(text: str) -> list[str]:
-    """Split on ';' outside '…' and "…". Dollar bodies stay in the text (their DDL runs)."""
-    parts, cur, quote = [], [], ""
-    for ch in text:
-        if quote:
-            if ch == quote:
-                quote = ""
-        elif ch in "'\"":
-            quote = ch
-        if ch == ";" and not quote:
-            parts.append("".join(cur))
-            cur = []
-        else:
-            cur.append(ch)
-    parts.append("".join(cur))
-    return parts
-
-
-def _split_top_level(text: str) -> list[str]:
-    parts, depth, cur, quote = [], 0, [], ""
-    for ch in text:
-        # A paren or comma inside '…' or "…" is data, not structure ('' and "" escapes
-        # toggle twice and so stay inside).
-        if quote:
-            if ch == quote:
-                quote = ""
-        elif ch in "'\"":
-            quote = ch
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        if ch == "," and depth == 0 and not quote:
-            parts.append("".join(cur))
-            cur = []
-        else:
-            cur.append(ch)
-    parts.append("".join(cur))
-    return [p.strip() for p in parts if p.strip()]
-
-
-def contracting_statements(sql: str) -> list[str]:
-    """Statements that remove or narrow what older code may rely on.
-
-    Contracting: DROP TABLE/VIEW/MATERIALIZED VIEW/TYPE/SCHEMA/SEQUENCE/FUNCTION — always,
-    even when the same file re-creates the name (the new object may differ: another
-    function overload, a table without a column, a narrower view or enum) — and ALTER
-    TABLE actions DROP [COLUMN], RENAME, ALTER COLUMN ... [SET DATA] TYPE, ALTER COLUMN
-    ... SET NOT NULL, including inside DO blocks and function bodies. Not contracting:
-    DROP POLICY/INDEX/TRIGGER, DROP CONSTRAINT, DROP DEFAULT / DROP NOT NULL, ADD
-    COLUMN, CREATE … (expand), data DML. Literals and comments are ignored; quoted
-    names are single tokens; every statement inside an EXECUTE string is checked, and
-    an EXECUTE built at run time (|| or format()) that could narrow anything counts.
-    """
-    upper = _strip_literals_and_comments(sql).upper()
-    hits = []
-    for raw in _split_statements(upper):
-        piece = " ".join(raw.split())
-        # Every DDL start, each up to the next: a piece can hold several statements (an
-        # EXECUTE string, a PL/pgSQL body) and each one runs.
-        starts = [m.start() for m in _DDL_START.finditer(piece)]
-        for i, at in enumerate(starts):
-            stmt = piece[at : starts[i + 1] if i + 1 < len(starts) else len(piece)].strip()
-            if _contracts(stmt):
-                hits.append(stmt)
-    for body in _bodies(sql):
-        # A body that EXECUTEs anything other than one literal runs SQL assembled at run
-        # time, which cannot be parsed: contracting if it could narrow anything
-        # (conservative: a false INVALID beats a silent one).
-        if _executes_dynamic_sql(body) and _NARROWING.search(body.upper()):
-            hits.append("dynamic EXECUTE: " + " ".join(body.split())[:200])
-        # Every string literal in a body may be executed: decode it and check it as SQL.
-        for text in _decoded_literals(body):
-            hits.extend(contracting_statements(text))
-    return list(dict.fromkeys(hits))
-
-
-_NARROWING = re.compile(r"\bDROP\b|\bRENAME\b|\bALTER\s+COLUMN\b|\bSET\s+NOT\s+NULL\b")
-_EXECUTE_ARG = re.compile(r"\bEXECUTE\b(.*)", re.DOTALL)
-_ONE_LITERAL = re.compile(r"\A'(?:[^']|'')*'(?:\s+USING\b.*)?\Z", re.DOTALL)
-
-
-def _bodies(sql: str) -> list[str]:
-    """Every dollar-quoted body, nested ones included."""
-    out = []
-    for m in _LEXEMES.finditer(sql):
-        if m.group("dollar"):
-            out.append(m.group("body"))
-            out.extend(_bodies(m.group("body")))
-    return out
-
-
-def _decoded_literals(body: str) -> list[str]:
-    """The string literals at this body's own level, unescaped to the SQL they hold."""
-    out = []
-    for m in _LEXEMES.finditer(body):
-        if m.group("literal"):
-            out.append(m.group("literal")[1:-1].replace("''", "'"))
-        elif m.group("estr"):
-            out.append(
-                re.sub(r"\\(.)", r"\1", m.group("estr")[2:-1].replace("''", "'"), flags=re.DOTALL)
-            )
-    return out
-
-
-def _executes_dynamic_sql(body: str) -> bool:
-    text = _strip_literals_and_comments(body, keep_literals=True).upper()
-    for piece in _split_statements(text):
-        m = _EXECUTE_ARG.search(piece)
-        if m and not _ONE_LITERAL.match(m.group(1).strip()):
-            return True
-    return False
-
-
-def _contracts(stmt: str) -> bool:
-    if _DROP_OBJECT.match(stmt):
-        return True
-    m = _ALTER_TABLE.match(stmt)
-    if not m:
-        return False
-    for action in _split_top_level(m.group(2)):
-        if (
-            re.match(r"DROP\s+(?!CONSTRAINT\b)", action)
-            or action.startswith("RENAME")
-            or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+(?:SET\s+DATA\s+)?TYPE\b", action)
-            or re.match(r"ALTER\s+(?:COLUMN\s+)?\S+\s+SET\s+NOT\s+NULL\b", action)
-        ):
-            return True
-    return False
+LABELS_FILE = "tools/migration_compat.txt"
+LABELS = ("expand", "contract", "unreviewed")
+_SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -476,189 +305,65 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
-# Expand-only allowlist (fail closed). A statement is proven harmless to OLDER code only if
-# it matches one of these; anything else is "not proven" and makes the candidate invalid.
-# One row per entry, with why older code can neither read nor write wrongly through it:
-#   BEGIN / COMMIT / END / START TRANSACTION   transaction control, no schema change
-#   SET [LOCAL|SESSION] name TO|= value         this migration session only (a SET of search_path
-#                                               also ends every same-file exemption below: it
-#                                               re-points the names created before it)
-#   CREATE TABLE … (no INHERITS / PARTITION OF; a new table older code never references —
-#     foreign keys only to tables new in this file) an FK to an older table can block its deletes
-#   CREATE SEQUENCE …                           a new object older code never references
-#   COMMENT ON …                                metadata only
-#   GRANT privileges ON [TABLE|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE] x, or ON ALL … IN SCHEMA s
-#                                               object privileges can only allow more (not a
-#                                               role grant: it can bring a restrictive policy into
-#                                               force; not schema USAGE: search_path skips a schema
-#                                               without it, so granting it re-points names)
-#   ALTER TABLE … ADD COLUMN c <built-in type>  older inserts omit c, so c must take NULL or a
-#     [NULL | NOT NULL with DEFAULT] [DEFAULT     default that always succeeds: a constant (cast,
-#      constant | now() | gen_random_uuid()]     if at all, only to a built-in type), now() or
-#     [COLLATE x] and nothing else               gen_random_uuid(); no domain type, no constraint,
-#                                               no other default expression. A length- or
-#                                               precision-bounded type takes a constant only:
-#                                               now() as text varies in length between calls
-#   any statement but INSERT on a table a PLAIN `CREATE TABLE` (not CREATE TABLE … AS) made
-#     earlier in the same file (IF NOT EXISTS proves nothing: the table may predate the file).
-#     With every INSERT and CREATE TABLE … AS unproven, that table is empty, so nothing on it
-#     evaluates a row expression.
-# Assumed of older code: it names the columns it reads (no SELECT * unpacked by position).
-# Not on it, deliberately: CREATE INDEX on an existing table (an expression or predicate can
-# error, and a btree rejects rows over its size limit), CREATE TABLE … AS and INSERT anywhere
-# (a query, and a table's defaults and checks, can call any function, e.g. setval),
-# UPDATE/DELETE, CREATE UNIQUE INDEX, DROP
-# INDEX or DROP CONSTRAINT (an ON CONFLICT arbiter for older upserts), ADD CONSTRAINT, policies
-# and RLS, REVOKE, triggers, CREATE [OR REPLACE] FUNCTION/VIEW (overload resolution and
-# behaviour), CREATE EXTENSION, DO blocks, and anything unrecognised. These need a human.
-_EXPAND_ONLY = tuple(
-    re.compile(p)
-    for p in (
-        r"BEGIN",
-        r"COMMIT",
-        r"END",
-        r"START TRANSACTION",
-        r"SET (?:LOCAL |SESSION )?[A-Z_][A-Z0-9_.]* (?:TO|=) [^$]+",
-        r"CREATE TABLE (?:IF NOT EXISTS )?\S+ [^$]+",
-        r"CREATE SEQUENCE (?:IF NOT EXISTS )?\S+[^$]*",
-        r"COMMENT ON [^$]+",
-        r"GRANT [^$]+? ON (?:(?:TABLE|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE) [^$]+"
-        r"|ALL (?:TABLES|SEQUENCES|FUNCTIONS|PROCEDURES|ROUTINES) IN SCHEMA [^$]+"
-        r"|[^\s,]+(?:, ?[^\s,]+)* TO [^$]+)",
-    )
-)
-_UNBOUNDED_TYPE = (
-    r"(?:SMALLINT|INTEGER|INT[248]?|BIGINT|BOOL(?:EAN)?|TEXT|UUID|JSONB?|DATE|REAL|FLOAT[48]"
-    r"|DOUBLE PRECISION|BYTEA|INTERVAL|TIMESTAMPTZ|TIMESTAMP(?: WITH(?:OUT)? TIME ZONE)?"
-    r"|NUMERIC|DECIMAL|VARCHAR|CHARACTER VARYING)(?:\[\])?"
-)
-_BOUNDED_TYPE = (
-    r"(?:(?:NUMERIC|DECIMAL)\(\d+(?:, ?\d+)?\)|(?:VARCHAR|CHARACTER VARYING)\(\d+\))(?:\[\])?"
-)
-_BUILTIN_TYPE = rf"(?:{_BOUNDED_TYPE}|{_UNBOUNDED_TYPE})"
-# a literal (blanked by _opaque) is coerced once, when the migration runs; a cast to a domain
-# would run the domain's check, which can depend on session state, on every older insert
-_CONST_DEFAULT = rf"DEFAULT (?:-?\d+(?:\.\d+)?|''(?:::{_BUILTIN_TYPE})?|TRUE|FALSE)"
-_SAFE_DEFAULT = rf"(?:{_CONST_DEFAULT}|DEFAULT (?:NOW\(\)|CURRENT_TIMESTAMP|GEN_RANDOM_UUID\(\)))"
-_ADD_COLUMN = re.compile(
-    rf"ADD COLUMN (?:IF NOT EXISTS )?\S+ "
-    rf"(?:{_UNBOUNDED_TYPE}(?: (?:NULL|NOT NULL|{_SAFE_DEFAULT}|COLLATE \S+))*"
-    rf"|{_BOUNDED_TYPE}(?: (?:NULL|NOT NULL|{_CONST_DEFAULT}|COLLATE \S+))*)"
-)
-_NOT_NULL_NEEDS_DEFAULT = re.compile(rf"(?!.*\bNOT NULL\b)|(?=.*\b{_SAFE_DEFAULT})")
-_PLAIN_CREATE_TABLE = re.compile(r"CREATE TABLE (?!IF NOT EXISTS )(\S+) .+")
-_TABLE_TARGET = tuple(
-    re.compile(p)
-    for p in (
-        r"ALTER TABLE (?:IF EXISTS )?(?:ONLY )?(\S+) [^$]+",
-        r"CREATE (?:UNIQUE )?INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?\S+ ON (?:ONLY )?([^\s(]+)[^$]*",
-        r"(?:CREATE|DROP) POLICY (?:IF EXISTS )?\S+ ON (\S+)[^$]*",
-        r"(?:GRANT|REVOKE) [^$]+ ON (?:TABLE )?([^\s,]+) (?:TO|FROM) [^$]+",
-        r"COMMENT ON (?:TABLE|COLUMN) ([^\s.]+)[^$]*",
-    )
-)
+def _git_bytes(repo: Path, *args: str) -> bytes:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True).stdout
 
 
-def _opaque(sql: str) -> str:
-    """Upper-case SQL with literals blanked, comments dropped, quoted names as exact
-    case-preserving tokens and every dollar-quoted body replaced by one opaque token (its
-    content is never proof). A quoted name never folds into an unquoted one: at worst a
-    statement on the same table looks foreign, which only makes the result stricter."""
-    out, pos = [], 0
-    for m in _LEXEMES.finditer(sql):
-        out.append(re.sub(r"['\"]", " ", sql[pos : m.start()]))
-        if m.group("dollar"):
-            out.append(" $BODY$ ")
-        elif m.group("ident"):
-            out.append('"Q' + m.group("ident")[1:-1].encode("utf-8").hex() + '"')
-        else:
-            out.append("''" if (m.group("literal") or m.group("estr")) else " ")
-        pos = m.end()
-    out.append(re.sub(r"['\"]", " ", sql[pos:]))
-    return "".join(out).upper()
-
-
-def _table(name: str) -> str:
-    """The table as written, schema included: ``a.t`` and ``b.t`` are different tables."""
-    return name
-
-
-_REFERENCES = re.compile(r"\bREFERENCES (?:ONLY )?([^\s(]+)")
-# CREATE TABLE … INHERITS / PARTITION OF, and their ALTER TABLE spellings INHERIT / ATTACH PARTITION
-_BINDS_PARENT = re.compile(r"\bINHERITS?\b|\bPARTITION OF\b|\bATTACH PARTITION\b")
-
-
-_SEARCH_PATH = re.compile(r"SET (?:LOCAL |SESSION )?SEARCH_PATH\b")
-_CREATE_TABLE_AS = re.compile(r"\bAS\b")
-
-
-def _depth0(stmt: str) -> str:
-    """The statement with every parenthesised group removed (literals are already blanked)."""
-    out, depth = [], 0
-    for ch in stmt:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(depth - 1, 0)
-        elif depth == 0:
-            out.append(ch)
-    return "".join(out)
-
-
-def _evaluates_a_query(stmt: str) -> bool:
-    """CREATE TABLE … AS: an AS outside every parenthesis (a column list's AS — a generated
-    column, a CAST — is inside one)."""
-    return stmt.startswith("CREATE TABLE ") and bool(_CREATE_TABLE_AS.search(_depth0(stmt)))
-
-
-def _binds_older_table(stmt: str, new_tables: set[str]) -> bool:
-    """A foreign key into, or inheritance/partitioning involving, a table not new in this file
-    (CREATE TABLE … INHERITS / PARTITION OF, ALTER TABLE … INHERIT / ATTACH PARTITION)."""
-    return bool(_BINDS_PARENT.search(stmt)) or any(
-        _table(t) not in new_tables for t in _REFERENCES.findall(stmt)
-    )
-
-
-def unproven_statements(sql: str) -> list[str]:
-    """Statements not on the expand-only allowlist above — older code might mis-read or
-    mis-write through them, so a rollback across them needs a human decision."""
-    new_tables: set[str] = set()
-    out = []
-    for raw in _opaque(sql).split(";"):
-        stmt = " ".join(raw.split())
-        if not stmt:
+def parse_labels(text: str) -> dict[str, tuple[str, str]]:
+    """``path -> (label, sha256)`` from LABELS_FILE text. Blank lines and ``#`` comments are
+    skipped; any other malformed line, unknown label or repeated path is an error."""
+    out: dict[str, tuple[str, str]] = {}
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
             continue
-        if _SEARCH_PATH.match(stmt):
-            new_tables.clear()  # every earlier name may now resolve to an older table
-        created = _PLAIN_CREATE_TABLE.fullmatch(stmt)
-        own = {_table(created.group(1))} if created else set()
-        if _binds_older_table(stmt, new_tables | own) or _evaluates_a_query(stmt):
-            out.append(stmt)
-            continue
-        target = next((m.group(1) for p in _TABLE_TARGET if (m := p.fullmatch(stmt))), None)
-        if target is not None and _table(target) in new_tables:
-            continue
-        if any(p.fullmatch(stmt) for p in _EXPAND_ONLY):
-            new_tables |= own
-            continue
-        alter = _ALTER_TABLE.match(stmt)
-        if alter and all(
-            _ADD_COLUMN.fullmatch(a) and _NOT_NULL_NEEDS_DEFAULT.match(a)
-            for a in _split_top_level(alter.group(2))
-        ):
-            continue
-        out.append(stmt)
+        fields = line.split()
+        if len(fields) != 3:
+            raise ValueError(f"{LABELS_FILE}:{n}: expected '<label> <sha256> <path>': {line!r}")
+        label, sha, path = fields
+        if label not in LABELS:
+            raise ValueError(
+                f"{LABELS_FILE}:{n}: unknown label {label!r} (one of {', '.join(LABELS)})"
+            )
+        if not _SHA256.match(sha):
+            raise ValueError(f"{LABELS_FILE}:{n}: not a lowercase sha256: {sha!r}")
+        if path in out:
+            raise ValueError(f"{LABELS_FILE}:{n}: {path} is labelled more than once")
+        out[path] = (label, sha)
     return out
 
 
+def label_problems(labels: dict[str, tuple[str, str]], files: dict[str, str]) -> list[str]:
+    """Everything wrong between LABELS_FILE and the migration files (``path -> sha256``):
+    a file with no line or a line for other content, and a line for a file that is gone.
+    Each problem names the fix; empty = consistent."""
+    problems = []
+    for path, sha in sorted(files.items()):
+        entry = labels.get(path)
+        if entry is None:
+            problems.append(
+                f"{path} has no label. Add this line to {LABELS_FILE}, choosing expand, contract"
+                f" or unreviewed (only expand keeps rollback candidates valid):\n  unreviewed {sha} {path}"
+            )
+        elif entry[1] != sha:
+            problems.append(
+                f"{path}: its label is for different content (sha {entry[1][:12]}…, file is"
+                f" {sha[:12]}…). Label the new content:\n  {entry[0]} {sha} {path}"
+            )
+    for path in sorted(set(labels) - set(files)):
+        problems.append(f"{LABELS_FILE} labels {path}, but there is no such migration file")
+    return problems
+
+
 def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
-    """Statements in migration files added or changed on ``head`` after ``candidate`` that
-    stop it being a code-only rollback target: known contractions (``contracting``) and
-    anything not provably expand-only (``unproven``). Empty means the candidate is valid."""
+    """Migration files that changed on ``head`` after ``candidate`` and are not labelled
+    ``expand`` for their exact content at ``head`` (kind: ``contract``, ``unreviewed`` or
+    ``unlabelled``). Empty means the candidate is still a valid code-only rollback target."""
     for sha in (candidate, head):
         if not _SHA.match(sha):
             raise ValueError(f"not a 40-hex commit: {sha!r}")
     _git(repo, "merge-base", "--is-ancestor", candidate, head)  # CalledProcessError if not
+    labels = parse_labels(_git(repo, "show", f"{head}:{LABELS_FILE}"))  # missing file = error
     changed = _git(
         repo, "diff", "--name-only", "--diff-filter=AMR", candidate, head, "--", *MIGRATION_DIRS
     ).split()
@@ -680,16 +385,25 @@ def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
         hits.append(
             {
                 "path": path,
-                "kind": "unproven",
-                "statement": "added after the candidate and deleted before head; it may have been applied",
+                "kind": "unlabelled",
+                "reason": "added after the candidate and deleted before head; it may have been applied",
             }
         )
     for path in sorted(p for p in changed if p.endswith(".sql")):
-        text = _git(repo, "show", f"{head}:{path}")
-        for stmt in contracting_statements(text):
-            hits.append({"path": path, "kind": "contracting", "statement": stmt[:300]})
-        for stmt in unproven_statements(text):
-            hits.append({"path": path, "kind": "unproven", "statement": stmt[:300]})
+        sha = hashlib.sha256(_git_bytes(repo, "show", f"{head}:{path}")).hexdigest()
+        label, labelled_sha = labels.get(path, (None, None))
+        if label is None:
+            hits.append({"path": path, "kind": "unlabelled", "reason": f"no line in {LABELS_FILE}"})
+        elif labelled_sha != sha:
+            hits.append(
+                {
+                    "path": path,
+                    "kind": "unlabelled",
+                    "reason": f"its label is for different content (sha {labelled_sha[:12]}…)",
+                }
+            )
+        elif label != "expand":
+            hits.append({"path": path, "kind": label, "reason": f"labelled {label}"})
     return hits
 
 
@@ -821,12 +535,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif a.cmd == "compat":
             hits = contracting_since(a.candidate, a.head, Path(a.repo))
             for h in hits:
-                print(f"{h['kind'].upper()} {h['path']}: {h['statement']}")
-            n = sum(h["kind"] == "contracting" for h in hits)
-            print(
-                f"{n} contracting and {len(hits) - n} not provably expand-only statement(s)"
-                f" since {a.candidate}"
-            )
+                print(f"{h['kind'].upper()} {h['path']}: {h['reason']}")
+            print(f"{len(hits)} migration file(s) since {a.candidate} not labelled expand")
             return 1 if hits else 0
         elif a.cmd == "due":
             staging = json.loads(Path(a.staging_receipt).read_text(encoding="utf-8"))

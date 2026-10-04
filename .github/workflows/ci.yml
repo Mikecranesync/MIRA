@@ -955,7 +955,7 @@ jobs:
 
       - name: Rollback candidate tests (SDLC v1 step 10)
         # tools/rollback_candidates.py (per-service candidates from production receipts,
-        # designation, contracting-migration detection, refresh-due) and the deploy-vps /
+        # designation, migration-label compatibility and the label gate, refresh-due) and the deploy-vps /
         # rollback-candidate-refresh.yml steps, EXECUTED against a fake gh.
         run: pytest tests/test_rollback_candidates.py tests/test_rollback_candidate_refresh.py -q
 

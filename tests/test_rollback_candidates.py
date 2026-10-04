@@ -8,6 +8,7 @@ the per-service walk is the point, not a convenience.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -501,324 +502,153 @@ def test_designate_reads_the_newest_receipt_per_service_and_groups_by_sha(tmp_pa
     assert d["undesignated"] == {"mira-web": "run 36369296665: no earlier receipt"}
 
 
-# ── contracting migrations ───────────────────────────────────────────────────
+# ── migration labels (expand/contract, §10.2 Compatibility) ──────────────────
+#
+# compat never reads SQL. Each migration file carries a human label in
+# tools/migration_compat.txt, bound to its exact content (sha256). A candidate stays valid
+# only while every migration that changed after it is labelled ``expand``.
+
+LABELS = "tools/migration_compat.txt"
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "DROP TABLE legacy_rows;",
-        "drop table if exists public.legacy_rows cascade;",
-        "ALTER TABLE t DROP COLUMN c;",
-        "ALTER TABLE t DROP c;",
-        "ALTER TABLE IF EXISTS ONLY t ADD COLUMN d int, DROP COLUMN c;",
-        "ALTER TABLE t RENAME COLUMN a TO b;",
-        "ALTER TABLE t RENAME TO t2;",
-        "ALTER TABLE t ALTER COLUMN tenant_id TYPE text USING tenant_id::text;",
-        "ALTER TABLE t ALTER COLUMN c SET DATA TYPE bigint;",
-        "ALTER TABLE t ALTER c SET NOT NULL;",
-        "DROP TYPE status_enum;",
-        "DROP FUNCTION IF EXISTS f(int, text);",
-        "DROP VIEW v;",
-        "DROP SCHEMA s;",
-        # a recreated name is not proof of compatibility (Codex #4222 r1 F3)
-        "DROP FUNCTION IF EXISTS f(int); CREATE OR REPLACE FUNCTION f(int) RETURNS int AS 'select 1' LANGUAGE sql;",
-        "DROP FUNCTION f(integer); CREATE FUNCTION f(text) RETURNS text LANGUAGE sql AS $$ SELECT $1 $$;",
-        "DROP TABLE t; CREATE TABLE t (replacement int);",
-        "DROP VIEW IF EXISTS v; CREATE VIEW v AS SELECT 1;",
-        "DROP TYPE IF EXISTS s; CREATE TYPE s AS ENUM ('a');",
-        # quoted identifiers with whitespace (Codex #4222 r2 F2)
-        'ALTER TABLE "maintenance assets" DROP COLUMN c;',
-        'ALTER TABLE public."a b" RENAME COLUMN x TO y;',
-        # every statement inside a dynamic EXECUTE string, and dynamic DDL we cannot parse
-        "DO $$ BEGIN EXECUTE 'ALTER TABLE t ADD COLUMN x int; ALTER TABLE t DROP COLUMN y'; END $$;",
-        "DO $$ BEGIN EXECUTE 'ALTER TABLE ' || quote_ident(t) || ' DROP COLUMN c'; END $$;",
-        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I DROP COLUMN %I', t, c); END $$;",
-        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ' || 'RENAME TO %I', a, b); END $$;",
-        # an EXECUTE string is SQL: decoded and checked like any other (Codex #4222 r3 F2)
-        """DO $$ BEGIN EXECUTE 'ALTER TABLE "maintenance assets" DROP COLUMN c'; END $$;""",
-        """DO $$ BEGIN EXECUTE 'ALTER TABLE t ALTER COLUMN "old value" SET NOT NULL'; END $$;""",
-        "DO $$ BEGIN EXECUTE 'ALTER TABLE t ALTER COLUMN c SET DEFAULT ''('', DROP COLUMN d'; END $$;",
-        # a statement assembled in a variable and then executed cannot be parsed
-        "DO $$ DECLARE s text; BEGIN s := 'ALTER TABLE ' || t || ' DROP COLUMN c'; EXECUTE s; END $$;",
-    ],
-)
-def test_contracting_statements_are_flagged(sql):
-    assert rc.contracting_statements(sql), sql
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "DROP POLICY IF EXISTS p ON t; CREATE POLICY p ON t USING (true);",
-        "DROP INDEX IF EXISTS i; CREATE INDEX i ON t (c);",
-        "DROP TRIGGER IF EXISTS trg ON t;",
-        "ALTER TABLE t DROP CONSTRAINT IF EXISTS c_uniq;",
-        "ALTER TABLE t ALTER COLUMN c DROP NOT NULL;",
-        "ALTER TABLE t ALTER COLUMN c DROP DEFAULT;",
-        "ALTER TABLE t ADD COLUMN IF NOT EXISTS c text;",
-        "ALTER TABLE t ENABLE ROW LEVEL SECURITY;",
-        "-- DROP TABLE t;\n/* ALTER TABLE t DROP COLUMN c; */ SELECT 1;",
-        "UPDATE t SET c = NULL; DELETE FROM t;",
-        # a quoted identifier that merely contains keywords is a name, not an action
-        'ALTER TABLE "drop column" ADD COLUMN x int;',
-        "DO $$ BEGIN EXECUTE format('ALTER TABLE %I ADD COLUMN x int', t); END $$;",
-        "DO $$ BEGIN EXECUTE 'GRANT SELECT ON ' || t || ' TO r'; END $$;",
-        # IS NOT NULL is a predicate, not SET NOT NULL
-        "DO $$ BEGIN IF x IS NOT NULL THEN EXECUTE 'DELETE FROM t WHERE ' || cond; END IF; END $$;",
-    ],
-)
-def test_expand_and_idempotent_patterns_are_not_flagged(sql):
-    assert rc.contracting_statements(sql) == [], sql
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "mira-hub/db/migrations/008_tenant_cmms_config.sql",
-        "mira-hub/db/migrations/011_grant_app_kb_access.sql",
-        "mira-hub/db/migrations/026_kg_entities_dedupe_and_constraint.sql",
-    ],
-)
-def test_real_idempotent_migrations_are_not_flagged(path):
-    """Real files that DROP POLICY/INDEX/CONSTRAINT and recreate — the false-positive guard."""
-    assert rc.contracting_statements((REPO / path).read_text(encoding="utf-8")) == []
-
-
-def test_a_real_type_change_is_flagged():
-    hits = rc.contracting_statements(
-        (REPO / "mira-hub/db/migrations/070_decision_traces_tenant_text.sql").read_text(
-            encoding="utf-8"
-        )
+def _repo(tmp_path: Path) -> tuple[Path, str]:
+    """A candidate commit with one migration, labelled ``unreviewed``."""
+    repo = tmp_path / "repo"
+    (repo / "mira-hub/db/migrations").mkdir(parents=True)
+    (repo / "tools").mkdir()
+    _git(repo.parent, "init", "-q", str(repo))
+    for k, v in (("user.email", "t@example.com"), ("user.name", "t"), ("commit.gpgsign", "false")):
+        _git(repo, "config", k, v)
+    first = "CREATE TABLE a (x int);\n"
+    (repo / "mira-hub/db/migrations/001_a.sql").write_text(first)
+    (repo / LABELS).write_text(
+        f"# label sha256 path\nunreviewed {_sha(first)} mira-hub/db/migrations/001_a.sql\n"
     )
-    assert hits and all("TYPE TEXT" in h for h in hits)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "candidate")
+    return repo, _git(repo, "rev-parse", "HEAD")
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        # a paren inside a literal must not swallow the following action
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT '(', DROP COLUMN d;",
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT ')', DROP COLUMN d;",
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'it''s (', DROP COLUMN d;",
-        # a comment marker inside a literal must not hide the rest of the line
-        "ALTER TABLE t ADD COLUMN n text DEFAULT '--', DROP COLUMN d;",
-        "ALTER TABLE t ADD COLUMN n text DEFAULT '/*', DROP COLUMN d; -- */",
-        # a semicolon inside a literal must not cut the statement short
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a;b', DROP COLUMN d;",
-    ],
-)
-def test_string_literals_cannot_hide_a_contraction(sql):
-    assert rc.contracting_statements(sql), sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'x, DROP COLUMN y';",
-        "INSERT INTO notes (body) VALUES ('ALTER TABLE t DROP COLUMN c; DROP TABLE t');",
-        "SELECT E'x\\', DROP TABLE t; --';",
-    ],
-)
-def test_string_literals_cannot_fake_a_contraction(sql):
-    assert rc.contracting_statements(sql) == [], sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "DO $$ BEGIN IF EXISTS (SELECT 1) THEN ALTER TABLE t RENAME COLUMN a TO b; END IF; END $$;",
-        "DO $tag$ BEGIN ALTER TABLE t DROP COLUMN c; END $tag$;",
-        "DO $$ BEGIN DROP TABLE legacy_rows; END $$;",
-        # dynamic DDL inside a body still runs
-        "DO $$ BEGIN EXECUTE 'ALTER TABLE t DROP COLUMN c'; END $$;",
-        # a paren inside a literal inside a body, or inside a quoted identifier, cannot
-        # swallow the next action
-        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '(', DROP COLUMN d; END $$;",
-        'ALTER TABLE t ADD COLUMN "x(" int, DROP COLUMN d;',
-        # comment markers and semicolons inside a literal inside a body (Codex #4222 r1 F2)
-        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '--', DROP COLUMN d; END $$;",
-        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '/*', DROP COLUMN d; END $$;",
-        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a;b', DROP COLUMN d; END $$;",
-        "CREATE FUNCTION g() RETURNS void LANGUAGE plpgsql AS $f$ BEGIN "
-        "EXECUTE 'ALTER TABLE t ' || 'x'; ALTER TABLE t DROP COLUMN d; END $f$;",
-        # an E'' string with a backslash-escaped quote is one literal
-        "ALTER TABLE t ALTER COLUMN c SET DEFAULT E'it\\'s (', DROP COLUMN d;",
-        # a stray apostrophe inside a body must not merge the statements after it
-        "DO $$ BEGIN RAISE NOTICE $q$it's$q$; END $$; "
-        "ALTER TABLE t ADD COLUMN x int; ALTER TABLE t DROP COLUMN y;",
-        # an apostrophe inside a dollar-quoted body is not the start of a literal
-        "COMMENT ON TABLE t IS $$it's$$; ALTER TABLE t DROP COLUMN c; SELECT 'x';",
-    ],
-)
-def test_ddl_inside_a_do_block_is_still_checked(sql):
-    assert rc.contracting_statements(sql), sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "DO $$ BEGIN ALTER TABLE t ADD CONSTRAINT k UNIQUE (c); "
-        "EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
-        "DO $$ BEGIN ALTER TABLE t DROP CONSTRAINT IF EXISTS k; END $$;",
-        "DO $$ BEGIN -- ALTER TABLE t DROP COLUMN c;\n PERFORM 1; END $$;",
-    ],
-)
-def test_expand_patterns_inside_a_do_block_are_not_flagged(sql):
-    assert rc.contracting_statements(sql) == [], sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "BEGIN; SET LOCAL lock_timeout = '5s'; COMMIT;",
-        "CREATE TABLE IF NOT EXISTS t (id uuid PRIMARY KEY, x text);",
-        "CREATE SEQUENCE IF NOT EXISTS s;",
-        "COMMENT ON COLUMN t.x IS 'why';",
-        "GRANT SELECT, INSERT ON t TO factorylm_app;",
-        "ALTER TABLE t ADD COLUMN IF NOT EXISTS y text;",
-        "ALTER TABLE t ADD COLUMN y int NOT NULL DEFAULT 0, ADD COLUMN z text;",
-        "ALTER TABLE t ADD COLUMN y jsonb NOT NULL DEFAULT '{}'::jsonb;",
-        "ALTER TABLE t ADD COLUMN y timestamptz NOT NULL DEFAULT now();",
-        "ALTER TABLE t ADD COLUMN y numeric(10, 2), ADD COLUMN z text[], ADD COLUMN w boolean DEFAULT false;",
-        "ALTER TABLE t ADD COLUMN y uuid DEFAULT gen_random_uuid();",
-        # an index is fine on a table this file created
-        "CREATE TABLE n (x int); CREATE INDEX ni ON n ((1 / x)) WHERE x > 0;",
-        # everything but an INSERT on a table a plain CREATE TABLE made earlier in the same file
-        "CREATE TABLE n (x int); CREATE UNIQUE INDEX ni ON n (x); "
-        "ALTER TABLE n ENABLE ROW LEVEL SECURITY; DROP POLICY IF EXISTS p ON n; "
-        "CREATE POLICY p ON n USING (true); REVOKE DELETE ON n FROM PUBLIC;",
-        # foreign keys among tables new in this file, or to itself, bind nothing older
-        "CREATE TABLE p (id int PRIMARY KEY, parent int REFERENCES p (id)); "
-        "CREATE TABLE c (pid int REFERENCES p (id));",
-        # controls for the round-5 tightening: a cast to a built-in type, a constant into a
-        # bounded type, a function default into an unbounded one, AS inside a column list (not
-        # CREATE TABLE AS), object grants, and a search_path SET before the table it re-points
-        "ALTER TABLE t ADD COLUMN y text DEFAULT ''::text, "
-        "ADD COLUMN z timestamptz DEFAULT 'epoch'::timestamp with time zone;",
-        "ALTER TABLE t ADD COLUMN y varchar(20) DEFAULT 'x', ADD COLUMN z text DEFAULT now();",
-        "CREATE TABLE n (x int, y text GENERATED ALWAYS AS (x::text) STORED, z int DEFAULT CAST(1 AS int));",
-        "GRANT USAGE, SELECT ON SEQUENCE s TO factorylm_app;",
-        "GRANT EXECUTE ON FUNCTION f(int, text) TO factorylm_app;",
-        "GRANT SELECT ON ALL TABLES IN SCHEMA public TO r;",
-        "GRANT SELECT (x, y) ON t, u TO r WITH GRANT OPTION;",
-        "SET search_path TO public; CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT c CHECK (x > 0);",
-    ],
-)
-def test_expand_only_statements_are_proven(sql):
-    assert rc.unproven_statements(sql) == [], sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        # each needs a human: older code can mis-read or mis-write through it
-        "INSERT INTO existing (x) VALUES (1);",
-        "UPDATE existing SET x = 1;",
-        "DELETE FROM existing;",
-        "TRUNCATE existing;",
-        "CREATE UNIQUE INDEX u ON existing (x);",
-        "DROP INDEX IF EXISTS i;",
-        "ALTER TABLE existing DROP CONSTRAINT IF EXISTS c;",
-        "ALTER TABLE existing ADD CONSTRAINT c CHECK (x > 0);",
-        "ALTER TABLE existing ADD COLUMN y int NOT NULL;",
-        "ALTER TABLE existing ADD COLUMN y int UNIQUE;",
-        "ALTER TABLE existing ADD COLUMN y uuid REFERENCES parent (id);",
-        "ALTER TABLE existing ADD y int;",
-        # Codex #4222 r4 F10: an index on an existing table can reject older writes (an
-        # expression or predicate that errors, or a btree's row-size limit), and a DEFAULT
-        # proves nothing unless it is a constant that always succeeds
-        "CREATE INDEX i ON existing ((1 / x));",
-        "CREATE INDEX i ON existing (x) WHERE 1 / x > 0;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON existing (long_text);",
-        "ALTER TABLE existing ADD COLUMN y int NOT NULL DEFAULT NULL;",
-        "ALTER TABLE existing ADD COLUMN y int DEFAULT NULL NOT NULL;",
-        "ALTER TABLE existing ADD COLUMN y uuid DEFAULT current_setting('app.tenant_id')::uuid;",
-        "ALTER TABLE existing ADD COLUMN y int DEFAULT (1 / 0);",
-        "ALTER TABLE existing ADD COLUMN y positive_int;",
-        "ALTER TABLE existing ADD COLUMN y text NOT NULL DEFAULT '' CHECK (y <> '');",
-        "ALTER TABLE existing ENABLE ROW LEVEL SECURITY;",
-        "CREATE POLICY p ON existing USING (false);",
-        "REVOKE SELECT ON existing FROM factorylm_app;",
-        "ALTER TABLE existing ALTER COLUMN x DROP DEFAULT;",
-        "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;",
-        "CREATE OR REPLACE VIEW v AS SELECT 1;",
-        "CREATE VIEW v AS SELECT 1;",
-        "CREATE EXTENSION IF NOT EXISTS ltree;",
-        "CREATE TRIGGER tr BEFORE INSERT ON existing FOR EACH ROW EXECUTE FUNCTION f();",
-        "DO $$ BEGIN PERFORM 1; END $$;",
-        "ALTER TYPE e RENAME VALUE 'a' TO 'b';",
-        "ALTER VIEW v RENAME TO w;",
-        "VACUUM existing;",
-        # IF NOT EXISTS proves nothing: the table may predate this file
-        "CREATE TABLE IF NOT EXISTS existing (x int); CREATE UNIQUE INDEX u ON existing (x);",
-        # a statement smuggled after the new table is still checked on its own target
-        "CREATE TABLE n (x int); INSERT INTO existing SELECT x FROM n;",
-        # a new table can still bind an existing one: its foreign key can block older
-        # code's deletes, and inheritance or partitioning puts its rows in older reads
-        "CREATE TABLE n (x uuid REFERENCES existing (id));",
-        "CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT f FOREIGN KEY (x) REFERENCES existing (id);",
-        "CREATE TABLE n () INHERITS (existing);",
-        "CREATE TABLE n PARTITION OF existing FOR VALUES IN (1);",
-        # the ALTER TABLE spellings of the same binding (pre-round-5 self-check)
-        "CREATE TABLE n (x int); ALTER TABLE n INHERIT existing;",
-        "CREATE TABLE p (x int) PARTITION BY RANGE (x); "
-        "ALTER TABLE p ATTACH PARTITION existing FOR VALUES FROM (0) TO (10);",
-        # a new table only exempts statements on THAT table: quoted names are case-sensitive
-        # and a schema makes a different table (pre-Codex Claude screen, 2026-10-04)
-        """CREATE TABLE widgets (id int); ALTER TABLE "WIDGETS" ADD CONSTRAINT c CHECK (id > 0);""",
-        "CREATE TABLE new_schema.widgets (id int); "
-        "ALTER TABLE old_schema.widgets ADD CONSTRAINT c CHECK (id > 0);",
-        "CREATE TABLE new_schema.widgets (id int); REVOKE SELECT ON old_schema.widgets FROM r;",
-        "CREATE TABLE new_schema.widgets (id int); INSERT INTO old_schema.widgets VALUES (1);",
-        # Codex #4222 r5 F10: a cast in a DEFAULT proves nothing unless its target is a
-        # built-in type (a domain's check can depend on session state, e.g. current_setting)
-        "ALTER TABLE existing ADD COLUMN y int NOT NULL DEFAULT '1'::positive_int;",
-        "ALTER TABLE existing ADD COLUMN y text DEFAULT ''::scoped_text;",
-        # a bounded type takes only a constant: now() as text varies in length from call to
-        # call (pre-round-6 self-check)
-        "ALTER TABLE existing ADD COLUMN y varchar(25) DEFAULT now();",
-        "ALTER TABLE existing ADD COLUMN y varchar(36) NOT NULL DEFAULT gen_random_uuid();",
-        # Codex #4222 r5 F12: CREATE TABLE AS and INSERT evaluate expressions that can change
-        # existing state (setval); an INSERT also runs the new table's defaults and checks
-        "CREATE TABLE snapshot AS SELECT setval('existing_id_seq', 1);",
-        "CREATE TABLE snapshot (x) AS TABLE existing WITH NO DATA;",
-        "CREATE TABLE IF NOT EXISTS snapshot AS SELECT setval('existing_id_seq', 1);",
-        "CREATE TABLE n (x bigint); INSERT INTO n SELECT setval('existing_id_seq', 1);",
-        "CREATE TABLE n (x bigint); INSERT INTO n VALUES (setval('existing_id_seq', 1));",
-        "CREATE TABLE n (x bigint DEFAULT setval('existing_id_seq', 1), y int); "
-        "INSERT INTO n (y) VALUES (1);",
-        "CREATE TABLE n (x int); INSERT INTO n VALUES (1);",
-        # a SET of search_path re-points every name created before it (pre-round-6 self-check)
-        "CREATE TABLE widgets (id int); SET search_path TO legacy; "
-        "ALTER TABLE widgets ADD CONSTRAINT c CHECK (id > 0);",
-        "CREATE TABLE widgets (id int); SET LOCAL search_path = legacy; "
-        "REVOKE SELECT ON widgets FROM r;",
-        # a role grant can bring a restrictive policy into force; schema USAGE re-points
-        # older code's unqualified names (search_path skips schemas without it)
-        "GRANT restricted_reader TO factorylm_app;",
-        "GRANT USAGE ON SCHEMA legacy TO factorylm_app;",
-        "GRANT CREATE ON DATABASE factorylm TO factorylm_app;",
-    ],
-)
-def test_anything_not_provably_expand_only_is_unproven(sql):
-    assert rc.unproven_statements(sql), sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "ALTER TABLE a ADD COLUMN y int NOT NULL DEFAULT '1'::positive_int;",
-        "CREATE TABLE snapshot AS SELECT setval('a_x_seq', 1);",
-        "CREATE TABLE n (x bigint); INSERT INTO n SELECT setval('a_x_seq', 1);",
-    ],
-)
-def test_compat_fails_on_the_round_5_forms(tmp_path, sql):
-    """Codex #4222 r5 F10/F12, end to end through the CLI against a real git history."""
-    repo, cand = _repo(tmp_path)
-    (repo / "mira-hub/db/migrations/002_b.sql").write_text(sql + "\n")
+def _land(repo: Path, files: dict[str, str], labels: dict[str, str]) -> str:
+    """Commit ``files`` and append a label line per ``labels`` path (sha of that file)."""
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text)
+    with (repo / LABELS).open("a") as fh:
+        for path, label in labels.items():
+            fh.write(f"{label} {_sha((repo / path).read_text())} {path}\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "head")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+B002 = "mira-hub/db/migrations/002_b.sql"
+
+
+def test_a_candidate_stays_valid_while_every_later_migration_is_labelled_expand(tmp_path):
+    repo, cand = _repo(tmp_path)
+    head = _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: "expand"})
+    assert rc.contracting_since(cand, head, repo) == []
+    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+@pytest.mark.parametrize("label", ["contract", "unreviewed"])
+def test_a_later_migration_not_labelled_expand_invalidates(tmp_path, label):
+    repo, cand = _repo(tmp_path)
+    head = _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: label})
+    hits = rc.contracting_since(cand, head, repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(B002, label)]
+    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
+    assert res.returncode == 1 and f"{label.upper()} {B002}" in res.stdout
+
+
+def test_an_unlabelled_later_migration_invalidates(tmp_path):
+    repo, cand = _repo(tmp_path)
+    head = _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {})
+    assert [(h["path"], h["kind"]) for h in rc.contracting_since(cand, head, repo)] == [
+        (B002, "unlabelled")
+    ]
+
+
+def test_a_label_for_other_content_does_not_count(tmp_path):
+    """The label binds to the exact bytes: an edited file is a different migration."""
+    repo, cand = _repo(tmp_path)
+    _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: "expand"})
+    (repo / B002).write_text("ALTER TABLE a DROP COLUMN x;\n")  # label line keeps the old sha
+    _git(repo, "commit", "-q", "-am", "edit")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(B002, "unlabelled")]
+    assert "different content" in hits[0]["reason"]
+
+
+def test_an_existing_migration_changed_after_the_candidate_needs_a_label_for_its_new_content(
+    tmp_path,
+):
+    repo, cand = _repo(tmp_path)
+    (repo / "mira-hub/db/migrations/001_a.sql").write_text("CREATE TABLE a (x bigint);\n")
+    _git(repo, "commit", "-q", "-am", "rewrite an applied file")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [h["kind"] for h in hits] == ["unlabelled"]
+
+
+def test_a_migration_renamed_after_the_candidate_needs_a_label_at_its_new_path(tmp_path):
+    repo, cand = _repo(tmp_path)
+    _git(repo, "mv", "mira-hub/db/migrations/001_a.sql", "mira-hub/db/migrations/001_z.sql")
+    _git(repo, "commit", "-q", "-m", "rename")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [
+        ("mira-hub/db/migrations/001_z.sql", "unlabelled")
+    ]
+
+
+def test_compat_sees_a_migration_added_and_deleted_after_the_candidate(tmp_path):
+    """Applied in between, its effect may be live although head no longer has the file."""
+    repo, cand = _repo(tmp_path)
+    _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: "expand"})
+    (repo / B002).unlink()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "delete")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(B002, "unlabelled")]
+    assert "deleted before head" in hits[0]["reason"]
+
+
+def test_compat_scans_the_ingest_migrations_too(tmp_path):
+    repo, cand = _repo(tmp_path)
+    ingest = "mira-core/mira-ingest/db/migrations/012_x.sql"
+    head = _land(repo, {ingest: "ALTER TABLE chunks ADD COLUMN y int;\n"}, {})
+    assert [h["path"] for h in rc.contracting_since(cand, head, repo)] == [ingest]
+
+
+def test_a_file_outside_the_migration_dirs_is_ignored(tmp_path):
+    repo, cand = _repo(tmp_path)
+    head = _land(repo, {"docs/notes.sql": "DROP TABLE a;\n"}, {})
+    assert rc.contracting_since(cand, head, repo) == []
+
+
+def test_compat_reads_the_labels_at_head_not_the_working_tree(tmp_path):
+    repo, cand = _repo(tmp_path)
+    head = _land(repo, {B002: "ALTER TABLE a ADD COLUMN y int;\n"}, {B002: "contract"})
+    text = (repo / LABELS).read_text().replace("contract ", "expand ")
+    (repo / LABELS).write_text(text)  # uncommitted relabel
+    assert [h["kind"] for h in rc.contracting_since(cand, head, repo)] == ["contract"]
+
+
+def test_a_missing_label_file_at_head_is_an_error_not_clean(tmp_path):
+    repo, cand = _repo(tmp_path)
+    (repo / LABELS).unlink()
+    _git(repo, "commit", "-q", "-am", "drop labels")
     res = cli(
         "compat",
         "--candidate",
@@ -828,37 +658,66 @@ def test_compat_fails_on_the_round_5_forms(tmp_path, sql):
         "--repo",
         str(repo),
     )
-    assert res.returncode == 1, res.stdout
-    assert "UNPROVEN mira-hub/db/migrations/002_b.sql" in res.stdout
+    assert res.returncode == 2, res.stdout + res.stderr
 
 
-def test_compat_fails_on_an_unproven_migration_alone(tmp_path):
-    repo, cand = _repo(tmp_path)
-    (repo / "mira-hub/db/migrations/002_b.sql").write_text(
-        "CREATE TRIGGER tr BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION f();\n"
-    )
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "head")
-    head = _git(repo, "rev-parse", "HEAD")
-    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
-    assert res.returncode == 1 and "UNPROVEN mira-hub/db/migrations/002_b.sql" in res.stdout
-    assert "0 contracting and 1 not provably expand-only" in res.stdout
+@pytest.mark.parametrize(
+    "line, needle",
+    [
+        (f"safe {'a' * 64} mira-hub/db/migrations/x.sql", "unknown label"),
+        ("expand abc mira-hub/db/migrations/x.sql", "sha256"),
+        (f"expand {'a' * 64}", "expected"),
+        (f"expand {'a' * 64} mira-hub/db/migrations/x.sql extra", "expected"),
+        (f"expand {'A' * 64} mira-hub/db/migrations/x.sql", "sha256"),
+    ],
+)
+def test_a_malformed_label_line_fails_closed(line, needle):
+    with pytest.raises(ValueError, match=needle):
+        rc.parse_labels(line + "\n")
 
 
-def test_compat_sees_a_migration_added_and_deleted_after_the_candidate(tmp_path):
-    """Applied in between, its effect may be live although head no longer has the file."""
-    repo, cand = _repo(tmp_path)
-    mig = repo / "mira-hub/db/migrations/002_gone.sql"
-    mig.write_text("ALTER TABLE a ADD COLUMN y int;\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "add")
-    mig.unlink()
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "delete")
-    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
-    assert [(h["path"], h["kind"]) for h in hits] == [
-        ("mira-hub/db/migrations/002_gone.sql", "unproven")
-    ]
+def test_a_duplicate_label_fails_closed():
+    line = f"expand {'a' * 64} mira-hub/db/migrations/x.sql\n"
+    with pytest.raises(ValueError, match="more than once"):
+        rc.parse_labels(line + line.replace("expand", "contract"))
+
+
+def test_parse_labels_skips_comments_and_blank_lines():
+    sha = "b" * 64
+    text = f"# header\n\n  # indented comment\nexpand {sha} mira-hub/db/migrations/x.sql\n"
+    assert rc.parse_labels(text) == {"mira-hub/db/migrations/x.sql": ("expand", sha)}
+
+
+def test_label_problems_names_the_exact_line_to_add():
+    sha_new, sha_old = "c" * 64, "d" * 64
+    labels = {
+        "mira-hub/db/migrations/001_a.sql": ("expand", sha_old),
+        "mira-hub/db/migrations/009_gone.sql": ("unreviewed", "e" * 64),
+    }
+    files = {
+        "mira-hub/db/migrations/001_a.sql": sha_new,
+        "mira-hub/db/migrations/002_b.sql": sha_new,
+    }
+    problems = "\n".join(rc.label_problems(labels, files))
+    assert f"unreviewed {sha_new} mira-hub/db/migrations/002_b.sql" in problems  # the line to add
+    assert "001_a.sql" in problems and "different content" in problems
+    assert "009_gone.sql" in problems and "no such migration" in problems
+    assert rc.label_problems({p: ("expand", s) for p, s in files.items()}, files) == []
+
+
+def test_every_migration_carries_a_label_for_its_exact_content():
+    """The authoring-time gate (runs in CI's unit suite on every code PR): a new or edited
+    migration fails here until its label line is added, so the judgment is made once, by
+    the author, in the migration's own reviewed PR."""
+    labels = rc.parse_labels((REPO / LABELS).read_text(encoding="utf-8"))
+    files = {
+        str(f.relative_to(REPO)): hashlib.sha256(f.read_bytes()).hexdigest()
+        for d in rc.MIGRATION_DIRS
+        for f in sorted((REPO / d).glob("*.sql"))
+    }
+    assert len(files) > 100, "found no migrations to check"
+    problems = rc.label_problems(labels, files)
+    assert problems == [], "\n".join(problems)
 
 
 def test_migration_dirs_are_exactly_what_the_apply_workflows_apply():
@@ -869,71 +728,6 @@ def test_migration_dirs_are_exactly_what_the_apply_workflows_apply():
         applied.update(re.findall(r'MIG_DIR="([^"]+)"', wf.read_text(encoding="utf-8")))
     assert len(workflows) >= 2 and applied, "found no apply-* migration workflows to compare"
     assert applied == set(rc.MIGRATION_DIRS)
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    ).stdout.strip()
-
-
-def _repo(tmp_path: Path) -> tuple[Path, str]:
-    repo = tmp_path / "repo"
-    (repo / "mira-hub/db/migrations").mkdir(parents=True)
-    _git(repo.parent, "init", "-q", str(repo))
-    for k, v in (("user.email", "t@example.com"), ("user.name", "t"), ("commit.gpgsign", "false")):
-        _git(repo, "config", k, v)
-    (repo / "mira-hub/db/migrations/001_a.sql").write_text("CREATE TABLE a (x int);\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "candidate")
-    return repo, _git(repo, "rev-parse", "HEAD")
-
-
-def test_contracting_since_finds_a_later_contraction(tmp_path):
-    repo, cand = _repo(tmp_path)
-    (repo / "mira-hub/db/migrations/002_b.sql").write_text("ALTER TABLE a ADD COLUMN y int;\n")
-    (repo / "mira-hub/db/migrations/003_c.sql").write_text("ALTER TABLE a DROP COLUMN x;\n")
-    (repo / "docs.sql").write_text("DROP TABLE a;\n")  # outside the migration dirs
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "head")
-    head = _git(repo, "rev-parse", "HEAD")
-    hits = rc.contracting_since(cand, head, repo)
-    assert {h["path"] for h in hits} == {"mira-hub/db/migrations/003_c.sql"}
-    assert {h["kind"] for h in hits} == {"contracting", "unproven"}
-    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
-    assert res.returncode == 1 and "CONTRACTING mira-hub/db/migrations/003_c.sql" in res.stdout
-
-
-def test_contracting_since_scans_the_ingest_migrations_too(tmp_path):
-    repo, cand = _repo(tmp_path)
-    ingest = repo / "mira-core/mira-ingest/db/migrations"
-    ingest.mkdir(parents=True)
-    (ingest / "012_x.sql").write_text("ALTER TABLE chunks DROP COLUMN legacy;\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "head")
-    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
-    assert {h["path"] for h in hits} == {"mira-core/mira-ingest/db/migrations/012_x.sql"}
-    assert set(rc.MIGRATION_DIRS) == {
-        "mira-hub/db/migrations",
-        "mira-core/mira-ingest/db/migrations",
-    }
-
-
-def test_contracting_since_is_clean_for_expand_only(tmp_path):
-    repo, cand = _repo(tmp_path)
-    (repo / "mira-hub/db/migrations/002_b.sql").write_text("ALTER TABLE a ADD COLUMN y int;\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "head")
-    res = cli(
-        "compat",
-        "--candidate",
-        cand,
-        "--head",
-        _git(repo, "rev-parse", "HEAD"),
-        "--repo",
-        str(repo),
-    )
-    assert res.returncode == 0, res.stdout + res.stderr
 
 
 def test_a_candidate_not_on_head_is_an_error_not_clean(tmp_path):

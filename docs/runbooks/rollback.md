@@ -102,48 +102,37 @@ service: its previous production SHA by the walk the deploy uses, or `sha: null`
 ## 2. Is the candidate still a valid code-only target?
 
 Expand/contract: code rolled back across a migration that older code cannot live with breaks. The
-check **fails closed**: a candidate is valid only if every statement in every migration file added on
-`main` after it, in every directory an `apply-*` workflow applies, is on the expand-only allowlist
-below. Anything else, a known contraction or merely something the tool cannot prove harmless, needs
-a human decision.
+check does not read SQL. Every migration file carries a human **label** in
+`tools/migration_compat.txt`, bound to the file's exact content (its `sha256sum`):
+
+| Label | Meaning | Candidate across it |
+|---|---|---|
+| `expand` | older application code keeps working after this file (it adds only what older code never touches, and every older write still succeeds) | stays valid |
+| `contract` | older code may break: a drop, rename, type change, new constraint, data rewrite, … | invalid |
+| `unreviewed` | nobody has decided yet | invalid |
+
+A candidate is valid only while every migration file added, changed or renamed on `main` after it,
+in every directory an `apply-*` workflow applies, is labelled `expand` for its exact content. A file
+with no label, a label for different content, or a file added and then deleted in between also
+invalidates it. Everything fails closed.
 
 ```bash
 git fetch origin main
 python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-parse origin/main)" --repo .
-# exit 0 = every later statement is expand-only; 1 = CONTRACTING / UNPROVEN lines printed (§5)
+# exit 0 = every later migration is labelled expand; 1 = one line per other file (§5); 2 = error
 ```
 
-| Allowed (expand-only) | Why older code can neither read nor write wrongly through it |
-|---|---|
-| `BEGIN`, `COMMIT`, `END`, `START TRANSACTION` | transaction control, no schema change |
-| `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only; a `SET` of `search_path` also ends the same-file exemption for every table created before it (it re-points their names) |
-| `CREATE TABLE …` (not `CREATE TABLE … AS`) without `INHERITS` / `PARTITION OF` (and no later `INHERIT` / `ATTACH PARTITION` of an older table), foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes; `… AS` runs a query, which can call any function |
-| `CREATE SEQUENCE …` | a new object older code never references |
-| `COMMENT ON …` | metadata only |
-| `GRANT privileges ON [TABLE\|SEQUENCE\|FUNCTION\|PROCEDURE\|ROUTINE] x` or `ON ALL … IN SCHEMA s` | object privileges can only allow more; a role grant can bring a restrictive policy into force, and schema `USAGE` re-points older code's unqualified names (`search_path` skips a schema without it) |
-| `ALTER TABLE … ADD COLUMN c <built-in type>` with only `NULL`, `COLLATE`, a default that is a constant (cast, if at all, only to a built-in type), `now()` or `gen_random_uuid()`, and `NOT NULL` only together with such a default; a length- or precision-bounded type (`varchar(n)`, `numeric(p,s)`) takes a constant only | older inserts omit `c`, so `c` must take NULL or a default that always succeeds; a domain type or cast, a constraint or any other default expression could reject older rows, and `now()` as text varies in length between calls |
-| any statement except `INSERT` on a table a **plain** `CREATE TABLE` made earlier in the same file | older code cannot touch a table that did not exist (`IF NOT EXISTS` proves nothing); with every `INSERT` and `CREATE TABLE … AS` unproven, the table is empty, so nothing on it evaluates a row expression |
-
-Not on it, on purpose: `CREATE INDEX` on an existing table (an expression or predicate can error,
-and a btree rejects rows over its size limit), `CREATE TABLE … AS` and `INSERT` anywhere (a query, and a
-table's defaults and checks, can call any function, e.g. `setval`), other data changes, `CREATE UNIQUE INDEX`, `DROP INDEX` and
-`DROP CONSTRAINT` (one may be the `ON CONFLICT` arbiter of an older upsert), `ADD CONSTRAINT`, policies
-and RLS, `REVOKE`, triggers, `CREATE [OR REPLACE] FUNCTION/VIEW` (behaviour and overload resolution),
-`CREATE EXTENSION`, `DO` blocks, and anything unrecognised. A known contraction (a dropped or renamed
-column or table, a type change, `SET NOT NULL`, any dropped object, including inside `DO` blocks and
-`EXECUTE` strings) is labelled `CONTRACTING`; the rest is `UNPROVEN`. Both make the candidate invalid.
-Assumed of older code: it names the columns it reads (no `SELECT *` unpacked by position), since an
-added column is the one change this list admits on an existing table.
-
-This reads files added on `main` after the candidate whether or not `apply-migrations.yml` has applied
-them yet. **Measured on 2026-10-04:** 108 of the 123 existing migration files are not provably
-expand-only (most use `DO` blocks, functions, triggers, RLS or indexes on existing tables), and all three real candidates
-(`648896996`, `76887423`, `0994b31a`) are already invalid because of `101`, `102` and `104`
-(trigger and function changes). Expect the daily check to raise an incident whenever production's
-candidate predates such a migration; a human decides, and it clears once a deploy moves the
-candidate past it. A durable, off-file record of reviewed migrations would remove the repeats; it is
-tracked in #4225, not part of this check (applied migration files are immutable, so it cannot be a
-marker inside them).
+**Labelling is done once, when the migration is written.** CI (`tests/test_rollback_candidates.py`,
+in the unit suite) fails any PR whose migration files and label lines disagree, and prints the exact
+line to add. The author picks the label in the migration's own PR, where the reviewer can judge it
+alongside the SQL. An `expand` label is a reviewed claim, so it lands only through a reviewed PR;
+when in doubt, use `unreviewed`. Editing a migration changes its sha, so its label must be renewed.
+The existing files were back-filled as `unreviewed` on 2026-10-04, so today every candidate that
+predates a migration is invalid until someone reviews that migration and relabels it. The three
+real candidates (`648896996`, `76887423`, `0994b31a`) are invalid because of `101`, `102` and `104`
+until then. Expect the daily check to raise an incident while production's candidate predates an
+unreviewed or `contract` migration: a human decides (§5), and it clears once the migration is
+relabelled `expand` or a deploy moves the candidate past it.
 
 ## 3. Is its evidence fresh?
 
@@ -159,7 +148,7 @@ verifying with the same trusted validators and flags `authorize-source` uses:
 | `FRESH` | verifies, more than 72 h of validity left | summary only |
 | `DUE` | verifies, expires within 72 h | opens `Rollback candidate <sha12> refresh due` (not an incident) with the re-stage command |
 | `STALE` | evidence missing, expired or not verifying | opens/updates an **`incident`** issue `Rollback candidate <sha12> lost recovery readiness` with the §10.3 fields; the run fails |
-| `INVALID` | a contracting migration landed after it | same incident; the run fails |
+| `INVALID` | a migration after it is not labelled `expand` (§2) | same incident; the run fails |
 | no candidate | no production receipt records `rollback_candidate` yet | notice only |
 
 Run it on demand: `gh workflow run rollback-candidate-refresh.yml`.
@@ -205,7 +194,7 @@ After it completes (G4, §9): dispatch `smoke-test.yml`, confirm `/api/version` 
 ## 5. Database
 
 `apply-migrations.yml` has no down mode. Code rollback inside the expand/contract window never needs
-a schema rollback. If §2 reports a contraction, rolling the code back needs a data decision first: R3
+a schema rollback. If §2 reports a migration not labelled `expand`, rolling the code back needs a data decision first: R3
 migration PRs record the Neon snapshot/branch id and the rollback SQL at G0 (CP-before). Never `psql`
 production from a session (`prod-guard.sh`).
 

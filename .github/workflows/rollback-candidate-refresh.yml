@@ -6,9 +6,10 @@ name: Rollback Candidate Refresh
 # `designate`). Refreshing only the current production SHA does not preserve the
 # rollback target, so this checks the targets themselves:
 #
-#   1. compatibility — every statement of every migration added on main since the
-#      candidate is provably expand-only (fail-closed allowlist; anything else is a
-#      human decision; tools/rollback_candidates.py `compat`);
+#   1. compatibility — every migration file changed on main since the candidate
+#      carries a human `expand` label for its exact content in
+#      tools/migration_compat.txt (no SQL is parsed; anything else is a human
+#      decision; tools/rollback_candidates.py `compat`);
 #   2. evidence — an unexpired staging receipt and a generation-bound acceptance
 #      receipt for the candidate, found and verified EXACTLY as deploy-vps.yml
 #      `authorize-source` would verify them for a rollback dispatch (same trusted
