@@ -43,7 +43,7 @@ jobs:
     name: Post the head-bound Cheap Review check-run
     # The owner filter here only spares a runner for comments that could never post;
     # tools/cheap_review_check.py re-checks login AND account type authoritatively.
-    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '[CHEAP-REVIEW]') && github.event.comment.user.login == github.repository_owner }}
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '[CHEAP-REVIEW]') && github.event.comment.user.login == github.repository_owner && github.event.comment.user.type == 'User' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
