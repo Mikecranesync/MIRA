@@ -465,8 +465,122 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
+# Expand-only allowlist (fail closed). A statement is proven harmless to OLDER code only if
+# it matches one of these; anything else is "not proven" and makes the candidate invalid.
+# One row per entry, with why older code can neither read nor write wrongly through it:
+#   BEGIN / COMMIT / END / START TRANSACTION   transaction control, no schema change
+#   SET [LOCAL|SESSION] name TO|= value         this migration session only
+#   CREATE TABLE … (no INHERITS / PARTITION OF; a new table older code never references —
+#     foreign keys only to tables new in this file) an FK to an older table can block its deletes
+#   CREATE INDEX … (not UNIQUE)                 changes plans, never results or accepted writes
+#   CREATE SEQUENCE …                           a new object older code never references
+#   COMMENT ON …                                metadata only
+#   GRANT …                                     can only allow more
+#   ALTER TABLE … ADD COLUMN c <type>           older inserts omit c: allowed only if c is
+#     (no NOT NULL unless DEFAULT; no UNIQUE,   nullable or defaulted, and nothing about c
+#      PRIMARY KEY, CHECK, GENERATED, REFERENCES) can reject older code's rows or deletes
+#   any statement on a table a PLAIN `CREATE TABLE` made earlier in the same file
+#     (IF NOT EXISTS proves nothing: the table may predate the file)
+# Not on it, deliberately: INSERT/UPDATE/DELETE into existing tables, CREATE UNIQUE INDEX, DROP
+# INDEX or DROP CONSTRAINT (an ON CONFLICT arbiter for older upserts), ADD CONSTRAINT, policies
+# and RLS, REVOKE, triggers, CREATE [OR REPLACE] FUNCTION/VIEW (overload resolution and
+# behaviour), CREATE EXTENSION, DO blocks, and anything unrecognised. These need a human.
+_EXPAND_ONLY = tuple(
+    re.compile(p)
+    for p in (
+        r"BEGIN",
+        r"COMMIT",
+        r"END",
+        r"START TRANSACTION",
+        r"SET (?:LOCAL |SESSION )?[A-Z_][A-Z0-9_.]* (?:TO|=) [^$]+",
+        r"CREATE TABLE (?:IF NOT EXISTS )?\S+ [^$]+",
+        r"CREATE INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?\S+ ON [^$]+",
+        r"CREATE SEQUENCE (?:IF NOT EXISTS )?\S+[^$]*",
+        r"COMMENT ON [^$]+",
+        r"GRANT [^$]+",
+    )
+)
+_ADD_COLUMN = re.compile(
+    r"ADD COLUMN (?:IF NOT EXISTS )?\S+ (?!.*\b(?:UNIQUE|PRIMARY|CHECK|GENERATED|REFERENCES)\b)"
+    r"(?:(?!.*\bNOT NULL\b)[^$]+|(?=.*\bDEFAULT\b)[^$]+)"
+)
+_PLAIN_CREATE_TABLE = re.compile(r"CREATE TABLE (?!IF NOT EXISTS )(\S+) .+")
+_TABLE_TARGET = tuple(
+    re.compile(p)
+    for p in (
+        r"ALTER TABLE (?:IF EXISTS )?(?:ONLY )?(\S+) [^$]+",
+        r"CREATE (?:UNIQUE )?INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?\S+ ON (?:ONLY )?([^\s(]+)[^$]*",
+        r"(?:CREATE|DROP) POLICY (?:IF EXISTS )?\S+ ON (\S+)[^$]*",
+        r"(?:GRANT|REVOKE) [^$]+ ON (?:TABLE )?([^\s,]+) (?:TO|FROM) [^$]+",
+        r"INSERT INTO ([^\s(]+)[^$]*",
+        r"COMMENT ON (?:TABLE|COLUMN) ([^\s.]+)[^$]*",
+    )
+)
+
+
+def _opaque(sql: str) -> str:
+    """Upper-case SQL with literals blanked, comments dropped, quoted names as single tokens
+    and every dollar-quoted body replaced by one opaque token (its content is never proof)."""
+    out, pos = [], 0
+    for m in _LEXEMES.finditer(sql):
+        out.append(re.sub(r"['\"]", " ", sql[pos : m.start()]))
+        if m.group("dollar"):
+            out.append(" $BODY$ ")
+        elif m.group("ident"):
+            out.append('"' + re.sub(r"[^A-Za-z0-9_]", "_", m.group("ident")[1:-1]) + '"')
+        else:
+            out.append("''" if (m.group("literal") or m.group("estr")) else " ")
+        pos = m.end()
+    out.append(re.sub(r"['\"]", " ", sql[pos:]))
+    return "".join(out).upper()
+
+
+def _table(name: str) -> str:
+    return name.strip('"').split(".")[-1]
+
+
+_REFERENCES = re.compile(r"\bREFERENCES (?:ONLY )?([^\s(]+)")
+_BINDS_PARENT = re.compile(r"\bINHERITS\b|\bPARTITION OF\b")
+
+
+def _binds_older_table(stmt: str, new_tables: set[str]) -> bool:
+    """A foreign key into, or inheritance/partitioning of, a table not new in this file."""
+    return bool(_BINDS_PARENT.search(stmt)) or any(
+        _table(t) not in new_tables for t in _REFERENCES.findall(stmt)
+    )
+
+
+def unproven_statements(sql: str) -> list[str]:
+    """Statements not on the expand-only allowlist above — older code might mis-read or
+    mis-write through them, so a rollback across them needs a human decision."""
+    new_tables: set[str] = set()
+    out = []
+    for raw in _opaque(sql).split(";"):
+        stmt = " ".join(raw.split())
+        if not stmt:
+            continue
+        created = _PLAIN_CREATE_TABLE.fullmatch(stmt)
+        own = {_table(created.group(1))} if created else set()
+        if _binds_older_table(stmt, new_tables | own):
+            out.append(stmt)
+            continue
+        target = next((m.group(1) for p in _TABLE_TARGET if (m := p.fullmatch(stmt))), None)
+        if target is not None and _table(target) in new_tables:
+            continue
+        if any(p.fullmatch(stmt) for p in _EXPAND_ONLY):
+            new_tables |= own
+            continue
+        alter = _ALTER_TABLE.match(stmt)
+        if alter and all(_ADD_COLUMN.fullmatch(a) for a in _split_top_level(alter.group(2))):
+            continue
+        out.append(stmt)
+    return out
+
+
 def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
-    """Contracting statements in migration files added or changed on ``head`` after ``candidate``."""
+    """Statements in migration files added or changed on ``head`` after ``candidate`` that
+    stop it being a code-only rollback target: known contractions (``contracting``) and
+    anything not provably expand-only (``unproven``). Empty means the candidate is valid."""
     for sha in (candidate, head):
         if not _SHA.match(sha):
             raise ValueError(f"not a 40-hex commit: {sha!r}")
@@ -476,8 +590,11 @@ def contracting_since(candidate: str, head: str, repo: Path) -> list[dict]:
     ).split()
     hits = []
     for path in sorted(p for p in changed if p.endswith(".sql")):
-        for stmt in contracting_statements(_git(repo, "show", f"{head}:{path}")):
-            hits.append({"path": path, "statement": stmt[:300]})
+        text = _git(repo, "show", f"{head}:{path}")
+        for stmt in contracting_statements(text):
+            hits.append({"path": path, "kind": "contracting", "statement": stmt[:300]})
+        for stmt in unproven_statements(text):
+            hits.append({"path": path, "kind": "unproven", "statement": stmt[:300]})
     return hits
 
 
@@ -592,8 +709,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif a.cmd == "compat":
             hits = contracting_since(a.candidate, a.head, Path(a.repo))
             for h in hits:
-                print(f"CONTRACTING {h['path']}: {h['statement']}")
-            print(f"{len(hits)} contracting statement(s) since {a.candidate}")
+                print(f"{h['kind'].upper()} {h['path']}: {h['statement']}")
+            n = sum(h["kind"] == "contracting" for h in hits)
+            print(
+                f"{n} contracting and {len(hits) - n} not provably expand-only statement(s)"
+                f" since {a.candidate}"
+            )
             return 1 if hits else 0
         elif a.cmd == "due":
             staging = json.loads(Path(a.staging_receipt).read_text(encoding="utf-8"))

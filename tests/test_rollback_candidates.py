@@ -597,6 +597,88 @@ def test_expand_patterns_inside_a_do_block_are_not_flagged(sql):
     assert rc.contracting_statements(sql) == [], sql
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "BEGIN; SET LOCAL lock_timeout = '5s'; COMMIT;",
+        "CREATE TABLE IF NOT EXISTS t (id uuid PRIMARY KEY, x text);",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON t (x);",
+        "CREATE SEQUENCE IF NOT EXISTS s;",
+        "COMMENT ON COLUMN t.x IS 'why';",
+        "GRANT SELECT, INSERT ON t TO factorylm_app;",
+        "ALTER TABLE t ADD COLUMN IF NOT EXISTS y text;",
+        "ALTER TABLE t ADD COLUMN y int NOT NULL DEFAULT 0, ADD COLUMN z text;",
+        # everything on a table a plain CREATE TABLE made earlier in the same file
+        "CREATE TABLE n (x int); CREATE UNIQUE INDEX ni ON n (x); "
+        "ALTER TABLE n ENABLE ROW LEVEL SECURITY; DROP POLICY IF EXISTS p ON n; "
+        "CREATE POLICY p ON n USING (true); REVOKE DELETE ON n FROM PUBLIC; INSERT INTO n VALUES (1);",
+        # foreign keys among tables new in this file, or to itself, bind nothing older
+        "CREATE TABLE p (id int PRIMARY KEY, parent int REFERENCES p (id)); "
+        "CREATE TABLE c (pid int REFERENCES p (id));",
+    ],
+)
+def test_expand_only_statements_are_proven(sql):
+    assert rc.unproven_statements(sql) == [], sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # each needs a human: older code can mis-read or mis-write through it
+        "INSERT INTO existing (x) VALUES (1);",
+        "UPDATE existing SET x = 1;",
+        "DELETE FROM existing;",
+        "TRUNCATE existing;",
+        "CREATE UNIQUE INDEX u ON existing (x);",
+        "DROP INDEX IF EXISTS i;",
+        "ALTER TABLE existing DROP CONSTRAINT IF EXISTS c;",
+        "ALTER TABLE existing ADD CONSTRAINT c CHECK (x > 0);",
+        "ALTER TABLE existing ADD COLUMN y int NOT NULL;",
+        "ALTER TABLE existing ADD COLUMN y int UNIQUE;",
+        "ALTER TABLE existing ADD COLUMN y uuid REFERENCES parent (id);",
+        "ALTER TABLE existing ADD y int;",
+        "ALTER TABLE existing ENABLE ROW LEVEL SECURITY;",
+        "CREATE POLICY p ON existing USING (false);",
+        "REVOKE SELECT ON existing FROM factorylm_app;",
+        "ALTER TABLE existing ALTER COLUMN x DROP DEFAULT;",
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;",
+        "CREATE OR REPLACE VIEW v AS SELECT 1;",
+        "CREATE VIEW v AS SELECT 1;",
+        "CREATE EXTENSION IF NOT EXISTS ltree;",
+        "CREATE TRIGGER tr BEFORE INSERT ON existing FOR EACH ROW EXECUTE FUNCTION f();",
+        "DO $$ BEGIN PERFORM 1; END $$;",
+        "ALTER TYPE e RENAME VALUE 'a' TO 'b';",
+        "ALTER VIEW v RENAME TO w;",
+        "VACUUM existing;",
+        # IF NOT EXISTS proves nothing: the table may predate this file
+        "CREATE TABLE IF NOT EXISTS existing (x int); CREATE UNIQUE INDEX u ON existing (x);",
+        # a statement smuggled after the new table is still checked on its own target
+        "CREATE TABLE n (x int); INSERT INTO existing SELECT x FROM n;",
+        # a new table can still bind an existing one: its foreign key can block older
+        # code's deletes, and inheritance or partitioning puts its rows in older reads
+        "CREATE TABLE n (x uuid REFERENCES existing (id));",
+        "CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT f FOREIGN KEY (x) REFERENCES existing (id);",
+        "CREATE TABLE n () INHERITS (existing);",
+        "CREATE TABLE n PARTITION OF existing FOR VALUES IN (1);",
+    ],
+)
+def test_anything_not_provably_expand_only_is_unproven(sql):
+    assert rc.unproven_statements(sql), sql
+
+
+def test_compat_fails_on_an_unproven_migration_alone(tmp_path):
+    repo, cand = _repo(tmp_path)
+    (repo / "mira-hub/db/migrations/002_b.sql").write_text(
+        "CREATE TRIGGER tr BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION f();\n"
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head")
+    head = _git(repo, "rev-parse", "HEAD")
+    res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
+    assert res.returncode == 1 and "UNPROVEN mira-hub/db/migrations/002_b.sql" in res.stdout
+    assert "0 contracting and 1 not provably expand-only" in res.stdout
+
+
 def test_migration_dirs_are_exactly_what_the_apply_workflows_apply():
     """``compat`` must scan every directory an apply-* workflow applies — a new one must fail here."""
     applied = set()
@@ -634,7 +716,8 @@ def test_contracting_since_finds_a_later_contraction(tmp_path):
     _git(repo, "commit", "-q", "-m", "head")
     head = _git(repo, "rev-parse", "HEAD")
     hits = rc.contracting_since(cand, head, repo)
-    assert [h["path"] for h in hits] == ["mira-hub/db/migrations/003_c.sql"]
+    assert {h["path"] for h in hits} == {"mira-hub/db/migrations/003_c.sql"}
+    assert {h["kind"] for h in hits} == {"contracting", "unproven"}
     res = cli("compat", "--candidate", cand, "--head", head, "--repo", str(repo))
     assert res.returncode == 1 and "CONTRACTING mira-hub/db/migrations/003_c.sql" in res.stdout
 
@@ -647,7 +730,7 @@ def test_contracting_since_scans_the_ingest_migrations_too(tmp_path):
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "head")
     hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
-    assert [h["path"] for h in hits] == ["mira-core/mira-ingest/db/migrations/012_x.sql"]
+    assert {h["path"] for h in hits} == {"mira-core/mira-ingest/db/migrations/012_x.sql"}
     assert set(rc.MIGRATION_DIRS) == {
         "mira-hub/db/migrations",
         "mira-core/mira-ingest/db/migrations",
