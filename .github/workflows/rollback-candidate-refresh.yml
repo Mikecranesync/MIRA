@@ -1,0 +1,226 @@
+name: Rollback Candidate Refresh
+
+# SDLC v1 §10.2 (Part B step 10): recovery readiness for the DESIGNATED rollback
+# candidates — the per-service `rollback_candidate` recorded on the production
+# receipt of whatever each service is running now (tools/rollback_candidates.py
+# `designate`). Refreshing only the current production SHA does not preserve the
+# rollback target, so this checks the targets themselves:
+#
+#   1. compatibility — no contracting migration on main since the candidate
+#      (expand/contract; tools/rollback_candidates.py `compat`);
+#   2. evidence — an unexpired staging receipt and a generation-bound acceptance
+#      receipt for the candidate, found and verified EXACTLY as deploy-vps.yml
+#      `authorize-source` would verify them for a rollback dispatch (same trusted
+#      validators, same flags; pinned by tests/test_rollback_candidate_refresh.py);
+#   3. freshness — refresh is due when that evidence expires within
+#      REFRESH_BEFORE_HOURS.
+#
+# Outcomes: an invalid candidate or missing/expired evidence means recovery
+# readiness is LOST -> an `incident` issue with the §10.3 fixed fields, and the job
+# fails. A refresh that is merely DUE opens a non-incident request with the exact
+# staging dispatch. No designated candidate (every receipt written before the field
+# existed designates nothing) is reported and is not a failure.
+#
+# Re-staging is NOT automated here yet: a staging deploy dispatched with this
+# workflow's GITHUB_TOKEN would not trigger retrieval-acceptance (workflow_run is
+# not fired for runs created by GITHUB_TOKEN), and authorize-source accepts only
+# workflow_run-produced acceptance receipts. Automating it needs an owner decision
+# (a scoped dispatch credential, or a change to the step-4/5 provenance model);
+# until then the due-request names the one command a human runs. This file never
+# deploys anything and never touches production.
+
+on:
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: rollback-candidate-refresh
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  check:
+    name: Check the designated rollback candidates
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    env:
+      REFRESH_BEFORE_HOURS: "72"
+    steps:
+      - name: Check out the trusted main revision with history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gather the production receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/production-receipts"
+          install -d -m 700 "$DIR"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --status success --limit 40 --json databaseId --jq '.[].databaseId')"
+          for run in $RUNS; do
+            [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
+            ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
+              --jq '[.artifacts[] | select((.name | startswith("production-receipt-")) and .expired == false)] | if length > 1 then error("more than one production receipt in run") else (.[0].id // empty) end')"
+            [ -n "$ART" ] || continue
+            install -d -m 700 "$DIR/$run"
+            gh api "/repos/$REPO/actions/artifacts/$ART/zip" > "$DIR/$run.zip"
+            unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
+            rm -f "$DIR/$run.zip"
+          done
+          echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Designate the recovery candidates
+        id: designate
+        run: |
+          set -euo pipefail
+          python3 -I tools/rollback_candidates.py designate \
+            --receipts-dir "$RUNNER_TEMP/production-receipts" --out "$RUNNER_TEMP/designated.json"
+          python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1]))
+          print("current:", json.dumps(d["current"], sort_keys=True))
+          print("designated:", json.dumps(d["designated"], sort_keys=True))
+          print("undesignated:", json.dumps(d["undesignated"], sort_keys=True))' "$RUNNER_TEMP/designated.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Check each candidate
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/results.tsv"
+          : > "$RESULTS"
+          STAGING_WORKFLOW_PATH=".github/workflows/deploy-staging.yml"
+          ACCEPTANCE_WORKFLOW_PATH=".github/workflows/retrieval-acceptance.yml"
+
+          # The provenance and verification below mirror deploy-vps.yml authorize-source
+          # for a rollback dispatch of $1 with services $2. Any problem prints a reason
+          # and returns non-zero; nothing falls through to an older artifact.
+          evidence() {
+            local sha="$1" services="$2" work="$RUNNER_TEMP/evidence-$1"
+            install -d -m 700 "$work"
+            local artifact run_id run_json run_url
+            artifact="$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${sha}&per_page=50" \
+              --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+            [ -n "$artifact" ] || { echo "no unexpired staging-receipt-${sha}"; return 1; }
+            run_id="$(echo "$artifact" | jq -r '.workflow_run.id // empty')"
+            [ -n "$run_id" ] || { echo "staging receipt has no workflow_run provenance"; return 1; }
+            run_json="$(gh api "/repos/$REPO/actions/runs/${run_id}")"
+            run_url="$(echo "$run_json" | jq -r '.html_url // empty')"
+            [ "$(echo "$run_json" | jq -r '[.repository.full_name, .path, .event, .status, .conclusion] | join(" ")')" = "$REPO $STAGING_WORKFLOW_PATH workflow_dispatch completed success" ] \
+              || { echo "staging receipt run ${run_id} is not a successful workflow_dispatch run of ${STAGING_WORKFLOW_PATH}"; return 1; }
+            gh api "/repos/$REPO/actions/artifacts/$(echo "$artifact" | jq -r '.id')/zip" > "$work/staging.zip"
+            unzip -o -q "$work/staging.zip" -d "$work/staging"
+            python3 -I tools/staging_receipt.py verify --receipt "$work/staging/staging-receipt.json" \
+              --approved-rc-sha "$sha" --environment staging --max-age-hours 168 \
+              --expect-run-id "$run_id" --expect-run-url "$run_url" \
+              --effective-services "${services// /,}" || { echo "staging receipt does not verify"; return 1; }
+
+            local acc acc_run acc_json
+            acc="$(gh api "/repos/$REPO/actions/artifacts?name=acceptance-receipt-${sha}&per_page=50" \
+              --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+            [ -n "$acc" ] || { echo "no unexpired acceptance-receipt-${sha}"; return 1; }
+            acc_run="$(echo "$acc" | jq -r '.workflow_run.id // empty')"
+            [ -n "$acc_run" ] || { echo "acceptance receipt has no workflow_run provenance"; return 1; }
+            acc_json="$(gh api "/repos/$REPO/actions/runs/${acc_run}")"
+            [ "$(echo "$acc_json" | jq -r '[.repository.full_name, .path, .event, .status, .conclusion] | join(" ")')" = "$REPO $ACCEPTANCE_WORKFLOW_PATH workflow_run completed success" ] \
+              || { echo "acceptance receipt run ${acc_run} is not a successful workflow_run run of ${ACCEPTANCE_WORKFLOW_PATH}"; return 1; }
+            gh api "/repos/$REPO/actions/artifacts/$(echo "$acc" | jq -r '.id')/zip" > "$work/acceptance.zip"
+            unzip -o -q "$work/acceptance.zip" -d "$work/acceptance"
+            [ "$(jq -r '.acceptance_run_id // empty' "$work/acceptance/acceptance-receipt.json")" = "$acc_run" ] \
+              || { echo "acceptance receipt names a different run than ${acc_run}"; return 1; }
+            python3 -I tools/acceptance_receipt.py verify \
+              --receipt "$work/acceptance/acceptance-receipt.json" \
+              --approved-rc-sha "$sha" --max-age-hours 168 \
+              --expect-staging-run-id "$run_id" \
+              --staging-receipt "$work/staging/staging-receipt.json" \
+              --require-capabilities retrieval,capture --require-services mira-hub || { echo "acceptance receipt does not verify"; return 1; }
+            python3 -I tools/rollback_candidates.py due \
+              --staging-receipt "$work/staging/staging-receipt.json" \
+              --acceptance-receipt "$work/acceptance/acceptance-receipt.json" \
+              --refresh-before-hours "$REFRESH_BEFORE_HOURS"
+          }
+
+          COUNT="$(jq '.designated | length' "$RUNNER_TEMP/designated.json")"
+          if [ "$COUNT" = "0" ]; then
+            echo "::notice::no designated rollback candidate — no production receipt records rollback_candidate yet (SDLC v1 §10.2)"
+            echo "NO_CANDIDATE: nothing to refresh" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          for i in $(jq -r '.designated | keys[]' "$RUNNER_TEMP/designated.json"); do
+            sha="$(jq -r ".designated[$i].sha" "$RUNNER_TEMP/designated.json")"
+            services="$(jq -r ".designated[$i].services | join(\" \")" "$RUNNER_TEMP/designated.json")"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::designated sha is not a 40-hex commit"; exit 1; }
+            rc=0
+            compat_out="$(python3 -I tools/rollback_candidates.py compat --candidate "$sha" --head "$HEAD_SHA" --repo . 2>&1)" || rc=$?
+            if [ "$rc" != "0" ]; then
+              printf '%s\t%s\tINVALID\t%s\n' "$sha" "$services" "$(echo "$compat_out" | tr '\n\t' '  ' | cut -c1-500)" >> "$RESULTS"
+              continue
+            fi
+            rc=0
+            ev_out="$(evidence "$sha" "$services" 2>&1)" || rc=$?
+            reason="$(echo "$ev_out" | tail -1 | tr '\t' ' ' | cut -c1-500)"
+            case "$rc" in
+              0) printf '%s\t%s\tFRESH\t%s\n' "$sha" "$services" "$reason" >> "$RESULTS" ;;
+              3) printf '%s\t%s\tDUE\t%s\n' "$sha" "$services" "$reason" >> "$RESULTS" ;;
+              *) printf '%s\t%s\tSTALE\t%s\n' "$sha" "$services" "$reason" >> "$RESULTS" ;;
+            esac
+          done
+          cat "$RESULTS" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Record the outcome on issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # The issue bodies are Markdown: the backticks inside the single-quoted printf
+          # formats below are literal on purpose, never a command substitution (SC2016).
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/results.tsv"
+          lost=0
+          gh label create incident --repo "$REPO" --color B60205 \
+            --description "Production failure record (SDLC v1 §10.3)" 2>/dev/null || true
+          while IFS=$'\t' read -r sha services state reason; do
+            short="${sha:0:12}"
+            case "$state" in
+              INVALID|STALE)
+                lost=1
+                title="Rollback candidate ${short} lost recovery readiness"
+                label="incident"
+                # shellcheck disable=SC2016
+                body="$(printf 'first_seen: %s\ndeploy_run: none\ndeploy_sha: none\nservices: %s\nimpact: a rollback of %s to %s would be refused by deploy-vps.yml authorize-source (%s)\nrestored_at: open\nrestoring_action: none\n\nRecovery readiness for the designated rollback candidate is lost (SDLC v1 §10.2).\n\n- candidate: %s\n- services: %s\n- state: %s\n- reason: %s\n- detected by: %s\n\nRestore by re-staging the candidate (`gh workflow run deploy-staging.yml -f approved_rc_sha=%s -f reset_volumes=false`, after which retrieval-acceptance runs on its own), or record why it is no longer a valid target. See docs/runbooks/rollback.md.\n' \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${services// /,}" "$services" "$sha" "$state" "$sha" "$services" "$state" "$reason" "$RUN_URL" "$sha")" ;;
+              DUE)
+                title="Rollback candidate ${short} refresh due"
+                label=""
+                # shellcheck disable=SC2016
+                body="$(printf 'The designated rollback candidate %s (services: %s) still verifies, but its evidence is due for refresh: %s.\n\nRe-stage it before it expires: `gh workflow run deploy-staging.yml -f approved_rc_sha=%s -f reset_volumes=false` (retrieval-acceptance then runs on its own). Re-staging replaces whatever staging is running. Detected by %s. See docs/runbooks/rollback.md.\n' \
+                  "$sha" "$services" "$reason" "$sha" "$RUN_URL")" ;;
+              *) continue ;;
+            esac
+            existing="$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
+              --jq "[.[] | select(.title == \"$title\")] | .[0].number // empty")"
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --repo "$REPO" --body "Still ${state} at ${RUN_URL}: ${reason}"
+            elif [ -n "$label" ]; then
+              gh issue create --repo "$REPO" --title "$title" --label "$label" --body "$body"
+            else
+              gh issue create --repo "$REPO" --title "$title" --body "$body"
+            fi
+          done < "$RESULTS"
+          if [ "$lost" = "1" ]; then
+            echo "::error::recovery readiness lost for at least one designated rollback candidate (SDLC v1 §10.2)"
+            exit 1
+          fi

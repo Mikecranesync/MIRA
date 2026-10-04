@@ -78,6 +78,9 @@ jobs:
       # resolution every receipt check and the deploy itself consume (§6.2).
       effective_services: ${{ steps.validate.outputs.effective_services }}
       staging_run_id: ${{ steps.staging-receipt.outputs.staging_run_id }}
+      # SDLC v1 §10.2 (step 10): per-service recovery candidates, stamped onto the
+      # production receipt after the deploy.
+      rollback_candidates: ${{ steps.rollback-candidates.outputs.rollback_candidates }}
     env:
       # Must equal the deploy script's default TARGETS fallback (the three-service
       # OVH set) — pinned by tests/test_deploy_vps_production_authorization.py.
@@ -166,7 +169,7 @@ jobs:
             exit 1
           fi
           install -d -m 700 "$RUNNER_TEMP/trusted"
-          for f in tools/staging_receipt.py tools/acceptance_receipt.py; do
+          for f in tools/staging_receipt.py tools/acceptance_receipt.py tools/rollback_candidates.py; do
             git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
             [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
           done
@@ -371,6 +374,49 @@ jobs:
             --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
             --require-capabilities retrieval,capture --require-services mira-hub
           echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # SDLC v1 §10.2 (Part B step 10): per service in the deploy target set, the
+      # recovery candidate is the newest RECEIPTED production SHA of that service that
+      # is not the one being deployed — read from production receipts, never from the
+      # host checkout (PRIOR_SHA) or from tags. Computed here, before any production
+      # credential or the host is touched, and stamped onto the production receipt
+      # after the deploy. Bounded for this job's 5-minute timeout: successful deploy
+      # runs are walked newest-first and the walk stops once every service has a
+      # candidate. Any malformed receipt or API failure fails closed.
+      - name: Record rollback candidates (SDLC v1 §10.2)
+        id: rollback-candidates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          EFFECTIVE_SERVICES: ${{ steps.validate.outputs.effective_services }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/production-receipts"
+          install -d -m 700 "$DIR"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --status success --limit 40 --json databaseId --jq '.[].databaseId')"
+          for run in $RUNS; do
+            [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
+            ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
+              --jq '[.artifacts[] | select((.name | startswith("production-receipt-")) and .expired == false)] | if length > 1 then error("more than one production receipt in run") else (.[0].id // empty) end')"
+            [ -n "$ART" ] || continue
+            install -d -m 700 "$DIR/$run"
+            gh api "/repos/$REPO/actions/artifacts/$ART/zip" > "$DIR/$run.zip"
+            unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
+            rm -f "$DIR/$run.zip"
+            rc=0
+            python3 -I "$RUNNER_TEMP/trusted/rollback_candidates.py" covered --receipts-dir "$DIR" \
+              --deploying "$APPROVED_RC_SHA" --services "$EFFECTIVE_SERVICES" || rc=$?
+            case "$rc" in
+              0) break ;;
+              3) ;;
+              *) echo "::error::could not read the production receipt of run $run — STOP (SDLC v1 §10.2)"; exit 1 ;;
+            esac
+          done
+          CANDIDATES="$(python3 -I "$RUNNER_TEMP/trusted/rollback_candidates.py" candidates --receipts-dir "$DIR" \
+            --deploying "$APPROVED_RC_SHA" --services "$EFFECTIVE_SERVICES")"
+          echo "rollback_candidates=$CANDIDATES" >> "$GITHUB_OUTPUT"
+          echo "rollback candidates: $CANDIDATES" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The migration gate intentionally runs on a separate runner from the VPS
   # deploy. It receives the prod DB URL but never the SSH key; the deploy job
@@ -925,6 +971,7 @@ jobs:
           TRUSTED_BASE_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
+          ROLLBACK_CANDIDATES: ${{ needs.authorize-source.outputs.rollback_candidates }}
         run: |
           set -euo pipefail
           # Trusted-base validator (§5.2); the receipt must prove the ACTUAL deployed
@@ -934,8 +981,13 @@ jobs:
           git fetch --no-tags origin "$TRUSTED_BASE_SHA"
           install -d -m 700 "$RUNNER_TEMP/trusted"
           git show "$TRUSTED_BASE_SHA:tools/staging_receipt.py" > "$RUNNER_TEMP/trusted/staging_receipt.py"
+          git show "$TRUSTED_BASE_SHA:tools/rollback_candidates.py" > "$RUNNER_TEMP/trusted/rollback_candidates.py"
           python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
+          # §10.2: the per-service recovery candidates computed by authorize-source,
+          # validated again against this receipt's SHA and the deploy target set.
+          python3 -I "$RUNNER_TEMP/trusted/rollback_candidates.py" stamp --receipt production-receipt.json \
+            --candidates-json "$ROLLBACK_CANDIDATES" --services "$EFFECTIVE_SERVICES"
           python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt production-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1 \
             --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"

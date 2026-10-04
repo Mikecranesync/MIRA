@@ -947,6 +947,12 @@ jobs:
         # The mechanical R2/R3 path floor behind the advisory "R2 Signal Floor" status.
         run: pytest tests/test_r2_signal_floor.py -q
 
+      - name: Rollback candidate tests (SDLC v1 step 10)
+        # tools/rollback_candidates.py (per-service candidates from production receipts,
+        # designation, contracting-migration detection, refresh-due) and the deploy-vps /
+        # rollback-candidate-refresh.yml steps, EXECUTED against a fake gh.
+        run: pytest tests/test_rollback_candidates.py tests/test_rollback_candidate_refresh.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
