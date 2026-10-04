@@ -245,6 +245,45 @@ def test_stamp_refuses_a_bad_candidate_map(tmp_path, cands, needle):
     assert "rollback_candidate" not in out
 
 
+def test_a_stamped_receipt_still_verifies_as_production(tmp_path):
+    """The deploy job verifies AFTER stamping: the new field must not change the verdict."""
+    spec = importlib.util.spec_from_file_location(
+        "staging_receipt", REPO / "tools" / "staging_receipt.py"
+    )
+    sr = importlib.util.module_from_spec(spec)
+    sys.modules["staging_receipt"] = sr
+    spec.loader.exec_module(sr)
+    at = "2026-10-04T12:00:00Z"
+    path = tmp_path / "production-receipt.json"
+    path.write_text(json.dumps(receipt(NEW, "36900000002", at)))
+    cands = rc.candidates_for_deploy(rc.load_receipts(real_three(tmp_path)), NEW, ALL)
+
+    def problems() -> list[str]:
+        return sr.verify_receipt(
+            json.loads(path.read_text()),
+            approved_rc_sha=NEW,
+            environment="production",
+            now=datetime(2026, 10, 4, 12, 30, tzinfo=timezone.utc),
+            max_age_hours=1,
+            required_images=ALL,
+        )
+
+    assert problems() == []
+    rc.main(
+        [
+            "stamp",
+            "--receipt",
+            str(path),
+            "--candidates-json",
+            json.dumps(cands),
+            "--services",
+            " ".join(ALL),
+        ]
+    )
+    assert "rollback_candidate" in json.loads(path.read_text())
+    assert problems() == []
+
+
 def test_stamp_never_overwrites(tmp_path):
     cands = {s: {"sha": A, "from_run_id": "1", "reason": "r"} for s in ALL}
     res, _ = _stamp(
