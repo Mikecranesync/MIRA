@@ -113,8 +113,33 @@ function isFamilyNumber(t: string): boolean {
   );
 }
 
+/**
+ * Product-SERIES names a technician says between the maker and the model:
+ * "Siemens SINAMICS G120C", "Schneider Electric Altivar ATV320", "Danfoss VLT
+ * AutomationDrive FC 302". They carry no digits, so without this the token
+ * after the maker never parses as a model and no proposal is made (Golden Walk
+ * baseline, 2026-10-04: 4 of 10 real machines got no "Use its manuals").
+ * A closed list on purpose — a generic "skip capitalised words" rule would
+ * reopen false proposals ("Siemens Please G120"). Only a FALLBACK: a span the
+ * plain parse already finds ("VLT 5000") is never re-read.
+ */
+const SERIES_WORDS = new Set([
+  "SINAMICS", "SIMATIC", "MICROMASTER", "ALTIVAR", "VLT", "AUTOMATIONDRIVE", "AQUADRIVE",
+  "MOVITRAC", "MOVIDRIVE", "DURAPULSE", "VARISPEED", "OPTIDRIVE",
+]);
+const MAX_SERIES_SKIP = 2;
+
 /** The model span starting at `tokens[0]`, or null. */
 function modelSpanAt(tokens: string[]): string | null {
+  const plain = plainModelSpanAt(tokens);
+  if (plain) return plain;
+  // "Siemens SINAMICS G120C": skip at most two known series names before the model.
+  let rest = tokens;
+  for (let i = 0; i < MAX_SERIES_SKIP && rest[0] && SERIES_WORDS.has(rest[0].toUpperCase()); i++) rest = rest.slice(1);
+  return rest === tokens ? null : plainModelSpanAt(rest);
+}
+
+function plainModelSpanAt(tokens: string[]): string | null {
   // "Siemens PLC S7-1200": skip one generic device word before the model.
   if (tokens[0] && GENERIC_DEVICE_WORDS.has(tokens[0].toUpperCase())) tokens = tokens.slice(1);
   const [t1, t2, t3] = tokens;

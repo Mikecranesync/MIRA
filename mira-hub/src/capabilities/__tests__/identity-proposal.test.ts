@@ -424,3 +424,34 @@ describe("namesOnlyThisMachine", () => {
     expect(namesOnlyThisMachine("Find the manual for this", "6ES7214-1AG40-0XB0")).toBe(true);
   });
 });
+
+// Golden Walk baseline (2026-10-04): a series name between maker and model
+// ("Siemens SINAMICS G120C") left 4 of 10 real machines with no proposal.
+describe("Golden Walk — a product-series name before the model", () => {
+  const MAKERS = [...CORPUS, "Schneider Electric", "Danfoss"];
+  it("skips a series name to the model", () => {
+    expect(proposeIdentityFromText("I'm at a Siemens SINAMICS G120C drive and need its manual", MAKERS)).toEqual({ manufacturer: "Siemens", model: "G120C" });
+    expect(proposeIdentityFromText("Schneider Electric Altivar ATV320 tripped", MAKERS)).toEqual({ manufacturer: "Schneider Electric", model: "ATV320" });
+  });
+  it("skips two series names to a family-code model", () => {
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive FC 302 alarm", MAKERS)).toEqual({ manufacturer: "Danfoss", model: "FC 302" });
+  });
+  it("control: a span the plain parse already finds is not re-read ('VLT 5000')", () => {
+    expect(proposeIdentityFromText("Danfoss VLT 5000 alarm", MAKERS)).toEqual({ manufacturer: "Danfoss", model: "VLT 5000" });
+  });
+  it("control: an unknown capitalised word is never skipped", () => {
+    expect(proposeIdentityFromText("Siemens Please G120C", MAKERS)).toBeNull();
+  });
+  it("control: a series name with no model after it proposes nothing", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS drive keeps tripping", MAKERS)).toBeNull();
+  });
+  it("control: a serial label after a series name is still never a model", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS SN12345678 keeps faulting", MAKERS)).toBeNull();
+  });
+  it("control: two machines behind series names stay ambiguous", () => {
+    expect(proposeIdentityFromText("Compare Siemens SINAMICS G120C and SINAMICS G120X", MAKERS)).toBeNull();
+  });
+  it("control: at most two series words are skipped", () => {
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive AquaDrive FC 302", MAKERS)).toBeNull();
+  });
+});
