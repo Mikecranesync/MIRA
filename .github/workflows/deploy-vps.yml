@@ -391,11 +391,11 @@ jobs:
       # after the deploy. The walk reads every readable receipt of the completed deploy runs
       # of the last RECEIPT_WALK_DAYS and only then selects by deployed_at: a re-run of an older
       # run can carry the newest deployment, so run order and coverage prove nothing about
-      # time. An unreadable receipt (expired, or gone after a successful upload) is a gap
-      # bounded by its run's updatedAt; a service whose candidate such a gap could
-      # post-date gets sha: null with that reason, never a possibly stale target.
-      # A run's conclusion does not matter: its receipt is uploaded only after the
-      # production verify passed, and only a read-only nginx check can fail after it.
+      # time. A receipted run counts whatever its conclusion. A run with no readable receipt
+      # (expired, or a run whose Deploy step ran — the swap precedes the receipt — and left
+      # none) is a gap bounded by its run's updatedAt; a service whose candidate such a gap
+      # could post-date gets sha: null with that reason, never a possibly stale target. A
+      # deploy re-run (attempt > 1) reuses these outputs, so it stamps every candidate null.
       # Any malformed receipt or API failure fails closed.
       # Only main-branch workflow_dispatch runs count: a run dispatched from another ref executes
       # THAT ref's copy of this file and could upload a production-receipt-* of its own making.
@@ -443,15 +443,17 @@ jobs:
             rm -f "$DIR/$run.zip"
           done <<< "$RUNS"
           # Pass 2: a run without a receipt matters only if it ended after the oldest receipt read
-          # (otherwise it cannot post-date any of them); only then ask whether its upload succeeded,
-          # which means it had a receipt that is gone (deleted, or omitted once expired).
+          # (otherwise it cannot post-date any of them); only then ask whether its Deploy step ran
+          # in any attempt. The swap is in that step, before the receipt, so such a run may have
+          # changed production with no receipt (it failed after the swap, or its receipt is gone).
           SINCE="$(python3 -I "$TOOL" since --receipts-dir "$DIR")"
           while IFS=$'\t' read -r run updated; do
             [ -n "$run" ] && [ -n "$SINCE" ] || continue
             [[ "$updated" < "$SINCE" ]] && continue
-            UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
-              --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
-            [ "$UPLOADED" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "receipt gone after a successful upload" >> "$GAPS"
+            SWAP_RAN="$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
+              --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
+              | awk '{ n += $1 } END { print n + 0 }')"
+            [ "$SWAP_RAN" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "production may have changed without a receipt (its Deploy step ran)" >> "$GAPS"
           done < "$RECEIPTLESS"
           CANDIDATES="$(python3 -I "$TOOL" candidates --receipts-dir "$DIR" \
             --deploying "$APPROVED_RC_SHA" --services "$EFFECTIVE_SERVICES" --gaps "$GAPS")"
@@ -1027,7 +1029,8 @@ jobs:
           # §10.2: the per-service recovery candidates computed by authorize-source,
           # validated again against this receipt's SHA and the deploy target set.
           python3 -I "$RUNNER_TEMP/trusted/rollback_candidates.py" stamp --receipt production-receipt.json \
-            --candidates-json "$ROLLBACK_CANDIDATES" --services "$EFFECTIVE_SERVICES"
+            --candidates-json "$ROLLBACK_CANDIDATES" --services "$EFFECTIVE_SERVICES" \
+            --attempt "$GITHUB_RUN_ATTEMPT"
           python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt production-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1 \
             --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"

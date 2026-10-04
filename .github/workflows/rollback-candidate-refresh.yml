@@ -22,15 +22,17 @@ name: Rollback Candidate Refresh
 # staging dispatch. No designated candidate (every receipt written before the field
 # existed designates nothing) is reported and is not a failure.
 #
-# A designation is never silently dropped. The walk reads completed main-branch
-# deploy runs (a run's conclusion does not matter: its receipt exists only if the
-# production verify passed) of the last RECEIPT_WALK_DAYS — every run whose receipt can still
-# matter (90-day retention + 30-day re-run limit) — and reads every readable receipt. An unreadable one (expired, or gone after a successful upload) is a gap
-# bounded by its run's updatedAt. A service is LOST — an `incident`, and the job
-# fails — when it is in the deploy default set (PRODUCTION_DEFAULT_SERVICES, equal to
-# deploy-vps.yml's) and has no readable receipt (GitHub omits expired artifacts and
-# removes old runs, so absence is missing history, never "never deployed"), or when a
-# gap could post-date its current receipt (its real current deployment may be hidden).
+# A designation is never silently dropped. The walk reads the completed main-branch
+# deploy runs of the last RECEIPT_WALK_DAYS — every run whose receipt can still matter
+# (90-day retention + 30-day re-run limit) — and every readable receipt; a receipted run
+# counts whatever its conclusion. A run with no readable receipt (expired, or one whose
+# Deploy step ran — the swap precedes the receipt — and left none) is a gap bounded by its
+# run's updatedAt. A service is LOST — an `incident`, and the job fails — when it is in the
+# deploy default set (PRODUCTION_DEFAULT_SERVICES, equal to deploy-vps.yml's) and has no
+# readable receipt (GitHub omits expired artifacts and removes old runs, so absence is
+# missing history, never "never deployed"), when a gap could post-date its current receipt
+# (its real current deployment may be hidden), or when its receipt recorded an unresolved
+# candidate.
 # Accepted limitation: a service OUTSIDE the default set whose only receipts are past
 # retention is invisible here, because no durable service inventory outlives them.
 #
@@ -118,15 +120,17 @@ jobs:
             rm -f "$DIR/$run.zip"
           done <<< "$RUNS"
           # Pass 2: a run without a receipt matters only if it ended after the oldest receipt read
-          # (otherwise it cannot post-date any of them); only then ask whether its upload succeeded,
-          # which means it had a receipt that is gone (deleted, or omitted once expired).
+          # (otherwise it cannot post-date any of them); only then ask whether its Deploy step ran
+          # in any attempt. The swap is in that step, before the receipt, so such a run may have
+          # changed production with no receipt (it failed after the swap, or its receipt is gone).
           SINCE="$(python3 -I "$TOOL" since --receipts-dir "$DIR")"
           while IFS=$'\t' read -r run updated; do
             [ -n "$run" ] && [ -n "$SINCE" ] || continue
             [[ "$updated" < "$SINCE" ]] && continue
-            UPLOADED="$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
-              --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')"
-            [ "$UPLOADED" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "receipt gone after a successful upload" >> "$GAPS"
+            SWAP_RAN="$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
+              --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
+              | awk '{ n += $1 } END { print n + 0 }')"
+            [ "$SWAP_RAN" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "production may have changed without a receipt (its Deploy step ran)" >> "$GAPS"
           done < "$RECEIPTLESS"
           echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l); unreadable: $(wc -l < "$GAPS")" | tee -a "$GITHUB_STEP_SUMMARY"
 

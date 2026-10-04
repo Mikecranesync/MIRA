@@ -255,6 +255,58 @@ def test_a_stamped_receipt_still_verifies_as_production(tmp_path):
     assert problems() == []
 
 
+def test_stamp_on_a_rerun_attempt_records_every_candidate_unresolved(tmp_path):
+    path = tmp_path / "production-receipt.json"
+    path.write_text(json.dumps(receipt(NEW, "36900000002", "2026-10-04T12:00:00Z")))
+    cands = rc.candidates_for_deploy(rc.load_receipts(real_three(tmp_path)), NEW, ALL)
+    rc.main(
+        [
+            "stamp",
+            "--receipt",
+            str(path),
+            "--candidates-json",
+            json.dumps(cands),
+            "--services",
+            " ".join(ALL),
+            "--attempt",
+            "2",
+        ]
+    )
+    stamped = json.loads(path.read_text())["rollback_candidate"]
+    assert all(e["sha"] is None and "attempt 2" in e["reason"] for e in stamped.values())
+    assert rc.candidate_problems(stamped, ALL, NEW) == []
+
+
+def test_designate_loses_a_service_whose_recorded_candidate_is_unresolved(tmp_path):
+    """An unresolved null is uncertainty, not bootstrap: it must reach an incident."""
+    unresolved = {
+        s: {
+            "sha": None,
+            "from_run_id": None,
+            "reason": "unresolved: run 1 may hold a newer deployment",
+        }
+        for s in ALL
+    }
+    plain_null = {
+        s: {"sha": None, "from_run_id": None, "reason": "no earlier production receipt"}
+        for s in ALL
+    }
+    r1 = rc.load_receipts(
+        write(
+            tmp_path / "a",
+            receipt(C, "36805202089", "2026-10-01T02:23:34Z", rollback_candidate=unresolved),
+        )
+    )
+    r2 = rc.load_receipts(
+        write(
+            tmp_path / "b",
+            receipt(C, "36805202089", "2026-10-01T02:23:34Z", rollback_candidate=plain_null),
+        )
+    )
+    assert sorted(rc.designate(r1, inventory=ALL)["lost"]) == sorted(ALL)
+    assert rc.designate(r2, inventory=ALL)["lost"] == {}
+
+
 def test_stamp_never_overwrites(tmp_path):
     cands = {s: {"sha": A, "from_run_id": "1", "reason": "r"} for s in ALL}
     res, _ = _stamp(

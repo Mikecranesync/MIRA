@@ -177,6 +177,13 @@ def test_candidates_are_computed_in_authorize_source_from_the_trusted_tool():
     assert _wf(DEPLOY)["jobs"]["authorize-source"].get("environment") is None
 
 
+def test_a_rerun_deploy_job_stamps_unresolved_candidates():
+    """Pre-Codex Claude screen: re-running failed jobs reuses authorize-source's outputs from
+    the first attempt, which a deploy in between may have made stale."""
+    run = _step(DEPLOY, "deploy", EXTRACT)["run"]
+    assert '--attempt "$GITHUB_RUN_ATTEMPT"' in run
+
+
 def test_the_deploy_job_stamps_between_extract_and_verify():
     step = _step(DEPLOY, "deploy", EXTRACT)
     assert (
@@ -308,16 +315,17 @@ def test_both_receipt_walks_are_the_same_walk():
         assert "--status success --limit" not in text
 
 
-def test_the_missing_receipt_check_names_the_real_upload_step():
-    """The walks detect a vanished receipt by this step's name; a rename must fail here."""
-    names = [s.get("name") for s in _wf(DEPLOY)["jobs"]["deploy"]["steps"]]
-    upload = "Upload production receipt (90-day retention)"
-    assert upload in names
+def test_the_missing_receipt_check_names_the_step_that_swaps_production():
+    """A receipt-less run whose Deploy step ran may have changed production (the swap is in
+    that step, before the receipt). A rename must fail here."""
+    deploy = _step(DEPLOY, "deploy", "Deploy")["run"]
+    assert "--force-recreate" in deploy, "the swap lives in the Deploy step"
     for run in (
         _step(DEPLOY, "authorize-source", RECORD)["run"],
         _step(REFRESH, "check", "Gather the production receipts")["run"],
     ):
-        assert f'select(.name == "{upload}" and .conclusion == "success")' in run
+        assert '.name == "Deploy" and .conclusion != null and .conclusion != "skipped"' in run
+        assert "gh api --paginate" in run, "every page of every attempt's jobs"
 
 
 def test_the_runbook_walks_receipts_like_the_workflows():
@@ -381,22 +389,14 @@ def test_a_rerun_of_an_older_run_with_the_newest_deployment_wins(tmp_path):
     )
 
 
-def _jobs(upload_conclusion: str) -> dict:
+def _jobs(deploy_conclusion: str) -> dict:
     return {
         "jobs": [
             {
                 "name": "Authorize production source",
                 "steps": [{"name": "x", "conclusion": "success"}],
             },
-            {
-                "name": "Deploy",
-                "steps": [
-                    {
-                        "name": "Upload production receipt (90-day retention)",
-                        "conclusion": upload_conclusion,
-                    }
-                ],
-            },
+            {"name": "Deploy", "steps": [{"name": "Deploy", "conclusion": deploy_conclusion}]},
         ]
     }
 
@@ -480,6 +480,17 @@ def test_a_receiptless_run_older_than_every_receipt_is_not_even_asked(tmp_path):
         "mira-web": a_sha,
     }
     assert not [c for c in _calls(tmp_path) if c[0] == "api" and "/jobs" in c[1]]
+
+
+def test_a_run_that_failed_after_the_swap_without_a_receipt_is_a_gap(tmp_path):
+    """Pre-Codex Claude screen: production can change at the swap and the run still fail
+    before the receipt; that run is a gap, not an ignorable failure."""
+    fx = _prod_fixtures(tmp_path)
+    fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
+    fx["api"]["actions/runs/36369296665/jobs?per_page=100&filter=all"] = _jobs("failure")
+    res = _run_record(tmp_path, fx, "mira-hub mira-web mira-ask")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert _cands(tmp_path)["mira-web"]["sha"] is None
 
 
 def test_a_run_that_never_uploaded_a_receipt_is_skipped(tmp_path):

@@ -46,7 +46,8 @@ DIR=$(mktemp -d); GAPS="$DIR.gaps"; LESS="$DIR.receiptless"; : > "$GAPS"; : > "$
 # Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
 # making), any conclusion. Pass 1 reads every readable receipt; an unreadable one is a gap bounded by
-# its run's updatedAt. Pass 2 asks whether a receipt-less run that could post-date them had uploaded one.
+# its run's updatedAt. Pass 2 asks whether a receipt-less run that could post-date them
+# ran its Deploy step (the swap precedes the receipt, so it may have changed production).
 gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed \
   --created ">=$(python3 tools/rollback_candidates.py window-start --days 121)" --limit 1000 \
   --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"' > "$DIR.runs"
@@ -62,9 +63,10 @@ done < "$DIR.runs"
 since=$(python3 tools/rollback_candidates.py since --receipts-dir "$DIR")
 while IFS=$'\t' read -r run updated; do
   [ -n "$since" ] && [[ ! "$updated" < "$since" ]] || continue
-  up=$(gh api "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
-    --jq '[.jobs[].steps[]? | select(.name == "Upload production receipt (90-day retention)" and .conclusion == "success")] | length')
-  [ "$up" = "0" ] || printf '%s\t%s\treceipt gone after a successful upload\n' "$run" "$updated" >> "$GAPS"
+  ran=$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
+    --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
+    | awk '{ n += $1 } END { print n + 0 }')
+  [ "$ran" = "0" ] || printf '%s\t%s\tproduction may have changed without a receipt\n' "$run" "$updated" >> "$GAPS"
 done < "$LESS"
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
   --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS"   # what production designates now

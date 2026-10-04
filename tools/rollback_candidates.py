@@ -256,6 +256,11 @@ def designate(
             undesignated[svc] = (
                 f"current production receipt (run {r.run_id}) records no rollback_candidate"
             )
+        elif entry["sha"] is None and entry["reason"].startswith("unresolved:"):
+            # uncertainty recorded at deploy time, not bootstrap: it must reach an incident
+            lost[svc] = (
+                f"receipt run {r.run_id} recorded no resolvable candidate: {entry['reason']}"
+            )
         elif entry["sha"] is None:
             undesignated[svc] = f"run {r.run_id}: {entry['reason']}"
         else:
@@ -682,6 +687,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     s.add_argument("--receipt", required=True)
     s.add_argument("--candidates-json", required=True)
     s.add_argument("--services", required=True)
+    s.add_argument("--attempt", type=int, default=1)
     k = sub.add_parser("compat")
     k.add_argument("--candidate", required=True)
     k.add_argument("--head", required=True)
@@ -728,6 +734,20 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "receipt already carries rollback_candidate; refusing to overwrite"
                 )
             cands = json.loads(a.candidates_json)
+            if a.attempt > 1:
+                # A re-run of failed jobs reuses authorize-source's outputs from an earlier
+                # attempt; a deploy in between may have made them stale.
+                cands = {
+                    svc: {
+                        "sha": None,
+                        "from_run_id": None,
+                        "reason": (
+                            f"unresolved: deploy re-run (attempt {a.attempt}) reuses candidates"
+                            " computed by an earlier attempt"
+                        ),
+                    }
+                    for svc in cands
+                }
             problems = candidate_problems(
                 cands, _services(a.services), str(receipt.get("approved_rc_sha"))
             )
