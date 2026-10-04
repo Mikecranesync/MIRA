@@ -429,10 +429,20 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
     expect(settled).toBe(true);
   });
 
-  it("#4219 Codex F1: a failed refresh does not turn the already-saved confirmation into a failure", async () => {
+  it("#4219 Codex F1: a failed refresh does not turn the already-saved confirmation into a failure, and reports 'failed'", async () => {
     const loadDetail = vi.fn(async () => { throw new Error("detail GET failed"); });
-    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A })).resolves.toBeUndefined();
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A })).resolves.toBe("failed");
     expect(loadDetail).toHaveBeenCalledWith(A);
+  });
+
+  it("#4219 Codex r2 F1: a refresh that did not apply (HTTP error, no data) reports 'failed'", async () => {
+    const loadDetail = vi.fn(async () => false);
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => A })).resolves.toBe("failed");
+  });
+
+  it("#4219 Codex r2 F1: an applied refresh reports 'refreshed'; a moved selection reports 'skipped'", async () => {
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail: vi.fn(async () => true), currentSelection: () => A })).resolves.toBe("refreshed");
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail: vi.fn(async () => true), currentSelection: () => B })).resolves.toBe("skipped");
   });
 
   it("no selection at all: refreshes NOTHING", async () => {

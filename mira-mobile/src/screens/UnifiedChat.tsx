@@ -243,8 +243,10 @@ function UnifiedChatForNotebook({
   // seam F1's onConfirmIdentity uses. Best-effort: a failed re-read here
   // never fails anything else — the next send falls back to the host's own
   // eventually-refreshed scope.
-  const refreshPromotedScope = useCallback(async () => {
-    if (!notebookId || !aliveRef.current) return;
+  // Resolves `true` when the re-read scope was stored, `false` when the
+  // re-read failed (#4219 Codex r2 F1), `null` when there was nothing to do.
+  const refreshPromotedScope = useCallback(async (): Promise<boolean | null> => {
+    if (!notebookId || !aliveRef.current) return null;
     // The re-read is async; this instance can unmount before it returns (the
     // technician switched notebooks — see the `UnifiedChat` wrapper's remount
     // doc comment). Only a STILL-MOUNTED instance, for the notebook it was
@@ -252,10 +254,12 @@ function UnifiedChatForNotebook({
     const fetchedFor = notebookId;
     try {
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
-      if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return;
+      if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
+      return false;
     }
   }, [notebookId, attachmentThreadId]);
 
@@ -557,7 +561,17 @@ function UnifiedChatForNotebook({
             // stale (possibly empty) scope the host computed before this
             // confirm. Mirrors the Hub's own `loadDetail` call after confirm
             // (`hub-host.tsx`'s `onConfirmIdentity`).
-            await refreshPromotedScope();
+            const refreshed = await refreshPromotedScope();
+            // #4219 Codex r2 F1: the identity is saved, but if the scope re-read
+            // failed, the next question would still use the old sources. Say so
+            // instead of claiming the manual is ready to answer from.
+            if (refreshed === false && result.manualReady) {
+              return {
+                ...result,
+                manualReady: false,
+                message: "Machine confirmed, but its manual couldn't be loaded. Reload this notebook before asking about it.",
+              };
+            }
             return result;
           },
         }

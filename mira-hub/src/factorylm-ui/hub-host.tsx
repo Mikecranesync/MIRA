@@ -208,14 +208,15 @@ export function HubShellHost() {
       // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
       res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
     } catch (err) {
-      if (isAbortError(err)) return; // superseded by a newer selection
+      if (isAbortError(err)) return true; // superseded by a newer load, which carries the latest state
       throw err;
     }
     // Commit only if no newer load or selection change happened while this one was in flight.
-    if (!detailGate.isCurrent(token)) return;
-    if (res.status === 401) { setSignedOut(true); return; }
-    if (!res.data) return;
+    if (!detailGate.isCurrent(token)) return true;
+    if (res.status === 401) { setSignedOut(true); return false; }
+    if (!res.data) return false;
     setDetail(res.data);
+    return true;
   }, [detailGate]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
@@ -640,7 +641,17 @@ export function HubShellHost() {
     // a different notebook while this POST was in flight must get no
     // `loadDetail` refresh under A's identity; see
     // `applyConfirmIdentityResult`'s own header for the full race.
-    await applyConfirmIdentityResult(notebookId, { loadDetail, currentSelection: () => selectionRef.current });
+    const refresh = await applyConfirmIdentityResult(notebookId, { loadDetail, currentSelection: () => selectionRef.current });
+    // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
+    // not apply, the next question would still use the old sources. Say so
+    // instead of claiming the manual is ready to answer from.
+    if (refresh === "failed" && data.manualReady === true) {
+      return {
+        manualReady: false,
+        searching: false,
+        message: "Machine confirmed, but its manual couldn't be loaded. Reload this notebook before asking about it.",
+      };
+    }
     return {
       manualReady: data.manualReady === true,
       searching,

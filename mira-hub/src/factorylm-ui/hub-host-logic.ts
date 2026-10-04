@@ -335,7 +335,10 @@ export function newThreadId(random: () => string = () => globalThis.crypto.rando
  *  effect — the same seam `hub-host.tsx` already owns (`loadDetail`, and a
  *  read of the LATEST selection). */
 export interface ConfirmIdentityEffects {
-  readonly loadDetail: (sel: HubSelection) => Promise<void> | void;
+  /** Resolves `true` when the refreshed detail was applied, `false` when it
+   *  was not (HTTP error, no data). A newer load superseding this one counts
+   *  as applied: it started after the identity write, so it carries it. */
+  readonly loadDetail: (sel: HubSelection) => Promise<boolean | void> | boolean | void;
   /** The CURRENT selection, read fresh — never the one captured when the
    *  confirm request was made. */
   readonly currentSelection: () => HubSelection | null;
@@ -358,17 +361,20 @@ export interface ConfirmIdentityEffects {
 export async function applyConfirmIdentityResult(
   requestedNotebookId: string,
   effects: ConfirmIdentityEffects,
-): Promise<void> {
+): Promise<"refreshed" | "failed" | "skipped"> {
   const sel = effects.currentSelection();
-  if (!sel || sel.notebookId !== requestedNotebookId) return;
+  if (!sel || sel.notebookId !== requestedNotebookId) return "skipped";
   // #4219 Codex F1: wait for the refresh, so the card shows "ready" only once
   // the promoted manual is in the host's source scope; a send in between
   // would otherwise go out with the old (possibly empty) sourceDocIds. The
   // identity write already succeeded, so a failed refresh is logged, not
   // reported as a failed confirmation; the next detail load picks it up.
+  // #4219 Codex r2 F1: report whether the refresh applied, so the caller can
+  // stop claiming the manual is ready when the scope never caught up.
   try {
-    await effects.loadDetail(sel);
+    return (await effects.loadDetail(sel)) === false ? "failed" : "refreshed";
   } catch (err) {
     console.error("[hub-host] detail refresh after confirm failed:", err instanceof Error ? err.message : err);
+    return "failed";
   }
 }
