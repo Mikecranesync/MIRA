@@ -960,6 +960,9 @@ function UnifiedChatForNotebook({
             // the authoritative status and reconciles it exactly as a slow
             // tick would, with the SAME generation-key fencing (no second
             // epoch, no separate race to get wrong).
+            // Codex r15 F30: the screen may have unmounted during the refresh
+            // above; never restart following (seed/probe) for a dead instance.
+            if (!aliveRef.current) return result;
             if (result.searching) {
               manualSearchDriverRef.current?.seed({
                 manufacturer: proposal.manufacturer,

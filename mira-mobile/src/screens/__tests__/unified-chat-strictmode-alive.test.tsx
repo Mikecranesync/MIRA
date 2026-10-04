@@ -196,3 +196,31 @@ describe("UnifiedChat under React.StrictMode — aliveRef must survive the setup
     expect(scope).toEqual(["doc-promoted"]);
   });
 });
+
+describe("UnifiedChat — a confirm finishing after unmount never restarts following (#4195 Codex r15 F30)", () => {
+  it("no status request is made after the screen unmounts mid scope-refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      confirmIdentityProposal.mockResolvedValue({ manualReady: false, searching: true, startedAt: "gen-1", message: "Confirmed." });
+      let finishRefresh!: (v: unknown) => void;
+      getNotebookDetail.mockImplementation(() => new Promise((r) => { finishRefresh = r; }) as never);
+      const view = mount(vi.fn());
+      await act(async () => { await Promise.resolve(); });
+      const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
+      await act(async () => { fireEvent.click(confirmButton); await Promise.resolve(); await Promise.resolve(); });
+      expect(getNotebookDetail).toHaveBeenCalled();
+
+      const callsAtUnmount = fetchManualSearchStatus.mock.calls.length;
+      view.unmount();
+      await act(async () => {
+        finishRefresh({ notebook: {}, sources: [], turns: [], threads: [], photos: [] });
+        await Promise.resolve();
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtUnmount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

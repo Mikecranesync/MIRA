@@ -282,16 +282,24 @@ export function HubShellHost() {
       onStateChange: setFollow,
       onRefreshSources: () => {
         const sel = selectionRef.current;
-        if (sel) void loadDetail(sel);
+        if (sel && hostMountedRef.current) void loadDetail(sel);
       },
     });
   }
-  // Codex r14 F29: stop following when the host unmounts. reset() clears the
-  // pending timer and invalidates in-flight tick continuations (driver epoch),
-  // so no status request or loadDetail fires for an abandoned surface. It is
-  // idempotent and leaves the driver reusable, so StrictMode's dev-only
-  // cleanup/re-setup replay is harmless: the next detail load reseeds it.
-  useEffect(() => () => manualSearchDriverRef.current?.reset(), []);
+  // Codex r14 F29 / r15 F30: stop following when the host unmounts, and keep
+  // it stopped. reset() clears the pending timer and invalidates in-flight
+  // tick continuations (driver epoch); `hostMountedRef` blocks a confirm that
+  // completes after unmount from seeding the driver again. The ref is set true
+  // in effect SETUP (not only initialized), so StrictMode's dev-only
+  // cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
+  const hostMountedRef = useRef(false);
+  useEffect(() => {
+    hostMountedRef.current = true;
+    return () => {
+      hostMountedRef.current = false;
+      manualSearchDriverRef.current?.reset();
+    };
+  }, []);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -719,7 +727,9 @@ export function HubShellHost() {
       { searching, ...(startedAt ? { startedAt } : {}) },
       {
         loadDetail,
-        seedDriver: (nbId, status) => manualSearchDriverRef.current?.seed(nbId, status),
+        seedDriver: (nbId, status) => {
+          if (hostMountedRef.current) manualSearchDriverRef.current?.seed(nbId, status);
+        },
         currentSelection: () => selectionRef.current,
       },
     );
