@@ -50,6 +50,7 @@ import os
 import re
 import socket
 import ssl
+import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -866,7 +867,7 @@ class ManualSearchUnavailable(RuntimeError):
     """
 
 
-async def search_manual(make: str, model: str) -> dict | None:
+async def search_manual(make: str, model: str, deadline_at: float | None = None) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
     Returns the best HEAD-validated PDF candidate, or a lower-confidence
@@ -874,7 +875,12 @@ async def search_manual(make: str, model: str) -> dict | None:
     or ``None`` if nothing scored at all. Callers MUST check ``validated``
     and ``is_direct_pdf`` before treating a result as a trustable manual
     link — this function never decides trust on the caller's behalf.
+
+    ``deadline_at`` (``time.monotonic()`` seconds) is the caller's own timeout; the
+    judge's optional upgrade batch is capped by it so a timeout never costs the
+    match already found.
     """
+    started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
@@ -961,7 +967,9 @@ async def search_manual(make: str, model: str) -> dict | None:
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
-        ranked = await _judge.judge_candidates(make, model, deduped)  # records what it reads
+        ranked = await _judge.judge_candidates(  # records what it reads
+            make, model, deduped, started_at=started_at, deadline_at=deadline_at
+        )
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None
