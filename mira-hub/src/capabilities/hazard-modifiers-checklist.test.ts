@@ -4,8 +4,9 @@
  * the cross product of grammatically compatible parts only, each with an
  * expected outcome derived from its parts:
  *   affirmed core                         → flagged with that rule's own id
- *   modifier opener + core                → released
- *   caution/myth opener + action core     → flagged with that rule's own id
+ *   adjacent negation + core              → released
+ *   caution/myth frame + any core         → flagged with that rule's own id
+ *                                           (frames are not modifiers here)
  *   cancelled clause + terminator + core  → flagged with that rule's own id
  */
 import { describe, expect, it } from "vitest";
@@ -60,12 +61,9 @@ const ALL_RULE_CORES: Record<string, string> = {
   "claims-verified-safety": "I have verified zero energy from this photo",
 };
 /**
- * Action-kind rules that CAN sit inside a caution/myth window (not clause-
- * anchored), as a third-person activity. A frame says something ABOUT the
- * activity ("it is a myth that technicians do X") and never prohibits it, so
- * each must keep ITS OWN flag. Guards every rule's `kind` behaviourally:
- * relabelling one as propositional reds its rows. Each core ENDS its clause
- * with the match, so the tail allowlist cannot mask a kind regression. (claims-verified-safety is
+ * Action hazards that CAN sit inside a frame (not clause-anchored), as a
+ * third-person activity. Each core ENDS its clause with the match, so nothing
+ * but the frame itself could be read as cancelling it — and it must not be. (claims-verified-safety is
  * excluded: a myth frame around a first-person claim plausibly does negate it,
  * so its expected outcome is not clear-cut.)
  */
@@ -77,6 +75,11 @@ const ACTION_FRAME_CORES: Record<string, string> = {
   "confined-entry-untested": "technicians skip the atmosphere test",
   "rigging-overload": "technicians lift the 4-ton die using the 2-ton hoist",
 };
+
+/** The one per-rule caution exclusion inherited from main (#4200 R3): a caution
+ *  opener releases the passive-permission core, exactly as on main. Every
+ *  other framed core keeps its flag. */
+const INHERITED_CAUTION_RULE = "passive-energized-permission";
 
 const CAUTION_OPENERS = ["Never assume", "Never assume that", "Don't think", "Do not assume that", "Don't believe that"];
 const HYPOTHETICAL_OPENERS = ["It is a myth that", "It's a common misconception that"];
@@ -92,14 +95,19 @@ const all = { ...CLAUSE_CORES, ...NP_CORES, ...IMPERATIVE_CORES, ...ALL_RULE_COR
 
 // Invariant 1: an affirmed hazard is flagged.
 for (const [rule, core] of Object.entries(all)) cases.push({ name: `affirmed ${rule}`, text: `${cap(core)}.`, expect: idOf(rule) });
-// Invariant 2: a hazard fully inside a modifier's scope is released.
+// Invariant 2: a caution/myth FRAME is not a modifier in this slice — the
+// framed hazard keeps its own flag (as on main). Only an adjacent negation
+// (below) releases.
 for (const o of [...CAUTION_OPENERS, ...HYPOTHETICAL_OPENERS])
-  for (const [rule, core] of Object.entries(CLAUSE_CORES)) cases.push({ name: `"${o}" + ${rule}`, text: `${o} ${core}.`, expect: null });
+  for (const [rule, core] of Object.entries(CLAUSE_CORES)) {
+    const inherited = rule === INHERITED_CAUTION_RULE && CAUTION_OPENERS.includes(o);
+    cases.push({ name: `"${o}" + ${rule}`, text: `${o} ${core}.`, expect: inherited ? null : idOf(rule) });
+  }
 for (const o of NP_NEGATIONS)
   for (const [rule, core] of Object.entries(NP_CORES)) cases.push({ name: `"${o}" + ${rule}`, text: `${o} ${core}.`, expect: null });
 for (const o of IMPERATIVE_NEGATIONS)
   for (const [rule, core] of Object.entries(IMPERATIVE_CORES)) cases.push({ name: `"${o}" + ${rule}`, text: `${o} ${core}.`, expect: null });
-// Invariant 5 (kind guard): a caution/myth frame never cancels an action.
+// Invariant 2b: the same holds for action hazards inside a frame.
 for (const o of [...CAUTION_OPENERS, ...HYPOTHETICAL_OPENERS])
   for (const [rule, core] of Object.entries(ACTION_FRAME_CORES))
     cases.push({ name: `"${o}" + action ${rule}`, text: `${o} ${core}.`, expect: idOf(rule) });
