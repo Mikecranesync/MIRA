@@ -32,6 +32,7 @@ import json
 import os
 import re
 import statistics
+import subprocess
 import sys
 import time
 import uuid
@@ -43,6 +44,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from retrieval_acceptance import Hub  # noqa: E402
 
 MACHINES = Path(__file__).resolve().parent / "golden_walk_machines.json"
+HUB_DIR = Path(__file__).resolve().parents[2] / "mira-hub"
+PROVISION = ["bun", "run", "scripts/provision-beta-gate.ts"]
+
+
+def provision(base: str, doppler_config: str) -> tuple[str, str]:
+    """A fresh stranger (tenant + session cookie) through the same provisioner the
+    staging acceptance job uses. The manual search is capped per user per day
+    (MANUAL_SEARCH_USER_DAILY_CAP) and registration is limited to 5 per hour
+    per IP, so one stranger serves a whole run — size the cap to the run."""
+    out = subprocess.run(
+        ["doppler", "run", "-p", "factorylm", "-c", doppler_config, "--", *PROVISION],
+        cwd=HUB_DIR,
+        env={**os.environ, "HUB_BASE": base},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    env = dict(line[4:].split("=", 1) for line in out.splitlines() if line.startswith("ENV:"))
+    return env["BETA_GATE_TENANT"], env["BETA_GATE_COOKIE"]
+
+
+def cleanup(tenant: str, doppler_config: str) -> None:
+    subprocess.run(
+        [
+            "doppler",
+            "run",
+            "-p",
+            "factorylm",
+            "-c",
+            doppler_config,
+            "--",
+            *PROVISION,
+            "--cleanup",
+            tenant,
+        ],
+        cwd=HUB_DIR,
+        capture_output=True,
+        check=False,
+    )
 
 
 def frames_of(
@@ -237,6 +277,7 @@ def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
                 "page": c.get("page"),
                 "docId": c.get("docId"),
                 "truth": t[1],
+                "quote": str(c.get("quote") or "")[:240],
             }
             for c, t in zip(cits, truths)
         ],
@@ -283,15 +324,25 @@ def main() -> int:
     ap.add_argument("--search-timeout", type=int, default=240)
     ap.add_argument("--out", default="")
     ap.add_argument(
+        "--fresh-tenant",
+        default="",
+        metavar="DOPPLER_CONFIG",
+        help="provision one new stranger for the run (and sweep it after) via mira-hub's provisioner, e.g. stg",
+    )
+    ap.add_argument(
         "--min-success",
         type=int,
         default=0,
         help="exit 1 below this many PASS of the expect_manual rows",
     )
     a = ap.parse_args()
-    if not a.base or not a.cookie:
+    if not a.base or not (a.cookie or a.fresh_tenant):
         print("ACCEPT_BASE and ACCEPT_COOKIE are required", file=sys.stderr)
         return 2
+    tenant = None
+    if a.fresh_tenant:
+        tenant, cookie = provision(a.base, a.fresh_tenant)
+        a.cookie = cookie
     hub = Hub(a.base, a.cookie, timeout=240)
     machines = json.loads(MACHINES.read_text())["machines"]
     if a.only:
@@ -312,6 +363,8 @@ def main() -> int:
             }
         rows.append(r)
         print(f"{r['outcome']:4} {r['machine']}: {r.get('cause', '')}", flush=True)
+    if tenant:
+        cleanup(tenant, a.fresh_tenant)
     real = [r for r in rows if r["expect_manual"]]
     passed = [r for r in real if r["outcome"] == "PASS"]
     times = [r["time_to_cited_answer_s"] for r in passed if "time_to_cited_answer_s" in r]
