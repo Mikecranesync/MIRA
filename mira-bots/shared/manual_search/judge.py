@@ -63,6 +63,18 @@ FETCH_TIMEOUT = float(os.getenv("MANUAL_JUDGE_FETCH_TIMEOUT", "12"))
 EXTRACT_TIMEOUT = float(os.getenv("MANUAL_JUDGE_EXTRACT_TIMEOUT", "15"))
 LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
 
+# Which VOLUME wins, not only "is it a manual" (2026-10-04, Golden Walk + Pixel 9a).
+# "Is this a user manual for THIS model?" is truthfully yes for a PowerFlex 525
+# COMMUNICATIONS manual (no F005 in 398 chunks), a Portuguese ACS580 firmware manual
+# and an ATV320 Getting Started guide; stopping at the first yes made the pick a coin
+# flip. Matches now rank by fault-code coverage and language, and a non-ideal first
+# match buys at most one more batch inside UPGRADE_DEADLINE_S (the discovery call
+# itself times out at 50 s and a timeout there loses the match already found).
+# Docs: docs/plans/2026-10-04-manual-truth-table-three-fixes.md (Fix A).
+PREFERRED_LANGUAGE = (os.getenv("MANUAL_PREFERRED_LANGUAGE") or "en").strip().lower()[:2] or "en"
+UPGRADE_DEADLINE_S = float(os.getenv("MANUAL_JUDGE_UPGRADE_DEADLINE", "30"))
+UPGRADE_MIN_BATCH_S = 8.0
+
 # Only these document kinds can ever be "the manual". Enforced in code, not just in the
 # prompt: canary 2026-08-26 accepted a fuse-kit PARTS LIST for a GS1-45P0 as the manual
 # (doc_type=parts_list, conf 0.92) — a false positive by the owner's rule.
@@ -174,6 +186,11 @@ async def extract_text(data: bytes, max_pages: int = MAX_PAGES, max_chars: int =
         return ""
     try:
         out, _ = await asyncio.wait_for(proc.communicate(data), timeout=EXTRACT_TIMEOUT)
+    except asyncio.CancelledError:
+        # An upgrade batch cancelled at its deadline must not leave the parser
+        # child running on a pathological PDF.
+        proc.kill()
+        raise
     except asyncio.TimeoutError:
         logger.info("judge text extraction timed out after %.0fs; killed", EXTRACT_TIMEOUT)
         proc.kill()
@@ -197,7 +214,8 @@ _JUDGE_SYSTEM = (
     "industrial equipment. Answer ONLY with a JSON object, no prose:\n"
     '{"is_manual_for_model": true|false, "doc_type": "user_manual"|"installation_manual"|'
     '"parts_list"|"datasheet"|"brochure_or_catalog"|"other", "scope": "complete"|"section", '
-    '"confidence": 0.0-1.0, '
+    '"confidence": 0.0-1.0, "lists_fault_codes": true|false, '
+    '"language": "<ISO 639-1 code of the document text, e.g. en>", '
     '"evidence_quote": "<verbatim text from the document that supports your answer, <=200 chars>", '
     '"reason": "<one sentence>"}\n'
     "Rules: is_manual_for_model is true ONLY for a user / owner's / installation / operation "
@@ -207,7 +225,11 @@ _JUDGE_SYSTEM = (
     "line is false even when it names the model. If the text does not mention the model or its family, answer false "
     'with low confidence. scope is "section" when the PDF is one chapter/appendix/warning '
     "insert of a larger manual (page numbers like W-1, A-3, or a chapter title as the whole "
-    'document), "complete" when it is the whole manual. Never invent a quote.'
+    'document), "complete" when it is the whole manual. lists_fault_codes is true only when '
+    "this PDF itself contains this equipment's fault / alarm / error code list with what each "
+    "code means (or is the complete manual whose contents list that section) — not only the "
+    "status codes of an option card or communication adapter, and not a contents page that "
+    "points to other files. Never invent a quote."
 )
 
 
@@ -308,6 +330,8 @@ async def _judge_text_once(
         conf = 0.0
     doc_type = str(verdict.get("doc_type") or "other")[:40]
     said_yes = bool(verdict.get("is_manual_for_model"))
+    fault_codes = verdict.get("lists_fault_codes")
+    language = str(verdict.get("language") or "").strip().lower()[:2] or None
     return {
         # A "yes" on anything but a real manual kind is downgraded to a rejection with
         # the model's own classification as the reason.
@@ -318,6 +342,9 @@ async def _judge_text_once(
         if str(verdict.get("scope") or "").lower().startswith("sec")
         else "complete",
         "confidence": max(0.0, min(1.0, conf)),
+        # None = the model did not say (an older prompt or a terse answer).
+        "lists_fault_codes": fault_codes if isinstance(fault_codes, bool) else None,
+        "language": language,
         "evidence_quote": str(verdict.get("evidence_quote") or "")[:240],
         "reason": (
             f"Classified as {doc_type.replace('_', ' ')}, not a user/installation manual. "
@@ -352,6 +379,9 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
         return cand
     verdict["status"] = "judged"
     verdict["text_chars"] = len(text)
+    # Deterministic signals from the text the judge read (zero-token).
+    verdict["text_language"] = text_language(text)
+    verdict["fault_heading"] = bool(_FAULT_HEADING.search(text))
     cand["judge"] = verdict
     # One auditable line per judgment (owner canary protocol, 2026-08-26):
     # what was read, what was decided, by which model, how fast.
@@ -370,6 +400,10 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
                 "downgraded": verdict.get("downgraded", False),
                 "doc_type": verdict["doc_type"],
                 "scope": verdict.get("scope"),
+                "lists_fault_codes": verdict.get("lists_fault_codes"),
+                "language": verdict.get("language"),
+                "text_language": verdict.get("text_language"),
+                "fault_heading": verdict.get("fault_heading"),
                 "confidence": verdict["confidence"],
                 "evidence_quote": verdict["evidence_quote"],
                 "reason": verdict["reason"],
@@ -417,22 +451,83 @@ def relevant(c: dict, make: str, model: str) -> bool:
     return _mentions_make(c, make) or _mentions_model(c, model)
 
 
+# A fault/alarm code LIST heading, in the languages OEM manuals ship in. Fallback
+# only: it cannot tell a drive's fault list from an option card's, so the model's
+# `lists_fault_codes` wins whenever the model gave one.
+_FAULT_HEADING = re.compile(
+    r"\b(?:fault|alarm|error|trip)s?\s*(?:codes?|lists?|descriptions?|messages?|tables?)\b"
+    r"|\bfaults?\s+(?:and|&)\s+alarms?\b|\balarms?\s+(?:and|&)\s+faults?\b"
+    r"|\bfehler(?:meldungen|codes?|liste)\b|\bst[öo]rungsmeldungen\b"
+    r"|\bc[óo]digos?\s+de\s+(?:falla|falha|error|erro|alarma|alarme)\b"
+    r"|\bcodes?\s+(?:de\s+)?d[ée]fauts?\b",
+    re.I,
+)
+
+_STOPWORDS = {
+    "en": frozenset("the and of to for with is this on be are or not if when from".split()),
+    "pt": frozenset("de do da dos das para com não em uma um que os as ao".split()),
+    "es": frozenset("de del la las los el para con que en una un por se no".split()),
+    "de": frozenset("der die das und mit für von zu im ist den nicht ein eine auf".split()),
+    "fr": frozenset("le la les et des du pour avec dans est une un sur pas au".split()),
+    "id": frozenset("dan yang untuk dengan di ini atau dari pada jika akan tidak ke".split()),
+}
+
+
+def text_language(text: str) -> str | None:
+    """The document's language from function-word counts, or None when the text is
+    too short or too mixed to say. Deterministic; preferred over the model's guess."""
+    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    counts = {lang: sum(1 for w in words if w in sw) for lang, sw in _STOPWORDS.items()}
+    best = max(counts, key=lambda k: counts[k])
+    runner_up = max(v for k, v in counts.items() if k != best)
+    if counts[best] < 12 or counts[best] < 2 * runner_up:
+        return None
+    return best
+
+
+def _fault_list(j: dict) -> bool | None:
+    v = j.get("lists_fault_codes")
+    if isinstance(v, bool):
+        return v
+    return True if j.get("fault_heading") else None
+
+
+def _language_ok(j: dict) -> bool | None:
+    lang = j.get("text_language") or j.get("language")
+    return None if not lang else lang == PREFERRED_LANGUAGE
+
+
+def _tri(v: bool | None) -> int:
+    return 2 if v is True else 0 if v is False else 1
+
+
+def is_ideal(c: dict) -> bool:
+    """A match nothing in the queue could beat on volume: it lists the fault codes
+    and is not in another language."""
+    j = c.get("judge") or {}
+    return is_match(c) and _fault_list(j) is True and _language_ok(j) is not False
+
+
 def rank(candidates: list[dict]) -> list[dict]:
-    """matched (confidence, score) > unjudged (score) > rejected (score)."""
+    """matched > unjudged (score) > rejected (score). Among matches: lists the fault
+    codes > technician's language > whole manual over a chapter > confidence > score.
+    Coverage outranks scope: a fault-code chapter answers a fault question, a whole
+    communications manual does not."""
 
     def key(c: dict) -> tuple:
         j = c.get("judge") or {}
         if is_match(c):
-            # whole manual beats a chapter of it; then confidence; then heuristic
             return (
                 2,
+                _tri(_fault_list(j)),
+                _tri(_language_ok(j)),
                 1 if j.get("scope") != "section" else 0,
                 float(j.get("confidence", 0.0)),
                 c.get("score", 0),
             )
         if is_rejected(c):
-            return (0, 0, 0.0, c.get("score", 0))
-        return (1, 0, 0.0, c.get("score", 0))
+            return (0, 0, 0, 0, 0.0, c.get("score", 0))
+        return (1, 0, 0, 0, 0.0, c.get("score", 0))
 
     return sorted(candidates, key=key, reverse=True)
 
@@ -454,15 +549,31 @@ async def judge_candidates(make: str, model: str, candidates: list[dict]) -> lis
     queue = [c for c in pdfs if relevant(c, make, model)] or pdfs
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     queue = queue[:MAX_TOTAL]
+    t0 = time.monotonic()
     while queue:
         batch, queue = queue[:MAX_CANDIDATES], queue[MAX_CANDIDATES:]
+        # Searching (no match yet) behaves as before. Upgrading (a match is in hand,
+        # just not an ideal one) is time-boxed so it can never cost that match.
+        upgrading = any(is_match(c) for c in candidates)
         try:
-            await asyncio.gather(*(_judge_one(make, model, c) for c in batch))
+            reads = asyncio.gather(*(_judge_one(make, model, c) for c in batch))
+            if upgrading:
+                remaining = UPGRADE_DEADLINE_S - (time.monotonic() - t0)
+                if remaining < UPGRADE_MIN_BATCH_S:
+                    reads.cancel()
+                    logger.info("judge upgrade skipped: %.1fs left", max(remaining, 0.0))
+                    break
+                await asyncio.wait_for(reads, timeout=remaining)
+            else:
+                await reads
+        except asyncio.TimeoutError:
+            logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
+            break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)
-        # Stop on a match — unless the only matches so far are chapters of a
-        # larger manual, in which case one more batch may hold the whole thing.
-        if any(is_match(c) and (c.get("judge") or {}).get("scope") != "section" for c in batch):
+        # Stop on an ideal match. A plain match (wrong volume, wrong language, or
+        # a chapter) earns one more batch, then the best match so far stands.
+        if any(is_ideal(c) for c in batch):
             break
         if any(is_match(c) for c in candidates) and len(queue) > MAX_CANDIDATES:
             queue = queue[:MAX_CANDIDATES]
