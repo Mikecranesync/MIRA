@@ -162,14 +162,29 @@ def candidates_for_deploy(
     return out
 
 
-def designate(receipts: list[ProdReceipt]) -> dict:
-    """The recovery targets production designates now (newest receipt per service)."""
+def designate(
+    receipts: list[ProdReceipt], inventory: tuple[str, ...] = (), evidence_gap: str = ""
+) -> dict:
+    """The recovery targets production designates now (newest receipt per service).
+
+    ``inventory`` names services that must be accounted for (the deploy default set).
+    One with no receipt in the walk is ``lost`` when the walk stopped short of the full
+    history (``evidence_gap``: an expired receipt or an exhausted window) — its current
+    receipt may lie beyond what was read — and ``undesignated`` (never receipted) when
+    the walk read everything.
+    """
     current: dict[str, ProdReceipt] = {}
     for r in receipts:  # newest first
         for svc in r.services:
             current.setdefault(svc, r)
     targets: dict[str, dict] = {}
-    undesignated = {}
+    undesignated: dict[str, str] = {}
+    lost: dict[str, str] = {}
+    for svc in sorted(set(inventory) - set(current)):
+        if evidence_gap:
+            lost[svc] = f"no production receipt for {svc} within the walk: {evidence_gap}"
+        else:
+            undesignated[svc] = f"{svc} was never deployed by a receipted production run"
     for svc, r in sorted(current.items()):
         entry = (r.rollback_candidate or {}).get(svc)
         if entry is None:
@@ -188,7 +203,8 @@ def designate(receipts: list[ProdReceipt]) -> dict:
     return {
         "current": {svc: {"sha": r.sha, "run_id": r.run_id} for svc, r in sorted(current.items())},
         "designated": [targets[s] for s in sorted(targets)],
-        "undesignated": undesignated,
+        "undesignated": dict(sorted(undesignated.items())),
+        "lost": lost,
     }
 
 
@@ -198,29 +214,47 @@ _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 # One left-to-right pass, so a quote or comment marker is only special where it starts a
 # token: a '(' ';' ',' or '--' inside a string literal can neither hide nor fake an action.
 _LEXEMES = re.compile(
-    r"(?P<dollar>\$(?P<tag>[A-Za-z_][A-Za-z0-9_]*|)\$.*?\$(?P=tag)\$)"
+    r"(?P<dollar>\$(?P<tag>[A-Za-z_][A-Za-z0-9_]*|)\$(?P<body>.*?)\$(?P=tag)\$)"
     r"|(?P<ident>\"(?:[^\"]|\"\")*\")"
+    r"|(?P<estr>(?<![A-Za-z0-9_])[Ee]'(?:[^'\\]|\\.|'')*')"
     r"|(?P<literal>'(?:[^']|'')*')"
     r"|(?P<comment>--[^\n]*|/\*.*?\*/)",
     re.DOTALL,
 )
+_ESCAPE = re.compile(r"\\.", re.DOTALL)
 
 
-def _strip_literals_and_comments(sql: str) -> str:
+def _strip_literals_and_comments(sql: str, keep_literals: bool = False) -> str:
     """Blank string literals, drop comments; keep identifiers and dollar-quoted bodies.
 
-    A dollar-quoted body (``DO $$ … $$``, a function body) stays visible, comments
-    stripped, because DDL inside it still runs — hiding it would be the unsafe direction.
+    A dollar-quoted body (``DO $$ … $$``, a function body) stays visible because DDL
+    inside it still runs — hiding it would be the unsafe direction. Its contents are
+    lexed the same way, except that literals are kept (``EXECUTE 'ALTER TABLE …'`` is
+    real DDL), with E-string escapes rewritten as '' so quote tracking stays balanced.
+    A quote that starts no literal or identifier is not structure and is blanked.
     """
 
-    def repl(m: re.Match) -> str:
+    def render(m: re.Match) -> str:
         if m.group("dollar"):
-            return _COMMENTS.sub(" ", m.group("dollar"))
+            tag = f"${m.group('tag')}$"
+            return tag + _strip_literals_and_comments(m.group("body"), keep_literals=True) + tag
         if m.group("ident"):
             return m.group("ident")
-        return "''" if m.group("literal") else " "
+        if m.group("estr"):
+            if not keep_literals:
+                return "''"
+            return _ESCAPE.sub(lambda e: "''" if e.group(0) == "\\'" else "__", m.group("estr")[1:])
+        if m.group("literal"):
+            return m.group("literal") if keep_literals else "''"
+        return " "
 
-    return _LEXEMES.sub(repl, sql)
+    out, pos = [], 0
+    for m in _LEXEMES.finditer(sql):
+        out.append(re.sub(r"['\"]", " ", sql[pos : m.start()]))
+        out.append(render(m))
+        pos = m.end()
+    out.append(re.sub(r"['\"]", " ", sql[pos:]))
+    return "".join(out)
 
 
 _DROP_OBJECT = re.compile(
@@ -234,17 +268,22 @@ _DDL_START = re.compile(
 )
 
 
-def _norm_name(raw: str) -> str:
-    name = raw.strip().split("(")[0].strip().strip('"').lower()
-    return name[len("public.") :] if name.startswith("public.") else name
-
-
-def _created_names(sql_upper: str) -> set[str]:
-    pattern = (
-        r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?"
-        r"(?:TABLE|VIEW|TYPE|SCHEMA|SEQUENCE|FUNCTION)\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)"
-    )
-    return {_norm_name(m) for m in re.findall(pattern, sql_upper)}
+def _split_statements(text: str) -> list[str]:
+    """Split on ';' outside '…' and "…". Dollar bodies stay in the text (their DDL runs)."""
+    parts, cur, quote = [], [], ""
+    for ch in text:
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        if ch == ";" and not quote:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    parts.append("".join(cur))
+    return parts
 
 
 def _split_top_level(text: str) -> list[str]:
@@ -273,31 +312,24 @@ def _split_top_level(text: str) -> list[str]:
 def contracting_statements(sql: str) -> list[str]:
     """Statements that remove or narrow what older code may rely on.
 
-    Contracting: DROP TABLE/VIEW/TYPE/SCHEMA/SEQUENCE/FUNCTION (unless the same file
-    re-creates that name — the idempotent drop-and-recreate pattern), and ALTER TABLE
-    actions DROP [COLUMN], RENAME, ALTER COLUMN ... [SET DATA] TYPE, ALTER COLUMN ...
-    SET NOT NULL. Not contracting: DROP POLICY/INDEX/TRIGGER, DROP CONSTRAINT, DROP
-    DEFAULT / DROP NOT NULL, ADD COLUMN, CREATE … (expand), data DML.
+    Contracting: DROP TABLE/VIEW/MATERIALIZED VIEW/TYPE/SCHEMA/SEQUENCE/FUNCTION — always,
+    even when the same file re-creates the name (the new object may differ: another
+    function overload, a table without a column, a narrower view or enum) — and ALTER
+    TABLE actions DROP [COLUMN], RENAME, ALTER COLUMN ... [SET DATA] TYPE, ALTER COLUMN
+    ... SET NOT NULL, including inside DO blocks and function bodies. Not contracting:
+    DROP POLICY/INDEX/TRIGGER, DROP CONSTRAINT, DROP DEFAULT / DROP NOT NULL, ADD
+    COLUMN, CREATE … (expand), data DML. Literals and comments are ignored.
     """
     upper = _strip_literals_and_comments(sql).upper()
-    recreated = _created_names(upper)
     hits = []
-    for raw in upper.split(";"):
+    for raw in _split_statements(upper):
         stmt = " ".join(raw.split())
         start = _DDL_START.search(stmt)
         if not start:
             continue
         stmt = stmt[start.start() :]
-        m = _DROP_OBJECT.match(stmt)
-        if m:
-            names = [
-                _norm_name(n)
-                for n in _split_top_level(
-                    m.group(2).replace(" CASCADE", "").replace(" RESTRICT", "")
-                )
-            ]
-            if any(n not in recreated for n in names):
-                hits.append(stmt)
+        if _DROP_OBJECT.match(stmt):
+            hits.append(stmt)
             continue
         m = _ALTER_TABLE.match(stmt)
         if not m:
@@ -380,6 +412,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     d = sub.add_parser("designate")
     d.add_argument("--receipts-dir", required=True)
     d.add_argument("--out", default="")
+    d.add_argument("--inventory", default="")
+    d.add_argument("--evidence-gap", default="")
     s = sub.add_parser("stamp")
     s.add_argument("--receipt", required=True)
     s.add_argument("--candidates-json", required=True)
@@ -410,7 +444,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                 raise ValueError("; ".join(problems))
             _write(cands, a.out)
         elif a.cmd == "designate":
-            _write(designate(load_receipts(Path(a.receipts_dir))), a.out)
+            inventory = _services(a.inventory) if a.inventory.strip() else ()
+            _write(
+                designate(load_receipts(Path(a.receipts_dir)), inventory, a.evidence_gap.strip()),
+                a.out,
+            )
         elif a.cmd == "stamp":
             receipt = json.loads(Path(a.receipt).read_text(encoding="utf-8"))
             if "rollback_candidate" in receipt:

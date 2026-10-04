@@ -256,6 +256,61 @@ def test_stamp_never_overwrites(tmp_path):
 # ── designate ────────────────────────────────────────────────────────────────
 
 
+def test_designate_reports_an_inventory_service_lost_beyond_the_walk(tmp_path):
+    """Codex #4222 r1 F1: a service the walk could not see is LOST, never silently absent."""
+    receipts = rc.load_receipts(
+        write(
+            tmp_path / "r",
+            receipt(C, "36805202089", "2026-10-01T02:23:34Z", services=("mira-hub",)),
+        )
+    )
+    gap = "the production receipt of run 1 has expired"
+    d = rc.designate(receipts, inventory=ALL, evidence_gap=gap)
+    assert sorted(d["lost"]) == ["mira-ask", "mira-web"]
+    assert all(gap in why for why in d["lost"].values())
+    assert "mira-hub" in d["undesignated"] and "mira-hub" not in d["lost"]
+
+
+def test_designate_without_a_gap_reports_a_never_receipted_service_as_undesignated(tmp_path):
+    receipts = rc.load_receipts(
+        write(
+            tmp_path / "r",
+            receipt(C, "36805202089", "2026-10-01T02:23:34Z", services=("mira-hub",)),
+        )
+    )
+    d = rc.designate(receipts, inventory=ALL)
+    assert d["lost"] == {}
+    assert "never" in d["undesignated"]["mira-web"] and "never" in d["undesignated"]["mira-ask"]
+
+
+def test_designate_with_a_gap_but_full_coverage_loses_nothing(tmp_path):
+    receipts = rc.load_receipts(
+        write(tmp_path / "r", receipt(C, "36805202089", "2026-10-01T02:23:34Z"))
+    )
+    assert rc.designate(receipts, inventory=ALL, evidence_gap="window")["lost"] == {}
+
+
+def test_designate_cli_takes_the_inventory_and_the_gap(tmp_path):
+    root = write(
+        tmp_path / "r", receipt(C, "36805202089", "2026-10-01T02:23:34Z", services=("mira-hub",))
+    )
+    out = tmp_path / "d.json"
+    rc.main(
+        [
+            "designate",
+            "--receipts-dir",
+            str(root),
+            "--out",
+            str(out),
+            "--inventory",
+            "mira-hub mira-web",
+            "--evidence-gap",
+            "walked the newest 1 deploy runs",
+        ]
+    )
+    assert sorted(json.loads(out.read_text())["lost"]) == ["mira-web"]
+
+
 def test_designate_without_the_field_designates_nothing(tmp_path):
     d = rc.designate(rc.load_receipts(real_three(tmp_path)))
     assert d["designated"] == []
@@ -315,6 +370,12 @@ def test_designate_reads_the_newest_receipt_per_service_and_groups_by_sha(tmp_pa
         "DROP FUNCTION IF EXISTS f(int, text);",
         "DROP VIEW v;",
         "DROP SCHEMA s;",
+        # a recreated name is not proof of compatibility (Codex #4222 r1 F3)
+        "DROP FUNCTION IF EXISTS f(int); CREATE OR REPLACE FUNCTION f(int) RETURNS int AS 'select 1' LANGUAGE sql;",
+        "DROP FUNCTION f(integer); CREATE FUNCTION f(text) RETURNS text LANGUAGE sql AS $$ SELECT $1 $$;",
+        "DROP TABLE t; CREATE TABLE t (replacement int);",
+        "DROP VIEW IF EXISTS v; CREATE VIEW v AS SELECT 1;",
+        "DROP TYPE IF EXISTS s; CREATE TYPE s AS ENUM ('a');",
     ],
 )
 def test_contracting_statements_are_flagged(sql):
@@ -332,8 +393,6 @@ def test_contracting_statements_are_flagged(sql):
         "ALTER TABLE t ALTER COLUMN c DROP DEFAULT;",
         "ALTER TABLE t ADD COLUMN IF NOT EXISTS c text;",
         "ALTER TABLE t ENABLE ROW LEVEL SECURITY;",
-        "DROP FUNCTION IF EXISTS f(int); CREATE OR REPLACE FUNCTION f(int) RETURNS int AS 'select 1' LANGUAGE sql;",
-        "DROP VIEW IF EXISTS v; CREATE VIEW v AS SELECT 1;",
         "-- DROP TABLE t;\n/* ALTER TABLE t DROP COLUMN c; */ SELECT 1;",
         "UPDATE t SET c = NULL; DELETE FROM t;",
     ],
@@ -387,6 +446,7 @@ def test_string_literals_cannot_hide_a_contraction(sql):
     [
         "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'x, DROP COLUMN y';",
         "INSERT INTO notes (body) VALUES ('ALTER TABLE t DROP COLUMN c; DROP TABLE t');",
+        "SELECT E'x\\', DROP TABLE t; --';",
     ],
 )
 def test_string_literals_cannot_fake_a_contraction(sql):
@@ -405,6 +465,17 @@ def test_string_literals_cannot_fake_a_contraction(sql):
         # swallow the next action
         "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '(', DROP COLUMN d; END $$;",
         'ALTER TABLE t ADD COLUMN "x(" int, DROP COLUMN d;',
+        # comment markers and semicolons inside a literal inside a body (Codex #4222 r1 F2)
+        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '--', DROP COLUMN d; END $$;",
+        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT '/*', DROP COLUMN d; END $$;",
+        "DO $$ BEGIN ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a;b', DROP COLUMN d; END $$;",
+        "CREATE FUNCTION g() RETURNS void LANGUAGE plpgsql AS $f$ BEGIN "
+        "EXECUTE 'ALTER TABLE t ' || 'x'; ALTER TABLE t DROP COLUMN d; END $f$;",
+        # an E'' string with a backslash-escaped quote is one literal
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT E'it\\'s (', DROP COLUMN d;",
+        # a stray apostrophe inside a body must not merge the statements after it
+        "DO $$ BEGIN RAISE NOTICE $q$it's$q$; END $$; "
+        "ALTER TABLE t ADD COLUMN x int; ALTER TABLE t DROP COLUMN y;",
         # an apostrophe inside a dollar-quoted body is not the start of a literal
         "COMMENT ON TABLE t IS $$it's$$; ALTER TABLE t DROP COLUMN c; SELECT 'x';",
     ],
