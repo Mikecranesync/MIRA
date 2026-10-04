@@ -499,3 +499,68 @@ describe("F28 (Codex round 13): a cached same-generation live frame never discar
   });
 });
 
+describe("F31 (Codex r18): a completed live frame reconciles a search whose polling ran out", () => {
+  function completedFrame(message: string): { q: string; a: ChatTurn } {
+    return {
+      q: "any luck with that manual?",
+      a: {
+        answer: "Here is what I found.",
+        citations: [],
+        status: "answered",
+        unknownFrames: [{ kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message, startedAt: "gen-1" }],
+      },
+    };
+  }
+
+  it("a completed frame whose probe returns nothing is not re-probed on every replay (bounded: one read per frame)", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 6; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    const readsWhenExhausted = fetchManualSearchStatus.mock.calls.length;
+    fetchManualSearchStatus.mockResolvedValue(null); // status unavailable: the follow stays unresolved
+    const turns = [liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"), completedFrame("Ready — check Sources.")];
+    view.rerender(<UnifiedChat {...props(turns)} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+    for (let i = 0; i < 3; i++) {
+      view.rerender(<UnifiedChat {...props([...turns])} />);
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+  });
+
+  it("after five polls exhaust, a newer completed same-generation frame triggers one authoritative read and the ready outcome replaces 'Still searching'", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 6; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+    const readsWhenExhausted = fetchManualSearchStatus.mock.calls.length;
+    const refreshesWhenExhausted = getNotebookDetail.mock.calls.length;
+
+    fetchManualSearchStatus.mockResolvedValue({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    const turns = [liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"), completedFrame("Ready — check Sources.")];
+    view.rerender(<UnifiedChat {...props(turns)} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+    expect(screen.queryByText(/Still searching — check back in a minute\./)).toBeNull();
+    expect(screen.getAllByText("Ready — check Sources.").length).toBeGreaterThan(0);
+    expect(getNotebookDetail.mock.calls.length).toBeGreaterThan(refreshesWhenExhausted);
+
+    // A replay of the same completed frame (unrelated rerender) makes no further read.
+    view.rerender(<UnifiedChat {...props([...turns])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+  });
+});
+

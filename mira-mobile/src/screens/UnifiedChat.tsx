@@ -457,6 +457,8 @@ function UnifiedChatForNotebook({
   // the identical event twice is still wasted work — skip it outright when
   // nothing about the live frame has changed since the last observation.
   const lastLiveFrameKeyRef = useRef<string | null>(null);
+  // Codex r18 F31: completed live frames already acted on (one probe each).
+  const lastCompletedFrameKeyRef = useRef<string | null>(null);
   // Codex round 5 F16 (#4195): a notebook switch that keeps THIS component
   // mounted (`NotebooksTab.tsx`'s `onOpenNotebook` — a Sensor READ resolving
   // a different machine changes the `id`/`notebookId` prop in place, with no
@@ -613,12 +615,23 @@ function UnifiedChatForNotebook({
   // settled.
   useEffect(() => {
     const live = latestManualSearchStatus(baseThread.turns);
-    if (!live || !live.running || !notebookId) return;
+    if (!live || !notebookId) return;
     const liveKey = `${notebookId}|${live.manufacturer}|${live.model}|${live.startedAt ?? ""}`;
+    if (!live.running) {
+      // Codex r18 F31: a COMPLETED frame is news only while the tracked search
+      // is not settled (still following, or polling ran out). Reconcile through
+      // ONE authoritative probe, the same single reader everything else uses,
+      // rather than trusting the frame; the probe's own fencing applies. Each
+      // completed frame triggers at most one probe, so replays cost nothing.
+      if (lastCompletedFrameKeyRef.current === liveKey) return;
+      lastCompletedFrameKeyRef.current = liveKey;
+      if (follow && follow.phase !== "resolved") manualSearchDriverRef.current?.probe();
+      return;
+    }
     if (lastLiveFrameKeyRef.current === liveKey) return;
     lastLiveFrameKeyRef.current = liveKey;
     manualSearchDriverRef.current?.observeLive(live);
-  }, [baseThread, notebookId]);
+  }, [baseThread, notebookId, follow]);
 
   // Trigger: mount, or a thread switch within the same notebook (manual
   // search can be thread-scoped — matches the old hydration effect's own
