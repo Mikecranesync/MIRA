@@ -30,6 +30,8 @@ The decision, in order (the first failing rule means nothing is posted):
    success (F2), and a newer scoped PASS never hides an earlier failure (F4).
 5. Nothing is posted when the newest existing `Cheap Review` check-run on the head
    already shows that conclusion from that review's `run_id` (re-runs are no-ops).
+   When nothing live certifies the head but the newest check still shows success
+   (its full PASS was deleted or edited away), a `failure` withdraws it.
 
 Only then is a payload produced: check-run `Cheap Review` on that exact head,
 `success` when the reconciled source is a full-scope `PASS`, `failure` for EVERY
@@ -196,15 +198,37 @@ def decide(
             }
         )
     state = head_state(live, owner, current_head)
+    checks = [c for c in existing_checks if isinstance(c.get("id"), int)]
+    latest = max(checks, key=lambda c: c["id"]) if checks else None
     if state is None:
+        # Nothing live certifies the head. If the check still shows success, the full PASS
+        # behind it was deleted or edited away: fail closed rather than keep a stale success.
+        if latest is not None and latest.get("conclusion") == "success":
+            return Decision(
+                True,
+                f"no live owner review certifies {current_head}; withdrawing the stale success",
+                {
+                    "name": CHECK_NAME,
+                    "head_sha": current_head,
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "external_id": "uncertified",
+                    "output": {
+                        "title": f"Cheap review: nothing certifies {current_head[:12]}",
+                        "summary": (
+                            "No live full-scope `[CHEAP-REVIEW]` comment by the repository owner "
+                            "certifies this head any more (the review behind the previous success "
+                            "was deleted or edited). Run the cheap lane again. Advisory."
+                        ),
+                    },
+                },
+            )
         return Decision(
             False,
             f"no full-scope review and no failure among the owner reviews of {current_head}; "
             "a scoped PASS certifies nothing about the rest of the head",
         )
     conclusion, source, source_comment = state
-    checks = [c for c in existing_checks if isinstance(c.get("id"), int)]
-    latest = max(checks, key=lambda c: c["id"]) if checks else None
     if (
         latest is not None
         and latest.get("external_id") == source["run_id"]

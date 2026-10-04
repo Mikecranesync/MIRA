@@ -325,6 +325,18 @@ def test_a_missing_pass_trigger_is_never_resurrected():
     )
 
 
+def test_a_deleted_certifying_pass_withdraws_the_stale_success():
+    """Only a scoped PASS is live, yet the check still shows success: fail closed."""
+    scoped = envelope("PASS", scope=SCOPE_PARTIAL, run_id=RUN_3)
+    live = [comment(3, scoped)]
+    d = decide(scoped, cid=3, comments=live, existing=(check(101, RUN_ID, "success"),))
+    assert d.post is True and d.payload["conclusion"] == "failure"
+    assert d.payload["external_id"] == "uncertified"
+    after = (check(101, RUN_ID, "success"), check(102, "uncertified", "failure"))
+    assert decide(scoped, cid=3, comments=live, existing=after).post is False
+    assert decide(scoped, cid=3, comments=live).post is False  # nothing shown: nothing to withdraw
+
+
 def test_a_newer_full_pass_clears_earlier_failures():
     live = [comment(1, BLOCK_2), comment(2, envelope("PASS", run_id=RUN_3))]
     d = decide(live[1]["body"], cid=2, comments=live, existing=(check(101, RUN_2, "failure"),))
@@ -417,6 +429,7 @@ def test_trusted_checkout_and_no_comment_interpolation():
     decide_run = job["steps"][1]["run"]
     assert "python3 -I tools/cheap_review_check.py decide" in decide_run
     assert '--paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"' in decide_run
+    assert "check_name=Cheap%20Review&filter=all" in decide_run
     assert job["steps"][2]["if"] == "steps.decide.outputs.post == 'true'"
 
 

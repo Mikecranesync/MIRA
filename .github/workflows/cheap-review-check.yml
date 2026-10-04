@@ -73,7 +73,7 @@ jobs:
           # the existing Cheap Review check-runs on the head so an unchanged state is a no-op.
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --jq '.[] | {id, html_url, user: {login: .user.login, type: .user.type}, body}' > "$RUNNER_TEMP/comments.jsonl"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/check-runs?check_name=Cheap%20Review&per_page=100" \
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/check-runs?check_name=Cheap%20Review&filter=all&per_page=100" \
             --jq '.check_runs[] | {id, external_id, conclusion}' > "$RUNNER_TEMP/existing-checks.jsonl"
           python3 -I tools/cheap_review_check.py decide \
             --event "$GITHUB_EVENT_PATH" --owner "$OWNER" --current-head "$head" \
