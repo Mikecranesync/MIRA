@@ -1,0 +1,75 @@
+name: Cheap Review Check
+
+# SDLC v1 Part B step 6 (docs/architecture/mira-sdlc-v1.md §4.2, §4.5): the cheap
+# review lane's verdict as a HEAD-BOUND GitHub check-run named `Cheap Review`.
+#
+# The lane (`tools/gate7_review.py <PR> --paid --post`) runs on a workstation under
+# the repository owner's token and posts a `[CHEAP-REVIEW]` comment. A personal
+# token cannot create a check-run (only a GitHub App can), so this workflow reacts
+# to that comment and posts the check-run with its own token. Every decision is in
+# `tools/cheap_review_check.py`; this file only reads the PR head and posts.
+#
+# Trust shape:
+#   * `issue_comment` workflows always run the DEFAULT-BRANCH revision of this file,
+#     and the checkout below is that same revision (`github.sha`), so no pull
+#     request can change what decides or posts here.
+#   * The comment is read from the event payload file, never interpolated into a
+#     shell line.
+#   * Only an envelope posted by the repository owner account as a `User` counts
+#     (the review ledger's rule, §4.4), and only while its reviewed head is still
+#     the PR head. PASS -> success; every other verdict -> failure (never neutral or
+#     skipped, which branch protection counts as passing).
+#   * ADVISORY: no branch-protection rule consumes `Cheap Review` yet. Making it
+#     required is a separate settings action, never this file.
+#   * Only `created` comments: an edited comment does not re-decide a posted check.
+
+on:
+  issue_comment:
+    types:
+      - created
+
+concurrency:
+  group: cheap-review-check-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  post:
+    name: Post the head-bound Cheap Review check-run
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '[CHEAP-REVIEW]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the trusted default-branch revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Decide from the comment and the current PR head
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::pull request number is not numeric"; exit 1; }
+          head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          python3 -I tools/cheap_review_check.py decide \
+            --event "$GITHUB_EVENT_PATH" --owner "$OWNER" --current-head "$head" \
+            --out "$RUNNER_TEMP/check-run.json" --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the check-run
+        if: steps.decide.outputs.post == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url="$(gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" --input "$RUNNER_TEMP/check-run.json" --jq '.html_url')"
+          echo "posted $url" | tee -a "$GITHUB_STEP_SUMMARY"
