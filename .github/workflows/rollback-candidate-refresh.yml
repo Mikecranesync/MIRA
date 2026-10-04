@@ -40,7 +40,7 @@ name: Rollback Candidate Refresh
 # workflow's GITHUB_TOKEN would not trigger retrieval-acceptance (workflow_run is
 # not fired for runs created by GITHUB_TOKEN), and authorize-source accepts only
 # workflow_run-produced acceptance receipts. Automating it needs an owner decision
-# (a scoped dispatch credential, or a change to the step-4/5 provenance model);
+# (#4226: a scoped dispatch credential, or a change to the step-4/5 provenance model);
 # until then the due-request names the one command a human runs. This file never
 # deploys anything and never touches production.
 

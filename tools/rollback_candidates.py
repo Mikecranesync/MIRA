@@ -564,11 +564,13 @@ def _table(name: str) -> str:
 
 
 _REFERENCES = re.compile(r"\bREFERENCES (?:ONLY )?([^\s(]+)")
-_BINDS_PARENT = re.compile(r"\bINHERITS\b|\bPARTITION OF\b")
+# CREATE TABLE … INHERITS / PARTITION OF, and their ALTER TABLE spellings INHERIT / ATTACH PARTITION
+_BINDS_PARENT = re.compile(r"\bINHERITS?\b|\bPARTITION OF\b|\bATTACH PARTITION\b")
 
 
 def _binds_older_table(stmt: str, new_tables: set[str]) -> bool:
-    """A foreign key into, or inheritance/partitioning of, a table not new in this file."""
+    """A foreign key into, or inheritance/partitioning involving, a table not new in this file
+    (CREATE TABLE … INHERITS / PARTITION OF, ALTER TABLE … INHERIT / ATTACH PARTITION)."""
     return bool(_BINDS_PARENT.search(stmt)) or any(
         _table(t) not in new_tables for t in _REFERENCES.findall(stmt)
     )

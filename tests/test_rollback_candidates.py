@@ -748,6 +748,10 @@ def test_expand_only_statements_are_proven(sql):
         "CREATE TABLE n (x int); ALTER TABLE n ADD CONSTRAINT f FOREIGN KEY (x) REFERENCES existing (id);",
         "CREATE TABLE n () INHERITS (existing);",
         "CREATE TABLE n PARTITION OF existing FOR VALUES IN (1);",
+        # the ALTER TABLE spellings of the same binding (pre-round-5 self-check)
+        "CREATE TABLE n (x int); ALTER TABLE n INHERIT existing;",
+        "CREATE TABLE p (x int) PARTITION BY RANGE (x); "
+        "ALTER TABLE p ATTACH PARTITION existing FOR VALUES FROM (0) TO (10);",
         # a new table only exempts statements on THAT table: quoted names are case-sensitive
         # and a schema makes a different table (pre-Codex Claude screen, 2026-10-04)
         """CREATE TABLE widgets (id int); ALTER TABLE "WIDGETS" ADD CONSTRAINT c CHECK (id > 0);""",

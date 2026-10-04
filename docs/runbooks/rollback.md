@@ -114,7 +114,7 @@ python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-
 |---|---|
 | `BEGIN`, `COMMIT`, `END`, `START TRANSACTION` | transaction control, no schema change |
 | `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only |
-| `CREATE TABLE …` without `INHERITS` / `PARTITION OF`, foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes |
+| `CREATE TABLE …` without `INHERITS` / `PARTITION OF` (and no later `INHERIT` / `ATTACH PARTITION` of an older table), foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes |
 | `CREATE SEQUENCE …` | a new object older code never references |
 | `COMMENT ON …` | metadata only |
 | `GRANT …` | can only allow more |
@@ -136,8 +136,8 @@ expand-only (most use `DO` blocks, functions, triggers, RLS or indexes on existi
 (trigger and function changes). Expect the daily check to raise an incident whenever production's
 candidate predates such a migration; a human decides, and it clears once a deploy moves the
 candidate past it. A durable, off-file record of reviewed migrations would remove the repeats; it is
-a tracked follow-up, not part of this check (applied migration files are immutable, so it cannot be
-a marker inside them).
+tracked in #4225, not part of this check (applied migration files are immutable, so it cannot be a
+marker inside them).
 
 ## 3. Is its evidence fresh?
 
