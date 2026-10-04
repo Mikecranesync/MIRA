@@ -71,11 +71,15 @@ LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
 # match buys at most one more batch inside UPGRADE_DEADLINE_S (the discovery call
 # itself times out at 50 s and a timeout there loses the match already found).
 # Docs: docs/plans/2026-10-04-manual-truth-table-three-fixes.md (Fix A).
-PREFERRED_LANGUAGE = (os.getenv("MANUAL_PREFERRED_LANGUAGE") or "en").strip().lower()[:2] or "en"
-# Measured from the START of search_manual (provider queries included), so it bounds
-# the whole call inside MANUAL_DISCOVERY_TIMEOUT (50 s). Keep it below that timeout.
-UPGRADE_DEADLINE_S = float(os.getenv("MANUAL_JUDGE_UPGRADE_DEADLINE", "30"))
+# Constants, not env knobs: neither deploy manifest forwards a new variable to mira-ask
+# (Codex #4233 r2 F4), and a knob that silently does nothing is worse than none. The
+# technician's language becomes per-tenant when the Hub carries one.
+PREFERRED_LANGUAGE = "en"
+# Upgrade budget from the START of search_manual (provider queries included), further
+# capped by the caller's own deadline minus RETURN_RESERVE_S when it passes one.
+UPGRADE_DEADLINE_S = 30.0
 UPGRADE_MIN_BATCH_S = 8.0
+RETURN_RESERVE_S = 2.0
 
 # Only these document kinds can ever be "the manual". Enforced in code, not just in the
 # prompt: canary 2026-08-26 accepted a fuse-kit PARTS LIST for a GS1-45P0 as the manual
@@ -554,7 +558,11 @@ def rank(candidates: list[dict]) -> list[dict]:
 
 
 async def judge_candidates(
-    make: str, model: str, candidates: list[dict], started_at: float | None = None
+    make: str,
+    model: str,
+    candidates: list[dict],
+    started_at: float | None = None,
+    deadline_at: float | None = None,
 ) -> list[dict]:
     """Read direct-PDF candidates in batches of ``MAX_CANDIDATES`` — candidates
     that mention the make in their URL/title first, then by heuristic score —
@@ -575,6 +583,9 @@ async def judge_candidates(
     # The upgrade deadline counts from when the whole search began (search_manual
     # passes it): judging that starts late must not run past the discovery timeout.
     t0 = time.monotonic() if started_at is None else started_at
+    upgrade_until = t0 + UPGRADE_DEADLINE_S
+    if deadline_at is not None:  # never outrun the caller's own timeout
+        upgrade_until = min(upgrade_until, deadline_at - RETURN_RESERVE_S)
     while queue:
         batch, queue = queue[:MAX_CANDIDATES], queue[MAX_CANDIDATES:]
         # Searching (no match yet) behaves as before. Upgrading (a match is in hand,
@@ -583,7 +594,7 @@ async def judge_candidates(
         try:
             reads = asyncio.gather(*(_judge_one(make, model, c) for c in batch))
             if upgrading:
-                remaining = UPGRADE_DEADLINE_S - (time.monotonic() - t0)
+                remaining = upgrade_until - time.monotonic()
                 if remaining < UPGRADE_MIN_BATCH_S:
                     reads.cancel()
                     logger.info("judge upgrade skipped: %.1fs left", max(remaining, 0.0))

@@ -36,6 +36,7 @@ import asyncio
 import hmac
 import logging
 import os
+import time
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -243,7 +244,12 @@ async def manual_discovery_search(
         with provider_query_quota(identity), provider_query_budget() as budget:
             try:
                 candidate = await asyncio.wait_for(
-                    search_manual(manufacturer, search_identifier), timeout=timeout_s
+                    search_manual(
+                        manufacturer,
+                        search_identifier,
+                        deadline_at=time.monotonic() + timeout_s,
+                    ),
+                    timeout=timeout_s,
                 )
             finally:
                 logger.info(

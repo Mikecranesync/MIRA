@@ -1009,3 +1009,53 @@ async def test_f1_a_slow_search_still_returns_the_match_inside_the_discovery_tim
     )
     assert got is not None and judge.is_match(got) and got["validated"] is True
     assert asyncio.get_running_loop().time() - started < 1.0
+
+
+async def test_r2_f1_the_callers_shorter_timeout_caps_the_upgrade(monkeypatch):
+    """Codex r2: MANUAL_DISCOVERY_TIMEOUT below the upgrade budget. The caller's own
+    deadline must cap the upgrade so its timeout never discards the match in hand."""
+    import asyncio
+    import time
+
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "1")
+    monkeypatch.setattr(judge, "UPGRADE_DEADLINE_S", 5.0)  # longer than the caller allows
+    monkeypatch.setattr(judge, "UPGRADE_MIN_BATCH_S", 0.01)
+    monkeypatch.setattr(judge, "RETURN_RESERVE_S", 0.1)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    monkeypatch.setattr(
+        judge,
+        "_router",
+        ScriptedRouter({COMMS: (False, "complete", "en"), PROG: (False, "complete", "en")}),
+    )
+    reads = {"n": 0}
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        reads["n"] += 1
+        if reads["n"] > 1:
+            await asyncio.sleep(10)
+        return b"%PDF-1.4 " + url.encode()
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        return EN_TEXT
+
+    async def serper(query, num=10):
+        return [
+            {"link": COMMS, "title": "PowerFlex 525 User Manual"},
+            {"link": PROG, "title": "PowerFlex 525 User Manual"},
+        ]
+
+    async def no_head(url):
+        raise AssertionError("the judged match must be returned, not HEAD-validated")
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", no_head)
+    timeout = 0.5
+    got = await asyncio.wait_for(
+        search_mod.search_manual(
+            "Allen-Bradley", "PowerFlex 525", deadline_at=time.monotonic() + timeout
+        ),
+        timeout=timeout,
+    )
+    assert got is not None and judge.is_match(got) and got["validated"] is True
