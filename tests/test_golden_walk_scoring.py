@@ -24,7 +24,10 @@ def test_untruthful_citation_is_a_violation_not_a_fail():
 
 
 def test_gate_with_a_reason_is_an_honest_stop():
-    assert classify(True, True, False, [], "couldn't confirm it's the official document")[0] == "HONEST_STOP"
+    assert (
+        classify(True, True, False, [], "couldn't confirm it's the official document")[0]
+        == "HONEST_STOP"
+    )
 
 
 def test_ready_manual_without_citation_is_a_fail():
