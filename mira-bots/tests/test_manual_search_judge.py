@@ -881,3 +881,131 @@ def test_english_parameter_table_with_spanish_looking_abbreviations_is_english()
 def test_a_bare_parameter_table_is_unknown_not_spanish():
     table_only = " ".join(f"P{n:03d} Output Freq En Disabled" for n in range(33))
     assert judge.text_language(table_only) is None
+
+
+# ── Codex #4233 r1 remediation ───────────────────────────────────────────────
+
+CHAPTER = "https://cdn.example-oem.com/manuals/model-x/ch6-fault-codes.pdf"
+WHOLE = "https://cdn.example-oem.com/manuals/model-x/user-manual.pdf"
+NOLANG = "https://cdn.example-oem.com/manuals/model-x/sheet.pdf"
+
+
+class ScriptedRouter:
+    """Verdict per URL: (lists_fault_codes, scope, language)."""
+
+    enabled = True
+
+    def __init__(self, script):
+        self.script, self.read = script, []
+
+    async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+        user = messages[-1]["content"]
+        url = next(u for u in self.script if u in user)
+        self.read.append(url)
+        faults, scope, lang = self.script[url]
+        return json.dumps(
+            {
+                "is_manual_for_model": True,
+                "doc_type": "user_manual",
+                "scope": scope,
+                "confidence": 0.9,
+                "lists_fault_codes": faults,
+                "language": lang,
+                "reason": "r",
+            }
+        ), {"provider": "fake"}
+
+
+def _scripted(monkeypatch, script, texts):
+    router = ScriptedRouter(script)
+    monkeypatch.setattr(judge, "_router", router)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        return b"%PDF-1.4 " + url.encode()
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        return texts[data[9:].decode()]
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+    return router
+
+
+async def test_f3_a_fault_chapter_does_not_stop_before_the_whole_manual(monkeypatch):
+    r = _scripted(
+        monkeypatch,
+        {CHAPTER: (True, "section", "en"), WHOLE: (True, "complete", "en")},
+        {CHAPTER: EN_TEXT, WHOLE: EN_TEXT},
+    )
+    ranked = await judge.judge_candidates("ExampleOEM", "Model X", _vol_cands(CHAPTER, WHOLE))
+    assert r.read == [CHAPTER, WHOLE]
+    assert ranked[0]["url"] == WHOLE
+
+
+async def test_f3_unknown_language_does_not_stop_before_a_confirmed_one(monkeypatch):
+    r = _scripted(
+        monkeypatch,
+        {NOLANG: (True, "complete", ""), WHOLE: (True, "complete", "en")},
+        {NOLANG: "P001 P002 F005 4-3", WHOLE: EN_TEXT},
+    )
+    ranked = await judge.judge_candidates("ExampleOEM", "Model X", _vol_cands(NOLANG, WHOLE))
+    assert r.read == [NOLANG, WHOLE]
+    assert ranked[0]["url"] == WHOLE
+
+
+def test_f2_shared_words_do_not_make_portuguese_spanish(monkeypatch):
+    monkeypatch.setattr(judge, "PREFERRED_LANGUAGE", "es")
+    detected = judge.text_language(PT_TEXT * 3)
+    assert detected != "es"
+    assert judge._language_ok({"text_language": detected, "language": "pt"}) is False
+
+
+async def test_f1_a_slow_search_still_returns_the_match_inside_the_discovery_timeout(monkeypatch):
+    """Provider search eats most of the budget, the first batch finds a non-ideal
+    match, the upgrade batch stalls: the call must still return that match before
+    the caller's outer timeout (proportional to the live 25 s / 30 s / 50 s)."""
+    import asyncio
+
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "1")
+    monkeypatch.setattr(judge, "UPGRADE_DEADLINE_S", 0.6)
+    monkeypatch.setattr(judge, "UPGRADE_MIN_BATCH_S", 0.01)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    monkeypatch.setattr(
+        judge,
+        "_router",
+        ScriptedRouter({COMMS: (False, "complete", "en"), PROG: (False, "complete", "en")}),
+    )
+    reads = {"n": 0}
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        reads["n"] += 1
+        if reads["n"] > 1:  # whichever is read second stalls
+            await asyncio.sleep(10)
+        return b"%PDF-1.4 " + url.encode()
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        return EN_TEXT
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+
+    async def slow_serper(query, num=10):
+        await asyncio.sleep(0.5)  # provider search before judging starts
+        return [
+            {"link": COMMS, "title": "PowerFlex 525 User Manual"},
+            {"link": PROG, "title": "PowerFlex 525 User Manual"},
+        ]
+
+    monkeypatch.setattr(search_mod, "_serper_search", slow_serper)
+
+    async def no_head(url):
+        raise AssertionError("the judged match must be returned, not HEAD-validated")
+
+    monkeypatch.setattr(search_mod, "validate_pdf", no_head)
+    started = asyncio.get_running_loop().time()
+    got = await asyncio.wait_for(
+        search_mod.search_manual("Allen-Bradley", "PowerFlex 525"), timeout=1.0
+    )
+    assert got is not None and judge.is_match(got) and got["validated"] is True
+    assert asyncio.get_running_loop().time() - started < 1.0

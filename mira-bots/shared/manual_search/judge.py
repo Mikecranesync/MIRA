@@ -72,6 +72,8 @@ LLM_TIMEOUT = float(os.getenv("MANUAL_JUDGE_LLM_TIMEOUT", "25"))
 # itself times out at 50 s and a timeout there loses the match already found).
 # Docs: docs/plans/2026-10-04-manual-truth-table-three-fixes.md (Fix A).
 PREFERRED_LANGUAGE = (os.getenv("MANUAL_PREFERRED_LANGUAGE") or "en").strip().lower()[:2] or "en"
+# Measured from the START of search_manual (provider queries included), so it bounds
+# the whole call inside MANUAL_DISCOVERY_TIMEOUT (50 s). Keep it below that timeout.
 UPGRADE_DEADLINE_S = float(os.getenv("MANUAL_JUDGE_UPGRADE_DEADLINE", "30"))
 UPGRADE_MIN_BATCH_S = 8.0
 
@@ -484,7 +486,11 @@ def text_language(text: str) -> str | None:
     Deterministic; preferred over the model's guess."""
     words = re.findall(r"[^\W\d_]+", (text or "").lower())
     counts = {lang: sum(1 for w in words if w in sw) for lang, sw in _STOPWORDS.items()}
-    if counts.get(PREFERRED_LANGUAGE, 0) >= 8:
+    preferred = counts.get(PREFERRED_LANGUAGE, 0)
+    others = max(v for k, v in counts.items() if k != PREFERRED_LANGUAGE)
+    # Present as prose AND clearly ahead of any other language: Portuguese and
+    # Spanish share "para"/"que", so presence alone would call one the other.
+    if preferred >= 8 and preferred >= 2 * others:
         return PREFERRED_LANGUAGE
     best = max(counts, key=lambda k: counts[k])
     runner_up = max(v for k, v in counts.items() if k != best)
@@ -510,10 +516,17 @@ def _tri(v: bool | None) -> int:
 
 
 def is_ideal(c: dict) -> bool:
-    """A match nothing in the queue could beat on volume: it lists the fault codes
-    and is not in another language."""
+    """A match nothing in the queue could outrank: lists the fault codes, in the
+    technician's language (confirmed, not merely unknown), as the whole manual. Kept
+    consistent with :func:`rank` — anything rank could still prefer earns the bounded
+    extra batch."""
     j = c.get("judge") or {}
-    return is_match(c) and _fault_list(j) is True and _language_ok(j) is not False
+    return (
+        is_match(c)
+        and _fault_list(j) is True
+        and _language_ok(j) is True
+        and j.get("scope") != "section"
+    )
 
 
 def rank(candidates: list[dict]) -> list[dict]:
@@ -540,7 +553,9 @@ def rank(candidates: list[dict]) -> list[dict]:
     return sorted(candidates, key=key, reverse=True)
 
 
-async def judge_candidates(make: str, model: str, candidates: list[dict]) -> list[dict]:
+async def judge_candidates(
+    make: str, model: str, candidates: list[dict], started_at: float | None = None
+) -> list[dict]:
     """Read direct-PDF candidates in batches of ``MAX_CANDIDATES`` — candidates
     that mention the make in their URL/title first, then by heuristic score —
     until one is judged the manual or ``MAX_TOTAL`` have been read. Returns the
@@ -557,7 +572,9 @@ async def judge_candidates(make: str, model: str, candidates: list[dict]) -> lis
     queue = [c for c in pdfs if relevant(c, make, model)] or pdfs
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
     queue = queue[:MAX_TOTAL]
-    t0 = time.monotonic()
+    # The upgrade deadline counts from when the whole search began (search_manual
+    # passes it): judging that starts late must not run past the discovery timeout.
+    t0 = time.monotonic() if started_at is None else started_at
     while queue:
         batch, queue = queue[:MAX_CANDIDATES], queue[MAX_CANDIDATES:]
         # Searching (no match yet) behaves as before. Upgrading (a match is in hand,
