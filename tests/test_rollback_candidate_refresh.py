@@ -838,7 +838,7 @@ sys.exit(int(os.environ.get({var!r}, "0")))
 """
 
 
-def _scratch_repo(tmp: Path, contract: bool) -> tuple[Path, str, str]:
+def _scratch_repo(tmp: Path, contract: bool, labels: bool = True) -> tuple[Path, str, str]:
     repo = tmp / "repo"
     (repo / "tools").mkdir(parents=True)
     (repo / "mira-hub/db/migrations").mkdir(parents=True)
@@ -861,15 +861,16 @@ def _scratch_repo(tmp: Path, contract: bool) -> tuple[Path, str, str]:
     sql = "ALTER TABLE a ADD COLUMN y int;\n"
     (repo / "mira-hub/db/migrations/002_b.sql").write_text(sql)
     # compat reads labels, never SQL: the same file is valid or not by its label alone
-    (repo / "tools" / "migration_compat.txt").write_text(
-        "".join(
-            f"{label} {hashlib.sha256(text.encode()).hexdigest()} mira-hub/db/migrations/{name}\n"
-            for label, text, name in (
-                ("unreviewed", "CREATE TABLE a (x int);\n", "001_a.sql"),
-                ("contract" if contract else "expand", sql, "002_b.sql"),
+    if labels:  # labels=False leaves the label file missing at head: a compat error, not a verdict
+        (repo / "tools" / "migration_compat.txt").write_text(
+            "".join(
+                f"{label} {hashlib.sha256(text.encode()).hexdigest()} mira-hub/db/migrations/{name}\n"
+                for label, text, name in (
+                    ("unreviewed", "CREATE TABLE a (x int);\n", "001_a.sql"),
+                    ("contract" if contract else "expand", sql, "002_b.sql"),
+                )
             )
         )
-    )
     git("add", "-A")
     git("commit", "-q", "-m", "head")
     return repo, cand, git("rev-parse", "HEAD")
@@ -944,10 +945,16 @@ def _evidence_fixtures(
 
 
 def _run_check(
-    tmp: Path, *, services: list, fixtures_for, contract: bool = False, **env_extra: str
+    tmp: Path,
+    *,
+    services: list,
+    fixtures_for,
+    contract: bool = False,
+    labels: bool = True,
+    **env_extra: str,
 ):
     """Build the scratch repo, then the fixtures for its candidate SHA, then run the step."""
-    repo, cand, head = _scratch_repo(tmp, contract)
+    repo, cand, head = _scratch_repo(tmp, contract, labels)
     designated = [{"sha": cand, "services": services}] if services else []
     env = _env(tmp, fixtures_for(cand), HEAD_SHA=head, REFRESH_BEFORE_HOURS="72", **env_extra)
     (Path(env["RUNNER_TEMP"]) / "designated.json").write_text(
@@ -966,6 +973,21 @@ def _run_check(
         [line.split("\t") for line in results.read_text().splitlines()] if results.exists() else []
     )
     return res, rows, cand
+
+
+def test_a_compat_error_is_reported_as_an_error_not_a_verdict(tmp_path):
+    """A missing or malformed label file stays fail-closed (INVALID: incident, failed run) but
+    must say compat errored, so nobody reads it as a judged contraction (pre-round-7 screen)."""
+    zdir = tmp_path / "z"
+    zdir.mkdir()
+    res, rows, cand = _run_check(
+        tmp_path,
+        services=["mira-hub"],
+        fixtures_for=lambda cand: _evidence_fixtures(zdir, cand, staging_age_h=1),
+        labels=False,
+    )
+    assert [r[2] for r in rows] == ["INVALID"], rows
+    assert rows[0][3].startswith("compat error (exit 2)"), rows[0][3]
 
 
 def test_no_designated_candidate_is_reported_not_failed(tmp_path):

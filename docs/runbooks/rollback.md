@@ -133,8 +133,8 @@ alongside the SQL. An `expand` label is a reviewed claim, so it lands only throu
 when in doubt, use `unreviewed`. Editing a migration changes its sha, so its label must be renewed.
 The existing files were back-filled as `unreviewed` on 2026-10-04, so today every candidate that
 predates a migration is invalid until someone reviews that migration and relabels it. The three
-real candidates (`648896996`, `76887423`, `0994b31a`) are invalid because of `101`, `102` and `104`
-until then. Expect the daily check to raise an incident while production's candidate predates an
+real candidates (`648896996`, `76887423`, `0994b31a`) are invalid until then: `648896996` because of
+`104`, the other two because of `100` to `104`. Expect the daily check to raise an incident while production's candidate predates an
 unreviewed or `contract` migration: a human decides (§5), and it clears once the migration is
 relabelled `expand` or a deploy moves the candidate past it.
 

@@ -227,7 +227,12 @@ jobs:
             rc=0
             compat_out="$(python3 -I tools/rollback_candidates.py compat --candidate "$sha" --head "$HEAD_SHA" --repo . 2>&1)" || rc=$?
             if [ "$rc" != "0" ]; then
-              printf '%s\t%s\tINVALID\t%s\n' "$sha" "$services" "$(echo "$compat_out" | tr '\n\t' '  ' | cut -c1-500)" >> "$RESULTS"
+              # 1 = a migration after it is not labelled expand; anything else is compat failing
+              # (missing or malformed label file, bad history): still INVALID, fail closed, but
+              # never worded as a judged contraction
+              why="$(echo "$compat_out" | tr '\n\t' '  ' | cut -c1-480)"
+              [ "$rc" = "1" ] || why="compat error (exit $rc): $why"
+              printf '%s\t%s\tINVALID\t%s\n' "$sha" "$services" "$why" >> "$RESULTS"
               continue
             fi
             rc=0

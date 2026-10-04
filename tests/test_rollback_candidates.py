@@ -724,6 +724,34 @@ def test_compat_scans_the_ingest_migrations_too(tmp_path):
     assert [h["path"] for h in rc.contracting_since(cand, head, repo)] == [ingest]
 
 
+def test_a_non_ascii_migration_name_is_read_not_skipped(tmp_path):
+    """git quotes such paths in its default output; compat reads NUL-separated output so the
+    file is still seen (pre-round-7 screen: a quoted path used to be skipped as non-.sql)."""
+    repo, cand = _repo(tmp_path)
+    odd = "mira-hub/db/migrations/002_caf\u00e9.sql"
+    head = _land(repo, {odd: "ALTER TABLE a DROP COLUMN x;\n"}, {odd: "contract"})
+    assert [(h["path"], h["kind"]) for h in rc.contracting_since(cand, head, repo)] == [
+        (odd, "contract")
+    ]
+
+
+def test_a_non_ascii_migration_the_candidate_had_is_read_too(tmp_path):
+    repo, _ = _repo(tmp_path)
+    odd = "mira-hub/db/migrations/002_caf\u00e9.sql"
+    cand = _land(repo, {odd: "ALTER TABLE a ADD COLUMN y int;\n"}, {odd: "unreviewed"})
+    (repo / odd).write_text("ALTER TABLE a DROP COLUMN x;\n")
+    _git(repo, "commit", "-q", "-am", "edit")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [(h["path"], h["kind"]) for h in hits] == [(odd, "unlabelled")]
+
+
+def test_a_migration_name_with_whitespace_is_refused_by_the_gate():
+    """The label format separates fields by whitespace, so such a name could never be
+    labelled: the gate refuses it at authoring time (pre-round-7 screen)."""
+    problems = "\n".join(rc.label_problems({}, {"mira-hub/db/migrations/003 add x.sql": "c" * 64}))
+    assert "whitespace" in problems
+
+
 def test_a_file_outside_the_migration_dirs_is_ignored(tmp_path):
     repo, cand = _repo(tmp_path)
     head = _land(repo, {"docs/notes.sql": "DROP TABLE a;\n"}, {})

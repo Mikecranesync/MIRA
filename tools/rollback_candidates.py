@@ -341,7 +341,12 @@ def label_problems(labels: dict[str, tuple[str, str]], files: dict[str, str]) ->
     problems = []
     for path, sha in sorted(files.items()):
         entry = labels.get(path)
-        if entry is None:
+        if any(c.isspace() for c in path):
+            problems.append(
+                f"{path}: migration file names may not contain whitespace ({LABELS_FILE}"
+                " separates its fields by whitespace); rename the file"
+            )
+        elif entry is None:
             problems.append(
                 f"{path} has no label. Add this line to {LABELS_FILE}, choosing expand, contract"
                 f" or unreviewed (only expand keeps rollback candidates valid):\n  unreviewed {sha} {path}"
@@ -357,10 +362,13 @@ def label_problems(labels: dict[str, tuple[str, str]], files: dict[str, str]) ->
 
 
 def _blobs(repo: Path, rev: str) -> dict[str, str]:
-    """``path -> git blob id`` of every migration file in ``rev``."""
+    """``path -> git blob id`` of every migration file in ``rev``. NUL-separated output (-z):
+    git's default output quotes unusual paths, and a quoted path is not ``*.sql``."""
     out = {}
-    for line in _git(repo, "ls-tree", "-r", rev, "--", *MIGRATION_DIRS).splitlines():
-        meta, path = line.split("\t", 1)
+    for entry in _git(repo, "ls-tree", "-r", "-z", rev, "--", *MIGRATION_DIRS).split("\0"):
+        if not entry:
+            continue
+        meta, path = entry.split("\t", 1)
         if path.endswith(".sql"):
             out[path] = meta.split()[2]
     return out
@@ -376,16 +384,24 @@ def _versions_since(candidate: str, head: str, repo: Path) -> dict[str, set[str]
         "--no-renames",
         "--raw",
         "--no-abbrev",
+        "-z",
         "--format=",
         f"{candidate}..{head}",
         "--",
         *MIGRATION_DIRS,
     )
+    # -z: each change is ":<modes> <blobs> <status>" NUL "<path>" NUL, paths never quoted;
+    # with --no-renames every change has exactly one path
     out: dict[str, set[str]] = {}
-    for line in raw.splitlines():
-        if not line.startswith(":"):
+    tokens = raw.split("\0")
+    i = 0
+    while i < len(tokens):
+        meta = tokens[i].lstrip("\n")
+        if not meta.startswith(":"):
+            i += 1
             continue
-        meta, path = line.split("\t", 1)
+        path = tokens[i + 1]
+        i += 2
         new_blob = meta.split()[3]
         if path.endswith(".sql"):
             versions = out.setdefault(path, set())
