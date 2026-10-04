@@ -211,6 +211,15 @@ export function HubShellHost() {
     void loadNotebooks();
   }, [loadNotebooks]);
 
+  // Codex r15–r16 F30: the ONE gate for starting manual-search following. Every
+  // seed (hydration in loadDetail, confirm) goes through seedManualSearch, so
+  // work that completes after unmount can never restart polling. The ref is
+  // set true in effect SETUP (see the unmount effect below), so StrictMode's
+  // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
+  const hostMountedRef = useRef(false);
+  const seedManualSearch = (notebookId: string, status: ManualSearchStatus): void => {
+    if (hostMountedRef.current) manualSearchDriverRef.current?.seed(notebookId, status);
+  };
   const loadDetail = useCallback((sel: HubSelection): Promise<boolean> => detailLoads.start(async (follow) => {
     const token = detailGate.begin();
     detailAbortRef.current?.abort();
@@ -232,7 +241,7 @@ export function HubShellHost() {
     setDetail(res.data);
     // Codex #4195 round 2 F6: hydration follows a running search to completion —
     // seed the SAME driver a confirm uses, keyed on this notebook's status.
-    if (res.data.manualSearch) manualSearchDriverRef.current?.seed(sel.notebookId, res.data.manualSearch);
+    if (res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
     return true;
   }), [detailGate, detailLoads]);
   useEffect(() => {
@@ -286,13 +295,9 @@ export function HubShellHost() {
       },
     });
   }
-  // Codex r14 F29 / r15 F30: stop following when the host unmounts, and keep
-  // it stopped. reset() clears the pending timer and invalidates in-flight
-  // tick continuations (driver epoch); `hostMountedRef` blocks a confirm that
-  // completes after unmount from seeding the driver again. The ref is set true
-  // in effect SETUP (not only initialized), so StrictMode's dev-only
-  // cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
-  const hostMountedRef = useRef(false);
+  // Codex r14 F29 / r15–r16 F30: stop following when the host unmounts, and
+  // keep it stopped. reset() clears the pending timer and invalidates in-flight
+  // tick continuations (driver epoch).
   useEffect(() => {
     hostMountedRef.current = true;
     return () => {
@@ -727,10 +732,10 @@ export function HubShellHost() {
       { searching, ...(startedAt ? { startedAt } : {}) },
       {
         loadDetail,
-        seedDriver: (nbId, status) => {
-          if (hostMountedRef.current) manualSearchDriverRef.current?.seed(nbId, status);
-        },
-        currentSelection: () => selectionRef.current,
+        seedDriver: seedManualSearch,
+        // Once unmounted there is no selection to refresh: the helper reports
+        // "skipped" and never starts a detail GET for an abandoned host.
+        currentSelection: () => (hostMountedRef.current ? selectionRef.current : null),
       },
     );
     // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
