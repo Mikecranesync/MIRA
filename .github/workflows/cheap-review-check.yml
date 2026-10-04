@@ -1,0 +1,90 @@
+name: Cheap Review Check
+
+# SDLC v1 Part B step 6 (docs/architecture/mira-sdlc-v1.md §4.2, §4.5): the cheap
+# review lane's verdict as a HEAD-BOUND GitHub check-run named `Cheap Review`.
+#
+# The lane (`tools/gate7_review.py <PR> --paid --post`) runs on a workstation under
+# the repository owner's token and posts a `[CHEAP-REVIEW]` comment. A personal
+# token cannot create a check-run (only a GitHub App can), so this workflow reacts
+# to that comment and posts the check-run with its own token. Every decision is in
+# `tools/cheap_review_check.py`; this file only reads the PR head and posts.
+#
+# Trust shape:
+#   * `issue_comment` workflows always run the DEFAULT-BRANCH revision of this file,
+#     and the checkout below is that same revision (`github.sha`), so no pull
+#     request can change what decides or posts here.
+#   * The comment is read from the event payload file, never interpolated into a
+#     shell line.
+#   * Only an envelope posted by the repository owner account as a `User` counts
+#     (the review ledger's rule, §4.4), only while its reviewed head is still the PR
+#     head. The comment only wakes the job: the check is RECONCILED from all live
+#     owner reviews of the head (newest full-scope review, plus any failure at or
+#     after it), so a replayed or late older review, a scoped (--paths) PASS, or a
+#     newer scoped PASS can never show success over failure evidence. Full PASS ->
+#     success; any failure -> failure (never neutral or skipped, which branch
+#     protection counts as passing); an unchanged state posts nothing.
+#   * ADVISORY: no branch-protection rule consumes `Cheap Review` yet. Making it
+#     required is a separate settings action, never this file.
+#   * Only `created` comments: an edited comment does not re-decide a posted check.
+
+on:
+  issue_comment:
+    types:
+      - created
+
+concurrency:
+  group: cheap-review-check-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  post:
+    name: Post the head-bound Cheap Review check-run
+    # The owner filter here only spares a runner for comments that could never post;
+    # tools/cheap_review_check.py re-checks login AND account type authoritatively.
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '[CHEAP-REVIEW]') && github.event.comment.user.login == github.repository_owner && github.event.comment.user.type == 'User' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the trusted default-branch revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Decide from the comment and the current PR head
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::pull request number is not numeric"; exit 1; }
+          head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::pull request head is not a 40-hex SHA"; exit 1; }
+          # Live state, read inside this serialized run (Codex F1/F4 on #4221): every PR comment
+          # (fully paginated) so the head's check is RECONCILED from all owner reviews of it, and
+          # the existing Cheap Review check-runs on the head so an unchanged state is a no-op.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | {id, html_url, user: {login: .user.login, type: .user.type}, body}' > "$RUNNER_TEMP/comments.jsonl"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/check-runs?check_name=Cheap%20Review&filter=all&per_page=100" \
+            --jq '.check_runs[] | {id, external_id, conclusion}' > "$RUNNER_TEMP/existing-checks.jsonl"
+          python3 -I tools/cheap_review_check.py decide \
+            --event "$GITHUB_EVENT_PATH" --owner "$OWNER" --current-head "$head" \
+            --comments "$RUNNER_TEMP/comments.jsonl" --existing-checks "$RUNNER_TEMP/existing-checks.jsonl" \
+            --out "$RUNNER_TEMP/check-run.json" --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the check-run
+        if: steps.decide.outputs.post == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url="$(gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" --input "$RUNNER_TEMP/check-run.json" --jq '.html_url')"
+          echo "posted $url" | tee -a "$GITHUB_STEP_SUMMARY"
