@@ -393,6 +393,14 @@ function IdentityProposalPart({
   </Card>;
 }
 
+function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPart, { type: "manual_search_status" }> }) {
+  return <p className="fl-part fl-status" role="status" data-part-type="manual_search_status">
+    {part.running
+      ? `Searching ${part.manufacturer}'s documentation for ${part.model}…`
+      : part.message ?? `Finished searching for the ${part.manufacturer} ${part.model} manual.`}
+  </p>;
+}
+
 export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
   switch (part.type) {
     case "text":
@@ -593,6 +601,9 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "identity_proposal":
       return <IdentityProposalPart part={part} hooks={hooks} />;
+
+    case "manual_search_status":
+      return <ManualSearchStatusPart part={part} />;
 
     case "unknown": {
       // NotebookTraceFrame is transport metadata, preserved on the part for

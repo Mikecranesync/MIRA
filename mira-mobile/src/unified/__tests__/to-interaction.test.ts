@@ -6,12 +6,15 @@ import {
   basisKind,
   citationIndex,
   contextFor,
+  latestManualSearchStatus,
   liveFixture,
   projectsFor,
   sourceFor,
   toInteractionPart,
   toThread,
   toTurn,
+  withManualSearchOverride,
+  withManualSearchOverrides,
   type UnifiedNotebookMeta,
 } from "../to-interaction";
 
@@ -113,11 +116,11 @@ describe("toInteractionPart", () => {
     expect(sourceFor({ ...CITATION, page: null, fileId: "file-9" })).toMatchObject({ kind: "workspace_file", locator: "Check the supply." });
   });
 
-  // T2 (#4175): identity_proposal frames ride the mobile wire as
-  // `{type:"unknown", raw:{kind:"identity_proposal", ...}}` (sse.ts's generic
-  // passthrough, unmodified — it's guarded legacy presentation). Recognizing
-  // it HERE, in the canonical adapter, is what turns the raw "Unrecognized
-  // part" inspection box into the confirm card.
+  // T2 (#4175, #4189): identity_proposal and manual_search_status frames ride
+  // the mobile wire as `{type:"unknown", raw:{kind:"identity_proposal", ...}}`
+  // (sse.ts's generic passthrough, unmodified — it's guarded legacy
+  // presentation). Recognizing them HERE, in the canonical adapter, is what
+  // turns the raw "Unrecognized part" inspection box into the confirm card.
   it("recognizes an identity_proposal raw frame and maps it to a real part", () => {
     expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" } }))
       .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
@@ -128,10 +131,19 @@ describe("toInteractionPart", () => {
       .toEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3", catalogNumber: "DUW01302" });
   });
 
-  it("falls back to unknown for a malformed identity_proposal and any other kind (regression)", () => {
+  it("recognizes a manual_search_status raw frame, running and finished", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true } }))
+      .toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it." } }))
+      .toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it." });
+  });
+
+  it("falls back to unknown for a malformed identity_proposal/manual_search_status and any other kind (regression)", () => {
     // Missing required fields — never half-render a card with blanks.
     expect(toInteractionPart({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } }))
       .toEqual({ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC" } });
+    expect(toInteractionPart({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "X" } }))
+      .toEqual({ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "X" } });
     // A genuinely unknown future kind stays unknown, unchanged.
     expect(toInteractionPart({ type: "unknown", raw: { kind: "future" } })).toEqual({ type: "unknown", raw: { kind: "future" } });
   });
@@ -207,4 +219,161 @@ describe("identity_proposal settling — stale-card guard (#4195)", () => {
   function messages0WithBasis(): AdapterMessage {
     return { id: "b1", role: "assistant", parts: [{ type: "basis", basis: "oem_documentation", label: "Cited from the manual" }], lifecycle: "completed", status: null };
   }
+});
+
+// Codex F4 (#4189): "Searching…" must resolve once the background search
+// settles, even though NotebookScreen (frozen) keeps a completed turn's
+// parts verbatim in `liveTurns` forever. `UnifiedChat`'s bounded re-check
+// overlays the real outcome via these two pure helpers.
+describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () => {
+  const searching: AdapterMessage[] = [
+    { id: "q", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a",
+      role: "assistant",
+      parts: [
+        { type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } },
+        { type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true } },
+      ],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+  ];
+
+  it("finds the most recent manual_search_status part across the thread", () => {
+    const thread = toThread(searching, META);
+    expect(latestManualSearchStatus(thread.turns)).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+  });
+
+  it("returns null when nothing is searching", () => {
+    expect(latestManualSearchStatus(toThread([searching[0]], META).turns)).toBeNull();
+  });
+
+  it("overlays the settled outcome onto the matching part — 'Searching…' resolves to the real result", () => {
+    const thread = toThread(searching, META);
+    const resolved = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    const part = resolved.turns[1].parts.find((p) => p.type === "manual_search_status");
+    expect(part).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    // Every other part on that turn, and the question turn, are untouched.
+    expect(resolved.turns[1].parts[0]).toEqual(thread.turns[1].parts[0]);
+    expect(resolved.turns[0]).toEqual(thread.turns[0]);
+  });
+
+  it("does nothing when the override is null", () => {
+    const thread = toThread(searching, META);
+    expect(withManualSearchOverride(thread, null)).toBe(thread);
+  });
+
+  // Codex round 2 F4: the server NEVER persists manual_search_status (the
+  // SSE frame is deliberately transient — see chat/route.ts's own comment),
+  // so after a reload (or for an identity the live frame never covered —
+  // e.g. the hydration-time GET check, which has no live frame to overlay
+  // onto at all) there is NO existing part to replace. The override must
+  // still render — appended to the last assistant turn — exactly like the
+  // Hub's `withManualSearchStatus`.
+  it("APPENDS a rendered part to the last assistant turn when none exists yet (the realistic post-reload case)", () => {
+    const noFrame: AdapterMessage[] = [
+      { id: "q", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+      { id: "a", role: "assistant", parts: [{ type: "unknown", raw: { kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3" } }], lifecycle: "completed", status: "insufficient_evidence" },
+    ];
+    const thread = toThread(noFrame, META);
+    expect(latestManualSearchStatus(thread.turns)).toBeNull();
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(out.turns[1].parts).toContainEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
+    // The identity_proposal part is untouched, not replaced.
+    expect(out.turns[1].parts).toContainEqual(thread.turns[1].parts[0]);
+  });
+
+  it("appends for an unrelated (different) identity too — the override is the current truth, not a conditional guess", () => {
+    const thread = toThread(searching, META);
+    const out = withManualSearchOverride(thread, { manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
+    // The EXISTING SMC part is untouched (no match to replace)...
+    expect(out.turns[1].parts).toContainEqual(thread.turns[1].parts[1]);
+    // ...and the Rockwell status is appended.
+    expect(out.turns[1].parts).toContainEqual({ type: "manual_search_status", manufacturer: "Rockwell", model: "PowerFlex 525", running: false });
+  });
+
+  it("returns the thread unchanged when there is no assistant turn to append to", () => {
+    const userOnly: AdapterMessage[] = [{ id: "q", role: "user", parts: [{ type: "text", text: "hi", knownCitationIds: [] }], lifecycle: "completed", status: null }];
+    const thread = toThread(userOnly, META);
+    const out = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: true });
+    expect(out).toEqual(thread);
+  });
+});
+
+// Codex round 6 F17 (#4195): a SECOND, different search must not erase the
+// first search's resolved outcome. The root cause had two parts — matching
+// by manufacturer/model identity alone (conflates a retry's two different
+// generations), and `UnifiedChat` keeping only ONE override at a time (see
+// its own `settledManualSearches` map). This file proves the pure-function
+// half: generation-aware matching, and applying several overrides at once.
+describe("withManualSearchOverride / withManualSearchOverrides — generation-aware matching (#4195 round 6 F17)", () => {
+  const twoGenerations: AdapterMessage[] = [
+    { id: "q1", role: "user", parts: [{ type: "text", text: "is this an SMC SS5Y3?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a1",
+      role: "assistant",
+      parts: [{ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-1" } }],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+    { id: "q2", role: "user", parts: [{ type: "text", text: "retry?", knownCitationIds: [] }], lifecycle: "completed", status: null },
+    {
+      id: "a2",
+      role: "assistant",
+      parts: [{ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2" } }],
+      lifecycle: "completed",
+      status: "insufficient_evidence",
+    },
+  ];
+
+  it("a generation-stamped override replaces ONLY its own generation's part, even when another part shares the same manufacturer/model (a retry)", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverride(thread, {
+      manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+    expect(out.turns[1].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-1",
+    });
+    expect(out.turns[3].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+  });
+
+  it("withManualSearchOverrides applies every historical outcome (replace-only) plus the active one (replace-or-append)", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (1).", startedAt: "gen-1" }],
+      { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2" },
+    );
+    expect(out.turns[1].parts).toContainEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (1).", startedAt: "gen-1",
+    });
+    expect(out.turns[3].parts).toContainEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it (2).", startedAt: "gen-2",
+    });
+  });
+
+  it("a historical (replace-only) override never appends when no matching generation exists in the thread — would otherwise leak onto an unrelated turn", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "Siemens", model: "6ES7", running: false, message: "Found it (3).", startedAt: "gen-3" }],
+      null,
+    );
+    expect(out).toEqual(thread);
+  });
+
+  it("the active override wins for its own generation even when a stale historical entry shares the same key", () => {
+    const thread = toThread(twoGenerations, META);
+    const out = withManualSearchOverrides(
+      thread,
+      [{ manufacturer: "SMC", model: "SS5Y3", running: false, message: "STALE.", startedAt: "gen-2" }],
+      { manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2" },
+    );
+    expect(out.turns[3].parts.find((p) => p.type === "manual_search_status")).toEqual({
+      type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true, startedAt: "gen-2",
+    });
+  });
 });

@@ -200,12 +200,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // candidate-basis search may have started it before this confirmation —
   // startManualAcquisition's own claim() already refused the duplicate).
   let searching = false;
-  // Codex round 3 F4: the structured `startedAt` this search's own
-  // generation — resolved by reading the record back after claiming it —
-  // `claim()`'s `started_at` is the DB's own `now()`, never a value this
-  // route invents. Additive on the response; no client in this slice follows
-  // it (search-status following stays on #4189), but it rides through
-  // unchanged for whichever client eventually does.
+  // Codex round 3 F4: the structured `startedAt` the host-side follower keys
+  // its retry budget on (`manual-search-follow.ts`'s generation). Resolved
+  // by reading the record back after claiming it — `claim()`'s `started_at`
+  // is the DB's own `now()`, never a value this route invents.
   let startedAt: string | null = null;
   if (!manualReady && acquisitionEnabled()) {
     const justClaimed = await startManualAcquisition({

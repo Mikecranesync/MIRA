@@ -353,17 +353,34 @@ export class IdentityAlreadyConfirmedError extends Error {
  * the Hub confirm route) — never inferred client-side. `message` is optional,
  * human-readable server copy for the card's result state. `searching`
  * (Codex round 2 F4) is a STRUCTURED signal — never scraped from `message`
- * text — telling the host whether a background search actually started.
+ * text — telling the host whether a background search actually started, so
+ * it knows whether to start following progress (`manual-search-follow.ts`).
  * `startedAt` (Codex round 3 F4) is the just-started search's own
- * generation, when the server can report it. Neither field is followed by
- * any client in this slice (no search-status following here — see #4189);
- * both ride the response additively and are safe for a future follower to
- * use without a server change.
+ * generation, when the server can report it — lets the host seed the
+ * follower with a REAL generation instead of an optimistic, generation-less
+ * one, so the very first poll never has to "adopt" it mid-follow.
  */
 export interface ConfirmIdentityResult {
   readonly manualReady: boolean;
   readonly message?: string;
   readonly searching?: boolean;
+  readonly startedAt?: string;
+}
+
+/**
+ * Background manual-search progress for a proposed (not yet confirmed)
+ * identity (#4160 S6 candidate-basis acquisition). Purely informational —
+ * never implies the manual is usable; that is `ConfirmIdentityResult.manualReady`.
+ * `startedAt` (Codex round 2 F4/F8) identifies the search GENERATION — the
+ * shared follower keys its retry budget on it so a later, different search
+ * never inherits an already-spent budget.
+ */
+export interface ManualSearchStatus {
+  readonly manufacturer: string;
+  readonly model: string;
+  readonly running: boolean;
+  /** Human-readable outcome once the search is no longer running. Server copy — never invented client-side. */
+  readonly message?: string;
   readonly startedAt?: string;
 }
 
@@ -419,6 +436,9 @@ export type InteractionPart =
    *  identity server-side (migration 104 promotes a matching candidate manual). Flattened
    *  (not nested under a `proposal` key) to mirror the Hub's own wire frame 1:1. */
   | ({ readonly type: "identity_proposal" } & IdentityProposal)
+  /** Background manual-search progress for THAT SAME unconfirmed identity (#4160 S6 /
+   *  #4189). Flattened to mirror `ManualSearchStatus`, plus the part's own `type`. */
+  | ({ readonly type: "manual_search_status" } & ManualSearchStatus)
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {

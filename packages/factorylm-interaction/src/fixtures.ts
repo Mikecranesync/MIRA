@@ -382,6 +382,7 @@ const fixtureData: Record<FixtureId, ShellFixture> = {
       turn("turn-identity-proposal", "thread-identity-proposal", "assistant", GENERAL_CONTEXT, [
         { type: "text", text: "I saw an SMC part in your photo." },
         { type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" },
+        { type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true },
         // Regression (T2 acceptance #4): a kind this version doesn't know
         // still falls back to the inspectable "unknown" box.
         { type: "unknown", raw: { kind: "some_future_frame", detail: "not yet known" } },

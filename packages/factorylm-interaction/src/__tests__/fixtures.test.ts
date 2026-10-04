@@ -42,6 +42,7 @@ const REQUIRED_PART_TYPES = [
   "error",
   "followups",
   "identity_proposal",
+  "manual_search_status",
   "unknown",
 ] as const;
 

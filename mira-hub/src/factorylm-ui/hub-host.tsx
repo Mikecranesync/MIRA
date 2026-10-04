@@ -29,6 +29,8 @@ import {
   type IdentityProposal,
   type InteractionPart,
   type InteractionTurn,
+  type ManualSearchFollowState,
+  type ManualSearchStatus,
   type ProjectItem,
   type ShellState,
 } from "@factorylm/interaction";
@@ -53,8 +55,9 @@ import {
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
+import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted } from "./to-interaction";
+import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
@@ -80,7 +83,15 @@ import {
   type HubSelection,
 } from "./hub-host-logic";
 
-type Detail = { notebook: EquipmentNotebook; sources: NotebookSource[]; turns: (PersistedTurn & { createdAt?: string })[] };
+type Detail = {
+  notebook: EquipmentNotebook;
+  sources: NotebookSource[];
+  turns: (PersistedTurn & { createdAt?: string })[];
+  // T2 (#4189 F6): the notebook's CURRENT manual-search status, computed
+  // fresh by the GET route on every read (`currentManualSearchStatus`) —
+  // absent/null on a server that predates it, or when nothing is running.
+  manualSearch?: ManualSearchStatus | null;
+};
 
 /** One in-flight or just-finished exchange the server has not yet returned as a row. */
 type Live = {
@@ -200,6 +211,15 @@ export function HubShellHost() {
     void loadNotebooks();
   }, [loadNotebooks]);
 
+  // Codex r15–r16 F30: the ONE gate for starting manual-search following. Every
+  // seed (hydration in loadDetail, confirm) goes through seedManualSearch, so
+  // work that completes after unmount can never restart polling. The ref is
+  // set true in effect SETUP (see the unmount effect below), so StrictMode's
+  // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
+  const hostMountedRef = useRef(false);
+  const seedManualSearch = (notebookId: string, status: ManualSearchStatus): void => {
+    if (hostMountedRef.current) manualSearchDriverRef.current?.seed(notebookId, status);
+  };
   const loadDetail = useCallback((sel: HubSelection): Promise<boolean> => detailLoads.start(async (follow) => {
     const token = detailGate.begin();
     detailAbortRef.current?.abort();
@@ -219,6 +239,9 @@ export function HubShellHost() {
     if (res.status === 401) { setSignedOut(true); return false; }
     if (!res.data) return false;
     setDetail(res.data);
+    // Codex #4195 round 2 F6: hydration follows a running search to completion —
+    // seed the SAME driver a confirm uses, keyed on this notebook's status.
+    if (res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
     return true;
   }), [detailGate, detailLoads]);
   useEffect(() => {
@@ -236,10 +259,52 @@ export function HubShellHost() {
     setDetail(null);
     setLive(null);
     setFailedBody(null);
+    manualSearchDriverRef.current?.reset();
+    setFollow(null);
     syncThread(sel);
     setSelection(sel);
     writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
+
+  // Codex #4195 round 2 (F4/F6/F8/F9): the Hub side of the ONE shared,
+  // framework-free follower (`manual-search-follow.ts`, packages/factorylm-interaction).
+  // Mobile wires the same state machine directly inside UnifiedChat.tsx's own
+  // effects; the Hub's timer-scheduling is extracted into `manual-search-driver.ts`
+  // (see its header for why — no jsdom/@testing-library/react here). `fetchStatus`
+  // reuses the SAME notebook-detail GET `loadDetail` uses — never a second endpoint.
+  // No `HubShellHost` mount test is attempted for this wiring: this file has no
+  // jsdom/@testing-library/react test here either, so the timer-scheduling
+  // behaviour is proven once, framework-free, in `manual-search-driver.test.ts`;
+  // this block's job is only to plumb that proven driver into useState/loadDetail
+  // (lazy `useRef` init, reset-on-select, seed-on-hydrate, seed-on-confirm),
+  // which `tsc --noEmit` + the driver's own tests cover between them.
+  const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
+  const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
+  if (!manualSearchDriverRef.current) {
+    manualSearchDriverRef.current = createManualSearchDriver({
+      fetchStatus: async (notebookId) => {
+        const sel = selectionRef.current;
+        if (!sel || sel.notebookId !== notebookId) return null;
+        const res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`);
+        return res.data?.manualSearch ?? null;
+      },
+      onStateChange: setFollow,
+      onRefreshSources: () => {
+        const sel = selectionRef.current;
+        if (sel && hostMountedRef.current) void loadDetail(sel);
+      },
+    });
+  }
+  // Codex r14 F29 / r15–r16 F30: stop following when the host unmounts, and
+  // keep it stopped. reset() clears the pending timer and invalidates in-flight
+  // tick continuations (driver epoch).
+  useEffect(() => {
+    hostMountedRef.current = true;
+    return () => {
+      hostMountedRef.current = false;
+      manualSearchDriverRef.current?.reset();
+    };
+  }, []);
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
@@ -290,9 +355,21 @@ export function HubShellHost() {
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread: EMPTY_FIXTURE.thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
-    const thread = { ...base.thread, turns: [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns] };
+    // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
+    // overlays the CURRENT status onto the last assistant turn. The live
+    // in-flight gap (a turn still streaming) is the documented BLOCKED note:
+    // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
+    // frame, so this appears only once `loadDetail` has re-fetched.
+    const turns = withManualSearchStatus(
+      [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns],
+      // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
+      // ticking toward resolution) takes precedence over the raw per-render
+      // read, so an idle Hub still updates once a backgrounded search settles.
+      follow?.status ?? detail.manualSearch ?? null,
+    );
+    const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks, follow]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
@@ -636,15 +713,31 @@ export function HubShellHost() {
       throw new IdentityAlreadyConfirmedError(mfr && mdl ? `This machine is already confirmed as ${mfr} ${mdl}.` : undefined);
     }
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
+    // Codex #4195 round 2 F4 + round 3 F4: a confirm that STARTED a search is
+    // followed the same way hydration is (F6) — seed the SAME driver, no
+    // second timer. `startedAt`, when the server sends it, is that search's
+    // own generation — seeding with it (rather than an optimistic,
+    // generation-less read) means the first poll never has to "adopt" it.
     const searching = data.searching === true;
     const startedAt = typeof data.startedAt === "string" && data.startedAt ? data.startedAt : undefined;
     // Codex round 5 F16 (#4195): bind completion to `notebookId` — the
     // notebook THIS confirm was for, captured BEFORE the await — never to
     // whatever `selectionRef.current` is NOW. A technician who navigated to
-    // a different notebook while this POST was in flight must get no
-    // `loadDetail` refresh under A's identity; see
+    // a different notebook while this POST was in flight must get neither a
+    // `loadDetail` refresh nor a follower seed under A's identity; see
     // `applyConfirmIdentityResult`'s own header for the full race.
-    const refresh = await applyConfirmIdentityResult(notebookId, { loadDetail, currentSelection: () => selectionRef.current });
+    const refresh = await applyConfirmIdentityResult(
+      notebookId,
+      proposal,
+      { searching, ...(startedAt ? { startedAt } : {}) },
+      {
+        loadDetail,
+        seedDriver: seedManualSearch,
+        // Once unmounted there is no selection to refresh: the helper reports
+        // "skipped" and never starts a detail GET for an abandoned host.
+        currentSelection: () => (hostMountedRef.current ? selectionRef.current : null),
+      },
+    );
     // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
     // not apply, the next question would still use the old sources. Say so
     // instead of claiming the manual is ready to answer from.

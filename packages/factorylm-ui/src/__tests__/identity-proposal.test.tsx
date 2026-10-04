@@ -1,11 +1,12 @@
 /**
- * T2 (#4175) — the identity_proposal confirm card.
+ * T2 (#4175, #4189) — the identity_proposal confirm card and the
+ * manual_search_status progress line.
  *
- * Before this: `identity_proposal` was not part of the `InteractionPart`
- * union, so a server frame of this kind fell through `PartRenderer`'s
- * `unknown` case and rendered as a raw "Unrecognized part (preserved for
- * inspection)" box — a technician has no way to confirm a photographed part.
- * See the `identity-proposal` fixture.
+ * Before this: `identity_proposal` and `manual_search_status` were not part
+ * of the `InteractionPart` union, so a server frame of either kind fell
+ * through `PartRenderer`'s `unknown` case and rendered as a raw
+ * "Unrecognized part (preserved for inspection)" box — a technician has no
+ * way to confirm a photographed part. See the `identity-proposal` fixture.
  *
  * Run: cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/identity-proposal.test.tsx
  */
@@ -198,6 +199,13 @@ describe("identity_proposal — settled against the notebook's CURRENT identity 
     view.click(view.buttonNamed("Use its manuals")!);
     await view.flush();
     expect(view.container.textContent).toContain("This machine is already confirmed.");
+  });
+});
+
+describe("manual_search_status — searching progress (#4189)", () => {
+  it('renders "Searching <maker>\'s documentation for <part>…" while running', () => {
+    const view = render();
+    expect(view.container.textContent).toContain("Searching SMC's documentation for SS5Y3-DUW01302…");
   });
 });
 

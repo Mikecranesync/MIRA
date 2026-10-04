@@ -11,8 +11,8 @@
 // (`useChatUiChoice`) — a real, reachable configuration, not a hypothetical.
 //
 // A confirm started on notebook A, resolving AFTER the technician has
-// switched to notebook B this way, must not refresh B's scope, or render
-// A's "Confirmed." card on B's thread.
+// switched to notebook B this way, must not seed B's follower, refresh B's
+// scope, or render A's "Searching…"/"Confirmed." card on B's thread.
 //
 // Light-review remediation (#4195, notebook-switch class — PR comment
 // https://github.com/Mikecranesync/MIRA/pull/4195#issuecomment-5968697358):
@@ -21,10 +21,14 @@
 // structurally impossible" — `UnifiedChat` now remounts a fresh
 // `UnifiedChatForNotebook` instance keyed on `notebookId` on every switch,
 // plus an `aliveRef` guard for an old (now-unmounted) instance's own
-// in-flight promises. The tests below cover what remounting alone does NOT
-// already fix: `onSend`'s `confirmedScope` is captured BEFORE an
+// in-flight promises. The two tests below cover what remounting alone does
+// NOT already fix: (1) `onSend`'s `confirmedScope` is captured BEFORE an
 // `await attachments.compose(...)`, so a compose that resolves on the dead
-// instance must be DROPPED, not delivered under anyone's handlers.
+// instance must be DROPPED, not delivered under anyone's handlers; (2)
+// `resolvedThread` is computed during RENDER from `follow`/
+// `settledManualSearches`, so the very FIRST render of the new notebook must
+// already be correct — proving a fresh instance has nothing to leak, where
+// the old reset-in-a-passive-effect approach had a window where it did.
 //
 // Run: cd mira-mobile && bunx vitest run src/screens/__tests__/unified-chat-notebook-switch-race
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -53,11 +57,13 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
-const { confirmIdentityProposal, getNotebookDetail } = vi.hoisted(() => ({
+const { confirmIdentityProposal, getNotebookDetail, fetchManualSearchStatus } = vi.hoisted(() => ({
   confirmIdentityProposal: vi.fn(),
   getNotebookDetail: vi.fn(async () => ({ notebook: {}, sources: [], turns: [], threads: [], photos: [] })),
+  fetchManualSearchStatus: vi.fn(async (_notebookId: string, _opts?: { threadId?: string }) => null as unknown),
 }));
 vi.mock("../../api/identity-confirm", () => ({ confirmIdentityProposal }));
+vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus }));
 vi.mock("../../api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/resources")>();
   return { ...real, getNotebookDetail };
@@ -90,6 +96,26 @@ vi.mock("../../unified/attachments", async (importOriginal) => {
   };
 });
 
+// Spy on every "hydrate" action dispatched into the shell reducer (forwarding
+// to the REAL reducer — this is a recorder, not a stub). `state.thread` only
+// ever reaches the DOM through this dispatch, which fires from a `useEffect`,
+// not during render — so the FINAL committed DOM, read after React's test
+// `act()` has fully converged, can look correct even when an EARLIER hydrate
+// in the same convergence briefly carried a stale/leaked thread. The MEDIUM
+// test below inspects the full dispatched SEQUENCE, not just the final DOM,
+// to catch that transient.
+const { hydrateThreads } = vi.hoisted(() => ({ hydrateThreads: [] as unknown[] }));
+vi.mock("@factorylm/interaction", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@factorylm/interaction")>();
+  return {
+    ...real,
+    shellReducer: (state: Parameters<typeof real.shellReducer>[0], action: Parameters<typeof real.shellReducer>[1]) => {
+      if (action.type === "hydrate") hydrateThreads.push(action.data.thread);
+      return real.shellReducer(state, action);
+    },
+  };
+});
+
 import { UnifiedChat, type UnifiedChatProps } from "../UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
 
@@ -106,9 +132,10 @@ const PROPOSAL_TURN_A: NotebookServerTurn = {
 };
 
 /** B's own, unrelated turn — a plain answered question with NO identity
- *  proposal. Gives B a real assistant turn/answer to assert against, so a
- *  scope/send test can confirm B renders its own state and nothing bleeds
- *  over from A's (discarded) confirm. */
+ *  proposal. Exists so `withManualSearchOverride` has an assistant turn to
+ *  (wrongly) append a leaked A status to, if the follow-reset were missing;
+ *  an empty turn list gives a leak nowhere to render and the test would
+ *  pass regardless of the fix. */
 const PLAIN_TURN_B: NotebookServerTurn = {
   id: "b1",
   question: "what voltage does this run at?",
@@ -145,6 +172,8 @@ afterEach(() => {
   confirmIdentityProposal.mockReset();
   getNotebookDetail.mockReset();
   getNotebookDetail.mockResolvedValue({ notebook: {}, sources: [], turns: [], threads: [], photos: [] });
+  fetchManualSearchStatus.mockReset();
+  fetchManualSearchStatus.mockResolvedValue(null);
   composeMock.mockReset();
   composeMock.mockImplementation(async (text: string) => ({ question: text }));
   hasCarriedMock.mockReset();
@@ -152,10 +181,11 @@ afterEach(() => {
   hasRetainedMock.mockReset();
   hasRetainedMock.mockReturnValue(false);
   stashForHandoffMock.mockReset();
+  hydrateThreads.length = 0;
 });
 
 describe("UnifiedChat — a notebook switch mid-confirm must not corrupt the NEW notebook (#4195 round 5 F16)", () => {
-  it("A's confirm resolving after switching to B refreshes nothing for B, and B shows its own (empty) state", async () => {
+  it("A's confirm resolving after switching to B seeds nothing on B, refreshes nothing for B, and B shows its own (empty) state", async () => {
     const pendingConfirm = deferred<{
       manualReady: boolean;
       searching: boolean;
@@ -173,6 +203,7 @@ describe("UnifiedChat — a notebook switch mid-confirm must not corrupt the NEW
     expect(confirmIdentityProposal).toHaveBeenCalledWith(NB_A, { manufacturer: "SMC", model: "SS5Y3-DUW01302" });
 
     const detailCallsBeforeSwitch = getNotebookDetail.mock.calls.length;
+    const aStatusCallsBeforeSwitch = fetchManualSearchStatus.mock.calls.filter((c) => c[0] === NB_A).length;
 
     // The technician switches to notebook B — in place, same component
     // instance (NotebooksTab's `onOpenNotebook`, no key-forced remount).
@@ -183,14 +214,66 @@ describe("UnifiedChat — a notebook switch mid-confirm must not corrupt the NEW
     pendingConfirm.resolve({ manualReady: false, searching: true, startedAt: "gen-a", message: "Confirmed. I'll look for its manual." });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    // B must show NOTHING from A: no "Confirmed." message, no leftover
-    // identity-proposal confirm button either.
+    // B must show NOTHING from A: no "Searching…" card, no "Confirmed."
+    // message, no leftover identity-proposal confirm button either.
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
     expect(screen.queryByText(/Confirmed\. I'll look for its manual\./)).toBeNull();
     expect(screen.queryByRole("button", { name: "Use its manuals" })).toBeNull();
 
     // The discarded confirm must not have refreshed ANY scope (neither A's,
     // since it was abandoned, nor B's, since B never confirmed anything).
     expect(getNotebookDetail.mock.calls.length).toBe(detailCallsBeforeSwitch);
+    // Nor made a SECOND (authoritative-re-check) call for A beyond the one
+    // ordinary mount-time hydration check already made before the switch —
+    // that would be the discarded confirm's own re-check firing anyway.
+    expect(fetchManualSearchStatus.mock.calls.filter((c) => c[0] === NB_A).length).toBe(aStatusCallsBeforeSwitch);
+  });
+
+  it("returning to A afterward hydrates normally from A's own authoritative status — not the abandoned confirm", async () => {
+    const pendingConfirm = deferred<{
+      manualReady: boolean;
+      searching: boolean;
+      startedAt?: string;
+      message: string;
+    }>();
+    confirmIdentityProposal.mockReturnValue(pendingConfirm.promise);
+
+    const view = render(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    const confirmButton = await screen.findByRole("button", { name: "Use its manuals" });
+    fireEvent.click(confirmButton);
+    await act(async () => { await Promise.resolve(); });
+
+    view.rerender(<UnifiedChat {...props(NB_B, [])} />);
+    await act(async () => { await Promise.resolve(); });
+    pendingConfirm.resolve({ manualReady: false, searching: true, startedAt: "gen-a", message: "Confirmed. I'll look for its manual." });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    // Back to A — a fresh hydration check (NOT a leftover from the abandoned
+    // confirm), reporting A's OWN authoritative, already-settled status.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-a" });
+    view.rerender(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByText("Found it.")).toBeTruthy();
+  });
+
+  it("a search already FOLLOWING for A (no confirm in flight) does not survive a switch to B — B's hydration reports nothing and B shows nothing", async () => {
+    // A hydrates with a search already running (e.g. a candidate search
+    // started by an earlier turn, unrelated to any confirm click).
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a" });
+    const view = render(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // Switch to B — same instance, in place. B reports nothing running. B
+    // has its OWN unrelated turn (so a leaked card would have somewhere to
+    // render if the reset were missing — see PLAIN_TURN_B's own comment).
+    fetchManualSearchStatus.mockResolvedValueOnce(null);
+    view.rerender(<UnifiedChat {...props(NB_B, [PLAIN_TURN_B])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByText("24VDC.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
   });
 
   it("cheap-review r3 (#4195): A's scope refresh landing after the switch to B never rides B's next send", async () => {
@@ -300,5 +383,60 @@ describe("UnifiedChat — a notebook switch mid-confirm must not corrupt the NEW
     const onSendB = propsB.handlers.onSend as ReturnType<typeof vi.fn>;
     expect(onSendA).not.toHaveBeenCalled();
     expect(onSendB).not.toHaveBeenCalled();
+  });
+
+  it("MEDIUM (light review #4195): B's FIRST render after an in-place switch from A must not carry A's search-status overlay — not even transiently, before the reset effect would have fixed it up", async () => {
+    // A hydrates with a search already running.
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a" });
+    const view = render(<UnifiedChat {...props(NB_A, [PROPOSAL_TURN_A])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    const dispatchesBeforeSwitch = hydrateThreads.length;
+
+    // Switch to B — same call RTL's other tests use (wrapped in `act`
+    // internally). `resolvedThread` is computed during RENDER from
+    // `follow`/`settledManualSearches`; the OLD approach only cleared those
+    // in a passive `useEffect` AFTER that render already committed a
+    // "hydrate" dispatch built from the stale, pre-reset values — a dispatch
+    // this spy can see even though React's test `act()` keeps flushing
+    // until the NEXT (corrective) dispatch lands, so the FINAL DOM alone
+    // would look clean regardless of this bug (checked `screen.queryByText`
+    // right after `rerender` with no `await` first, confirming it does NOT
+    // distinguish fixed from unfixed here — the sequence below does). A
+    // fresh `UnifiedChatForNotebook` instance has nothing to carry: its
+    // `follow`/`settledManualSearches` start at their `useState` defaults in
+    // the SAME synchronous render that first mounts it, so there is no
+    // earlier, stale dispatch to produce in the first place.
+    fetchManualSearchStatus.mockResolvedValueOnce(null);
+    view.rerender(<UnifiedChat {...props(NB_B, [PLAIN_TURN_B])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    const afterSwitch = hydrateThreads.slice(dispatchesBeforeSwitch);
+    expect(afterSwitch.length).toBeGreaterThan(0);
+    for (const thread of afterSwitch) {
+      expect(JSON.stringify(thread)).not.toContain("SS5Y3-DUW01302");
+    }
+    expect(screen.getByText("24VDC.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+  });
+
+  it("control (#4195): switching THREADS within the SAME notebook does not remount — today's follower-survives-a-thread-switch behavior is unchanged", async () => {
+    const threadProps = (threadId: string, turns: NotebookServerTurn[]): UnifiedChatProps => ({
+      ...props(NB_A, turns),
+      meta: { notebookId: NB_A, threadId, title: NB_A, identityConfirmed: false },
+    });
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-a" });
+    const view = render(<UnifiedChat {...threadProps("notebook-nb-a:thread-1", [PROPOSAL_TURN_A])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // Same notebook, different thread: the `UnifiedChat` wrapper keys ONLY on
+    // notebookId, so this is the SAME `UnifiedChatForNotebook` instance —
+    // its `follow` state (and the in-flight search it reflects) must
+    // survive, exactly as it did before this fix.
+    view.rerender(<UnifiedChat {...threadProps("notebook-nb-a:thread-2", [PROPOSAL_TURN_A])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
   });
 });
