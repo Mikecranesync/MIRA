@@ -130,8 +130,8 @@ column or table, a type change, `SET NOT NULL`, any dropped object, including in
 `EXECUTE` strings) is labelled `CONTRACTING`; the rest is `UNPROVEN`. Both make the candidate invalid.
 
 This reads files added on `main` after the candidate whether or not `apply-migrations.yml` has applied
-them yet. **Measured on 2026-10-04:** 89 of the 123 existing migration files are not provably
-expand-only (most use `DO` blocks, functions, triggers or RLS), and all three real candidates
+them yet. **Measured on 2026-10-04:** 108 of the 123 existing migration files are not provably
+expand-only (most use `DO` blocks, functions, triggers, RLS or indexes on existing tables), and all three real candidates
 (`648896996`, `76887423`, `0994b31a`) are already invalid because of `101`, `102` and `104`
 (trigger and function changes). Expect the daily check to raise an incident whenever production's
 candidate predates such a migration; a human decides, and it clears once a deploy moves the
