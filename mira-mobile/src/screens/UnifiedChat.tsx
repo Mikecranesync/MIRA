@@ -31,6 +31,7 @@ import {
   advanceManualSearchFollow,
   observeLiveManualSearchFrame,
   reseedManualSearchFollow,
+  type ManualSearchFollowResult,
   type ManualSearchFollowState,
   type ManualSearchStatus,
 } from "@factorylm/interaction";
@@ -68,6 +69,148 @@ import {
   type UnifiedNotebookMeta,
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
+
+/**
+ * The notebook's manual-search progress — ONE owned state machine instead of
+ * three independent readers of `fetchManualSearchStatus` (#4195 Codex rounds
+ * 8–11: F23, F23 follow-up, F25, F26 — the same defect class four times).
+ * The old shape had a mount-time hydration effect, the periodic poll-chain
+ * effect, and the confirm path's own "authoritative" read all writing into
+ * one `follow` state, each independently patched with its own epoch check —
+ * a counter bumped on every concrete read could not tell "several null
+ * polls on the SAME generation" (must never invalidate a slow, still-
+ * relevant read — F25) apart from "a live frame started a DIFFERENT
+ * generation" (must invalidate — F23), so each round's fix for one broke
+ * the other.
+ *
+ * Modeled on the Hub's `mira-hub/src/factorylm-ui/manual-search-driver.ts`
+ * (seed/reset/fenced tick), extended with `observeLive` for mobile's live
+ * SSE input (the Hub has none) and `probe` for an immediate, one-shot,
+ * authoritative read — used for mount hydration (nothing tracked yet) and
+ * for the confirm path's post-confirm reconciliation when the confirm route
+ * reports `searching:false` (something may already be tracked: a stale
+ * resolved/unresolved outcome this reconciles against).
+ *
+ * Fencing is GENERATION-KEY based, not a counter: every dispatched read (a
+ * probe, or a periodic tick) captures the driver's then-current generation
+ * key. At resolution, the read is discarded ONLY when that key no longer
+ * matches (tracking has since moved to a DIFFERENT generation) AND the
+ * read's own reported generation doesn't match the new current key either
+ * (it isn't reporting on whatever is now current). Otherwise it is always
+ * applied, however late it lands, however many intervening null ticks
+ * happened in between — because `reseedManualSearchFollow` /
+ * `advanceManualSearchFollow` already reconcile a SAME-generation read
+ * correctly (never regressing a resolved/unresolved outcome with a stale
+ * `running`, never letting a null blank a still-relevant status). A read
+ * for the SAME generation is simply the latest word on that generation,
+ * regardless of dispatch order — that is what makes F26 (an older in-flight
+ * poll must not clobber a fresher confirmation read for the SAME
+ * generation) come out right with no special case at all.
+ */
+interface MobileManualSearchDriver {
+  /** An authoritative read already in hand: hydration's own seed, and the
+   *  confirm path's optimistic `searching:true` start. */
+  seed(read: ManualSearchStatus): void;
+  /** A live SSE frame — routed through `observeLiveManualSearchFrame`'s own
+   *  stale-replay guard (see that function's header). */
+  observeLive(read: ManualSearchStatus): void;
+  /** Fetch ONE authoritative status right now and reconcile with it if
+   *  present. Ends quietly on `null`/error — never retries on its own; the
+   *  periodic tick (started by `seed`/`observeLive` when the result is
+   *  `following`) owns re-checking. */
+  probe(): void;
+  /** Stop any pending timer and drop tracked state (unmount only — a
+   *  notebook switch already remounts the whole component that owns this
+   *  driver; see the `UnifiedChat` wrapper below). */
+  reset(): void;
+}
+
+/** Mirrors `ManualSearchFollowState.key`'s documented shape
+ *  (`manual-search-follow.ts`): `` `${notebookId}|${generation}` ``. Kept
+ *  local rather than imported — the shared state machine's own `followKey`
+ *  is a private helper, and this format is part of that type's public
+ *  contract, so reconstructing it here is not reinventing private logic. */
+function manualSearchKey(notebookId: string, generation: string | undefined): string {
+  return `${notebookId}|${generation ?? ""}`;
+}
+
+function createMobileManualSearchDriver(deps: {
+  readonly notebookId: string;
+  readonly fetchStatus: () => Promise<ManualSearchStatus | null>;
+  readonly onStateChange: (state: ManualSearchFollowState | null) => void;
+  readonly onRefreshSources: () => void;
+  readonly isAlive: () => boolean;
+  readonly delayMs?: number;
+}): MobileManualSearchDriver {
+  const { notebookId, fetchStatus, onStateChange, onRefreshSources, isAlive } = deps;
+  const delayMs = deps.delayMs ?? 4000;
+  let state: ManualSearchFollowState | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function currentKey(): string {
+    return state?.key ?? manualSearchKey(notebookId, undefined);
+  }
+  function clearTimer(): void {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+  function commit(result: ManualSearchFollowResult): void {
+    const changed = state !== result.state;
+    state = result.state;
+    if (changed) {
+      onStateChange(state);
+      if (state.phase === "following") scheduleTick();
+    }
+    if (result.refreshSources) onRefreshSources();
+  }
+  /** The ONE self-perpetuating setTimeout chain (not a React effect — see
+   *  this module's own header for why a dependency-driven effect cannot do
+   *  this fencing correctly). Each tick reschedules the next one from
+   *  inside its own resolution, only while still `following`. */
+  function scheduleTick(): void {
+    clearTimer();
+    if (!state || state.phase !== "following") return;
+    const capturedKey = state.key;
+    timer = setTimeout(() => {
+      timer = null;
+      void fetchStatus()
+        .then((read) => {
+          if (!isAlive() || !state) return;
+          if (currentKey() !== capturedKey && (!read || manualSearchKey(notebookId, read.startedAt) !== currentKey())) return;
+          commit(advanceManualSearchFollow(state, notebookId, read));
+        })
+        .catch(() => {
+          if (!isAlive() || !state || currentKey() !== capturedKey) return;
+          commit(advanceManualSearchFollow(state, notebookId, null));
+        });
+    }, delayMs);
+  }
+
+  return {
+    seed(read) {
+      commit(reseedManualSearchFollow(state, notebookId, read));
+    },
+    observeLive(read) {
+      commit(observeLiveManualSearchFrame(state, notebookId, read));
+    },
+    probe() {
+      const capturedKey = currentKey();
+      void fetchStatus()
+        .then((read) => {
+          if (!isAlive() || !read) return; // ends quietly — nothing to reconcile.
+          if (currentKey() !== capturedKey && manualSearchKey(notebookId, read.startedAt) !== currentKey()) return;
+          commit(reseedManualSearchFollow(state, notebookId, read));
+        })
+        .catch(() => { /* ends quietly — never retries on its own */ });
+    },
+    reset() {
+      clearTimer();
+      state = null;
+    },
+  };
+}
 
 /** What the unified ROOT supplies when the shell owns the whole app: the
  *  notebook/machine tree, item opening, and host-owned navigation controls. */
@@ -251,11 +394,6 @@ function UnifiedChatForNotebook({
   // the identical event twice is still wasted work — skip it outright when
   // nothing about the live frame has changed since the last observation.
   const lastLiveFrameKeyRef = useRef<string | null>(null);
-  // Codex r8 F23 (#4195): bumped whenever newer input (a live frame, or a
-  // confirm's own status read) advances the tracked search. An async status
-  // read captures it at request time and is dropped if it changed meanwhile,
-  // so a slow, older answer can never replace a newer search.
-  const searchInputEpochRef = useRef(0);
   // Codex round 5 F16 (#4195): a notebook switch that keeps THIS component
   // mounted (`NotebooksTab.tsx`'s `onOpenNotebook` — a Sensor READ resolving
   // a different machine changes the `id`/`notebookId` prop in place, with no
@@ -368,101 +506,66 @@ function UnifiedChatForNotebook({
     }
   }, [notebookId, attachmentThreadId]);
 
+  // `attachmentThreadId`/`refreshPromotedScope` can change without a remount
+  // (a thread switch within the SAME notebook — see the reset effect above's
+  // own comment); the driver below is constructed ONCE per notebook (lazy
+  // `useRef`), so it reads both through a ref kept fresh every render,
+  // rather than closing over a value that could go stale.
+  const attachmentThreadIdRef = useRef(attachmentThreadId);
+  attachmentThreadIdRef.current = attachmentThreadId;
+  const refreshPromotedScopeRef = useRef(refreshPromotedScope);
+  refreshPromotedScopeRef.current = refreshPromotedScope;
+
+  // The ONE owned manual-search state machine for this notebook (see
+  // `createMobileManualSearchDriver`'s own header above). Created once, lazily
+  // — a notebook switch remounts this whole component (the `UnifiedChat`
+  // wrapper's `key`), so there is never a live-across-notebooks instance to
+  // reset in place.
+  const manualSearchDriverRef = useRef<MobileManualSearchDriver | null>(null);
+  if (!manualSearchDriverRef.current && notebookId) {
+    manualSearchDriverRef.current = createMobileManualSearchDriver({
+      notebookId,
+      fetchStatus: () => fetchManualSearchStatus(notebookId, { threadId: attachmentThreadIdRef.current ?? undefined }),
+      onStateChange: setFollow,
+      onRefreshSources: () => void refreshPromotedScopeRef.current(),
+      isAlive: () => aliveRef.current,
+    });
+  }
+  useEffect(() => () => manualSearchDriverRef.current?.reset(), []);
+
   // Trigger: a LIVE frame (this session's SSE) reporting a running search.
-  // Codex round 3 F6: `prev ?? startFollow(...)` was a blanket no-op once
-  // ANYTHING was already tracked — a later, different search (a different
-  // confirmed identity) in the same thread never started following once the
-  // first one resolved or exhausted its budget.
-  //
-  // Codex round 5 F15 (#4195): this is `observeLiveManualSearchFrame`, NOT
-  // `reseedManualSearchFollow` — a live frame is a DIFFERENT shape of input
-  // than a GET/confirm read. `baseThread.turns` can re-deliver the SAME
-  // historical frame to this effect on an UNRELATED rerender (a new `meta`
-  // object with identical content), and now that the chat route stamps a
-  // real generation on every live frame (round 5), a same-generation replay
-  // that still says `running: true` would read as "still running" under
-  // `reseedManualSearchFollow` and reopen an already-settled/exhausted
-  // follow. `observeLiveManualSearchFrame` treats any same-generation live
-  // read as a no-op and only starts following a generation this effect has
-  // not seen before — which is exactly what lets a genuinely NEW candidate
-  // search (a different generation) start following even though an older
-  // one already settled.
+  // Codex round 5 F15 (#4195): routed through `observeLiveManualSearchFrame`,
+  // NOT a GET/confirm-shaped seed — a live frame is a DIFFERENT shape of
+  // input. `baseThread.turns` can re-deliver the SAME historical frame to
+  // this effect on an UNRELATED rerender (a new `meta` object with identical
+  // content), and a same-generation replay that still says `running: true`
+  // must stay a no-op rather than reopening an already-settled/exhausted
+  // follow — `observeLiveManualSearchFrame` (via `driver.observeLive`)
+  // guarantees that, while still letting a genuinely NEW candidate search (a
+  // different generation) start following even though an older one already
+  // settled.
   useEffect(() => {
     const live = latestManualSearchStatus(baseThread.turns);
     if (!live || !live.running || !notebookId) return;
     const liveKey = `${notebookId}|${live.manufacturer}|${live.model}|${live.startedAt ?? ""}`;
     if (lastLiveFrameKeyRef.current === liveKey) return;
     lastLiveFrameKeyRef.current = liveKey;
-    searchInputEpochRef.current += 1;
-    setFollow((prev) => {
-      const result = observeLiveManualSearchFrame(prev, notebookId, live);
-      if (result.refreshSources) void refreshPromotedScope();
-      return result.state;
-    });
-  }, [baseThread, notebookId, refreshPromotedScope]);
+    manualSearchDriverRef.current?.observeLive(live);
+  }, [baseThread, notebookId]);
 
-  // Trigger: hydration / notebook change. The server never persists this
-  // status, so the ONLY way to know "is a search running" after a reload is
-  // to ask — reusing the existing detail-fetch seam (`fetchManualSearchStatus`,
-  // the SAME GET route `getNotebookDetail` already calls), once.
+  // Trigger: mount, or a thread switch within the same notebook (manual
+  // search can be thread-scoped — matches the old hydration effect's own
+  // `attachmentThreadId` dependency). The server never persists this
+  // status, so the ONLY way to know "is a search running" is to ask —
+  // reusing the existing detail-fetch seam (`fetchManualSearchStatus`, the
+  // SAME GET route `getNotebookDetail` already calls). This is the chain's
+  // own one-shot PROBE: it reconciles with whatever is current (nothing
+  // tracked yet, or a stale resolved/unresolved outcome from before this
+  // thread/mount) and, if the result is `following`, the driver's own timer
+  // chain takes over from there — there is no separate poll effect.
   useEffect(() => {
-    if (!notebookId) return;
-    let cancelled = false;
-    const epoch = searchInputEpochRef.current;
-    void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
-      .then((status) => {
-        if (cancelled || !status || searchInputEpochRef.current !== epoch) return;
-        setFollow((prev) => {
-          const result = reseedManualSearchFollow(prev, notebookId, status);
-          if (result.refreshSources) void refreshPromotedScope();
-          return result.state;
-        });
-      })
-      .catch(() => {
-        // Best-effort: no status this time just means nothing renders yet.
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally NOT `follow`: a one-shot hydration check, not a re-check loop.
-  }, [notebookId, attachmentThreadId, refreshPromotedScope]);
-
-  // The bounded re-check itself (NOT a polling framework — one setTimeout
-  // chain, capped attempts via the shared follower, cleared on unmount/dep
-  // change). Dependencies are PRIMITIVES ONLY (key/attempts/phase, never
-  // `baseThread`): an unrelated rerender must never cancel an in-flight read
-  // without consuming the attempt it was about to spend (Codex F8's "at most
-  // five requests across unrelated rerenders").
-  useEffect(() => {
-    if (!follow || follow.phase !== "following" || !notebookId) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void fetchManualSearchStatus(notebookId, { threadId: attachmentThreadId ?? undefined })
-        .then((status) => {
-          if (cancelled) return;
-          // Codex r9 (#4195 F23): a poll that returns a concrete status is
-          // newer than any status read started before it, so it supersedes
-          // in-flight hydration and confirm reads exactly as a live frame
-          // does. A null poll carries no information (Codex r10 F25): it
-          // spends budget but must not discard a valid delayed result.
-          if (status) searchInputEpochRef.current += 1;
-          setFollow((prev) => {
-            if (!prev) return prev;
-            const result = advanceManualSearchFollow(prev, notebookId, status);
-            if (result.refreshSources) void refreshPromotedScope();
-            return result.state;
-          });
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setFollow((prev) => (prev ? advanceManualSearchFollow(prev, notebookId, null).state : prev));
-        });
-    }, 4000);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [follow?.key, follow?.attempts, follow?.phase, notebookId, attachmentThreadId, refreshPromotedScope]);
+    manualSearchDriverRef.current?.probe();
+  }, [notebookId, attachmentThreadId]);
 
   // Open shell layers join the app's one BACK stack (lib/transient-layer.ts):
   // hardware BACK closes the top layer before any tab navigation happens.
@@ -763,51 +866,32 @@ function UnifiedChatForNotebook({
             // confirm. Mirrors the Hub's own `loadDetail` call after confirm
             // (`hub-host.tsx`'s `onConfirmIdentity`).
             await refreshPromotedScope();
-            // Codex round 4 F6: reconcile the follower against the
-            // AUTHORITATIVE status regardless of `searching` — a settled
-            // candidate-review message (e.g. "not turned on") must not
-            // survive a confirm that just promoted the manual via a path
-            // that never started a NEW search (manualReady:true,
-            // searching:false). The round-2 optimistic `running:true` seed
-            // below is a fallback used ONLY when the authoritative read is
-            // unavailable (a transient failure right after confirm) — it
-            // must never overwrite a fresh authoritative settle.
-            let authoritative: ManualSearchStatus | null = null;
-            searchInputEpochRef.current += 1;
-            const confirmEpoch = searchInputEpochRef.current;
-            try {
-              authoritative = await fetchManualSearchStatus(requestedNotebookId, { threadId: attachmentThreadId ?? undefined });
-            } catch {
-              authoritative = null;
-            }
-            // F16, same check: the scope refresh above may have taken long
-            // enough for the technician to have moved on too.
-            if (!aliveRef.current || notebookIdRef.current !== requestedNotebookId) return result;
-            // F23: a live frame that arrived during this read is newer; it wins.
-            if (searchInputEpochRef.current !== confirmEpoch) return result;
-            if (authoritative) {
-              setFollow((prev) => {
-                const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, authoritative!);
-                if (seedResult.refreshSources) void refreshPromotedScope();
-                return seedResult.state;
+            // Codex round 11 remediation (#4195, single reader): the confirm
+            // path no longer fetches `fetchManualSearchStatus` itself — that
+            // was the third independent reader, and its own epoch-guarded
+            // fetch is exactly what F26 found still racing against the
+            // chain's own poll. `result.searching` is the STRUCTURED signal
+            // the confirm route returns (never scraped from `message` text):
+            // when true, seed the optimistic `running:true` state directly —
+            // a search genuinely just started, nothing to reconcile against
+            // yet. When false, request ONE probe tick from the driver (Codex
+            // round 4 F6's reconciliation, now routed through the SAME state
+            // machine the chain's own ticks use): a settled candidate-review
+            // message (e.g. "not turned on") must not survive a confirm that
+            // just promoted the manual via a path that never started a NEW
+            // search (manualReady:true, searching:false) — the probe fetches
+            // the authoritative status and reconciles it exactly as a slow
+            // tick would, with the SAME generation-key fencing (no second
+            // epoch, no separate race to get wrong).
+            if (result.searching) {
+              manualSearchDriverRef.current?.seed({
+                manufacturer: proposal.manufacturer,
+                model: proposal.model,
+                running: true,
+                ...(result.startedAt ? { startedAt: result.startedAt } : {}),
               });
-            } else if (result.searching) {
-              // Codex round 2 F4: `searching` is the STRUCTURED signal the
-              // confirm route now returns (never scraped from `message` text)
-              // — start following progress ONLY when a search genuinely
-              // started, so a flag-off or nothing-to-search confirm never
-              // follows a search that was never running.
-              setFollow((prev) => {
-                const seeded: ManualSearchStatus = {
-                  manufacturer: proposal.manufacturer,
-                  model: proposal.model,
-                  running: true,
-                  ...(result.startedAt ? { startedAt: result.startedAt } : {}),
-                };
-                const seedResult = reseedManualSearchFollow(prev, requestedNotebookId, seeded);
-                if (seedResult.refreshSources) void refreshPromotedScope();
-                return seedResult.state;
-              });
+            } else {
+              manualSearchDriverRef.current?.probe();
             }
             return result;
           },

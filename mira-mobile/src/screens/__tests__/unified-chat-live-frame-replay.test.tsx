@@ -428,12 +428,21 @@ describe("UnifiedChat — a delayed hydration read never replaces a newer live s
     expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
   });
 
-  it("a confirm's status read that lands after a newer live frame does not replace it", async () => {
+  // Codex round 11 remediation (#4195, single reader): this used to race a
+  // confirm's OWN authoritative `fetchManualSearchStatus` call (dispatched
+  // unconditionally after every confirm) against a live frame. That call no
+  // longer exists for `searching: true` (a pure optimistic seed now — see
+  // `createMobileManualSearchDriver`'s `seed`); the remaining analogous read
+  // is the PROBE the confirm path requests when the route reports
+  // `searching: false` (`driver.probe()`), which is exactly what this test
+  // now exercises — same race shape, same invariant, through the surviving
+  // mechanism.
+  it("a confirm-requested probe that lands after a newer live frame does not replace it", async () => {
     fetchManualSearchStatus.mockResolvedValueOnce(null); // mount-time hydration: nothing yet
-    let resolveConfirmRead!: (v: unknown) => void;
-    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveConfirmRead = r; }));
+    let resolveConfirmProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveConfirmProbe = r; }));
     fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
-    confirmIdentityProposal.mockResolvedValue({ manualReady: false, searching: true, startedAt: "gen-1", message: "Searching." });
+    confirmIdentityProposal.mockResolvedValue({ manualReady: false, searching: false, message: "No automatic manual search was started." });
     const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
     await act(async () => { await Promise.resolve(); });
     const confirm = (await screen.findAllByRole("button", { name: "Use its manuals" }))[0]!;
@@ -448,7 +457,7 @@ describe("UnifiedChat — a delayed hydration read never replaces a newer live s
     expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
 
     await act(async () => {
-      resolveConfirmRead({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      resolveConfirmProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
       await Promise.resolve();
     });
     expect(screen.queryByText("Old result.")).toBeNull();
