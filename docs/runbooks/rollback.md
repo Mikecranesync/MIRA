@@ -39,12 +39,13 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 **Find the current candidates** (read-only; needs `gh` and the repo):
 
 ```bash
+REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 DIR=$(mktemp -d)
 for run in $(gh run list --workflow deploy-vps.yml --status success --limit 40 --json databaseId --jq '.[].databaseId'); do
-  art=$(gh api "/repos/Mikecranesync/MIRA/actions/runs/$run/artifacts" \
+  art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
     --jq '[.artifacts[] | select((.name|startswith("production-receipt-")) and .expired==false)][0].id // empty')
   [ -n "$art" ] || continue
-  mkdir -p "$DIR/$run" && gh api "/repos/Mikecranesync/MIRA/actions/artifacts/$art/zip" > "$DIR/$run.zip" \
+  mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$art/zip" > "$DIR/$run.zip" \
     && unzip -o -q "$DIR/$run.zip" -d "$DIR/$run" && rm "$DIR/$run.zip"
 done
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR"   # what production designates now
@@ -123,7 +124,9 @@ gh workflow run deploy-vps.yml -f approved_rc_sha=<candidate> -f services="<the 
 
 - `services` = exactly the services you are rolling back (the smallest safe set). The staging receipt
   must prove every one of them; `authorize-source` checks.
-- The candidate is a merge commit on `main` with a `v*` tag; the tag is resolved automatically.
+- Candidate *selection* never uses tags, but the dispatch still needs the `v*` release tag that
+  `deploy-vps.yml` resolves for the SHA. Every previously deployed SHA has one: production deploys
+  only tagged merge commits on `main`.
 - The new production receipt records its own `rollback_candidate` (normally the bad SHA you just
   left) — the walk is symmetric.
 
