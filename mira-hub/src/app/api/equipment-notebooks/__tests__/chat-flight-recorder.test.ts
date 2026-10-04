@@ -1258,14 +1258,14 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
-  it("Golden Walk: a shared-library citation with no title is named by maker and model, never 'Attached document'", async () => {
+  it("Golden Walk: a citation with no title is named by maker and model, never 'Attached document'", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), title: "" }] as never);
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("Per the manual the supply is 24 VDC [1].")));
     const text = await (await POST(chatReq({ message: "what supply voltage does this panel need", mode: "general" }), params)).text();
     const cites = framesOf(text).find((f) => f.kind === "sources")?.citations as { sourceTitle: string }[];
     expect(cites).toHaveLength(1);
-    expect(cites[0].sourceTitle).toBe("Siemens TP700 (manufacturer library)");
+    expect(cites[0].sourceTitle).toBe("Siemens TP700 manual");
   });
 
   it("2. empty notebook + resolved identity (manufacturer on the notebook) → OEM corpus retrieval runs, doc ids traceable, and the OEM chunks GROUND the turn", async () => {
