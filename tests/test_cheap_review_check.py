@@ -220,6 +220,8 @@ def test_job_filters_on_pr_comments_with_the_marker():
     cond = _wf()["jobs"]["post"]["if"]
     assert "github.event.issue.pull_request" in cond
     assert "startsWith(github.event.comment.body, '[CHEAP-REVIEW]')" in cond
+    # a non-owner marker comment must not even start a runner (free-cascade finding on #4221)
+    assert "github.event.comment.user.login == github.repository_owner" in cond
 
 
 def test_trusted_checkout_and_no_comment_interpolation():
