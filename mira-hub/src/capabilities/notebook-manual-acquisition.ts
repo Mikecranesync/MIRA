@@ -21,6 +21,7 @@
  * disabled flag means "no automatic search", never a failed request.
  */
 import { withTenantContext } from "@/lib/tenant-context";
+import type { NotebookSource } from "@/lib/equipment-notebooks";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 import type { SpanContext } from "@opentelemetry/api";
 import {
@@ -130,6 +131,56 @@ export function acquisitionKey(id: ConfirmedIdentity): string | null {
 
 function isUndefinedColumn(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "42703";
+}
+
+/** The acquisition key `fencedWriter` stamped into a source's `match_evidence`
+ *  (the SAME field `reconcileAcquisition`'s own SQL reads as `auto_key`), or
+ *  null when the source carries none (never search-matched — e.g. attached by
+ *  hand through `POST /sources`). */
+function matchEvidenceKey(matchEvidence: unknown): string | null {
+  if (typeof matchEvidence !== "object" || matchEvidence === null) return null;
+  const v = (matchEvidence as Record<string, unknown>).autoAcquisitionKey;
+  return typeof v === "string" && v ? v : null;
+}
+
+/**
+ * Codex F3 round 2 (MEDIUM) — the notebook's enabled, trusted (verified or
+ * user_confirmed) manual that APPLIES to `identity`: role "manual" and a
+ * stamped `autoAcquisitionKey` matching `acquisitionKey(identity)` exactly,
+ * AND answerable now (`readiness.canChat`) — "ready", not merely attached.
+ *
+ * A source with no stamped key is NOT assumed applicable (fail closed): the
+ * cost of a false negative here is one idempotent background search; the
+ * cost of a false positive is exactly the bug Codex reported — an unrelated
+ * ready manual silently satisfying, and silently suppressing the search for,
+ * a DIFFERENT confirmed identity. Migration 104 deliberately preserves
+ * user_confirmed sources across identity changes, so this predicate is the
+ * only thing standing between that preservation and a false "ready".
+ *
+ * Codex F13 (round 3): a notebook can have MORE THAN ONE applicable, enabled,
+ * trusted manual for the same confirmed identity (an older one still
+ * indexing, a newer one already ready). This searches ALL applicable
+ * sources for one that's ready, rather than stopping at the first applicable
+ * match in `listSources`' own (created_at) order and checking only that
+ * one's readiness — which silently reported "not ready" even when a later
+ * applicable source already was.
+ */
+function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
+  return (
+    s.sourceRole === "manual" &&
+    s.enabledByDefault &&
+    (s.matchState === "verified" || s.matchState === "user_confirmed") &&
+    matchEvidenceKey(s.matchEvidence) === key
+  );
+}
+
+export function applicableReadySource(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  return sources.find((s) => isApplicableEnabledManual(s, key) && s.readiness.canChat) ?? null;
 }
 
 /** The recorded search for this notebook, or null (never attempted, or unreadable). */
@@ -402,6 +453,114 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
       throw err;
     }
   };
+}
+
+export type ConfirmNotebookIdentityResult =
+  | { ok: true }
+  | { ok: false; error: "identity_already_confirmed"; manufacturer: string | null; model: string | null }
+  | { ok: false; error: "confirm_failed" };
+
+/**
+ * Atomically confirm a notebook's identity — the fix for the light-review
+ * TOCTOU finding on PR #4195 (HIGH, confirm route ~L130-173): the route's OLD
+ * read-then-write (read `identityStatus`/`manufacturer`/`model` via
+ * `getNotebook`, compare keys in JS, THEN call `updateNotebook`
+ * unconditionally) let two concurrent confirms for DIFFERENT identities on
+ * the SAME unconfirmed notebook both pass the read-time check and both
+ * return 200 — the second UPDATE silently winning, exactly the overwrite the
+ * 409 guard exists to prevent.
+ *
+ * The fix folds the check into the UPDATE's own WHERE clause, so the check
+ * and the write are the SAME statement. Postgres holds a row lock for the
+ * duration of an UPDATE that matches a row: a second concurrent UPDATE on
+ * the SAME row blocks until the first commits, then — standard READ
+ * COMMITTED behaviour (EvalPlanQual) — re-evaluates its WHERE clause against
+ * the row the first one just committed, never against a stale snapshot read
+ * earlier in JS. Whichever request's predicate matches first wins; the
+ * loser's UPDATE affects 0 rows instead of silently overwriting.
+ *
+ * The predicate is the SAME truth table the old JS guard computed, byte for
+ * byte — this only changes WHEN it's checked, not what "already confirmed to
+ * a DIFFERENT identity" means:
+ *   - not yet settled (identity_status NOT IN user_confirmed/verified) →
+ *     always allowed (first confirm, or confirming from unknown/candidate).
+ *   - settled, but the EXISTING row's own key is invalid (blank manufacturer,
+ *     or blank model AND blank catalog — `acquisitionKey()` would return
+ *     null for it) → always allowed, matching the old guard's
+ *     `existingKey !== null` precondition.
+ *   - settled, existing key valid, SAME key as the incoming confirm
+ *     (idempotent re-click, or a stale card that still names the current
+ *     machine) → allowed.
+ *   - settled, existing key valid, DIFFERENT key → BLOCKED: the UPDATE
+ *     matches 0 rows, reported as `identity_already_confirmed` (409) after
+ *     re-reading the row the route already reports from.
+ *
+ * `incomingKey` is produced by calling the real `acquisitionKey()` — the
+ * SAME function the route used for this comparison before — not re-derived
+ * here, so the JS and SQL normalizations for THIS value can never drift
+ * apart. The existing row's key is computed in SQL with `NOTEBOOK_KEY_SQL`,
+ * the pre-existing SQL twin of that function a few lines up (already relied
+ * on by `fencedWriter` above, and by migrations 101/104's trigger) — reused,
+ * never reimplemented a third time. `manufacturer`/`model` are required
+ * non-blank by the route before this is called, which guarantees
+ * `acquisitionKey()` never returns null for the incoming identity; the
+ * `$6::text IS NOT NULL` clause below is a defensive mirror of the old code's
+ * `incomingKey !== null` precondition anyway, in case that upstream
+ * invariant is ever relaxed.
+ *
+ * Runs inside ONE `withTenantContext` transaction, so migration 104's
+ * `equipment_notebooks_revoke_auto_manuals` trigger (the promotion branch)
+ * fires on this UPDATE in the SAME transaction exactly as it did on the old
+ * unconditional `updateNotebook` write — this function does not bypass,
+ * suppress, or run outside its scope.
+ */
+export async function confirmNotebookIdentity(
+  tenantId: string,
+  notebookId: string,
+  identity: { manufacturer: string; model: string; catalogNumber: string },
+): Promise<ConfirmNotebookIdentityResult> {
+  const incomingKey = acquisitionKey({
+    identityStatus: "user_confirmed",
+    manufacturer: identity.manufacturer,
+    model: identity.model,
+    catalogNumber: identity.catalogNumber,
+  });
+  return withTenantContext(tenantId, async (c) => {
+    const written = await c.query<{ id: string }>(
+      `UPDATE equipment_notebooks AS n
+          SET manufacturer = $3,
+              model = $4,
+              catalog_number = $5,
+              identity_status = 'user_confirmed',
+              identity_source_type = 'user',
+              updated_at = now()
+        WHERE n.tenant_id = $1::uuid
+          AND n.id = $2::uuid
+          AND NOT (
+            n.identity_status IN ('user_confirmed', 'verified')
+            AND trim(coalesce(n.manufacturer, '')) <> ''
+            AND (trim(coalesce(n.model, '')) <> '' OR trim(coalesce(n.catalog_number, '')) <> '')
+            AND $6::text IS NOT NULL
+            AND (${NOTEBOOK_KEY_SQL}) IS DISTINCT FROM $6
+          )
+        RETURNING n.id`,
+      [tenantId, notebookId, identity.manufacturer, identity.model, identity.catalogNumber, incomingKey],
+    );
+    if ((written.rowCount ?? 0) > 0) return { ok: true };
+
+    // 0 rows: either the guard blocked this write (the common case — report
+    // the CURRENT identity so the 409 body names what's actually confirmed),
+    // or the notebook vanished between the route's `getNotebook` read and
+    // this call (rare; reported as the same `confirm_failed` the old
+    // unconditional `updateNotebook` returned for its own 0-row case).
+    const current = await c.query<{ manufacturer: string | null; model: string | null }>(
+      `SELECT manufacturer, model FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    const row = current.rows[0];
+    if (!row) return { ok: false, error: "confirm_failed" };
+    return { ok: false, error: "identity_already_confirmed", manufacturer: row.manufacturer, model: row.model };
+  });
 }
 
 /**

@@ -276,6 +276,97 @@ export interface Artifact {
   readonly kind: "handoff" | "report" | "work_order";
 }
 
+/**
+ * A machine identity MIRA proposed from free text (mira-hub #4120/#4172) —
+ * never bound, never scoped retrieval, until the technician confirms it.
+ * Mirrors the Hub's own `IdentityProposal` (mira-hub/src/capabilities/
+ * identity-proposal.ts) field-for-field, including the `& `-style flattening
+ * on `InteractionPart` below, so the wire shape and the shell shape never
+ * drift into two vocabularies for the same fact.
+ */
+export interface IdentityProposal {
+  readonly manufacturer: string;
+  readonly model: string;
+  /** Rarely present today (#4120 proposals don't carry one yet); forward-compatible. */
+  readonly catalogNumber?: string;
+  /**
+   * Light-review fix (PR #4195, "a stale proposal can overwrite a later
+   * confirmed identity"): set by the HOST ADAPTER — never the renderer, never
+   * the server wire frame — by comparing this proposal to the notebook's
+   * CURRENT confirmed identity at render time. A persisted turn keeps the
+   * proposal it was served with forever (`to-interaction.ts`'s own
+   * `persistedMeta` header: a rebind must not make an old turn look like it
+   * concerns the new machine) — but a LIVE "Use its manuals" button on that
+   * stale card would still silently rewrite the notebook back to the earlier
+   * machine. `priorOutcome` lets the card settle itself without that risk:
+   * - `"confirmed"`: this exact manufacturer+model IS the notebook's current
+   *   confirmed identity (a persisted card replaying a decision already made).
+   * - `"superseded"`: the notebook is NOW confirmed to a DIFFERENT identity (a
+   *   stale card from before a later, different confirm) — the card must not
+   *   offer a live Confirm OR Reject; either would act on a moot proposal.
+   * Omitted: the notebook has no confirmed identity yet — today's live card
+   * (Confirm / Not this) applies unchanged.
+   */
+  readonly priorOutcome?: "confirmed" | "superseded";
+}
+
+/**
+ * Case/punctuation-insensitive manufacturer+model match — the ONE comparison
+ * every host adapter uses to decide `IdentityProposal.priorOutcome` (light-
+ * review fix, PR #4195), so Hub and mobile never grow two slightly different
+ * "is this the same machine" rules. Catalog number is deliberately excluded:
+ * a proposal rarely carries one yet (see `catalogNumber`'s own comment above),
+ * so its mere absence must never make an otherwise-identical identity look
+ * "different." Mirrors the server's own `acquisitionKey` normalization
+ * (`mira-hub/src/capabilities/notebook-manual-acquisition.ts`) at the
+ * manufacturer+model grain, without importing a server-only module into a
+ * client adapter.
+ */
+export function sameManufacturerModel(
+  a: { readonly manufacturer: string; readonly model: string },
+  b: { readonly manufacturer: string; readonly model: string },
+): boolean {
+  const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return norm(a.manufacturer) === norm(b.manufacturer) && norm(a.model) === norm(b.model);
+}
+
+/**
+ * Thrown by `HostHooks.onConfirmIdentity` when the server refused the confirm
+ * with 409 `identity_already_confirmed` — the notebook was already confirmed
+ * to a DIFFERENT identity (light-review fix, PR #4195; server side:
+ * `mira-hub/src/app/api/equipment-notebooks/[id]/identity/confirm/route.ts`).
+ * The card's catch handler checks `instanceof` this class — never string-
+ * matches `message` — so it can render a clear TERMINAL refusal instead of
+ * the generic transient-failure copy; every other failure keeps Codex F2's
+ * retryable contract unchanged.
+ */
+export class IdentityAlreadyConfirmedError extends Error {
+  constructor(message = "This machine is already confirmed.") {
+    super(message);
+    this.name = "IdentityAlreadyConfirmedError";
+  }
+}
+
+/**
+ * The outcome of confirming an `IdentityProposal` (`HostHooks.onConfirmIdentity`).
+ * `manualReady` is server-owned truth (migration 104's promotion trigger, via
+ * the Hub confirm route) — never inferred client-side. `message` is optional,
+ * human-readable server copy for the card's result state. `searching`
+ * (Codex round 2 F4) is a STRUCTURED signal — never scraped from `message`
+ * text — telling the host whether a background search actually started.
+ * `startedAt` (Codex round 3 F4) is the just-started search's own
+ * generation, when the server can report it. Neither field is followed by
+ * any client in this slice (no search-status following here — see #4189);
+ * both ride the response additively and are safe for a future follower to
+ * use without a server change.
+ */
+export interface ConfirmIdentityResult {
+  readonly manualReady: boolean;
+  readonly message?: string;
+  readonly searching?: boolean;
+  readonly startedAt?: string;
+}
+
 export interface ContextSnapshot {
   readonly tenantId: string;
   readonly projectId?: string;
@@ -323,6 +414,11 @@ export type InteractionPart =
    *  match the confirmed binding, so no machine history was used. Presence-only; ids stay
    *  server-side. Mirrors the mobile chat-adapter's `identity_dispute`. */
   | { readonly type: "identity_dispute" }
+  /** MIRA proposed a machine from free text (#4120/#4175) — unconfirmed, unbound. The
+   *  renderer offers "Use its manuals" / "Not this"; confirming sets the notebook's
+   *  identity server-side (migration 104 promotes a matching candidate manual). Flattened
+   *  (not nested under a `proposal` key) to mirror the Hub's own wire frame 1:1. */
+  | ({ readonly type: "identity_proposal" } & IdentityProposal)
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {

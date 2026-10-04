@@ -11,6 +11,7 @@ import {
   type PlatformAdapter,
   type ProjectItem,
   type ShellAction,
+  type ShellFixture,
   type SurfaceKind,
 } from "@factorylm/interaction";
 import type { Dispatch, MutableRefObject, ReactNode } from "react";
@@ -27,6 +28,14 @@ export interface HarnessProps {
   readonly navigationFooter?: ReactNode;
   readonly dispatchRef?: MutableRefObject<Dispatch<ShellAction> | null>;
   readonly conversationSurface?: ConversationSurface;
+  /**
+   * Mutate the named fixture before it becomes shell state — lets a test
+   * exercise a part shape (e.g. `identity_proposal.priorOutcome`, #4195
+   * light-review fix) the shared fixture catalog doesn't carry, without
+   * adding a one-off entry to it (`fixtures.ts` also feeds the visual-review
+   * tooling's viewport/theme matrix).
+   */
+  readonly transformFixture?: (fixture: ShellFixture) => ShellFixture;
 }
 
 export interface RecordingAdapter extends PlatformAdapter {
@@ -81,10 +90,10 @@ export function fakeAdapter(options: FakeAdapterOptions = {}): RecordingAdapter 
   };
 }
 
-export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, onSelectProject, navigationFooter, dispatchRef, conversationSurface }: HarnessProps) {
+export function Harness({ surface, fixture, adapter = fakeAdapter(), hooks, onOpenItem, onSelectProject, navigationFooter, dispatchRef, conversationSurface, transformFixture }: HarnessProps) {
   const [state, dispatch] = useReducer(
     shellReducer,
-    createShellState(getFixture(fixture), PROFILES[surface]),
+    createShellState(transformFixture ? transformFixture(getFixture(fixture)) : getFixture(fixture), PROFILES[surface]),
   );
   if (dispatchRef) dispatchRef.current = dispatch;
 

@@ -9,6 +9,7 @@ import {
   contextFor,
   hasIdentityDispute,
   hasTerminalSafetyStop,
+  identityProposalOf,
   isTerminalSafetyNotice,
   lifecycleFromStream,
   partsFromStream,
@@ -354,6 +355,89 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
       { type: "text", text: "I saw your photo, but I couldn't find anything about it in the selected sources." },
       { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false } },
     ]);
+  });
+});
+
+// T2 (#4175): the identity_proposal entry chat/route.ts persists on EVERY
+// reply path (answered AND abstained) — read straight off raw evidence[],
+// same pattern as hasIdentityDispute, so reload renders the SAME confirm
+// card the live turn offered.
+describe("identityProposalOf / turnsFromPersisted — the confirm card on reload", () => {
+  const proposal = { kind: "identity_proposal" as const, manufacturer: "SMC", model: "SS5Y3-DUW01302" };
+
+  it("reads a persisted identity_proposal entry", () => {
+    expect(identityProposalOf([citation, proposal])).toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("returns null when there is none, or the entry is malformed", () => {
+    expect(identityProposalOf([citation])).toBeNull();
+    expect(identityProposalOf([{ kind: "identity_proposal", manufacturer: "SMC" }])).toBeNull();
+  });
+
+  it("carries catalogNumber through when present", () => {
+    expect(identityProposalOf([{ ...proposal, catalogNumber: "DUW01302" }]))
+      .toEqual({ manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "DUW01302" });
+  });
+
+  it("renders the identity_proposal part on an ANSWERED turn", () => {
+    // PersistedTurn.evidence's declared element union (notebook-chat-utils.ts,
+    // guarded legacy presentation) doesn't enumerate identity_proposal, the
+    // same way it doesn't enumerate identity_dispute — both are read straight
+    // off the raw array at runtime regardless of the GET-side read type. Cast
+    // at the fixture boundary only; `identityProposalOf`/`turnsFromPersisted`
+    // themselves take `readonly unknown[]` / the real `PersistedTurn`.
+    const [, a] = turnsFromPersisted(row({ evidence: [citation, proposal] as unknown as PersistedTurn["evidence"] }), meta);
+    expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("renders it on an ABSTAINED turn too — not gated by answered status (mirrors the live stream)", () => {
+    const [, a] = turnsFromPersisted(
+      row({
+        answerStatus: "insufficient_evidence",
+        answerText: null,
+        evidence: [proposal] as unknown as PersistedTurn["evidence"],
+        basis: null,
+      }),
+      meta,
+    );
+    expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+  });
+
+  it("does not render it when no proposal was persisted", () => {
+    const [, a] = turnsFromPersisted(row(), meta);
+    expect(a.parts.some((p) => p.type === "identity_proposal")).toBe(false);
+  });
+
+  // Light-review fix (PR #4195, "a stale proposal can overwrite a later
+  // confirmed identity"): the card must settle itself against the
+  // notebook's CURRENT confirmed identity (`meta.confirmedIdentity`), never
+  // leaving a live Confirm on a card from before a later, different confirm.
+  describe("priorOutcome — settled against the CURRENT confirmed identity", () => {
+    const confirmedSame = { ...meta, confirmedIdentity: { manufacturer: "smc", model: "ss5y3 duw01302" } };
+    const confirmedDifferent = { ...meta, confirmedIdentity: { manufacturer: "Rockwell Automation", model: "PowerFlex 525" } };
+
+    it("flags 'confirmed' when the notebook's CURRENT identity matches (case/punctuation-insensitive)", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), confirmedSame);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "confirmed" });
+    });
+
+    it("flags 'superseded' when the notebook is NOW confirmed to a DIFFERENT identity", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), confirmedDifferent);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302", priorOutcome: "superseded" });
+    });
+
+    it("carries no priorOutcome when the notebook has no confirmed identity yet (today's live card)", () => {
+      const [, a] = turnsFromPersisted(row({ evidence: [proposal] as unknown as PersistedTurn["evidence"] }), meta);
+      expect(a.parts).toContainEqual({ type: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+    });
+
+    it("uses the CURRENT notebook identity (`meta`), never the turn's served/frozen context", () => {
+      // The served machine_evidence context differs from the CURRENT confirmed
+      // identity; priorOutcome must follow the CURRENT identity regardless.
+      const served = { kind: "machine_evidence", assetId: "asset-uuid-OLD", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown" } as const;
+      const [, a] = turnsFromPersisted(row({ evidence: [citation, served, proposal] as unknown as PersistedTurn["evidence"] }), confirmedDifferent);
+      expect(a.parts).toContainEqual(expect.objectContaining({ type: "identity_proposal", priorOutcome: "superseded" }));
+    });
   });
 });
 

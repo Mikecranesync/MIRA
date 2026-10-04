@@ -1,8 +1,10 @@
 import type {
   Attachment,
+  ConfirmIdentityResult,
   ConversionIntent,
   ProjectNode,
   ContextSnapshot,
+  IdentityProposal,
   InteractionPart,
   InteractionTurn,
   Lifecycle,
@@ -11,7 +13,8 @@ import type {
   ShellState,
   SourceReference,
 } from "@factorylm/interaction";
-import { useState, type Dispatch, type ReactNode } from "react";
+import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
+import { useEffect, useState, type Dispatch, type ReactNode } from "react";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
@@ -112,6 +115,21 @@ export interface HostHooks {
    * surface. Absent = plain paragraph.
    */
   readonly renderText?: (text: string, turn: InteractionTurn) => ReactNode;
+  /**
+   * Confirm a machine MIRA proposed from free text (#4120/#4175): "Use its
+   * manuals". The host PATCHes the notebook's identity server-side and
+   * resolves with the server's outcome — never a client-side guess. Rendered
+   * only when provided; without a host to confirm against, the button is
+   * honestly disabled (same discipline as `onNewChat`/`onCreateProject`).
+   */
+  readonly onConfirmIdentity?: (proposal: IdentityProposal) => Promise<ConfirmIdentityResult>;
+  /**
+   * Reject a proposed identity: "Not this". Purely a local dismissal — the
+   * contract is "no identity write" (T2 acceptance #2), so this is OPTIONAL
+   * telemetry for the host, never a precondition for the button: "Not this"
+   * always works, even without a host.
+   */
+  readonly onRejectIdentity?: (proposal: IdentityProposal) => void;
   readonly busy?: boolean;
 }
 
@@ -264,6 +282,114 @@ function ArtifactPart({ part, adapter }: { readonly part: Extract<InteractionPar
           ? <span role="status" className="fl-card__meta">{outcome === "shared" ? "Shared" : "Share cancelled"}</span>
           : null}
     </div>
+  </Card>;
+}
+
+/**
+ * "Is this an {manufacturer} {model}?" — the confirm card for a machine MIRA
+ * proposed from free text (#4120/#4175). Two buttons:
+ *  - "Use its manuals" calls `hooks.onConfirmIdentity`, which sets the
+ *    notebook's identity server-side; migration 104 promotes a matching
+ *    candidate manual ONLY if its applicability was already verified. The
+ *    card then shows the server's own outcome — never a guess.
+ *  - "Not this" is a pure local dismissal (no identity write, ever); it
+ *    always works, with or without a host, and only optionally tells the
+ *    host via `onRejectIdentity` (telemetry, not a precondition).
+ * Buttons are plain `<button>` inside `.fl-card__actions`, so the shell's
+ * `.fl-shell button` rule (min 44px) applies without bespoke CSS.
+ *
+ * Light-review fix (PR #4195, "a stale proposal can overwrite a later
+ * confirmed identity"): a persisted turn keeps the SAME proposal forever
+ * (`to-interaction.ts`'s own `persistedMeta` header), so a card from BEFORE a
+ * later, different confirm would otherwise still offer a live "Use its
+ * manuals" — clicking it would silently rewrite the notebook back to the
+ * earlier machine. Two independent layers close this:
+ *  - `part.priorOutcome` (adapter-computed from the notebook's CURRENT
+ *    confirmed identity, never the renderer's own guess) seeds `outcome`
+ *    terminal on mount, so a stale/settled card never shows live buttons in
+ *    the first place.
+ *  - Even if a live confirm somehow fires anyway (a race the adapter missed),
+ *    the server's own 409 `identity_already_confirmed` surfaces here as
+ *    `IdentityAlreadyConfirmedError` — a distinct TERMINAL outcome
+ *    ("superseded"), never the generic retryable "Could not confirm."
+ */
+function IdentityProposalPart({
+  part,
+  hooks,
+}: {
+  readonly part: Extract<InteractionPart, { type: "identity_proposal" }>;
+  readonly hooks?: HostHooks;
+}) {
+  const [outcome, setOutcome] = useState<"confirmed" | "rejected" | "failed" | "superseded" | null>(
+    part.priorOutcome === "confirmed" ? "confirmed" : part.priorOutcome === "superseded" ? "superseded" : null,
+  );
+  // The card can stay mounted while the notebook's identity changes (another
+  // card in the same thread was confirmed). The seed above runs only on
+  // mount, so follow a later adapter flag too; never overwrite an outcome
+  // this card already reached itself.
+  useEffect(() => {
+    if (part.priorOutcome !== "confirmed" && part.priorOutcome !== "superseded") return;
+    const next = part.priorOutcome;
+    setOutcome((current) => (current === "confirmed" || current === "rejected" || current === "superseded" ? current : next));
+  }, [part.priorOutcome]);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ConfirmIdentityResult | null>(null);
+  // Set only on a LIVE 409 refusal (see header); the adapter-seeded
+  // "superseded" case above has no server message and falls back below.
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const proposal: IdentityProposal = {
+    manufacturer: part.manufacturer,
+    model: part.model,
+    ...(part.catalogNumber ? { catalogNumber: part.catalogNumber } : {}),
+  };
+  const name = `${part.manufacturer} ${part.model}`;
+  // "confirmed"/"rejected"/"superseded" are terminal — the card has already
+  // told the truth and stays that way. "failed" is NOT terminal (Codex F2,
+  // MEDIUM): a transient network error must leave both actions in place so
+  // the technician can retry (or dismiss) instead of being stuck on a dead
+  // card.
+  const settled = outcome === "confirmed" || outcome === "rejected" || outcome === "superseded";
+  const confirm = () => {
+    if (busy || settled || !hooks?.onConfirmIdentity) return;
+    setBusy(true);
+    hooks
+      .onConfirmIdentity(proposal)
+      .then((r) => { setResult(r); setOutcome("confirmed"); })
+      .catch((err) => {
+        if (err instanceof IdentityAlreadyConfirmedError) {
+          setRefusal(err.message);
+          setOutcome("superseded");
+        } else {
+          setOutcome("failed");
+        }
+      })
+      .finally(() => setBusy(false));
+  };
+  const reject = () => {
+    if (busy || settled) return;
+    hooks?.onRejectIdentity?.(proposal);
+    setOutcome("rejected");
+  };
+  return <Card type="identity_proposal" label="Machine identity" title={`Is this a ${name}?`}>
+    {!settled ? <>
+      {outcome === "failed" ? <p role="alert" className="fl-card__meta">Could not confirm. Try again.</p> : null}
+      <div className="fl-card__actions">
+        <button
+          type="button"
+          aria-busy={busy}
+          disabled={busy || !hooks?.onConfirmIdentity}
+          title={hooks?.onConfirmIdentity ? undefined : "Confirming isn't available on this surface yet"}
+          onClick={confirm}
+        >
+          Use its manuals
+        </button>
+        <button type="button" disabled={busy} onClick={reject}>Not this</button>
+      </div>
+    </> : outcome === "confirmed" ? <p role="status" className="fl-card__meta">
+      {result?.message ?? (result?.manualReady ? "Confirmed — its manual is ready to answer from." : "Confirmed.")}
+    </p> : outcome === "superseded" ? <p role="status" className="fl-card__meta">
+      {refusal ?? "A different machine is now confirmed for this notebook."}
+    </p> : <p className="fl-card__meta">Not this machine.</p>}
   </Card>;
 }
 
@@ -464,6 +590,9 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
         Machine identity not confirmed for this turn: the asset claimed did not match the notebook's confirmed
         binding, so no machine history was used and nothing here is stated as machine-specific fact.
       </p>;
+
+    case "identity_proposal":
+      return <IdentityProposalPart part={part} hooks={hooks} />;
 
     case "unknown": {
       // NotebookTraceFrame is transport metadata, preserved on the part for

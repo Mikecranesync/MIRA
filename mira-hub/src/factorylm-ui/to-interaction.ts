@@ -19,12 +19,14 @@
 import type {
   ContextSnapshot,
   EvidenceBasisKind,
+  IdentityProposal,
   InteractionPart,
   InteractionThread,
   InteractionTurn,
   Lifecycle,
   SourceReference,
 } from "../../../packages/factorylm-interaction/src";
+import { sameManufacturerModel } from "../../../packages/factorylm-interaction/src";
 import type {
   EvidenceCitation,
   MachineEvidenceEntry,
@@ -52,6 +54,17 @@ export interface HubNotebookMeta {
   readonly asset?: { readonly id: string; readonly name: string; readonly unsPath?: string | null } | null;
   /** `identityStatus === "user_confirmed" | "verified"` AND `asset.confirmedAt` set — never inferred client-side. */
   readonly identityConfirmed: boolean;
+  /**
+   * The notebook's CURRENT confirmed manufacturer+model — `identityStatus`
+   * `user_confirmed`/`verified`, regardless of `asset` BINDING (a separate
+   * concept `identity-proposal.ts`'s confirm route never creates;
+   * `identityConfirmed` above also requires that binding). Settles a
+   * persisted `identity_proposal` card that no longer matches the notebook's
+   * current identity (light-review fix, PR #4195) — never read for
+   * grounding/authorization, which stay `identityConfirmed`'s job. `null`/
+   * omitted: not (yet) confirmed.
+   */
+  readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
   /** One ISO timestamp per hydrate/turn; the caller passes it so tests stay deterministic. */
   readonly capturedAt: string;
 }
@@ -193,6 +206,34 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
 }
 
 /**
+ * The persisted `{kind:"identity_proposal", manufacturer, model, ...}` entry
+ * (#4120/#4175), or null. `splitEvidence` drops it the same way it drops
+ * `identity_dispute` — no `docId`, not a typed entry it knows — so it is read
+ * straight off the raw evidence array here, same pattern as
+ * `hasIdentityDispute` above. chat/route.ts persists this entry on EVERY
+ * reply path (answered and abstained) so a reload renders the SAME confirm
+ * card the live turn offered (T2 acceptance). The live-stream half (while a
+ * turn is still in flight) is a narrower, accepted gap: `readNotebookStream`
+ * / `StreamResult` (`mira-hub/src/components/equipment/notebook-chat-utils.ts`)
+ * are guarded legacy presentation under the Unified UI Cutover and do not
+ * carry this field — see the PR body for the BLOCKED note.
+ */
+export function identityProposalOf(evidence: readonly unknown[]): IdentityProposal | null {
+  for (const e of evidence) {
+    if (typeof e !== "object" || e === null) continue;
+    const r = e as Record<string, unknown>;
+    if (r.kind !== "identity_proposal") continue;
+    if (typeof r.manufacturer !== "string" || typeof r.model !== "string") continue;
+    return {
+      manufacturer: r.manufacturer,
+      model: r.model,
+      ...(typeof r.catalogNumber === "string" && r.catalogNumber ? { catalogNumber: r.catalogNumber } : {}),
+    };
+  }
+  return null;
+}
+
+/**
  * A completed live stream → the assistant turn's parts, in the shell's order:
  * text, sources, basis, machine/visual evidence, safety, follow-ups, error.
  * Honesty rules carried from the classic web notebook:
@@ -323,6 +364,20 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
         : GENERIC_ABSTENTION_COPY);
   if (text) parts.push({ type: "text", text });
   if (disputed) parts.push({ type: "identity_dispute" });
+  // T2 (#4175): rendered on EVERY reply path (chat/route.ts persists it that
+  // way — "the client offers 'Use its manuals' / 'Not this' on an abstained
+  // turn too, not only an answered one") — never gated by `stopped`/`error`.
+  const proposal = identityProposalOf(row.evidence);
+  if (proposal) {
+    // Light-review fix (PR #4195): settle against the notebook's CURRENT
+    // confirmed identity — `meta` (not `persistedMeta`'s served-context
+    // variant used for `context` above), so a rebind AFTER this turn still
+    // settles it correctly, never the frozen context this turn was served
+    // with.
+    const current = meta.confirmedIdentity ?? null;
+    const priorOutcome = current ? (sameManufacturerModel(proposal, current) ? "confirmed" : "superseded") : undefined;
+    parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
+  }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
     if (row.basis) {
