@@ -673,12 +673,17 @@ def test_expand_patterns_inside_a_do_block_are_not_flagged(sql):
     [
         "BEGIN; SET LOCAL lock_timeout = '5s'; COMMIT;",
         "CREATE TABLE IF NOT EXISTS t (id uuid PRIMARY KEY, x text);",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON t (x);",
         "CREATE SEQUENCE IF NOT EXISTS s;",
         "COMMENT ON COLUMN t.x IS 'why';",
         "GRANT SELECT, INSERT ON t TO factorylm_app;",
         "ALTER TABLE t ADD COLUMN IF NOT EXISTS y text;",
         "ALTER TABLE t ADD COLUMN y int NOT NULL DEFAULT 0, ADD COLUMN z text;",
+        "ALTER TABLE t ADD COLUMN y jsonb NOT NULL DEFAULT '{}'::jsonb;",
+        "ALTER TABLE t ADD COLUMN y timestamptz NOT NULL DEFAULT now();",
+        "ALTER TABLE t ADD COLUMN y numeric(10, 2), ADD COLUMN z text[], ADD COLUMN w boolean DEFAULT false;",
+        "ALTER TABLE t ADD COLUMN y uuid DEFAULT gen_random_uuid();",
+        # an index is fine on a table this file created
+        "CREATE TABLE n (x int); CREATE INDEX ni ON n ((1 / x)) WHERE x > 0;",
         # everything on a table a plain CREATE TABLE made earlier in the same file
         "CREATE TABLE n (x int); CREATE UNIQUE INDEX ni ON n (x); "
         "ALTER TABLE n ENABLE ROW LEVEL SECURITY; DROP POLICY IF EXISTS p ON n; "
@@ -708,6 +713,18 @@ def test_expand_only_statements_are_proven(sql):
         "ALTER TABLE existing ADD COLUMN y int UNIQUE;",
         "ALTER TABLE existing ADD COLUMN y uuid REFERENCES parent (id);",
         "ALTER TABLE existing ADD y int;",
+        # Codex #4222 r4 F10: an index on an existing table can reject older writes (an
+        # expression or predicate that errors, or a btree's row-size limit), and a DEFAULT
+        # proves nothing unless it is a constant that always succeeds
+        "CREATE INDEX i ON existing ((1 / x));",
+        "CREATE INDEX i ON existing (x) WHERE 1 / x > 0;",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON existing (long_text);",
+        "ALTER TABLE existing ADD COLUMN y int NOT NULL DEFAULT NULL;",
+        "ALTER TABLE existing ADD COLUMN y int DEFAULT NULL NOT NULL;",
+        "ALTER TABLE existing ADD COLUMN y uuid DEFAULT current_setting('app.tenant_id')::uuid;",
+        "ALTER TABLE existing ADD COLUMN y int DEFAULT (1 / 0);",
+        "ALTER TABLE existing ADD COLUMN y positive_int;",
+        "ALTER TABLE existing ADD COLUMN y text NOT NULL DEFAULT '' CHECK (y <> '');",
         "ALTER TABLE existing ENABLE ROW LEVEL SECURITY;",
         "CREATE POLICY p ON existing USING (false);",
         "REVOKE SELECT ON existing FROM factorylm_app;",

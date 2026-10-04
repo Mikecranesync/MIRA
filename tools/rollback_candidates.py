@@ -483,16 +483,17 @@ def _git(repo: Path, *args: str) -> str:
 #   SET [LOCAL|SESSION] name TO|= value         this migration session only
 #   CREATE TABLE … (no INHERITS / PARTITION OF; a new table older code never references —
 #     foreign keys only to tables new in this file) an FK to an older table can block its deletes
-#   CREATE INDEX … (not UNIQUE)                 changes plans, never results or accepted writes
 #   CREATE SEQUENCE …                           a new object older code never references
 #   COMMENT ON …                                metadata only
 #   GRANT …                                     can only allow more
-#   ALTER TABLE … ADD COLUMN c <type>           older inserts omit c: allowed only if c is
-#     (no NOT NULL unless DEFAULT; no UNIQUE,   nullable or defaulted, and nothing about c
-#      PRIMARY KEY, CHECK, GENERATED, REFERENCES) can reject older code's rows or deletes
+#   ALTER TABLE … ADD COLUMN c <built-in type>  older inserts omit c, so c must take NULL or a
+#     [NULL | NOT NULL with DEFAULT] [DEFAULT     default that always succeeds: a constant,
+#      constant | now() | gen_random_uuid()]     now() or gen_random_uuid(); no domain type, no
+#     [COLLATE x] and nothing else               constraint, no other default expression
 #   any statement on a table a PLAIN `CREATE TABLE` made earlier in the same file
 #     (IF NOT EXISTS proves nothing: the table may predate the file)
-# Not on it, deliberately: INSERT/UPDATE/DELETE into existing tables, CREATE UNIQUE INDEX, DROP
+# Not on it, deliberately: CREATE INDEX on an existing table (an expression or predicate can
+# error, and a btree rejects rows over its size limit), INSERT/UPDATE/DELETE into existing tables, CREATE UNIQUE INDEX, DROP
 # INDEX or DROP CONSTRAINT (an ON CONFLICT arbiter for older upserts), ADD CONSTRAINT, policies
 # and RLS, REVOKE, triggers, CREATE [OR REPLACE] FUNCTION/VIEW (overload resolution and
 # behaviour), CREATE EXTENSION, DO blocks, and anything unrecognised. These need a human.
@@ -505,16 +506,25 @@ _EXPAND_ONLY = tuple(
         r"START TRANSACTION",
         r"SET (?:LOCAL |SESSION )?[A-Z_][A-Z0-9_.]* (?:TO|=) [^$]+",
         r"CREATE TABLE (?:IF NOT EXISTS )?\S+ [^$]+",
-        r"CREATE INDEX (?:CONCURRENTLY )?(?:IF NOT EXISTS )?\S+ ON [^$]+",
         r"CREATE SEQUENCE (?:IF NOT EXISTS )?\S+[^$]*",
         r"COMMENT ON [^$]+",
         r"GRANT [^$]+",
     )
 )
-_ADD_COLUMN = re.compile(
-    r"ADD COLUMN (?:IF NOT EXISTS )?\S+ (?!.*\b(?:UNIQUE|PRIMARY|CHECK|GENERATED|REFERENCES)\b)"
-    r"(?:(?!.*\bNOT NULL\b)[^$]+|(?=.*\bDEFAULT\b)[^$]+)"
+_BUILTIN_TYPE = (
+    r"(?:SMALLINT|INTEGER|INT[248]?|BIGINT|BOOL(?:EAN)?|TEXT|UUID|JSONB?|DATE|REAL|FLOAT[48]"
+    r"|DOUBLE PRECISION|BYTEA|INTERVAL|TIMESTAMPTZ|TIMESTAMP(?: WITH(?:OUT)? TIME ZONE)?"
+    r"|(?:NUMERIC|DECIMAL)(?:\(\d+(?:, ?\d+)?\))?|(?:VARCHAR|CHARACTER VARYING)(?:\(\d+\))?)(?:\[\])?"
 )
+_SAFE_DEFAULT = (
+    r"DEFAULT (?:-?\d+(?:\.\d+)?|''(?:::[A-Z_]+(?:\[\])?)?|TRUE|FALSE|NOW\(\)|CURRENT_TIMESTAMP"
+    r"|GEN_RANDOM_UUID\(\))"
+)
+_ADD_COLUMN = re.compile(
+    rf"ADD COLUMN (?:IF NOT EXISTS )?\S+ {_BUILTIN_TYPE}"
+    rf"(?: (?:NULL|NOT NULL|{_SAFE_DEFAULT}|COLLATE \S+))*"
+)
+_NOT_NULL_NEEDS_DEFAULT = re.compile(rf"(?!.*\bNOT NULL\b)|(?=.*\b{_SAFE_DEFAULT})")
 _PLAIN_CREATE_TABLE = re.compile(r"CREATE TABLE (?!IF NOT EXISTS )(\S+) .+")
 _TABLE_TARGET = tuple(
     re.compile(p)
@@ -585,7 +595,10 @@ def unproven_statements(sql: str) -> list[str]:
             new_tables |= own
             continue
         alter = _ALTER_TABLE.match(stmt)
-        if alter and all(_ADD_COLUMN.fullmatch(a) for a in _split_top_level(alter.group(2))):
+        if alter and all(
+            _ADD_COLUMN.fullmatch(a) and _NOT_NULL_NEEDS_DEFAULT.match(a)
+            for a in _split_top_level(alter.group(2))
+        ):
             continue
         out.append(stmt)
     return out

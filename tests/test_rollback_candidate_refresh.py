@@ -92,6 +92,8 @@ def emit(data):
         sys.stdout.write(r.stdout); sys.stderr.write(r.stderr); sys.exit(r.returncode)
     sys.stdout.write(json.dumps(data)); sys.exit(0)
 
+if args[:2] == ["repo", "view"]:
+    emit({"nameWithOwner": "Mikecranesync/MIRA"})
 if args[:2] == ["run", "list"]:
     runs = [r if isinstance(r, dict) else {"id": r} for r in fx["runs"]]
     want = args[args.index("--status") + 1] if "--status" in args else None
@@ -337,6 +339,51 @@ def test_the_runbook_walks_receipts_like_the_workflows():
     )
     assert "--status success" not in runbook
     assert "more than one production receipt" in runbook
+
+
+def _run_runbook(tmp: Path, fixtures: dict, cap: str = "") -> subprocess.CompletedProcess:
+    """Execute the runbook's discovery snippet exactly as documented (cap optionally lowered)."""
+    text = (REPO / "docs/runbooks/rollback.md").read_text(encoding="utf-8")
+    after = text.split("**Find the current candidates**", 1)[1]
+    snippet = after.split("```bash\n", 1)[1].split("\n```", 1)[0]
+    if cap:
+        assert snippet.count("CAP=1000") == 1
+        snippet = snippet.replace("CAP=1000", f"CAP={cap}")
+    return subprocess.run(
+        ["bash", "-c", snippet],
+        cwd=REPO,
+        env=_env(tmp, fixtures),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def test_the_runbook_snippet_designates_from_a_complete_walk(tmp_path):
+    res = _run_runbook(tmp_path, _prod_fixtures(tmp_path))
+    assert res.returncode == 0, res.stdout + res.stderr
+    d = json.loads(res.stdout.strip().splitlines()[-1])
+    assert d["lost"] == {} and d["designated"] == []
+
+
+@pytest.mark.parametrize("broken", ["artifacts", "jobs"])
+def test_the_runbook_snippet_aborts_rather_than_designate_from_an_incomplete_walk(tmp_path, broken):
+    """Codex #4222 r4 F11: an API failure must stop the procedure before any designation."""
+    fx = _prod_fixtures(tmp_path)
+    if broken == "artifacts":
+        del fx["api"]["actions/runs/36369296665/artifacts"]
+    else:  # a receipt-less run that could post-date the receipts, and its jobs call fails
+        fx["api"]["actions/runs/36369296665/artifacts"]["artifacts"].pop(1)
+    res = _run_runbook(tmp_path, fx)
+    assert res.returncode != 0, res.stdout
+    assert '"designated"' not in res.stdout
+
+
+def test_the_runbook_snippet_records_a_truncated_listing(tmp_path):
+    res = _run_runbook(tmp_path, _prod_fixtures(tmp_path), cap="1")
+    assert res.returncode == 0, res.stdout + res.stderr
+    d = json.loads(res.stdout.strip().splitlines()[-1])
+    assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
 
 
 def test_a_receipted_run_counts_whatever_its_conclusion(tmp_path):

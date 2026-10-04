@@ -41,24 +41,32 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 **Find the current candidates** (read-only; needs `gh` and the repo):
 
 ```bash
+( # a subshell: any failed call aborts here, before a designation is printed
+set -euo pipefail
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+CAP=1000
 DIR=$(mktemp -d); GAPS="$DIR.gaps"; LESS="$DIR.receiptless"; : > "$GAPS"; : > "$LESS"
 # Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
-# making), any conclusion. Pass 1 reads every readable receipt; an unreadable one is a gap bounded by
-# its run's updatedAt. Pass 2 asks whether a receipt-less run that could post-date them
-# ran its Deploy step (the swap precedes the receipt, so it may have changed production).
+# making), any conclusion, created in the last 121 days. Pass 1 reads every readable receipt; an
+# unreadable one is a gap bounded by its run's updatedAt. Pass 2 asks whether a receipt-less run that
+# could post-date them ran its Deploy step (the swap precedes the receipt).
 gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed \
-  --created ">=$(python3 tools/rollback_candidates.py window-start --days 121)" --limit 1000 \
+  --created ">=$(python3 tools/rollback_candidates.py window-start --days 121)" --limit "$CAP" \
   --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"' > "$DIR.runs"
+if [ "$(grep -c . "$DIR.runs" || true)" -ge "$CAP" ]; then   # truncated: older runs unread
+  printf '%s\t%s\trun listing truncated\n' "$(tail -n 1 "$DIR.runs" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GAPS"
+fi
 while read -r run updated; do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
-    --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end') || break
+    --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')
   if [ -z "$art" ]; then printf '%s\t%s\n' "$run" "$updated" >> "$LESS"; continue; fi
   read -r id expired <<< "$art"
   if [ "$expired" != "false" ]; then printf '%s\t%s\treceipt expired\n' "$run" "$updated" >> "$GAPS"; continue; fi
-  mkdir -p "$DIR/$run" && gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip" \
-    && unzip -o -q "$DIR/$run.zip" -d "$DIR/$run" && rm "$DIR/$run.zip"
+  mkdir -p "$DIR/$run"
+  gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip"
+  unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
+  rm "$DIR/$run.zip"
 done < "$DIR.runs"
 since=$(python3 tools/rollback_candidates.py since --receipts-dir "$DIR")
 while IFS=$'\t' read -r run updated; do
@@ -70,6 +78,7 @@ while IFS=$'\t' read -r run updated; do
 done < "$LESS"
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
   --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS"   # what production designates now
+)
 ```
 
 `designate` prints `current` (what each service runs), `designated` (targets, grouped by SHA),
@@ -106,14 +115,14 @@ python3 tools/rollback_candidates.py compat --candidate <sha> --head "$(git rev-
 | `BEGIN`, `COMMIT`, `END`, `START TRANSACTION` | transaction control, no schema change |
 | `SET [LOCAL\|SESSION] name TO\|= value` | this migration's session only |
 | `CREATE TABLE …` without `INHERITS` / `PARTITION OF`, foreign keys only to tables new in the file | a new table older code never references; an FK into an older table could block its deletes |
-| `CREATE INDEX …` (not `UNIQUE`) | changes plans, never results or accepted writes |
 | `CREATE SEQUENCE …` | a new object older code never references |
 | `COMMENT ON …` | metadata only |
 | `GRANT …` | can only allow more |
-| `ALTER TABLE … ADD COLUMN c …` that is nullable or defaulted, with no `UNIQUE`, primary key, `CHECK`, `GENERATED` or `REFERENCES` | older inserts omit `c`, and nothing about `c` can reject older code's rows or deletes |
+| `ALTER TABLE … ADD COLUMN c <built-in type>` with only `NULL`, `COLLATE`, a default that is a constant, `now()` or `gen_random_uuid()`, and `NOT NULL` only together with such a default | older inserts omit `c`, so `c` must take NULL or a default that always succeeds; a domain type, a constraint or any other default expression could reject older rows |
 | any statement on a table a **plain** `CREATE TABLE` made earlier in the same file | older code cannot touch a table that did not exist (`IF NOT EXISTS` proves nothing) |
 
-Not on it, on purpose: data changes to existing tables, `CREATE UNIQUE INDEX`, `DROP INDEX` and
+Not on it, on purpose: `CREATE INDEX` on an existing table (an expression or predicate can error,
+and a btree rejects rows over its size limit), data changes to existing tables, `CREATE UNIQUE INDEX`, `DROP INDEX` and
 `DROP CONSTRAINT` (one may be the `ON CONFLICT` arbiter of an older upsert), `ADD CONSTRAINT`, policies
 and RLS, `REVOKE`, triggers, `CREATE [OR REPLACE] FUNCTION/VIEW` (behaviour and overload resolution),
 `CREATE EXTENSION`, `DO` blocks, and anything unrecognised. A known contraction (a dropped or renamed
