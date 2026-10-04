@@ -168,14 +168,18 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
   const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(manufacturer)}(?![A-Za-z0-9])`, "ig");
   for (const m of message.matchAll(re)) {
     const rest = message.slice((m.index ?? 0) + m[0].length);
-    const tokens = rest.trim().split(/\s+/).slice(0, 4).map(cleanToken);
+    // The plain parse reads four tokens; the series fallback needs that much
+    // lookahead AFTER the skipped series names, or a trailing unit ("DC 24 V")
+    // falls outside the window and a rating is proposed as a model (Codex #4228 F1).
+    const wide = rest.trim().split(/\s+/).slice(0, 4 + MAX_SERIES_SKIP).map(cleanToken);
+    const tokens = wide.slice(0, 4);
     // "Siemens SN: PF525" names a serial, not a model — never parse past a label.
     if (tokens[0] && tokens[0] === tokens[0].toUpperCase() && LABEL_WORDS.has(tokens[0])) continue;
     // The existing parser first, scoped to THIS mention's window, so a model is
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = parsed.model ?? modelSpanAt(tokens);
+    const span = parsed.model ?? modelSpanAt(wide);
     if (span) return span;
   }
   return null;

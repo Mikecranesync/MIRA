@@ -451,6 +451,11 @@ describe("Golden Walk — a product-series name before the model", () => {
   it("control: two machines behind series names stay ambiguous", () => {
     expect(proposeIdentityFromText("Compare Siemens SINAMICS G120C and SINAMICS G120X", MAKERS)).toBeNull();
   });
+  it("Codex #4228 F1: a rating after two series names keeps its unit in view and is never a model", () => {
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive DC 24 V supply failed", MAKERS)).toBeNull();
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive AC 230 volts supply failed", MAKERS)).toBeNull();
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive FC 302 alarm", MAKERS)).toEqual({ manufacturer: "Danfoss", model: "FC 302" });
+  });
   it("control: at most two series words are skipped", () => {
     expect(proposeIdentityFromText("Danfoss VLT AutomationDrive AquaDrive FC 302", MAKERS)).toBeNull();
   });
