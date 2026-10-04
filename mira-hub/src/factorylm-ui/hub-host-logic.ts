@@ -371,10 +371,38 @@ export async function applyConfirmIdentityResult(
   // reported as a failed confirmation; the next detail load picks it up.
   // #4219 Codex r2 F1: report whether the refresh applied, so the caller can
   // stop claiming the manual is ready when the scope never caught up.
+  let applied: boolean;
   try {
-    return (await effects.loadDetail(sel)) === false ? "failed" : "refreshed";
+    applied = (await effects.loadDetail(sel)) !== false;
   } catch (err) {
     console.error("[hub-host] detail refresh after confirm failed:", err instanceof Error ? err.message : err);
-    return "failed";
+    applied = false;
   }
+  // #4219 Codex r3 F1: if the technician left this notebook while the
+  // refresh ran, its outcome no longer describes what they are looking at.
+  if (effects.currentSelection()?.notebookId !== requestedNotebookId) return "skipped";
+  return applied ? "refreshed" : "failed";
+}
+
+/**
+ * #4219 Codex r3 F1 — detail loads supersede each other (a newer load aborts
+ * the older one). A superseded load must not report success just because it
+ * was cancelled: it reports the outcome of the load that REPLACED it, so a
+ * confirm whose refresh was superseded by a failing load still learns that
+ * the scope never caught up. `run` receives `follow()`, which a superseded
+ * load returns instead of its own result.
+ */
+export function createLatestLoadTracker(): {
+  start(run: (follow: () => Promise<boolean>) => Promise<boolean>): Promise<boolean>;
+} {
+  let latest: Promise<boolean> | null = null;
+  return {
+    start(run) {
+      let self: Promise<boolean> | null = null;
+      const follow = (): Promise<boolean> => (latest && latest !== self ? latest : Promise.resolve(false));
+      self = run(follow);
+      latest = self;
+      return self;
+    },
+  };
 }

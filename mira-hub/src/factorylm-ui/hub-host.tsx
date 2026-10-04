@@ -59,6 +59,7 @@ import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  createLatestLoadTracker,
   detailQueryFor,
   enabledDocIds,
   errorMessageFor,
@@ -148,6 +149,7 @@ export function HubShellHost() {
   // detail of the selection that replaced it (Codex #3839 F3).
   const detailAbortRef = useRef<AbortController | null>(null);
   const [detailGate] = useState(() => latestRequestGate());
+  const [detailLoads] = useState(() => createLatestLoadTracker());
 
   // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
@@ -198,7 +200,7 @@ export function HubShellHost() {
     void loadNotebooks();
   }, [loadNotebooks]);
 
-  const loadDetail = useCallback(async (sel: HubSelection) => {
+  const loadDetail = useCallback((sel: HubSelection): Promise<boolean> => detailLoads.start(async (follow) => {
     const token = detailGate.begin();
     detailAbortRef.current?.abort();
     const ctrl = new AbortController();
@@ -208,16 +210,17 @@ export function HubShellHost() {
       // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
       res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
     } catch (err) {
-      if (isAbortError(err)) return true; // superseded by a newer load, which carries the latest state
+      // Superseded by a newer load: report THAT load's outcome, not this abort (#4219 Codex r3 F1).
+      if (isAbortError(err)) return follow();
       throw err;
     }
     // Commit only if no newer load or selection change happened while this one was in flight.
-    if (!detailGate.isCurrent(token)) return true;
+    if (!detailGate.isCurrent(token)) return follow();
     if (res.status === 401) { setSignedOut(true); return false; }
     if (!res.data) return false;
     setDetail(res.data);
     return true;
-  }, [detailGate]);
+  }), [detailGate, detailLoads]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     if (selection) void loadDetail(selection);

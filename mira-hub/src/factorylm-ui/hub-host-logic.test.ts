@@ -3,6 +3,7 @@ import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
 import {
   applyConfirmIdentityResult,
+  createLatestLoadTracker,
   homeSendPlan,
   isUnboundNotebook,
   landingSelection,
@@ -445,9 +446,61 @@ describe("applyConfirmIdentityResult — the post-await confirm race (Codex roun
     await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail: vi.fn(async () => true), currentSelection: () => B })).resolves.toBe("skipped");
   });
 
+  it("#4219 Codex r3 F1: the selection moving away while the refresh runs reports 'skipped', not 'refreshed'", async () => {
+    let current: HubSelection = A;
+    const loadDetail = vi.fn(async () => { current = B; return true; });
+    await expect(applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => current })).resolves.toBe("skipped");
+  });
+
   it("no selection at all: refreshes NOTHING", async () => {
     const loadDetail = vi.fn(async () => undefined);
     await applyConfirmIdentityResult(A.notebookId, { loadDetail, currentSelection: () => null });
     expect(loadDetail).not.toHaveBeenCalled();
+  });
+});
+
+describe("createLatestLoadTracker — a superseded load reports the load that replaced it (#4219 Codex r3 F1)", () => {
+  function deferredBool() {
+    let resolve!: (v: boolean) => void;
+    const promise = new Promise<boolean>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  it("a superseded load resolves with the REPLACEMENT load's failure, not its own abort", async () => {
+    const tracker = createLatestLoadTracker();
+    const first = deferredBool();
+    const second = deferredBool();
+    const a = tracker.start(async (follow) => { await first.promise; return follow(); }); // gets superseded
+    const b = tracker.start(async () => second.promise);
+    first.resolve(true);
+    second.resolve(false); // the replacement GET fails
+    await expect(a).resolves.toBe(false);
+    await expect(b).resolves.toBe(false);
+  });
+
+  it("a superseded load resolves true when the replacement applied", async () => {
+    const tracker = createLatestLoadTracker();
+    const gate = deferredBool();
+    const a = tracker.start(async (follow) => { await gate.promise; return follow(); });
+    tracker.start(async () => true);
+    gate.resolve(true);
+    await expect(a).resolves.toBe(true);
+  });
+
+  it("follows a chain of replacements to the newest", async () => {
+    const tracker = createLatestLoadTracker();
+    const g1 = deferredBool();
+    const g2 = deferredBool();
+    const a = tracker.start(async (follow) => { await g1.promise; return follow(); });
+    tracker.start(async (follow) => { await g2.promise; return follow(); });
+    tracker.start(async () => false);
+    g1.resolve(true);
+    g2.resolve(true);
+    await expect(a).resolves.toBe(false);
+  });
+
+  it("control: a load nothing superseded keeps its own result", async () => {
+    const tracker = createLatestLoadTracker();
+    await expect(tracker.start(async () => true)).resolves.toBe(true);
   });
 });
