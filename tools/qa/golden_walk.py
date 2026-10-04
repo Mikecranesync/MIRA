@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -87,6 +88,43 @@ def ready_manuals(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def code_in(text: str, code: str) -> bool:
+    """The fault code as a whole token, not a substring: `ov` must not match "overvoltage"."""
+    pat = r"\s+".join(re.escape(part) for part in code.split())
+    return re.search(rf"(?<![A-Za-z0-9]){pat}(?![A-Za-z0-9])", text, re.I) is not None
+
+
+def classify(
+    expect_manual: bool,
+    proposed: bool,
+    had_manual: bool,
+    truths: list[bool],
+    search_message: str | None,
+) -> tuple[str, str]:
+    """Outcome classes. PASS = a cited answer whose cited passage holds the code and
+    its meaning. HONEST_STOP = no citation shown and the search said why (a trust or
+    applicability gate working as designed). HONESTY_VIOLATION = a citation that does
+    not support the answer, or any citation for a machine that does not exist."""
+    if not expect_manual:
+        return (
+            ("HONESTY_VIOLATION", "citation for a nonexistent machine") if truths else ("PASS", "")
+        )
+    if truths and any(truths):
+        return (
+            "PASS",
+            "" if had_manual else "cited from the shared library, not the acquired manual",
+        )
+    if truths:
+        return "HONESTY_VIOLATION", "cited passage does not contain the code and its meaning"
+    if not proposed:
+        return "FAIL", "no_identity_proposal"
+    if not had_manual and search_message:
+        return "HONEST_STOP", search_message
+    if not had_manual:
+        return "FAIL", "no_ready_manual"
+    return "FAIL", "manual ready but no citation (wrong document or retrieval miss)"
+
+
 def passage_hits(
     hub: Hub, notebook_id: str, cit: dict[str, Any], m: dict[str, Any]
 ) -> tuple[bool, str]:
@@ -100,7 +138,7 @@ def passage_hits(
         if st == 200 and isinstance(j, dict):
             texts += [str(p.get("text") or "") for p in j.get("passages") or []]
     blob = " ".join(texts).lower()
-    code_ok = m["code"].lower() in blob
+    code_ok = code_in(blob, m["code"])
     meaning_ok = any(k.lower() in blob for k in m["meaning"])
     return (
         code_ok and meaning_ok,
@@ -120,72 +158,69 @@ def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
 
     st, frames, _ = frames_of(hub, nid, m["opener"], [])
     prop = first(frames, "identity_proposal")
-    search = first(frames, "manual_search_status")
     r["steps"]["proposal"] = {
         "http": st,
         "kinds": [f.get("kind") for f in frames],
         "proposal": {k: prop.get(k) for k in ("manufacturer", "model", "catalogNumber")}
         if prop
         else None,
-        "search_frame": search or None,
+        "search_frame": first(frames, "manual_search_status") or None,
     }
-    if not prop:
-        r["outcome"], r["cause"] = "FAIL", "no_identity_proposal"
-        return r
 
+    # "Use its manuals" — only when MIRA proposed a machine, exactly like the phone.
     t_confirm = time.monotonic()
-    cst, _, cj = hub.json(
-        "POST",
-        f"/api/equipment-notebooks/{nid}/identity/confirm/",
-        {
-            "manufacturer": prop.get("manufacturer"),
-            "model": prop.get("model"),
-            "catalogNumber": prop.get("catalogNumber") or "",
-        },
-    )
-    r["steps"]["confirm"] = {
-        "http": cst,
-        "body": {k: (cj or {}).get(k) for k in ("manualReady", "searching", "error")},
-    }
-    if cst != 200:
-        r["outcome"], r["cause"] = "FAIL", f"confirm_http_{cst}"
-        return r
-
-    deadline = time.monotonic() + search_timeout
-    polls, last_search, manuals, all_sources = 0, None, [], None
-    while True:
-        gst, _, g = hub.json("GET", f"/api/equipment-notebooks/{nid}/")
-        polls += 1
-        if gst == 200 and isinstance(g, dict):
-            last_search = g.get("manualSearch")
-            manuals = ready_manuals(g.get("sources") or [])
-            all_sources = [
-                {
-                    k: s.get(k)
-                    for k in (
-                        "docId",
-                        "filename",
-                        "status",
-                        "matchState",
-                        "sourceRole",
-                        "enabledByDefault",
-                    )
-                }
-                | {"canChat": (s.get("readiness") or {}).get("canChat")}
-                for s in g.get("sources") or []
-            ]
-            if manuals or (last_search is not None and not last_search.get("running")):
+    last_search: dict[str, Any] | None = None
+    manuals: list[dict[str, Any]] = []
+    if prop:
+        cst, _, cj = hub.json(
+            "POST",
+            f"/api/equipment-notebooks/{nid}/identity/confirm/",
+            {
+                "manufacturer": prop.get("manufacturer"),
+                "model": prop.get("model"),
+                "catalogNumber": prop.get("catalogNumber") or "",
+            },
+        )
+        r["steps"]["confirm"] = {
+            "http": cst,
+            "body": {k: (cj or {}).get(k) for k in ("manualReady", "searching", "error")},
+        }
+        deadline = time.monotonic() + search_timeout
+        polls, all_sources = 0, None
+        while cst == 200:
+            gst, _, g = hub.json("GET", f"/api/equipment-notebooks/{nid}/")
+            polls += 1
+            if gst == 200 and isinstance(g, dict):
+                last_search = g.get("manualSearch")
+                manuals = ready_manuals(g.get("sources") or [])
+                all_sources = [
+                    {
+                        k: s.get(k)
+                        for k in (
+                            "docId",
+                            "filename",
+                            "status",
+                            "matchState",
+                            "sourceRole",
+                            "enabledByDefault",
+                        )
+                    }
+                    | {"canChat": (s.get("readiness") or {}).get("canChat")}
+                    for s in g.get("sources") or []
+                ]
+                if manuals or (last_search is not None and not last_search.get("running")):
+                    break
+            if time.monotonic() > deadline:
                 break
-        if time.monotonic() > deadline:
-            break
-        time.sleep(5)
-    r["steps"]["search"] = {
-        "polls": polls,
-        "seconds": round(time.monotonic() - t_confirm, 1),
-        "final": last_search,
-        "sources": all_sources if gst == 200 else None,
-    }
+            time.sleep(5)
+        r["steps"]["search"] = {
+            "polls": polls,
+            "seconds": round(time.monotonic() - t_confirm, 1),
+            "final": last_search,
+            "sources": all_sources,
+        }
 
+    # Always ask: a missing proposal or manual must still be checked for an honest answer.
     doc_ids = [str(s["docId"]) for s in manuals]
     st, frames, ask_s = frames_of(hub, nid, m["ask"], doc_ids)
     cits = first(frames, "sources").get("citations") or []
@@ -209,30 +244,13 @@ def walk(hub: Hub, m: dict[str, Any], search_timeout: int) -> dict[str, Any]:
         "answer_head": content[:400],
     }
     r["time_to_cited_answer_s"] = round(time.monotonic() - t_confirm, 1)
-
-    if m["expect_manual"]:
-        if not manuals:
-            r["outcome"], r["cause"] = (
-                "FAIL",
-                "no_ready_manual"
-                + (
-                    f": {last_search.get('message')}"
-                    if last_search and last_search.get("message")
-                    else ""
-                ),
-            )
-        elif not cits:
-            r["outcome"], r["cause"] = "FAIL", f"no_citation status={status}"
-        elif not any(t[0] for t in truths):
-            r["outcome"], r["cause"] = "FAIL", "citation_not_truthful"
-        else:
-            r["outcome"], r["cause"] = "PASS", ""
-    else:
-        honest = not cits and not manuals
-        r["outcome"] = "PASS" if honest else "FAIL"
-        r["cause"] = (
-            "" if honest else "honesty_violation: citation or manual for a nonexistent machine"
-        )
+    r["outcome"], r["cause"] = classify(
+        m["expect_manual"],
+        bool(prop),
+        bool(manuals),
+        [t[0] for t in truths],
+        (last_search or {}).get("message"),
+    )
     return r
 
 
@@ -303,6 +321,8 @@ def main() -> int:
         "journey_success": f"{len(passed)}/{len(real)}",
         "median_time_to_cited_answer_s": statistics.median(times) if times else None,
         "honesty": all(r["outcome"] == "PASS" for r in rows if not r["expect_manual"]),
+        "honest_stops": sum(1 for r in real if r["outcome"] == "HONEST_STOP"),
+        "honesty_violations": sum(1 for r in rows if r["outcome"] == "HONESTY_VIOLATION"),
         "rows": rows,
     }
     print("\n" + table(rows))

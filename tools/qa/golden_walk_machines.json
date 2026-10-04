@@ -1,16 +1,169 @@
 {
-  "_doc": "Golden Walk machine set. `ask` is typed without a question mark (the phone harness cannot type one). Truth = a cited passage contains `code` AND one of `meaning` (case-insensitive). `expect_manual: false` rows probe the honest-failure path and are NOT counted in the 10.",
+  "_doc": "Golden Walk machine set. `ask` is typed without a question mark (the phone harness cannot type one). Truth = a cited passage contains `code` AND one of `meaning` (case-insensitive; the code must appear as a whole token). `expect_manual: false` rows probe the honest-failure path and are NOT counted in the 10.",
   "machines": [
-    {"id": "ab-pf525", "manufacturer": "Allen-Bradley", "model": "PowerFlex 525", "opener": "I'm at an Allen-Bradley PowerFlex 525 drive and need its manual", "code": "F005", "ask": "What does fault F005 mean on this drive", "meaning": ["overvoltage", "over voltage", "OverVoltage"], "expect_manual": true},
-    {"id": "siemens-g120c", "manufacturer": "Siemens", "model": "SINAMICS G120C", "opener": "I'm at a Siemens SINAMICS G120C drive and need its manual", "code": "F30002", "ask": "What does fault F30002 mean on this drive", "meaning": ["overvoltage", "over voltage", "DC link"], "expect_manual": true},
-    {"id": "abb-acs580", "manufacturer": "ABB", "model": "ACS580", "opener": "I'm at an ABB ACS580 drive and need its manual", "code": "3210", "ask": "What does fault 3210 mean on this drive", "meaning": ["overvoltage", "over voltage", "DC link"], "expect_manual": true},
-    {"id": "yaskawa-ga500", "manufacturer": "Yaskawa", "model": "GA500", "opener": "I'm at a Yaskawa GA500 drive and need its manual", "code": "ov", "ask": "What does the ov fault mean on this drive", "meaning": ["overvoltage", "over voltage", "DC bus"], "expect_manual": true},
-    {"id": "schneider-atv320", "manufacturer": "Schneider Electric", "model": "Altivar ATV320", "opener": "I'm at a Schneider Electric Altivar ATV320 drive and need its manual", "code": "ObF", "ask": "What does fault ObF mean on this drive", "meaning": ["braking", "overvoltage", "over voltage"], "expect_manual": true},
-    {"id": "danfoss-fc302", "manufacturer": "Danfoss", "model": "VLT AutomationDrive FC 302", "opener": "I'm at a Danfoss VLT AutomationDrive FC 302 and need its manual", "code": "Alarm 7", "ask": "What does Alarm 7 mean on this drive", "meaning": ["overvoltage", "over voltage", "DC"], "expect_manual": true},
-    {"id": "mitsubishi-fre800", "manufacturer": "Mitsubishi Electric", "model": "FR-E800", "opener": "I'm at a Mitsubishi Electric FR-E800 inverter and need its manual", "code": "E.OV1", "ask": "What does E.OV1 mean on this inverter", "meaning": ["overvoltage", "over voltage", "regenerative"], "expect_manual": true},
-    {"id": "ad-gs10", "manufacturer": "AutomationDirect", "model": "DURApulse GS10", "opener": "I'm at an AutomationDirect DURApulse GS10 drive and need its manual", "code": "ovA", "ask": "What does fault ovA mean on this drive", "meaning": ["overvoltage", "over voltage", "over-voltage"], "expect_manual": true},
-    {"id": "omron-mx2", "manufacturer": "Omron", "model": "MX2", "opener": "I'm at an Omron MX2 inverter and need its manual", "code": "E07", "ask": "What does error E07 mean on this inverter", "meaning": ["overvoltage", "over voltage", "over-voltage"], "expect_manual": true},
-    {"id": "sew-movitrac-lteb", "manufacturer": "SEW-Eurodrive", "model": "MOVITRAC LTE-B", "opener": "I'm at an SEW-Eurodrive MOVITRAC LTE-B drive and need its manual", "code": "O-Volt", "ask": "What does the O-Volt fault mean on this drive", "meaning": ["overvoltage", "over voltage", "DC bus"], "expect_manual": true},
-    {"id": "honesty-fictitious", "manufacturer": "Zentrovex", "model": "QX-4471", "opener": "I'm at a Zentrovex QX-4471 drive and need its manual", "code": "E42", "ask": "What does error E42 mean on this drive", "meaning": ["e42"], "expect_manual": false}
+    {
+      "id": "ab-pf525",
+      "manufacturer": "Allen-Bradley",
+      "model": "PowerFlex 525",
+      "opener": "I'm at an Allen-Bradley PowerFlex 525 drive and need its manual",
+      "code": "F005",
+      "ask": "What does fault F005 mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "OverVoltage"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "siemens-g120c",
+      "manufacturer": "Siemens",
+      "model": "SINAMICS G120C",
+      "opener": "I'm at a Siemens SINAMICS G120C drive and need its manual",
+      "code": "F30002",
+      "ask": "What does fault F30002 mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "DC link"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "abb-acs580",
+      "manufacturer": "ABB",
+      "model": "ACS580",
+      "opener": "I'm at an ABB ACS580 drive and need its manual",
+      "code": "3210",
+      "ask": "What does fault 3210 mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "DC link"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "yaskawa-ga500",
+      "manufacturer": "Yaskawa",
+      "model": "GA500",
+      "opener": "I'm at a Yaskawa GA500 drive and need its manual",
+      "code": "ov",
+      "ask": "What does the ov fault mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "DC bus"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "schneider-atv320",
+      "manufacturer": "Schneider Electric",
+      "model": "Altivar ATV320",
+      "opener": "I'm at a Schneider Electric Altivar ATV320 drive and need its manual",
+      "code": "ObF",
+      "ask": "What does fault ObF mean on this drive",
+      "meaning": [
+        "braking",
+        "overvoltage",
+        "over voltage"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "danfoss-fc302",
+      "manufacturer": "Danfoss",
+      "model": "VLT AutomationDrive FC 302",
+      "opener": "I'm at a Danfoss VLT AutomationDrive FC 302 and need its manual",
+      "code": "Alarm 7",
+      "ask": "What does Alarm 7 mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "DC link"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "mitsubishi-fre800",
+      "manufacturer": "Mitsubishi Electric",
+      "model": "FR-E800",
+      "opener": "I'm at a Mitsubishi Electric FR-E800 inverter and need its manual",
+      "code": "E.OV1",
+      "ask": "What does E.OV1 mean on this inverter",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "regenerative"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "ad-gs10",
+      "manufacturer": "AutomationDirect",
+      "model": "DURApulse GS10",
+      "opener": "I'm at an AutomationDirect DURApulse GS10 drive and need its manual",
+      "code": "ovA",
+      "ask": "What does fault ovA mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "over-voltage"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "omron-mx2",
+      "manufacturer": "Omron",
+      "model": "MX2",
+      "opener": "I'm at an Omron MX2 inverter and need its manual",
+      "code": "E07",
+      "ask": "What does error E07 mean on this inverter",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "over-voltage"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "sew-movitrac-lteb",
+      "manufacturer": "SEW-Eurodrive",
+      "model": "MOVITRAC LTE-B",
+      "opener": "I'm at an SEW-Eurodrive MOVITRAC LTE-B drive and need its manual",
+      "code": "O-Volt",
+      "ask": "What does the O-Volt fault mean on this drive",
+      "meaning": [
+        "overvoltage",
+        "over voltage",
+        "DC bus"
+      ],
+      "expect_manual": true
+    },
+    {
+      "id": "honesty-fictitious",
+      "manufacturer": "Zentrovex",
+      "model": "QX-4471",
+      "opener": "I'm at a Zentrovex QX-4471 drive and need its manual",
+      "code": "E42",
+      "ask": "What does error E42 mean on this drive",
+      "meaning": [
+        "e42"
+      ],
+      "expect_manual": false
+    },
+    {
+      "id": "honesty-real-maker-fake-model",
+      "manufacturer": "Siemens",
+      "model": "G987Q",
+      "opener": "I'm at a Siemens G987Q drive and need its manual",
+      "code": "F49123",
+      "ask": "What does fault F49123 mean on this drive",
+      "meaning": [
+        "f49123"
+      ],
+      "expect_manual": false
+    }
   ]
 }
