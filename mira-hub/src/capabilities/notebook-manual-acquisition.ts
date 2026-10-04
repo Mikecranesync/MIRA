@@ -146,8 +146,11 @@ function matchEvidenceKey(matchEvidence: unknown): string | null {
 /**
  * Codex F3 round 2 (MEDIUM) — the notebook's enabled, trusted (verified or
  * user_confirmed) manual that APPLIES to `identity`: role "manual" and a
- * stamped `autoAcquisitionKey` matching `acquisitionKey(identity)` exactly,
- * AND answerable now (`readiness.canChat`) — "ready", not merely attached.
+ * stamped `autoAcquisitionKey` matching `acquisitionKey(identity)` exactly.
+ * "Readiness" (can it answer right now) is a SEPARATE question — see
+ * `applicableReadySource` below — because an applicable, enabled manual that
+ * is still indexing is a different user-facing state ("added, preparing")
+ * from one that is fully answerable, and from one that was never found at all.
  *
  * A source with no stamped key is NOT assumed applicable (fail closed): the
  * cost of a false negative here is one idempotent background search; the
@@ -156,15 +159,10 @@ function matchEvidenceKey(matchEvidence: unknown): string | null {
  * a DIFFERENT confirmed identity. Migration 104 deliberately preserves
  * user_confirmed sources across identity changes, so this predicate is the
  * only thing standing between that preservation and a false "ready".
- *
- * Codex F13 (round 3): a notebook can have MORE THAN ONE applicable, enabled,
- * trusted manual for the same confirmed identity (an older one still
- * indexing, a newer one already ready). This searches ALL applicable
- * sources for one that's ready, rather than stopping at the first applicable
- * match in `listSources`' own (created_at) order and checking only that
- * one's readiness — which silently reported "not ready" even when a later
- * applicable source already was.
  */
+/** The shared applicability test both `applicableEnabledSource` and
+ *  `applicableReadySource` filter on — see `applicableEnabledSource`'s own
+ *  doc comment for the fail-closed rationale on a keyless source. */
 function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
   return (
     s.sourceRole === "manual" &&
@@ -174,6 +172,28 @@ function isApplicableEnabledManual(s: NotebookSource, key: string): boolean {
   );
 }
 
+export function applicableEnabledSource(
+  sources: readonly NotebookSource[],
+  identity: ConfirmedIdentity,
+): NotebookSource | null {
+  const key = acquisitionKey(identity);
+  if (!key) return null;
+  return sources.find((s) => isApplicableEnabledManual(s, key)) ?? null;
+}
+
+/**
+ * As `applicableEnabledSource`, additionally requiring `readiness.canChat` —
+ * the manual is not merely applicable and turned on, but ANSWERABLE now.
+ *
+ * Codex F13 (round 3): a notebook can have MORE THAN ONE applicable, enabled,
+ * trusted manual for the same confirmed identity (an older one still
+ * indexing, a newer one already ready). Composing `applicableEnabledSource`
+ * — which stops at the FIRST applicable match in `listSources`' own
+ * (created_at) order — and then checking only THAT one's readiness silently
+ * reported "not ready" even when a later applicable source already was.
+ * This searches ALL applicable sources for one that's ready, sharing the
+ * SAME applicability predicate above — never a second matcher.
+ */
 export function applicableReadySource(
   sources: readonly NotebookSource[],
   identity: ConfirmedIdentity,
@@ -957,4 +977,122 @@ export function acquisitionDeclineText(
     case "manufacturer_model_required":
       return null;
   }
+}
+
+/** T2 (#4189 F4/F6) — the shape the notebook GET route returns alongside
+ *  `notebook`/`sources`/`turns`, for both the Hub and mobile post-refresh
+ *  render path. Mirrors `ManualSearchStatus` in `packages/factorylm-interaction`
+ *  field-for-field (not imported: that package has no DB-adjacent deps and
+ *  this one does, by design — see that package's own header).
+ *  `startedAt` (Codex round 2 F4/F8) identifies the SEARCH GENERATION — the
+ *  shared mobile/Hub follower keys its retry budget on `notebookId|startedAt`
+ *  so a NEW search (a different `started_at`) always gets a fresh budget,
+ *  never one already spent by an earlier search for the same identity. */
+export interface ManualSearchStatus {
+  manufacturer: string;
+  model: string;
+  running: boolean;
+  message?: string;
+  startedAt?: string;
+}
+
+/**
+ * The notebook's CURRENT manual-search status — for its own confirmed
+ * identity, or (if that search never ran or isn't this notebook's own) the
+ * most recently PROPOSED (not yet confirmed) identity — recomputed fresh on
+ * every call via `readAcquisition` + `reconcileAcquisition`, never read from
+ * a persisted snapshot. `manualSearchStatusFrame` (chat/route.ts) is
+ * deliberately transient for exactly this reason: a "running" state captured
+ * at persist-time reads as permanently stale once the search finishes. This
+ * is the ONE place that recomputes it — reused by the Hub (`hub-host.tsx`'s
+ * `loadDetail`, already called after every send and after a confirm) and
+ * mobile (`getNotebookDetail`) on their EXISTING post-turn/post-confirm
+ * refetch, never a second acquisition-status path.
+ *
+ * `sources` is the SAME list the GET route already read via `listSources` —
+ * passed in rather than re-queried (Codex round 2 F10 review note).
+ *
+ * Codex F10 (MEDIUM): a candidate-basis search can finish `candidate_review`
+ * in `manual_acquisition` and THEN identity confirmation promotes its source
+ * to verified+enabled (migration 104) — a write to a DIFFERENT table that
+ * never touches `manual_acquisition.state`. Reading the record's historical
+ * state alone kept reporting the stale "I couldn't confirm it, it isn't
+ * turned on" for a manual that is now, in fact, ready. This checks the
+ * ACQUIRED SOURCE'S CURRENT state first (`applicableEnabledSource`/
+ * `applicableReadySource` — the SAME matcher F3 uses, not a second one):
+ * ready → "found and ready"; applicable+enabled but not yet readable →
+ * "added, still preparing" (never "turn it on" for a source that already is
+ * on); otherwise falls through to the historical decline text, unchanged.
+ *
+ * Returns null when acquisition is disabled, there is no record, or the
+ * record belongs to neither identity (nothing current to report).
+ */
+export async function currentManualSearchStatus(
+  tenantId: string,
+  notebookId: string,
+  confirmed: ConfirmedIdentity,
+  proposedIdentity: { manufacturer: string; model: string } | null,
+  sources: readonly NotebookSource[],
+  deps: { env?: Record<string, string | undefined> } = {},
+): Promise<ManualSearchStatus | null> {
+  if (!acquisitionEnabled(deps.env)) return null;
+  const rec = await readAcquisition(tenantId, notebookId);
+  if (!rec) return null;
+
+  const confirmedKey = acquisitionKey(confirmed);
+  const candidateIdentity: ConfirmedIdentity | null = proposedIdentity
+    ? { identityStatus: "user_confirmed", manufacturer: proposedIdentity.manufacturer, model: proposedIdentity.model, catalogNumber: "" }
+    : null;
+  const candidateKey = candidateIdentity ? acquisitionKey(candidateIdentity) : null;
+
+  let manufacturer: string;
+  let model: string;
+  let key: string;
+  let basis: "confirmed" | "candidate";
+  let identity: ConfirmedIdentity;
+  if (confirmedKey && rec.key === confirmedKey && confirmed.manufacturer && confirmed.model) {
+    manufacturer = confirmed.manufacturer;
+    model = confirmed.model;
+    key = confirmedKey;
+    basis = "confirmed";
+    identity = confirmed;
+  } else if (candidateKey && proposedIdentity && candidateIdentity && rec.key === candidateKey) {
+    manufacturer = proposedIdentity.manufacturer;
+    model = proposedIdentity.model;
+    key = candidateKey;
+    basis = "candidate";
+    identity = candidateIdentity;
+  } else {
+    return null;
+  }
+
+  const startedAt = rec.started_at ?? undefined;
+
+  // F10: the acquired source's CURRENT state wins over the historical record.
+  const ready = applicableReadySource(sources, identity);
+  if (ready) {
+    return {
+      manufacturer,
+      model,
+      running: false,
+      message: `The ${manufacturer} ${model} manual is ready — I can answer from it.`,
+      ...(startedAt ? { startedAt } : {}),
+    };
+  }
+  const enabledButPreparing = applicableEnabledSource(sources, identity);
+  if (enabledButPreparing) {
+    return {
+      manufacturer,
+      model,
+      running: false,
+      message: `I found the ${manufacturer} ${model} manual and added it to this notebook's Sources — it's still being prepared to answer from.`,
+      ...(startedAt ? { startedAt } : {}),
+    };
+  }
+
+  const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
+  if (!reconciled) return null;
+  const running = reconciled.state === "running";
+  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
+  return { manufacturer, model, running, ...(message ? { message } : {}), ...(startedAt ? { startedAt } : {}) };
 }

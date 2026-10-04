@@ -426,8 +426,9 @@ describe("POST identity/confirm", () => {
     });
 
     // Codex round 3 F4 — the response must carry the just-started search's
-    // own generation, read back from the DB rather than invented locally.
-    // Additive on the response; no client in this slice follows it.
+    // own generation, so the client follower (`manual-search-follow.ts`)
+    // keys its retry budget on a REAL generation instead of an optimistic,
+    // generation-less one.
     it("includes the freshly-claimed search's startedAt, read back from the record claim() just wrote", async () => {
       const claimedAt = "2026-10-01T00:00:00.000Z";
       acqMock.readAcquisition.mockResolvedValue({

@@ -43,11 +43,13 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
-const { confirmIdentityProposal, getNotebookDetail } = vi.hoisted(() => ({
+const { confirmIdentityProposal, getNotebookDetail, fetchManualSearchStatus } = vi.hoisted(() => ({
   confirmIdentityProposal: vi.fn(),
   getNotebookDetail: vi.fn(async () => ({ notebook: {}, sources: [], turns: [], threads: [], photos: [] })),
+  fetchManualSearchStatus: vi.fn(async () => null as unknown),
 }));
 vi.mock("../../api/identity-confirm", () => ({ confirmIdentityProposal }));
+vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus }));
 vi.mock("../../api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/resources")>();
   return { ...real, getNotebookDetail };
@@ -120,6 +122,8 @@ afterEach(() => {
   confirmIdentityProposal.mockReset();
   getNotebookDetail.mockReset();
   getNotebookDetail.mockResolvedValue({ notebook: {}, sources: [], turns: [], threads: [], photos: [] });
+  fetchManualSearchStatus.mockReset();
+  fetchManualSearchStatus.mockResolvedValue(null);
   composeMock.mockReset();
   composeMock.mockImplementation(async (text: string) => ({ question: text }));
   hasCarriedMock.mockReset();
@@ -192,3 +196,31 @@ describe("UnifiedChat under React.StrictMode — aliveRef must survive the setup
     expect(scope).toEqual(["doc-promoted"]);
   });
 });
+
+describe("UnifiedChat — a confirm finishing after unmount never restarts following (#4195 Codex r15 F30)", () => {
+  it("no status request is made after the screen unmounts mid scope-refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      confirmIdentityProposal.mockResolvedValue({ manualReady: false, searching: true, startedAt: "gen-1", message: "Confirmed." });
+      let finishRefresh!: (v: unknown) => void;
+      getNotebookDetail.mockImplementation(() => new Promise((r) => { finishRefresh = r; }) as never);
+      const view = mount(vi.fn());
+      await act(async () => { await Promise.resolve(); });
+      const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
+      await act(async () => { fireEvent.click(confirmButton); await Promise.resolve(); await Promise.resolve(); });
+      expect(getNotebookDetail).toHaveBeenCalled();
+
+      const callsAtUnmount = fetchManualSearchStatus.mock.calls.length;
+      view.unmount();
+      await act(async () => {
+        finishRefresh({ notebook: {}, sources: [], turns: [], threads: [], photos: [] });
+        await Promise.resolve();
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtUnmount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

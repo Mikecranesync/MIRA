@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import type { ShellFixture } from "../../../packages/factorylm-interaction/src";
+import type { ManualSearchStatus, ShellFixture } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -332,13 +332,14 @@ export function newThreadId(random: () => string = () => globalThis.crypto.rando
 }
 
 /** What `applyConfirmIdentityResult` needs to apply a confirm's side
- *  effect — the same seam `hub-host.tsx` already owns (`loadDetail`, and a
- *  read of the LATEST selection). */
+ *  effects — the same seams `hub-host.tsx` already owns (`loadDetail`, the
+ *  manual-search driver's `seed`, and a read of the LATEST selection). */
 export interface ConfirmIdentityEffects {
   /** Resolves `true` when the refreshed detail was applied, `false` when it
    *  was not (HTTP error, no data). A newer load superseding this one counts
    *  as applied: it started after the identity write, so it carries it. */
   readonly loadDetail: (sel: HubSelection) => Promise<boolean | void> | boolean | void;
+  readonly seedDriver: (notebookId: string, status: ManualSearchStatus) => void;
   /** The CURRENT selection, read fresh — never the one captured when the
    *  confirm request was made. */
   readonly currentSelection: () => HubSelection | null;
@@ -346,20 +347,27 @@ export interface ConfirmIdentityEffects {
 
 /**
  * Codex round 5 F16 (#4195) — `onConfirmIdentity`'s post-await completion,
- * extracted so the race is testable without mounting `hub-host.tsx`.
+ * extracted so the race is testable without mounting `hub-host.tsx` (no
+ * jsdom/@testing-library/react here — same reasoning as
+ * `manual-search-driver.ts`'s own extraction, see its header).
  *
  * The bug: `onConfirmIdentity` captures `notebookId` from the selection
  * BEFORE awaiting the POST, but used to reread `selectionRef.current` AFTER
- * the await to decide what to `loadDetail` — so a technician who confirmed
- * on notebook A, then navigated to notebook B before A's response arrived,
- * had B's detail re-fetched under A's identity. The fix: bind completion to
+ * the await to decide what to `loadDetail`/seed — so a technician who
+ * confirmed on notebook A, then navigated to notebook B before A's response
+ * arrived, had A's manufacturer/model/generation silently seeded onto B's
+ * follower (and B's detail re-fetched under A's identity, #4219 Codex r2/r3
+ * F1 narrow this further — see below). The fix: bind completion to
  * `requestedNotebookId` (the notebook THIS confirm was actually for), and
- * discard the refresh when the CURRENT selection no longer matches it.
- * Returning to A later is unaffected: it hydrates from its own fresh
- * `loadDetail`/GET, never from this discarded completion.
+ * discard both side effects — never partially apply one — when the CURRENT
+ * selection no longer matches it. Returning to A later is unaffected: it
+ * hydrates from its own fresh `loadDetail`/GET, never from this discarded
+ * completion.
  */
 export async function applyConfirmIdentityResult(
   requestedNotebookId: string,
+  proposal: { readonly manufacturer: string; readonly model: string },
+  data: { readonly searching: boolean; readonly startedAt?: string },
   effects: ConfirmIdentityEffects,
 ): Promise<"refreshed" | "failed" | "skipped"> {
   const sel = effects.currentSelection();
@@ -381,7 +389,21 @@ export async function applyConfirmIdentityResult(
   // #4219 Codex r3 F1: if the technician left this notebook while the
   // refresh ran, its outcome no longer describes what they are looking at.
   if (effects.currentSelection()?.notebookId !== requestedNotebookId) return "skipped";
-  return applied ? "refreshed" : "failed";
+  const outcome = applied ? "refreshed" : "failed";
+  // #4195 round 2/3 F4: a confirm that STARTED a search is followed the same
+  // way hydration is (F6) — seed the SAME driver, no second timer. Seeded on
+  // BOTH "refreshed" and "failed" (the search itself is a server-side fact
+  // independent of whether this particular scope refresh landed) — never on
+  // "skipped", since the technician has already left this notebook.
+  if (data.searching) {
+    effects.seedDriver(requestedNotebookId, {
+      manufacturer: proposal.manufacturer,
+      model: proposal.model,
+      running: true,
+      ...(data.startedAt ? { startedAt: data.startedAt } : {}),
+    });
+  }
+  return outcome;
 }
 
 /**

@@ -40,11 +40,13 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
-const { confirmIdentityProposal, getNotebookDetail } = vi.hoisted(() => ({
+const { confirmIdentityProposal, getNotebookDetail, fetchManualSearchStatus } = vi.hoisted(() => ({
   confirmIdentityProposal: vi.fn(),
   getNotebookDetail: vi.fn(async () => ({ notebook: {}, sources: [], turns: [], threads: [], photos: [] })),
+  fetchManualSearchStatus: vi.fn(async () => null as unknown),
 }));
 vi.mock("../../api/identity-confirm", () => ({ confirmIdentityProposal }));
+vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus }));
 vi.mock("../../api/resources", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../api/resources")>();
   return { ...real, getNotebookDetail };
@@ -126,6 +128,8 @@ afterEach(() => {
   confirmIdentityProposal.mockReset();
   getNotebookDetail.mockReset();
   getNotebookDetail.mockResolvedValue({ notebook: {}, sources: [], turns: [], threads: [], photos: [] });
+  fetchManualSearchStatus.mockReset();
+  fetchManualSearchStatus.mockResolvedValue(null);
   composeMock.mockReset();
   composeMock.mockImplementation(async (text: string) => ({ question: text }));
   hasCarriedMock.mockReset();

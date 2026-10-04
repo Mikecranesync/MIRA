@@ -1,0 +1,566 @@
+// @vitest-environment jsdom
+// #4195 — Codex rounds 8–11 found the SAME defect class four times (F23, F23
+// follow-up, F25, F26), always in the interaction between the THREE
+// independent async readers of `fetchManualSearchStatus` that used to write
+// into `UnifiedChat.tsx`'s one `follow` state: the mount-time hydration
+// effect, the periodic poll-chain effect, and the confirm path's own
+// "authoritative" read. `searchInputEpochRef` was patched once per round to
+// fence a different interleaving, and each patch opened another one — a
+// counter bumped on every concrete read cannot tell "five null polls on the
+// SAME generation" (must never invalidate a slow, still-relevant read — F25)
+// apart from "a live frame started a DIFFERENT generation" (must invalidate
+// — F23), so every fix for one broke the other.
+//
+// The remediation collapses the three readers into ONE owned state machine
+// (`createMobileManualSearchDriver` in `UnifiedChat.tsx`, modeled on the
+// Hub's `manual-search-driver.ts`) with GENERATION-KEY fencing instead of a
+// counter: a read is discarded only when tracking has moved on to a
+// DIFFERENT generation than the one captured when the read was dispatched,
+// AND the read itself isn't reporting on whatever is now current. This file
+// is the interleaving matrix that proves it — write FIRST, per the request,
+// before the implementation changed; see the task report for the exact
+// pre-change / post-change result of every case below.
+//
+// Run: cd mira-mobile && bunx vitest run src/screens/__tests__/unified-chat-search-follow-matrix
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => false, convertFileSrc: (p: string) => p },
+  CapacitorHttp: { request: vi.fn() },
+  registerPlugin: () => ({}),
+}));
+vi.mock("@capacitor/preferences", () => ({
+  Preferences: {
+    get: vi.fn(async () => ({ value: null })),
+    set: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}),
+  },
+}));
+
+const { fetchManualSearchStatus, confirmIdentityProposal, getNotebookDetail } = vi.hoisted(() => ({
+  fetchManualSearchStatus: vi.fn(),
+  confirmIdentityProposal: vi.fn(),
+  getNotebookDetail: vi.fn(async () => ({ notebook: {}, sources: [], turns: [], threads: [], photos: [] })),
+}));
+vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus }));
+vi.mock("../../api/identity-confirm", () => ({ confirmIdentityProposal }));
+vi.mock("../../api/resources", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../api/resources")>();
+  return { ...real, getNotebookDetail };
+});
+
+import { UnifiedChat, type UnifiedChatProps } from "../UnifiedChat";
+import type { NotebookServerTurn } from "../../api/resources";
+import type { ChatTurn } from "../../lib/sse";
+
+const NB = "nb-1";
+
+/** A live SSE `manual_search_status` frame — a FRESH object literal every
+ *  call, matching how an unrelated parent rerender rebuilds `liveTurns`. */
+function liveFrame(manufacturer: string, model: string, running: boolean, startedAt: string): { q: string; a: ChatTurn } {
+  return {
+    q: `is this a ${manufacturer} ${model}?`,
+    a: {
+      answer: "Looking into it.",
+      citations: [],
+      status: "answered",
+      unknownFrames: [{ kind: "manual_search_status", manufacturer, model, running, startedAt }],
+    },
+  };
+}
+
+const SMC_TURN: NotebookServerTurn = {
+  id: "t1",
+  question: "is this an SMC SS5Y3-DUW01302?",
+  answerStatus: "insufficient_evidence",
+  answerText: null,
+  evidence: [{ kind: "identity_proposal", manufacturer: "SMC", model: "SS5Y3-DUW01302" }],
+  basis: null,
+};
+
+const ROCKWELL_TURN: NotebookServerTurn = {
+  id: "t2",
+  question: "is this a Rockwell 1756-L71?",
+  answerStatus: "insufficient_evidence",
+  answerText: null,
+  evidence: [{ kind: "identity_proposal", manufacturer: "Rockwell", model: "1756-L71" }],
+  basis: null,
+};
+
+function props(liveTurns: { q: string; a: ChatTurn }[] = [], turns: NotebookServerTurn[] = [SMC_TURN]): UnifiedChatProps {
+  return {
+    turns,
+    liveTurns,
+    pending: null,
+    busy: false,
+    canStop: false,
+    canRetry: false,
+    chatError: null,
+    handlers: { onSend: vi.fn(), onStop: () => {}, onCitation: () => {} },
+    meta: { notebookId: NB, threadId: "notebook-nb-1:thread-legacy", title: "CV-101", identityConfirmed: false },
+  };
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  fetchManualSearchStatus.mockReset();
+  confirmIdentityProposal.mockReset();
+  getNotebookDetail.mockClear();
+});
+
+describe("Invariant 1 — the shown status reflects the most recently STARTED read, unless a newer-generation live frame arrived after it started", () => {
+  it("F23: a delayed mount-time hydration read for G1 never replaces a newer live-frame generation G2", async () => {
+    vi.useFakeTimers();
+    let resolveMount!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMount = r; }));
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
+
+    // A newer search starts on the live stream while the mount-time read is still in flight.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The stale mount-time read (an older, already-settled G1) lands now.
+    await act(async () => {
+      resolveMount({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // G2 is still actively being followed — the next tick runs.
+    const before = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
+  });
+
+  it("F23 follow-up: a delayed mount-time hydration read for G1 never replaces a newer generation G2 discovered by POLLING (not a live frame)", async () => {
+    vi.useFakeTimers();
+    let resolveMount!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMount = r; }));
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    // A cached running G1 live frame is already present at mount — the screen
+    // follows G1 (seeded by the live-frame input) while the mount-time read is
+    // still in flight.
+    render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // The periodic poll (G1's own next tick) discovers a DIFFERENT generation, G2.
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The stale mount-time read (G1, settled) arrives only now.
+    await act(async () => {
+      resolveMount({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+    const before = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(before + 1);
+  });
+});
+
+describe("Invariant 2 — a null response never discards information", () => {
+  it("F25: five null polls on the SAME generation never discard a delayed, valid settled read for THAT generation", async () => {
+    vi.useFakeTimers();
+    let resolveMount!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMount = r; }));
+    fetchManualSearchStatus.mockResolvedValue(null); // every poll in between is inconclusive
+    render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+
+    // The slow mount-time read for the SAME generation (gen-1) finally lands
+    // with the real, settled outcome — it must win over "gave up at budget".
+    await act(async () => {
+      resolveMount({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+  });
+
+  it("a null poll keeps showing the last known running status, not a blank card", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    fetchManualSearchStatus.mockResolvedValueOnce(null);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+  });
+});
+
+describe("Invariant 3 — while following, a next tick is always scheduled until settle or budget exhaustion", () => {
+  it("fetchManualSearchStatus call counts keep advancing with each timer tick", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    let calls = fetchManualSearchStatus.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+    for (let i = 0; i < 4; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      const next = fetchManualSearchStatus.mock.calls.length;
+      expect(next).toBeGreaterThan(calls);
+      calls = next;
+    }
+  });
+
+  it("stops scheduling once the budget is exhausted (unresolved)", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+    const calls = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(calls);
+  });
+
+  it("stops scheduling once settled", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValueOnce({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    const calls = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(calls);
+  });
+});
+
+describe("Invariant 4 — the budget is never refilled by a replay", () => {
+  it("an unrelated rerender re-delivering an identical, already-settled live frame does not reopen tracking or spend a request", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Found it.", startedAt: "gen-1" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    const callsAtSettle = fetchManualSearchStatus.mock.calls.length;
+
+    for (let i = 0; i < 3; i++) {
+      view.rerender(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(screen.getByText("Found it.")).toBeTruthy();
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtSettle);
+  });
+
+  it("an exhausted (unresolved) generation stays unresolved across a replay of the same live frame", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+    const calls = fetchManualSearchStatus.mock.calls.length;
+
+    view.rerender(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(calls);
+  });
+});
+
+describe("Invariant 5 — a reload with no running search shows nothing and does not poll forever", () => {
+  it("renders nothing and makes exactly one read when nothing is running", async () => {
+    fetchManualSearchStatus.mockResolvedValue(null);
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/Searching/)).toBeNull();
+    expect(screen.queryByText(/Still searching/)).toBeNull();
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule a retry on its own after a null probe", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue(null);
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    const calls = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(calls);
+    expect(screen.queryByText(/Searching/)).toBeNull();
+  });
+});
+
+describe("F26: a pre-confirmation poll in flight must not invalidate a fresher confirmation read for the SAME generation", () => {
+  it("resolves to the confirmed READY status even though an older, in-flight poll for the same generation lands first", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    // Consume four attempts.
+    for (let i = 0; i < 4; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // The fifth poll is dispatched but its response is deferred.
+    let resolveFifthPoll!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveFifthPoll = r; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+
+    // A confirm fires while that fifth poll is still pending, and reports
+    // searching:false — the handler requests an authoritative probe instead
+    // of fetching itself.
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    let resolveConfirmProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveConfirmProbe = r; }));
+    const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
+    await act(async () => { fireEvent.click(confirmButton); await Promise.resolve(); });
+
+    // The OLDER poll resolves first, still reporting running (its snapshot,
+    // taken before confirm).
+    await act(async () => {
+      resolveFifthPoll({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    // The NEWER confirmation probe resolves second, with the real outcome.
+    await act(async () => {
+      resolveConfirmProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText(/Still searching — check back in a minute\./)).toBeNull();
+  });
+});
+
+describe("Confirm-reconcile (#4195 round 4 F6): a settled candidate-review message is replaced by the authoritative status after a manualReady:true/searching:false confirm — no second send, no remount", () => {
+  it("replaces a stale 'not turned on' decline with the real, ready outcome", async () => {
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false,
+      message: "Candidate: not turned on.", startedAt: "gen-1",
+    });
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Candidate: not turned on.")).toBeTruthy();
+
+    fetchManualSearchStatus.mockResolvedValue({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false,
+      message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    const confirmButton = screen.getByRole("button", { name: "Use its manuals" });
+    await act(async () => { fireEvent.click(confirmButton); await Promise.resolve(); });
+
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText("Candidate: not turned on.")).toBeNull();
+    expect(confirmIdentityProposal).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("F27 (Codex r12): within ONE generation, an older read never overwrites a newer accepted result", () => {
+  async function mountWithDeferredProbe() {
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    // Confirm promotes the manual without changing the generation; its probe returns READY first.
+    confirmIdentityProposal.mockResolvedValue({ manualReady: true, searching: false, message: "Confirmed." });
+    fetchManualSearchStatus.mockResolvedValueOnce({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use its manuals" })); await Promise.resolve(); });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    return (v: unknown) => resolveMountProbe(v);
+  }
+
+  it("a delayed mount probe's settled decline does not replace the newer READY result", async () => {
+    const resolveMountProbe = await mountWithDeferredProbe();
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Candidate: not turned on.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText("Candidate: not turned on.")).toBeNull();
+  });
+
+  it("a delayed mount probe's older RUNNING snapshot does not reopen tracking after READY", async () => {
+    vi.useFakeTimers();
+    const resolveMountProbe = await mountWithDeferredProbe();
+    const callsAtReady = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtReady);
+  });
+});
+
+describe("F28 (Codex round 13): a cached same-generation live frame never discards a settled, newer-dispatched GET result", () => {
+  it("the mount probe's deferred READY response settles correctly even though a cached running live frame for the SAME generation arrived while it was in flight", async () => {
+    vi.useFakeTimers();
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    // The mount probe is dispatched with NOTHING tracked yet (no live frame present at mount).
+    const view = render(<UnifiedChat {...props([], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Searching/)).toBeNull();
+
+    // A cached live frame arrives reporting the SAME generation (gen-1) the
+    // in-flight probe will eventually resolve to — e.g. a parent rerender
+    // delivering `liveTurns` for the first time shortly after mount.
+    view.rerender(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")], [SMC_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching SMC's documentation for SS5Y3-DUW01302…/)).toBeTruthy();
+
+    // Any poll this generation's own tick chain fires before the mount
+    // probe settles must come back null — proving the eventual READY below
+    // is not masked by some OTHER, later successful read.
+    fetchManualSearchStatus.mockResolvedValue(null);
+
+    // The mount probe's deferred response finally arrives: SETTLED and
+    // READY, for the SAME generation (gen-1) the cached live frame reported.
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+
+    // The ready state is shown, not discarded in favor of "Still searching".
+    expect(screen.getByText("Ready — check Sources.")).toBeTruthy();
+    expect(screen.queryByText(/Searching SMC's documentation/)).toBeNull();
+    expect(screen.queryByText(/Still searching — check back in a minute\./)).toBeNull();
+
+    // Polling stopped (settled, not following) — no further reads even if time passes.
+    const callsAtReady = fetchManualSearchStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(callsAtReady);
+
+    // Promoted-scope refresh fired (the manual may now be citable) — the
+    // ONLY call site for getNotebookDetail in this component is
+    // refreshPromotedScope, reached via the driver's onRefreshSources.
+    expect(getNotebookDetail).toHaveBeenCalled();
+  });
+
+  // Control (F23, restated locally): a live frame reporting a GENUINELY
+  // DIFFERENT generation than nothing-tracked-yet must still supersede an
+  // in-flight probe for the old context — this file's existing F23 cases
+  // cover the fuller interleavings; this is the minimal same-shape control
+  // for this describe block, proving the F28 fix did not weaken F23.
+  it("control: a live frame reporting a DIFFERENT generation still supersedes an in-flight probe for the old context", async () => {
+    vi.useFakeTimers();
+    let resolveMountProbe!: (v: unknown) => void;
+    fetchManualSearchStatus.mockImplementationOnce(() => new Promise((r) => { resolveMountProbe = r; }));
+    const view = render(<UnifiedChat {...props([], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+
+    // A DIFFERENT generation (Rockwell, gen-2) goes live while the probe above is still in flight.
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "Rockwell", model: "1756-L71", running: true, startedAt: "gen-2" });
+    view.rerender(<UnifiedChat {...props([liveFrame("Rockwell", "1756-L71", true, "gen-2")], [SMC_TURN, ROCKWELL_TURN])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+
+    // The old probe (for nothing/gen-1) finally resolves — it must NOT win over gen-2.
+    await act(async () => {
+      resolveMountProbe({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Old result.", startedAt: "gen-1" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Old result.")).toBeNull();
+    expect(screen.getByText(/Searching Rockwell's documentation for 1756-L71…/)).toBeTruthy();
+  });
+});
+
+describe("F31 (Codex r18): a completed live frame reconciles a search whose polling ran out", () => {
+  function completedFrame(message: string): { q: string; a: ChatTurn } {
+    return {
+      q: "any luck with that manual?",
+      a: {
+        answer: "Here is what I found.",
+        citations: [],
+        status: "answered",
+        unknownFrames: [{ kind: "manual_search_status", manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message, startedAt: "gen-1" }],
+      },
+    };
+  }
+
+  it("a completed frame whose probe returns nothing is not re-probed on every replay (bounded: one read per frame)", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 6; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    const readsWhenExhausted = fetchManualSearchStatus.mock.calls.length;
+    fetchManualSearchStatus.mockResolvedValue(null); // status unavailable: the follow stays unresolved
+    const turns = [liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"), completedFrame("Ready — check Sources.")];
+    view.rerender(<UnifiedChat {...props(turns)} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+    for (let i = 0; i < 3; i++) {
+      view.rerender(<UnifiedChat {...props([...turns])} />);
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+  });
+
+  it("after five polls exhaust, a newer completed same-generation frame triggers one authoritative read and the ready outcome replaces 'Still searching'", async () => {
+    vi.useFakeTimers();
+    fetchManualSearchStatus.mockResolvedValue({ manufacturer: "SMC", model: "SS5Y3-DUW01302", running: true, startedAt: "gen-1" });
+    const view = render(<UnifiedChat {...props([liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1")])} />);
+    await act(async () => { await Promise.resolve(); });
+    for (let i = 0; i < 6; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    }
+    expect(screen.getByText(/Still searching — check back in a minute\./)).toBeTruthy();
+    const readsWhenExhausted = fetchManualSearchStatus.mock.calls.length;
+    const refreshesWhenExhausted = getNotebookDetail.mock.calls.length;
+
+    fetchManualSearchStatus.mockResolvedValue({
+      manufacturer: "SMC", model: "SS5Y3-DUW01302", running: false, message: "Ready — check Sources.", startedAt: "gen-1",
+    });
+    const turns = [liveFrame("SMC", "SS5Y3-DUW01302", true, "gen-1"), completedFrame("Ready — check Sources.")];
+    view.rerender(<UnifiedChat {...props(turns)} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+    expect(screen.queryByText(/Still searching — check back in a minute\./)).toBeNull();
+    expect(screen.getAllByText("Ready — check Sources.").length).toBeGreaterThan(0);
+    expect(getNotebookDetail.mock.calls.length).toBeGreaterThan(refreshesWhenExhausted);
+
+    // A replay of the same completed frame (unrelated rerender) makes no further read.
+    view.rerender(<UnifiedChat {...props([...turns])} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus.mock.calls.length).toBe(readsWhenExhausted + 1);
+  });
+});
+
