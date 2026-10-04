@@ -195,10 +195,43 @@ def designate(receipts: list[ProdReceipt]) -> dict:
 # ── contracting-migration detection (expand/contract, §10.2 Compatibility) ────────
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+# One left-to-right pass, so a quote or comment marker is only special where it starts a
+# token: a '(' ';' ',' or '--' inside a string literal can neither hide nor fake an action.
+_LEXEMES = re.compile(
+    r"(?P<dollar>\$(?P<tag>[A-Za-z_][A-Za-z0-9_]*|)\$.*?\$(?P=tag)\$)"
+    r"|(?P<ident>\"(?:[^\"]|\"\")*\")"
+    r"|(?P<literal>'(?:[^']|'')*')"
+    r"|(?P<comment>--[^\n]*|/\*.*?\*/)",
+    re.DOTALL,
+)
+
+
+def _strip_literals_and_comments(sql: str) -> str:
+    """Blank string literals, drop comments; keep identifiers and dollar-quoted bodies.
+
+    A dollar-quoted body (``DO $$ … $$``, a function body) stays visible, comments
+    stripped, because DDL inside it still runs — hiding it would be the unsafe direction.
+    """
+
+    def repl(m: re.Match) -> str:
+        if m.group("dollar"):
+            return _COMMENTS.sub(" ", m.group("dollar"))
+        if m.group("ident"):
+            return m.group("ident")
+        return "''" if m.group("literal") else " "
+
+    return _LEXEMES.sub(repl, sql)
+
+
 _DROP_OBJECT = re.compile(
     r"\ADROP\s+(TABLE|VIEW|MATERIALIZED\s+VIEW|TYPE|SCHEMA|SEQUENCE|FUNCTION)\s+(?:IF\s+EXISTS\s+)?(.+)\Z"
 )
 _ALTER_TABLE = re.compile(r"\AALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(\S+)\s+(.+)\Z")
+# Where a checked statement starts inside a ;-delimited piece. DDL inside a DO block or
+# function body follows a PL/pgSQL prefix (DO $$ BEGIN IF … THEN) and still runs.
+_DDL_START = re.compile(
+    r"\b(?:ALTER\s+TABLE|DROP\s+(?:TABLE|VIEW|MATERIALIZED\s+VIEW|TYPE|SCHEMA|SEQUENCE|FUNCTION))\b"
+)
 
 
 def _norm_name(raw: str) -> str:
@@ -239,13 +272,15 @@ def contracting_statements(sql: str) -> list[str]:
     SET NOT NULL. Not contracting: DROP POLICY/INDEX/TRIGGER, DROP CONSTRAINT, DROP
     DEFAULT / DROP NOT NULL, ADD COLUMN, CREATE … (expand), data DML.
     """
-    upper = _COMMENTS.sub(" ", sql).upper()
+    upper = _strip_literals_and_comments(sql).upper()
     recreated = _created_names(upper)
     hits = []
     for raw in upper.split(";"):
         stmt = " ".join(raw.split())
-        if not stmt:
+        start = _DDL_START.search(stmt)
+        if not start:
             continue
+        stmt = stmt[start.start() :]
         m = _DROP_OBJECT.match(stmt)
         if m:
             names = [

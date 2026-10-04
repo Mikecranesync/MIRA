@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -99,6 +100,15 @@ def test_a_service_never_receipted_gets_an_explicit_null(tmp_path):
     )
     assert cands["mira-pipeline"]["sha"] is None and cands["mira-pipeline"]["from_run_id"] is None
     assert "no earlier production receipt" in cands["mira-pipeline"]["reason"]
+
+
+def test_a_first_ever_deploy_with_no_receipts_still_stamps(tmp_path):
+    """No production receipt anywhere: every service gets a null candidate, and stamp accepts it."""
+    receipts = rc.load_receipts(tmp_path / "never-created")
+    assert receipts == []
+    cands = rc.candidates_for_deploy(receipts, NEW, ALL)
+    assert {s: c["sha"] for s, c in cands.items()} == dict.fromkeys(ALL)
+    assert rc.candidate_problems(cands, ALL, NEW) == []
 
 
 def test_order_is_deployed_at_not_directory_name(tmp_path):
@@ -352,6 +362,72 @@ def test_a_real_type_change_is_flagged():
         )
     )
     assert hits and all("TYPE TEXT" in h for h in hits)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # a paren inside a literal must not swallow the following action
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT '(', DROP COLUMN d;",
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT ')', DROP COLUMN d;",
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'it''s (', DROP COLUMN d;",
+        # a comment marker inside a literal must not hide the rest of the line
+        "ALTER TABLE t ADD COLUMN n text DEFAULT '--', DROP COLUMN d;",
+        "ALTER TABLE t ADD COLUMN n text DEFAULT '/*', DROP COLUMN d; -- */",
+        # a semicolon inside a literal must not cut the statement short
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a;b', DROP COLUMN d;",
+    ],
+)
+def test_string_literals_cannot_hide_a_contraction(sql):
+    assert rc.contracting_statements(sql), sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "ALTER TABLE t ALTER COLUMN c SET DEFAULT 'x, DROP COLUMN y';",
+        "INSERT INTO notes (body) VALUES ('ALTER TABLE t DROP COLUMN c; DROP TABLE t');",
+    ],
+)
+def test_string_literals_cannot_fake_a_contraction(sql):
+    assert rc.contracting_statements(sql) == [], sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DO $$ BEGIN IF EXISTS (SELECT 1) THEN ALTER TABLE t RENAME COLUMN a TO b; END IF; END $$;",
+        "DO $tag$ BEGIN ALTER TABLE t DROP COLUMN c; END $tag$;",
+        "DO $$ BEGIN DROP TABLE legacy_rows; END $$;",
+        # an apostrophe inside a dollar-quoted body is not the start of a literal
+        "COMMENT ON TABLE t IS $$it's$$; ALTER TABLE t DROP COLUMN c; SELECT 'x';",
+    ],
+)
+def test_ddl_inside_a_do_block_is_still_checked(sql):
+    assert rc.contracting_statements(sql), sql
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DO $$ BEGIN ALTER TABLE t ADD CONSTRAINT k UNIQUE (c); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE t DROP CONSTRAINT IF EXISTS k; END $$;",
+        "DO $$ BEGIN -- ALTER TABLE t DROP COLUMN c;\n PERFORM 1; END $$;",
+    ],
+)
+def test_expand_patterns_inside_a_do_block_are_not_flagged(sql):
+    assert rc.contracting_statements(sql) == [], sql
+
+
+def test_migration_dirs_are_exactly_what_the_apply_workflows_apply():
+    """``compat`` must scan every directory an apply-* workflow applies — a new one must fail here."""
+    applied = set()
+    workflows = sorted((REPO / ".github/workflows").glob("apply-*migrations.yml"))
+    for wf in workflows:
+        applied.update(re.findall(r'MIG_DIR="([^"]+)"', wf.read_text(encoding="utf-8")))
+    assert len(workflows) >= 2 and applied, "found no apply-* migration workflows to compare"
+    assert applied == set(rc.MIGRATION_DIRS)
 
 
 def _git(repo: Path, *args: str) -> str:
