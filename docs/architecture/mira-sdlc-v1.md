@@ -250,12 +250,22 @@ transitions. No agent may self-award a PASS on work it authored.
 
 - Mechanism: `tools/gate7_review.py <PR> --paid --post` posts `[CHEAP-REVIEW]` with `head`, `verdict`,
   `model`, `cost_usd`, `run_id`. Required on **every PR including R0** (owner mandate 2026-10-03; D4).
-- **Classification: ADVISORY, not a blocking attestation**, until it is posted as a **commit/head-bound
-  GitHub check-run** that a required context consumes (Part B step 6). Reasons, all facts today: the
-  head SHA and the diff are fetched separately and the head is not re-read before posting; the exit code
-  is 0 for rendered PASS, BLOCK and UNKNOWN and for a failed post (2/3/4 only for provider failure,
-  budget refusal, oversized diff); the only consumer is the merger reading `head:` and `verdict:`.
-- Rule for the merger (doctrine until the check-run exists): merge only when the latest
+- **Classification: ADVISORY, not a blocking attestation**, until a required status context consumes
+  the **commit/head-bound GitHub check-run** (Part B step 6). Since step 6 the lane re-reads the head
+  immediately before posting (`verdict: STALE` on drift) and `.github/workflows/cheap-review-check.yml`
+  turns the owner-posted envelope into a check-run named `Cheap Review` on the reviewed head, only while
+  that head is still the PR head. The check is reconciled from all live owner reviews of the head: the
+  newest full-scope review plus any failure at or after it, so a replayed or late older review, a
+  `--paths`-scoped `PASS` (the envelope declares its scope) or a newer scoped `PASS` can never show
+  success over failure evidence; an unchanged state posts nothing. `success` for a full-scope `PASS`,
+  `failure` for every other verdict (never `neutral` or `skipped`, which branch protection counts as
+  passing). Reasons it is still advisory, all
+  facts today: no required context consumes it (a settings action); the exit code is 0 for rendered
+  PASS, BLOCK and UNKNOWN and for a failed post (2/3/4 only for provider failure, budget refusal,
+  oversized diff); and the check-run's source is "a workflow token in this repository" — any workflow
+  holding `checks: write` can create a check-run with that name, so requiring it needs a
+  source-authentic binding (the same gap as the lifecycle guard, §11.2).
+- Rule for the merger (doctrine until a required context consumes the check-run): merge only when the latest
   `[CHEAP-REVIEW]` `head:` equals the current head and `verdict: PASS`, or every remaining finding is
   dispositioned in a PR comment (fixed / false-positive with reason / deferred to issue #). "No new
   findings" is not PASS.
@@ -289,7 +299,7 @@ otherwise; a separate reviewer identity (second GitHub App/account) is a deferre
 | Artifact | Status in v1 |
 |---|---|
 | `[CODEX-ADVERSARIAL-REVIEW] status: GREEN` on the exact head + body | **Authoritative** for the gates that require it (§4.3) |
-| `[CHEAP-REVIEW]` comment | **Advisory** (until a head-bound check-run exists) |
+| `[CHEAP-REVIEW]` comment and its `Cheap Review` check-run | **Advisory** (the head-bound check-run exists since Part B step 6; authoritative only once a required context consumes it) |
 | Specialist agent findings | **Advisory input**; their dispositions are evidence in the PR |
 | `code-review.yml` AI review comment | **Advisory** (comment-only, never fails) |
 | Required status contexts | **Authoritative** (deterministic) |
@@ -576,7 +586,7 @@ owner decision that safety flags never withhold an answer, S0–S5 inside safety
 | Stage | Authoritative identity | Produced by | Verified by | Invalidated when |
 |---|---|---|---|---|
 | Classified | `Risk:` line on issue/claim + PR body; effective risk per §2.3 | implementer; floors | reviewer; guard (R3 paths) | any candidate change |
-| Cheap review | PR head SHA stamped in `[CHEAP-REVIEW]` (advisory) | `gate7_review.py` | merger (doctrine) | head moves |
+| Cheap review | PR head SHA stamped in `[CHEAP-REVIEW]` and the `Cheap Review` check-run's `head_sha` (advisory) | `gate7_review.py`; `cheap-review-check.yml` | merger (doctrine) | head moves |
 | Codex review | `reviewed_sha` + `reviewed_body_sha256` + `base_sha` | trusted-base script, owner account | guard parser (guarded paths), ledger | head or body changes |
 | Merge candidate | PR head containing current `main` | GitHub (strict) | branch protection | any push to `main` |
 | Merged | merge commit SHA ↔ exactly one merged PR (`merge_commit_sha`) | GitHub | `deploy-vps.yml` mapping (v1: no fallback) | — |
@@ -804,6 +814,8 @@ cheap-lane saturation (2026-10-03); post-cap Codex rounds after main-merge with
 - 2026-10-03 — Part B step 5 landed: §2.3 R2 Signal Floor (advisory), §6.2 acceptance-receipt consumer, §7.2 rows
   marked Enforced (effective services incl. `mira-ask`, generation-bound acceptance receipt, exact merged-PR match,
   trusted-base validators). Status text only; no rule text changed.
+- 2026-10-04 — Part B step 6 completed: §4.2, §4.5 and §12.1 describe the head-bound `Cheap Review`
+  check-run (`.github/workflows/cheap-review-check.yml`, advisory). Status text only; no rule text changed.
 - 2026-10-04 — Part B step 10 (code and docs): §10.2 state text — `rollback_candidate` on the production
   receipt, the daily candidate check, `docs/runbooks/rollback.md`; automated re-staging and the drill
   remain open. Status text only; no rule text changed.

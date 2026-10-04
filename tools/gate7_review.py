@@ -1415,10 +1415,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"{(live_head or 'unknown')[:12]}); posting verdict: STALE",
                 file=sys.stderr,
             )
+        # Scope is part of the envelope (SDLC v1 step 6, Codex F2 on #4221): a --paths run
+        # reviewed only part of the head, so its PASS must never be read as a whole-head
+        # PASS. `full` means no changed file was excluded.
+        scope_line = (
+            "scope: full\n"
+            if not excluded
+            else f"scope: partial\nexcluded_files: {len(excluded)}\n"
+        )
         body = (
             "[CHEAP-REVIEW]\n\n```\n"
             f"head: {head_sha}\n{verdict_line}model: {model}\n"
-            f"cost_usd: {cost:.4f}\nrun_id: {run_id}\n```\n\n" + report
+            f"cost_usd: {cost:.4f}\nrun_id: {run_id}\n{scope_line}```\n\n" + report
         )
         try:
             url = _gh_text(["pr", "comment", str(a.pr), "--body-file", "-"], stdin=body)
