@@ -386,6 +386,21 @@ def test_contracting_since_finds_a_later_contraction(tmp_path):
     assert res.returncode == 1 and "CONTRACTING mira-hub/db/migrations/003_c.sql" in res.stdout
 
 
+def test_contracting_since_scans_the_ingest_migrations_too(tmp_path):
+    repo, cand = _repo(tmp_path)
+    ingest = repo / "mira-core/mira-ingest/db/migrations"
+    ingest.mkdir(parents=True)
+    (ingest / "012_x.sql").write_text("ALTER TABLE chunks DROP COLUMN legacy;\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head")
+    hits = rc.contracting_since(cand, _git(repo, "rev-parse", "HEAD"), repo)
+    assert [h["path"] for h in hits] == ["mira-core/mira-ingest/db/migrations/012_x.sql"]
+    assert set(rc.MIGRATION_DIRS) == {
+        "mira-hub/db/migrations",
+        "mira-core/mira-ingest/db/migrations",
+    }
+
+
 def test_contracting_since_is_clean_for_expand_only(tmp_path):
     repo, cand = _repo(tmp_path)
     (repo / "mira-hub/db/migrations/002_b.sql").write_text("ALTER TABLE a ADD COLUMN y int;\n")

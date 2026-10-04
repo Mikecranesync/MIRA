@@ -240,6 +240,18 @@ def test_record_step_walks_newest_first_and_stops_once_covered(tmp_path):
     assert len(downloads) == 2, (
         "the third (oldest) receipt is never downloaded once every service is covered"
     )
+    listing = next(c for c in _calls(tmp_path) if c[:2] == ["run", "list"])
+    assert listing[listing.index("--branch") + 1] == "main", (
+        "a run dispatched from another ref runs ITS copy"
+    )
+    assert listing[listing.index("--event") + 1] == "workflow_dispatch"
+
+
+def test_refresh_lists_only_main_dispatch_deploy_runs():
+    run = _step(REFRESH, "check", "Gather the production receipts")["run"]
+    assert (
+        "--workflow deploy-vps.yml --branch main --event workflow_dispatch --status success" in run
+    )
 
 
 def test_record_step_fails_closed_on_a_malformed_receipt(tmp_path):

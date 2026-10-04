@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           DIR="$RUNNER_TEMP/production-receipts"
           install -d -m 700 "$DIR"
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --status success --limit 40 --json databaseId --jq '.[].databaseId')"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status success --limit 40 --json databaseId --jq '.[].databaseId')"
           for run in $RUNS; do
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
