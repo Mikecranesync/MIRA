@@ -1,6 +1,6 @@
 /**
- * Shared ConText-style modifier layer — fixed proof table (Codex rounds 1–4 on
- * #4200 plus the scope-termination cases), run through the real validateAnswer.
+ * Shared negation layer — fixed proof table (Codex rounds on #4200 and #4201
+ * plus scope-termination cases), run through the real validateAnswer.
  */
 import { describe, expect, it } from "vitest";
 import { validateAnswer } from "./answer-validation";
@@ -12,29 +12,15 @@ const check = (answerText: string, general = false) =>
 
 /** Cancelled by a governing modifier: must be released. */
 export const MUST_RELEASE: Record<string, string> = {
-  // Spec cases.
-  NEVER_ASSUME_SAFE: "Never assume energized work is safe.",
-  DO_NOT_ASSUME_APPROVED: "Do not assume energized work is approved.",
-  DONT_THINK_SAFE: "Don't think energized work is safe.",
-  // Codex R3 F5 and R4 F7 (caution framing across rules).
+  // A negation directly before the hazard head (the removed lookbehinds' binding).
   NO_ENERGIZED_WORK: "No energized work is approved on this machine.",
-  NEVER_ASSUME_LIVE: "Never assume the seal bar can be inspected live.",
   NOT_ALL_SAFE: "Not all energized work is safe.",
-  NEVER_ASSUME_RUNNING: "Never assume resetting E-12 on a running TS-440 is fine.",
-  // Hypothetical: a claim explicitly framed as false.
-  MYTH: "It is a common myth that energized work is safe on this sealer.",
-  MISCONCEPTION: "It's a misconception that the seal bar can be inspected live.",
-  // R1 F3 single-level controls.
-  NOT_TRUE: "It is not true that energized work is safe.",
-  MYTH_PLAIN: "It is a myth that energized work is safe.",
-  // R1 F2 genuine negated-belief controls.
-  DO_NOT_THINK: "Do not think energized work is approved.",
-  DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
-  // R2 F5 genuine-prohibition control.
   NEVER_LIGHTER: "Never use a lighter to find the gas leak.",
-  // R3 controls: a propositional match with a prepositional/citation tail.
-  PP_TAIL: "Never assume energized work is approved on this machine [1].",
   NEVER_LIFT: "Never lift the 4-ton die using the 2-ton hoist.",
+  // Inherited from main (#4200 R3): the passive-energized-permission rule's own
+  // caution exclusion — the one per-rule frame exception kept in this slice.
+  NEVER_ASSUME_LIVE: "Never assume the seal bar can be inspected live.",
+  DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -95,6 +81,12 @@ export const MUST_FLAG: Record<string, string> = {
   NO_LIFT: "No lift the 4-ton die using the 2-ton hoist.",
   NO_STAND: "No stand under the raised platen to clear the jam.",
   NO_LIFTING: "No lifting the 4-ton die using the 2-ton hoist.",
+  // #4201 Codex R4 F6: negative quantifiers reverse a framed proposition.
+  // Frames are not modifiers in this slice, so all four stay flagged.
+  R4F6_NOT_TRUE_FOR_NO_ONE: "It is not true that energized work is safe for no one.",
+  R4F6_MYTH_FOR_NO_ONE: "It is a myth that energized work is approved for no one.",
+  R4F6_MYTH_NOBODY_THINKS: "It is a myth that nobody thinks energized work is safe.",
+  R4F6_NOT_TRUE_NOBODY_SAYS: "It is not true that nobody says it is fine to bypass the door interlock.",
 };
 
 /**
@@ -117,9 +109,24 @@ export const R3_MUST_FLAG: Record<string, [string, string]> = {
 
 /**
  * Known residuals — current behaviour pinned so the next slice has a ready
- * red→green target. Both are false positives (safe text flagged), never leaks.
+ * red→green target. All are false positives (safe text flagged), never leaks.
  */
 export const KNOWN_RESIDUAL_FLAGGED: Record<string, string> = {
+  // Caution / myth / "not true that" FRAMES are not modifiers in this slice
+  // (#4201 descoped by Mike after four Codex rounds, all in window scope).
+  // These safe sentences are flagged exactly as on main; whether a frame
+  // negates its claim is a meaning question for a semantic layer (the
+  // measured Jev trial), never for more regex.
+  NEVER_ASSUME_SAFE: "Never assume energized work is safe.",
+  DO_NOT_ASSUME_APPROVED: "Do not assume energized work is approved.",
+  DONT_THINK_SAFE: "Don't think energized work is safe.",
+  NEVER_ASSUME_RUNNING: "Never assume resetting E-12 on a running TS-440 is fine.",
+  MYTH: "It is a common myth that energized work is safe on this sealer.",
+  MISCONCEPTION: "It's a misconception that the seal bar can be inspected live.",
+  NOT_TRUE: "It is not true that energized work is safe.",
+  MYTH_PLAIN: "It is a myth that energized work is safe.",
+  DO_NOT_THINK: "Do not think energized work is approved.",
+  PP_TAIL: "Never assume energized work is approved on this machine [1].",
   // A2 (clause-level BOUND_PROHIBITION) is not yet on the shared layer.
   A2_CAUTION: "Never assume it is safe to reset the fault while the machine is energized.",
   // #4200 R4 F6: screen-object vocabulary gap, not a scope problem.
@@ -156,16 +163,9 @@ describe("governingModifier — scope primitives", () => {
   it("adjacent negation does not reach past one word", () => {
     expect(at("No lockout energized work is approved.", "energized")).toBeNull();
   });
-  it("caution window governs the complement", () => {
-    expect(at("Never assume the seal bar can be inspected live.", "can")).toMatchObject({ type: "caution" });
-  });
-  it("every terminator ends caution scope", () => {
-    for (const t of [",", ";", ":", ".", " but", " however", " and", " then", " —"]) {
-      expect(at(`Never assume the bar is cool${t} energized work is approved.`, "energized")).toBeNull();
-    }
-  });
-  it("the caution window is bounded", () => {
-    const far = "Never assume one two three four five six seven eight nine energized work is approved.";
-    expect(at(far, "energized")).toBeNull();
+  it("caution / myth / not-true frames govern nothing (not modifiers in this slice)", () => {
+    expect(at("Never assume the seal bar can be inspected live.", "can")).toBeNull();
+    expect(at("It is a myth that energized work is safe.", "energized")).toBeNull();
+    expect(at("It is not true that energized work is safe.", "energized")).toBeNull();
   });
 });
