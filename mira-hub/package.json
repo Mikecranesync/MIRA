@@ -71,7 +71,7 @@
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.8.0",
     "mdast-util-find-and-replace": "^3.0.2",
-    "next": "16.3.5",
+    "next": "16.3.6",
     "next-auth": "^4.24.14",
     "next-intl": "^4.9.1",
     "openid-client": "^6.6.0",
