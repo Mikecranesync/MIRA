@@ -39,6 +39,51 @@ function uid(): string {
  *  (Japanese/Chinese/Korean keyboards, keyCode 229) never sends. Local copy —
  *  intentionally not imported from notebook-chat-utils.ts (Notebook-specific;
  *  see FLEET-011). Exported for AssetChat.test.tsx. */
+/** The shape `buildApprovedContextRefusal` sends with a 412. */
+type ApprovedContextRefusal = {
+  gate: "approved_context";
+  reason: string;
+  missingContext: ReadonlyArray<{
+    key: string;
+    label: string;
+    status: string;
+    action: string;
+  }>;
+};
+
+/**
+ * The approved-context gate, rendered as guidance rather than as an outage.
+ *
+ * A 412 from the chat route is MIRA declining to answer without grounding — a
+ * designed product behaviour carrying the reason AND, per missing item, the
+ * action that resolves it. It was previously swallowed by a generic catch and
+ * shown as "Chat unavailable (412). Try again or refresh the page.", which
+ * read as a broken app and gave advice that could never work: retrying does
+ * not satisfy a gate that wants an approved document.
+ *
+ * Amber, not red — nothing has failed.
+ */
+export function ApprovedContextNotice({ refusal }: { refusal: ApprovedContextRefusal }) {
+  const outstanding = refusal.missingContext.filter((item) => item.status !== "ready");
+  return (
+    <div
+      role="status"
+      data-testid="approved-context-notice"
+      className="text-xs px-3 py-3 rounded-lg space-y-2"
+      style={{ background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}
+    >
+      <p className="font-medium">{refusal.reason}</p>
+      <ul className="space-y-1">
+        {outstanding.map((item) => (
+          <li key={item.key}>
+            <span className="font-medium">{item.label}:</span> {item.action}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function isEnterToSend(e: {
   key: string;
   shiftKey: boolean;
@@ -192,7 +237,12 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+const [error, setError] = useState<string | null>(null);
+  // The approved-context gate is a distinct state from an error: the request
+  // succeeded and MIRA answered "not without grounding". Rendering the two the
+  // same way is what made a working refusal look like an outage.
+  const [refusal, setRefusal] = useState<ApprovedContextRefusal | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -216,6 +266,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     abortRef.current?.abort();
     setMessages([]);
     setError(null);
+    setRefusal(null);
     setStreaming(false);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
@@ -230,6 +281,13 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     if (!text.trim() || streaming) return;
 
     setError(null);
+    // The refusal describes ONE turn and must not outlive it. Without this it
+    // is write-once: it sits under the next successful answer still saying
+    // MIRA cannot answer, survives "clear chat", and — because the mount
+    // carries no `key`, while messages reload on assetId — follows you to a
+    // different asset. That is the same defect this component was fixed for
+    // (state outliving the turn it describes), one layer down.
+    setRefusal(null);
     const userMsg: ChatMessage = { id: uid(), role: "user", content: text.trim() };
     const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "" };
 
@@ -257,6 +315,27 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
       });
 
       if (!res.ok) {
+        // A 412 from this route is NOT a failure — it is MIRA declining to
+        // answer without approved context (`buildApprovedContextRefusal`,
+        // mira-hub/src/lib/approved-context.ts). The body carries the reason
+        // and, per missing item, the exact action that fixes it. Discarding it
+        // and rendering "Chat unavailable (412). Try again or refresh the
+        // page." turned a designed product refusal into a fake crash — and the
+        // advice was actively wrong, because retrying can never satisfy a gate
+        // that wants an approved document.
+        if (res.status === 412) {
+          const body = (await res.json().catch(() => null)) as ApprovedContextRefusal | null;
+          if (body?.gate === "approved_context") {
+            setRefusal(body);
+            setMessages((prev) => {
+              const next = [...prev];
+              next.pop(); // drop the empty assistant bubble
+              return next;
+            });
+            setInput((current) => restoreComposer(current, text));
+            return;
+          }
+        }
         throw new Error(`Server error ${res.status}`);
       }
 
@@ -455,6 +534,8 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
         {messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} />
         ))}
+
+        {refusal && <ApprovedContextNotice refusal={refusal} />}
 
         {error && (
           <div
