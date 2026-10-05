@@ -277,3 +277,77 @@ describe("acquireManualForIdentity — R15 span tree", () => {
   });
 });
 
+
+// ── Candidate trail (Golden Walk 2026-10-05) ─────────────────────────────────
+// One span event per candidate so a single trace explains why a document won —
+// and the R15 leak rule extends to events: no identity, URL, host or title.
+describe("candidate trail on the search span", () => {
+  const TRAIL = {
+    version: 1,
+    queries: [{ pass: "q1", query: `"${MODEL}" manual`, result: "sent", hits: 2 }],
+    stop: "ideal_match",
+    candidateCount: 2,
+    candidates: [
+      {
+        rank: 0, url: CANDIDATE.url, host: CANDIDATE.host, title: `${MODEL} firmware manual`, score: 185,
+        pass: "q1", read: "judged", readReason: null, notQueued: null, isManual: true, docType: "user_manual",
+        scope: "complete", listsFaultCodes: true, language: "en", textLanguage: "en", confidence: 0.97,
+        provider: "groq", selected: true,
+      },
+      {
+        rank: 1, url: "https://example-oem.test/PTBR_manual.pdf", host: CANDIDATE.host, title: `${MODEL} PTBR`,
+        score: 175, pass: "q1", read: "unfetched", readReason: "fetch_timeout", notQueued: null, isManual: null,
+        docType: null, scope: null, listsFaultCodes: null, language: null, textLanguage: null, confidence: null,
+        provider: null, selected: false,
+      },
+    ],
+  };
+
+  function candidateEvents() {
+    const search = handle.finished().find((s) => s.name === "manual_acquisition.search");
+    return (search?.events ?? []).filter((e) => e.name === "manual_acquisition.candidate");
+  }
+
+  it("records one identity-free event per candidate, with the read reason and the winner", async () => {
+    discoveryMock.discoverManual.mockResolvedValue({ ...FOUND_DISCOVERY, candidateTrail: TRAIL });
+    const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
+
+    const events = candidateEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0].attributes?.["mira.candidate.selected"]).toBe(true);
+    expect(events[0].attributes?.["mira.candidate.lists_fault_codes"]).toBe(true);
+    expect(events[1].attributes?.["mira.candidate.read"]).toBe("unfetched");
+    expect(events[1].attributes?.["mira.candidate.read_reason"]).toBe("fetch_timeout");
+    const search = handle.finished().find((s) => s.name === "manual_acquisition.search");
+    expect(search?.attributes["mira.acquisition.trail.stop"]).toBe("ideal_match");
+
+    const values = [
+      ...events.flatMap((e) => Object.values(e.attributes ?? {}).map(String)),
+      ...allAttrValues(handle.finished()),
+    ];
+    for (const leak of [MFR, MODEL, PART, CANDIDATE.url, CANDIDATE.host, "PTBR_manual"]) {
+      for (const v of values) expect(v.includes(leak)).toBe(false);
+    }
+    // The full trail rides on the outcome for the acquisition record — never on
+    // the payload, which routes return to clients.
+    expect(outcome.candidateTrail).toEqual(TRAIL);
+    expect("candidateTrail" in outcome.payload).toBe(false);
+  });
+
+  it("an old mira-ask (no trail) emits no candidate events and no outcome trail", async () => {
+    const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
+    expect(candidateEvents()).toHaveLength(0);
+    expect(outcome.candidateTrail).toBeUndefined();
+  });
+
+  it("a no-manual outcome still carries the trail", async () => {
+    discoveryMock.discoverManual.mockResolvedValue({
+      ...FOUND_DISCOVERY, found: false, candidate: null, validated: false, isDirectPdf: false, oemHost: false,
+      reason: "no official manual found", candidateTrail: TRAIL,
+    });
+    const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
+    expect(outcome.status).toBe("no_manual_found");
+    expect(outcome.candidateTrail).toEqual(TRAIL);
+    expect(candidateEvents()).toHaveLength(2);
+  });
+});

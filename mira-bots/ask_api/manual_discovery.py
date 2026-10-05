@@ -34,6 +34,7 @@ import time).
 
 import asyncio
 import hmac
+import json
 import logging
 import os
 import time
@@ -44,7 +45,9 @@ from shared.manual_search.quota import QuotaIdentity, provider_query_quota
 from shared.manual_search.search import (
     OEM_DOMAINS,
     TRUSTED_DOMAINS,
+    AcquisitionTrail,
     ProviderQueryBudget,
+    acquisition_trail,
     oem_request_link,
     provider_query_budget,
     search_manual,
@@ -157,6 +160,19 @@ def is_trusted_distributor_host(host: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in (t[0] for t in TRUSTED_DOMAINS))
 
 
+def _with_trail(
+    result: dict, trail: AcquisitionTrail | None, selected_url: str | None = None
+) -> dict:
+    """Attach the acquisition trail (additive, like `search_stats`) and log it
+    once. Observability only: the trail never changes the result."""
+    if trail is None:
+        return result
+    payload = trail.to_dict(selected_url)
+    result["candidate_trail"] = payload
+    logger.info("MANUAL_ACQUISITION_TRAIL %s", json.dumps(payload, default=str)[:20000])
+    return result
+
+
 def _require_discovery_key(x_mira_key: str | None) -> None:
     """Fail-closed shared-secret gate for the paid search endpoint.
 
@@ -238,10 +254,15 @@ async def manual_discovery_search(
     # Bound even if a TimeoutError/Exception below fires before the `with`
     # block assigns it (defensive — see _search_stats's None branch).
     budget: ProviderQueryBudget | None = None
+    trail: AcquisitionTrail | None = None
     try:
         # Every provider query this call sends is counted and capped (PRD R13)
         # AND reserved against the per-user/tenant/global Postgres caps (S4).
-        with provider_query_quota(identity), provider_query_budget() as budget:
+        with (
+            provider_query_quota(identity),
+            provider_query_budget() as budget,
+            acquisition_trail() as trail,
+        ):
             try:
                 candidate = await asyncio.wait_for(
                     search_manual(
@@ -270,14 +291,14 @@ async def manual_discovery_search(
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
-        return result
+        return _with_trail(result, trail)
     except Exception as e:  # noqa: BLE001
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
-        return result
+        return _with_trail(result, trail)
 
     interrupted = budget.quota_denied is not None and (
         candidate is None or candidate.get("reason") == "judged_not_applicable"
@@ -299,13 +320,13 @@ async def manual_discovery_search(
             result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
-        return result
+        return _with_trail(result, trail)
 
     if candidate is None:
         result = _NO_RESULT.copy()
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
-        return result
+        return _with_trail(result, trail)
     if candidate.get("reason") == "judged_not_applicable":
         # Every relevant candidate was READ and rejected. Owner canary rule
         # (2026-08-26): bad manuals disappear — do not hand the technician a
@@ -317,7 +338,7 @@ async def manual_discovery_search(
         result["judged_rejected"] = candidate.get("judged_rejected") or []
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
-        return result
+        return _with_trail(result, trail)
 
     validated = bool(candidate.get("validated"))
     is_direct_pdf = bool(candidate.get("is_direct_pdf"))
@@ -328,19 +349,23 @@ async def manual_discovery_search(
     oem_host = is_oem_host(manufacturer, host)
     trusted_distributor_host = is_trusted_distributor_host(host)
 
-    return {
-        "found": True,
-        "candidate": candidate,
-        "validated": validated,
-        "is_direct_pdf": is_direct_pdf,
-        "oem_host": oem_host,
-        "trusted_distributor_host": trusted_distributor_host,
-        # Judge outcome (judged_manual_match / judged_not_applicable /
-        # judge_unavailable) when the candidate PDF was read; "ok" otherwise.
-        "reason": candidate.get("reason") or "ok",
-        "reason_detail": candidate.get("reason_detail") or "",
-        "judge": candidate.get("judge") or None,
-        "judged_rejected": candidate.get("judged_rejected") or [],
-        "oem_request_url": oem_request_url,
-        "search_stats": _search_stats(budget),
-    }
+    return _with_trail(
+        {
+            "found": True,
+            "candidate": candidate,
+            "validated": validated,
+            "is_direct_pdf": is_direct_pdf,
+            "oem_host": oem_host,
+            "trusted_distributor_host": trusted_distributor_host,
+            # Judge outcome (judged_manual_match / judged_not_applicable /
+            # judge_unavailable) when the candidate PDF was read; "ok" otherwise.
+            "reason": candidate.get("reason") or "ok",
+            "reason_detail": candidate.get("reason_detail") or "",
+            "judge": candidate.get("judge") or None,
+            "judged_rejected": candidate.get("judged_rejected") or [],
+            "oem_request_url": oem_request_url,
+            "search_stats": _search_stats(budget),
+        },
+        trail,
+        candidate.get("url"),
+    )
