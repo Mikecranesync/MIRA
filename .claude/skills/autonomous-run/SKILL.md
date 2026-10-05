@@ -1,6 +1,6 @@
 ---
 name: autonomous-run
-description: Use at the start of any autonomous, overnight, or unattended work session in the MIRA repo. Trigger on any prompt that implies multi-hour unsupervised execution — "run overnight", "while I sleep", "do this autonomously", "go for it", "work through the night", "unattended", "background run", "long-running session", "before I wake up", "kick this off and let it run", or anything similar. Enforces the prevention framework installed 2026-04-26: PLAN.md scope-lock, worktree isolation, Stop-hook + prod-guard validation, commit cadence, HANDOFF discipline, and the hard stop conditions that prevent the 2026-04-25 regression pattern (14 branches, 18 reviewer bugs). MUST trigger before the first real tool call on any unsupervised work — "I'll be careful" is not a substitute for executing the pre-flight.
+description: Use at the start of any autonomous, overnight, or unattended work session in the MIRA repo. Trigger on any prompt that implies multi-hour unsupervised execution — "run overnight", "while I sleep", "do this autonomously", "go for it", "work through the night", "unattended", "background run", "long-running session", "before I wake up", "kick this off and let it run", or anything similar. Enforces the prevention framework installed 2026-04-26: branch-scoped PLAN scope-lock, worktree isolation, Stop-hook + prod-guard validation, commit cadence, HANDOFF discipline, and the hard stop conditions that prevent the 2026-04-25 regression pattern (14 branches, 18 reviewer bugs). MUST trigger before the first real tool call on any unsupervised work — "I'll be careful" is not a substitute for executing the pre-flight.
 ---
 
 # Autonomous Run — Discipline for Unattended MIRA Sessions
@@ -17,7 +17,7 @@ A failed pre-flight is a STOP, not "proceed with caution". The 2026-04-25 run ig
 
 2. **Branch is not main/develop/dev.** `git branch --show-current` — if it returns any of those, refuse. The push target is your branch and only your branch.
 
-3. **PLAN.md exists at branch root.** `test -f PLAN.md` — if missing, refuse. Template: `docs/templates/overnight-PLAN.md`. The PLAN must contain a numbered scope list, an explicit OUT-of-scope list, and per-task success criteria. If any of those are absent, ask the operator to fill them in before proceeding.
+3. **A scope-locked PLAN exists at branch root — under a BRANCH-SCOPED name.** Write `PLAN.<slice>.md`, **never** bare `PLAN.md`: the root `PLAN.md` and `HANDOFF.md` are tracked files owned by whichever run wrote them last, and overwriting one replaces another run's work (merging would then delete theirs from `main`). A `PreToolUse` guard blocks it, but the name is your decision, not the guard's. See `.claude/rules/shared-root-file-ownership.md`. Template: `docs/templates/overnight-PLAN.md`. The PLAN must contain a numbered scope list, an explicit OUT-of-scope list, and per-task success criteria. If any of those are absent, ask the operator to fill them in before proceeding.
 
 4. **Hooks are wired.** `jq '.hooks | keys' .claude/settings.json` should return at least `Stop`, `PreToolUse`, `PostToolUse`, `SessionStart`. Confirm `Stop[0].hooks[0].command` references `tools/hooks/stop-gate.sh` and `PreToolUse[0].hooks[0].command` references `tools/hooks/prod-guard.sh`. If missing, refuse — the hooks are the safety net.
 
@@ -68,7 +68,7 @@ These are not suggestions. Several of these were hit on 2026-04-25 and ignored.
 | Pre-merge reviewer-style issue surfaces (the kind in `docs/competitors/pre-merge-review-2026-04-25.md`) | Stop, fix it, re-run gates. Do not "document and move on" — that's the anti-pattern |
 | **Remaining work is human-gated** (a PR merge needing approval, a vendor-admin click, a physical hardware action, an interactive login, a staging sign-off) | You cannot clear it. Stop ONCE with a precise handoff — do not retry. See below |
 
-When you stop, the LAST thing you do is write `HANDOFF.md` (template: `docs/templates/overnight-HANDOFF.md`) and commit it. Then literally stop.
+When you stop, the LAST thing you do is write `HANDOFF.<slice>.md` (template: `docs/templates/overnight-HANDOFF.md`) and commit it — branch-scoped, for the same reason as the PLAN above. Then literally stop.
 
 ### Human-gated goals — stop once, do not loop  (issue #1811)
 
@@ -97,8 +97,8 @@ The Stop hook will fire automatically and block "done" until the gates pass. But
 4. If any `mira-hub/*` changed: `cd mira-hub && npm run build` — must exit 0
 5. If any `.sh` changed: `shellcheck -S warning <files>` — must pass
 6. Offline eval suite (per `tests/eval/README.md`): `pytest tests/eval/ -q` — must not regress baseline
-7. Write `HANDOFF.md` with: what was done (vs PLAN row-by-row), what was skipped and why, what's risky, decisions needed from operator, exact reproduce commands
-8. Final commit (including HANDOFF.md), push to branch
+7. Write `HANDOFF.<slice>.md` (branch-scoped — never bare `HANDOFF.md`) with: what was done (vs PLAN row-by-row), what was skipped and why, what's risky, decisions needed from operator, exact reproduce commands
+8. Final commit (including the handoff), push to branch
 9. Then — and only then — say "done"
 
 If a gate fails, fix it. Do NOT use `MIRA_SKIP_STOP_GATE=1` to bypass — that override exists for diagnosing the gate itself, not for shipping broken work. Same for `MIRA_ALLOW_PROD=1` — that's for human-supervised deploys.
