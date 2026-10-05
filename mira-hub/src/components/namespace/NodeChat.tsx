@@ -13,13 +13,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, FileText, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { SourceChips, type SourceChip } from "@/components/SourceChips";
 
-interface Source {
-  index: number;
-  title: string;
-  url: string | null;
-  page: number | null;
-}
+type Source = SourceChip;
 
 interface ChatMessage {
   id: string;
@@ -79,29 +75,6 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
-function SourceChips({ sources }: { sources: Source[] }) {
-  if (!sources || sources.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {sources.map((s) => (
-        <span
-          key={`${s.index}-${s.title}`}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--foreground-muted)",
-          }}
-          title={s.url ?? s.title}
-        >
-          <FileText className="h-2.5 w-2.5" style={{ color: "var(--brand-blue)" }} />
-          [{s.index}] {s.title}
-          {s.page != null ? ` p.${s.page}` : ""}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 // Exported for the static render test (NodeChat.test.tsx) — same pattern as
 // AssetChat.tsx's MessageBubble.
