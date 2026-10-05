@@ -137,6 +137,7 @@ def test_permission_error_stops_the_run():
         _FakeConn(deny=True), [("a", "x"), ("b", "y")], lambda c: _vec(), batch=20
     )
     assert r.stop_reason == "permission_denied" and r.embedded == 0 and r.exit_code == 1
+    assert r.failed == 1  # the denied row itself is a failure (Codex round 2, F3)
 
 
 def test_an_unreachable_embedder_stops_after_one_batch_of_failures():
@@ -207,6 +208,7 @@ def test_permission_error_mid_batch_reports_only_what_persisted():
     assert r.stop_reason == "permission_denied" and r.exit_code == 1
     assert conn.persisted == []
     assert r.embedded == len(conn.persisted) == 0
+    assert r.failed == 3  # two rolled-back writes plus the denied row
 
 
 def test_permission_error_keeps_earlier_committed_batches():

@@ -621,7 +621,7 @@ approved:
       SELECT 1 FROM knowledge_entries
                       WHERE tenant_id = :tid AND LEFT(content, 200) = :prefix
                       LIMIT 1
-  "tools/backfill_knowledge_embeddings.py:199":
+  "tools/backfill_knowledge_embeddings.py:200":
     approved_classification: UNFILTERED
     query_sha256: "3b4d3520a074f96224e7b090edf9aa9c1d87bc88d46b06cf8cb99bd31025e0de"
     reason: "Operator backfill tool (run by a human from a tailnet node, never a request path): embeds rows with a NULL vector across the whole corpus by design. Counts are logged; content is read only to compute that same row's embedding and is never returned to a user."
@@ -629,7 +629,7 @@ approved:
       with engine.connect() as conn:
               total_null = conn.execute(
                   text(f"SELECT count(*) FROM knowledge_entries WHERE {where}"), params
-  "tools/backfill_knowledge_embeddings.py:203":
+  "tools/backfill_knowledge_embeddings.py:204":
     approved_classification: UNFILTERED
     query_sha256: "3b4d3520a074f96224e7b090edf9aa9c1d87bc88d46b06cf8cb99bd31025e0de"
     reason: "Operator backfill tool (run by a human from a tailnet node, never a request path): embeds rows with a NULL vector across the whole corpus by design. Counts are logged; content is read only to compute that same row's embedding and is never returned to a user."
@@ -638,7 +638,7 @@ approved:
                   text(
                       "SELECT source_type, count(*) n FROM knowledge_entries "
                       "WHERE embedding IS NULL GROUP BY source_type ORDER BY n DESC"
-  "tools/backfill_knowledge_embeddings.py:225":
+  "tools/backfill_knowledge_embeddings.py:226":
     approved_classification: UNFILTERED
     query_sha256: "e323bea29c230300c65dd0e458099fbb27bb8a7555f36f585cae5df08f9d7ac2"
     reason: "Operator backfill tool (run by a human from a tailnet node, never a request path): embeds rows with a NULL vector across the whole corpus by design. Counts are logged; content is read only to compute that same row's embedding and is never returned to a user."

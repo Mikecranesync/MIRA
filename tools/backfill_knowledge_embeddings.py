@@ -128,9 +128,9 @@ def backfill_rows(conn, rows, embed_fn, batch: int) -> BackfillResult:
         except Exception as exc:  # noqa: BLE001 - classify, then stop or re-raise
             if _is_permission_error(exc):
                 # The error aborted the transaction: the open batch is lost. Roll it
-                # back explicitly and count its rows as failed, not embedded.
+                # back explicitly and count its rows, plus the denied one, as failed.
                 conn.rollback()
-                r.failed += pending_written
+                r.failed += pending_written + 1
                 pending_written = pending_skipped = 0
                 r.stop_reason = "permission_denied"
                 logger.error("  stop: %s", exc)
