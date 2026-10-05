@@ -129,6 +129,20 @@ const SERIES_WORDS = new Set([
 ]);
 const MAX_SERIES_SKIP = 2;
 
+/**
+ * A digitless variant code ("LTE-B", "LTP-B"): all caps, hyphenated, letters
+ * only. A model ONLY right after a known series name, and kept WITH that name
+ * ("MOVITRAC LTE-B") — the bare code names nothing a manual search can confirm
+ * (Golden Walk 2026-10-05: SEW got no proposal).
+ */
+const VARIANT_CODE_RE = /^[A-Z]{2,4}-[A-Z]{1,2}$/;
+
+function isVariantCode(t: string | undefined): t is string {
+  if (!t || !VARIANT_CODE_RE.test(t)) return false;
+  const head = t.split("-")[0];
+  return !LABEL_WORDS.has(head) && !GENERIC_TECH_WORDS.has(head) && !GENERIC_DEVICE_WORDS.has(head);
+}
+
 /** The model span starting at `tokens[0]`, or null. */
 function modelSpanAt(tokens: string[]): string | null {
   const plain = plainModelSpanAt(tokens);
@@ -136,7 +150,13 @@ function modelSpanAt(tokens: string[]): string | null {
   // "Siemens SINAMICS G120C": skip at most two known series names before the model.
   let rest = tokens;
   for (let i = 0; i < MAX_SERIES_SKIP && rest[0] && SERIES_WORDS.has(rest[0].toUpperCase()); i++) rest = rest.slice(1);
-  return rest === tokens ? null : plainModelSpanAt(rest);
+  if (rest === tokens) return null;
+  const span = plainModelSpanAt(rest);
+  if (span) return span;
+  // "SEW-Eurodrive MOVITRAC LTE-B": the series stays in a digitless variant's model.
+  // Only after exactly ONE series name — two ("VLT AutomationDrive XX-Y") would
+  // either drop a word or disagree with the ambiguity scan (#4248 review F1).
+  return tokens.length - rest.length === 1 && isVariantCode(rest[0]) ? `${tokens[0]} ${rest[0]}` : null;
 }
 
 function plainModelSpanAt(tokens: string[]): string | null {
@@ -329,6 +349,14 @@ function modelMentions(message: string, chosenModel: string): string[] {
     // only REMOVE a proposal, never create one, so the looser reading is safe.
     if (isModelToken(t) || (t.length >= 3 && isModelToken(t.toUpperCase()))) {
       out.push(t);
+      continue;
+    }
+    // A series name and its digitless variant ("MOVITRAC LTP-B") is a machine.
+    // Case-insensitive, like every other mention here: this scan can only REMOVE
+    // a proposal ("MOVITRAC LTE-B and movitrac ltp-b" — #4248 review F2).
+    if (SERIES_WORDS.has(t.toUpperCase()) && isVariantCode(next?.toUpperCase())) {
+      out.push(`${t} ${next}`);
+      i++;
       continue;
     }
     // A next token that is a model on its own ("the s7-1200") is scanned at its
