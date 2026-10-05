@@ -91,11 +91,25 @@ describe("a retrieved-but-uncited turn is held to the code-meaning rule", () => 
     expect(run(cited, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
   });
 
-  it("documents the accepted gap: an unrelated citation in the SAME sentence backs it (owner decision 2026-10-05)", () => {
-    const sameSentence = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
-    expect(run(sameSentence, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
+  it("is not backed by an unrelated citation joined with 'and' before the definition (Codex r3/r4 F1)", () => {
+    const before = "The converter is commissioned using its operator panel [1] and Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
+    expect(run(before, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
+    const semicolon = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
+    expect(run(semicolon, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
   });
 
+  it("is not backed by an unrelated citation on a clause joined after the definition", () => {
+    const after = "Fault F49123 indicates a motor overload and the converter is commissioned using its operator panel [1].";
+    expect(run(after, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
+  });
+
+  it("control: attribution before or after the definition backs it", () => {
+    const ok = (a: string) => expect(run(a, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
+    ok("According to the supplied manual [1], Fault F49123 indicates a motor overload.");
+    ok("Per the manual [1]: Fault F49123 indicates a motor overload.");
+    ok("Fault F49123 indicates a motor overload and over-current condition [1].");
+    ok("Fault F49123 indicates a motor overload (see [1]).");
+  });
   it("does not accept a marker that resolves to nothing", () => {
     expect(run("Fault F49123 indicates a motor overload [7].", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
   });
@@ -146,5 +160,27 @@ describe("a refusal-classified draft is still checked (Codex r2 F2)", () => {
   it("control: an honest refusal alone is untouched", () => {
     expect(run("I can't verify what F49123 means on this drive from the supplied manual.", F49123_Q, { refused: true }).ok).toBe(true);
     expect(run("I cannot find this code in the supplied manual.", F49123_Q, { general: false, refused: true, resolvingCitationIds: ["1"] }).ok).toBe(true);
+  });
+});
+
+describe("a bare 'is' definition is a definition (Codex r4 F4)", () => {
+  const F004_Q = "What does fault F004 mean on this drive";
+  it("withholds 'F004 is DC bus undervoltage' with no citation, in both lanes", () => {
+    for (const a of ["Fault F004 is DC bus undervoltage.", "F004 is DC bus undervoltage."]) {
+      expect(run(a, F004_Q).ok).toBe(false);
+      expect(run(a, F004_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
+    }
+  });
+  it("control: a cited bare 'is' definition is kept", () => {
+    expect(run("F004 is DC bus undervoltage [1].", F004_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
+  });
+  it("control: 'is' that does not define the code is not a definition", () => {
+    for (const a of [
+      "F004 is shown on the display after the drive trips.",
+      "F004 is cleared by pressing Stop once the cause is fixed.",
+      "F004 is still active on the keypad.",
+    ]) {
+      expect(run(a, F004_Q).ok).toBe(true);
+    }
   });
 });

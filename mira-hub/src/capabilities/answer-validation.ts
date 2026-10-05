@@ -929,25 +929,52 @@ function questionCodes(question: string): Set<string> {
   return new Set((question.match(FAULT_CODE_TOKEN) ?? []).map((t) => t.toLowerCase()));
 }
 
+/** "F004 is DC bus undervoltage" defines the code with no article (Codex #4238
+ *  r4 F4). A bare "is" counts only before a fault-kind noun, so "F004 is shown
+ *  on the display" / "is cleared by pressing Stop" / "is still active" do not. */
+const FAULT_KIND_NOUN =
+  "(?:fault|error|alarm|trip|condition|overvoltage|undervoltage|overcurrent|overload|overheat\\w*|over-?temperature|over-?voltage|under-?voltage|over-?current|loss|failure|short\\s+circuit|ground\\s+fault)";
+
+/** A clause that only attributes a source: "according to the manual [1]",
+ *  "per [1]", "see [1]", or bare markers. */
+function attributionOnly(clause: string): boolean {
+  const rest = clause.replace(/\[\d+\]/g, " ").replace(/[()\s.!?]+/g, " ").trim();
+  return rest === "" || /^(?:according\s+to|per|see|as\s+(?:stated|shown|listed|described|given)\s+in|from|source)\b.{0,80}$/i.test(rest);
+}
+
+/** Is THIS definition claim backed by a resolving citation (Codex #4238 r2-r4)?
+ *  The claim runs from the code to the clause end, cut where an "and/while/
+ *  whereas" joins an independent clause ("… overload and the converter is
+ *  commissioned [1]"). Backed when the claim itself carries a marker, when the
+ *  clauses after it are attribution-only and carry one ("…, according to the
+ *  manual [1]"), or when an attribution-only clause leads it ("According to the
+ *  manual [1], F004 …"). A marker on a different claim never backs it. */
+function claimIsCited(clauses: string[], ci: number, codeAt: number, hasRef: (t: string) => boolean): boolean {
+  let claim = clauses[ci].slice(codeAt);
+  const join = claim.search(/\s(?:and|while|whereas)\s+(?:the|this|that|these|those|it|its|you|your|we|they|a|an)\b/i);
+  if (join >= 0) claim = claim.slice(0, join);
+  if (hasRef(claim)) return true;
+  if (join < 0) {
+    for (let j = ci + 1; j < clauses.length && attributionOnly(clauses[j]); j++) {
+      if (hasRef(clauses[j])) return true;
+    }
+  }
+  return ci > 0 && attributionOnly(clauses[ci - 1]) && hasRef(clauses[ci - 1]);
+}
+
 function codeMeaningViolation(
   answer: string,
   question: string,
-  isBacked?: (sentence: string) => boolean,
+  hasRef?: (text: string) => boolean,
 ): { code: string; excerpt: string } | null {
   const asked = questionCodes(question);
   // Sentence-level DETECTION only — the draft is never rewritten piecewise
   // (research §"Correct the specificity gate": no uncontrolled splitting).
   // A marker placed after the full stop ("…overload. [1]") belongs to the
   // sentence before it, so it is moved inside for the backing check.
-  const text = isBacked ? answer.replace(/([.!?])[ \t]+((?:\[\d+\][ \t]*)+)/g, " $2$1 ") : answer;
+  const text = hasRef ? answer.replace(/([.!?])[ \t]+((?:\[\d+\][ \t]*)+)/g, " $2$1 ") : answer;
   const sentences = text.split(/(?<=[.!?])\s+|\n+/);
   for (const s of sentences) {
-    // Backing is SENTENCE-scoped (owner decision 2026-10-05, Codex #4238 r3):
-    // clause-scoping rejected correctly cited answers ("F004 indicates DC bus
-    // undervoltage, according to the manual [1]"). Accepted gap: an unrelated
-    // citation in the same sentence as an invented definition is not caught
-    // here; the citation contract and the semantic answer judge still apply.
-    if (isBacked?.(s)) continue;
     const inFaultContext = FAULT_CONTEXT.test(s);
     // R1 (Codex finding, PR #3792 review): the honest-uncertainty exemption is
     // CLAUSE-scoped, not sentence-scoped. "I can't verify the manual, but
@@ -956,7 +983,7 @@ function codeMeaningViolation(
     // "I can't verify what Q-447-Delta means" keeps its exemption because the
     // non-verification and the definition frame share one clause.
     const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
-    for (const clause of clauses) {
+    for (const [ci, clause] of clauses.entries()) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
         // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
@@ -976,7 +1003,7 @@ function codeMeaningViolation(
         // not either: "Fault F49123 on a Siemens drive generally indicates…"
         // shipped uncited on staging (Golden Walk 2026-10-05).
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when|is\\s+(?:[\\w-]+\\s+){0,4}?${FAULT_KIND_NOUN})\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -985,6 +1012,7 @@ function codeMeaningViolation(
           "i",
         );
         if (defFrame.test(clause) || causeFrame.test(clause)) {
+          if (hasRef && claimIsCited(clauses, ci, Math.max(0, clause.indexOf(tok)), hasRef)) continue;
           return { code: tok, excerpt: s.slice(0, 160) };
         }
       }
@@ -1311,8 +1339,8 @@ export function validateAnswer(opts: {
     const cm = general
       ? codeMeaningViolation(scanText, scanQuestion)
       : ids
-        ? codeMeaningViolation(scanText, scanQuestion, (sentence) =>
-            [...sentence.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
+        ? codeMeaningViolation(scanText, scanQuestion, (text) =>
+            [...text.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
           )
         : null;
     if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
