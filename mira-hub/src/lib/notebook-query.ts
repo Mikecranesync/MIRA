@@ -66,7 +66,8 @@ export type ExpandedQuery = {
 
 // A code is picked up only next to a fault keyword (or, for dotted codes like
 // Mitsubishi's E.OV1, anywhere), and only when its SHAPE is code-like: mixed
-// case (ovA, ObF), letters+digits (OC1, F30002), a dot, or 3+ digits (ABB 3210).
+// case (ovA, ObF — not mere title case), letters+digits (OC1, F30002), a dot,
+// or 3+ digits (ABB 3210).
 // A 1–2 digit number is meaningless alone, so it stays bound to its keyword
 // ("Alarm 7"). Plain words ("this", "history", "mean") never qualify.
 const CODE_AFTER_KEYWORD =
@@ -77,7 +78,9 @@ function codeLike(tok: string): boolean {
   if (/^\d+$/.test(tok)) return tok.length >= 3;
   if (/[.-]/.test(tok) && /[A-Za-z]/.test(tok)) return true;
   if (/\d/.test(tok) && /[A-Za-z]/.test(tok)) return true;
-  return /[a-z]/.test(tok) && /[A-Z]/.test(tok); // mixed case: ovA, ObF, oC
+  // Mixed case means a lowercase letter BEFORE an uppercase one (ovA, ObF, oC).
+  // Title case alone ("History", "Reset") is ordinary capitalization, not a code.
+  return /[a-z][A-Za-z]*[A-Z]/.test(tok);
 }
 
 function extractCodeTokens(q: string): string[] {

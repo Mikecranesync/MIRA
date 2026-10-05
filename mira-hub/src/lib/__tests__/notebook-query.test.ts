@@ -111,6 +111,12 @@ describe("expandIndustrialQuery — fault codes named in the question", () => {
     expect(codes("how do I reset the fault")).toEqual([]);
     expect(codes("e.g. the drive trips")).toEqual([]);
   });
+
+  it("ignores ordinary title-cased words after a fault keyword", () => {
+    expect(codes("Where is the Fault History on this drive?")).toEqual([]);
+    expect(codes("Alarm Reset does nothing")).toEqual([]);
+    expect(codes("Fault Code List please")).toEqual([]);
+  });
 });
 
 describe("codeTokenMatcher — whole-token match only", () => {
@@ -167,6 +173,15 @@ describe("rerankChunks", () => {
     const overview = mk("WARNING/ALARM 70, Brake check. The drive alarm list shows each alarm", 0.9, 53);
     const table = mk("WARNING/ALARM 7, DC overvoltage. If the intermediate circuit voltage exceeds", 0.05, 54);
     expect(rerankChunks(e, [overview, table])[0]).toBe(table);
+  });
+
+  it("keeps a no-code question's ranking when it names a title-cased word", () => {
+    // Codex r1 F1 repro: six revision-history pages must not out-rank the fault queue.
+    const e = expandIndustrialQuery("Where is the Fault History on this drive?");
+    const queue = mk("Fault queue: press the Fault key to view the last eight faults and clear them", 0.9, 20);
+    const history = [1, 2, 3, 4, 5, 6].map((p) => mk(`Revision History table, edition ${p}`, 0.05, p));
+    const out = rerankChunks(e, [queue, ...history]).slice(0, 6);
+    expect(out[0]).toBe(queue);
   });
 
   it("does not boost a chunk that only contains the code inside a word", () => {
