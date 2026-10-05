@@ -32,9 +32,11 @@ Idempotent: only touches rows where `embedding IS NULL`; a second run finds 0.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
+from dataclasses import asdict, dataclass
 
 import httpx
 from sqlalchemy import create_engine, text
@@ -44,8 +46,89 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("kb-embed-backfill")
 
 EMBED_MODEL = os.environ.get("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
-OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "")
 EXPECTED_DIM = 768  # knowledge_entries.embedding is vector(768)
+
+# Only ever fill a hole: the Hub's own embed pass (or another run) may write the
+# same row between our SELECT and this UPDATE, and its vector must win.
+UPDATE_SQL = (
+    "UPDATE knowledge_entries SET embedding = cast(:emb AS vector) "
+    "WHERE id = :id AND embedding IS NULL"
+)
+
+
+class DimensionMismatch(ValueError):
+    """The embedder answered with the wrong vector size — wrong model; stop the run."""
+
+
+class PermissionDenied(RuntimeError):
+    """The database role cannot UPDATE knowledge_entries — stop the run."""
+
+
+@dataclass
+class BackfillResult:
+    candidates: int = 0
+    embedded: int = 0  # rows this run actually wrote (UPDATE rowcount)
+    skipped_already_embedded: int = 0  # another writer filled the row first
+    skipped_empty: int = 0
+    failed: int = 0
+    stop_reason: str | None = None
+
+    @property
+    def exit_code(self) -> int:
+        return 1 if self.failed or self.stop_reason else 0
+
+
+def _is_permission_error(exc: Exception) -> bool:
+    text_ = str(exc).lower()
+    return isinstance(exc, PermissionDenied) or "permission denied" in text_ or "42501" in text_
+
+
+def backfill_rows(conn, rows, embed_fn, batch: int) -> BackfillResult:
+    """Embed and write `rows` ((id, content) pairs), committing every `batch` rows so a
+    rerun resumes where this one stopped. Stops early — and reports why — on a
+    dimension mismatch, a permission error, or `batch` consecutive embed failures
+    (the embedder is unreachable). Never overwrites an existing vector."""
+    r = BackfillResult(candidates=len(rows))
+    consecutive_failures = 0
+    for i, (row_id, content) in enumerate(rows, 1):
+        if not content or not content.strip():
+            r.skipped_empty += 1
+            continue
+        try:
+            vec = embed_fn(content)
+        except DimensionMismatch as exc:
+            r.failed += 1
+            r.stop_reason = "dimension_mismatch"
+            logger.error("  stop: %s", exc)
+            break
+        except Exception as exc:  # noqa: BLE001 - count it; stop if the embedder is down
+            r.failed += 1
+            consecutive_failures += 1
+            logger.warning("  embed failed for %s: %s", row_id, exc)
+            if consecutive_failures >= batch:
+                r.stop_reason = "embedder_unreachable"
+                logger.error("  stop: %d consecutive embed failures", consecutive_failures)
+                break
+            continue
+        consecutive_failures = 0
+        try:
+            written = conn.execute(text(UPDATE_SQL), {"emb": str(vec), "id": row_id}).rowcount
+        except Exception as exc:  # noqa: BLE001 - classify, then stop or re-raise
+            if _is_permission_error(exc):
+                r.stop_reason = "permission_denied"
+                logger.error("  stop: %s", exc)
+                break
+            raise
+        if written:
+            r.embedded += 1
+        else:
+            r.skipped_already_embedded += 1
+        if i % batch == 0:
+            conn.commit()
+            logger.info("  committed: embedded=%d of %d", r.embedded, len(rows))
+    conn.commit()
+    return r
 
 
 def embed(client: httpx.Client, content: str) -> list[float]:
@@ -57,7 +140,7 @@ def embed(client: httpx.Client, content: str) -> list[float]:
     resp.raise_for_status()
     vec = resp.json().get("embedding") or []
     if len(vec) != EXPECTED_DIM:
-        raise ValueError(
+        raise DimensionMismatch(
             f"embedder returned dim={len(vec)} but knowledge_entries.embedding is "
             f"vector({EXPECTED_DIM}) — wrong model ({EMBED_MODEL})? Refusing to write "
             "a dimension-mismatched vector (cosine would be meaningless)."
@@ -75,7 +158,12 @@ def main() -> int:
 
     url = os.environ.get("NEON_DATABASE_URL")
     if not url:
-        logger.error("NEON_DATABASE_URL not set — run via `doppler run -p factorylm -c <env> -- ...`")
+        logger.error(
+            "NEON_DATABASE_URL not set — run via `doppler run -p factorylm -c <env> -- ...`"
+        )
+        return 2
+    if not os.environ.get("OLLAMA_BASE_URL"):
+        logger.error("OLLAMA_BASE_URL not set — refusing to run without a reachable embedder")
         return 2
 
     where = "embedding IS NULL"
@@ -101,7 +189,11 @@ def main() -> int:
                 "WHERE embedding IS NULL GROUP BY source_type ORDER BY n DESC"
             )
         ).fetchall()
-    logger.info("NULL-embedding rows%s: %d", f" (source_type={args.source_type})" if args.source_type else "", total_null)
+    logger.info(
+        "NULL-embedding rows%s: %d",
+        f" (source_type={args.source_type})" if args.source_type else "",
+        total_null,
+    )
     for st, n in by_type:
         logger.info("  %-22s %d", repr(st), n)
 
@@ -118,34 +210,16 @@ def main() -> int:
             text(f"SELECT id, content FROM knowledge_entries WHERE {where}{limit_sql}"), params
         ).fetchall()
 
-    embedded = 0
-    failed = 0
     with httpx.Client(timeout=30) as client, engine.connect() as conn:
-        for i, (row_id, content) in enumerate(rows, 1):
-            if not content or not content.strip():
-                logger.warning("  skip %s — empty content", row_id)
-                continue
-            try:
-                vec = embed(client, content)
-            except Exception as exc:  # noqa: BLE001 - log + continue, don't abort the batch
-                failed += 1
-                logger.warning("  embed failed for %s: %s", row_id, exc)
-                continue
-            conn.execute(
-                text("UPDATE knowledge_entries SET embedding = cast(:emb AS vector) WHERE id = :id"),
-                {"emb": str(vec), "id": row_id},
-            )
-            embedded += 1
-            if i % args.batch == 0:
-                conn.commit()
-                logger.info("  committed %d/%d", embedded, len(rows))
-        conn.commit()
-        # IVFFlat recall can degrade after a bulk insert of vectors — refresh stats.
-        conn.execute(text("ANALYZE knowledge_entries"))
-        conn.commit()
+        result = backfill_rows(conn, rows, lambda content: embed(client, content), args.batch)
+        if result.embedded:
+            # IVFFlat recall can degrade after a bulk insert of vectors — refresh stats.
+            conn.execute(text("ANALYZE knowledge_entries"))
+            conn.commit()
 
-    logger.info("Done: embedded=%d failed=%d (of %d candidates) with %s", embedded, failed, len(rows), EMBED_MODEL)
-    return 1 if failed and embedded == 0 else 0
+    # One machine-readable line: what was written, what was skipped, what failed, why it stopped.
+    print("BACKFILL_RESULT " + json.dumps({**asdict(result), "model": EMBED_MODEL}), flush=True)
+    return result.exit_code
 
 
 if __name__ == "__main__":
