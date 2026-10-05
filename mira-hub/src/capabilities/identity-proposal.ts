@@ -161,6 +161,20 @@ function plainModelSpanAt(tokens: string[]): string | null {
 }
 
 /**
+ * The parser narrows ABB's ACS series to its digits ("ACS580" → "580") so
+ * retrieval can substring-match `model_number`. That is right for scoping and
+ * wrong for an identity: "ACS" is part of the manufacturer's model name, and a
+ * manual search for model "580" cannot confirm the ACS580 manual (Golden Walk
+ * 2026-10-05). PowerFlex/PF and Micro keep their reviewed family-number form
+ * (Codex #4120 r3 F8). Returns the series-prefixed model, or null.
+ */
+function withSeriesPrefix(parsedModel: string | null, tokens: string[]): string | null {
+  if (!parsedModel || !/^\d+$/.test(parsedModel)) return null;
+  const m = tokens.join(" ").match(new RegExp(`(?<![A-Za-z0-9])ACS\\s*${parsedModel}(?![A-Za-z0-9])`, "i"));
+  return m ? `ACS${parsedModel}` : null;
+}
+
+/**
  * The model-like span right after ONE manufacturer mention, or null. Pure;
  * exported for tests.
  */
@@ -179,7 +193,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = parsed.model ?? modelSpanAt(wide);
+    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide);
     if (span) return span;
   }
   return null;
