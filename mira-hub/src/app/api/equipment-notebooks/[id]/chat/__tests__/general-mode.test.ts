@@ -248,6 +248,27 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(text).not.toMatch(/overload/i);
   });
 
+  it("an unrelated citation elsewhere does not carry an uncited definition out (Codex #4238 r1 F1)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
+    ]);
+    const mixed = `${UNCITED_DEFINITION} The converter is commissioned using its operator panel [1].`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("a safety warning does not carry an uncited definition out (Codex #4238 r1 F2)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const hazardous = `Lockout is not required. ${UNCITED_DEFINITION}`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(hazardous), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
   it("keeps a cited fault-code meaning on a grounded turn", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([

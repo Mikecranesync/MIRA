@@ -932,12 +932,17 @@ function questionCodes(question: string): Set<string> {
 function codeMeaningViolation(
   answer: string,
   question: string,
+  isBacked?: (sentence: string) => boolean,
 ): { code: string; excerpt: string } | null {
   const asked = questionCodes(question);
   // Sentence-level DETECTION only — the draft is never rewritten piecewise
   // (research §"Correct the specificity gate": no uncontrolled splitting).
-  const sentences = answer.split(/(?<=[.!?])\s+|\n+/);
+  // A marker placed after the full stop ("…overload. [1]") belongs to the
+  // sentence before it, so it is moved inside for the backing check.
+  const text = isBacked ? answer.replace(/([.!?])[ \t]+((?:\[\d+\][ \t]*)+)/g, " $2$1 ") : answer;
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
   for (const s of sentences) {
+    if (isBacked?.(s)) continue;
     const inFaultContext = FAULT_CONTEXT.test(s);
     // R1 (Codex finding, PR #3792 review): the honest-uncertainty exemption is
     // CLAUSE-scoped, not sentence-scoped. "I can't verify the manual, but
@@ -1240,11 +1245,12 @@ export function validateAnswer(opts: {
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
   manualSearchRunning?: ManualSearchRunning;
-  /** Did the answer cite at least one shipped source? `false` on a turn that
-   *  retrieved chunks but cited none of them: nothing backs its claims, so the
-   *  code-meaning rule applies as in the general lane. Omitted = unknown, and
-   *  the grounded lane keeps relying on the citation contract alone. */
-  citedSources?: boolean;
+  /** Grounded turns: the [n] marker ids that resolve to a retrieved source.
+   *  A fault-code definition sentence carrying none of them is unbacked, so the
+   *  code-meaning rule applies to it as in the general lane — a citation
+   *  elsewhere in the answer does not back it (Codex #4238 r1 F1). Omitted =
+   *  unknown, and the grounded lane relies on the citation contract alone. */
+  resolvingCitationIds?: readonly string[];
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -1284,6 +1290,24 @@ export function validateAnswer(opts: {
   // agreeing and a code spelled with U+2011 on BOTH sides escapes the rule
   // entirely. Measured, not assumed — see answer-validation-unicode-hyphen.
   const scanQuestion = foldForDetection(question);
+
+  // Fault-code meaning, decided BEFORE the safety warnings: a warning keeps the
+  // draft and quotes it, so returning one first shipped an uncited definition
+  // inside it (Codex #4238 r1 F2). Withholding the draft also removes the step
+  // the warning would have quoted. General lane: any asserted meaning.
+  // Grounded lane: a definition sentence with no resolving [n] of its own
+  // (Golden Walk 2026-10-05 — uncited definitions shipped as "answered").
+  if (!refused) {
+    const ids = opts.resolvingCitationIds;
+    const cm = general
+      ? codeMeaningViolation(scanText, scanQuestion)
+      : ids
+        ? codeMeaningViolation(scanText, scanQuestion, (sentence) =>
+            [...sentence.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
+          )
+        : null;
+    if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
+  }
 
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
@@ -1356,14 +1380,6 @@ export function validateAnswer(opts: {
     }
   }
 
-  // B' — a grounded turn that cites nothing has no citation contract to lean
-  // on, so an asserted fault-code meaning is as unbacked as in the general
-  // lane (Golden Walk 2026-10-05: uncited definitions shipped as "answered").
-  if (!general && !refused && opts.citedSources === false) {
-    const uncited = codeMeaningViolation(scanText, scanQuestion);
-    if (uncited) return codeMeaningRejection(uncited, answerText, fallbackOpts);
-  }
-
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
   if (!general || refused) return energizedWarningOr(restore, answerText);
@@ -1405,9 +1421,6 @@ export function validateAnswer(opts: {
       };
     }
   }
-
-  const cm = codeMeaningViolation(scanText, scanQuestion);
-  if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
 
   return energizedWarningOr(restore, answerText);
 }
