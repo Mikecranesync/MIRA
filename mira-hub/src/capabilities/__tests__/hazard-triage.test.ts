@@ -10,6 +10,12 @@ const jev = (noul: number | null, skipped_reason: string | null = null): JevShad
   model: null,
   input_tokens: null,
   instructions_version: "test",
+  best_chunk: null,
+  best_chunk_confidence: null,
+  best_chunk_index: null,
+  best_chunk_skipped_reason: "not_exercised",
+  best_chunk_latency_ms: null,
+  choice_instructions_version: "chunk-select-v2",
 });
 
 const classify = (
